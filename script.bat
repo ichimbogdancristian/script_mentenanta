@@ -2,8 +2,9 @@
 setlocal
 
 
-REM Get the directory where this script is located
+REM Get the directory where this script is located (removes trailing backslash)
 set "SCRIPT_DIR=%~dp0"
+if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
 REM Set variables
 set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
