@@ -20,4 +20,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_NAME%"
 REM Centralized logging or coordination can be added here
 REM For example, collect exit codes, send logs, etc.
 
+pause
+
 endlocal

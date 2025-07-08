@@ -33,7 +33,7 @@ function Remove-Bloatware {
             Get-AppxPackage -AllUsers -Name $bloat | Remove-AppxPackage -AllUsers -ErrorAction Stop
             Write-Log "Removed: $bloat" 'INFO'
         } catch {
-            Write-Log "Failed to remove $bloat: $_" 'WARN'
+            Write-Log "Failed to remove $bloat $_" 'WARN'
         }
     }
     Write-Log "[END] Remove Bloatware" 'INFO'
@@ -56,7 +56,8 @@ function Install-EssentialApps {
                 } else {
                     Write-Log "No installer found for $($app.Name)" 'WARN'
                 }
-                Write-Log "Installed: $($app.Name)" 'INFO'
+                $name = $app.Name
+                Write-Log "Installed: $name" 'INFO'
             } catch {
                 Write-Log "Failed to install $($app.Name): $_" 'WARN'
             }
