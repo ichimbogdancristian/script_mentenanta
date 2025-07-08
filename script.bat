@@ -4,12 +4,15 @@ setlocal
 
 REM Get the directory where this script is located (removes trailing backslash)
 set "SCRIPT_DIR=%~dp0"
-if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+if "%SCRIPT_DIR:~-1%"=="\\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+
+REM Set repo folder name (matches the extracted folder name from the zip)
+set "REPO_FOLDER=script_mentenanta-master"
 
 REM Set variables
 set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
-set "ZIP_NAME=%SCRIPT_DIR%repo.zip"
-set "EXTRACTED_DIR=%SCRIPT_DIR%script_mentenanta-master"
+set "ZIP_NAME=%SCRIPT_DIR%\repo.zip"
+set "EXTRACTED_DIR=%SCRIPT_DIR%\%REPO_FOLDER%"
 set "PS_SCRIPT=script.ps1"
 
 REM Download the repo as zip (force TLS 1.2 for GitHub compatibility)
@@ -32,8 +35,9 @@ REM Delete the zip file
 del "%ZIP_NAME%"
 
 
+
 REM Run the PowerShell script from the extracted repo
-echo Running PowerShell script...
+echo Running PowerShell script from: %EXTRACTED_DIR%\%PS_SCRIPT%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%EXTRACTED_DIR%\%PS_SCRIPT%" -Verbose -ErrorAction Continue
 set "PS_EXIT_CODE=%ERRORLEVEL%"
 echo PowerShell script exited with code: %PS_EXIT_CODE%
