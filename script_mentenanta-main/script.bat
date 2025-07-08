@@ -6,10 +6,10 @@ REM Get the directory where this script is located
 set "SCRIPT_DIR=%~dp0"
 
 REM Set variables
-set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
+set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 set "ZIP_NAME=%SCRIPT_DIR%repo.zip"
-set "EXTRACTED_DIR=%SCRIPT_DIR%script_mentenanta-master"
-set "PS_SCRIPT=script_mentenanta\script.ps1"
+set "EXTRACTED_DIR=%SCRIPT_DIR%script_mentenanta-main"
+set "PS_SCRIPT=script.ps1"
 
 REM Download the repo as zip (force TLS 1.2 for GitHub compatibility)
 echo Downloading repository to %ZIP_NAME% ...
