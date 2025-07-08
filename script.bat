@@ -15,7 +15,8 @@ if errorlevel 1 (
 )
 
 REM Execute script.ps1 in PowerShell 5.1, bypassing execution policy for this session only
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_NAME%"
+REM Show all output and errors in the console
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_NAME%" -Verbose -ErrorAction Continue
 
 REM Centralized logging or coordination can be added here
 REM For example, collect exit codes, send logs, etc.
