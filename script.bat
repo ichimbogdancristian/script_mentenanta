@@ -1,15 +1,34 @@
 @echo off
 setlocal
 
-REM Download the latest script.ps1 (overwrite if exists)
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/ichimbogdancristian/script_mentenanta/main/script.ps1' -OutFile 'script.ps1' -ErrorAction Stop } catch { Write-Host 'Download failed.'; exit 1 }"
+REM Set variables
+set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
+set "ZIP_NAME=repo.zip"
+set "EXTRACTED_DIR=script_mentenanta-main"
+set "PS_SCRIPT=script.ps1"
+
+REM Download the repo as zip
+echo Downloading repository...
+powershell -NoProfile -Command "try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_NAME%' -ErrorAction Stop } catch { Write-Host 'Download failed.'; exit 1 }"
 if errorlevel 1 (
-    echo Failed to download script.ps1. Exiting.
+    echo Failed to download repository. Exiting.
     goto END
 )
 
+REM Extract the zip (requires PowerShell 5+)
+echo Extracting repository...
+powershell -NoProfile -Command "Expand-Archive -Path '%ZIP_NAME%' -DestinationPath . -Force"
+if errorlevel 1 (
+    echo Failed to extract repository. Exiting.
+    goto END
+)
+
+REM Delete the zip file
+del "%ZIP_NAME%"
+
+REM Run the PowerShell script from the extracted repo
 echo Running PowerShell script...
-powershell -NoProfile -ExecutionPolicy Bypass -File "script.ps1" -Verbose -ErrorAction Continue
+powershell -NoProfile -ExecutionPolicy Bypass -File "%EXTRACTED_DIR%\%PS_SCRIPT%" -Verbose -ErrorAction Continue
 set "PS_EXIT_CODE=%ERRORLEVEL%"
 echo PowerShell script exited with code: %PS_EXIT_CODE%
 

@@ -119,7 +119,8 @@ function Write-Log {
     Write-Host $entry
 }
 
-# Set up log file
+
+# Set up log file in the extracted folder (always use the script's folder)
 $logPath = Join-Path $PSScriptRoot "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
