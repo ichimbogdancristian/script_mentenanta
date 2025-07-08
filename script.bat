@@ -13,9 +13,9 @@ set "PS_SCRIPT=script.ps1"
 
 REM Download the repo as zip (force TLS 1.2 for GitHub compatibility)
 echo Downloading repository to %ZIP_NAME% ...
-powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_NAME%' -ErrorAction Stop } catch { Write-Host 'Download failed.'; exit 1 }"
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_NAME%' -ErrorAction Stop } catch { Write-Host 'Download failed.'; if ($_.Exception) { Write-Host $_.Exception.Message }; exit 1 }"
 if errorlevel 1 (
-    echo Failed to download repository. Exiting.
+    echo Failed to download repository. See the error message above for details.
     goto END
 )
 
