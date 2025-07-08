@@ -127,7 +127,7 @@ Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Scr
 $configPath = Join-Path $PSScriptRoot "config.json"
 if (Test-Path $configPath) {
     try {
-        $config = Get-Content $configPath | ConvertFrom-Json
+        # $config = Get-Content $configPath | ConvertFrom-Json
         Write-Log "Loaded configuration from config.json" 'INFO'
     } catch {
         Write-Log "Failed to load configuration: $_" 'WARN'
@@ -227,3 +227,9 @@ Write-Log "Summary report written to $summaryPath" 'INFO'
 # ...
 
 Write-Log "Script ended." 'INFO'
+
+# Prompt to close the window if running interactively
+if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
+    Write-Host
+    Read-Host -Prompt 'Press Enter to close this window...'
+}
