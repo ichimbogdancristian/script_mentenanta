@@ -39,18 +39,73 @@ if (-not (Test-Path $global:TempFolder)) {
     New-Item -ItemType Directory -Path $global:TempFolder -Force | Out-Null
 }
 
-# Example: Unified bloatware and essential apps lists (customize as needed)
+# Full bloatware list
 $global:BloatwareList = @(
-    'Microsoft.Microsoft3DViewer', 'king.com.CandyCrushSaga', 'Microsoft.XboxApp', 'Microsoft.ZuneMusic',
-    'Microsoft.SkypeApp', 'Microsoft.MicrosoftSolitaireCollection', 'Microsoft.BingWeather', 'Spotify', 'Netflix'
+    'Acer.AcerPowerManagement', 'Acer.AcerQuickAccess', 'Acer.AcerUEIPFramework', 'Acer.AcerUserExperienceImprovementProgram',
+    'Adobe.AdobeCreativeCloud', 'Adobe.AdobeExpress', 'Adobe.AdobeGenuineService', 'Amazon.AmazonPrimeVideo',
+    'ASUS.ASUSGiftBox', 'ASUS.ASUSLiveUpdate', 'ASUS.ASUSSplendidVideoEnhancementTechnology', 'ASUS.ASUSWebStorage',
+    'ASUS.ASUSZenAnywhere', 'ASUS.ASUSZenLink', 'Astian.Midori', 'AvantBrowser.AvantBrowser', 'Avast.AvastFreeAntivirus',
+    'AVG.AVGAntiVirusFree', 'Avira.Avira', 'Baidu.BaiduBrowser', 'Baidu.PCAppStore', 'Basilisk.Basilisk',
+    'Bitdefender.Bitdefender', 'Blisk.Blisk', 'Booking.com.Booking', 'BraveSoftware.BraveBrowser',
+    'CentBrowser.CentBrowser', 'Cliqz.Cliqz', 'Coowon.Coowon', 'CoolNovo.CoolNovo', 'CyberLink.MediaSuite',
+    'CyberLink.Power2Go', 'CyberLink.PowerDirector', 'CyberLink.PowerDVD', 'CyberLink.YouCam', 'Dell.CustomerConnect',
+    'Dell.DellDigitalDelivery', 'Dell.DellFoundationServices', 'Dell.DellHelpAndSupport', 'Dell.DellMobileConnect',
+    'Dell.DellPowerManager', 'Dell.DellProductRegistration', 'Dell.DellSupportAssist', 'Dell.DellUpdate',
+    'DigitalPersona.EpicPrivacyBrowser', 'Disney.DisneyPlus', 'Dooble.Dooble', 'DriverPack.DriverPackSolution',
+    'ESET.ESETNOD32Antivirus', 'Evernote.Evernote', 'ExpressVPN.ExpressVPN', 'Facebook.Facebook',
+    'FenrirInc.Sleipnir', 'FlashPeak.SlimBrowser', 'FlashPeak.Slimjet', 'Foxit.FoxitPDFReader',
+    'Gameloft.MarchofEmpires', 'G5Entertainment.HiddenCity', 'GhostBrowser.GhostBrowser', 'Google.YouTube',
+    'HP.HP3DDriveGuard', 'HP.HPAudioSwitch', 'HP.HPClientSecurityManager', 'HP.HPConnectionOptimizer',
+    'HP.HPDocumentation', 'HP.HPDropboxPlugin', 'HP.HPePrintSW', 'HP.HPJumpStart', 'HP.HPJumpStartApps',
+    'HP.HPJumpStartLaunch', 'HP.HPRegistrationService', 'HP.HPSupportSolutionsFramework', 'HP.HPSureConnect',
+    'HP.HPSystemEventUtility', 'HP.HPWelcome', 'HewlettPackard.SupportAssistant', 'Hulu.Hulu', 'Instagram.Instagram',
+    'IOBit.AdvancedSystemCare', 'IOBit.DriverBooster', 'KDE.Falkon', 'Kaspersky.Kaspersky', 'KeeperSecurity.Keeper',
+    'king.com.BubbleWitch', 'king.com.CandyCrush', 'king.com.CandyCrushFriends', 'king.com.CandyCrushSaga',
+    'king.com.CandyCrushSodaSaga', 'king.com.FarmHeroes', 'king.com.FarmHeroesSaga', 'Lenovo.AppExplorer',
+    'Lenovo.LenovoCompanion', 'Lenovo.LenovoExperienceImprovement', 'Lenovo.LenovoFamilyCloud',
+    'Lenovo.LenovoHotkeys', 'Lenovo.LenovoMigrationAssistant', 'Lenovo.LenovoModernIMController',
+    'Lenovo.LenovoServiceBridge', 'Lenovo.LenovoSolutionCenter', 'Lenovo.LenovoUtility', 'Lenovo.LenovoVantage',
+    'Lenovo.LenovoVoice', 'Lenovo.LenovoWiFiSecurity', 'LinkedIn.LinkedIn', 'Lunascape.Lunascape',
+    'Maxthon.Maxthon', 'McAfee.LiveSafe', 'McAfee.Livesafe', 'McAfee.SafeConnect', 'McAfee.Security',
+    'McAfee.WebAdvisor', 'Microsoft.3DBuilder', 'Microsoft.Advertising.Xaml', 'Microsoft.BingFinance',
+    'Microsoft.BingFoodAndDrink', 'Microsoft.BingHealthAndFitness', 'Microsoft.BingNews', 'Microsoft.BingSports',
+    'Microsoft.BingTravel', 'Microsoft.BingWeather', 'Microsoft.GetHelp', 'Microsoft.Getstarted',
+    'Microsoft.Microsoft3DViewer', 'Microsoft.MicrosoftOfficeHub', 'Microsoft.MicrosoftPowerBIForWindows',
+    'Microsoft.MicrosoftSolitaireCollection', 'Microsoft.MinecraftUWP', 'Microsoft.MixedReality.Portal',
+    'Microsoft.NetworkSpeedTest', 'Microsoft.News', 'Microsoft.Office.OneNote', 'Microsoft.Office.Sway',
+    'Microsoft.OneConnect', 'Microsoft.OneDrive', 'Microsoft.People', 'Microsoft.Print3D', 'Microsoft.ScreenSketch',
+    'Microsoft.SkypeApp', 'Microsoft.SoundRecorder', 'Microsoft.StickyNotes', 'Microsoft.Wallet',
+    'Microsoft.Whiteboard', 'Microsoft.WindowsFeedback', 'Microsoft.WindowsFeedbackHub', 'Microsoft.WindowsMaps',
+    'Microsoft.WindowsReadingList', 'Microsoft.WindowsSoundRecorder', 'Microsoft.Xbox.TCUI', 'Microsoft.XboxApp',
+    'Microsoft.XboxGameOverlay', 'Microsoft.XboxGamingOverlay', 'Microsoft.XboxIdentityProvider',
+    'Microsoft.XboxSpeechToTextOverlay', 'Microsoft.ZuneMusic', 'Microsoft.ZuneVideo', 'Mozilla.SeaMonkey',
+    'Norton.OnlineBackup', 'Norton.Security', 'Opera.Opera', 'Opera.OperaGX', 'Orbitum.Orbitum',
+    'OtterBrowser.OtterBrowser', 'PaleMoon.PaleMoon', 'PCAccelerate.PCAcceleratePro', 'PCOptimizer.PCOptimizerPro',
+    'PicsArt.PicsartPhotoStudio', 'Piriform.CCleaner', 'Polarity.Polarity', 'Power2Go.Power2Go',
+    'PowerDirector.PowerDirector', 'QupZilla.QupZilla', 'QuteBrowser.QuteBrowser', 'RandomSaladGamesLLC.SimpleSolitaire',
+    'Reimage.ReimageRepair', 'RoyalRevolt2.RoyalRevolt2', 'Sleipnir.Sleipnir', 'SlingTV.Sling',
+    'Sogou.SogouExplorer', 'Spotify.Spotify', 'SRWare.Iron', 'Sputnik.Sputnik', 'Superbird.Superbird',
+    'TheTorProject.TorBrowser', 'ThumbmunkeysLtd.PhototasticCollage', 'TikTok.TikTok', 'TorchMediaInc.Torch',
+    'TripAdvisor.TripAdvisor', 'Twitter.Twitter', 'UCWeb.UCBrowser', 'VivaldiTechnologies.Vivaldi',
+    'Waterfox.Waterfox', 'WildTangent.WildTangentGamesApp', 'WildTangent.WildTangentHelper', 'WPSOffice.WPSOffice',
+    'Yandex.YandexBrowser'
 ) | Sort-Object -Unique
 $bloatwareListPath = Join-Path $global:TempFolder 'Bloatware_list.txt'
 $global:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
 
+# === EssentialApps ===
 $global:EssentialApps = @(
+    @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit'; Choco = 'adobereader' },
     @{ Name = 'Google Chrome'; Winget = 'Google.Chrome'; Choco = 'googlechrome' },
+    @{ Name = 'Microsoft Edge'; Winget = 'Microsoft.Edge'; Choco = 'microsoft-edge' },
+    @{ Name = 'Total Commander'; Winget = 'Ghisler.TotalCommander'; Choco = 'totalcommander' },
+    @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell' },
+    @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal' },
+    @{ Name = 'WinRAR'; Winget = 'RARLab.WinRAR'; Choco = 'winrar' },
     @{ Name = '7-Zip'; Winget = '7zip.7zip'; Choco = '7zip' },
-    @{ Name = 'Notepad++'; Winget = 'Notepad++.Notepad++'; Choco = 'notepadplusplus' }
+    @{ Name = 'Notepad++'; Winget = 'Notepad++.Notepad++'; Choco = 'notepadplusplus' },
+    @{ Name = 'PDF24 Creator'; Winget = 'PDF24.PDF24Creator'; Choco = 'pdf24' },
+    @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime' }
 )
 $essentialAppsListPath = Join-Path $global:TempFolder 'EssentialApps_list.txt'
 $global:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
@@ -162,9 +217,40 @@ function Disable-Telemetry {
 }
 
 # =====================[ CENTRAL TASK EXECUTION ]==========================
-# Use Invoke-Task for each new function
+
+function Protect-SystemRestore {
+    Write-Log "[START] System Restore Protection" 'INFO'
+    $drive = "C:\\"
+    $restoreEnabled = $false
+    try {
+        $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
+        if ($sr.Enable == $true) {
+            $restoreEnabled = $true
+            Write-Log "System Restore is already enabled on $drive" 'INFO'
+        } else {
+            Write-Log "System Restore is not enabled. Enabling..." 'INFO'
+            Enable-ComputerRestore -Drive $drive
+            $restoreEnabled = $true
+            Write-Log "System Restore enabled on $drive" 'INFO'
+        }
+    } catch {
+        Write-Log "Could not determine or enable System Restore: $_" 'WARN'
+    }
+    if ($restoreEnabled) {
+        try {
+            Write-Log "Creating a system restore point..." 'INFO'
+            Checkpoint-Computer -Description "Pre-maintenance restore point" -RestorePointType 'MODIFY_SETTINGS'
+            Write-Log "System restore point created." 'INFO'
+        } catch {
+            Write-Log "Failed to create restore point: $_" 'WARN'
+        }
+    }
+    Write-Log "[END] System Restore Protection" 'INFO'
+}
+
 Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
 $taskResults = @{}
+$taskResults['SystemRestoreProtection'] = Invoke-Task 'SystemRestoreProtection' { Protect-SystemRestore }
 $taskResults['RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
 $taskResults['InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
 $taskResults['SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
@@ -204,10 +290,41 @@ $taskResults['DiskCleanup'] = Invoke-Task 'DiskCleanup' {
     # ...
 }
 
+
 # Task 3: Windows Update check (placeholder)
 $taskResults['WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
     # Write-Log "Checking for Windows Updates..." 'INFO'
     # ...
+}
+
+# Task 4: Update all apps and packages
+$taskResults['UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
+    Write-Log "[START] Update All Apps and Packages" 'INFO'
+    # Update with winget
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        try {
+            Write-Log "Running: winget upgrade --all --silent --accept-source-agreements --accept-package-agreements" 'INFO'
+            winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
+            Write-Log "winget upgrade completed." 'INFO'
+        } catch {
+            Write-Log "winget upgrade failed: $_" 'WARN'
+        }
+    } else {
+        Write-Log "winget not found, skipping winget upgrades." 'WARN'
+    }
+    # Update with Chocolatey
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        try {
+            Write-Log "Running: choco upgrade all -y" 'INFO'
+            choco upgrade all -y
+            Write-Log "choco upgrade completed." 'INFO'
+        } catch {
+            Write-Log "choco upgrade failed: $_" 'WARN'
+        }
+    } else {
+        Write-Log "choco not found, skipping choco upgrades." 'WARN'
+    }
+    Write-Log "[END] Update All Apps and Packages" 'INFO'
 }
 
 # Add more tasks as needed, using Invoke-Task for each
