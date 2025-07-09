@@ -447,7 +447,7 @@ function Disable-Telemetry {
                 Write-Log "Disabled scheduled task: $task" 'INFO'
             }
         } catch {
-            Write-Log "Failed to disable scheduled task $task: $_" 'WARN'
+            Write-Log ("Failed to disable scheduled task {0}: {1}" -f $task, $_) 'WARN'
         }
     }
 
