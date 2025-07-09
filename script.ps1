@@ -1,4 +1,38 @@
-# =====================[ CENTRAL COORDINATION POLICY ]=====================
+
+# =====================[ LOGGING & TASK FUNCTIONS FIRST ]==================
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+    )
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $entry = "[$timestamp] [$Level] $Message"
+    $entry | Out-File -FilePath $logPath -Append
+    Write-Host $entry
+}
+
+function Invoke-Task {
+    param(
+        [string]$TaskName,
+        [scriptblock]$Action
+    )
+    Write-Log "Starting task: $TaskName" 'INFO'
+    try {
+        & $Action
+        Write-Log "Task succeeded: $TaskName" 'INFO'
+        return $true
+    } catch {
+        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
+        return $false
+    }
+}
+
+# =====================[ MAIN SCRIPT STARTS HERE ]========================
+
+# Set up log file in the extracted folder (always use the script's folder)
+$logPath = Join-Path $PSScriptRoot "maintenance.log"
+Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
+
 # Centralized temp folder and essential/bloatware lists (inspired by system_maintenance)
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
 if (-not (Test-Path $global:TempFolder)) {
@@ -20,6 +54,45 @@ $global:EssentialApps = @(
 )
 $essentialAppsListPath = Join-Path $global:TempFolder 'EssentialApps_list.txt'
 $global:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
+
+# Load configuration (if exists)
+$configPath = Join-Path $PSScriptRoot "config.json"
+if (Test-Path $configPath) {
+    try {
+        # $config = Get-Content $configPath | ConvertFrom-Json
+        Write-Log "Loaded configuration from config.json" 'INFO'
+    } catch {
+        Write-Log "Failed to load configuration: $_" 'WARN'
+    }
+} else {
+    Write-Log "No config.json found. Using defaults." 'INFO'
+}
+
+# Check Windows version and compatibility
+$os = Get-CimInstance Win32_OperatingSystem
+$osVersion = $os.Version
+$osCaption = $os.Caption
+Write-Log "Detected Windows version: $osCaption ($osVersion)" 'INFO'
+if ($osVersion -lt '10.0') {
+    Write-Log "Unsupported Windows version. Exiting." 'ERROR'
+    exit 2
+}
+
+# Check for required PowerShell version
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    Write-Log "PowerShell 5.1 or higher is required. Exiting." 'ERROR'
+    exit 3
+}
+
+# Example: Self-update check (hash validation)
+$expectedHash = $null # Set to known-good hash if desired
+if ($expectedHash) {
+    $actualHash = (Get-FileHash -Path $MyInvocation.MyCommand.Path -Algorithm SHA256).Hash
+    if ($actualHash -ne $expectedHash) {
+        Write-Log "Script hash mismatch! Possible tampering. Exiting." 'ERROR'
+        exit 4
+    }
+}
 
 # =====================[ TASK: REMOVE BLOATWARE ]==========================
 function Remove-Bloatware {
@@ -91,11 +164,13 @@ function Disable-Telemetry {
 # =====================[ CENTRAL TASK EXECUTION ]==========================
 # Use Invoke-Task for each new function
 Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
+$taskResults = @{}
 $taskResults['RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
 $taskResults['InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
 $taskResults['SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
 $taskResults['DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
 Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
+
 # Maintenance Script Boilerplate for Windows 10/11
 # This script is intended to be downloaded and executed by script.bat
 # Add your maintenance tasks below
@@ -106,83 +181,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit 1
 }
 
-###############################################################
-# Centralized Logging Function
-function Write-Log {
-    param(
-        [string]$Message,
-        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
-    )
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $entry = "[$timestamp] [$Level] $Message"
-    $entry | Out-File -FilePath $logPath -Append
-    Write-Host $entry
-}
-
-
-# Set up log file in the extracted folder (always use the script's folder)
-$logPath = Join-Path $PSScriptRoot "maintenance.log"
-Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
-
-# Load configuration (if exists)
-$configPath = Join-Path $PSScriptRoot "config.json"
-if (Test-Path $configPath) {
-    try {
-        # $config = Get-Content $configPath | ConvertFrom-Json
-        Write-Log "Loaded configuration from config.json" 'INFO'
-    } catch {
-        Write-Log "Failed to load configuration: $_" 'WARN'
-    }
-} else {
-    Write-Log "No config.json found. Using defaults." 'INFO'
-}
-
-# Check Windows version and compatibility
-$os = Get-CimInstance Win32_OperatingSystem
-$osVersion = $os.Version
-$osCaption = $os.Caption
-Write-Log "Detected Windows version: $osCaption ($osVersion)" 'INFO'
-if ($osVersion -lt '10.0') {
-    Write-Log "Unsupported Windows version. Exiting." 'ERROR'
-    exit 2
-}
-
-# Check for required PowerShell version
-if ($PSVersionTable.PSVersion.Major -lt 5) {
-    Write-Log "PowerShell 5.1 or higher is required. Exiting." 'ERROR'
-    exit 3
-}
-
-# Example: Self-update check (hash validation)
-$expectedHash = $null # Set to known-good hash if desired
-if ($expectedHash) {
-    $actualHash = (Get-FileHash -Path $MyInvocation.MyCommand.Path -Algorithm SHA256).Hash
-    if ($actualHash -ne $expectedHash) {
-        Write-Log "Script hash mismatch! Possible tampering. Exiting." 'ERROR'
-        exit 4
-    }
-}
-
-
-# === Central Coordination Policy for Task Execution ===
-function Invoke-Task {
-    param(
-        [string]$TaskName,
-        [scriptblock]$Action
-    )
-    Write-Log "Starting task: $TaskName" 'INFO'
-    try {
-        & $Action
-        Write-Log "Task succeeded: $TaskName" 'INFO'
-        return $true
-    } catch {
-        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
-        return $false
-    }
-}
-
-$taskResults = @{}
-
+# === Built-in Maintenance Tasks ===
 Write-Log "Starting maintenance tasks..." 'INFO'
 
 # Task 1: Clean temp files
