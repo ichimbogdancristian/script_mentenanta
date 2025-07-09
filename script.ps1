@@ -149,8 +149,10 @@ if ($expectedHash) {
     }
 }
 
-# =====================[ TASK: REMOVE BLOATWARE ]==========================
+
+# =====================[ TASK 1: REMOVE BLOATWARE ]==========================
 function Remove-Bloatware {
+    # [TASK 1] Remove Bloatware
     Write-Log "[START] Remove Bloatware" 'INFO'
     $bloatwareList = Get-Content $bloatwareListPath | ForEach-Object { $_ | ConvertFrom-Json }
     $installedApps = Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
@@ -167,8 +169,10 @@ function Remove-Bloatware {
     Write-Log "[END] Remove Bloatware" 'INFO'
 }
 
-# =====================[ TASK: INSTALL ESSENTIAL APPS ]====================
+
+# =====================[ TASK 2: INSTALL ESSENTIAL APPS ]====================
 function Install-EssentialApps {
+    # [TASK 2] Install Essential Apps
     Write-Log "[START] Install Essential Apps" 'INFO'
     $essentialApps = Get-Content $essentialAppsListPath | ForEach-Object { $_ | ConvertFrom-Json }
     foreach ($app in $essentialApps) {
@@ -196,8 +200,10 @@ function Install-EssentialApps {
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
 
-# =====================[ TASK: SYSTEM INVENTORY ]==========================
+
+# =====================[ TASK 3: SYSTEM INVENTORY ]==========================
 function Get-SystemInventory {
+    # [TASK 3] System Inventory
     Write-Log "[START] System Inventory" 'INFO'
     $inventoryPath = Join-Path $global:TempFolder 'inventory.txt'
     Get-ComputerInfo | Out-File $inventoryPath
@@ -205,8 +211,10 @@ function Get-SystemInventory {
     Write-Log "[END] System Inventory" 'INFO'
 }
 
-# =====================[ TASK: DISABLE TELEMETRY ]=========================
+
+# =====================[ TASK 4: DISABLE TELEMETRY ]=========================
 function Disable-Telemetry {
+    # [TASK 4] Disable Telemetry
     Write-Log "[START] Disable Telemetry" 'INFO'
     # Example: Set registry keys to disable telemetry (minimal demo)
     $regPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
@@ -216,9 +224,10 @@ function Disable-Telemetry {
     Write-Log "[END] Disable Telemetry" 'INFO'
 }
 
-# =====================[ CENTRAL TASK EXECUTION ]==========================
 
+# =====================[ TASK 5: SYSTEM RESTORE PROTECTION ]==========================
 function Protect-SystemRestore {
+    # [TASK 5] System Restore Protection
     Write-Log "[START] System Restore Protection" 'INFO'
     $drive = "C:\\"
     $restoreEnabled = $false
@@ -248,57 +257,26 @@ function Protect-SystemRestore {
     Write-Log "[END] System Restore Protection" 'INFO'
 }
 
+
+# =====================[ TASK EXECUTION IN DESIRED ORDER ]==========================
 Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
 $taskResults = @{}
-$taskResults['SystemRestoreProtection'] = Invoke-Task 'SystemRestoreProtection' { Protect-SystemRestore }
-$taskResults['RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
-$taskResults['InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
-$taskResults['SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
-$taskResults['DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
-Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
 
-# Maintenance Script Boilerplate for Windows 10/11
-# This script is intended to be downloaded and executed by script.bat
-# Add your maintenance tasks below
+# 1. System Restore Protection
+$taskResults['Task1_SystemRestoreProtection'] = Invoke-Task 'SystemRestoreProtection' { Protect-SystemRestore }
 
-# Ensure script is running as Administrator
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Warning "This script must be run as Administrator. Exiting."
-    exit 1
-}
+# 2. Disable Telemetry
+$taskResults['Task2_DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
 
-# === Built-in Maintenance Tasks ===
-Write-Log "Starting maintenance tasks..." 'INFO'
+# 3. Remove Bloatware
+$taskResults['Task3_RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
 
-# Task 1: Clean temp files
-$taskResults['CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
-    $temp = $env:TEMP
-    $tempFiles = Get-ChildItem -Path $temp -Recurse -ErrorAction SilentlyContinue
-    $deleted = 0
-    foreach ($file in $tempFiles) {
-        try {
-            Remove-Item $file.FullName -Force -Recurse -ErrorAction Stop
-            $deleted++
-        } catch {}
-    }
-    Write-Log "Deleted $deleted temp files from $temp" 'INFO'
-}
+# 4. Install Essential Apps
+$taskResults['Task4_InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
 
-# Task 2: Disk cleanup (placeholder)
-$taskResults['DiskCleanup'] = Invoke-Task 'DiskCleanup' {
-    # Write-Log "Running disk cleanup..." 'INFO'
-    # ...
-}
-
-
-# Task 3: Windows Update check (placeholder)
-$taskResults['WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
-    # Write-Log "Checking for Windows Updates..." 'INFO'
-    # ...
-}
-
-# Task 4: Update all apps and packages
-$taskResults['UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
+# 5. Update All Apps and Packages
+$taskResults['Task5_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
+    # [TASK 5] Update all apps and packages
     Write-Log "[START] Update All Apps and Packages" 'INFO'
     # Update with winget
     if (Get-Command winget -ErrorAction SilentlyContinue) {
@@ -327,7 +305,54 @@ $taskResults['UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
     Write-Log "[END] Update All Apps and Packages" 'INFO'
 }
 
-# Add more tasks as needed, using Invoke-Task for each
+# 6. System Inventory
+$taskResults['Task6_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
+
+# 7. Windows Update Check (placeholder)
+$taskResults['Task7_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
+    # [TASK 7] Windows Update check (placeholder)
+    # Write-Log "Checking for Windows Updates..." 'INFO'
+    # ...
+}
+
+# 8. Clean Temp Files
+$taskResults['Task8_CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
+    # [TASK 8] Clean temp files
+    $temp = $env:TEMP
+    $tempFiles = Get-ChildItem -Path $temp -Recurse -ErrorAction SilentlyContinue
+    $deleted = 0
+    foreach ($file in $tempFiles) {
+        try {
+            Remove-Item $file.FullName -Force -Recurse -ErrorAction Stop
+            $deleted++
+        } catch {}
+    }
+    Write-Log "Deleted $deleted temp files from $temp" 'INFO'
+}
+
+# 9. Disk Cleanup (placeholder)
+$taskResults['Task9_DiskCleanup'] = Invoke-Task 'DiskCleanup' {
+    # [TASK 9] Disk cleanup (placeholder)
+    # Write-Log "Running disk cleanup..." 'INFO'
+    # ...
+}
+
+Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
+
+# Maintenance Script Boilerplate for Windows 10/11
+# This script is intended to be downloaded and executed by script.bat
+# Add your maintenance tasks below
+
+# Ensure script is running as Administrator
+if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Warning "This script must be run as Administrator. Exiting."
+    exit 1
+}
+
+
+
+# === Built-in Maintenance Tasks ===
+# (All tasks are now executed above in the desired order)
 
 # Summary of all tasks
 $successCount = ($taskResults.Values | Where-Object { $_ }).Count
