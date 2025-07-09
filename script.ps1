@@ -4,7 +4,7 @@ function Write-Log {
         [string]$Message,
         [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
     )
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $timestamp = Get-Date -Format 'HH:mm:ss'
     $entry = "[$timestamp] [$Level] $Message"
     $entry | Out-File -FilePath $logPath -Append
     Write-Host $entry
@@ -648,7 +648,7 @@ if (Test-Path $batPath) {
 } else {
     $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
 }
-"Maintenance completed at $(Get-Date) on $env:COMPUTERNAME by $env:USERNAME" | Out-File -FilePath $summaryPath -Append
+"Maintenance completed at $(Get-Date -Format 'dd-MM-yyyy HH:mm:ss') on $env:COMPUTERNAME by $env:USERNAME" | Out-File -FilePath $summaryPath -Append
 Write-Log "Summary report written to $summaryPath" 'INFO'
 
 # Remove the repo folder (script_mentenanta) after report creation
