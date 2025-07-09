@@ -330,29 +330,35 @@ function Disable-Telemetry {
         }
     }
 
-    # Disable telemetry and set homepage in Edge
+    # Disable telemetry, set homepage, disable translation, enable bookmarks bar in Edge
     try {
         $edgeReg = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
         if (-not (Test-Path $edgeReg)) { New-Item -Path $edgeReg -Force | Out-Null }
         Set-ItemProperty -Path $edgeReg -Name 'MetricsReportingEnabled' -Value 0 -Force
         Set-ItemProperty -Path $edgeReg -Name 'HomepageLocation' -Value 'about:blank' -Force
-        Write-Log "Edge telemetry and homepage set via registry." 'INFO'
+        Set-ItemProperty -Path $edgeReg -Name 'ShowHomeButton' -Value 1 -Force
+        Set-ItemProperty -Path $edgeReg -Name 'BookmarkBarEnabled' -Value 1 -Force
+        Set-ItemProperty -Path $edgeReg -Name 'TranslateEnabled' -Value 0 -Force
+        Write-Log "Edge telemetry, homepage, bookmarks bar, and translation policy set via registry." 'INFO'
     } catch {
-        Write-Log "Failed to set Edge telemetry/homepage: $_" 'WARN'
+        Write-Log "Failed to set Edge browser policies: $_" 'WARN'
     }
 
-    # Disable telemetry and set homepage in Chrome
+    # Disable telemetry, set homepage, disable translation, enable bookmarks bar in Chrome
     try {
         $chromeReg = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
         if (-not (Test-Path $chromeReg)) { New-Item -Path $chromeReg -Force | Out-Null }
         Set-ItemProperty -Path $chromeReg -Name 'MetricsReportingEnabled' -Value 0 -Force
         Set-ItemProperty -Path $chromeReg -Name 'HomepageLocation' -Value 'about:blank' -Force
-        Write-Log "Chrome telemetry and homepage set via registry." 'INFO'
+        Set-ItemProperty -Path $chromeReg -Name 'ShowHomeButton' -Value 1 -Force
+        Set-ItemProperty -Path $chromeReg -Name 'BookmarkBarEnabled' -Value 1 -Force
+        Set-ItemProperty -Path $chromeReg -Name 'TranslateEnabled' -Value 0 -Force
+        Write-Log "Chrome telemetry, homepage, bookmarks bar, and translation policy set via registry." 'INFO'
     } catch {
-        Write-Log "Failed to set Chrome telemetry/homepage: $_" 'WARN'
+        Write-Log "Failed to set Chrome browser policies: $_" 'WARN'
     }
 
-    # Deploy Firefox policies.json for telemetry, homepage, uBlock Origin, default browser
+    # Deploy Firefox policies.json for telemetry, homepage, uBlock Origin, default browser, bookmarks bar, and translation
     try {
         $ffPath = $null
         if (Test-Path 'C:\Program Files\Mozilla Firefox') {
@@ -377,12 +383,14 @@ function Disable-Telemetry {
         "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
       ]
     },
-    "DefaultBrowser": true
+    "DefaultBrowser": true,
+    "BookmarksToolbar": true,
+    "OfferToTranslate": false
   }
 }'
             $policyPath = Join-Path $distPath 'policies.json'
             $policyJson | Set-Content -Path $policyPath -Encoding UTF8
-            Write-Log "Firefox policies.json deployed for telemetry, homepage, uBlock Origin, default browser." 'INFO'
+            Write-Log "Firefox policies.json deployed for telemetry, homepage, uBlock Origin, default browser, bookmarks bar, and translation." 'INFO'
         } else {
             Write-Log "Could not find Firefox installation path for policies.json deployment." 'WARN'
         }
