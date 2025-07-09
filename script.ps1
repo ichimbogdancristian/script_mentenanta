@@ -369,7 +369,8 @@ function Disable-Telemetry {
         if ($ffPath) {
             $distPath = Join-Path $ffPath 'distribution'
             if (-not (Test-Path $distPath)) { New-Item -Path $distPath -ItemType Directory -Force | Out-Null }
-            $policyJson = @'{
+            $policyJson = @"
+{
   "policies": {
     "DisableTelemetry": true,
     "DisableFirefoxStudies": true,
@@ -387,7 +388,8 @@ function Disable-Telemetry {
     "BookmarksToolbar": true,
     "OfferToTranslate": false
   }
-}'
+}
+"@
             $policyPath = Join-Path $distPath 'policies.json'
             $policyJson | Set-Content -Path $policyPath -Encoding UTF8
             Write-Log "Firefox policies.json deployed for telemetry, homepage, uBlock Origin, default browser, bookmarks bar, and translation." 'INFO'
