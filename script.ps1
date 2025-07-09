@@ -29,9 +29,59 @@ function Invoke-Task {
 
 # =====================[ MAIN SCRIPT STARTS HERE ]========================
 
+
+# =====================[ ENSURE WINGET & CHOCO INSTALLED/UPDATED ]==================
+function Ensure-Winget {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Log "winget not found. Attempting to install winget..." 'WARN'
+        # Try to install App Installer from Microsoft Store (winget is part of it)
+        try {
+            Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle" -UseBasicParsing
+            Add-AppxPackage -Path "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+            Write-Log "winget installed via App Installer." 'INFO'
+        } catch {
+            Write-Log "Failed to install winget: $_" 'ERROR'
+        }
+    } else {
+        Write-Log "winget found. Checking for updates..." 'INFO'
+        try {
+            winget upgrade --id Microsoft.DesktopAppInstaller --accept-source-agreements --accept-package-agreements --silent
+            Write-Log "winget updated." 'INFO'
+        } catch {
+            Write-Log "Failed to update winget: $_" 'WARN'
+        }
+    }
+}
+
+function Ensure-Choco {
+    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+        Write-Log "choco not found. Attempting to install Chocolatey..." 'WARN'
+        try {
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            Write-Log "choco installed." 'INFO'
+        } catch {
+            Write-Log "Failed to install choco: $_" 'ERROR'
+        }
+    } else {
+        Write-Log "choco found. Checking for updates..." 'INFO'
+        try {
+            choco upgrade chocolatey -y
+            Write-Log "choco updated." 'INFO'
+        } catch {
+            Write-Log "Failed to update choco: $_" 'WARN'
+        }
+    }
+}
+
 # Set up log file in the extracted folder (always use the script's folder)
 $logPath = Join-Path $PSScriptRoot "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
+
+# Ensure dependencies before anything else
+Ensure-Winget
+Ensure-Choco
 
 # Centralized temp folder and essential/bloatware lists (inspired by system_maintenance)
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
