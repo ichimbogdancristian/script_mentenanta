@@ -1,4 +1,3 @@
-
 # =====================[ LOGGING & TASK FUNCTIONS FIRST ]==================
 function Write-Log {
     param(
@@ -31,7 +30,7 @@ function Invoke-Task {
 
 
 # =====================[ ENSURE WINGET & CHOCO INSTALLED/UPDATED ]==================
-function Ensure-Winget {
+function Test-Winget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Log "winget not found. Attempting to install winget..." 'WARN'
         # Try to install App Installer from Microsoft Store (winget is part of it)
@@ -53,7 +52,7 @@ function Ensure-Winget {
     }
 }
 
-function Ensure-Choco {
+function Test-Choco {
     if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
         Write-Log "choco not found. Attempting to install Chocolatey..." 'WARN'
         try {
@@ -80,8 +79,8 @@ $logPath = Join-Path $PSScriptRoot "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
 # Ensure dependencies before anything else
-Ensure-Winget
-Ensure-Choco
+Test-Winget
+Test-Choco
 
 # Centralized temp folder and essential/bloatware lists (inspired by system_maintenance)
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
@@ -137,8 +136,9 @@ $global:BloatwareList = @(
     'Sogou.SogouExplorer', 'Spotify.Spotify', 'SRWare.Iron', 'Sputnik.Sputnik', 'Superbird.Superbird',
     'TheTorProject.TorBrowser', 'ThumbmunkeysLtd.PhototasticCollage', 'TikTok.TikTok', 'TorchMediaInc.Torch',
     'TripAdvisor.TripAdvisor', 'Twitter.Twitter', 'UCWeb.UCBrowser', 'VivaldiTechnologies.Vivaldi',
-    'Waterfox.Waterfox', 'WildTangent.WildTangentGamesApp', 'WildTangent.WildTangentHelper', 'WPSOffice.WPSOffice',
-    'Yandex.YandexBrowser'
+    'Waterfox.Waterfox', 'WildTangent.WildTangentGamesApp', 'WildTangent.WildTangentHelper',
+    'WPSOffice.WPSOffice', 'Kingsoft.WPSOffice', 'Kingsoft.Writer', 'Kingsoft.Presentation', 'Kingsoft.Spreadsheets',
+    'Apache.OpenOffice', 'Microsoft.Outlook', 'Yandex.YandexBrowser'
 ) | Sort-Object -Unique
 $bloatwareListPath = Join-Path $global:TempFolder 'Bloatware_list.txt'
 $global:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
@@ -147,6 +147,8 @@ $global:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-F
 $global:EssentialApps = @(
     @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit'; Choco = 'adobereader' },
     @{ Name = 'Google Chrome'; Winget = 'Google.Chrome'; Choco = 'googlechrome' },
+    @{ Name = 'Mozilla Firefox'; Winget = 'Mozilla.Firefox'; Choco = 'firefox' },
+    @{ Name = 'Mozilla Thunderbird'; Winget = 'Mozilla.Thunderbird'; Choco = 'thunderbird' },
     @{ Name = 'Microsoft Edge'; Winget = 'Microsoft.Edge'; Choco = 'microsoft-edge' },
     @{ Name = 'Total Commander'; Winget = 'Ghisler.TotalCommander'; Choco = 'totalcommander' },
     @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell' },
@@ -200,9 +202,9 @@ if ($expectedHash) {
 }
 
 
-# =====================[ TASK 1: REMOVE BLOATWARE ]==========================
+# =====================[ TASK 3: REMOVE BLOATWARE ]==========================
 function Remove-Bloatware {
-    # [TASK 1] Remove Bloatware
+    # [TASK 3] Remove Bloatware
     Write-Log "[START] Remove Bloatware" 'INFO'
     $bloatwareList = Get-Content $bloatwareListPath | ForEach-Object { $_ | ConvertFrom-Json }
     $installedApps = Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
@@ -220,9 +222,9 @@ function Remove-Bloatware {
 }
 
 
-# =====================[ TASK 2: INSTALL ESSENTIAL APPS ]====================
+# =====================[ TASK 4: INSTALL ESSENTIAL APPS ]====================
 function Install-EssentialApps {
-    # [TASK 2] Install Essential Apps
+    # [TASK 4] Install Essential Apps
     Write-Log "[START] Install Essential Apps" 'INFO'
     $essentialApps = Get-Content $essentialAppsListPath | ForEach-Object { $_ | ConvertFrom-Json }
     foreach ($app in $essentialApps) {
@@ -247,13 +249,58 @@ function Install-EssentialApps {
             Write-Log "$($app.Name) already installed." 'INFO'
         }
     }
+    # Check for Microsoft Office, install LibreOffice if not present
+    $officeInstalled = $false
+    try {
+        # Check for Office via registry (common for Office 2016/2019/2021/365)
+        $officeKeys = @(
+            'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration',
+            'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot',
+            'HKLM:\SOFTWARE\Microsoft\Office\15.0\Common\InstallRoot',
+            'HKLM:\SOFTWARE\Microsoft\Office\14.0\Common\InstallRoot',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\InstallRoot',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\15.0\Common\InstallRoot',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\14.0\Common\InstallRoot'
+        )
+        foreach ($key in $officeKeys) {
+            if (Test-Path $key) {
+                $officeInstalled = $true
+                break
+            }
+        }
+        # Also check for Office apps in Start Menu
+        if (-not $officeInstalled) {
+            $officeApps = Get-StartApps | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
+            if ($officeApps) { $officeInstalled = $true }
+        }
+    } catch {
+        Write-Log "Error checking for Microsoft Office: $_" 'WARN'
+    }
+    if (-not $officeInstalled) {
+        Write-Log "Microsoft Office not detected. Installing LibreOffice as alternative..." 'INFO'
+        try {
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                winget install --id TheDocumentFoundation.LibreOffice --accept-source-agreements --accept-package-agreements --silent -e
+                Write-Log "LibreOffice installed via winget." 'INFO'
+            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+                choco install libreoffice-fresh -y
+                Write-Log "LibreOffice installed via choco." 'INFO'
+            } else {
+                Write-Log "No installer found for LibreOffice." 'WARN'
+            }
+        } catch {
+            Write-Log "Failed to install LibreOffice: $_" 'WARN'
+        }
+    } else {
+        Write-Log "Microsoft Office detected. Skipping LibreOffice installation." 'INFO'
+    }
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
 
 
-# =====================[ TASK 3: SYSTEM INVENTORY ]==========================
+# =====================[ TASK 6: SYSTEM INVENTORY ]==========================
 function Get-SystemInventory {
-    # [TASK 3] System Inventory
+    # [TASK 6] System Inventory
     Write-Log "[START] System Inventory" 'INFO'
     $inventoryPath = Join-Path $global:TempFolder 'inventory.txt'
     Get-ComputerInfo | Out-File $inventoryPath
@@ -262,22 +309,163 @@ function Get-SystemInventory {
 }
 
 
-# =====================[ TASK 4: DISABLE TELEMETRY ]=========================
+# =====================[ TASK 2: DISABLE TELEMETRY ]=========================
 function Disable-Telemetry {
-    # [TASK 4] Disable Telemetry
+    # [TASK 2] Disable Telemetry
     Write-Log "[START] Disable Telemetry" 'INFO'
-    # Example: Set registry keys to disable telemetry (minimal demo)
-    $regPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
-    if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
-    Set-ItemProperty -Path $regPath -Name 'AllowTelemetry' -Value 0 -Force
-    Write-Log "Set AllowTelemetry=0 in $regPath" 'INFO'
+
+    # Remove all browsers except Edge, Chrome, and Firefox
+    $allowedBrowsers = @('Microsoft Edge', 'Google Chrome', 'Mozilla Firefox')
+    $knownBrowsers = @('Opera', 'Opera GX', 'Brave', 'Vivaldi', 'Waterfox', 'Yandex', 'Tor Browser', 'Pale Moon', 'Chromium', 'SRWare Iron', 'Comodo Dragon', 'Maxthon', 'UC Browser', 'Epic Privacy Browser', 'Slimjet', 'CentBrowser', 'QuteBrowser', 'OtterBrowser', 'Dooble', 'Midori', 'Blisk', 'AvantBrowser', 'Sleipnir', 'Polarity', 'Torch', 'Orbitum', 'Superbird', 'Sputnik', 'Lunascape', 'Falkon', 'SeaMonkey')
+    foreach ($browser in $knownBrowsers) {
+        if ($allowedBrowsers -notcontains $browser) {
+            try {
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    winget uninstall --id $browser --accept-source-agreements --accept-package-agreements --silent -e
+                }
+                if (Get-Command choco -ErrorAction SilentlyContinue) {
+                    choco uninstall $browser -y
+                }
+            } catch {}
+        }
+    }
+
+    # Disable telemetry and set homepage in Edge
+    try {
+        $edgeReg = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
+        if (-not (Test-Path $edgeReg)) { New-Item -Path $edgeReg -Force | Out-Null }
+        Set-ItemProperty -Path $edgeReg -Name 'MetricsReportingEnabled' -Value 0 -Force
+        Set-ItemProperty -Path $edgeReg -Name 'HomepageLocation' -Value 'about:blank' -Force
+        Write-Log "Edge telemetry and homepage set via registry." 'INFO'
+    } catch {
+        Write-Log "Failed to set Edge telemetry/homepage: $_" 'WARN'
+    }
+
+    # Disable telemetry and set homepage in Chrome
+    try {
+        $chromeReg = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
+        if (-not (Test-Path $chromeReg)) { New-Item -Path $chromeReg -Force | Out-Null }
+        Set-ItemProperty -Path $chromeReg -Name 'MetricsReportingEnabled' -Value 0 -Force
+        Set-ItemProperty -Path $chromeReg -Name 'HomepageLocation' -Value 'about:blank' -Force
+        Write-Log "Chrome telemetry and homepage set via registry." 'INFO'
+    } catch {
+        Write-Log "Failed to set Chrome telemetry/homepage: $_" 'WARN'
+    }
+
+    # Deploy Firefox policies.json for telemetry, homepage, uBlock Origin, default browser
+    try {
+        $ffPath = $null
+        if (Test-Path 'C:\Program Files\Mozilla Firefox') {
+            $ffPath = 'C:\Program Files\Mozilla Firefox'
+        } elseif (Test-Path 'C:\Program Files (x86)\Mozilla Firefox') {
+            $ffPath = 'C:\Program Files (x86)\Mozilla Firefox'
+        }
+        if ($ffPath) {
+            $distPath = Join-Path $ffPath 'distribution'
+            if (-not (Test-Path $distPath)) { New-Item -Path $distPath -ItemType Directory -Force | Out-Null }
+            $policyJson = @'{
+  "policies": {
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "DisablePocket": true,
+    "Homepage": {
+      "StartPage": "homepage",
+      "URL": "about:blank"
+    },
+    "Extensions": {
+      "Install": [
+        "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+      ]
+    },
+    "DefaultBrowser": true
+  }
+}'
+            $policyPath = Join-Path $distPath 'policies.json'
+            $policyJson | Set-Content -Path $policyPath -Encoding UTF8
+            Write-Log "Firefox policies.json deployed for telemetry, homepage, uBlock Origin, default browser." 'INFO'
+        } else {
+            Write-Log "Could not find Firefox installation path for policies.json deployment." 'WARN'
+        }
+    } catch {
+        Write-Log "Failed to deploy Firefox policies.json: $_" 'WARN'
+    }
+
+    # Attempt to set Firefox as default browser (Windows 10 only, Windows 11 requires user interaction)
+    try {
+        if (Test-Path 'C:\Program Files\Mozilla Firefox\firefox.exe') {
+            Start-Process -FilePath "C:\Program Files\Mozilla Firefox\firefox.exe" -ArgumentList "-setDefaultBrowser" -Wait -ErrorAction SilentlyContinue
+            Write-Log "Attempted to set Firefox as default browser." 'INFO'
+        }
+    } catch {
+        Write-Log "Failed to set Firefox as default browser: $_" 'WARN'
+    }
+
+    # Disable telemetry-related services
+    $services = @('DiagTrack', 'dmwappushservice', 'Connected User Experiences and Telemetry')
+    foreach ($svc in $services) {
+        try {
+            $serviceObj = Get-Service -Name $svc -ErrorAction Stop
+            if ($serviceObj.Status -ne 'Stopped') {
+                Stop-Service -Name $svc -Force -ErrorAction Stop
+                Write-Log "Stopped service: $svc" 'INFO'
+            }
+            Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
+            Write-Log "Disabled service: $svc" 'INFO'
+        } catch {
+            Write-Log "Service $svc not found or could not be disabled: $_" 'WARN'
+        }
+    }
+
+    # Disable telemetry-related scheduled tasks
+    $scheduledTasks = @(
+        '\Microsoft\Windows\Application Experience\ProgramDataUpdater',
+        '\Microsoft\Windows\Autochk\Proxy',
+        '\Microsoft\Windows\Customer Experience Improvement Program\Consolidator',
+        '\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask',
+        '\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip',
+        '\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector',
+        '\Microsoft\Windows\Feedback\Siuf\DmClient',
+        '\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload',
+        '\Microsoft\Windows\Windows Error Reporting\QueueReporting'
+    )
+    foreach ($task in $scheduledTasks) {
+        try {
+            $taskPath = $task.Substring(0, $task.LastIndexOf('\')+1)
+            $taskName = $task.Split('\')[-1]
+            if (Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue) {
+                Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName
+                Write-Log "Disabled scheduled task: $task" 'INFO'
+            }
+        } catch {
+            Write-Log "Failed to disable scheduled task $task: $_" 'WARN'
+        }
+    }
+
+    # Additional registry tweaks for telemetry (as per best practices)
+    $extraReg = @(
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection'; Name = 'AllowTelemetry'; Value = 0 },
+        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'AITEnable'; Value = 0 },
+        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'DisableInventory'; Value = 1 },
+        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'UploadUserActivities'; Value = 0 },
+        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'PublishUserActivities'; Value = 0 }
+    )
+    foreach ($item in $extraReg) {
+        try {
+            if (-not (Test-Path $item.Path)) { New-Item -Path $item.Path -Force | Out-Null }
+            Set-ItemProperty -Path $item.Path -Name $item.Name -Value $item.Value -Force
+            Write-Log "Set $($item.Name)=$($item.Value) in $($item.Path)" 'INFO'
+        } catch {
+            Write-Log "Failed to set $($item.Name) in $($item.Path): $_" 'WARN'
+        }
+    }
+
     Write-Log "[END] Disable Telemetry" 'INFO'
 }
 
 
-# =====================[ TASK 5: SYSTEM RESTORE PROTECTION ]==========================
+# =====================[ TASK 1: SYSTEM RESTORE PROTECTION ]==========================
 function Protect-SystemRestore {
-    # [TASK 5] System Restore Protection
+    # [TASK 1] System Restore Protection
     Write-Log "[START] System Restore Protection" 'INFO'
     $drive = "C:\\"
     $restoreEnabled = $false
@@ -310,22 +498,19 @@ function Protect-SystemRestore {
 
 # =====================[ TASK EXECUTION IN DESIRED ORDER ]==========================
 Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
-$taskResults = @{}
+ $taskResults = @{}
 
 # 1. System Restore Protection
 $taskResults['Task1_SystemRestoreProtection'] = Invoke-Task 'SystemRestoreProtection' { Protect-SystemRestore }
 
-# 2. Disable Telemetry
-$taskResults['Task2_DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
+# 2. Remove Bloatware
+$taskResults['Task2_RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
 
-# 3. Remove Bloatware
-$taskResults['Task3_RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
+# 3. Install Essential Apps
+$taskResults['Task3_InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
 
-# 4. Install Essential Apps
-$taskResults['Task4_InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
-
-# 5. Update All Apps and Packages
-$taskResults['Task5_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
+# 4. Update All Apps and Packages
+$taskResults['Task4_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
     # [TASK 5] Update all apps and packages
     Write-Log "[START] Update All Apps and Packages" 'INFO'
     # Update with winget
@@ -355,15 +540,41 @@ $taskResults['Task5_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
     Write-Log "[END] Update All Apps and Packages" 'INFO'
 }
 
-# 6. System Inventory
-$taskResults['Task6_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
+# 5. System Inventory
+$taskResults['Task5_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
 
-# 7. Windows Update Check (placeholder)
-$taskResults['Task7_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
-    # [TASK 7] Windows Update check (placeholder)
-    # Write-Log "Checking for Windows Updates..." 'INFO'
-    # ...
+# 6. Windows Update Check
+$taskResults['Task6_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
+    # [TASK 7] Windows Update check
+    Write-Log "Checking for Windows Updates..." 'INFO'
+    try {
+        # Try to use PSWindowsUpdate module if available
+        if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+            try {
+                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -ErrorAction Stop
+                Write-Log "PSWindowsUpdate module installed." 'INFO'
+            } catch {
+                Write-Log "Failed to install PSWindowsUpdate module: $_" 'WARN'
+            }
+        }
+        Import-Module PSWindowsUpdate -ErrorAction SilentlyContinue
+        if (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue) {
+            $updates = Get-WindowsUpdate -AcceptAll -Install -AutoReboot -ErrorAction Stop
+            if ($updates) {
+                Write-Log ("Installed updates: " + ($updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique | Out-String)) 'INFO'
+            } else {
+                Write-Log "No new updates were found or installed." 'INFO'
+            }
+        } else {
+            Write-Log "Get-WindowsUpdate command not available. Please update PowerShell or install PSWindowsUpdate." 'WARN'
+        }
+    } catch {
+        Write-Log "Failed to check or install Windows Updates: $_" 'WARN'
+    }
 }
+
+# 7. Disable Telemetry
+$taskResults['Task7_DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
 
 # 8. Clean Temp Files
 $taskResults['Task8_CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
@@ -380,11 +591,21 @@ $taskResults['Task8_CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
     Write-Log "Deleted $deleted temp files from $temp" 'INFO'
 }
 
-# 9. Disk Cleanup (placeholder)
+# 9. Disk Cleanup
 $taskResults['Task9_DiskCleanup'] = Invoke-Task 'DiskCleanup' {
-    # [TASK 9] Disk cleanup (placeholder)
-    # Write-Log "Running disk cleanup..." 'INFO'
-    # ...
+    # [TASK 9] Disk cleanup
+    Write-Log "Running disk cleanup..." 'INFO'
+    try {
+        # Set up the sagerun profile (run once to configure options)
+        $cleanmgrSetup = "/sageset:1"
+        Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrSetup -Wait
+        # Run cleanmgr.exe with all options silently
+        $cleanmgrArgs = "/sagerun:1"
+        Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrArgs -Wait
+        Write-Log "Disk cleanup completed using cleanmgr.exe." 'INFO'
+    } catch {
+        Write-Log "Disk cleanup failed: $_" 'WARN'
+    }
 }
 
 Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
