@@ -29,7 +29,7 @@ function Invoke-Task {
 # =====================[ MAIN SCRIPT STARTS HERE ]========================
 
 
-# =====================[ ENSURE WINGET & CHOCO INSTALLED/UPDATED ]==================
+# =====================[ ENSURE WINGET, CHOCO & NUGET INSTALLED/UPDATED ]==================
 function Test-Winget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Log "winget not found. Attempting to install winget..." 'WARN'
@@ -74,6 +74,41 @@ function Test-Choco {
     }
 }
 
+# Ensure NuGet is installed/updated
+function Test-NuGet {
+    $nugetInstalled = $false
+    if (Get-Command nuget -ErrorAction SilentlyContinue) {
+        $nugetInstalled = $true
+        Write-Log "NuGet found. Checking for updates..." 'INFO'
+        try {
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Start-Process -FilePath "winget" -ArgumentList @("upgrade", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
+                Write-Log "NuGet updated via winget." 'INFO'
+            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+                Start-Process -FilePath "choco" -ArgumentList @("upgrade", "nuget.commandline", "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
+                Write-Log "NuGet updated via choco." 'INFO'
+            }
+        } catch {
+            Write-Log "Failed to update NuGet: $_" 'WARN'
+        }
+    } else {
+        Write-Log "NuGet not found. Attempting to install NuGet..." 'WARN'
+        try {
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Start-Process -FilePath "winget" -ArgumentList @("install", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
+                Write-Log "NuGet installed via winget." 'INFO'
+            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+                Start-Process -FilePath "choco" -ArgumentList @("install", "nuget.commandline", "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
+                Write-Log "NuGet installed via choco." 'INFO'
+            } else {
+                Write-Log "No installer found for NuGet." 'WARN'
+            }
+        } catch {
+            Write-Log "Failed to install NuGet: $_" 'ERROR'
+        }
+    }
+}
+
 # Set up log file in the extracted folder (always use the script's folder)
 $logPath = Join-Path $PSScriptRoot "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
@@ -81,6 +116,7 @@ Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Scr
 # Ensure dependencies before anything else
 Test-Winget
 Test-Choco
+Test-NuGet
 
 # Centralized temp folder and essential/bloatware lists (inspired by system_maintenance)
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
@@ -233,10 +269,10 @@ function Install-EssentialApps {
             try {
                 if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                    winget install --id $($app.Winget) --accept-source-agreements --accept-package-agreements --silent -e
+                    Start-Process -FilePath "winget" -ArgumentList @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
                 } elseif ($app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via choco..." 'INFO'
-                    choco install $($app.Choco) -y
+                    Start-Process -FilePath "choco" -ArgumentList @("install", $app.Choco, "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
                 } else {
                     Write-Log "No installer found for $($app.Name)" 'WARN'
                 }
@@ -313,6 +349,23 @@ function Get-SystemInventory {
 function Disable-Telemetry {
     # [TASK 2] Disable Telemetry
     Write-Log "[START] Disable Telemetry" 'INFO'
+
+    # Disable all OS notifications (Focus Assist: Alarms Only, and notification banners)
+    try {
+        # Set Focus Assist to Alarms Only (2)
+        $focusAssistReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings'
+        if (-not (Test-Path $focusAssistReg)) { New-Item -Path $focusAssistReg -Force | Out-Null }
+        Set-ItemProperty -Path $focusAssistReg -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' -Value 0 -Force
+        Set-ItemProperty -Path $focusAssistReg -Name 'FocusAssist' -Value 2 -Force
+        # Disable notification banners for all apps
+        $apps = Get-ChildItem -Path $focusAssistReg -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -ne 'FocusAssist' -and $_.PSChildName -ne 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' }
+        foreach ($app in $apps) {
+            Set-ItemProperty -Path $app.PSPath -Name 'Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        }
+        Write-Log "All OS notifications disabled (Focus Assist and banners)." 'INFO'
+    } catch {
+        Write-Log "Failed to disable all OS notifications: $_" 'WARN'
+    }
 
     # Remove all browsers except Edge, Chrome, and Firefox
     $allowedBrowsers = @('Microsoft Edge', 'Google Chrome', 'Mozilla Firefox')
