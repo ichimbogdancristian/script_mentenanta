@@ -14,8 +14,8 @@ echo [INFO] Repository folder will be: %REPO_FOLDER%
 
 REM Set variables
 set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
-set "ZIP_NAME=%SCRIPT_DIR%\repo.zip"
-set "EXTRACTED_DIR=%SCRIPT_DIR%\%REPO_FOLDER%"
+set "ZIP_NAME=%SCRIPT_DIR%repo.zip"
+set "EXTRACTED_DIR=%SCRIPT_DIR%%REPO_FOLDER%"
 set "PS_SCRIPT=script.ps1"
 echo [INFO] Variables set:
 echo   REPO_URL: %REPO_URL%
