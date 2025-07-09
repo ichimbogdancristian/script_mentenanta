@@ -638,11 +638,33 @@ $successCount = ($taskResults.Values | Where-Object { $_ }).Count
 $failCount = ($taskResults.Values | Where-Object { -not $_ }).Count
 Write-Log "All tasks completed. Success: $successCount, Failed: $failCount" 'INFO'
 
+
 # === Reporting Section ===
-# Example: Export summary report
-$summaryPath = Join-Path $PSScriptRoot "maintenance_summary.txt"
+# Save summary report in the same folder as script.bat (repo parent folder)
+$batPath = Join-Path $PSScriptRoot "script.bat"
+if (Test-Path $batPath) {
+    $batDir = Split-Path $batPath -Parent
+    $summaryPath = Join-Path $batDir "maintenance_report.txt"
+} else {
+    $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
+}
 "Maintenance completed at $(Get-Date) on $env:COMPUTERNAME by $env:USERNAME" | Out-File -FilePath $summaryPath -Append
 Write-Log "Summary report written to $summaryPath" 'INFO'
+
+# Remove the repo folder (script_mentenanta) after report creation
+try {
+    $repoFolder = $PSScriptRoot
+    $parentFolder = Split-Path $repoFolder -Parent
+    $repoName = Split-Path $repoFolder -Leaf
+    if ($repoName -eq 'script_mentenanta') {
+        Write-Log "Attempting to remove repo folder: $repoFolder" 'INFO'
+        Set-Location $parentFolder
+        Remove-Item -Path $repoFolder -Recurse -Force
+        Write-Log "Repo folder $repoFolder removed." 'INFO'
+    }
+} catch {
+    Write-Log "Failed to remove repo folder: $_" 'WARN'
+}
 
 # Example: Optionally send report via email or webhook (not implemented)
 # ...
