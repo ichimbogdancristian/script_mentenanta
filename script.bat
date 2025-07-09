@@ -1,21 +1,15 @@
 @echo on
 setlocal
 
-
 REM Get the directory where this script is located (removes trailing backslash)
-echo [INFO] Determining script directory...
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 echo [INFO] Script directory is: %SCRIPT_DIR%
 
-REM Set repo folder name (matches the extracted folder name from the zip)
-set "REPO_FOLDER=script_mentenanta-master"
-echo [INFO] Repository folder will be: %REPO_FOLDER%
-
 REM Set variables
 set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
-set "ZIP_NAME=%SCRIPT_DIR%repo.zip"
-set "EXTRACTED_DIR=%SCRIPT_DIR%%REPO_FOLDER%"
+set "ZIP_NAME=%SCRIPT_DIR%script_mentenanta.zip"
+set "EXTRACTED_DIR=%SCRIPT_DIR%script_mentenanta"
 set "PS_SCRIPT=script.ps1"
 echo [INFO] Variables set:
 echo   REPO_URL: %REPO_URL%
@@ -31,9 +25,19 @@ if errorlevel 1 (
     goto END
 )
 
+REM Remove any previous extraction
+if exist "%EXTRACTED_DIR%" (
+    echo [STEP] Removing previous folder: %EXTRACTED_DIR%
+    rmdir /s /q "%EXTRACTED_DIR%"
+    if errorlevel 1 (
+        echo [ERROR] Failed to remove previous folder: %EXTRACTED_DIR%
+        goto END
+    )
+)
+
 REM Extract the zip (requires PowerShell 5+)
-echo [STEP] Extracting repository to %SCRIPT_DIR% ...
-powershell -NoProfile -Command "try { Expand-Archive -Path '%ZIP_NAME%' -DestinationPath '%SCRIPT_DIR%' -Force -ErrorAction Stop } catch { Write-Host '[ERROR] Extraction failed.'; if ($_.Exception) { Write-Host $_.Exception.Message }; exit 1 }"
+echo [STEP] Extracting repository to %EXTRACTED_DIR% ...
+powershell -NoProfile -Command "try { Expand-Archive -Path '%ZIP_NAME%' -DestinationPath '%EXTRACTED_DIR%' -Force -ErrorAction Stop } catch { Write-Host '[ERROR] Extraction failed.'; if ($_.Exception) { Write-Host $_.Exception.Message }; exit 1 }"
 if errorlevel 1 (
     echo [ERROR] Failed to extract repository. Exiting.
     goto END
@@ -46,7 +50,16 @@ if errorlevel 1 (
     echo [ERROR] Failed to delete zip file: %ZIP_NAME%
 )
 
-
+REM Move extracted content from subfolder to %EXTRACTED_DIR% if needed
+for /d %%D in ("%EXTRACTED_DIR%\script_mentenanta-*") do (
+    echo [STEP] Moving extracted files from %%D to %EXTRACTED_DIR%
+    xcopy /e /h /y "%%D\*" "%EXTRACTED_DIR%\"
+    if errorlevel 1 (
+        echo [ERROR] Failed to move files from %%D to %EXTRACTED_DIR%
+        goto END
+    )
+    rmdir /s /q "%%D"
+)
 
 REM Run the PowerShell script from the extracted repo
 echo [STEP] Running PowerShell script from: %EXTRACTED_DIR%\%PS_SCRIPT%
