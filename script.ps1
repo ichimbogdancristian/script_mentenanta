@@ -79,18 +79,15 @@ function Test-Choco {
 }
 
 function Test-NuGet {
-    # Ensure NuGet CLI is present and up to date
-    $nugetInstalled = $false
+    # Ensure NuGet CLI is present and up to date using Chocolatey only (no winget)
     if (Get-Command nuget -ErrorAction SilentlyContinue) {
-        $nugetInstalled = $true
         Write-Log "NuGet found. Checking for updates..." 'INFO'
         try {
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "winget" -ArgumentList @("upgrade", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -WindowStyle Hidden -Wait
-                Write-Log "NuGet updated via winget." 'INFO'
-            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+            if (Get-Command choco -ErrorAction SilentlyContinue) {
                 Start-Process -FilePath "choco" -ArgumentList @("upgrade", "nuget.commandline", "-y", "--no-progress") -WindowStyle Hidden -Wait
                 Write-Log "NuGet updated via choco." 'INFO'
+            } else {
+                Write-Log "Chocolatey not found. Skipping NuGet CLI update." 'WARN'
             }
         } catch {
             Write-Log "Failed to update NuGet: $_" 'WARN'
@@ -98,14 +95,11 @@ function Test-NuGet {
     } else {
         Write-Log "NuGet not found. Attempting to install NuGet..." 'WARN'
         try {
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "winget" -ArgumentList @("install", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -WindowStyle Hidden -Wait
-                Write-Log "NuGet installed via winget." 'INFO'
-            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+            if (Get-Command choco -ErrorAction SilentlyContinue) {
                 Start-Process -FilePath "choco" -ArgumentList @("install", "nuget.commandline", "-y", "--no-progress") -WindowStyle Hidden -Wait
                 Write-Log "NuGet installed via choco." 'INFO'
             } else {
-                Write-Log "No installer found for NuGet." 'WARN'
+                Write-Log "Chocolatey not found. Cannot install NuGet CLI." 'ERROR'
             }
         } catch {
             Write-Log "Failed to install NuGet: $_" 'ERROR'
