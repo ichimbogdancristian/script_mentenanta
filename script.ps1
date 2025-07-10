@@ -87,9 +87,7 @@ function Test-Choco {
 
 # Ensure NuGet is installed/updated and NuGet provider is available (unattended)
 function Test-NuGet {
-    $nugetInstalled = $false
     if (Get-Command nuget -ErrorAction SilentlyContinue) {
-        $nugetInstalled = $true
         Write-Log "NuGet found. Checking for updates..." 'INFO'
         try {
             if (Get-Command winget -ErrorAction SilentlyContinue) {
