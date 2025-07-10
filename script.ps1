@@ -1,4 +1,5 @@
 
+
 # =====================[ CENTRALIZED LOGGING FUNCTION ]====================
 function Write-Log {
     param(
@@ -7,7 +8,15 @@ function Write-Log {
     )
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $entry = "[$timestamp] [$Level] $Message"
-    $entry | Out-File -FilePath $logPath -Append
+    if (-not $script:logPath) {
+        # Try to set logPath to a default if not already set
+        if ($PSScriptRoot) {
+            $script:logPath = Join-Path $PSScriptRoot 'maintenance.log'
+        } else {
+            $script:logPath = Join-Path (Get-Location) 'maintenance.log'
+        }
+    }
+    $entry | Out-File -FilePath $script:logPath -Append
     Write-Host $entry
 }
 
@@ -120,26 +129,26 @@ function Disable-Telemetry {
 
 
 # =====================[ CENTRAL TASK EXECUTION ]==========================
-# Use Invoke-Task for each new function
-Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
-$taskResults['RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
-$taskResults['InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
-$taskResults['SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
-$taskResults['DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
-Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
-# Maintenance Script Boilerplate for Windows 10/11
-# This script is intended to be downloaded and executed by script.bat
-# Add your maintenance tasks below
 
 # Ensure script is running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Warning "This script must be run as Administrator. Exiting."
-    exit 1
+    return 1
 }
+
+# Use Invoke-Task for each new function
+Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
+$script:taskResults = @{}
+$script:taskResults['RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
+$script:taskResults['InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
+$script:taskResults['SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
+$script:taskResults['DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
+Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
+
 
 
 # Set up log file in the extracted folder (always use the script's folder)
-$logPath = Join-Path $PSScriptRoot "maintenance.log"
+$script:logPath = Join-Path $PSScriptRoot "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
 # Load configuration (if exists)
