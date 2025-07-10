@@ -60,9 +60,10 @@ $global:EssentialApps = @(
 $essentialAppsListPath = Join-Path $global:TempFolder 'EssentialApps_list.txt'
 $global:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
 
-# =====================[ TASK: REMOVE BLOATWARE ]==========================
+
+# =====================[ TASK 1: REMOVE BLOATWARE ]==========================
 function Remove-Bloatware {
-    Write-Log "[START] Remove Bloatware" 'INFO'
+    Write-Log "[START] Task 1: Remove Bloatware" 'INFO'
     $bloatwareList = Get-Content $bloatwareListPath | ForEach-Object { $_ | ConvertFrom-Json }
     $installedApps = Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
     $toRemove = $bloatwareList | Where-Object { $installedApps -contains $_ }
@@ -75,12 +76,13 @@ function Remove-Bloatware {
             Write-Log "Failed to remove $bloat $_" 'WARN'
         }
     }
-    Write-Log "[END] Remove Bloatware" 'INFO'
+    Write-Log "[END] Task 1: Remove Bloatware" 'INFO'
 }
 
-# =====================[ TASK: INSTALL ESSENTIAL APPS ]====================
+
+# =====================[ TASK 2: INSTALL ESSENTIAL APPS ]====================
 function Install-EssentialApps {
-    Write-Log "[START] Install Essential Apps" 'INFO'
+    Write-Log "[START] Task 2: Install Essential Apps" 'INFO'
     $essentialApps = Get-Content $essentialAppsListPath | ForEach-Object { $_ | ConvertFrom-Json }
     foreach ($app in $essentialApps) {
         $installed = Get-StartApps | Where-Object { $_.Name -like "*$($app.Name)*" }
@@ -104,27 +106,29 @@ function Install-EssentialApps {
             Write-Log "$($app.Name) already installed." 'INFO'
         }
     }
-    Write-Log "[END] Install Essential Apps" 'INFO'
+    Write-Log "[END] Task 2: Install Essential Apps" 'INFO'
 }
 
-# =====================[ TASK: SYSTEM INVENTORY ]==========================
+
+# =====================[ TASK 3: SYSTEM INVENTORY ]==========================
 function Get-SystemInventory {
-    Write-Log "[START] System Inventory" 'INFO'
+    Write-Log "[START] Task 3: System Inventory" 'INFO'
     $inventoryPath = Join-Path $global:TempFolder 'inventory.txt'
     Get-ComputerInfo | Out-File $inventoryPath
     Write-Log "System inventory saved to $inventoryPath" 'INFO'
-    Write-Log "[END] System Inventory" 'INFO'
+    Write-Log "[END] Task 3: System Inventory" 'INFO'
 }
 
-# =====================[ TASK: DISABLE TELEMETRY ]=========================
+
+# =====================[ TASK 4: DISABLE TELEMETRY ]=========================
 function Disable-Telemetry {
-    Write-Log "[START] Disable Telemetry" 'INFO'
+    Write-Log "[START] Task 4: Disable Telemetry" 'INFO'
     # Example: Set registry keys to disable telemetry (minimal demo)
     $regPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
     if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
     Set-ItemProperty -Path $regPath -Name 'AllowTelemetry' -Value 0 -Force
     Write-Log "Set AllowTelemetry=0 in $regPath" 'INFO'
-    Write-Log "[END] Disable Telemetry" 'INFO'
+    Write-Log "[END] Task 4: Disable Telemetry" 'INFO'
 }
 
 
@@ -212,8 +216,10 @@ $taskResults = @{}
 
 Write-Log "Starting maintenance tasks..." 'INFO'
 
-# Task 1: Clean temp files
-$taskResults['CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
+
+# =====================[ TASK 5: CLEAN TEMP FILES ]==========================
+$taskResults['CleanTempFiles'] = Invoke-Task 'Task 5: CleanTempFiles' {
+    Write-Log "[START] Task 5: Clean Temp Files" 'INFO'
     $temp = $env:TEMP
     $tempFiles = Get-ChildItem -Path $temp -Recurse -ErrorAction SilentlyContinue
     $deleted = 0
@@ -224,18 +230,23 @@ $taskResults['CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
         } catch {}
     }
     Write-Log "Deleted $deleted temp files from $temp" 'INFO'
+    Write-Log "[END] Task 5: Clean Temp Files" 'INFO'
 }
 
-# Task 2: Disk cleanup (placeholder)
-$taskResults['DiskCleanup'] = Invoke-Task 'DiskCleanup' {
+# =====================[ TASK 6: DISK CLEANUP (PLACEHOLDER) ]================
+$taskResults['DiskCleanup'] = Invoke-Task 'Task 6: DiskCleanup' {
+    Write-Log "[START] Task 6: Disk Cleanup (Placeholder)" 'INFO'
     # Write-Log "Running disk cleanup..." 'INFO'
     # ...
+    Write-Log "[END] Task 6: Disk Cleanup (Placeholder)" 'INFO'
 }
 
-# Task 3: Windows Update check (placeholder)
-$taskResults['WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
+# =====================[ TASK 7: WINDOWS UPDATE CHECK (PLACEHOLDER) ]========
+$taskResults['WindowsUpdateCheck'] = Invoke-Task 'Task 7: WindowsUpdateCheck' {
+    Write-Log "[START] Task 7: Windows Update Check (Placeholder)" 'INFO'
     # Write-Log "Checking for Windows Updates..." 'INFO'
     # ...
+    Write-Log "[END] Task 7: Windows Update Check (Placeholder)" 'INFO'
 }
 
 # Add more tasks as needed, using Invoke-Task for each
