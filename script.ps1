@@ -85,7 +85,7 @@ function Test-Choco {
     }
 }
 
-# Ensure NuGet is installed/updated and NuGet provider is available (unattended)
+# Ensure NuGet is installed/updated
 function Test-NuGet {
     if (Get-Command nuget -ErrorAction SilentlyContinue) {
         Write-Log "NuGet found. Checking for updates..." 'INFO'
@@ -115,19 +115,6 @@ function Test-NuGet {
         } catch {
             Write-Log "Failed to install NuGet: $_" 'ERROR'
         }
-    }
-    # Ensure NuGet provider for PowerShell is installed (unattended)
-    try {
-        $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-        if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
-            Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
-            Write-Log "NuGet provider for PowerShell installed/updated." 'INFO'
-        } else {
-            Write-Log "NuGet provider for PowerShell is present and up to date." 'INFO'
-        }
-    } catch {
-        Write-Log "Failed to install or update NuGet provider for PowerShell: $_" 'WARN'
     }
 }
 
