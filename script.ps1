@@ -80,31 +80,21 @@ function Test-NuGet {
     if (Get-Command nuget -ErrorAction SilentlyContinue) {
         $nugetInstalled = $true
         Write-Log "NuGet found. Checking for updates..." 'INFO'
-        try {
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "winget" -ArgumentList @("upgrade", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
-                Write-Log "NuGet updated via winget." 'INFO'
-            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "choco" -ArgumentList @("upgrade", "nuget.commandline", "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
-                Write-Log "NuGet updated via choco." 'INFO'
-            }
-        } catch {
-            Write-Log "Failed to update NuGet: $_" 'WARN'
-        }
+        # No direct update method without package manager, so just log
+        Write-Log "NuGet is present. Manual update required if not using a package manager." 'INFO'
     } else {
-        Write-Log "NuGet not found. Attempting to install NuGet..." 'WARN'
+        Write-Log "NuGet not found. Attempting to install NuGet manually..." 'WARN'
         try {
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "winget" -ArgumentList @("install", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
-                Write-Log "NuGet installed via winget." 'INFO'
-            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "choco" -ArgumentList @("install", "nuget.commandline", "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
-                Write-Log "NuGet installed via choco." 'INFO'
-            } else {
-                Write-Log "No installer found for NuGet." 'WARN'
-            }
+            $nugetUrl = "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
+            $nugetPath = Join-Path $env:ProgramData "nuget"
+            if (-not (Test-Path $nugetPath)) { New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null }
+            $nugetExe = Join-Path $nugetPath "nuget.exe"
+            Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetExe -UseBasicParsing
+            # Add to PATH for current session
+            $env:PATH = "$nugetPath;" + $env:PATH
+            Write-Log "NuGet manually downloaded to $nugetExe and added to PATH." 'INFO'
         } catch {
-            Write-Log "Failed to install NuGet: $_" 'ERROR'
+            Write-Log "Failed to manually install NuGet: $_" 'ERROR'
         }
     }
     # Ensure NuGet provider for PowerShell is installed (unattended)
@@ -131,7 +121,7 @@ Test-Winget
 Test-Choco
 Test-NuGet
 
-# Centralized temp folder and essential/bloatware lists (inspired by system_maintenance)
+# Centralized temp folder and essential/bloatware lists
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
 if (-not (Test-Path $global:TempFolder)) {
     New-Item -ItemType Directory -Path $global:TempFolder -Force | Out-Null
@@ -235,19 +225,10 @@ if ($osVersion -lt '10.0') {
 }
 
 # Check for required PowerShell version
+
 if ($PSVersionTable.PSVersion.Major -lt 5) {
     Write-Log "PowerShell 5.1 or higher is required. Exiting." 'ERROR'
     exit 3
-}
-
-# Example: Self-update check (hash validation)
-$expectedHash = $null # Set to known-good hash if desired
-if ($expectedHash) {
-    $actualHash = (Get-FileHash -Path $MyInvocation.MyCommand.Path -Algorithm SHA256).Hash
-    if ($actualHash -ne $expectedHash) {
-        Write-Log "Script hash mismatch! Possible tampering. Exiting." 'ERROR'
-        exit 4
-    }
 }
 
 
@@ -258,15 +239,55 @@ function Remove-Bloatware {
     $bloatwareList = Get-Content $bloatwareListPath | ForEach-Object { $_ | ConvertFrom-Json }
     $installedApps = Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
     $toRemove = $bloatwareList | Where-Object { $installedApps -contains $_ }
+    $notFound = $bloatwareList | Where-Object { $installedApps -notcontains $_ }
+    $success = 0
+    $fail = 0
     foreach ($bloat in $toRemove) {
         try {
-            Write-Log "Removing bloatware: $bloat" 'INFO'
-            Get-AppxPackage -AllUsers -Name $bloat | Remove-AppxPackage -AllUsers -ErrorAction Stop
-            Write-Log "Removed: $bloat" 'INFO'
+            Write-Log "Attempting to remove bloatware: $bloat" 'INFO'
+            $appx = Get-AppxPackage -AllUsers -Name $bloat
+            if ($appx) {
+                $appx | Remove-AppxPackage -AllUsers -ErrorAction Stop
+                Write-Log "Removed: $bloat" 'INFO'
+                $success++
+            } else {
+                Write-Log "AppxPackage $bloat not found for removal (may already be removed)." 'WARN'
+            }
         } catch {
-            Write-Log "Failed to remove $bloat $_" 'WARN'
+            Write-Log "Failed to remove $bloat: $_" 'WARN'
+            $fail++
         }
     }
+    if ($notFound.Count -gt 0) {
+        foreach ($missing in $notFound) {
+            Write-Log "Bloatware not found (already removed or never installed): $missing" 'INFO'
+        }
+    }
+    # Try to remove via winget if Appx removal did not work
+    foreach ($bloat in $toRemove) {
+        try {
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-Log "Attempting to remove $bloat via winget..." 'INFO'
+                winget uninstall --id $bloat --accept-source-agreements --accept-package-agreements --silent -e
+                Write-Log "$bloat: winget uninstall attempted." 'INFO'
+            }
+        } catch {
+            Write-Log "winget uninstall failed for $bloat: $_" 'WARN'
+        }
+    }
+    # Try to remove via choco if available
+    foreach ($bloat in $toRemove) {
+        try {
+            if (Get-Command choco -ErrorAction SilentlyContinue) {
+                Write-Log "Attempting to remove $bloat via choco..." 'INFO'
+                choco uninstall $bloat -y --no-progress
+                Write-Log "$bloat: choco uninstall attempted." 'INFO'
+            }
+        } catch {
+            Write-Log "choco uninstall failed for $bloat: $_" 'WARN'
+        }
+    }
+    Write-Log ("Remove Bloatware summary: Removed: {0}, Failed: {1}, Not found: {2}" -f $success, $fail, $notFound.Count) 'INFO'
     Write-Log "[END] Remove Bloatware" 'INFO'
 }
 
@@ -276,26 +297,79 @@ function Install-EssentialApps {
     # [TASK 4] Install Essential Apps
     Write-Log "[START] Install Essential Apps" 'INFO'
     $essentialApps = Get-Content $essentialAppsListPath | ForEach-Object { $_ | ConvertFrom-Json }
+    $success = 0
+    $fail = 0
+    $skipped = 0
+    $detailedResults = @()
     foreach ($app in $essentialApps) {
-        $installed = Get-StartApps | Where-Object { $_.Name -like "*$($app.Name)*" }
+        $installed = $null
+        try {
+            # Try to detect installed app using multiple methods for robustness
+            $installed = Get-StartApps | Where-Object { $_.Name -like "*$($app.Name)*" }
+            if (-not $installed) {
+                # Try registry uninstall keys (for apps not in Start Menu)
+                $uninstallKeys = @(
+                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+                )
+                foreach ($key in $uninstallKeys) {
+                    $regApps = Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+                        (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
+                    }
+                    if ($regApps -contains $app.Name) {
+                        $installed = $true
+                        break
+                    }
+                }
+            }
+        } catch {
+            Write-Log "Error checking if $($app.Name) is installed: $_" 'WARN'
+        }
         if (-not $installed) {
+            $installSuccess = $false
+            $installMethod = $null
             try {
                 if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                    Start-Process -FilePath "winget" -ArgumentList @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
-                } elseif ($app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-                    Write-Log "Installing $($app.Name) via choco..." 'INFO'
-                    Start-Process -FilePath "choco" -ArgumentList @("install", $app.Choco, "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
-                } else {
-                    Write-Log "No installer found for $($app.Name)" 'WARN'
+                    $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
+                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                    if ($wingetProc.ExitCode -eq 0) {
+                        $installSuccess = $true
+                        $installMethod = "winget"
+                    } else {
+                        Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
+                    }
                 }
-                $name = $app.Name
-                Write-Log "Installed: $name" 'INFO'
+                if (-not $installSuccess -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
+                    Write-Log "Installing $($app.Name) via choco..." 'INFO'
+                    $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
+                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                    if ($chocoProc.ExitCode -eq 0) {
+                        $installSuccess = $true
+                        $installMethod = "choco"
+                    } else {
+                        Write-Log "$($app.Name) choco install failed with exit code $($chocoProc.ExitCode)" 'WARN'
+                    }
+                }
+                if ($installSuccess) {
+                    Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
+                    $success++
+                    $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
+                } else {
+                    Write-Log "Failed to install $($app.Name) (no available installer succeeded)" 'WARN'
+                    $fail++
+                    $detailedResults += "FAIL: $($app.Name) (installer failed)"
+                }
             } catch {
-                Write-Log "Failed to install $($app.Name): $_" 'WARN'
+                Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
+                $fail++
+                $detailedResults += "FAIL: $($app.Name) (exception)"
             }
         } else {
             Write-Log "$($app.Name) already installed." 'INFO'
+            $skipped++
+            $detailedResults += "SKIP: $($app.Name) already installed"
         }
     }
     # Check for Microsoft Office, install LibreOffice if not present
@@ -327,21 +401,40 @@ function Install-EssentialApps {
     }
     if (-not $officeInstalled) {
         Write-Log "Microsoft Office not detected. Installing LibreOffice as alternative..." 'INFO'
+        $libreSuccess = $false
         try {
             if (Get-Command winget -ErrorAction SilentlyContinue) {
-                winget install --id TheDocumentFoundation.LibreOffice --accept-source-agreements --accept-package-agreements --silent -e
-                Write-Log "LibreOffice installed via winget." 'INFO'
-            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
-                choco install libreoffice-fresh -y
-                Write-Log "LibreOffice installed via choco." 'INFO'
-            } else {
-                Write-Log "No installer found for LibreOffice." 'WARN'
+                $libreArgs = @("install", "--id", "TheDocumentFoundation.LibreOffice", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
+                $libreProc = Start-Process -FilePath "winget" -ArgumentList $libreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                if ($libreProc.ExitCode -eq 0) {
+                    Write-Log "LibreOffice installed via winget." 'INFO'
+                    $libreSuccess = $true
+                } else {
+                    Write-Log "LibreOffice winget install failed with exit code $($libreProc.ExitCode)" 'WARN'
+                }
+            }
+            if (-not $libreSuccess -and (Get-Command choco -ErrorAction SilentlyContinue)) {
+                $chocoLibreArgs = @("install", "libreoffice-fresh", "-y", "--no-progress")
+                $chocoLibreProc = Start-Process -FilePath "choco" -ArgumentList $chocoLibreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                if ($chocoLibreProc.ExitCode -eq 0) {
+                    Write-Log "LibreOffice installed via choco." 'INFO'
+                    $libreSuccess = $true
+                } else {
+                    Write-Log "LibreOffice choco install failed with exit code $($chocoLibreProc.ExitCode)" 'WARN'
+                }
+            }
+            if (-not $libreSuccess) {
+                Write-Log "No installer found or succeeded for LibreOffice." 'WARN'
             }
         } catch {
             Write-Log "Failed to install LibreOffice: $_" 'WARN'
         }
     } else {
         Write-Log "Microsoft Office detected. Skipping LibreOffice installation." 'INFO'
+    }
+    Write-Log ("Install Essential Apps summary: Installed: {0}, Failed: {1}, Skipped: {2}" -f $success, $fail, $skipped) 'INFO'
+    foreach ($result in $detailedResults) {
+        Write-Log $result 'INFO'
     }
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
@@ -698,16 +791,22 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 
 
+
 # === Built-in Maintenance Tasks ===
 # (All tasks are now executed above in the desired order)
 
-# Summary of all tasks
+# === Enhanced Task Results Summary ===
 $successCount = ($taskResults.Values | Where-Object { $_ }).Count
 $failCount = ($taskResults.Values | Where-Object { -not $_ }).Count
-Write-Log "All tasks completed. Success: $successCount, Failed: $failCount" 'INFO'
+$totalCount = $taskResults.Count
+$taskDetails = $taskResults.GetEnumerator() | ForEach-Object {
+    $status = if ($_.Value) { 'SUCCESS' } else { 'FAIL' }
+    "- $($_.Key): $status"
+}
+Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
+foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
 
-
-# === Reporting Section ===
+# === Enhanced Reporting Section ===
 # Save summary report in the same folder as script.bat (repo parent folder)
 $batPath = Join-Path $PSScriptRoot "script.bat"
 if (Test-Path $batPath) {
@@ -716,7 +815,13 @@ if (Test-Path $batPath) {
 } else {
     $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
 }
-"Maintenance completed at $(Get-Date -Format 'dd-MM-yyyy HH:mm:ss') on $env:COMPUTERNAME by $env:USERNAME" | Out-File -FilePath $summaryPath -Append
+$summaryLines = @()
+$summaryLines += "Maintenance completed at $(Get-Date -Format 'dd-MM-yyyy HH:mm:ss') on $env:COMPUTERNAME by $env:USERNAME."
+$summaryLines += "Total tasks: $totalCount, Success: $successCount, Failed: $failCount"
+$summaryLines += "Task breakdown:"
+$summaryLines += $taskDetails
+$summaryLines += "---"
+$summaryLines | Out-File -FilePath $summaryPath -Append
 Write-Log "Summary report written to $summaryPath" 'INFO'
 
 # Remove the repo folder (script_mentenanta) after report creation
