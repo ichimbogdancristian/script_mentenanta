@@ -1,3 +1,33 @@
+
+# =====================[ CENTRALIZED LOGGING FUNCTION ]====================
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+    )
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $entry = "[$timestamp] [$Level] $Message"
+    $entry | Out-File -FilePath $logPath -Append
+    Write-Host $entry
+}
+
+# === Central Coordination Policy for Task Execution ===
+function Invoke-Task {
+    param(
+        [string]$TaskName,
+        [scriptblock]$Action
+    )
+    Write-Log "Starting task: $TaskName" 'INFO'
+    try {
+        & $Action
+        Write-Log "Task succeeded: $TaskName" 'INFO'
+        return $true
+    } catch {
+        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
+        return $false
+    }
+}
+
 # =====================[ CENTRAL COORDINATION POLICY ]=====================
 # Centralized temp folder and essential/bloatware lists (inspired by system_maintenance)
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
@@ -88,6 +118,7 @@ function Disable-Telemetry {
     Write-Log "[END] Disable Telemetry" 'INFO'
 }
 
+
 # =====================[ CENTRAL TASK EXECUTION ]==========================
 # Use Invoke-Task for each new function
 Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
@@ -104,19 +135,6 @@ Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Warning "This script must be run as Administrator. Exiting."
     exit 1
-}
-
-###############################################################
-# Centralized Logging Function
-function Write-Log {
-    param(
-        [string]$Message,
-        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
-    )
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $entry = "[$timestamp] [$Level] $Message"
-    $entry | Out-File -FilePath $logPath -Append
-    Write-Host $entry
 }
 
 
