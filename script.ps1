@@ -37,7 +37,111 @@ function Invoke-Task {
     }
 }
 
-# =====================[ CENTRAL COORDINATION POLICY ]=====================
+# =====================[ MAIN SCRIPT STARTS HERE ]========================
+
+
+# =====================[ ENSURE WINGET, CHOCO & NUGET INSTALLED/UPDATED ]==================
+function Test-Winget {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Log "winget not found. Attempting to install winget..." 'WARN'
+        # Try to install App Installer from Microsoft Store (winget is part of it)
+        try {
+            Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle" -UseBasicParsing
+            Add-AppxPackage -Path "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+            Write-Log "winget installed via App Installer." 'INFO'
+        } catch {
+            Write-Log "Failed to install winget: $_" 'ERROR'
+        }
+    } else {
+        Write-Log "winget found. Checking for updates..." 'INFO'
+        try {
+            winget upgrade --id Microsoft.DesktopAppInstaller --accept-source-agreements --accept-package-agreements --silent
+            Write-Log "winget updated." 'INFO'
+        } catch {
+            Write-Log "Failed to update winget: $_" 'WARN'
+        }
+    }
+}
+
+function Test-Choco {
+    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+        Write-Log "choco not found. Attempting to install Chocolatey..." 'WARN'
+        try {
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            Write-Log "choco installed." 'INFO'
+        } catch {
+            Write-Log "Failed to install choco: $_" 'ERROR'
+        }
+    } else {
+        Write-Log "choco found. Checking for updates..." 'INFO'
+        try {
+            choco upgrade chocolatey -y
+            Write-Log "choco updated." 'INFO'
+        } catch {
+            Write-Log "Failed to update choco: $_" 'WARN'
+        }
+    }
+}
+
+# Ensure NuGet is installed/updated and NuGet provider is available (unattended)
+function Test-NuGet {
+    $nugetInstalled = $false
+    if (Get-Command nuget -ErrorAction SilentlyContinue) {
+        $nugetInstalled = $true
+        Write-Log "NuGet found. Checking for updates..." 'INFO'
+        try {
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Start-Process -FilePath "winget" -ArgumentList @("upgrade", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
+                Write-Log "NuGet updated via winget." 'INFO'
+            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+                Start-Process -FilePath "choco" -ArgumentList @("upgrade", "nuget.commandline", "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
+                Write-Log "NuGet updated via choco." 'INFO'
+            }
+        } catch {
+            Write-Log "Failed to update NuGet: $_" 'WARN'
+        }
+    } else {
+        Write-Log "NuGet not found. Attempting to install NuGet..." 'WARN'
+        try {
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Start-Process -FilePath "winget" -ArgumentList @("install", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
+                Write-Log "NuGet installed via winget." 'INFO'
+            } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+                Start-Process -FilePath "choco" -ArgumentList @("install", "nuget.commandline", "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
+                Write-Log "NuGet installed via choco." 'INFO'
+            } else {
+                Write-Log "No installer found for NuGet." 'WARN'
+            }
+        } catch {
+            Write-Log "Failed to install NuGet: $_" 'ERROR'
+        }
+    }
+    # Ensure NuGet provider for PowerShell is installed (unattended)
+    try {
+        $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+        if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
+            Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+            Write-Log "NuGet provider for PowerShell installed/updated." 'INFO'
+        } else {
+            Write-Log "NuGet provider for PowerShell is present and up to date." 'INFO'
+        }
+    } catch {
+        Write-Log "Failed to install or update NuGet provider for PowerShell: $_" 'WARN'
+    }
+}
+
+# Set up log file in the extracted folder (always use the script's folder)
+$logPath = Join-Path $PSScriptRoot "maintenance.log"
+Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
+
+# Ensure dependencies before anything else
+Test-Winget
+Test-Choco
+Test-NuGet
+
 # Centralized temp folder and essential/bloatware lists (inspired by system_maintenance)
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
 if (-not (Test-Path $global:TempFolder)) {
