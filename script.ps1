@@ -82,10 +82,10 @@ function Test-NuGet {
         Write-Log "NuGet found. Checking for updates..." 'INFO'
         try {
             if (Get-Command winget -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "winget" -ArgumentList @("upgrade", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
+                Start-Process -FilePath "winget" -ArgumentList @("upgrade", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -WindowStyle Hidden -Wait
                 Write-Log "NuGet updated via winget." 'INFO'
             } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "choco" -ArgumentList @("upgrade", "nuget.commandline", "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
+                Start-Process -FilePath "choco" -ArgumentList @("upgrade", "nuget.commandline", "-y", "--no-progress") -WindowStyle Hidden -Wait
                 Write-Log "NuGet updated via choco." 'INFO'
             }
         } catch {
@@ -95,10 +95,10 @@ function Test-NuGet {
         Write-Log "NuGet not found. Attempting to install NuGet..." 'WARN'
         try {
             if (Get-Command winget -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "winget" -ArgumentList @("install", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
+                Start-Process -FilePath "winget" -ArgumentList @("install", "--id", "NuGet.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -WindowStyle Hidden -Wait
                 Write-Log "NuGet installed via winget." 'INFO'
             } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "choco" -ArgumentList @("install", "nuget.commandline", "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
+                Start-Process -FilePath "choco" -ArgumentList @("install", "nuget.commandline", "-y", "--no-progress") -WindowStyle Hidden -Wait
                 Write-Log "NuGet installed via choco." 'INFO'
             } else {
                 Write-Log "No installer found for NuGet." 'WARN'
@@ -112,7 +112,7 @@ function Test-NuGet {
         $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
             Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -Confirm:$false | Out-Null
             Write-Log "NuGet provider for PowerShell installed/updated." 'INFO'
         } else {
             Write-Log "NuGet provider for PowerShell is present and up to date." 'INFO'
@@ -282,10 +282,10 @@ function Install-EssentialApps {
             try {
                 if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                    Start-Process -FilePath "winget" -ArgumentList @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -NoNewWindow -WindowStyle Hidden -Wait
+                    Start-Process -FilePath "winget" -ArgumentList @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e") -WindowStyle Hidden -Wait
                 } elseif ($app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via choco..." 'INFO'
-                    Start-Process -FilePath "choco" -ArgumentList @("install", $app.Choco, "-y", "--no-progress") -NoNewWindow -WindowStyle Hidden -Wait
+                    Start-Process -FilePath "choco" -ArgumentList @("install", $app.Choco, "-y", "--no-progress") -WindowStyle Hidden -Wait
                 } else {
                     Write-Log "No installer found for $($app.Name)" 'WARN'
                 }
