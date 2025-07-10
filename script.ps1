@@ -112,8 +112,10 @@ function Test-NuGet {
     }
 }
 
-# Set up log file in the extracted folder (always use the script's folder)
-$logPath = Join-Path $PSScriptRoot "maintenance.log"
+
+# Set up log file one folder up from the script's folder
+$parentFolder = Split-Path $PSScriptRoot -Parent
+$logPath = Join-Path $parentFolder "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
 # Ensure dependencies before anything else
@@ -333,7 +335,7 @@ function Install-EssentialApps {
                 if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via winget..." 'INFO'
                     $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
                     if ($wingetProc.ExitCode -eq 0) {
                         $installSuccess = $true
                         $installMethod = "winget"
@@ -344,7 +346,7 @@ function Install-EssentialApps {
                 if (-not $installSuccess -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via choco..." 'INFO'
                     $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
-                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
                     if ($chocoProc.ExitCode -eq 0) {
                         $installSuccess = $true
                         $installMethod = "choco"
