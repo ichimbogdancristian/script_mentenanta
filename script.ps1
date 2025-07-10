@@ -29,14 +29,18 @@ function Invoke-Task {
 # =====================[ MAIN SCRIPT STARTS HERE ]========================
 
 
-# =====================[ ENSURE WINGET, CHOCO & NUGET INSTALLED/UPDATED ]==================
+
+
+# =====================[ DEPENDENCIES SECTION: ENSURE WINGET, CHOCO & NUGET INSTALLED/UPDATED ]==================
+# Optimized and enhanced dependency management for robust, silent, and idempotent operation
+
 function Test-Winget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Log "winget not found. Attempting to install winget..." 'WARN'
-        # Try to install App Installer from Microsoft Store (winget is part of it)
         try {
-            Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle" -UseBasicParsing
-            Add-AppxPackage -Path "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+            $wingetBundle = "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+            Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile $wingetBundle -UseBasicParsing -ErrorAction Stop
+            Add-AppxPackage -Path $wingetBundle -ErrorAction Stop
             Write-Log "winget installed via App Installer." 'INFO'
         } catch {
             Write-Log "Failed to install winget: $_" 'ERROR'
@@ -66,7 +70,7 @@ function Test-Choco {
     } else {
         Write-Log "choco found. Checking for updates..." 'INFO'
         try {
-            choco upgrade chocolatey -y
+            choco upgrade chocolatey -y --no-progress
             Write-Log "choco updated." 'INFO'
         } catch {
             Write-Log "Failed to update choco: $_" 'WARN'
@@ -74,15 +78,8 @@ function Test-Choco {
     }
 }
 
-# Ensure NuGet is installed/updated and NuGet provider is available (unattended)
 function Test-NuGet {
-    # Hardened: Set all relevant environment variables and preferences
-    $env:POWERSHELL_TELEMETRY_OPTOUT = '1'
-    $env:POWERSHELL_UPDATECHECK = 'Off'
-    $ProgressPreference = 'SilentlyContinue'
-    $ErrorActionPreference = 'Stop'
-    $PSDefaultParameterValues['*:Confirm'] = $false
-
+    # Ensure NuGet CLI is present and up to date
     $nugetInstalled = $false
     if (Get-Command nuget -ErrorAction SilentlyContinue) {
         $nugetInstalled = $true
@@ -115,32 +112,46 @@ function Test-NuGet {
         }
     }
 
-    # Ensure NuGet provider for PowerShell is installed (unattended, with fallback)
-    try {
-        $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-        if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
-            Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
+    # Ensure NuGet provider for PowerShell is installed (unattended, with bulletproof fallback)
+    $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+    if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
+        Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
+        $installSuccess = $false
+        try {
+            $ProgressPreference = 'SilentlyContinue'
+            $ErrorActionPreference = 'Stop'
+            $PSDefaultParameterValues['*:Confirm'] = $false
+            $env:POWERSHELL_UPDATECHECK = 'Off'
+            $env:POWERSHELL_TELEMETRY_OPTOUT = '1'
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope CurrentUser -Confirm:$false -ErrorAction Stop
+            $installSuccess = $true
+            Write-Log "NuGet provider for PowerShell installed/updated." 'INFO'
+        } catch {
+            Write-Log "Install-PackageProvider failed, attempting direct NuGet provider DLL download..." 'WARN'
+            $nugetProviderUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
+            $nugetProviderDest = Join-Path $env:LOCALAPPDATA "PackageManagement\ProviderAssemblies\"
+            if (-not (Test-Path $nugetProviderDest)) { New-Item -Path $nugetProviderDest -ItemType Directory -Force | Out-Null }
+            $dllPath = Join-Path $nugetProviderDest "Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
             try {
+                Invoke-WebRequest -Uri $nugetProviderUrl -OutFile $dllPath -UseBasicParsing -ErrorAction Stop
+                Write-Log "NuGet provider DLL downloaded to $dllPath" 'INFO'
+                $ProgressPreference = 'SilentlyContinue'
+                $ErrorActionPreference = 'Stop'
+                $PSDefaultParameterValues['*:Confirm'] = $false
+                $env:POWERSHELL_UPDATECHECK = 'Off'
+                $env:POWERSHELL_TELEMETRY_OPTOUT = '1'
                 Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope CurrentUser -Confirm:$false -ErrorAction Stop
-                Write-Log "NuGet provider for PowerShell installed/updated." 'INFO'
+                $installSuccess = $true
+                Write-Log "NuGet provider for PowerShell installed/updated after manual DLL download." 'INFO'
             } catch {
-                Write-Log "Install-PackageProvider failed, attempting direct NuGet provider DLL download..." 'WARN'
-                $nugetProviderUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
-                $nugetProviderDest = Join-Path $env:LOCALAPPDATA "PackageManagement\ProviderAssemblies\"
-                if (-not (Test-Path $nugetProviderDest)) { New-Item -Path $nugetProviderDest -ItemType Directory -Force | Out-Null }
-                $dllPath = Join-Path $nugetProviderDest "Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
-                try {
-                    Invoke-WebRequest -Uri $nugetProviderUrl -OutFile $dllPath -UseBasicParsing -ErrorAction Stop
-                    Write-Log "NuGet provider DLL downloaded to $dllPath" 'INFO'
-                } catch {
-                    Write-Log "Failed to download NuGet provider DLL: $_" 'ERROR'
-                }
+                Write-Log "Failed to download or register NuGet provider DLL: $_" 'ERROR'
             }
-        } else {
-            Write-Log "NuGet provider for PowerShell is present and up to date." 'INFO'
         }
-    } catch {
-        Write-Log "Failed to install or update NuGet provider for PowerShell: $_" 'WARN'
+        if (-not $installSuccess) {
+            Write-Log "NuGet provider installation failed after all attempts. Manual intervention may be required." 'ERROR'
+        }
+    } else {
+        Write-Log "NuGet provider for PowerShell is present and up to date." 'INFO'
     }
 }
 
