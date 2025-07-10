@@ -598,124 +598,7 @@ function Protect-SystemRestore {
     Write-Log "[END] System Restore Protection" 'INFO'
 }
 
-
-# =====================[ TASK EXECUTION IN DESIRED ORDER ]==========================
-Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
- $taskResults = @{}
-
-# 1. System Restore Protection
-$taskResults['Task1_SystemRestoreProtection'] = Invoke-Task 'SystemRestoreProtection' { Protect-SystemRestore }
-
-# 2. Remove Bloatware
-$taskResults['Task2_RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
-
-# 3. Install Essential Apps
-$taskResults['Task3_InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
-
-# 4. Update All Apps and Packages
-$taskResults['Task4_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
-    # [TASK 5] Update all apps and packages
-    Write-Log "[START] Update All Apps and Packages" 'INFO'
-    # Update with winget
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        try {
-            Write-Log "Running: winget upgrade --all --silent --accept-source-agreements --accept-package-agreements" 'INFO'
-            winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
-            Write-Log "winget upgrade completed." 'INFO'
-        } catch {
-            Write-Log "winget upgrade failed: $_" 'WARN'
-        }
-    } else {
-        Write-Log "winget not found, skipping winget upgrades." 'WARN'
-    }
-    # Update with Chocolatey
-    if (Get-Command choco -ErrorAction SilentlyContinue) {
-        try {
-            Write-Log "Running: choco upgrade all -y" 'INFO'
-            choco upgrade all -y
-            Write-Log "choco upgrade completed." 'INFO'
-        } catch {
-            Write-Log "choco upgrade failed: $_" 'WARN'
-        }
-    } else {
-        Write-Log "choco not found, skipping choco upgrades." 'WARN'
-    }
-    Write-Log "[END] Update All Apps and Packages" 'INFO'
-}
-
-# 5. System Inventory
-$taskResults['Task5_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
-
-# 6. Windows Update Check
-$taskResults['Task6_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
-    # [TASK 7] Windows Update check
-    Write-Log "Checking for Windows Updates..." 'INFO'
-    try {
-        # Try to use PSWindowsUpdate module if available
-        if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
-            try {
-                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -ErrorAction Stop
-                Write-Log "PSWindowsUpdate module installed." 'INFO'
-            } catch {
-                Write-Log "Failed to install PSWindowsUpdate module: $_" 'WARN'
-            }
-        }
-        Import-Module PSWindowsUpdate -ErrorAction SilentlyContinue
-        if (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue) {
-            $updates = Get-WindowsUpdate -AcceptAll -Install -AutoReboot -ErrorAction Stop
-            if ($updates) {
-                Write-Log ("Installed updates: " + ($updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique | Out-String)) 'INFO'
-            } else {
-                Write-Log "No new updates were found or installed." 'INFO'
-            }
-        } else {
-            Write-Log "Get-WindowsUpdate command not available. Please update PowerShell or install PSWindowsUpdate." 'WARN'
-        }
-    } catch {
-        Write-Log "Failed to check or install Windows Updates: $_" 'WARN'
-    }
-}
-
-# 7. Disable Telemetry
-$taskResults['Task7_DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
-
-# 8. Clean Temp Files
-$taskResults['Task8_CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
-    # [TASK 8] Clean temp files
-    $temp = $env:TEMP
-    $tempFiles = Get-ChildItem -Path $temp -Recurse -ErrorAction SilentlyContinue
-    $deleted = 0
-    foreach ($file in $tempFiles) {
-        try {
-            Remove-Item $file.FullName -Force -Recurse -ErrorAction Stop
-            $deleted++
-        } catch {}
-    }
-    Write-Log "Deleted $deleted temp files from $temp" 'INFO'
-}
-
-# 9. Disk Cleanup
-$taskResults['Task9_DiskCleanup'] = Invoke-Task 'DiskCleanup' {
-    # [TASK 9] Disk cleanup
-    Write-Log "Running disk cleanup..." 'INFO'
-    try {
-        # Set up the sagerun profile (run once to configure options)
-        $cleanmgrSetup = "/sageset:1"
-        Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrSetup -Wait
-        # Run cleanmgr.exe with all options silently
-        $cleanmgrArgs = "/sagerun:1"
-        Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrArgs -Wait
-        Write-Log "Disk cleanup completed using cleanmgr.exe." 'INFO'
-    } catch {
-        Write-Log "Disk cleanup failed: $_" 'WARN'
-    }
-}
-
-Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
-
-# Maintenance Script Boilerplate for Windows 10/11
-# This script is intended to be downloaded and executed by script.bat
-# Add your maintenance tasks below
+### ===[ CENTRAL TASK DISPATCHER & ENHANCED COORDINATION ]===
 
 # Ensure script is running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -723,19 +606,116 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit 1
 }
 
+# Define all tasks in order, with names and scriptblocks
+$AllTasks = @(
+    @{ Name = 'SystemRestoreProtection'; Action = { Protect-SystemRestore } },
+    @{ Name = 'RemoveBloatware'; Action = { Remove-Bloatware } },
+    @{ Name = 'InstallEssentialApps'; Action = { Install-EssentialApps } },
+    @{ Name = 'UpdateAllPackages'; Action = {
+        Write-Log "[START] Update All Apps and Packages" 'INFO'
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            try {
+                Write-Log "Running: winget upgrade --all --silent --accept-source-agreements --accept-package-agreements" 'INFO'
+                winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
+                Write-Log "winget upgrade completed." 'INFO'
+            } catch {
+                Write-Log "winget upgrade failed: $_" 'WARN'
+            }
+        } else {
+            Write-Log "winget not found, skipping winget upgrades." 'WARN'
+        }
+        if (Get-Command choco -ErrorAction SilentlyContinue) {
+            try {
+                Write-Log "Running: choco upgrade all -y" 'INFO'
+                choco upgrade all -y
+                Write-Log "choco upgrade completed." 'INFO'
+            } catch {
+                Write-Log "choco upgrade failed: $_" 'WARN'
+            }
+        } else {
+            Write-Log "choco not found, skipping choco upgrades." 'WARN'
+        }
+        Write-Log "[END] Update All Apps and Packages" 'INFO'
+    } },
+    @{ Name = 'SystemInventory'; Action = { Get-SystemInventory } },
+    @{ Name = 'WindowsUpdateCheck'; Action = {
+        Write-Log "Checking for Windows Updates..." 'INFO'
+        try {
+            if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+                try {
+                    Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -ErrorAction Stop
+                    Write-Log "PSWindowsUpdate module installed." 'INFO'
+                } catch {
+                    Write-Log "Failed to install PSWindowsUpdate module: $_" 'WARN'
+                }
+            }
+            Import-Module PSWindowsUpdate -ErrorAction SilentlyContinue
+            if (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue) {
+                $updates = Get-WindowsUpdate -AcceptAll -Install -AutoReboot -ErrorAction Stop
+                if ($updates) {
+                    Write-Log ("Installed updates: " + ($updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique | Out-String)) 'INFO'
+                } else {
+                    Write-Log "No new updates were found or installed." 'INFO'
+                }
+            } else {
+                Write-Log "Get-WindowsUpdate command not available. Please update PowerShell or install PSWindowsUpdate." 'WARN'
+            }
+        } catch {
+            Write-Log "Failed to check or install Windows Updates: $_" 'WARN'
+        }
+    } },
+    @{ Name = 'DisableTelemetry'; Action = { Disable-Telemetry } },
+    @{ Name = 'CleanTempFiles'; Action = {
+        $temp = $env:TEMP
+        $tempFiles = Get-ChildItem -Path $temp -Recurse -ErrorAction SilentlyContinue
+        $deleted = 0
+        foreach ($file in $tempFiles) {
+            try {
+                Remove-Item $file.FullName -Force -Recurse -ErrorAction Stop
+                $deleted++
+            } catch {}
+        }
+        Write-Log "Deleted $deleted temp files from $temp" 'INFO'
+    } },
+    @{ Name = 'DiskCleanup'; Action = {
+        Write-Log "Running disk cleanup..." 'INFO'
+        try {
+            $cleanmgrSetup = "/sageset:1"
+            Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrSetup -Wait
+            $cleanmgrArgs = "/sagerun:1"
+            Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrArgs -Wait
+            Write-Log "Disk cleanup completed using cleanmgr.exe." 'INFO'
+        } catch {
+            Write-Log "Disk cleanup failed: $_" 'WARN'
+        }
+    } }
+)
 
+# Optionally: allow skipping tasks via command-line or config (future enhancement)
 
-# === Built-in Maintenance Tasks ===
-# (All tasks are now executed above in the desired order)
+Write-Log "[COORDINATION] Starting all maintenance tasks..." 'INFO'
+$taskResults = @{}
+$summaryList = @()
+$step = 1
+foreach ($task in $AllTasks) {
+    $taskName = $task.Name
+    $action = $task.Action
+    Write-Log ("[STEP $step] Executing: $taskName") 'INFO'
+    $result = Invoke-Task $taskName $action
+    $taskResults[$taskName] = $result
+    $summaryList += [PSCustomObject]@{ Step = $step; Task = $taskName; Success = $result }
+    $step++
+}
+Write-Log "[COORDINATION] All maintenance tasks completed." 'INFO'
 
-# Summary of all tasks
-$successCount = ($taskResults.Values | Where-Object { $_ }).Count
-$failCount = ($taskResults.Values | Where-Object { -not $_ }).Count
-Write-Log "All tasks completed. Success: $successCount, Failed: $failCount" 'INFO'
-
+# Print summary table to log and console
+$successCount = ($summaryList | Where-Object { $_.Success }).Count
+$failCount = ($summaryList | Where-Object { -not $_.Success }).Count
+Write-Log ("All tasks completed. Success: $successCount, Failed: $failCount") 'INFO'
+Write-Host "`n==== Maintenance Task Summary ===="
+$summaryList | Format-Table -AutoSize | Out-String | Write-Host
 
 # === Reporting Section ===
-# Save summary report in the same folder as script.bat (repo parent folder)
 $batPath = Join-Path $PSScriptRoot "script.bat"
 if (Test-Path $batPath) {
     $batDir = Split-Path $batPath -Parent
@@ -770,4 +750,5 @@ Write-Log "Script ended." 'INFO'
 if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host
     Read-Host -Prompt 'Press Enter to close this window...'
+}
 }
