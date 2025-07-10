@@ -76,9 +76,7 @@ function Test-Choco {
 
 # Ensure NuGet is installed/updated and NuGet provider is available (unattended)
 function Test-NuGet {
-    $nugetInstalled = $false
     if (Get-Command nuget -ErrorAction SilentlyContinue) {
-        $nugetInstalled = $true
         Write-Log "NuGet found. Checking for updates..." 'INFO'
         # No direct update method without package manager, so just log
         Write-Log "NuGet is present. Manual update required if not using a package manager." 'INFO'
@@ -519,7 +517,7 @@ function Disable-Telemetry {
         Write-Log "Failed to set Chrome browser policies: $_" 'WARN'
     }
 
-    # Deploy Firefox policies.json for telemetry, homepage, uBlock Origin, default browser, bookmarks bar, and translation
+    # Deploy Firefox policies.json for telemetry, homepage, uBlock Origin, default browser (from external file if present)
     try {
         $ffPath = $null
         if (Test-Path 'C:\Program Files\Mozilla Firefox') {
@@ -530,7 +528,15 @@ function Disable-Telemetry {
         if ($ffPath) {
             $distPath = Join-Path $ffPath 'distribution'
             if (-not (Test-Path $distPath)) { New-Item -Path $distPath -ItemType Directory -Force | Out-Null }
-            $policyJson = @"
+            $externalPolicyPath = Join-Path $PSScriptRoot 'firefox_policies.json'
+            if (Test-Path $externalPolicyPath) {
+                Copy-Item -Path $externalPolicyPath -Destination (Join-Path $distPath 'policies.json') -Force
+                Write-Log "Firefox policies.json copied from firefox_policies.json and deployed." 'INFO'
+                Remove-Item -Path $externalPolicyPath -Force
+                Write-Log "firefox_policies.json removed from script folder." 'INFO'
+            } else {
+                # fallback: use built-in policy if external file not found
+                $policyJson = @"
 {
   "policies": {
     "DisableTelemetry": true,
@@ -545,15 +551,14 @@ function Disable-Telemetry {
         "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
       ]
     },
-    "DefaultBrowser": true,
-    "BookmarksToolbar": true,
-    "OfferToTranslate": false
+    "DefaultBrowser": true
   }
 }
 "@
-            $policyPath = Join-Path $distPath 'policies.json'
-            $policyJson | Set-Content -Path $policyPath -Encoding UTF8
-            Write-Log "Firefox policies.json deployed for telemetry, homepage, uBlock Origin, default browser, bookmarks bar, and translation." 'INFO'
+                $policyPath = Join-Path $distPath 'policies.json'
+                $policyJson | Set-Content -Path $policyPath -Encoding UTF8
+                Write-Log "Firefox policies.json deployed from built-in policy." 'INFO'
+            }
         } else {
             Write-Log "Could not find Firefox installation path for policies.json deployment." 'WARN'
         }
