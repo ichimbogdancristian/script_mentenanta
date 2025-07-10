@@ -481,4 +481,3 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host
     Read-Host -Prompt 'Press Enter to close this window...'
 }
-}
