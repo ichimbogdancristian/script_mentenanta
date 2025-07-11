@@ -109,6 +109,21 @@ function Test-NuGet {
         if (Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue) {
             Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
         }
+        # Try to install NuGet provider via winget first (avoids interactive prompt)
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            Write-Log "Attempting to install NuGet provider via winget (Microsoft.NuGet)..." 'INFO'
+            try {
+                $wingetArgs = @("install", "--id", "Microsoft.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
+                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
+                if ($wingetProc.ExitCode -eq 0) {
+                    Write-Log "NuGet provider installed via winget." 'INFO'
+                } else {
+                    Write-Log "NuGet provider winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
+                }
+            } catch {
+                Write-Log "Exception during NuGet provider install via winget: $_" 'WARN'
+            }
+        }
         $ProgressPreference = 'SilentlyContinue'
         $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
