@@ -265,56 +265,67 @@ function Remove-Bloatware {
     # [TASK 3] Remove Bloatware
     Write-Log "[START] Remove Bloatware" 'INFO'
     $bloatwareList = Get-Content $bloatwareListPath | ForEach-Object { $_ | ConvertFrom-Json }
-    $installedApps = Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
-    $toRemove = $bloatwareList | Where-Object { $installedApps -contains $_ }
-    $notFound = $bloatwareList | Where-Object { $installedApps -notcontains $_ }
+    $installedAppx = Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
     $success = 0
     $fail = 0
-    foreach ($bloat in $toRemove) {
-        try {
-            Write-Log ("Attempting to remove bloatware: {0}" -f $bloat) 'INFO'
-            $appx = Get-AppxPackage -AllUsers -Name $bloat
-            if ($appx) {
-                $appx | Remove-AppxPackage -AllUsers -ErrorAction Stop
-                Write-Log ("Removed: {0}" -f $bloat) 'INFO'
-                $success++
-            } else {
-                Write-Log ("AppxPackage {0} not found for removal (may already be removed)." -f $bloat) 'WARN'
+    $notFound = @()
+    $wingetCandidates = @()
+    $chocoCandidates = @()
+
+    foreach ($bloat in $bloatwareList) {
+        if ($installedAppx -contains $bloat) {
+            try {
+                Write-Log ("Attempting to remove bloatware: {0}" -f $bloat) 'INFO'
+                $appx = Get-AppxPackage -AllUsers -Name $bloat
+                if ($appx) {
+                    $appx | Remove-AppxPackage -AllUsers -ErrorAction Stop
+                    Write-Log ("Removed: {0}" -f $bloat) 'INFO'
+                    $success++
+                } else {
+                    Write-Log ("AppxPackage {0} not found for removal (may already be removed)." -f $bloat) 'WARN'
+                    $notFound += $bloat
+                }
+            } catch {
+                Write-Log ("Failed to remove {0}: {1}" -f $bloat, $_) 'WARN'
+                $fail++
+                # If Appx removal fails, try winget/choco next
+                $wingetCandidates += $bloat
+                $chocoCandidates += $bloat
             }
-        } catch {
-            Write-Log ("Failed to remove {0}: {1}" -f $bloat, $_) 'WARN'
-            $fail++
+        } else {
+            Write-Log "Bloatware not found (already removed or never installed): $bloat" 'INFO'
+            # Not an AppxPackage, try winget/choco
+            $wingetCandidates += $bloat
+            $chocoCandidates += $bloat
         }
     }
-    if ($notFound.Count -gt 0) {
-        foreach ($missing in $notFound) {
-            Write-Log "Bloatware not found (already removed or never installed): $missing" 'INFO'
-        }
-    }
-    # Try to remove via winget if Appx removal did not work
-    foreach ($bloat in $toRemove) {
-        try {
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
+
+    # Try to remove via winget for candidates
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        foreach ($bloat in $wingetCandidates | Sort-Object -Unique) {
+            try {
                 Write-Log ("Attempting to remove {0} via winget..." -f $bloat) 'INFO'
                 winget uninstall --id $bloat --accept-source-agreements --accept-package-agreements --silent -e
                 Write-Log ("{0}: winget uninstall attempted." -f $bloat) 'INFO'
+            } catch {
+                Write-Log ("winget uninstall failed for {0}: {1}" -f $bloat, $_) 'WARN'
             }
-        } catch {
-            Write-Log ("winget uninstall failed for {0}: {1}" -f $bloat, $_) 'WARN'
         }
     }
-    # Try to remove via choco if available
-    foreach ($bloat in $toRemove) {
-        try {
-            if (Get-Command choco -ErrorAction SilentlyContinue) {
+
+    # Try to remove via choco for candidates
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        foreach ($bloat in $chocoCandidates | Sort-Object -Unique) {
+            try {
                 Write-Log ("Attempting to remove {0} via choco..." -f $bloat) 'INFO'
                 choco uninstall $bloat -y --no-progress
                 Write-Log ("{0}: choco uninstall attempted." -f $bloat) 'INFO'
+            } catch {
+                Write-Log ("choco uninstall failed for {0}: {1}" -f $bloat, $_) 'WARN'
             }
-        } catch {
-            Write-Log ("choco uninstall failed for {0}: {1}" -f $bloat, $_) 'WARN'
         }
     }
+
     Write-Log ("Remove Bloatware summary: Removed: {0}, Failed: {1}, Not found: {2}" -f $success, $fail, $notFound.Count) 'INFO'
     Write-Log "[END] Remove Bloatware" 'INFO'
 }
