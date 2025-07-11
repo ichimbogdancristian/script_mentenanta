@@ -105,6 +105,10 @@ function Test-NuGet {
     }
     # Ensure NuGet provider for PowerShell is installed (unattended)
     try {
+        # Trust PSGallery to suppress prompts
+        if (Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue) {
+            Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+        }
         $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
             Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
