@@ -76,23 +76,31 @@ function Test-Choco {
 
 # Ensure NuGet is installed/updated and NuGet provider is available (unattended)
 function Test-NuGet {
+    $nugetPath = Join-Path $env:ProgramData "nuget"
+    if (-not (Test-Path $nugetPath)) { New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null }
+    $nugetExe = Join-Path $nugetPath "nuget.exe"
+    $nugetUrl = "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
     if (Get-Command nuget -ErrorAction SilentlyContinue) {
-        Write-Log "NuGet found. Checking for updates..." 'INFO'
-        # No direct update method without package manager, so just log
-        Write-Log "NuGet is present. Manual update required if not using a package manager." 'INFO'
-    } else {
-        Write-Log "NuGet not found. Attempting to install NuGet manually..." 'WARN'
+        Write-Log "NuGet found. Updating unattended..." 'INFO'
         try {
-            $nugetUrl = "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
-            $nugetPath = Join-Path $env:ProgramData "nuget"
-            if (-not (Test-Path $nugetPath)) { New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null }
-            $nugetExe = Join-Path $nugetPath "nuget.exe"
             Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetExe -UseBasicParsing
-            # Add to PATH for current session
-            $env:PATH = "$nugetPath;" + $env:PATH
-            Write-Log "NuGet manually downloaded to $nugetExe and added to PATH." 'INFO'
+            Write-Log "NuGet updated to latest version at $nugetExe." 'INFO'
         } catch {
-            Write-Log "Failed to manually install NuGet: $_" 'ERROR'
+            Write-Log "Failed to update NuGet: $_" 'ERROR'
+        }
+        # Add to PATH for current session if not already
+        if (-not ($env:PATH -split ';' | Where-Object { $_ -eq $nugetPath })) {
+            $env:PATH = "$nugetPath;" + $env:PATH
+            Write-Log "NuGet path added to PATH." 'INFO'
+        }
+    } else {
+        Write-Log "NuGet not found. Installing unattended..." 'WARN'
+        try {
+            Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetExe -UseBasicParsing
+            $env:PATH = "$nugetPath;" + $env:PATH
+            Write-Log "NuGet installed to $nugetExe and added to PATH." 'INFO'
+        } catch {
+            Write-Log "Failed to install NuGet: $_" 'ERROR'
         }
     }
     # Ensure NuGet provider for PowerShell is installed (unattended)
@@ -735,7 +743,7 @@ $taskResults['Task6_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
         }
         Import-Module PSWindowsUpdate -ErrorAction SilentlyContinue
         if (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue) {
-            $updates = Get-WindowsUpdate -AcceptAll -Install -AutoReboot -ErrorAction Stop
+            $updates = Get-WindowsUpdate -AcceptAll -Install -ErrorAction Stop
             if ($updates) {
                 Write-Log ("Installed updates: " + ($updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique | Out-String)) 'INFO'
             } else {
@@ -786,9 +794,7 @@ $taskResults['Task9_DiskCleanup'] = Invoke-Task 'DiskCleanup' {
 
 Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
 
-# Maintenance Script Boilerplate for Windows 10/11
-# This script is intended to be downloaded and executed by script.bat
-# Add your maintenance tasks below
+
 
 # Ensure script is running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
