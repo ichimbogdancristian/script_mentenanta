@@ -109,10 +109,11 @@ function Test-NuGet {
         if (Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue) {
             Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
         }
+        $ProgressPreference = 'SilentlyContinue'
         $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
             Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -Confirm:$false | Out-Null
+            $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope CurrentUser -Confirm:$false
             Write-Log "NuGet provider for PowerShell installed/updated." 'INFO'
         } else {
             Write-Log "NuGet provider for PowerShell is present and up to date." 'INFO'
