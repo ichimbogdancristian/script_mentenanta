@@ -179,9 +179,9 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[Inventory] Collecting installed winget apps (source: winget, timeout: 2min)..." 'INFO' $TaskLogPath
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         $wingetOutput = Join-Path $inventoryFolder 'inventory_winget.txt'
-        $wingetArgs = @('list', '--source', 'winget', '--accept-source-agreements')
+        $wingetArgs = @('list', '--source', 'winget', '--accept-source-agreements', '--silent')
         try {
-            $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -PassThru
+            $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -NoNewWindow -Wait -PassThru
             $timeout = 120 # seconds
             $interval = 30 # seconds
             $elapsed = 0
@@ -209,7 +209,7 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[Inventory] Collecting installed choco apps..." 'INFO' $TaskLogPath
     if (Get-Command choco -ErrorAction SilentlyContinue) {
         try {
-            choco list --local-only > (Join-Path $inventoryFolder 'inventory_choco.txt')
+            choco list --local-only --no-progress -y > (Join-Path $inventoryFolder 'inventory_choco.txt')
             Write-Log "[Inventory] Choco apps collected." 'INFO' $TaskLogPath
         } catch { Write-Log "[Inventory] Choco apps failed: $_" 'WARN' $TaskLogPath }
     }
@@ -810,7 +810,7 @@ function Remove-Bloatware {
                 winget uninstall --id $bloat --accept-source-agreements --accept-package-agreements --silent -e
             }
             if (Get-Command choco -ErrorAction SilentlyContinue) {
-                choco uninstall $bloat -y
+                choco uninstall $bloat -y --no-progress
             }
             $removed++
             Write-Log "Removed bloatware: $bloat" 'INFO'
@@ -851,7 +851,7 @@ function Install-EssentialApps {
                 if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via winget..." 'INFO'
                     $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
+                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
                     if ($wingetProc.ExitCode -eq 0) {
                         $installSuccess = $true
                         $installMethod = "winget"
@@ -862,7 +862,7 @@ function Install-EssentialApps {
                 if (-not $installSuccess -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via choco..." 'INFO'
                     $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
-                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
                     if ($chocoProc.ExitCode -eq 0) {
                         $installSuccess = $true
                         $installMethod = "choco"
