@@ -1,3 +1,48 @@
+# =====================[ SYSTEM INVENTORY FIRST ]==================
+function Get-ExtensiveSystemInventory {
+    Write-Log "[START] Extensive System Inventory" 'INFO'
+    $inventoryFolder = $global:TempFolder
+    if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
+    # System info
+    Get-ComputerInfo | Out-File (Join-Path $inventoryFolder 'inventory_system.txt')
+    # Installed Appx apps
+    Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
+    # Installed winget apps
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget list > (Join-Path $inventoryFolder 'inventory_winget.txt')
+    }
+    # Installed choco apps
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        choco list --local-only > (Join-Path $inventoryFolder 'inventory_choco.txt')
+    }
+    # Registry uninstall keys
+    $regApps = @()
+    $uninstallKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($key in $uninstallKeys) {
+        $regApps += Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+            (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
+        }
+    }
+    $regApps | Sort-Object -Unique | Out-File (Join-Path $inventoryFolder 'inventory_registry.txt')
+    # Services
+    Get-Service | Select Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
+    # Scheduled tasks
+    Get-ScheduledTask | Select TaskName, TaskPath, State | Out-File (Join-Path $inventoryFolder 'inventory_tasks.txt')
+    # Drivers
+    Get-WmiObject Win32_PnPSignedDriver | Select DeviceName, DriverVersion, Manufacturer | Out-File (Join-Path $inventoryFolder 'inventory_drivers.txt')
+    # Windows updates
+    Get-HotFix | Select Description, HotFixID, InstalledOn | Out-File (Join-Path $inventoryFolder 'inventory_updates.txt')
+    Write-Log "Extensive system inventory files created in $inventoryFolder" 'INFO'
+    Write-Log "[END] Extensive System Inventory" 'INFO'
+}
+
+# Run inventory before anything else
+Get-ExtensiveSystemInventory
+
 # =====================[ LOGGING & TASK FUNCTIONS FIRST ]==================
 function Write-Log {
     param(
@@ -265,7 +310,7 @@ function Remove-Bloatware {
     # [TASK 3] Remove Bloatware
     Write-Log "[START] Remove Bloatware" 'INFO'
     $bloatwareList = Get-Content $bloatwareListPath | ForEach-Object { $_ | ConvertFrom-Json }
-    $installedAppx = Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
+    $installedAppx = Get-Content (Join-Path $global:TempFolder 'inventory_appx.txt') | Select-String -Pattern '^Name\s*:\s*(.+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
     $success = 0
     $fail = 0
     $notFound = @()
@@ -336,6 +381,7 @@ function Install-EssentialApps {
     # [TASK 4] Install Essential Apps
     Write-Log "[START] Install Essential Apps" 'INFO'
     $essentialApps = Get-Content $essentialAppsListPath | ForEach-Object { $_ | ConvertFrom-Json }
+    $installedAppsRegistry = Get-Content (Join-Path $global:TempFolder 'inventory_registry.txt')
     $success = 0
     $fail = 0
     $skipped = 0
@@ -481,12 +527,11 @@ function Install-EssentialApps {
 
 # =====================[ TASK 6: SYSTEM INVENTORY ]==========================
 function Get-SystemInventory {
-    # [TASK 6] System Inventory
-    Write-Log "[START] System Inventory" 'INFO'
+    Write-Log "[START] System Inventory (legacy)" 'INFO'
     $inventoryPath = Join-Path $global:TempFolder 'inventory.txt'
     Get-ComputerInfo | Out-File $inventoryPath
     Write-Log "System inventory saved to $inventoryPath" 'INFO'
-    Write-Log "[END] System Inventory" 'INFO'
+    Write-Log "[END] System Inventory (legacy)" 'INFO'
 }
 
 
@@ -755,7 +800,7 @@ $taskResults['Task4_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
     Write-Log "[END] Update All Apps and Packages" 'INFO'
 }
 
-# 5. System Inventory
+# 5. System Inventory (legacy, for compatibility)
 $taskResults['Task5_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
 
 # 6. Windows Update Check
