@@ -124,11 +124,15 @@ $logPath = Join-Path $parentFolder "maintenance.log"
 function Write-Log {
     param(
         [string]$Message,
-        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO',
+        [string]$CustomLogPath
     )
     $timestamp = Get-Date -Format 'HH:mm:ss'
     $entry = "[$timestamp] [$Level] $Message"
     $entry | Out-File -FilePath $logPath -Append
+    if ($CustomLogPath) {
+        $entry | Out-File -FilePath $CustomLogPath -Append
+    }
     Write-Host $entry
 }
 
@@ -137,36 +141,38 @@ function Invoke-Task {
         [string]$TaskName,
         [scriptblock]$Action
     )
-    Write-Log "Starting task: $TaskName" 'INFO'
+    $taskLogPath = Join-Path $PSScriptRoot ("task_${TaskName}.log")
+    Write-Log "Starting task: $TaskName" 'INFO' $taskLogPath
     try {
-        & $Action
-        Write-Log "Task succeeded: $TaskName" 'INFO'
+        & $Action $taskLogPath
+        Write-Log "Task succeeded: $TaskName" 'INFO' $taskLogPath
         return $true
     } catch {
-        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
+        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR' $taskLogPath
         return $false
     }
 }
 
 ### [PRE-TASK 2] Extensive System Inventory (Initial)
 function Get-ExtensiveSystemInventory {
-    Write-Log "[START] Extensive System Inventory" 'INFO'
+    param($TaskLogPath)
+    Write-Log "[START] Extensive System Inventory" 'INFO' $TaskLogPath
     $inventoryFolder = $PSScriptRoot
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
 
-    Write-Log "[Inventory] Collecting system info..." 'INFO'
+    Write-Log "[Inventory] Collecting system info..." 'INFO' $TaskLogPath
     try {
         Get-ComputerInfo | Out-File (Join-Path $inventoryFolder 'inventory_system.txt')
-        Write-Log "[Inventory] System info collected." 'INFO'
-    } catch { Write-Log "[Inventory] System info failed: $_" 'WARN' }
+        Write-Log "[Inventory] System info collected." 'INFO' $TaskLogPath
+    } catch { Write-Log "[Inventory] System info failed: $_" 'WARN' $TaskLogPath }
 
-    Write-Log "[Inventory] Collecting installed Appx apps..." 'INFO'
+    Write-Log "[Inventory] Collecting installed Appx apps..." 'INFO' $TaskLogPath
     try {
         Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
-        Write-Log "[Inventory] Appx apps collected." 'INFO'
-    } catch { Write-Log "[Inventory] Appx apps failed: $_" 'WARN' }
+        Write-Log "[Inventory] Appx apps collected." 'INFO' $TaskLogPath
+    } catch { Write-Log "[Inventory] Appx apps failed: $_" 'WARN' $TaskLogPath }
 
-    Write-Log "[Inventory] Collecting installed winget apps (source: winget, timeout: 2min)..." 'INFO'
+    Write-Log "[Inventory] Collecting installed winget apps (source: winget, timeout: 2min)..." 'INFO' $TaskLogPath
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         $wingetOutput = Join-Path $inventoryFolder 'inventory_winget.txt'
         $wingetArgs = @('list', '--source', 'winget', '--accept-source-agreements')
@@ -179,32 +185,32 @@ function Get-ExtensiveSystemInventory {
                 Start-Sleep -Seconds $interval
                 $elapsed += $interval
                 if (!$proc.HasExited) {
-                    Write-Log "[Inventory] Winget list still running... ($elapsed sec elapsed)" 'INFO'
+                    Write-Log "[Inventory] Winget list still running... ($elapsed sec elapsed)" 'INFO' $TaskLogPath
                 }
             }
             if (!$proc.HasExited) {
-                Write-Log "[Inventory] Winget list timed out after $timeout seconds. Attempting to stop process." 'WARN'
+                Write-Log "[Inventory] Winget list timed out after $timeout seconds. Attempting to stop process." 'WARN' $TaskLogPath
                 try { $proc | Stop-Process -Force } catch {}
             }
             if (Test-Path $wingetOutput -and (Get-Content $wingetOutput | Measure-Object -Line).Lines -gt 0) {
-                Write-Log "[Inventory] Winget apps collected." 'INFO'
+                Write-Log "[Inventory] Winget apps collected." 'INFO' $TaskLogPath
             } else {
-                Write-Log "[Inventory] Winget apps output is empty or failed." 'WARN'
+                Write-Log "[Inventory] Winget apps output is empty or failed." 'WARN' $TaskLogPath
             }
         } catch {
-            Write-Log "[Inventory] Winget apps failed: $_" 'WARN'
+            Write-Log "[Inventory] Winget apps failed: $_" 'WARN' $TaskLogPath
         }
     }
 
-    Write-Log "[Inventory] Collecting installed choco apps..." 'INFO'
+    Write-Log "[Inventory] Collecting installed choco apps..." 'INFO' $TaskLogPath
     if (Get-Command choco -ErrorAction SilentlyContinue) {
         try {
             choco list --local-only > (Join-Path $inventoryFolder 'inventory_choco.txt')
-            Write-Log "[Inventory] Choco apps collected." 'INFO'
-        } catch { Write-Log "[Inventory] Choco apps failed: $_" 'WARN' }
+            Write-Log "[Inventory] Choco apps collected." 'INFO' $TaskLogPath
+        } catch { Write-Log "[Inventory] Choco apps failed: $_" 'WARN' $TaskLogPath }
     }
 
-    Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO'
+    Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO' $TaskLogPath
     $regApps = @()
     $uninstallKeys = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -218,35 +224,35 @@ function Get-ExtensiveSystemInventory {
             }
         }
         $regApps | Sort-Object -Unique | Out-File (Join-Path $inventoryFolder 'inventory_registry.txt')
-        Write-Log "[Inventory] Registry uninstall keys collected." 'INFO'
-    } catch { Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN' }
+        Write-Log "[Inventory] Registry uninstall keys collected." 'INFO' $TaskLogPath
+    } catch { Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN' $TaskLogPath }
 
-    Write-Log "[Inventory] Collecting services..." 'INFO'
+    Write-Log "[Inventory] Collecting services..." 'INFO' $TaskLogPath
     try {
         Get-Service | Select-Object Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
-        Write-Log "[Inventory] Services collected." 'INFO'
-    } catch { Write-Log "[Inventory] Services failed: $_" 'WARN' }
+        Write-Log "[Inventory] Services collected." 'INFO' $TaskLogPath
+    } catch { Write-Log "[Inventory] Services failed: $_" 'WARN' $TaskLogPath }
 
-    Write-Log "[Inventory] Collecting scheduled tasks..." 'INFO'
+    Write-Log "[Inventory] Collecting scheduled tasks..." 'INFO' $TaskLogPath
     try {
         Get-ScheduledTask | Select-Object TaskName, TaskPath, State | Out-File (Join-Path $inventoryFolder 'inventory_tasks.txt')
-        Write-Log "[Inventory] Scheduled tasks collected." 'INFO'
-    } catch { Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN' }
+        Write-Log "[Inventory] Scheduled tasks collected." 'INFO' $TaskLogPath
+    } catch { Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN' $TaskLogPath }
 
-    Write-Log "[Inventory] Collecting drivers..." 'INFO'
+    Write-Log "[Inventory] Collecting drivers..." 'INFO' $TaskLogPath
     try {
         Get-CimInstance Win32_PnPSignedDriver | Select-Object DeviceName, DriverVersion, Manufacturer | Out-File (Join-Path $inventoryFolder 'inventory_drivers.txt')
-        Write-Log "[Inventory] Drivers collected." 'INFO'
-    } catch { Write-Log "[Inventory] Drivers failed: $_" 'WARN' }
+        Write-Log "[Inventory] Drivers collected." 'INFO' $TaskLogPath
+    } catch { Write-Log "[Inventory] Drivers failed: $_" 'WARN' $TaskLogPath }
 
-    Write-Log "[Inventory] Collecting Windows updates..." 'INFO'
+    Write-Log "[Inventory] Collecting Windows updates..." 'INFO' $TaskLogPath
     try {
         Get-HotFix | Select-Object Description, HotFixID, InstalledOn | Out-File (Join-Path $inventoryFolder 'inventory_updates.txt')
-        Write-Log "[Inventory] Windows updates collected." 'INFO'
-    } catch { Write-Log "[Inventory] Windows updates failed: $_" 'WARN' }
+        Write-Log "[Inventory] Windows updates collected." 'INFO' $TaskLogPath
+    } catch { Write-Log "[Inventory] Windows updates failed: $_" 'WARN' $TaskLogPath }
 
-    Write-Log "Extensive system inventory files created in $inventoryFolder" 'INFO'
-    Write-Log "[END] Extensive System Inventory" 'INFO'
+    Write-Log "Extensive system inventory files created in $inventoryFolder" 'INFO' $TaskLogPath
+    Write-Log "[END] Extensive System Inventory" 'INFO' $TaskLogPath
 }
 
 # [PRE-TASK 3] Run inventory before anything else
