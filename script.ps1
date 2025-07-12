@@ -475,18 +475,17 @@ function Install-EssentialApps {
                     $fail++
                     $detailedResults += "FAIL: $($app.Name) (installer failed)"
                 }
-            } catch {
-                Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
-                $fail++
-                $detailedResults += "FAIL: $($app.Name) (exception)"
+            } else {
+                Write-Log "$($app.Name) already installed." 'INFO'
+                $skipped++
+                $detailedResults += "SKIP: $($app.Name) already installed"
             }
-        } else {
-            Write-Log "$($app.Name) already installed." 'INFO'
-            $skipped++
-            $detailedResults += "SKIP: $($app.Name) already installed"
+        } catch {
+            Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
+            $fail++
+            $detailedResults += "FAIL: $($app.Name) (exception)"
         }
     }
-    # (Rest of the function continues here, e.g. LibreOffice logic, summary, etc.)
 }
     
     # Check for Microsoft Office, install LibreOffice if not present
