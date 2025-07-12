@@ -85,7 +85,7 @@ $ScriptDescription = @(
         Write-Log "Deleted $deletedFiles temp files from temp folders." 'INFO'
         try {
             $cleanmgrArgs = '/AUTOCLEAN'
-            $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
+            $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -Wait -PassThru
             if ($proc.ExitCode -eq 0) {
                 Write-Log 'Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN).' 'INFO'
             } else {
@@ -181,7 +181,7 @@ function Get-ExtensiveSystemInventory {
         $wingetOutput = Join-Path $inventoryFolder 'inventory_winget.txt'
         $wingetArgs = @('list', '--source', 'winget', '--accept-source-agreements', '--silent')
         try {
-            $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -NoNewWindow -Wait -PassThru
+            $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -Wait -PassThru
             $timeout = 120 # seconds
             $interval = 30 # seconds
             $elapsed = 0
@@ -604,294 +604,8 @@ $logPath = Join-Path $parentFolder "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
 ### Ensure dependencies before anything else
-function Install-EssentialApps 
-    Test-AndInstall-Dependencies
-    $inventoryFolder = $global:TempFolder
-    $success = 0
-    $fail = 0
-    $skipped = 0
-    $detailedResults = @()
-    # Read inventory files
-    $appx = @(Get-Content (Join-Path $inventoryFolder 'inventory_appx.txt') -ErrorAction SilentlyContinue)
-    $winget = @(Get-Content (Join-Path $inventoryFolder 'inventory_winget.txt') -ErrorAction SilentlyContinue)
-    $choco = @(Get-Content (Join-Path $inventoryFolder 'inventory_choco.txt') -ErrorAction SilentlyContinue)
-    $registry = @(Get-Content (Join-Path $inventoryFolder 'inventory_registry.txt') -ErrorAction SilentlyContinue)
-    foreach ($app in $global:EssentialApps) {
-        $isInstalled = $false
-        if (
-            ($appx | Select-String $app.Winget) -or
-            ($winget | Select-String $app.Winget) -or
-            ($choco | Select-String $app.Choco) -or
-            ($registry | Select-String $app.Name)
-        ) {
-            $isInstalled = $true
-        }
-        $installSuccess = $false
-        $installMethod = ""
-        try {
-            if (-not $isInstalled) {
-                if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-                    Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                    $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
-                    if ($wingetProc.ExitCode -eq 0) {
-                        $installSuccess = $true
-                        $installMethod = "winget"
-                    } else {
-                        Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
-                    }
-                }
-                if (-not $installSuccess -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-                    Write-Log "Installing $($app.Name) via choco..." 'INFO'
-                    $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
-                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                    if ($chocoProc.ExitCode -eq 0) {
-                        $installSuccess = $true
-                        $installMethod = "choco"
-                    } else {
-                        Write-Log "$($app.Name) choco install failed with exit code $($chocoProc.ExitCode)" 'WARN'
-                    }
-                }
-                if ($installSuccess) {
-                    Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
-                    $success++
-                    $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
-                } else {
-                    Write-Log "Failed to install $($app.Name) (no available installer succeeded)" 'WARN'
-                    $fail++
-                    $detailedResults += "FAIL: $($app.Name) (installer failed)"
-                }
-            } else {
-                Write-Log "$($app.Name) already installed." 'INFO'
-                $skipped++
-                $detailedResults += "SKIP: $($app.Name) already installed"
-            }
-        } catch {
-            Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
-            $fail++
-            $detailedResults += "FAIL: $($app.Name) (exception)"
-        }
-    }
-    
-    # Check for Microsoft Office, install LibreOffice if not present
-    $officeInstalled = $false
-    try {
-        # Check for Office via registry (common for Office 2016/2019/2021/365)
-        $officeKeys = @(
-            'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration',
-            'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\Microsoft\Office\15.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\Microsoft\Office\14.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\15.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\14.0\Common\InstallRoot'
-        )
-    # Read inventory files
-    $appx = @(Get-Content (Join-Path $inventoryFolder 'inventory_appx.txt') -ErrorAction SilentlyContinue)
-    $winget = @(Get-Content (Join-Path $inventoryFolder 'inventory_winget.txt') -ErrorAction SilentlyContinue)
-    $choco = @(Get-Content (Join-Path $inventoryFolder 'inventory_choco.txt') -ErrorAction SilentlyContinue)
-    $registry = @(Get-Content (Join-Path $inventoryFolder 'inventory_registry.txt') -ErrorAction SilentlyContinue)
-    foreach ($app in $global:EssentialApps) {
-        $isInstalled = $false
-        if (
-            ($appx | Select-String $app.Winget) -or
-            ($winget | Select-String $app.Winget) -or
-            ($choco | Select-String $app.Choco) -or
-            ($registry | Select-String $app.Name)
-        ) {
-            $isInstalled = $true
-        }
-        $installSuccess = $false
-        $installMethod = ""
-        try {
-            if (-not $isInstalled) {
-                if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-                    Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                    $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
-                    if ($wingetProc.ExitCode -eq 0) {
-                        $installSuccess = $true
-                        $installMethod = "winget"
-                    } else {
-                        Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
-                    }
-                }
-                if (-not $installSuccess -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-                    Write-Log "Installing $($app.Name) via choco..." 'INFO'
-                    $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
-                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                    if ($chocoProc.ExitCode -eq 0) {
-                        $installSuccess = $true
-                        $installMethod = "choco"
-                    } else {
-                        Write-Log "$($app.Name) choco install failed with exit code $($chocoProc.ExitCode)" 'WARN'
-                    }
-                }
-                if ($installSuccess) {
-                    Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
-                    $success++
-                    $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
-                } else {
-                    Write-Log "Failed to install $($app.Name) (no available installer succeeded)" 'WARN'
-                    $fail++
-                    $detailedResults += "FAIL: $($app.Name) (installer failed)"
-                }
-            } else {
-                Write-Log "$($app.Name) already installed." 'INFO'
-                $skipped++
-                $detailedResults += "SKIP: $($app.Name) already installed"
-            }
-        } catch {
-            Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
-            $fail++
-            $detailedResults += "FAIL: $($app.Name) (exception)"
-        }
-    }
-    try {
-        Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
-        Write-Log "Appx apps collected." 'INFO'
-    } catch { Write-Log "Appx apps failed: $_" 'WARN' }
-    # Winget apps
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        try {
-            winget list --source winget --accept-source-agreements | Out-File (Join-Path $inventoryFolder 'inventory_winget.txt')
-            Write-Log "Winget apps collected." 'INFO'
-        } catch { Write-Log "Winget apps failed: $_" 'WARN' }
-    }
-    # Choco apps
-    if (Get-Command choco -ErrorAction SilentlyContinue) {
-        try {
-            choco list --local-only | Out-File (Join-Path $inventoryFolder 'inventory_choco.txt')
-            Write-Log "Choco apps collected." 'INFO'
-        } catch { Write-Log "Choco apps failed: $_" 'WARN' }
-    }
-    # Registry uninstall keys
-    $regApps = @()
-    $uninstallKeys = @(
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-    )
-    try {
-        foreach ($key in $uninstallKeys) {
-            $regApps += Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
-            }
-        }
-        $regApps | Sort-Object -Unique | Out-File (Join-Path $inventoryFolder 'inventory_registry.txt')
-        Write-Log "Registry uninstall keys collected." 'INFO'
-    } catch { Write-Log "Registry uninstall keys failed: $_" 'WARN' }
-    Write-Log "[END] System Inventory (minimal)" 'INFO'
-}
-
-function Remove-Bloatware {
-    Write-Log "[START] Remove Bloatware" 'INFO'
-    $inventoryFolder = $global:TempFolder
-    $removed = 0
-    $bloatwareFound = @()
-    # Read inventory files
-    $appx = @(Get-Content (Join-Path $inventoryFolder 'inventory_appx.txt') -ErrorAction SilentlyContinue)
-    $winget = @(Get-Content (Join-Path $inventoryFolder 'inventory_winget.txt') -ErrorAction SilentlyContinue)
-    $choco = @(Get-Content (Join-Path $inventoryFolder 'inventory_choco.txt') -ErrorAction SilentlyContinue)
-    $registry = @(Get-Content (Join-Path $inventoryFolder 'inventory_registry.txt') -ErrorAction SilentlyContinue)
-    foreach ($bloat in $global:BloatwareList) {
-        if (
-            ($appx | Select-String $bloat) -or
-            ($winget | Select-String $bloat) -or
-            ($choco | Select-String $bloat) -or
-            ($registry | Select-String $bloat)
-        ) {
-            $bloatwareFound += $bloat
-        }
-    }
-    foreach ($bloat in $bloatwareFound) {
-        try {
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                winget uninstall --id $bloat --accept-source-agreements --accept-package-agreements --silent -e
-            }
-            if (Get-Command choco -ErrorAction SilentlyContinue) {
-                choco uninstall $bloat -y --no-progress
-            }
-            $removed++
-            Write-Log "Removed bloatware: $bloat" 'INFO'
-        } catch {
-            Write-Log "Failed to remove bloatware: $bloat. $_" 'WARN'
-        }
-    }
-    Write-Log "Total bloatware removed: $removed" 'INFO'
-    Write-Log "[END] Remove Bloatware" 'INFO'
-}
-
-function Install-EssentialApps {
-    Test-AndInstall-Dependencies
-    $inventoryFolder = $global:TempFolder
-    $success = 0
-    $fail = 0
-    $skipped = 0
-    $detailedResults = @()
-    # Read inventory files
-    $appx = @(Get-Content (Join-Path $inventoryFolder 'inventory_appx.txt') -ErrorAction SilentlyContinue)
-    $winget = @(Get-Content (Join-Path $inventoryFolder 'inventory_winget.txt') -ErrorAction SilentlyContinue)
-    $choco = @(Get-Content (Join-Path $inventoryFolder 'inventory_choco.txt') -ErrorAction SilentlyContinue)
-    $registry = @(Get-Content (Join-Path $inventoryFolder 'inventory_registry.txt') -ErrorAction SilentlyContinue)
-    foreach ($app in $global:EssentialApps) {
-        $isInstalled = $false
-        if (
-            ($appx | Select-String $app.Winget) -or
-            ($winget | Select-String $app.Winget) -or
-            ($choco | Select-String $app.Choco) -or
-            ($registry | Select-String $app.Name)
-        ) {
-            $isInstalled = $true
-        }
-        $installSuccess = $false
-        $installMethod = ""
-        try {
-            if (-not $isInstalled) {
-                if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-                    Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                    $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
-                    if ($wingetProc.ExitCode -eq 0) {
-                        $installSuccess = $true
-                        $installMethod = "winget"
-                    } else {
-                        Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
-                    }
-                }
-                if (-not $installSuccess -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-                    Write-Log "Installing $($app.Name) via choco..." 'INFO'
-                    $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
-                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
-                    if ($chocoProc.ExitCode -eq 0) {
-                        $installSuccess = $true
-                        $installMethod = "choco"
-                    } else {
-                        Write-Log "$($app.Name) choco install failed with exit code $($chocoProc.ExitCode)" 'WARN'
-                    }
-                }
-                if ($installSuccess) {
-                    Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
-                    $success++
-                    $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
-                } else {
-                    Write-Log "Failed to install $($app.Name) (no available installer succeeded)" 'WARN'
-                    $fail++
-                    $detailedResults += "FAIL: $($app.Name) (installer failed)"
-                }
-            } else {
-                Write-Log "$($app.Name) already installed." 'INFO'
-                $skipped++
-                $detailedResults += "SKIP: $($app.Name) already installed"
-            }
-        } catch {
-            Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
-            $fail++
-            $detailedResults += "FAIL: $($app.Name) (exception)"
-        }
-    }
-    # ...existing code...
-}
+# (Removed incomplete Install-EssentialApps function declaration)
+# The duplicate/incomplete Install-EssentialApps function and stray code have been removed.
 
 # [PRE-TASK 3] Run inventory before anything else
 Get-ExtensiveSystemInventory
@@ -1130,6 +844,12 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 
 ### [TASK 2] Check and Install Dependencies (called by Install-EssentialApps)
 function Test-AndInstall-Dependencies {
+    <#
+        .SYNOPSIS
+        Checks and installs dependencies: winget, choco, NuGet.
+        .DESCRIPTION
+        Ensures all required package managers are present and updated.
+    #>
     Write-Log "[START] Check And Install Dependencies" 'INFO'
     # Check and install/update winget
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
@@ -1177,6 +897,57 @@ function Test-AndInstall-Dependencies {
     if (-not (Test-Path $nugetPath)) { New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null }
     $nugetExe = Join-Path $nugetPath "nuget.exe"
     $nugetUrl = "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
-    if (Get-Command nuget -ErrorAction SilentlyContinue) 
+    if (Get-Command nuget -ErrorAction SilentlyContinue) {
         Write-Log "NuGet found. Updating unattended..." 'INFO'
-        try
+        try {
+            Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetExe -UseBasicParsing
+            Write-Log "NuGet updated to latest version at $nugetExe." 'INFO'
+        } catch {
+            Write-Log "Failed to update NuGet: $_" 'ERROR'
+        }
+        if (-not ($env:PATH -split ';' | Where-Object { $_ -eq $nugetPath })) {
+            $env:PATH = "$nugetPath;" + $env:PATH
+            Write-Log "NuGet path added to PATH." 'INFO'
+        }
+    } else {
+        Write-Log "NuGet not found. Installing unattended..." 'WARN'
+        try {
+            Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetExe -UseBasicParsing
+            $env:PATH = "$nugetPath;" + $env:PATH
+            Write-Log "NuGet installed to $nugetExe and added to PATH." 'INFO'
+        } catch {
+            Write-Log "Failed to install NuGet: $_" 'ERROR'
+        }
+    }
+    try {
+        if (Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue) {
+            Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+        }
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            Write-Log "Attempting to install NuGet provider via winget (Microsoft.NuGet)..." 'INFO'
+            try {
+                $wingetArgs = @("install", "--id", "Microsoft.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
+                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
+                if ($wingetProc.ExitCode -eq 0) {
+                    Write-Log "NuGet provider installed via winget." 'INFO'
+                } else {
+                    Write-Log "NuGet provider winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
+                }
+            } catch {
+                Write-Log "Exception during NuGet provider install via winget: $_" 'WARN'
+            }
+        }
+        $ProgressPreference = 'SilentlyContinue'
+        $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+        if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
+            Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
+            $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope CurrentUser -Confirm:$false
+            Write-Log "NuGet provider for PowerShell installed/updated." 'INFO'
+        } else {
+            Write-Log "NuGet provider for PowerShell is present and up to date." 'INFO'
+        }
+    } catch {
+        Write-Log "Failed to install or update NuGet provider for PowerShell: $_" 'WARN'
+    }
+    Write-Log "[END] Check And Install Dependencies" 'INFO'
+}
