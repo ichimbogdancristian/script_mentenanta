@@ -307,7 +307,7 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 
 
 # =====================[ TASK: CHECK AND INSTALL DEPENDENCIES ]==================
-function Check-And-Install-Dependencies {
+function Test-AndInstall-Dependencies {
     Write-Log "[START] Check And Install Dependencies" 'INFO'
     # Check and install/update winget
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
@@ -416,7 +416,7 @@ $logPath = Join-Path $parentFolder "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
 # Ensure dependencies before anything else
-Check-And-Install-Dependencies
+Test-AndInstall-Dependencies
                         Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
                     
                 
@@ -440,17 +440,17 @@ Check-And-Install-Dependencies
                     $fail++
                     $detailedResults += "FAIL: $($app.Name) (installer failed)"
                 }
-            } catch {
+              catch {
                 Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
                 $fail++
                 $detailedResults += "FAIL: $($app.Name) (exception)"
             }
-        } else {
+          else {
             Write-Log "$($app.Name) already installed." 'INFO'
             $skipped++
             $detailedResults += "SKIP: $($app.Name) already installed"
         }
-    }
+    
     # Check for Microsoft Office, install LibreOffice if not present
     $officeInstalled = $false
     try {
@@ -472,10 +472,11 @@ Check-And-Install-Dependencies
         }
         # Also check for Office apps in Start Menu
         if (-not $officeInstalled) {
-    $officeApps = Get-StartApps | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
+            $officeApps = Get-StartApps | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
             if ($officeApps) { $officeInstalled = $true }
         }
-    } catch {
+    }
+    catch {
         Write-Log "Error checking for Microsoft Office: $_" 'WARN'
     }
     if (-not $officeInstalled) {
