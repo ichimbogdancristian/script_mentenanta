@@ -1,3 +1,35 @@
+
+## Set up log file one folder up from the script's folder
+$parentFolder = Split-Path $PSScriptRoot -Parent
+$logPath = Join-Path $parentFolder "maintenance.log"
+# =====================[ LOGGING & TASK FUNCTIONS FIRST ]==================
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+    )
+    $timestamp = Get-Date -Format 'HH:mm:ss'
+    $entry = "[$timestamp] [$Level] $Message"
+    $entry | Out-File -FilePath $logPath -Append
+    Write-Host $entry
+}
+
+function Invoke-Task {
+    param(
+        [string]$TaskName,
+        [scriptblock]$Action
+    )
+    Write-Log "Starting task: $TaskName" 'INFO'
+    try {
+        & $Action
+        Write-Log "Task succeeded: $TaskName" 'INFO'
+        return $true
+    } catch {
+        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
+        return $false
+    }
+}
+
 # =====================[ SYSTEM INVENTORY FIRST ]==================
 function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory" 'INFO'
@@ -42,34 +74,6 @@ function Get-ExtensiveSystemInventory {
 
 # Run inventory before anything else
 Get-ExtensiveSystemInventory
-
-# =====================[ LOGGING & TASK FUNCTIONS FIRST ]==================
-function Write-Log {
-    param(
-        [string]$Message,
-        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
-    )
-    $timestamp = Get-Date -Format 'HH:mm:ss'
-    $entry = "[$timestamp] [$Level] $Message"
-    $entry | Out-File -FilePath $logPath -Append
-    Write-Host $entry
-}
-
-function Invoke-Task {
-    param(
-        [string]$TaskName,
-        [scriptblock]$Action
-    )
-    Write-Log "Starting task: $TaskName" 'INFO'
-    try {
-        & $Action
-        Write-Log "Task succeeded: $TaskName" 'INFO'
-        return $true
-    } catch {
-        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
-        return $false
-    }
-}
 
 # =====================[ MAIN SCRIPT STARTS HERE ]========================
 
@@ -184,9 +188,6 @@ function Test-NuGet {
 }
 
 
-# Set up log file one folder up from the script's folder
-$parentFolder = Split-Path $PSScriptRoot -Parent
-$logPath = Join-Path $parentFolder "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
 # Ensure dependencies before anything else
@@ -418,8 +419,8 @@ Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Scr
 # Ensure dependencies before anything else
 Test-AndInstall-Dependencies
                         Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
-                    
-                
+                    }
+                }
                 if (-not $installSuccess -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via choco..." 'INFO'
                     $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
@@ -440,12 +441,12 @@ Test-AndInstall-Dependencies
                     $fail++
                     $detailedResults += "FAIL: $($app.Name) (installer failed)"
                 }
-              catch {
+            } catch {
                 Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
                 $fail++
                 $detailedResults += "FAIL: $($app.Name) (exception)"
             }
-          else {
+        } else {
             Write-Log "$($app.Name) already installed." 'INFO'
             $skipped++
             $detailedResults += "SKIP: $($app.Name) already installed"
