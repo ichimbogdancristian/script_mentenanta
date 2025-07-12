@@ -1020,6 +1020,33 @@ $summaryLines += "---"
 $summaryLines | Out-File -FilePath $summaryPath -Append
 Write-Log "Summary report written to $summaryPath" 'INFO'
 
+
+# [POST-TASK 4.1] Extract install/uninstall/update/remove/delete actions from task logs
+$actionKeywords = @('install', 'uninstall', 'update', 'remove', 'delete')
+$logFiles = Get-ChildItem -Path $PSScriptRoot -Filter 'task_*.log' -File
+$actionSummary = @()
+foreach ($logFile in $logFiles) {
+    $lines = Get-Content $logFile.FullName
+    foreach ($keyword in $actionKeywords) {
+        $matches = $lines | Where-Object { $_ -match $keyword }
+        foreach ($match in $matches) {
+            $actionSummary += "[$($logFile.Name)] $match"
+        }
+    }
+}
+if ($actionSummary.Count -gt 0) {
+    $actionReport = @()
+    $actionReport += "Action summary from all tasks (install/uninstall/update/remove/delete):"
+    $actionReport += $actionSummary
+    $actionReport += "---"
+    $actionReport | Out-File -FilePath $summaryPath -Append
+    Write-Log "Action summary from task logs appended to $summaryPath" 'INFO'
+} else {
+    $noActionReport = "No install/uninstall/update/remove/delete actions found in task logs."
+    $noActionReport | Out-File -FilePath $summaryPath -Append
+    Write-Log $noActionReport 'INFO'
+}
+
 ### [POST-TASK 5] Remove the repo folder (script_mentenanta) after report creation
 try {
     $repoFolder = $PSScriptRoot
