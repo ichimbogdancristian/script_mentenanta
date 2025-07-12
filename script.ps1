@@ -166,12 +166,34 @@ function Get-ExtensiveSystemInventory {
         Write-Log "[Inventory] Appx apps collected." 'INFO'
     } catch { Write-Log "[Inventory] Appx apps failed: $_" 'WARN' }
 
-    Write-Log "[Inventory] Collecting installed winget apps..." 'INFO'
+    Write-Log "[Inventory] Collecting installed winget apps (source: winget, timeout: 2min)..." 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
+        $wingetOutput = Join-Path $inventoryFolder 'inventory_winget.txt'
+        $wingetArgs = @('list', '--source', 'winget', '--accept-source-agreements')
         try {
-            winget list > (Join-Path $inventoryFolder 'inventory_winget.txt')
-            Write-Log "[Inventory] Winget apps collected." 'INFO'
-        } catch { Write-Log "[Inventory] Winget apps failed: $_" 'WARN' }
+            $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -NoNewWindow -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -PassThru
+            $timeout = 120 # seconds
+            $interval = 30 # seconds
+            $elapsed = 0
+            while (!$proc.HasExited -and $elapsed -lt $timeout) {
+                Start-Sleep -Seconds $interval
+                $elapsed += $interval
+                if (!$proc.HasExited) {
+                    Write-Log "[Inventory] Winget list still running... ($elapsed sec elapsed)" 'INFO'
+                }
+            }
+            if (!$proc.HasExited) {
+                Write-Log "[Inventory] Winget list timed out after $timeout seconds. Attempting to stop process." 'WARN'
+                try { $proc | Stop-Process -Force } catch {}
+            }
+            if (Test-Path $wingetOutput -and (Get-Content $wingetOutput | Measure-Object -Line).Lines -gt 0) {
+                Write-Log "[Inventory] Winget apps collected." 'INFO'
+            } else {
+                Write-Log "[Inventory] Winget apps output is empty or failed." 'WARN'
+            }
+        } catch {
+            Write-Log "[Inventory] Winget apps failed: $_" 'WARN'
+        }
     }
 
     Write-Log "[Inventory] Collecting installed choco apps..." 'INFO'
