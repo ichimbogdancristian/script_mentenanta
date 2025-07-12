@@ -171,7 +171,7 @@ function Get-ExtensiveSystemInventory {
         $wingetOutput = Join-Path $inventoryFolder 'inventory_winget.txt'
         $wingetArgs = @('list', '--source', 'winget', '--accept-source-agreements')
         try {
-            $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -NoNewWindow -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -PassThru
+            $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -PassThru
             $timeout = 120 # seconds
             $interval = 30 # seconds
             $elapsed = 0
