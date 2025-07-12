@@ -1,7 +1,7 @@
 # =====================[ SYSTEM INVENTORY FIRST ]==================
 function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory" 'INFO'
-    $inventoryFolder = $global:TempFolder
+    $inventoryFolder = $PSScriptRoot
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
     # System info
     Get-ComputerInfo | Out-File (Join-Path $inventoryFolder 'inventory_system.txt')
@@ -29,13 +29,13 @@ function Get-ExtensiveSystemInventory {
     }
     $regApps | Sort-Object -Unique | Out-File (Join-Path $inventoryFolder 'inventory_registry.txt')
     # Services
-    Get-Service | Select Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
+    Get-Service | Select-Object Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
     # Scheduled tasks
-    Get-ScheduledTask | Select TaskName, TaskPath, State | Out-File (Join-Path $inventoryFolder 'inventory_tasks.txt')
+    Get-ScheduledTask | Select-Object TaskName, TaskPath, State | Out-File (Join-Path $inventoryFolder 'inventory_tasks.txt')
     # Drivers
-    Get-WmiObject Win32_PnPSignedDriver | Select DeviceName, DriverVersion, Manufacturer | Out-File (Join-Path $inventoryFolder 'inventory_drivers.txt')
+    Get-WmiObject Win32_PnPSignedDriver | Select-Object DeviceName, DriverVersion, Manufacturer | Out-File (Join-Path $inventoryFolder 'inventory_drivers.txt')
     # Windows updates
-    Get-HotFix | Select Description, HotFixID, InstalledOn | Out-File (Join-Path $inventoryFolder 'inventory_updates.txt')
+    Get-HotFix | Select-Object Description, HotFixID, InstalledOn | Out-File (Join-Path $inventoryFolder 'inventory_updates.txt')
     Write-Log "Extensive system inventory files created in $inventoryFolder" 'INFO'
     Write-Log "[END] Extensive System Inventory" 'INFO'
 }
@@ -253,7 +253,7 @@ $global:BloatwareList = @(
     'Apache.OpenOffice', 'Microsoft.Outlook', 'Yandex.YandexBrowser'
 ) | Sort-Object -Unique
 $bloatwareListPath = Join-Path $global:TempFolder 'Bloatware_list.txt'
-$global:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
+    $global:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
 
 # === EssentialApps ===
 $global:EssentialApps = @(
@@ -272,7 +272,7 @@ $global:EssentialApps = @(
     @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime' }
 )
 $essentialAppsListPath = Join-Path $global:TempFolder 'EssentialApps_list.txt'
-$global:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
+    $global:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
 
 # Load configuration (if exists)
 $configPath = Join-Path $PSScriptRoot "config.json"
@@ -305,127 +305,121 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 }
 
 
-# =====================[ TASK 3: REMOVE BLOATWARE ]==========================
-function Remove-Bloatware {
-    # [TASK 3] Remove Bloatware
-    Write-Log "[START] Remove Bloatware" 'INFO'
-    $bloatwareList = Get-Content $bloatwareListPath | ForEach-Object { $_ | ConvertFrom-Json }
-    $installedAppx = Get-Content (Join-Path $global:TempFolder 'inventory_appx.txt') | Select-String -Pattern '^Name\s*:\s*(.+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-    $success = 0
-    $fail = 0
-    $notFound = @()
-    $wingetCandidates = @()
-    $chocoCandidates = @()
 
-    foreach ($bloat in $bloatwareList) {
-        if ($installedAppx -contains $bloat) {
+# =====================[ TASK: CHECK AND INSTALL DEPENDENCIES ]==================
+function Check-And-Install-Dependencies {
+    Write-Log "[START] Check And Install Dependencies" 'INFO'
+    # Check and install/update winget
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Log "winget not found. Attempting to install winget..." 'WARN'
+        try {
+            Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle" -UseBasicParsing
+            Add-AppxPackage -Path "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+            Write-Log "winget installed via App Installer." 'INFO'
+        } catch {
+            Write-Log "Failed to install winget: $_" 'ERROR'
+        }
+    } else {
+        Write-Log "winget found. Checking for updates..." 'INFO'
+        try {
+            winget upgrade --id Microsoft.DesktopAppInstaller --accept-source-agreements --accept-package-agreements --silent
+            Write-Log "winget updated." 'INFO'
+        } catch {
+            Write-Log "Failed to update winget: $_" 'WARN'
+        }
+    }
+
+    # Check and install/update choco
+    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+        Write-Log "choco not found. Attempting to install Chocolatey..." 'WARN'
+        try {
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            Write-Log "choco installed." 'INFO'
+        } catch {
+            Write-Log "Failed to install choco: $_" 'ERROR'
+        }
+    } else {
+        Write-Log "choco found. Checking for updates..." 'INFO'
+        try {
+            choco upgrade chocolatey -y
+            Write-Log "choco updated." 'INFO'
+        } catch {
+            Write-Log "Failed to update choco: $_" 'WARN'
+        }
+    }
+
+    # Check and install/update NuGet and provider
+    $nugetPath = Join-Path $env:ProgramData "nuget"
+    if (-not (Test-Path $nugetPath)) { New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null }
+    $nugetExe = Join-Path $nugetPath "nuget.exe"
+    $nugetUrl = "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
+    if (Get-Command nuget -ErrorAction SilentlyContinue) {
+        Write-Log "NuGet found. Updating unattended..." 'INFO'
+        try {
+            Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetExe -UseBasicParsing
+            Write-Log "NuGet updated to latest version at $nugetExe." 'INFO'
+        } catch {
+            Write-Log "Failed to update NuGet: $_" 'ERROR'
+        }
+        if (-not ($env:PATH -split ';' | Where-Object { $_ -eq $nugetPath })) {
+            $env:PATH = "$nugetPath;" + $env:PATH
+            Write-Log "NuGet path added to PATH." 'INFO'
+        }
+    } else {
+        Write-Log "NuGet not found. Installing unattended..." 'WARN'
+        try {
+            Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetExe -UseBasicParsing
+            $env:PATH = "$nugetPath;" + $env:PATH
+            Write-Log "NuGet installed to $nugetExe and added to PATH." 'INFO'
+        } catch {
+            Write-Log "Failed to install NuGet: $_" 'ERROR'
+        }
+    }
+    try {
+        if (Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue) {
+            Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+        }
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            Write-Log "Attempting to install NuGet provider via winget (Microsoft.NuGet)..." 'INFO'
             try {
-                Write-Log ("Attempting to remove bloatware: {0}" -f $bloat) 'INFO'
-                $appx = Get-AppxPackage -AllUsers -Name $bloat
-                if ($appx) {
-                    $appx | Remove-AppxPackage -AllUsers -ErrorAction Stop
-                    Write-Log ("Removed: {0}" -f $bloat) 'INFO'
-                    $success++
+                $wingetArgs = @("install", "--id", "Microsoft.NuGet", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
+                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
+                if ($wingetProc.ExitCode -eq 0) {
+                    Write-Log "NuGet provider installed via winget." 'INFO'
                 } else {
-                    Write-Log ("AppxPackage {0} not found for removal (may already be removed)." -f $bloat) 'WARN'
-                    $notFound += $bloat
+                    Write-Log "NuGet provider winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
                 }
             } catch {
-                Write-Log ("Failed to remove {0}: {1}" -f $bloat, $_) 'WARN'
-                $fail++
-                # If Appx removal fails, try winget/choco next
-                $wingetCandidates += $bloat
-                $chocoCandidates += $bloat
+                Write-Log "Exception during NuGet provider install via winget: $_" 'WARN'
             }
+        }
+        $ProgressPreference = 'SilentlyContinue'
+        $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+        if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') {
+            Write-Log "Installing or updating NuGet provider for PowerShell (unattended)..." 'INFO'
+            $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope CurrentUser -Confirm:$false
+            Write-Log "NuGet provider for PowerShell installed/updated." 'INFO'
         } else {
-            Write-Log "Bloatware not found (already removed or never installed): $bloat" 'INFO'
-            # Not an AppxPackage, try winget/choco
-            $wingetCandidates += $bloat
-            $chocoCandidates += $bloat
+            Write-Log "NuGet provider for PowerShell is present and up to date." 'INFO'
         }
+    } catch {
+        Write-Log "Failed to install or update NuGet provider for PowerShell: $_" 'WARN'
     }
-
-    # Try to remove via winget for candidates
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        foreach ($bloat in $wingetCandidates | Sort-Object -Unique) {
-            try {
-                Write-Log ("Attempting to remove {0} via winget..." -f $bloat) 'INFO'
-                winget uninstall --id $bloat --accept-source-agreements --accept-package-agreements --silent -e
-                Write-Log ("{0}: winget uninstall attempted." -f $bloat) 'INFO'
-            } catch {
-                Write-Log ("winget uninstall failed for {0}: {1}" -f $bloat, $_) 'WARN'
-            }
-        }
-    }
-
-    # Try to remove via choco for candidates
-    if (Get-Command choco -ErrorAction SilentlyContinue) {
-        foreach ($bloat in $chocoCandidates | Sort-Object -Unique) {
-            try {
-                Write-Log ("Attempting to remove {0} via choco..." -f $bloat) 'INFO'
-                choco uninstall $bloat -y --no-progress
-                Write-Log ("{0}: choco uninstall attempted." -f $bloat) 'INFO'
-            } catch {
-                Write-Log ("choco uninstall failed for {0}: {1}" -f $bloat, $_) 'WARN'
-            }
-        }
-    }
-
-    Write-Log ("Remove Bloatware summary: Removed: {0}, Failed: {1}, Not found: {2}" -f $success, $fail, $notFound.Count) 'INFO'
-    Write-Log "[END] Remove Bloatware" 'INFO'
+    Write-Log "[END] Check And Install Dependencies" 'INFO'
 }
 
+# Set up log file one folder up from the script's folder
+$parentFolder = Split-Path $PSScriptRoot -Parent
+$logPath = Join-Path $parentFolder "maintenance.log"
+Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
-# =====================[ TASK 4: INSTALL ESSENTIAL APPS ]====================
-function Install-EssentialApps {
-    # [TASK 4] Install Essential Apps
-    Write-Log "[START] Install Essential Apps" 'INFO'
-    $essentialApps = Get-Content $essentialAppsListPath | ForEach-Object { $_ | ConvertFrom-Json }
-    $installedAppsRegistry = Get-Content (Join-Path $global:TempFolder 'inventory_registry.txt')
-    $success = 0
-    $fail = 0
-    $skipped = 0
-    $detailedResults = @()
-    foreach ($app in $essentialApps) {
-        $installed = $null
-        try {
-            # Try to detect installed app using multiple methods for robustness
-            $installed = Get-StartApps | Where-Object { $_.Name -like "*$($app.Name)*" }
-            if (-not $installed) {
-                # Try registry uninstall keys (for apps not in Start Menu)
-                $uninstallKeys = @(
-                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-                )
-                foreach ($key in $uninstallKeys) {
-                    $regApps = Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                        (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
-                    }
-                    if ($regApps -contains $app.Name) {
-                        $installed = $true
-                        break
-                    }
-                }
-            }
-        } catch {
-            Write-Log "Error checking if $($app.Name) is installed: $_" 'WARN'
-        }
-        if (-not $installed) {
-            $installSuccess = $false
-            $installMethod = $null
-            try {
-                if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-                    Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                    $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
-                    if ($wingetProc.ExitCode -eq 0) {
-                        $installSuccess = $true
-                        $installMethod = "winget"
-                    } else {
+# Ensure dependencies before anything else
+Check-And-Install-Dependencies
                         Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
-                    }
-                }
+                    
+                
                 if (-not $installSuccess -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
                     Write-Log "Installing $($app.Name) via choco..." 'INFO'
                     $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
@@ -478,7 +472,7 @@ function Install-EssentialApps {
         }
         # Also check for Office apps in Start Menu
         if (-not $officeInstalled) {
-            $officeApps = Get-StartApps | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
+    $officeApps = Get-StartApps | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
             if ($officeApps) { $officeInstalled = $true }
         }
     } catch {
@@ -522,7 +516,7 @@ function Install-EssentialApps {
         Write-Log $result 'INFO'
     }
     Write-Log "[END] Install Essential Apps" 'INFO'
-}
+
 
 
 # =====================[ TASK 6: SYSTEM INVENTORY ]==========================
@@ -885,13 +879,13 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 # (All tasks are now executed above in the desired order)
 
 # === Enhanced Task Results Summary ===
-$successCount = ($taskResults.Values | Where-Object { $_ }).Count
-$failCount = ($taskResults.Values | Where-Object { -not $_ }).Count
-$totalCount = $taskResults.Count
-$taskDetails = $taskResults.GetEnumerator() | ForEach-Object {
-    $status = if ($_.Value) { 'SUCCESS' } else { 'FAIL' }
-    "- $($_.Key): $status"
-}
+    $successCount = ($taskResults.Values | Where-Object { $_ }).Count
+    $failCount = ($taskResults.Values | Where-Object { -not $_ }).Count
+    $totalCount = $taskResults.Count
+    $taskDetails = $taskResults.GetEnumerator() | ForEach-Object {
+        $status = if ($_.Value) { 'SUCCESS' } else { 'FAIL' }
+        "- $($_.Key): $status"
+    }
 Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
 foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
 
