@@ -417,7 +417,41 @@ $logPath = Join-Path $parentFolder "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
 # Ensure dependencies before anything else
-Test-AndInstall-Dependencies
+function Install-EssentialApps {
+    Test-AndInstall-Dependencies
+
+    $success = 0
+    $fail = 0
+    $skipped = 0
+    $detailedResults = @()
+
+    foreach ($app in $global:EssentialApps) {
+        $installSuccess = $false
+        $installMethod = ""
+        try {
+            # Check if app is already installed (basic check via winget)
+            $isInstalled = $false
+            if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+                $wingetList = winget list --id $app.Winget 2>$null
+                if ($wingetList -and $wingetList -match $app.Winget) {
+                    $isInstalled = $true
+                }
+            }
+            if (-not $isInstalled -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
+                $chocoList = choco list --local-only $app.Choco 2>$null
+                if ($chocoList -and $chocoList -match $app.Choco) {
+                    $isInstalled = $true
+                }
+            }
+            if (-not $isInstalled) {
+                if ($app.Winget -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+                    Write-Log "Installing $($app.Name) via winget..." 'INFO'
+                    $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
+                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
+                    if ($wingetProc.ExitCode -eq 0) {
+                        $installSuccess = $true
+                        $installMethod = "winget"
+                    } else {
                         Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
                     }
                 }
@@ -451,6 +485,9 @@ Test-AndInstall-Dependencies
             $skipped++
             $detailedResults += "SKIP: $($app.Name) already installed"
         }
+    }
+    # (Rest of the function continues here, e.g. LibreOffice logic, summary, etc.)
+}
     
     # Check for Microsoft Office, install LibreOffice if not present
     $officeInstalled = $false
