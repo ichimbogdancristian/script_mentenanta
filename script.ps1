@@ -30,7 +30,7 @@ function Invoke-Task {
     }
 }
 
-# =====================[ SYSTEM INVENTORY FIRST ]==================
+### [PRE-TASK] EXTENSIVE SYSTEM INVENTORY (INITIAL)
 function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory" 'INFO'
     $inventoryFolder = $PSScriptRoot
@@ -75,10 +75,10 @@ function Get-ExtensiveSystemInventory {
 # Run inventory before anything else
 Get-ExtensiveSystemInventory
 
-# =====================[ MAIN SCRIPT STARTS HERE ]========================
+### [MAIN SCRIPT STARTS HERE]
 
 
-# =====================[ ENSURE WINGET, CHOCO & NUGET INSTALLED/UPDATED ]==================
+### [TASK 0] ENSURE WINGET, CHOCO & NUGET INSTALLED/UPDATED
 function Test-Winget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Log "winget not found. Attempting to install winget..." 'WARN'
@@ -123,7 +123,7 @@ function Test-Choco {
     }
 }
 
-# Ensure NuGet is installed/updated and NuGet provider is available (unattended)
+### Ensure NuGet is installed/updated and NuGet provider is available (unattended)
 function Test-NuGet {
     $nugetPath = Join-Path $env:ProgramData "nuget"
     if (-not (Test-Path $nugetPath)) { New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null }
@@ -195,13 +195,13 @@ Test-Winget
 Test-Choco
 Test-NuGet
 
-# Centralized temp folder and essential/bloatware lists
+### Centralized temp folder and essential/bloatware lists
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
 if (-not (Test-Path $global:TempFolder)) {
     New-Item -ItemType Directory -Path $global:TempFolder -Force | Out-Null
 }
 
-# Full bloatware list
+### Full bloatware list
 $global:BloatwareList = @(
     'Acer.AcerPowerManagement', 'Acer.AcerQuickAccess', 'Acer.AcerUEIPFramework', 'Acer.AcerUserExperienceImprovementProgram',
     'Adobe.AdobeCreativeCloud', 'Adobe.AdobeExpress', 'Adobe.AdobeGenuineService', 'Amazon.AmazonPrimeVideo',
@@ -256,7 +256,7 @@ $global:BloatwareList = @(
 $bloatwareListPath = Join-Path $global:TempFolder 'Bloatware_list.txt'
     $global:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
 
-# === EssentialApps ===
+### Essential Apps List
 $global:EssentialApps = @(
     @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit'; Choco = 'adobereader' },
     @{ Name = 'Google Chrome'; Winget = 'Google.Chrome'; Choco = 'googlechrome' },
@@ -275,7 +275,7 @@ $global:EssentialApps = @(
 $essentialAppsListPath = Join-Path $global:TempFolder 'EssentialApps_list.txt'
     $global:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
 
-# Load configuration (if exists)
+### Load configuration (if exists)
 $configPath = Join-Path $PSScriptRoot "config.json"
 if (Test-Path $configPath) {
     try {
@@ -288,7 +288,7 @@ if (Test-Path $configPath) {
     Write-Log "No config.json found. Using defaults." 'INFO'
 }
 
-# Check Windows version and compatibility
+### Check Windows version and compatibility
 $os = Get-CimInstance Win32_OperatingSystem
 $osVersion = $os.Version
 $osCaption = $os.Caption
@@ -298,7 +298,7 @@ if ($osVersion -lt '10.0') {
     exit 2
 }
 
-# Check for required PowerShell version
+### Check for required PowerShell version
 
 if ($PSVersionTable.PSVersion.Major -lt 5) {
     Write-Log "PowerShell 5.1 or higher is required. Exiting." 'ERROR'
@@ -307,7 +307,7 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 
 
 
-# =====================[ TASK: CHECK AND INSTALL DEPENDENCIES ]==================
+### [TASK 0] CHECK AND INSTALL DEPENDENCIES
 function Test-AndInstall-Dependencies {
     Write-Log "[START] Check And Install Dependencies" 'INFO'
     # Check and install/update winget
@@ -411,12 +411,12 @@ function Test-AndInstall-Dependencies {
     Write-Log "[END] Check And Install Dependencies" 'INFO'
 }
 
-# Set up log file one folder up from the script's folder
+### Set up log file one folder up from the script's folder
 $parentFolder = Split-Path $PSScriptRoot -Parent
 $logPath = Join-Path $parentFolder "maintenance.log"
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
-# Ensure dependencies before anything else
+### Ensure dependencies before anything else
 function Install-EssentialApps {
     Test-AndInstall-Dependencies
 
@@ -557,7 +557,7 @@ function Install-EssentialApps {
 
 
 
-# =====================[ TASK 6: SYSTEM INVENTORY ]==========================
+### [TASK 2] SYSTEM INVENTORY (LEGACY)
 function Get-SystemInventory {
     Write-Log "[START] System Inventory (legacy)" 'INFO'
     $inventoryPath = Join-Path $global:TempFolder 'inventory.txt'
@@ -567,7 +567,7 @@ function Get-SystemInventory {
 }
 
 
-# =====================[ TASK 2: DISABLE TELEMETRY ]=========================
+### [TASK 7] DISABLE TELEMETRY
 function Disable-Telemetry {
     # [TASK 2] Disable Telemetry
     Write-Log "[START] Disable Telemetry" 'INFO'
@@ -755,7 +755,7 @@ function Disable-Telemetry {
 }
 
 
-# =====================[ TASK 1: SYSTEM RESTORE PROTECTION ]==========================
+### [TASK 1] SYSTEM RESTORE PROTECTION
 function Protect-SystemRestore {
     # [TASK 1] System Restore Protection
     Write-Log "[START] System Restore Protection" 'INFO'
@@ -788,21 +788,25 @@ function Protect-SystemRestore {
 }
 
 
-# =====================[ TASK EXECUTION IN DESIRED ORDER ]==========================
+### [MAIN TASK EXECUTION IN TIMELINE ORDER]
 Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'INFO'
  $taskResults = @{}
 
-# 1. System Restore Protection
+
+### 1. System Restore Protection (Task 1)
 $taskResults['Task1_SystemRestoreProtection'] = Invoke-Task 'SystemRestoreProtection' { Protect-SystemRestore }
 
-# 2. Remove Bloatware
-$taskResults['Task2_RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
+### 2. System Inventory (legacy, for compatibility) (Task 2)
+$taskResults['Task2_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
 
-# 3. Install Essential Apps
-$taskResults['Task3_InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
+### 3. Remove Bloatware (Task 3)
+$taskResults['Task3_RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
 
-# 4. Update All Apps and Packages
-$taskResults['Task4_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
+### 4. Install Essential Apps (Task 4)
+$taskResults['Task4_InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
+
+### 5. Update All Apps and Packages (Task 5)
+$taskResults['Task5_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
     # [TASK 5] Update all apps and packages
     Write-Log "[START] Update All Apps and Packages" 'INFO'
     # Update with winget
@@ -832,10 +836,7 @@ $taskResults['Task4_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
     Write-Log "[END] Update All Apps and Packages" 'INFO'
 }
 
-# 5. System Inventory (legacy, for compatibility)
-$taskResults['Task5_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
-
-# 6. Windows Update Check
+### 6. Windows Update Check (Task 6)
 $taskResults['Task6_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
     # [TASK 7] Windows Update check
     Write-Log "Checking for Windows Updates..." 'INFO'
@@ -865,10 +866,10 @@ $taskResults['Task6_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
     }
 }
 
-# 7. Disable Telemetry
+### 7. Disable Telemetry (Task 7)
 $taskResults['Task7_DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
 
-# 8. Clean Temp Files
+### 8. Clean Temp Files (Task 8)
 $taskResults['Task8_CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
     # [TASK 8] Clean temp files
     $temp = $env:TEMP
@@ -883,7 +884,7 @@ $taskResults['Task8_CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
     Write-Log "Deleted $deleted temp files from $temp" 'INFO'
 }
 
-# 9. Disk Cleanup
+### 9. Disk Cleanup (Task 9)
 $taskResults['Task9_DiskCleanup'] = Invoke-Task 'DiskCleanup' {
     # [TASK 9] Disk cleanup
     Write-Log "Running disk cleanup..." 'INFO'
@@ -904,7 +905,7 @@ Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
 
 
 
-# Ensure script is running as Administrator
+### Ensure script is running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Warning "This script must be run as Administrator. Exiting."
     exit 1
@@ -913,10 +914,10 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 
 
-# === Built-in Maintenance Tasks ===
-# (All tasks are now executed above in the desired order)
+### Built-in Maintenance Tasks
+### (All tasks are now executed above in the desired order)
 
-# === Enhanced Task Results Summary ===
+### Enhanced Task Results Summary
     $successCount = ($taskResults.Values | Where-Object { $_ }).Count
     $failCount = ($taskResults.Values | Where-Object { -not $_ }).Count
     $totalCount = $taskResults.Count
@@ -927,7 +928,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
 foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
 
-# === Enhanced Reporting Section ===
+### Enhanced Reporting Section
 # Save summary report in the same folder as script.bat (repo parent folder)
 $batPath = Join-Path $PSScriptRoot "script.bat"
 if (Test-Path $batPath) {
@@ -945,7 +946,7 @@ $summaryLines += "---"
 $summaryLines | Out-File -FilePath $summaryPath -Append
 Write-Log "Summary report written to $summaryPath" 'INFO'
 
-# Remove the repo folder (script_mentenanta) after report creation
+### Remove the repo folder (script_mentenanta) after report creation
 try {
     $repoFolder = $PSScriptRoot
     $parentFolder = Split-Path $repoFolder -Parent
@@ -960,8 +961,8 @@ try {
     Write-Log "Failed to remove repo folder: $_" 'WARN'
 }
 
-# Example: Optionally send report via email or webhook (not implemented)
-# ...
+### Example: Optionally send report via email or webhook (not implemented)
+### ...
 
 Write-Log "Script ended." 'INFO'
 
