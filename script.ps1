@@ -1,8 +1,9 @@
 
-## Set up log file one folder up from the script's folder
+$taskIndex = 0
+# [PRE-TASK 0] Set up log file one folder up from the script's folder
 $parentFolder = Split-Path $PSScriptRoot -Parent
 $logPath = Join-Path $parentFolder "maintenance.log"
-# =====================[ LOGGING & TASK FUNCTIONS FIRST ]==================
+# [PRE-TASK 1] Logging & Task Functions
 function Write-Log {
     param(
         [string]$Message,
@@ -30,7 +31,7 @@ function Invoke-Task {
     }
 }
 
-### [PRE-TASK] EXTENSIVE SYSTEM INVENTORY (INITIAL)
+### [PRE-TASK 2] Extensive System Inventory (Initial)
 function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory" 'INFO'
     $inventoryFolder = $PSScriptRoot
@@ -72,13 +73,13 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[END] Extensive System Inventory" 'INFO'
 }
 
-# Run inventory before anything else
+# [PRE-TASK 3] Run inventory before anything else
 Get-ExtensiveSystemInventory
 
 ### [MAIN SCRIPT STARTS HERE]
 
 
-### [TASK 0] ENSURE WINGET, CHOCO & NUGET INSTALLED/UPDATED
+### [TASK 1] Ensure Winget, Choco & NuGet Installed/Updated
 function Test-Winget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Log "winget not found. Attempting to install winget..." 'WARN'
@@ -307,7 +308,7 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 
 
 
-### [TASK 0] CHECK AND INSTALL DEPENDENCIES
+### [TASK 2] Check and Install Dependencies (called by Install-EssentialApps)
 function Test-AndInstall-Dependencies {
     Write-Log "[START] Check And Install Dependencies" 'INFO'
     # Check and install/update winget
@@ -557,7 +558,7 @@ function Install-EssentialApps {
 
 
 
-### [TASK 2] SYSTEM INVENTORY (LEGACY)
+### [TASK 3] System Inventory (Legacy)
 function Get-SystemInventory {
     Write-Log "[START] System Inventory (legacy)" 'INFO'
     $inventoryPath = Join-Path $global:TempFolder 'inventory.txt'
@@ -567,7 +568,7 @@ function Get-SystemInventory {
 }
 
 
-### [TASK 7] DISABLE TELEMETRY
+### [TASK 4] Disable Telemetry
 function Disable-Telemetry {
     # [TASK 2] Disable Telemetry
     Write-Log "[START] Disable Telemetry" 'INFO'
@@ -755,7 +756,7 @@ function Disable-Telemetry {
 }
 
 
-### [TASK 1] SYSTEM RESTORE PROTECTION
+### [TASK 5] System Restore Protection
 function Protect-SystemRestore {
     # [TASK 1] System Restore Protection
     Write-Log "[START] System Restore Protection" 'INFO'
@@ -793,20 +794,20 @@ Write-Log "[COORDINATION] Starting inspired tasks from system_maintenance..." 'I
  $taskResults = @{}
 
 
-### 1. System Restore Protection (Task 1)
-$taskResults['Task1_SystemRestoreProtection'] = Invoke-Task 'SystemRestoreProtection' { Protect-SystemRestore }
+### [TASK 5] System Restore Protection
+$taskResults['Task5_SystemRestoreProtection'] = Invoke-Task 'SystemRestoreProtection' { Protect-SystemRestore }
 
-### 2. System Inventory (legacy, for compatibility) (Task 2)
-$taskResults['Task2_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
+### [TASK 3] System Inventory (Legacy, for compatibility)
+$taskResults['Task3_SystemInventory'] = Invoke-Task 'SystemInventory' { Get-SystemInventory }
 
-### 3. Remove Bloatware (Task 3)
-$taskResults['Task3_RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
+### [TASK 6] Remove Bloatware
+$taskResults['Task6_RemoveBloatware'] = Invoke-Task 'RemoveBloatware' { Remove-Bloatware }
 
-### 4. Install Essential Apps (Task 4)
-$taskResults['Task4_InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
+### [TASK 7] Install Essential Apps
+$taskResults['Task7_InstallEssentialApps'] = Invoke-Task 'InstallEssentialApps' { Install-EssentialApps }
 
-### 5. Update All Apps and Packages (Task 5)
-$taskResults['Task5_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
+### [TASK 8] Update All Apps and Packages
+$taskResults['Task8_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
     # [TASK 5] Update all apps and packages
     Write-Log "[START] Update All Apps and Packages" 'INFO'
     # Update with winget
@@ -836,8 +837,8 @@ $taskResults['Task5_UpdateAllPackages'] = Invoke-Task 'UpdateAllPackages' {
     Write-Log "[END] Update All Apps and Packages" 'INFO'
 }
 
-### 6. Windows Update Check (Task 6)
-$taskResults['Task6_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
+### [TASK 9] Windows Update Check
+$taskResults['Task9_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
     # [TASK 7] Windows Update check
     Write-Log "Checking for Windows Updates..." 'INFO'
     try {
@@ -866,46 +867,53 @@ $taskResults['Task6_WindowsUpdateCheck'] = Invoke-Task 'WindowsUpdateCheck' {
     }
 }
 
-### 7. Disable Telemetry (Task 7)
-$taskResults['Task7_DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
+### [TASK 4] Disable Telemetry
+$taskResults['Task4_DisableTelemetry'] = Invoke-Task 'DisableTelemetry' { Disable-Telemetry }
 
-### 8. Clean Temp Files (Task 8)
-$taskResults['Task8_CleanTempFiles'] = Invoke-Task 'CleanTempFiles' {
-    # [TASK 8] Clean temp files
-    $temp = $env:TEMP
-    $tempFiles = Get-ChildItem -Path $temp -Recurse -ErrorAction SilentlyContinue
-    $deleted = 0
-    foreach ($file in $tempFiles) {
-        try {
-            Remove-Item $file.FullName -Force -Recurse -ErrorAction Stop
-            $deleted++
-        } catch {}
+### [TASK 10] Clean Temp Files and Disk Cleanup (Unattended, No Windows)
+$taskResults['Task10_CleanTempAndDisk'] = Invoke-Task 'CleanTempAndDisk' {
+    Write-Log "[START] Clean Temp Files and Disk Cleanup (Unattended)" 'INFO'
+
+    # Clean temp files from multiple locations
+    $tempFolders = @($env:TEMP, "$env:SystemRoot\Temp", "$env:LOCALAPPDATA\Temp", "$env:USERPROFILE\AppData\Local\Temp")
+    $deletedFiles = 0
+    foreach ($folder in $tempFolders | Sort-Object -Unique) {
+        if (Test-Path $folder) {
+            $items = Get-ChildItem -Path $folder -Recurse -ErrorAction SilentlyContinue
+            foreach ($item in $items) {
+                try {
+                    Remove-Item $item.FullName -Force -Recurse -ErrorAction Stop
+                    $deletedFiles++
+                } catch {
+                    Write-Log "Failed to delete $($item.FullName): $_" 'WARN'
+                }
+            }
+        }
     }
-    Write-Log "Deleted $deleted temp files from $temp" 'INFO'
-}
+    Write-Log "Deleted $deletedFiles temp files from temp folders." 'INFO'
 
-### 9. Disk Cleanup (Task 9)
-$taskResults['Task9_DiskCleanup'] = Invoke-Task 'DiskCleanup' {
-    # [TASK 9] Disk cleanup
-    Write-Log "Running disk cleanup..." 'INFO'
+    # Run Disk Cleanup (cleanmgr.exe) silently, no windows
     try {
-        # Set up the sagerun profile (run once to configure options)
-        $cleanmgrSetup = "/sageset:1"
-        Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrSetup -Wait
-        # Run cleanmgr.exe with all options silently
-        $cleanmgrArgs = "/sagerun:1"
-        Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrArgs -Wait
-        Write-Log "Disk cleanup completed using cleanmgr.exe." 'INFO'
+        # Use /AUTOCLEAN to run disk cleanup silently (no UI, cleans up as much as possible)
+        $cleanmgrArgs = "/AUTOCLEAN"
+        $proc = Start-Process -FilePath "cleanmgr.exe" -ArgumentList $cleanmgrArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
+        if ($proc.ExitCode -eq 0) {
+            Write-Log "Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN)." 'INFO'
+        } else {
+            Write-Log "Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
+        }
     } catch {
         Write-Log "Disk cleanup failed: $_" 'WARN'
     }
+
+    Write-Log "[END] Clean Temp Files and Disk Cleanup (Unattended)" 'INFO'
 }
 
 Write-Log "[COORDINATION] All inspired tasks completed." 'INFO'
 
 
 
-### Ensure script is running as Administrator
+### [POST-TASK 1] Ensure script is running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Warning "This script must be run as Administrator. Exiting."
     exit 1
@@ -914,10 +922,10 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 
 
-### Built-in Maintenance Tasks
+### [POST-TASK 2] Built-in Maintenance Tasks
 ### (All tasks are now executed above in the desired order)
 
-### Enhanced Task Results Summary
+### [POST-TASK 3] Enhanced Task Results Summary
     $successCount = ($taskResults.Values | Where-Object { $_ }).Count
     $failCount = ($taskResults.Values | Where-Object { -not $_ }).Count
     $totalCount = $taskResults.Count
@@ -928,7 +936,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
 foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
 
-### Enhanced Reporting Section
+### [POST-TASK 4] Enhanced Reporting Section
 # Save summary report in the same folder as script.bat (repo parent folder)
 $batPath = Join-Path $PSScriptRoot "script.bat"
 if (Test-Path $batPath) {
@@ -946,7 +954,7 @@ $summaryLines += "---"
 $summaryLines | Out-File -FilePath $summaryPath -Append
 Write-Log "Summary report written to $summaryPath" 'INFO'
 
-### Remove the repo folder (script_mentenanta) after report creation
+### [POST-TASK 5] Remove the repo folder (script_mentenanta) after report creation
 try {
     $repoFolder = $PSScriptRoot
     $parentFolder = Split-Path $repoFolder -Parent
@@ -961,12 +969,12 @@ try {
     Write-Log "Failed to remove repo folder: $_" 'WARN'
 }
 
-### Example: Optionally send report via email or webhook (not implemented)
+### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
 ### ...
 
 Write-Log "Script ended." 'INFO'
 
-# Prompt to close the window if running interactively
+### [POST-TASK 7] Prompt to close the window if running interactively
 if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host
     Read-Host -Prompt 'Press Enter to close this window...'
