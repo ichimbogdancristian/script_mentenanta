@@ -153,39 +153,76 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory" 'INFO'
     $inventoryFolder = $PSScriptRoot
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
-    # System info
-    Get-ComputerInfo | Out-File (Join-Path $inventoryFolder 'inventory_system.txt')
-    # Installed Appx apps
-    Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
-    # Installed winget apps
+
+    Write-Log "[Inventory] Collecting system info..." 'INFO'
+    try {
+        Get-ComputerInfo | Out-File (Join-Path $inventoryFolder 'inventory_system.txt')
+        Write-Log "[Inventory] System info collected." 'INFO'
+    } catch { Write-Log "[Inventory] System info failed: $_" 'WARN' }
+
+    Write-Log "[Inventory] Collecting installed Appx apps..." 'INFO'
+    try {
+        Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
+        Write-Log "[Inventory] Appx apps collected." 'INFO'
+    } catch { Write-Log "[Inventory] Appx apps failed: $_" 'WARN' }
+
+    Write-Log "[Inventory] Collecting installed winget apps..." 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-        winget list > (Join-Path $inventoryFolder 'inventory_winget.txt')
+        try {
+            winget list > (Join-Path $inventoryFolder 'inventory_winget.txt')
+            Write-Log "[Inventory] Winget apps collected." 'INFO'
+        } catch { Write-Log "[Inventory] Winget apps failed: $_" 'WARN' }
     }
-    # Installed choco apps
+
+    Write-Log "[Inventory] Collecting installed choco apps..." 'INFO'
     if (Get-Command choco -ErrorAction SilentlyContinue) {
-        choco list --local-only > (Join-Path $inventoryFolder 'inventory_choco.txt')
+        try {
+            choco list --local-only > (Join-Path $inventoryFolder 'inventory_choco.txt')
+            Write-Log "[Inventory] Choco apps collected." 'INFO'
+        } catch { Write-Log "[Inventory] Choco apps failed: $_" 'WARN' }
     }
-    # Registry uninstall keys
+
+    Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO'
     $regApps = @()
     $uninstallKeys = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
     )
-    foreach ($key in $uninstallKeys) {
-        $regApps += Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-            (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
+    try {
+        foreach ($key in $uninstallKeys) {
+            $regApps += Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+                (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
+            }
         }
-    }
-    $regApps | Sort-Object -Unique | Out-File (Join-Path $inventoryFolder 'inventory_registry.txt')
-    # Services
-    Get-Service | Select-Object Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
-    # Scheduled tasks
-    Get-ScheduledTask | Select-Object TaskName, TaskPath, State | Out-File (Join-Path $inventoryFolder 'inventory_tasks.txt')
-    # Drivers (optimized, unattended)
-    Get-CimInstance Win32_PnPSignedDriver | Select-Object DeviceName, DriverVersion, Manufacturer | Out-File (Join-Path $inventoryFolder 'inventory_drivers.txt')
-    # Windows updates
-    Get-HotFix | Select-Object Description, HotFixID, InstalledOn | Out-File (Join-Path $inventoryFolder 'inventory_updates.txt')
+        $regApps | Sort-Object -Unique | Out-File (Join-Path $inventoryFolder 'inventory_registry.txt')
+        Write-Log "[Inventory] Registry uninstall keys collected." 'INFO'
+    } catch { Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN' }
+
+    Write-Log "[Inventory] Collecting services..." 'INFO'
+    try {
+        Get-Service | Select-Object Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
+        Write-Log "[Inventory] Services collected." 'INFO'
+    } catch { Write-Log "[Inventory] Services failed: $_" 'WARN' }
+
+    Write-Log "[Inventory] Collecting scheduled tasks..." 'INFO'
+    try {
+        Get-ScheduledTask | Select-Object TaskName, TaskPath, State | Out-File (Join-Path $inventoryFolder 'inventory_tasks.txt')
+        Write-Log "[Inventory] Scheduled tasks collected." 'INFO'
+    } catch { Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN' }
+
+    Write-Log "[Inventory] Collecting drivers..." 'INFO'
+    try {
+        Get-CimInstance Win32_PnPSignedDriver | Select-Object DeviceName, DriverVersion, Manufacturer | Out-File (Join-Path $inventoryFolder 'inventory_drivers.txt')
+        Write-Log "[Inventory] Drivers collected." 'INFO'
+    } catch { Write-Log "[Inventory] Drivers failed: $_" 'WARN' }
+
+    Write-Log "[Inventory] Collecting Windows updates..." 'INFO'
+    try {
+        Get-HotFix | Select-Object Description, HotFixID, InstalledOn | Out-File (Join-Path $inventoryFolder 'inventory_updates.txt')
+        Write-Log "[Inventory] Windows updates collected." 'INFO'
+    } catch { Write-Log "[Inventory] Windows updates failed: $_" 'WARN' }
+
     Write-Log "Extensive system inventory files created in $inventoryFolder" 'INFO'
     Write-Log "[END] Extensive System Inventory" 'INFO'
 }
