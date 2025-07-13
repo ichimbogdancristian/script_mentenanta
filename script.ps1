@@ -183,7 +183,7 @@ function Remove-Environment {
     }
 
     # Close all log file handles
-    if ($Context.ContainsKey('LogFile') -and $Context.LogFile -and $Context.LogFile -is [System.IO.StreamWriter]) {
+    if ($Context.ContainsKey('LogFile') -and $Context.LogFile -and ($Context.LogFile.GetType().FullName -eq 'System.IO.StreamWriter')) {
         try {
             $Context.LogFile.Close()
             $Context.LogFile.Dispose()
@@ -236,7 +236,7 @@ function Remove-Environment {
                 }
                 catch {
                     Write-Host "❌ Failed to delete temporary files: $_"
-                    Write-Host "   You can manually delete: $(${Context.TempFolder})"
+                    Write-Host "   You can manually delete: $($Context.TempFolder)"
                     Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
                 }
             }
