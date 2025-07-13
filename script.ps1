@@ -258,7 +258,18 @@ function Get-TaskFolder {
         [hashtable]$Context,
         [string]$TaskName
     )
-    return $Context.TaskFolders[$TaskName]
+    # Try direct lookup, fallback to normalized key if not found
+    if ($Context.TaskFolders.ContainsKey($TaskName)) {
+        return $Context.TaskFolders[$TaskName]
+    } else {
+        $normalizedName = $TaskName -replace '[^\w\-_]', '_'
+        if ($Context.TaskFolders.ContainsKey($normalizedName)) {
+            return $Context.TaskFolders[$normalizedName]
+        } else {
+            Write-Warning "Task folder for '$TaskName' not found."
+            return $null
+        }
+    }
 }
 
 # =====================[ ENHANCED LOGGING SYSTEM ]====================
