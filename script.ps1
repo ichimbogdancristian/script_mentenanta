@@ -72,7 +72,7 @@ function Invoke-SystemMaintenancePolicy {
         }
     }
     Remove-Environment -Context $Context -DeleteTempFiles:$DeleteTempFiles
-
+    #
     # Summary banner
     Write-Host "\n====================[ MAINTENANCE SUMMARY ]===================="
     Write-Host "Run Timestamp: $runTimestamp"
