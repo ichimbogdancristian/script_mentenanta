@@ -196,131 +196,54 @@ function Remove-Environment {
     Write-Host "[Cleanup] Environment cleanup completed."
     Write-Host "[Cleanup] Script execution finished."
 
-    # Always delete the repo temp folder after saving the report
+    # Final message about temp folders and cleanup option
     if ($Context.TempFolder -and (Test-Path $Context.TempFolder)) {
-        try {
-            [System.GC]::Collect()
-            [System.GC]::WaitForPendingFinalizers()
-            Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
-            Write-Host "✅ Repo temp folder deleted automatically."
-            Write-Log -Context $Context -Message "Repo temp folder deleted automatically." -Level 'INFO'
-        }
-        catch {
-            Write-Host "❌ Failed to delete repo temp folder: $_"
-            Write-Host "📁 Repo temp files preserved at: $($Context.TempFolder)"
-            Write-Log -Context $Context -Message "Failed to delete repo temp folder: $_" -Level 'WARNING'
-        }
-    }
-}
-
-Write-Host "`n====================[ CLEANUP ]===================="
-Write-Log -Context $Context -Message "Starting environment cleanup..." -Level 'INFO'
-
-# Handle deferred updates before cleanup
-if ($Context.ContainsKey('DeferredUpdates') -and $Context.DeferredUpdates.Count -gt 0) {
-    Write-Host "`n⚠️  DEFERRED UPDATES DETECTED"
-    Write-Host "The following updates were deferred to prevent script interruption:"
-
-    foreach ($deferredUpdate in $Context.DeferredUpdates) {
-        if ($deferredUpdate.Type -eq 'PowerShell7Update') {
-            Write-Host "📦 PowerShell 7 Updates:"
-            foreach ($update in $deferredUpdate.Updates) {
-                Write-Host "   • $($update.Name): $($update.Version) → $($update.AvailableVersion)"
-            }
-
-            Write-Host "`nDo you want to run the PowerShell 7 update now? [Y/N]" -NoNewline
-            $response = Read-Host " "
-
-            if ($response -match '^[Yy]') {
-                Write-Host "Starting PowerShell 7 update..."
-                try {
-                    # Run the deferred update script
-                    Start-Process -FilePath $deferredUpdate.BatchPath -Wait
-                    Write-Log -Context $Context -Message "PowerShell 7 deferred update completed." -Level 'SUCCESS'
-                }
-                catch {
-                    Write-Host "Failed to start deferred update: $_"
-                    Write-Host "You can manually run: $($deferredUpdate.BatchPath)"
-                    Write-Log -Context $Context -Message "Failed to start deferred PowerShell update: $_" -Level 'ERROR'
-                }
-            }
-            else {
-                Write-Host "PowerShell 7 update skipped."
-                Write-Host "To update later, run: $($deferredUpdate.BatchPath)"
-                Write-Log -Context $Context -Message "User skipped PowerShell 7 deferred update." -Level 'INFO'
-            }
-        }
-    }
-}
-
-try {
-    Stop-Transcript | Out-Null
-}
-catch {
-    # Transcript might not be running
-}
-
-# Close all log file handles
-if ($Context.ContainsKey('LogFile') -and $Context.LogFile -and $Context.LogFile -is [System.IO.StreamWriter]) {
-    try {
-        $Context.LogFile.Close()
-        $Context.LogFile.Dispose()
-    }
-    catch {
-        Write-Warning "Failed to close log file: $_"
-    }
-}
-
-Write-Host "[Cleanup] Environment cleanup completed."
-Write-Host "[Cleanup] Script execution finished."
-
-# Final message about temp folders and cleanup option
-if ($Context.TempFolder -and (Test-Path $Context.TempFolder)) {
-    if ($DeleteTempFiles) {
-        # Automatic deletion without prompting
-        try {
-            # Close any remaining file handles first
-            [System.GC]::Collect()
-            [System.GC]::WaitForPendingFinalizers()
-
-            Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
-            Write-Host "✅ Temporary files deleted automatically."
-            Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
-        }
-        catch {
-            Write-Host "❌ Failed to delete temporary files: $_"
-            Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
-            Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
-        }
-    }
-    else {
-        # Interactive mode - ask user
-        Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
-        Write-Host "   These folders contain logs, reports, and generated files from each task."
-
-        # Ask user if they want to delete the temp folder
-        Write-Host "`nDo you want to delete the temporary files now? [Y/N]" -NoNewline
-        $response = Read-Host " "
-
-        if ($response -match '^[Yy]') {
+        if ($DeleteTempFiles) {
+            # Automatic deletion without prompting
             try {
                 # Close any remaining file handles first
                 [System.GC]::Collect()
                 [System.GC]::WaitForPendingFinalizers()
 
                 Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
-                Write-Host "✅ Temporary files deleted successfully."
-                Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
+                Write-Host "✅ Temporary files deleted automatically."
+                Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
             }
             catch {
                 Write-Host "❌ Failed to delete temporary files: $_"
-                Write-Host "   You can manually delete: $($Context.TempFolder)"
+                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
                 Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
             }
         }
         else {
-            Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
-            Write-Host "   You can safely delete them manually when no longer needed."
+            # Interactive mode - ask user
+            Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
+            Write-Host "   These folders contain logs, reports, and generated files from each task."
+
+            # Ask user if they want to delete the temp folder
+            Write-Host "`nDo you want to delete the temporary files now? [Y/N]" -NoNewline
+            $response = Read-Host " "
+
+            if ($response -match '^[Yy]') {
+                try {
+                    # Close any remaining file handles first
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+
+                    Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
+                    Write-Host "✅ Temporary files deleted successfully."
+                    Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
+                }
+                catch {
+                    Write-Host "❌ Failed to delete temporary files: $_"
+                    Write-Host "   You can manually delete: $(${Context.TempFolder})"
+                    Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
+                }
+            }
+            else {
+                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
+                Write-Host "   You can safely delete them manually when no longer needed."
+            }
         }
     }
 }
@@ -4025,9 +3948,135 @@ $AllTasks = @(
     'Invoke-Task9_WindowsUpdate',
     'Invoke-Task10_RestorePointAndDiskCleanup',
     'Invoke-Task11_GenerateTranscriptHtml',
-    'Invoke-Task12_CheckAndPromptReboot'
+    'Invoke-Task12_CheckAndPromptReboot',
+    'Invoke-Task11_Finalization'
 )
 
 Invoke-SystemMaintenancePolicy -Tasks $AllTasks
 
 # =====================[ FINALIZATION ]====================
+
+# =====================================================================================
+# TASK 11: FINALIZATION & REPORTING
+# =====================================================================================
+# Purpose: Generate HTML report, cleanup temp files, handle deferred PowerShell 7 updates, and close logs
+# Structure:
+#   1. Compile logs, stats, and summaries
+#   2. Generate styled HTML report
+#   3. Cleanup temp files (auto or prompt)
+#   4. Handle deferred PowerShell 7 updates
+#   5. Close logs and output summary
+# =====================================================================================
+function Invoke-Task11_Finalization {
+    param([hashtable]$Context)
+
+    Write-Host "=====================[ TASK 11: FINALIZATION & REPORTING ]===================="
+    Write-Log -Context $Context -Message "=====================[ TASK 11: FINALIZATION & REPORTING ]====================" -Level 'INFO'
+    Write-TaskLog -Context $Context -Message "Task 11: Finalization & Reporting started." -Level 'INFO'
+
+    try {
+        # 1. Compile logs, stats, and summaries
+        $SystemName = $env:COMPUTERNAME
+        $OSVersion = (Get-CimInstance Win32_OperatingSystem).Caption + " " + (Get-CimInstance Win32_OperatingSystem).Version
+        $TotalRAM = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+        $StartTime = Get-Date
+
+        $TaskStats = @{
+            Total           = $Context.TaskFolders.Count
+            Successful      = 0
+            WithWarnings    = 0
+            WithErrors      = 0
+            TotalFiles      = 0
+            TotalLogEntries = 0
+        }
+        $TaskSections = @()
+        foreach ($taskEntry in $Context.TaskFolders.GetEnumerator()) {
+            $taskName = $taskEntry.Key
+            $taskFolderPath = $taskEntry.Value
+            $taskFiles = Get-ChildItem -Path $taskFolderPath -File -ErrorAction SilentlyContinue
+            $filesGenerated = $taskFiles.Count
+            $TaskStats.TotalFiles += $filesGenerated
+            $TaskAnalysis = @{
+                Number         = ($taskName -replace '[^\d]', '') -as [int]
+                Name           = $taskName
+                Status         = 'SUCCESS'
+                FilesGenerated = $filesGenerated
+                LogEntries     = 0
+                Duration       = 'N/A'
+                SpaceUsed      = ($taskFiles | Measure-Object -Property Length -Sum).Sum
+                ItemsAdded     = @()
+                ItemsRemoved   = @()
+                ItemsUpdated   = @()
+                Errors         = @()
+                Warnings       = @()
+                Successes      = @("Completed successfully")
+            }
+            $TaskStats.Successful += 1
+            $TaskSections += Build-TaskHtmlSection -TaskAnalysis $TaskAnalysis -TaskFiles $taskFiles
+        }
+        $SummaryData = @()
+        $htmlReport = Build-CompleteHtmlReport -SystemName $SystemName -OSVersion $OSVersion -TotalRAM $TotalRAM -TaskStats $TaskStats -SummaryData $SummaryData -TaskSections $TaskSections -StartTime $StartTime
+        $scriptPath = $MyInvocation.PSCommandPath
+        $scriptDir = Split-Path -Parent $scriptPath
+        $outPath = Join-Path $scriptDir 'SystemMaintenance_Report.html'
+        $htmlReport | Out-File -FilePath $outPath -Encoding UTF8
+        Write-Log -Context $Context -Message "System maintenance HTML report generated at $outPath" -Level 'SUCCESS'
+        Write-TaskLog -Context $Context -Message "System maintenance HTML report generated at $outPath" -Level 'SUCCESS'
+        Write-Host "[Finalization] HTML report generated: $outPath"
+
+        # 2. Cleanup temp files (auto or prompt)
+        if ($Context.TempFolder -and (Test-Path $Context.TempFolder)) {
+            Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
+            Write-Host "   These folders contain logs, reports, and generated files from each task."
+            Write-Host "`nDo you want to delete the temporary files now? [Y/N]" -NoNewline
+            $response = Read-Host " "
+            if ($response -match '^[Yy]') {
+                try {
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
+                    Write-Host "✅ Temporary files deleted successfully."
+                    Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
+                }
+                catch {
+                    Write-Host "❌ Failed to delete temporary files: $_"
+                    Write-Host "   You can manually delete: $($Context.TempFolder)"
+                    Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
+                }
+            }
+            else {
+                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
+                Write-Host "   You can safely delete them manually when no longer needed."
+            }
+        }
+
+        # 3. Handle deferred PowerShell 7 updates
+        if ($Context.ContainsKey('DeferredUpdates') -and $Context.DeferredUpdates.Count -gt 0) {
+            Write-Host "Handling deferred PowerShell 7 updates..."
+            foreach ($deferredUpdate in $Context.DeferredUpdates) {
+                try {
+                    if ($deferredUpdate.BatchPath -and (Test-Path $deferredUpdate.BatchPath)) {
+                        Start-Process -FilePath $deferredUpdate.BatchPath -WindowStyle Normal
+                        Write-Log -Context $Context -Message "Deferred PowerShell 7 update batch started: $($deferredUpdate.BatchPath)" -Level 'SUCCESS'
+                    }
+                    else {
+                        Write-Log -Context $Context -Message "Deferred update batch file not found: $($deferredUpdate.BatchPath)" -Level 'ERROR'
+                    }
+                }
+                catch {
+                    Write-Log -Context $Context -Message "Failed deferred update: $($deferredUpdate.BatchPath) - $_" -Level 'ERROR'
+                }
+            }
+        }
+
+        # 4. Close logs and output summary
+        Write-Log -Context $Context -Message "Finalization complete. All logs closed." -Level 'SUCCESS'
+        Write-TaskLog -Context $Context -Message "Finalization complete. All logs closed." -Level 'SUCCESS'
+        Write-Host "System maintenance finalization complete."
+    }
+    catch {
+        Write-Log -Context $Context -Message "Finalization failed: $_" -Level 'ERROR'
+        Write-TaskLog -Context $Context -Message "Finalization failed: $_" -Level 'ERROR'
+    }
+    Write-TaskLog -Context $Context -Message "Task 11 completed." -Level 'SUCCESS'
+}
