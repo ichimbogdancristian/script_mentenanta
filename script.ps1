@@ -34,7 +34,6 @@ function Invoke-SystemMaintenancePolicy {
         Write-Host "Example: Invoke-SystemMaintenancePolicy -Tasks @('Invoke-Task1_CentralCoordinationPolicy','Invoke-Task2_SystemProtection') -DeleteTempFiles"
         return
     }
-}
 
     $Context = @{}
     Initialize-Environment -Context $Context
@@ -75,7 +74,7 @@ function Invoke-SystemMaintenancePolicy {
     Remove-Environment -Context $Context -DeleteTempFiles:$DeleteTempFiles
     #
     # Summary banner
-    Write-Host "\n====================[ MAINTENANCE SUMMARY ]===================="
+    Write-Host "`n====================[ MAINTENANCE SUMMARY ]===================="
     Write-Host "Run Timestamp: $runTimestamp"
     Write-Host "Log File: $($Context.LogPath)"
     if ($overallErrors.Count -gt 0) {
@@ -85,6 +84,7 @@ function Invoke-SystemMaintenancePolicy {
         Write-Host "All tasks completed successfully."
     }
     Write-Host "==============================================================="
+}
 
 # =====================[ INITIALIZATION & CLEANUP ]====================
 function Initialize-Environment {
