@@ -107,29 +107,31 @@ function Initialize-Environment {
 }
 
 function Remove-Environment {
-    param(
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
         [hashtable]$Context,
         [switch]$DeleteTempFiles
     )
-    
+
     Write-Host "`n====================[ CLEANUP ]===================="
     Write-Log -Context $Context -Message "Starting environment cleanup..." -Level 'INFO'
-    
+
     # Handle deferred updates before cleanup
     if ($Context.ContainsKey('DeferredUpdates') -and $Context.DeferredUpdates.Count -gt 0) {
         Write-Host "`n⚠️  DEFERRED UPDATES DETECTED"
         Write-Host "The following updates were deferred to prevent script interruption:"
-        
+
         foreach ($deferredUpdate in $Context.DeferredUpdates) {
             if ($deferredUpdate.Type -eq 'PowerShell7Update') {
                 Write-Host "📦 PowerShell 7 Updates:"
                 foreach ($update in $deferredUpdate.Updates) {
                     Write-Host "   • $($update.Name): $($update.Version) → $($update.AvailableVersion)"
                 }
-                
+
                 Write-Host "`nDo you want to run the PowerShell 7 update now? [Y/N]" -NoNewline
                 $response = Read-Host " "
-                
+
                 if ($response -match '^[Yy]') {
                     Write-Host "Starting PowerShell 7 update..."
                     try {
@@ -149,15 +151,15 @@ function Remove-Environment {
             }
         }
     }
-    
+
     try {
         Stop-Transcript | Out-Null
     } catch {
         # Transcript might not be running
     }
-    
+
     # Close all log file handles
-    if ($Context.LogFile -and $Context.LogFile -is [System.IO.StreamWriter]) {
+    if ($Context.ContainsKey('LogFile') -and $Context.LogFile -and $Context.LogFile -is [System.IO.StreamWriter]) {
         try {
             $Context.LogFile.Close()
             $Context.LogFile.Dispose()
@@ -165,10 +167,10 @@ function Remove-Environment {
             Write-Warning "Failed to close log file: $_"
         }
     }
-    
+
     Write-Host "[Cleanup] Environment cleanup completed."
     Write-Host "[Cleanup] Script execution finished."
-    
+
     # Final message about temp folders and cleanup option
     if ($Context.TempFolder -and (Test-Path $Context.TempFolder)) {
         if ($DeleteTempFiles) {
@@ -177,7 +179,7 @@ function Remove-Environment {
                 # Close any remaining file handles first
                 [System.GC]::Collect()
                 [System.GC]::WaitForPendingFinalizers()
-                
+
                 Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
                 Write-Host "✅ Temporary files deleted automatically."
                 Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
@@ -190,17 +192,17 @@ function Remove-Environment {
             # Interactive mode - ask user
             Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
             Write-Host "   These folders contain logs, reports, and generated files from each task."
-            
+
             # Ask user if they want to delete the temp folder
             Write-Host "`nDo you want to delete the temporary files now? [Y/N]" -NoNewline
             $response = Read-Host " "
-            
+
             if ($response -match '^[Yy]') {
                 try {
                     # Close any remaining file handles first
                     [System.GC]::Collect()
                     [System.GC]::WaitForPendingFinalizers()
-                    
+
                     Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
                     Write-Host "✅ Temporary files deleted successfully."
                     Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
@@ -214,6 +216,76 @@ function Remove-Environment {
                 Write-Host "   You can safely delete them manually when no longer needed."
             }
         }
+    }
+}
+
+function Invoke-ScriptValidation {
+    <#
+    .SYNOPSIS
+        Validates PowerShell script structure, formatting, and best practices.
+    .DESCRIPTION
+        Checks for incomplete functions, unused variables, syntax errors, and provides a script map for navigation.
+    .NOTES
+        Uses VSCode diagnostics if available.
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath
+    )
+
+    Write-Host "====================[ SCRIPT VALIDATION ]===================="
+    Write-Host "Validating script: $ScriptPath"
+    $errors = @()
+
+    # Check for incomplete functions
+    $scriptContent = Get-Content $ScriptPath -Raw
+    $functionMatches = [regex]::Matches($scriptContent, 'function\s+\w+\s*\{')
+    $endMatches = [regex]::Matches($scriptContent, '\}')
+    if ($functionMatches.Count -ne $endMatches.Count) {
+        $errors += "Mismatch between function declarations and closing braces. Check for incomplete functions."
+    }
+
+    # Check for unused variables (simple heuristic)
+    $variableMatches = [regex]::Matches($scriptContent, '\$[a-zA-Z_][\w]*')
+    $variableNames = $variableMatches | ForEach-Object { $_.Value } | Select-Object -Unique
+    foreach ($var in $variableNames) {
+        if ($scriptContent -split $var | Measure-Object).Count -le 2 {
+            $errors += "Possible unused variable detected: $var"
+        }
+    }
+
+    # Syntax check
+    try {
+        $null = Invoke-Expression -Command $scriptContent
+    } catch {
+        $errors += "Syntax error detected: $_"
+    }
+
+    # Approved PowerShell verbs check
+    $approvedVerbs = Get-Verb | Select-Object -ExpandProperty Verb
+    $functionNames = [regex]::Matches($scriptContent, 'function\s+(\w+)') | ForEach-Object { $_.Groups[1].Value }
+    foreach ($func in $functionNames) {
+        $verb = $func.Split('_')[0]
+        if ($approvedVerbs -notcontains $verb) {
+            $errors += "Non-approved PowerShell verb used in function: $func"
+        }
+    }
+
+    # Script map for navigation
+    Write-Host "`n====================[ SCRIPT MAP ]===================="
+    foreach ($func in $functionNames) {
+        Write-Host "Function: $func"
+    }
+    Write-Host "======================================================"
+
+    # Output errors
+    if ($errors.Count -gt 0) {
+        Write-Host "`nScript validation found issues:"
+        foreach ($err in $errors) {
+            Write-Host " - $err"
+        }
+    } else {
+        Write-Host "No major issues detected. Script structure appears valid."
     }
 }
 
