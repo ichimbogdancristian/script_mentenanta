@@ -772,7 +772,8 @@ function Invoke-Task1_CentralCoordinationPolicy {
     
     try {
         # Enhancement: Validate lists against current system inventory to avoid unnecessary actions
-        $installedApps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object -ExpandProperty DisplayName
+        $installedApps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object { $_.DisplayName } | Select-Object -ExpandProperty DisplayName
+        if (-not $installedApps) { $installedApps = @() }
         $bloatwareListPath = Join-Path $Context.CurrentTaskFolder 'Bloatware_list.txt'
         $essentialAppsListPath = Join-Path $Context.CurrentTaskFolder 'EssentialApps_list.txt'
         if (Test-Path $bloatwareListPath) {
