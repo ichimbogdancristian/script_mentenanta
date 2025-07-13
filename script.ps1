@@ -24,7 +24,7 @@
 
 function Invoke-SystemMaintenancePolicy {
     param(
-        [Parameter(Mandatory=$true, Position=0)]
+        [Parameter(Mandatory = $true, Position = 0)]
         [string[]]$Tasks,
         [switch]$DeleteTempFiles
     )
@@ -64,7 +64,8 @@ function Invoke-SystemMaintenancePolicy {
             Write-TaskLog -Context $Context -Message "Starting $($Context.TaskName)" -Level 'INFO'
             & $TaskName -Context $Context
             Write-TaskLog -Context $Context -Message "$($Context.TaskName) completed successfully." -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             $errMsg = "Task failed: $_"
             Write-TaskLog -Context $Context -Message $errMsg -Level 'ERROR'
             $overallErrors += $errMsg
@@ -80,7 +81,8 @@ function Invoke-SystemMaintenancePolicy {
     if ($overallErrors.Count -gt 0) {
         Write-Host "Errors encountered during run: $($overallErrors.Count)"
         Write-Host "See error log: $($Context.ErrorLogPath)"
-    } else {
+    }
+    else {
         Write-Host "All tasks completed successfully."
     }
     Write-Host "==============================================================="
@@ -138,12 +140,14 @@ function Remove-Environment {
                         # Run the deferred update script
                         Start-Process -FilePath $deferredUpdate.BatchPath -Wait
                         Write-Log -Context $Context -Message "PowerShell 7 deferred update completed." -Level 'SUCCESS'
-                    } catch {
+                    }
+                    catch {
                         Write-Host "Failed to start deferred update: $_"
                         Write-Host "You can manually run: $($deferredUpdate.BatchPath)"
                         Write-Log -Context $Context -Message "Failed to start deferred PowerShell update: $_" -Level 'ERROR'
                     }
-                } else {
+                }
+                else {
                     Write-Host "PowerShell 7 update skipped."
                     Write-Host "To update later, run: $($deferredUpdate.BatchPath)"
                     Write-Log -Context $Context -Message "User skipped PowerShell 7 deferred update." -Level 'INFO'
@@ -154,7 +158,8 @@ function Remove-Environment {
 
     try {
         Stop-Transcript | Out-Null
-    } catch {
+    }
+    catch {
         # Transcript might not be running
     }
 
@@ -163,7 +168,8 @@ function Remove-Environment {
         try {
             $Context.LogFile.Close()
             $Context.LogFile.Dispose()
-        } catch {
+        }
+        catch {
             Write-Warning "Failed to close log file: $_"
         }
     }
@@ -183,12 +189,14 @@ function Remove-Environment {
                 Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
                 Write-Host "✅ Temporary files deleted automatically."
                 Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
-            } catch {
+            }
+            catch {
                 Write-Host "❌ Failed to delete temporary files: $_"
                 Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
                 Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
             }
-        } else {
+        }
+        else {
             # Interactive mode - ask user
             Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
             Write-Host "   These folders contain logs, reports, and generated files from each task."
@@ -206,12 +214,14 @@ function Remove-Environment {
                     Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
                     Write-Host "✅ Temporary files deleted successfully."
                     Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
-                } catch {
+                }
+                catch {
                     Write-Host "❌ Failed to delete temporary files: $_"
                     Write-Host "   You can manually delete: $($Context.TempFolder)"
                     Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
                 }
-            } else {
+            }
+            else {
                 Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
                 Write-Host "   You can safely delete them manually when no longer needed."
             }
@@ -257,7 +267,8 @@ function Invoke-ScriptValidation {
     # Syntax check
     try {
         $null = Invoke-Expression -Command $scriptContent
-    } catch {
+    }
+    catch {
         $errors += "Syntax error detected: $_"
     }
 
@@ -284,7 +295,8 @@ function Invoke-ScriptValidation {
         foreach ($err in $errors) {
             Write-Host " - $err"
         }
-    } else {
+    }
+    else {
         Write-Host "No major issues detected. Script structure appears valid."
     }
 }
@@ -332,11 +344,13 @@ function Get-TaskFolder {
     # Try direct lookup, fallback to normalized key if not found
     if ($Context.TaskFolders.ContainsKey($TaskName)) {
         return $Context.TaskFolders[$TaskName]
-    } else {
+    }
+    else {
         $normalizedName = $TaskName -replace '[^\w\-_]', '_'
         if ($Context.TaskFolders.ContainsKey($normalizedName)) {
             return $Context.TaskFolders[$normalizedName]
-        } else {
+        }
+        else {
             Write-Warning "Task folder for '$TaskName' not found."
             return $null
         }
@@ -364,7 +378,7 @@ function Write-Log {
     param(
         [hashtable]$Context,
         [string]$Message,
-        [ValidateSet('INFO','WARNING','ERROR','SUCCESS')]
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS')]
         [string]$Level = 'INFO'
     )
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -380,7 +394,7 @@ function Write-TaskLog {
     param(
         [hashtable]$Context,
         [string]$Message,
-        [ValidateSet('INFO','WARNING','ERROR','SUCCESS')]
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS')]
         [string]$Level = 'INFO',
         [string]$Section = 'GENERAL'
     )
@@ -391,28 +405,34 @@ function Write-TaskLog {
     if ($Context.TaskLogPath -and (Test-Path (Split-Path $Context.TaskLogPath -Parent) -ErrorAction SilentlyContinue)) {
         try {
             Add-Content -Path $Context.TaskLogPath -Value $entry -Encoding UTF8
-        } catch {
+        }
+        catch {
             # If task log fails, fall back to main log
             if ($Context.LogPath -and (Test-Path (Split-Path $Context.LogPath -Parent) -ErrorAction SilentlyContinue)) {
                 try {
                     Add-Content -Path $Context.LogPath -Value $entry -Encoding UTF8
-                } catch {
+                }
+                catch {
                     # Ultimate fallback - just output to console
                     Write-Host $entry
                 }
-            } else {
+            }
+            else {
                 Write-Host $entry
             }
         }
-    } else {
+    }
+    else {
         # Task folder doesn't exist, fall back to main log or console
         if ($Context.LogPath -and (Test-Path (Split-Path $Context.LogPath -Parent) -ErrorAction SilentlyContinue)) {
             try {
                 Add-Content -Path $Context.LogPath -Value $entry -Encoding UTF8
-            } catch {
+            }
+            catch {
                 Write-Host $entry
             }
-        } else {
+        }
+        else {
             Write-Host $entry
         }
     }
@@ -481,7 +501,8 @@ function Complete-TaskLog {
     $endTime = Get-Date
     $duration = if ($Context.TaskStartTime) { 
         $endTime - $Context.TaskStartTime 
-    } else { 
+    }
+    else { 
         New-TimeSpan -Seconds 0 
     }
     
@@ -575,7 +596,7 @@ function Invoke-Task1_CentralCoordinationPolicy {
     # Initialize extensive task logging
     Start-TaskLog -Context $Context -TaskName "Task 1: Central Coordination Policy" -TaskDescription "Establish centralized lists and coordination policies for the entire maintenance process" -Parameters @{
         "TaskFolder" = $Context.CurrentTaskFolder
-        "LogPath" = $Context.TaskLogPath
+        "LogPath"    = $Context.TaskLogPath
     }
     
     # Initialize error tracking and results
@@ -597,10 +618,10 @@ function Invoke-Task1_CentralCoordinationPolicy {
         
         # Capture pre-execution state
         $preState = @{
-            "TaskFolder" = $taskFolder
-            "ExistingBloatwareFile" = if (Test-Path (Join-Path $taskFolder "Bloatware_list.txt")) { "EXISTS" } else { "NOT_EXISTS" }
+            "TaskFolder"                = $taskFolder
+            "ExistingBloatwareFile"     = if (Test-Path (Join-Path $taskFolder "Bloatware_list.txt")) { "EXISTS" } else { "NOT_EXISTS" }
             "ExistingEssentialAppsFile" = if (Test-Path (Join-Path $taskFolder "EssentialApps_list.txt")) { "EXISTS" } else { "NOT_EXISTS" }
-            "FreeSpace" = (Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='C:'").FreeSpace
+            "FreeSpace"                 = (Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='C:'").FreeSpace
         }
         Write-StateSnapshot -Context $Context -SnapshotType "PRE_EXECUTION" -StateData $preState
         
@@ -613,132 +634,136 @@ function Invoke-Task1_CentralCoordinationPolicy {
         
         # Define comprehensive bloatware list with known problematic applications
         $Script:BloatwareList = @('Acer.AcerCollection', 'Acer.AcerConfigurationManager', 'Acer.AcerPortal',
-'Acer.AcerPowerManagement', 'Acer.AcerQuickAccess', 'Acer.AcerUEIPFramework', 'Acer.AcerUserExperienceImprovementProgram',
-'Adobe.AdobeCreativeCloud', 'Adobe.AdobeExpress', 'Adobe.AdobeGenuineService', 'Amazon.AmazonPrimeVideo',
-'ASUS.ASUSGiftBox', 'ASUS.ASUSLiveUpdate', 'ASUS.ASUSSplendidVideoEnhancementTechnology', 'ASUS.ASUSWebStorage',
-'ASUS.ASUSZenAnywhere', 'ASUS.ASUSZenLink', 'Astian.Midori', 'AvantBrowser.AvantBrowser', 'Avast.AvastFreeAntivirus',
-'AVG.AVGAntiVirusFree', 'Avira.Avira', 'Baidu.BaiduBrowser', 'Baidu.PCAppStore', 'Basilisk.Basilisk',
-'Bitdefender.Bitdefender', 'Blisk.Blisk', 'Booking.com.Booking', 'BraveSoftware.BraveBrowser',
-'CentBrowser.CentBrowser', 'Cliqz.Cliqz', 'Coowon.Coowon', 'CoolNovo.CoolNovo', 'CyberLink.MediaSuite',
-'CyberLink.Power2Go', 'CyberLink.PowerDirector', 'CyberLink.PowerDVD', 'CyberLink.YouCam', 'Dell.CustomerConnect',
-'Dell.DellDigitalDelivery', 'Dell.DellFoundationServices', 'Dell.DellHelpAndSupport', 'Dell.DellMobileConnect',
-'Dell.DellPowerManager', 'Dell.DellProductRegistration', 'Dell.DellSupportAssist', 'Dell.DellUpdate',
-'DigitalPersona.EpicPrivacyBrowser', 'Disney.DisneyPlus', 'Dooble.Dooble', 'DriverPack.DriverPackSolution',
-'ESET.ESETNOD32Antivirus', 'Evernote.Evernote', 'ExpressVPN.ExpressVPN', 'Facebook.Facebook',
-'FenrirInc.Sleipnir', 'FlashPeak.SlimBrowser', 'FlashPeak.Slimjet', 'Foxit.FoxitPDFReader',
-'Gameloft.MarchofEmpires', 'G5Entertainment.HiddenCity', 'GhostBrowser.GhostBrowser', 'Google.YouTube',
-'HP.HP3DDriveGuard', 'HP.HPAudioSwitch', 'HP.HPClientSecurityManager', 'HP.HPConnectionOptimizer',
-'HP.HPDocumentation', 'HP.HPDropboxPlugin', 'HP.HPePrintSW', 'HP.HPJumpStart', 'HP.HPJumpStartApps',
-'HP.HPJumpStartLaunch', 'HP.HPRegistrationService', 'HP.HPSupportSolutionsFramework', 'HP.HPSureConnect',
-'HP.HPSystemEventUtility', 'HP.HPWelcome', 'HewlettPackard.SupportAssistant', 'Hulu.Hulu', 'Instagram.Instagram',
-'IOBit.AdvancedSystemCare', 'IOBit.DriverBooster', 'KDE.Falkon', 'Kaspersky.Kaspersky', 'KeeperSecurity.Keeper',
-'king.com.BubbleWitch', 'king.com.CandyCrush', 'king.com.CandyCrushFriends', 'king.com.CandyCrushSaga',
-'king.com.CandyCrushSodaSaga', 'king.com.FarmHeroes', 'king.com.FarmHeroesSaga', 'Lenovo.AppExplorer',
-'Lenovo.LenovoCompanion', 'Lenovo.LenovoExperienceImprovement', 'Lenovo.LenovoFamilyCloud',
-'Lenovo.LenovoHotkeys', 'Lenovo.LenovoMigrationAssistant', 'Lenovo.LenovoModernIMController',
-'Lenovo.LenovoServiceBridge', 'Lenovo.LenovoSolutionCenter', 'Lenovo.LenovoUtility', 'Lenovo.LenovoVantage',
-'Lenovo.LenovoVoice', 'Lenovo.LenovoWiFiSecurity', 'LinkedIn.LinkedIn', 'Lunascape.Lunascape',
-'Maxthon.Maxthon', 'McAfee.LiveSafe', 'McAfee.Livesafe', 'McAfee.SafeConnect', 'McAfee.Security',
-'McAfee.WebAdvisor', 'Microsoft.3DBuilder', 'Microsoft.Advertising.Xaml', 'Microsoft.BingFinance',
-'Microsoft.BingFoodAndDrink', 'Microsoft.BingHealthAndFitness', 'Microsoft.BingNews', 'Microsoft.BingSports',
-'Microsoft.BingTravel', 'Microsoft.BingWeather', 'Microsoft.GetHelp', 'Microsoft.Getstarted',
-'Microsoft.Microsoft3DViewer', 'Microsoft.MicrosoftOfficeHub', 'Microsoft.MicrosoftPowerBIForWindows',
-'Microsoft.MicrosoftSolitaireCollection', 'Microsoft.MinecraftUWP', 'Microsoft.MixedReality.Portal',
-'Microsoft.NetworkSpeedTest', 'Microsoft.News', 'Microsoft.Office.OneNote', 'Microsoft.Office.Sway',
-'Microsoft.OneConnect', 'Microsoft.OneDrive', 'Microsoft.People', 'Microsoft.Print3D', 'Microsoft.ScreenSketch',
-'Microsoft.SkypeApp', 'Microsoft.SoundRecorder', 'Microsoft.StickyNotes', 'Microsoft.Wallet',
-'Microsoft.Whiteboard', 'Microsoft.WindowsFeedback', 'Microsoft.WindowsFeedbackHub', 'Microsoft.WindowsMaps',
-'Microsoft.WindowsReadingList', 'Microsoft.WindowsSoundRecorder', 'Microsoft.Xbox.TCUI', 'Microsoft.XboxApp',
-'Microsoft.XboxGameOverlay', 'Microsoft.XboxGamingOverlay', 'Microsoft.XboxIdentityProvider',
-'Microsoft.XboxSpeechToTextOverlay', 'Microsoft.ZuneMusic', 'Microsoft.ZuneVideo', 'Mozilla.SeaMonkey',
-'Norton.OnlineBackup', 'Norton.Security', 'Opera.Opera', 'Opera.OperaGX', 'Orbitum.Orbitum',
-'OtterBrowser.OtterBrowser', 'PaleMoon.PaleMoon', 'PCAccelerate.PCAcceleratePro', 'PCOptimizer.PCOptimizerPro',
-'PicsArt.PicsartPhotoStudio', 'Piriform.CCleaner', 'Polarity.Polarity', 'Power2Go.Power2Go',
-'PowerDirector.PowerDirector', 'QupZilla.QupZilla', 'QuteBrowser.QuteBrowser', 'RandomSaladGamesLLC.SimpleSolitaire',
-'Reimage.ReimageRepair', 'RoyalRevolt2.RoyalRevolt2', 'Sleipnir.Sleipnir', 'SlingTV.Sling',
-'Sogou.SogouExplorer', 'Spotify.Spotify', 'SRWare.Iron', 'Sputnik.Sputnik', 'Superbird.Superbird',
-'TheTorProject.TorBrowser', 'ThumbmunkeysLtd.PhototasticCollage', 'TikTok.TikTok', 'TorchMediaInc.Torch',
-'TripAdvisor.TripAdvisor', 'Twitter.Twitter', 'UCWeb.UCBrowser', 'VivaldiTechnologies.Vivaldi',
-'Waterfox.Waterfox', 'WildTangent.WildTangentGamesApp', 'WildTangent.WildTangentHelper', 'WPSOffice.WPSOffice',
-'Yandex.YandexBrowser'
-    ) | Sort-Object -Unique
+            'Acer.AcerPowerManagement', 'Acer.AcerQuickAccess', 'Acer.AcerUEIPFramework', 'Acer.AcerUserExperienceImprovementProgram',
+            'Adobe.AdobeCreativeCloud', 'Adobe.AdobeExpress', 'Adobe.AdobeGenuineService', 'Amazon.AmazonPrimeVideo',
+            'ASUS.ASUSGiftBox', 'ASUS.ASUSLiveUpdate', 'ASUS.ASUSSplendidVideoEnhancementTechnology', 'ASUS.ASUSWebStorage',
+            'ASUS.ASUSZenAnywhere', 'ASUS.ASUSZenLink', 'Astian.Midori', 'AvantBrowser.AvantBrowser', 'Avast.AvastFreeAntivirus',
+            'AVG.AVGAntiVirusFree', 'Avira.Avira', 'Baidu.BaiduBrowser', 'Baidu.PCAppStore', 'Basilisk.Basilisk',
+            'Bitdefender.Bitdefender', 'Blisk.Blisk', 'Booking.com.Booking', 'BraveSoftware.BraveBrowser',
+            'CentBrowser.CentBrowser', 'Cliqz.Cliqz', 'Coowon.Coowon', 'CoolNovo.CoolNovo', 'CyberLink.MediaSuite',
+            'CyberLink.Power2Go', 'CyberLink.PowerDirector', 'CyberLink.PowerDVD', 'CyberLink.YouCam', 'Dell.CustomerConnect',
+            'Dell.DellDigitalDelivery', 'Dell.DellFoundationServices', 'Dell.DellHelpAndSupport', 'Dell.DellMobileConnect',
+            'Dell.DellPowerManager', 'Dell.DellProductRegistration', 'Dell.DellSupportAssist', 'Dell.DellUpdate',
+            'DigitalPersona.EpicPrivacyBrowser', 'Disney.DisneyPlus', 'Dooble.Dooble', 'DriverPack.DriverPackSolution',
+            'ESET.ESETNOD32Antivirus', 'Evernote.Evernote', 'ExpressVPN.ExpressVPN', 'Facebook.Facebook',
+            'FenrirInc.Sleipnir', 'FlashPeak.SlimBrowser', 'FlashPeak.Slimjet', 'Foxit.FoxitPDFReader',
+            'Gameloft.MarchofEmpires', 'G5Entertainment.HiddenCity', 'GhostBrowser.GhostBrowser', 'Google.YouTube',
+            'HP.HP3DDriveGuard', 'HP.HPAudioSwitch', 'HP.HPClientSecurityManager', 'HP.HPConnectionOptimizer',
+            'HP.HPDocumentation', 'HP.HPDropboxPlugin', 'HP.HPePrintSW', 'HP.HPJumpStart', 'HP.HPJumpStartApps',
+            'HP.HPJumpStartLaunch', 'HP.HPRegistrationService', 'HP.HPSupportSolutionsFramework', 'HP.HPSureConnect',
+            'HP.HPSystemEventUtility', 'HP.HPWelcome', 'HewlettPackard.SupportAssistant', 'Hulu.Hulu', 'Instagram.Instagram',
+            'IOBit.AdvancedSystemCare', 'IOBit.DriverBooster', 'KDE.Falkon', 'Kaspersky.Kaspersky', 'KeeperSecurity.Keeper',
+            'king.com.BubbleWitch', 'king.com.CandyCrush', 'king.com.CandyCrushFriends', 'king.com.CandyCrushSaga',
+            'king.com.CandyCrushSodaSaga', 'king.com.FarmHeroes', 'king.com.FarmHeroesSaga', 'Lenovo.AppExplorer',
+            'Lenovo.LenovoCompanion', 'Lenovo.LenovoExperienceImprovement', 'Lenovo.LenovoFamilyCloud',
+            'Lenovo.LenovoHotkeys', 'Lenovo.LenovoMigrationAssistant', 'Lenovo.LenovoModernIMController',
+            'Lenovo.LenovoServiceBridge', 'Lenovo.LenovoSolutionCenter', 'Lenovo.LenovoUtility', 'Lenovo.LenovoVantage',
+            'Lenovo.LenovoVoice', 'Lenovo.LenovoWiFiSecurity', 'LinkedIn.LinkedIn', 'Lunascape.Lunascape',
+            'Maxthon.Maxthon', 'McAfee.LiveSafe', 'McAfee.Livesafe', 'McAfee.SafeConnect', 'McAfee.Security',
+            'McAfee.WebAdvisor', 'Microsoft.3DBuilder', 'Microsoft.Advertising.Xaml', 'Microsoft.BingFinance',
+            'Microsoft.BingFoodAndDrink', 'Microsoft.BingHealthAndFitness', 'Microsoft.BingNews', 'Microsoft.BingSports',
+            'Microsoft.BingTravel', 'Microsoft.BingWeather', 'Microsoft.GetHelp', 'Microsoft.Getstarted',
+            'Microsoft.Microsoft3DViewer', 'Microsoft.MicrosoftOfficeHub', 'Microsoft.MicrosoftPowerBIForWindows',
+            'Microsoft.MicrosoftSolitaireCollection', 'Microsoft.MinecraftUWP', 'Microsoft.MixedReality.Portal',
+            'Microsoft.NetworkSpeedTest', 'Microsoft.News', 'Microsoft.Office.OneNote', 'Microsoft.Office.Sway',
+            'Microsoft.OneConnect', 'Microsoft.OneDrive', 'Microsoft.People', 'Microsoft.Print3D', 'Microsoft.ScreenSketch',
+            'Microsoft.SkypeApp', 'Microsoft.SoundRecorder', 'Microsoft.StickyNotes', 'Microsoft.Wallet',
+            'Microsoft.Whiteboard', 'Microsoft.WindowsFeedback', 'Microsoft.WindowsFeedbackHub', 'Microsoft.WindowsMaps',
+            'Microsoft.WindowsReadingList', 'Microsoft.WindowsSoundRecorder', 'Microsoft.Xbox.TCUI', 'Microsoft.XboxApp',
+            'Microsoft.XboxGameOverlay', 'Microsoft.XboxGamingOverlay', 'Microsoft.XboxIdentityProvider',
+            'Microsoft.XboxSpeechToTextOverlay', 'Microsoft.ZuneMusic', 'Microsoft.ZuneVideo', 'Mozilla.SeaMonkey',
+            'Norton.OnlineBackup', 'Norton.Security', 'Opera.Opera', 'Opera.OperaGX', 'Orbitum.Orbitum',
+            'OtterBrowser.OtterBrowser', 'PaleMoon.PaleMoon', 'PCAccelerate.PCAcceleratePro', 'PCOptimizer.PCOptimizerPro',
+            'PicsArt.PicsartPhotoStudio', 'Piriform.CCleaner', 'Polarity.Polarity', 'Power2Go.Power2Go',
+            'PowerDirector.PowerDirector', 'QupZilla.QupZilla', 'QuteBrowser.QuteBrowser', 'RandomSaladGamesLLC.SimpleSolitaire',
+            'Reimage.ReimageRepair', 'RoyalRevolt2.RoyalRevolt2', 'Sleipnir.Sleipnir', 'SlingTV.Sling',
+            'Sogou.SogouExplorer', 'Spotify.Spotify', 'SRWare.Iron', 'Sputnik.Sputnik', 'Superbird.Superbird',
+            'TheTorProject.TorBrowser', 'ThumbmunkeysLtd.PhototasticCollage', 'TikTok.TikTok', 'TorchMediaInc.Torch',
+            'TripAdvisor.TripAdvisor', 'Twitter.Twitter', 'UCWeb.UCBrowser', 'VivaldiTechnologies.Vivaldi',
+            'Waterfox.Waterfox', 'WildTangent.WildTangentGamesApp', 'WildTangent.WildTangentHelper', 'WPSOffice.WPSOffice',
+            'Yandex.YandexBrowser'
+        ) | Sort-Object -Unique
     
-    Write-ExecutionStep -Context $Context -StepName "Bloatware List Creation" -Action "Created comprehensive bloatware list with $($Script:BloatwareList.Count) applications" -Result "SUCCESS"
-    $results.Add("BloatwareAppsCount", $Script:BloatwareList.Count)
+        Write-ExecutionStep -Context $Context -StepName "Bloatware List Creation" -Action "Created comprehensive bloatware list with $($Script:BloatwareList.Count) applications" -Result "SUCCESS"
+        $results.Add("BloatwareAppsCount", $Script:BloatwareList.Count)
     
-    # ═══════════════════════════════════════════════════════════════════════════════════
-    # ESSENTIAL APPLICATIONS LIST CREATION SECTION
-    # ═══════════════════════════════════════════════════════════════════════════════════
-    Write-TaskSection -Context $Context -SectionName "ESSENTIAL_APPS_LIST_CREATION" -Message "Creating essential applications list with package sources"
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        # ESSENTIAL APPLICATIONS LIST CREATION SECTION
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        Write-TaskSection -Context $Context -SectionName "ESSENTIAL_APPS_LIST_CREATION" -Message "Creating essential applications list with package sources"
     
-    Write-ExecutionStep -Context $Context -StepName "Essential Apps Definition" -Action "Defining essential applications with both winget and chocolatey package sources"
+        Write-ExecutionStep -Context $Context -StepName "Essential Apps Definition" -Action "Defining essential applications with both winget and chocolatey package sources"
     
-    # Define essential applications with both winget and chocolatey package sources
-    $Script:EssentialApps = @(
-        @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit'; Choco = 'adobereader' },
-        @{ Name = 'Google Chrome'; Winget = 'Google.Chrome'; Choco = 'googlechrome' },
-        @{ Name = 'Microsoft Edge'; Winget = 'Microsoft.Edge'; Choco = 'microsoft-edge' },
-        @{ Name = 'Total Commander'; Winget = 'Ghisler.TotalCommander'; Choco = 'totalcommander' },
-        @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell' },
-        @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal' },
-        @{ Name = 'WinRAR'; Winget = 'RARLab.WinRAR'; Choco = 'winrar' },
-        @{ Name = '7-Zip'; Winget = '7zip.7zip'; Choco = '7zip' },
-        @{ Name = 'Notepad++'; Winget = 'Notepad++.Notepad++'; Choco = 'notepadplusplus' },
-        @{ Name = 'PDF24 Creator'; Winget = 'PDF24.PDF24Creator'; Choco = 'pdf24' },
-        @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime' }
-    )
+        # Define essential applications with both winget and chocolatey package sources
+        $Script:EssentialApps = @(
+            @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit'; Choco = 'adobereader' },
+            @{ Name = 'Google Chrome'; Winget = 'Google.Chrome'; Choco = 'googlechrome' },
+            @{ Name = 'Microsoft Edge'; Winget = 'Microsoft.Edge'; Choco = 'microsoft-edge' },
+            @{ Name = 'Total Commander'; Winget = 'Ghisler.TotalCommander'; Choco = 'totalcommander' },
+            @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell' },
+            @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal' },
+            @{ Name = 'WinRAR'; Winget = 'RARLab.WinRAR'; Choco = 'winrar' },
+            @{ Name = '7-Zip'; Winget = '7zip.7zip'; Choco = '7zip' },
+            @{ Name = 'Notepad++'; Winget = 'Notepad++.Notepad++'; Choco = 'notepadplusplus' },
+            @{ Name = 'PDF24 Creator'; Winget = 'PDF24.PDF24Creator'; Choco = 'pdf24' },
+            @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime' }
+        )
     
-    Write-ExecutionStep -Context $Context -StepName "Essential Apps List Creation" -Action "Created essential applications list with $($Script:EssentialApps.Count) applications" -Result "SUCCESS"
-    $results.Add("EssentialAppsCount", $Script:EssentialApps.Count)
+        Write-ExecutionStep -Context $Context -StepName "Essential Apps List Creation" -Action "Created essential applications list with $($Script:EssentialApps.Count) applications" -Result "SUCCESS"
+        $results.Add("EssentialAppsCount", $Script:EssentialApps.Count)
     
-    # ═══════════════════════════════════════════════════════════════════════════════════
-    # FILE OUTPUT AND STORAGE SECTION
-    # ═══════════════════════════════════════════════════════════════════════════════════
-    Write-TaskSection -Context $Context -SectionName "FILE_OUTPUT_STORAGE" -Message "Writing lists to files for inter-task coordination"
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        # FILE OUTPUT AND STORAGE SECTION
+        # ═══════════════════════════════════════════════════════════════════════════════════
+        Write-TaskSection -Context $Context -SectionName "FILE_OUTPUT_STORAGE" -Message "Writing lists to files for inter-task coordination"
     
-    # Write bloatware list to task folder for use by other tasks
-    $bloatwareListPath = Join-Path $taskFolder 'Bloatware_list.txt'
-    Write-ExecutionStep -Context $Context -StepName "Bloatware File Creation" -Action "Writing bloatware list to $bloatwareListPath"
+        # Write bloatware list to task folder for use by other tasks
+        $bloatwareListPath = Join-Path $taskFolder 'Bloatware_list.txt'
+        Write-ExecutionStep -Context $Context -StepName "Bloatware File Creation" -Action "Writing bloatware list to $bloatwareListPath"
     
-    try {
-        $Script:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
-        Write-ExecutionStep -Context $Context -StepName "Bloatware File Creation" -Action "Wrote bloatware list to file" -Result "SUCCESS - File size: $((Get-Item $bloatwareListPath).Length) bytes"
-        $results.Add("BloatwareListFile", $bloatwareListPath)
-    } catch {
-        $errorMsg = "Failed to write bloatware list: $($_.Exception.Message)"
-        $errors += $errorMsg
-        Write-ExecutionStep -Context $Context -StepName "Bloatware File Creation" -Action "Write bloatware list to file" -Result $errorMsg -Level "ERROR"
+        try {
+            $Script:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
+            Write-ExecutionStep -Context $Context -StepName "Bloatware File Creation" -Action "Wrote bloatware list to file" -Result "SUCCESS - File size: $((Get-Item $bloatwareListPath).Length) bytes"
+            $results.Add("BloatwareListFile", $bloatwareListPath)
+        }
+        catch {
+            $errorMsg = "Failed to write bloatware list: $($_.Exception.Message)"
+            $errors += $errorMsg
+            Write-ExecutionStep -Context $Context -StepName "Bloatware File Creation" -Action "Write bloatware list to file" -Result $errorMsg -Level "ERROR"
+        }
+    
+        # Write essential apps list to task folder for use by other tasks
+        $essentialAppsListPath = Join-Path $taskFolder 'EssentialApps_list.txt'
+        Write-ExecutionStep -Context $Context -StepName "Essential Apps File Creation" -Action "Writing essential apps list to $essentialAppsListPath"
+    
+        try {
+            $Script:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
+            Write-ExecutionStep -Context $Context -StepName "Essential Apps File Creation" -Action "Wrote essential apps list to file" -Result "SUCCESS - File size: $((Get-Item $essentialAppsListPath).Length) bytes"
+            $results.Add("EssentialAppsListFile", $essentialAppsListPath)
+        }
+        catch {
+            $errorMsg = "Failed to write essential apps list: $($_.Exception.Message)"
+            $errors += $errorMsg
+            Write-ExecutionStep -Context $Context -StepName "Essential Apps File Creation" -Action "Write essential apps list to file" -Result $errorMsg -Level "ERROR"
+        }
+    
+        # Capture post-execution state
+        $postState = @{
+            "BloatwareListFileExists" = if (Test-Path $bloatwareListPath) { "SUCCESS" } else { "FAILED" }
+            "EssentialAppsFileExists" = if (Test-Path $essentialAppsListPath) { "SUCCESS" } else { "FAILED" }
+            "BloatwareFileSize"       = if (Test-Path $bloatwareListPath) { (Get-Item $bloatwareListPath).Length } else { 0 }
+            "EssentialAppsFileSize"   = if (Test-Path $essentialAppsListPath) { (Get-Item $essentialAppsListPath).Length } else { 0 }
+            "FreeSpaceAfter"          = (Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='C:'").FreeSpace
+        }
+        Write-StateSnapshot -Context $Context -SnapshotType "POST_EXECUTION" -StateData $postState
+    
     }
-    
-    # Write essential apps list to task folder for use by other tasks
-    $essentialAppsListPath = Join-Path $taskFolder 'EssentialApps_list.txt'
-    Write-ExecutionStep -Context $Context -StepName "Essential Apps File Creation" -Action "Writing essential apps list to $essentialAppsListPath"
-    
-    try {
-        $Script:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
-        Write-ExecutionStep -Context $Context -StepName "Essential Apps File Creation" -Action "Wrote essential apps list to file" -Result "SUCCESS - File size: $((Get-Item $essentialAppsListPath).Length) bytes"
-        $results.Add("EssentialAppsListFile", $essentialAppsListPath)
-    } catch {
-        $errorMsg = "Failed to write essential apps list: $($_.Exception.Message)"
-        $errors += $errorMsg
-        Write-ExecutionStep -Context $Context -StepName "Essential Apps File Creation" -Action "Write essential apps list to file" -Result $errorMsg -Level "ERROR"
-    }
-    
-    # Capture post-execution state
-    $postState = @{
-        "BloatwareListFileExists" = if (Test-Path $bloatwareListPath) { "SUCCESS" } else { "FAILED" }
-        "EssentialAppsFileExists" = if (Test-Path $essentialAppsListPath) { "SUCCESS" } else { "FAILED" }
-        "BloatwareFileSize" = if (Test-Path $bloatwareListPath) { (Get-Item $bloatwareListPath).Length } else { 0 }
-        "EssentialAppsFileSize" = if (Test-Path $essentialAppsListPath) { (Get-Item $essentialAppsListPath).Length } else { 0 }
-        "FreeSpaceAfter" = (Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='C:'").FreeSpace
-    }
-    Write-StateSnapshot -Context $Context -SnapshotType "POST_EXECUTION" -StateData $postState
-    
-    } catch {
+    catch {
         $errorMsg = "Critical error in Task 1: $($_.Exception.Message)"
         $errors += $errorMsg
         Write-ExecutionStep -Context $Context -StepName "Task Execution" -Action "Complete task execution" -Result $errorMsg -Level "ERROR"
-    } finally {
+    }
+    finally {
         # Complete the task log with comprehensive summary
         $status = if ($errors.Count -eq 0) { "COMPLETED_SUCCESS" } else { "COMPLETED_WITH_ERRORS" }
         
@@ -768,7 +793,7 @@ function Invoke-Task2_SystemProtection {
     
     # Initialize extensive task logging
     Start-TaskLog -Context $Context -TaskName "Task 2: System Protection" -TaskDescription "Enable System Restore and create a restoration checkpoint before modifications" -Parameters @{
-        "OSDrive" = "C:"
+        "OSDrive"    = "C:"
         "TaskFolder" = $Context.CurrentTaskFolder
     }
     
@@ -790,9 +815,9 @@ function Invoke-Task2_SystemProtection {
         
         # Capture pre-execution state
         $preState = @{
-            "OSVersion" = [System.Environment]::OSVersion.VersionString
-            "SystemDrive" = $osDrive
-            "FreeSpace" = (Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='$osDrive'").FreeSpace
+            "OSVersion"             = [System.Environment]::OSVersion.VersionString
+            "SystemDrive"           = $osDrive
+            "FreeSpace"             = (Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='$osDrive'").FreeSpace
             "RestorePointsExisting" = (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
         }
         Write-StateSnapshot -Context $Context -SnapshotType "PRE_EXECUTION" -StateData $preState
@@ -810,7 +835,8 @@ function Invoke-Task2_SystemProtection {
             Write-ExecutionStep -Context $Context -StepName "System Restore Status Check" -Action "System Restore status verification" -Result "ENABLED - Found $($srStatus.Count) existing restore points"
             $results.Add("SystemRestoreStatus", "ALREADY_ENABLED")
             $results.Add("ExistingRestorePoints", $srStatus.Count)
-        } else {
+        }
+        else {
             Write-ExecutionStep -Context $Context -StepName "System Restore Status Check" -Action "System Restore status verification" -Result "DISABLED - No restore points found"
             $results.Add("SystemRestoreStatus", "DISABLED")
             
@@ -825,7 +851,8 @@ function Invoke-Task2_SystemProtection {
                 Enable-ComputerRestore -Drive $osDrive -ErrorAction Stop
                 Write-ExecutionStep -Context $Context -StepName "Enable System Restore" -Action "Enable System Restore on $osDrive" -Result "SUCCESS - System Restore enabled"
                 $results.Add("SystemRestoreEnabled", "SUCCESS")
-            } catch {
+            }
+            catch {
                 $errorMsg = "Failed to enable System Restore: $($_.Exception.Message)"
                 $errors += $errorMsg
                 Write-ExecutionStep -Context $Context -StepName "Enable System Restore" -Action "Enable System Restore on $osDrive" -Result $errorMsg -Level "ERROR"
@@ -845,7 +872,8 @@ function Invoke-Task2_SystemProtection {
             Write-ExecutionStep -Context $Context -StepName "Create Restore Point" -Action "Create system restore point" -Result "SUCCESS - Restore point created successfully"
             $results.Add("RestorePointCreated", "SUCCESS")
             $results.Add("RestorePointDescription", "System Maintenance Script")
-        } catch {
+        }
+        catch {
             $errorMsg = "Failed to create restore point: $($_.Exception.Message)"
             $errors += $errorMsg
             Write-ExecutionStep -Context $Context -StepName "Create Restore Point" -Action "Create system restore point" -Result $errorMsg -Level "ERROR"
@@ -854,17 +882,19 @@ function Invoke-Task2_SystemProtection {
         
         # Capture post-execution state
         $postState = @{
-            "RestorePointsAfter" = (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
+            "RestorePointsAfter"   = (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
             "SystemRestoreEnabled" = if (Get-ComputerRestorePoint -ErrorAction SilentlyContinue) { "TRUE" } else { "FALSE" }
-            "FreeSpaceAfter" = (Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='$osDrive'").FreeSpace
+            "FreeSpaceAfter"       = (Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='$osDrive'").FreeSpace
         }
         Write-StateSnapshot -Context $Context -SnapshotType "POST_EXECUTION" -StateData $postState
         
-    } catch {
+    }
+    catch {
         $errorMsg = "Critical error in Task 2: $($_.Exception.Message)"
         $errors += $errorMsg
         Write-ExecutionStep -Context $Context -StepName "Task Execution" -Action "Complete task execution" -Result $errorMsg -Level "ERROR"
-    } finally {
+    }
+    finally {
         # Complete the task log with comprehensive summary
         $status = if ($errors.Count -eq 0) { "COMPLETED_SUCCESS" } else { "COMPLETED_WITH_ERRORS" }
         
@@ -874,7 +904,7 @@ function Invoke-Task2_SystemProtection {
     }
 }
     
-    Write-TaskLog -Context $Context -Message "Task 2 completed." -Level 'SUCCESS'
+Write-TaskLog -Context $Context -Message "Task 2 completed." -Level 'SUCCESS'
 
 # =====================================================================================
 # END TASK 2: SYSTEM PROTECTION
@@ -918,10 +948,12 @@ function Invoke-Task3_PackageManagerSetup {
                 Invoke-WebRequest -Uri $appInstallerUrl -OutFile $wingetInstaller -UseBasicParsing
                 Add-AppxPackage -Path $wingetInstaller
                 Write-Log -Context $Context -Message "winget installed via App Installer package." -Level 'SUCCESS'
-            } catch {
+            }
+            catch {
                 Write-Log -Context $Context -Message "Failed to install winget: $_" -Level 'ERROR'
             }
-        } else {
+        }
+        else {
             Write-Log -Context $Context -Message "winget installed." -Level 'SUCCESS'
             
             # ═══════════════════════════════════════════════════════════════════════════════════
@@ -932,12 +964,15 @@ function Invoke-Task3_PackageManagerSetup {
                 $updateResult = winget upgrade --id Microsoft.DesktopAppInstaller --accept-source-agreements --accept-package-agreements --silent -e 2>&1
                 if ($updateResult -match 'No applicable update found' -or $updateResult -match 'No installed package found') {
                     Write-Log -Context $Context -Message "winget is up to date." -Level 'INFO'
-                } elseif ($updateResult -match 'Successfully installed' -or $updateResult -match 'Successfully upgraded') {
+                }
+                elseif ($updateResult -match 'Successfully installed' -or $updateResult -match 'Successfully upgraded') {
                     Write-Log -Context $Context -Message "winget updated successfully." -Level 'SUCCESS'
-                } else {
+                }
+                else {
                     Write-Log -Context $Context -Message "winget update output: $updateResult" -Level 'INFO'
                 }
-            } catch {
+            }
+            catch {
                 Write-Log -Context $Context -Message "Failed to update winget: $_" -Level 'WARNING'
             }
         }
@@ -955,10 +990,12 @@ function Invoke-Task3_PackageManagerSetup {
                 $chocoScript = 'Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString("https://community.chocolatey.org/install.ps1"))'
                 powershell -NoProfile -ExecutionPolicy Bypass -Command $chocoScript
                 Write-Log -Context $Context -Message "Chocolatey installed via official script." -Level 'SUCCESS'
-            } catch {
+            }
+            catch {
                 Write-Log -Context $Context -Message "Failed to install Chocolatey: $_" -Level 'ERROR'
             }
-        } else {
+        }
+        else {
             Write-Log -Context $Context -Message "Chocolatey installed." -Level 'SUCCESS'
             
             # ═══════════════════════════════════════════════════════════════════════════════════
@@ -969,16 +1006,20 @@ function Invoke-Task3_PackageManagerSetup {
                 $updateResult = choco upgrade chocolatey -y 2>&1
                 if ($updateResult -match '0 upgrades' -or $updateResult -match 'Chocolatey v') {
                     Write-Log -Context $Context -Message "Chocolatey is up to date." -Level 'INFO'
-                } elseif ($updateResult -match 'Upgraded') {
+                }
+                elseif ($updateResult -match 'Upgraded') {
                     Write-Log -Context $Context -Message "Chocolatey updated successfully." -Level 'SUCCESS'
-                } else {
+                }
+                else {
                     Write-Log -Context $Context -Message "Chocolatey update output: $updateResult" -Level 'INFO'
                 }
-            } catch {
+            }
+            catch {
                 Write-Log -Context $Context -Message "Failed to update Chocolatey: $_" -Level 'WARNING'
             }
         }
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message "Task 3: Package manager check/installation failed: $_" -Level 'ERROR'
     }
     Write-TaskLog -Context $Context -Message "Task 3 completed." -Level 'SUCCESS'
@@ -1038,7 +1079,7 @@ function Invoke-Task4_SystemInventory {
         # ═══════════════════════════════════════════════════════════════════════════════════
         Write-Host "[System Inventory] Collecting disk info..."
         Write-Log -Context $Context -Message "Collecting disk info..." -Level 'INFO'
-        Get-PSDrive | Where-Object {$_.Provider -like '*FileSystem*'} | Out-File (Join-Path $inventoryPath 'disk_info.txt')
+        Get-PSDrive | Where-Object { $_.Provider -like '*FileSystem*' } | Out-File (Join-Path $inventoryPath 'disk_info.txt')
         
         Write-Host "[System Inventory] Collecting network info..."
         Write-Log -Context $Context -Message "Collecting network info..." -Level 'INFO'
@@ -1077,7 +1118,8 @@ function Invoke-Task4_SystemInventory {
         
         Write-Host "[System Inventory] Installed programs list saved to $installedProgramsPath"
         Write-Log -Context $Context -Message "Task 4: Inventory collected in $inventoryPath" -Level 'SUCCESS'
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message "Task 4: System Inventory failed: $_" -Level 'ERROR'
     }
     Write-TaskLog -Context $Context -Message "Task 4 completed." -Level 'SUCCESS'
@@ -1147,7 +1189,8 @@ function Invoke-Task5_RemoveBloatware {
         $bloatwareList = @()
         try {
             $bloatwareList = Get-Content $bloatwareListPath -Raw | ConvertFrom-Json
-        } catch {
+        }
+        catch {
             $bloatwareList = Get-Content $bloatwareListPath | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_ | ConvertFrom-Json }
         }
         
@@ -1155,7 +1198,8 @@ function Invoke-Task5_RemoveBloatware {
         $installed = @()
         try {
             $installed = Get-Content $installedProgramsDiffPath -Raw | ConvertFrom-Json
-        } catch {
+        }
+        catch {
             $installed = Get-Content $installedProgramsDiffPath | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_ | ConvertFrom-Json }
         }
         
@@ -1193,7 +1237,8 @@ function Invoke-Task5_RemoveBloatware {
                     try {
                         Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
                         Write-Log -Context $Context -Message "Removed AppX package: $($case.AppX)" -Level 'SUCCESS'
-                    } catch {
+                    }
+                    catch {
                         Write-Log -Context $Context -Message "Failed to remove AppX package: $($case.AppX) - $_" -Level 'WARNING'
                     }
                 }
@@ -1202,7 +1247,8 @@ function Invoke-Task5_RemoveBloatware {
                 $wingetResult = winget uninstall --id $($case.Winget) --exact --silent --accept-source-agreements --accept-package-agreements 2>&1
                 if ($wingetResult -notmatch 'No installed package found') {
                     Write-Log -Context $Context -Message "Uninstalled via winget: $($case.Winget)" -Level 'SUCCESS'
-                } else {
+                }
+                else {
                     Write-Log -Context $Context -Message "Winget could not uninstall: $($case.Winget)" -Level 'WARNING'
                 }
             }
@@ -1236,7 +1282,8 @@ function Invoke-Task5_RemoveBloatware {
                             Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
                             Write-Log -Context $Context -Message "Removed AppX package: $appxName" -Level 'SUCCESS'
                             $uninstallSuccess = $true
-                        } catch {
+                        }
+                        catch {
                             Write-Log -Context $Context -Message ("Failed to remove AppX package: {0} - {1}" -f $appxName, $_) -Level 'WARNING'
                         }
                     }
@@ -1252,10 +1299,12 @@ function Invoke-Task5_RemoveBloatware {
                             if ($wingetResult -notmatch 'No installed package found') {
                                 Write-Log -Context $Context -Message "Uninstalled via winget: $wingetId" -Level 'SUCCESS'
                                 $uninstallSuccess = $true
-                            } else {
+                            }
+                            else {
                                 Write-Log -Context $Context -Message "Winget could not uninstall: $wingetId" -Level 'WARNING'
                             }
-                        } catch {
+                        }
+                        catch {
                             Write-Log -Context $Context -Message ("winget uninstall failed for {0}: {1}" -f $wingetId, $_) -Level 'WARNING'
                         }
                     }
@@ -1270,7 +1319,8 @@ function Invoke-Task5_RemoveBloatware {
                             $wmic.Uninstall() | Out-Null
                             Write-Log -Context $Context -Message "Uninstalled via WMI: $match" -Level 'SUCCESS'
                             $uninstallSuccess = $true
-                        } catch {
+                        }
+                        catch {
                             Write-Log -Context $Context -Message ("WMI uninstall failed for {0}: {1}" -f $match, $_) -Level 'WARNING'
                         }
                     }
@@ -1283,7 +1333,8 @@ function Invoke-Task5_RemoveBloatware {
                         Uninstall-Package -Name $match -Force -ErrorAction Stop
                         Write-Log -Context $Context -Message "Uninstalled via Uninstall-Package: $match" -Level 'SUCCESS'
                         $uninstallSuccess = $true
-                    } catch {
+                    }
+                    catch {
                         Write-Log -Context $Context -Message ("Uninstall-Package failed for {0}: {1}" -f $match, $_) -Level 'WARNING'
                     }
                 }
@@ -1308,7 +1359,8 @@ function Invoke-Task5_RemoveBloatware {
                                     Start-Process -FilePath "cmd.exe" -ArgumentList "/c $uninstallCmd" -Wait -NoNewWindow
                                     Write-Log -Context $Context -Message "Uninstalled via registry string: $match" -Level 'SUCCESS'
                                     $uninstallSuccess = $true
-                                } catch {
+                                }
+                                catch {
                                     Write-Log -Context $Context -Message ("Registry uninstall failed for {0}: {1}" -f $match, $_) -Level 'WARNING'
                                 }
                             }
@@ -1318,7 +1370,8 @@ function Invoke-Task5_RemoveBloatware {
 
                 if ($uninstallSuccess) {
                     # Successfully uninstalled bloatware
-                } else {
+                }
+                else {
                     Write-Log -Context $Context -Message ("Could not uninstall {0} using any method. Methods tried: {1}" -f $match, ($methodsTried -join ', ')) -Level 'WARNING'
                 }
             }
@@ -1336,7 +1389,8 @@ function Invoke-Task5_RemoveBloatware {
             Remove-Item $installedProgramsDiffPath -Force
             Write-Log -Context $Context -Message "Deleted temp file: $installedProgramsDiffPath" -Level 'INFO'
         }
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message "Task 5: Bloatware removal failed: $_" -Level 'ERROR'
     }
     Write-TaskLog -Context $Context -Message "Task 5 completed." -Level 'SUCCESS'
@@ -1433,10 +1487,12 @@ function Invoke-Task6_InstallEssentialApps {
             if (-not $officeInstalled) {
                 $essentialApps += @{ Name = 'LibreOffice'; Winget = 'TheDocumentFoundation.LibreOffice'; Choco = 'libreoffice-fresh' }
                 Write-Log -Context $Context -Message "LibreOffice added to essential apps list." -Level 'INFO'
-            } else {
+            }
+            else {
                 Write-Log -Context $Context -Message "Microsoft Office is installed. Skipping LibreOffice installation." -Level 'INFO'
             }
-        } else {
+        }
+        else {
             Write-Log -Context $Context -Message "LibreOffice is already installed. Skipping." -Level 'INFO'
         }
         
@@ -1452,7 +1508,7 @@ function Invoke-Task6_InstallEssentialApps {
         # Save filtered essential apps list for processing
         $diffListPath = Join-Path $Context.CurrentTaskFolder 'EssentialAppsDiff_list.txt'
         $appsToInstall | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $diffListPath -Encoding UTF8
-        Write-Host ("[Essential Apps] The following apps will be installed: {0}" -f ($appsToInstall | ForEach-Object { $_.Name } | Sort-Object |  Where-Object {$_} |  Out-String))
+        Write-Host ("[Essential Apps] The following apps will be installed: {0}" -f ($appsToInstall | ForEach-Object { $_.Name } | Sort-Object |  Where-Object { $_ } |  Out-String))
         Write-Log -Context $Context -Message "Diff list created. Only missing essential apps will be processed. Diff list saved to $diffListPath" -Level 'INFO'
 
         # ═══════════════════════════════════════════════════════════════════════════════════
@@ -1484,7 +1540,8 @@ function Invoke-Task6_InstallEssentialApps {
                         $installedVia = 'winget'
                         $installSucceeded = $true
                         Write-Host ("[Essential Apps] Installed {0} via winget." -f $app.Name)
-                    } catch {
+                    }
+                    catch {
                         Write-Host ("[Essential Apps] winget failed for {0}: {1}" -f $app.Name, $_)
                         Write-Log -Context $Context -Message "winget failed for $($app.Name): $_" -Level 'WARNING'
                     }
@@ -1501,7 +1558,8 @@ function Invoke-Task6_InstallEssentialApps {
                         $installedVia = 'choco'
                         $installSucceeded = $true
                         Write-Host ("[Essential Apps] Installed {0} via choco." -f $app.Name)
-                    } catch {
+                    }
+                    catch {
                         Write-Host ("[Essential Apps] choco failed for {0}: {1}" -f $app.Name, $_)
                         Write-Log -Context $Context -Message "choco failed for $($app.Name): $_" -Level 'WARNING'
                     }
@@ -1510,10 +1568,12 @@ function Invoke-Task6_InstallEssentialApps {
             }
             if ($installSucceeded -and $installedVia) {
                 Write-Log -Context $Context -Message "Installed $($app.Name) via $installedVia." -Level 'SUCCESS'
-            } elseif (-not $installSucceeded) {
+            }
+            elseif (-not $installSucceeded) {
                 Write-Host ("[Essential Apps] Could not install {0} after {1} attempts due to Windows Installer being busy (exit code 1618). Skipping." -f $app.Name, $maxRetries)
                 Write-Log -Context $Context -Message "Could not install $($app.Name) after $maxRetries attempts due to Windows Installer being busy (exit code 1618). Skipping." -Level 'ERROR'
-            } elseif (-not $installedVia) {
+            }
+            elseif (-not $installedVia) {
                 Write-Host ("[Essential Apps] Could not install {0} via winget or choco." -f $app.Name)
                 Write-Log -Context $Context -Message "Could not install $($app.Name) via winget or choco." -Level 'ERROR'
             }
@@ -1532,7 +1592,8 @@ function Invoke-Task6_InstallEssentialApps {
             Remove-Item $installedProgramsDiffPath -Force
             Write-Log -Context $Context -Message "Deleted temp file: $installedProgramsDiffPath" -Level 'INFO'
         }
-    } catch {
+    }
+    catch {
         Write-Host ("[Essential Apps] Task 6 failed: {0}" -f $_)
         Write-Log -Context $Context -Message "Task 6: Essential apps installation failed: $_" -Level 'ERROR'
     }
@@ -1580,15 +1641,15 @@ function Invoke-Task7_UpgradeAllPackages {
             # Find the header line (usually contains 'Name' and 'Id')
             $headerIndex = ($lines | Select-String -Pattern 'Name\s+Id\s+Version').LineNumber - 1
             if ($headerIndex -ge 0) {
-                $dataLines = $lines[($headerIndex+2)..($lines.Count-1)]
+                $dataLines = $lines[($headerIndex + 2)..($lines.Count - 1)]
                 foreach ($line in $dataLines) {
                     # Split columns by two or more spaces
                     $cols = $line -split '\s{2,}'
                     if ($cols.Count -ge 4 -and $line.Trim() -ne '' -and $line -notmatch '^-+') {
                         $pkg = [PSCustomObject]@{
-                            Name = $cols[0].Trim()
-                            Id = $cols[1].Trim()
-                            Version = $cols[2].Trim()
+                            Name             = $cols[0].Trim()
+                            Id               = $cols[1].Trim()
+                            Version          = $cols[2].Trim()
                             AvailableVersion = $cols[3].Trim()
                         }
                         $wingetList += $pkg
@@ -1599,7 +1660,8 @@ function Invoke-Task7_UpgradeAllPackages {
             if (-not $wingetList -or $wingetList.Count -eq 0) {
                 $transcript += "[{0}] No upgradable packages found via winget." -f ((Get-Date).ToString('HH:mm:ss'))
                 Write-Log -Context $Context -Message "No upgradable packages found via winget." -Level 'INFO'
-            } else {
+            }
+            else {
                 Write-Log -Context $Context -Message "Found $($wingetList.Count) packages available for upgrade." -Level 'INFO'
                 $transcript += "[{0}] Found $($wingetList.Count) packages available for upgrade." -f ((Get-Date).ToString('HH:mm:ss'))
                 
@@ -1632,9 +1694,11 @@ function Invoke-Task7_UpgradeAllPackages {
                         
                         if ($result -match 'No applicable update found' -or $result -match 'No installed package found') {
                             Write-Log -Context $Context -Message ("No update found for {0}." -f $pkgObj.Name) -Level 'INFO'
-                        } elseif ($result -match 'Successfully installed' -or $result -match 'Successfully upgraded') {
+                        }
+                        elseif ($result -match 'Successfully installed' -or $result -match 'Successfully upgraded') {
                             Write-Log -Context $Context -Message ("Successfully upgraded {0} from {1} to {2}." -f $pkgObj.Name, $pkgObj.Version, $pkgObj.AvailableVersion) -Level 'SUCCESS'
-                        } else {
+                        }
+                        else {
                             Write-Log -Context $Context -Message ("Upgrade may have failed for {0}. Check transcript for details." -f $pkgObj.Name) -Level 'WARNING'
                         }
                     }
@@ -1704,23 +1768,25 @@ pause
                         $Context.DeferredUpdates = @()
                     }
                     $Context.DeferredUpdates += @{
-                        Type = 'PowerShell7Update'
+                        Type       = 'PowerShell7Update'
                         ScriptPath = $deferredScriptPath
-                        BatchPath = $batchPath
-                        Updates = $powershellUpdates
+                        BatchPath  = $batchPath
+                        Updates    = $powershellUpdates
                     }
                     
                     Write-Host "⚠️  PowerShell 7 update will be deferred until after script completion"
                     Write-Log -Context $Context -Message "PowerShell 7 update deferred to prevent script interruption." -Level 'WARNING'
                 }
             }
-        } else {
+        }
+        else {
             Write-Progress -Activity "Winget Upgrade" -Status "winget not found. Skipping." -Completed
             Write-Log -Context $Context -Message "winget not found. Skipping package upgrade." -Level 'WARNING'
             $transcript += "[{0}] [WARN] winget not found. Skipping package upgrade." -f ((Get-Date).ToString('HH:mm:ss'))
         }
         $transcript += "[{0}] [SUCCESS] Upgrade All Packages" -f ((Get-Date).ToString('HH:mm:ss'))
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message ("Task 7 failed: {0}" -f $_) -Level 'ERROR'
         $transcript += "[{0}] [ERROR] Package upgrade failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
     }
@@ -1856,7 +1922,8 @@ function Invoke-Task8_PrivacyAndTelemetry {
             try {
                 Get-ScheduledTask -TaskPath $task -ErrorAction Stop | Disable-ScheduledTask -ErrorAction Stop | Out-Null
                 $transcript += "[{0}] Disabled scheduled task: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $task
-            } catch {
+            }
+            catch {
                 $transcript += "[{0}] [WARN] Could not disable scheduled task: {1} - {2}" -f ((Get-Date).ToString('HH:mm:ss')), $task, $_
             }
         }
@@ -1897,7 +1964,8 @@ function Invoke-Task8_PrivacyAndTelemetry {
         $transcript += "[{0}] Disabled Cortana" -f ((Get-Date).ToString('HH:mm:ss'))
 
         Write-Log -Context $Context -Message "Telemetry and privacy settings configured." -Level 'SUCCESS'
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message ("Telemetry/privacy hardening failed: {0}" -f $_) -Level 'ERROR'
     }
     Write-TaskLog -Context $Context -Message "Task 8 completed." -Level 'SUCCESS'
@@ -1948,7 +2016,8 @@ function Invoke-Task9_WindowsUpdate {
                 Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -ErrorAction SilentlyContinue
                 Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -AllowClobber -ErrorAction SilentlyContinue
                 $transcript += "[{0}] PSWindowsUpdate module installed." -f ((Get-Date).ToString('HH:mm:ss'))
-            } catch {
+            }
+            catch {
                 $transcript += "[{0}] [WARN] Could not install PSWindowsUpdate module: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
                 Write-Log -Context $Context -Message ("Could not install PSWindowsUpdate module: {0}" -f $_) -Level 'WARNING'
             }
@@ -1959,7 +2028,8 @@ function Invoke-Task9_WindowsUpdate {
             Get-WindowsUpdate -AcceptAll -Install -AutoReboot -ErrorAction Stop
             $transcript += "[{0}] Windows Update completed." -f ((Get-Date).ToString('HH:mm:ss'))
             Write-Log -Context $Context -Message "Windows Update completed." -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             $transcript += "[{0}] [WARN] Get-WindowsUpdate failed: {1}. Trying wuauclt..." -f ((Get-Date).ToString('HH:mm:ss')), $_
             Write-Progress -Activity "Windows Update" -Status "Triggering wuauclt..." -PercentComplete 80
             wuauclt /detectnow /updatenow
@@ -1967,7 +2037,8 @@ function Invoke-Task9_WindowsUpdate {
             Write-Log -Context $Context -Message ("Get-WindowsUpdate failed: {0}. Triggered wuauclt." -f $_) -Level 'WARNING'
         }
         Write-Progress -Activity "Windows Update" -Status "Complete" -Completed
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message ("Task 9: Windows Update & Upgrade failed: {0}" -f $_) -Level 'ERROR'
     }
     $endTime = Get-Date
@@ -2016,7 +2087,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
         if (-not $allRestorePoints) {
             Write-Log -Context $Context -Message "No restore points found on the system." -Level 'WARNING'
             Write-TaskLog -Context $Context -Message "No restore points found on the system." -Level 'WARNING'
-        } else {
+        }
+        else {
             Write-Log -Context $Context -Message "Found $($allRestorePoints.Count) restore points total." -Level 'INFO'
             
             # Keep only the 5 most recent restore points
@@ -2030,7 +2102,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                 if ($rp.CreationTime -and $rp.CreationTime -is [DateTime]) {
                     try {
                         $creationTimeFormatted = $rp.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
-                    } catch {
+                    }
+                    catch {
                         $creationTimeFormatted = 'Invalid Date'
                     }
                 }
@@ -2051,7 +2124,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                                 $shadowCopies = Get-WmiObject -Class Win32_ShadowCopy | Where-Object { 
                                     $_.InstallDate -eq $formattedCreationTime
                                 }
-                            } catch {
+                            }
+                            catch {
                                 Write-Log -Context $Context -Message "Failed to format creation time for restore point $($rpToDelete.SequenceNumber): $_" -Level 'WARNING'
                                 $shadowCopies = @()
                             }
@@ -2062,20 +2136,24 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                                 if ($rpToDelete.CreationTime -and $rpToDelete.CreationTime -is [DateTime]) {
                                     try {
                                         $deletedTimeFormatted = $rpToDelete.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
-                                    } catch {
+                                    }
+                                    catch {
                                         $deletedTimeFormatted = 'Invalid Date'
                                     }
                                 }
                                 Write-Log -Context $Context -Message "Deleted old restore point: Sequence $($rpToDelete.SequenceNumber), Date: $deletedTimeFormatted" -Level 'SUCCESS'
                             }
-                        } else {
+                        }
+                        else {
                             Write-Log -Context $Context -Message "Skipped restore point $($rpToDelete.SequenceNumber) - invalid creation time" -Level 'WARNING'
                         }
-                    } catch {
+                    }
+                    catch {
                         Write-Log -Context $Context -Message "Failed to delete restore point $($rpToDelete.SequenceNumber): $_" -Level 'WARNING'
                     }
                 }
-            } else {
+            }
+            else {
                 Write-Log -Context $Context -Message "No old restore points to remove. All restore points are within the keep limit." -Level 'INFO'
             }
             
@@ -2097,10 +2175,12 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                             $ageInDays = [math]::Round((Get-Date).Subtract($rp.CreationTime).TotalDays, 1)
                             $creationTimeFormatted = $rp.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
                             $restorePointSummary += "  $($rp.SequenceNumber). Created: $creationTimeFormatted ($ageInDays days ago)"
-                        } catch {
+                        }
+                        catch {
                             $restorePointSummary += "  $($rp.SequenceNumber). Created: Invalid date format"
                         }
-                    } else {
+                    }
+                    else {
                         $restorePointSummary += "  $($rp.SequenceNumber). Created: Unknown date"
                     }
                     $restorePointSummary += "     Type: $($rp.RestorePointType) | Description: $($rp.Description)"
@@ -2134,7 +2214,7 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
         
         try {
             # Get critical and error events from System log
-            $systemErrors = Get-WinEvent -FilterHashtable @{LogName='System'; Level=1,2; StartTime=$cutoffDate} -ErrorAction SilentlyContinue | Select-Object -First 50
+            $systemErrors = Get-WinEvent -FilterHashtable @{LogName = 'System'; Level = 1, 2; StartTime = $cutoffDate } -ErrorAction SilentlyContinue | Select-Object -First 50
             $diagnosticsReport += "--- SYSTEM LOG ERRORS ---"
             if ($systemErrors) {
                 $diagnosticsReport += "Found $($systemErrors.Count) critical/error events in System log:"
@@ -2143,7 +2223,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     if ($logEvent.TimeCreated -and $logEvent.TimeCreated -is [DateTime]) {
                         try {
                             $timeFormatted = $logEvent.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')
-                        } catch {
+                        }
+                        catch {
                             $timeFormatted = 'Invalid Date'
                         }
                     }
@@ -2151,13 +2232,14 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     $diagnosticsReport += "  Message: $($logEvent.Message -replace "`r`n", " " -replace "`n", " ")"
                     $diagnosticsReport += ""
                 }
-            } else {
+            }
+            else {
                 $diagnosticsReport += "No critical or error events found in System log for the last 48 hours."
             }
             $diagnosticsReport += ""
             
             # Get critical and error events from Application log
-            $appErrors = Get-WinEvent -FilterHashtable @{LogName='Application'; Level=1,2; StartTime=$cutoffDate} -ErrorAction SilentlyContinue | Select-Object -First 50
+            $appErrors = Get-WinEvent -FilterHashtable @{LogName = 'Application'; Level = 1, 2; StartTime = $cutoffDate } -ErrorAction SilentlyContinue | Select-Object -First 50
             $diagnosticsReport += "--- APPLICATION LOG ERRORS ---"
             if ($appErrors) {
                 $diagnosticsReport += "Found $($appErrors.Count) critical/error events in Application log:"
@@ -2166,7 +2248,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     if ($logEvent.TimeCreated -and $logEvent.TimeCreated -is [DateTime]) {
                         try {
                             $timeFormatted = $logEvent.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')
-                        } catch {
+                        }
+                        catch {
                             $timeFormatted = 'Invalid Date'
                         }
                     }
@@ -2174,13 +2257,15 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     $diagnosticsReport += "  Message: $($logEvent.Message -replace "`r`n", " " -replace "`n", " ")"
                     $diagnosticsReport += ""
                 }
-            } else {
+            }
+            else {
                 $diagnosticsReport += "No critical or error events found in Application log for the last 48 hours."
             }
             $diagnosticsReport += ""
             
             Write-Log -Context $Context -Message "Event Viewer error analysis completed" -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             $diagnosticsReport += "Failed to analyze Event Viewer errors: $_"
             Write-Log -Context $Context -Message "Event Viewer error analysis failed: $_" -Level 'WARNING'
         }
@@ -2206,7 +2291,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                             if ($logDate -gt $cutoffDate -and ($line -match '\[SR\]' -or $line -match 'Error' -or $line -match 'Failed' -or $line -match 'corrupt')) {
                                 $cbsErrors += $line
                             }
-                        } catch {
+                        }
+                        catch {
                             # Skip lines that don't parse correctly
                         }
                     }
@@ -2220,16 +2306,19 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     if ($cbsErrors.Count -gt 30) {
                         $diagnosticsReport += "... and $($cbsErrors.Count - 30) more entries (truncated for brevity)"
                     }
-                } else {
+                }
+                else {
                     $diagnosticsReport += "No errors or issues found in CBS log for the last 48 hours."
                 }
-            } else {
+            }
+            else {
                 $diagnosticsReport += "CBS log file not found at expected location: $cbsLogPath"
             }
             $diagnosticsReport += ""
             
             Write-Log -Context $Context -Message "CBS log analysis completed" -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             $diagnosticsReport += "Failed to analyze CBS log: $_"
             Write-Log -Context $Context -Message "CBS log analysis failed: $_" -Level 'WARNING'
         }
@@ -2301,7 +2390,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                 $diagnosticsReport += "[RECOMMENDED] SFC (System File Checker) scan"
                 $diagnosticsReport += "  Reason: System file corruption indicators detected"
                 $diagnosticsReport += "  Command: sfc /scannow"
-            } else {
+            }
+            else {
                 $diagnosticsReport += "[OK] SFC scan not required - no system file issues detected"
             }
 
@@ -2309,7 +2399,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                 $diagnosticsReport += "[RECOMMENDED] CHKDSK (Check Disk) scan"
                 $diagnosticsReport += "  Reason: Disk/file system errors detected"
                 $diagnosticsReport += "  Command: chkdsk C: /f /r (requires reboot)"
-            } else {
+            }
+            else {
                 $diagnosticsReport += "[OK] CHKDSK not required - no disk errors detected"
             }
 
@@ -2318,7 +2409,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                 $diagnosticsReport += "  Reason: Windows component issues detected"
                 $diagnosticsReport += "  Commands: dism /online /cleanup-image /scanhealth"
                 $diagnosticsReport += "           dism /online /cleanup-image /restorehealth"
-            } else {
+            }
+            else {
                 $diagnosticsReport += "[OK] DISM repair not required - component store appears healthy"
             }
             
@@ -2328,14 +2420,16 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                 foreach ($rec in $recommendations) {
                     $diagnosticsReport += "• $rec"
                 }
-            } else {
+            }
+            else {
                 $diagnosticsReport += "• No critical issues detected - system appears healthy"
             }
             
             $diagnosticsReport += ""
             
             Write-Log -Context $Context -Message "System health assessment completed" -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             $diagnosticsReport += "Failed to complete system health assessment: $_"
             Write-Log -Context $Context -Message "System health assessment failed: $_" -Level 'WARNING'
         }
@@ -2366,7 +2460,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
             $diagnosticsReport += "OS Version: $($osInfo.Caption) Build $($osInfo.Version)"
             
             $diagnosticsReport += ""
-        } catch {
+        }
+        catch {
             $diagnosticsReport += "Failed to gather additional system information: $_"
         }
         
@@ -2391,37 +2486,37 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
         try {
             # Create temporary cleanup configuration
             $cleanupConfig = @{
-                'Active Setup Temp Folders' = '2'
-                'BranchCache' = '2'
-                'Content Indexer Cleaner' = '2'
-                'Device Driver Packages' = '2'
-                'Downloaded Program Files' = '2'
-                'GameNewsFiles' = '2'
-                'GameStatisticsFiles' = '2'
-                'GameUpdateFiles' = '2'
-                'Internet Cache Files' = '2'
-                'Memory Dump Files' = '2'
-                'Offline Pages Files' = '2'
-                'Old ChkDsk Files' = '2'
-                'Previous Installations' = '2'
-                'Recycle Bin' = '2'
-                'Service Pack Cleanup' = '2'
-                'Setup Log Files' = '2'
-                'System error memory dump files' = '2'
-                'System error minidump files' = '2'
-                'Temporary Files' = '2'
-                'Temporary Setup Files' = '2'
-                'Thumbnail Cache' = '2'
-                'Update Cleanup' = '2'
-                'Upgrade Discarded Files' = '2'
-                'User file versions' = '2'
-                'Windows Defender' = '2'
-                'Windows Error Reporting Archive Files' = '2'
-                'Windows Error Reporting Queue Files' = '2'
+                'Active Setup Temp Folders'                    = '2'
+                'BranchCache'                                  = '2'
+                'Content Indexer Cleaner'                      = '2'
+                'Device Driver Packages'                       = '2'
+                'Downloaded Program Files'                     = '2'
+                'GameNewsFiles'                                = '2'
+                'GameStatisticsFiles'                          = '2'
+                'GameUpdateFiles'                              = '2'
+                'Internet Cache Files'                         = '2'
+                'Memory Dump Files'                            = '2'
+                'Offline Pages Files'                          = '2'
+                'Old ChkDsk Files'                             = '2'
+                'Previous Installations'                       = '2'
+                'Recycle Bin'                                  = '2'
+                'Service Pack Cleanup'                         = '2'
+                'Setup Log Files'                              = '2'
+                'System error memory dump files'               = '2'
+                'System error minidump files'                  = '2'
+                'Temporary Files'                              = '2'
+                'Temporary Setup Files'                        = '2'
+                'Thumbnail Cache'                              = '2'
+                'Update Cleanup'                               = '2'
+                'Upgrade Discarded Files'                      = '2'
+                'User file versions'                           = '2'
+                'Windows Defender'                             = '2'
+                'Windows Error Reporting Archive Files'        = '2'
+                'Windows Error Reporting Queue Files'          = '2'
                 'Windows Error Reporting System Archive Files' = '2'
-                'Windows Error Reporting System Queue Files' = '2'
-                'Windows ESD installation files' = '2'
-                'Windows Upgrade Log Files' = '2'
+                'Windows Error Reporting System Queue Files'   = '2'
+                'Windows ESD installation files'               = '2'
+                'Windows Upgrade Log Files'                    = '2'
             }
             
             # Apply cleanup configuration to registry
@@ -2432,7 +2527,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     if (Test-Path $itemPath) {
                         Set-ItemProperty -Path $itemPath -Name 'StateFlags0001' -Value $item.Value -Type DWord
                     }
-                } catch {
+                }
+                catch {
                     Write-Log -Context $Context -Message "Failed to set cleanup config for '$($item.Key)': $_" -Level 'WARNING'
                 }
             }
@@ -2441,7 +2537,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
             Start-Process -FilePath 'cleanmgr.exe' -ArgumentList '/sagerun:1' -Wait -WindowStyle Hidden
             Write-Log -Context $Context -Message "Windows Disk Cleanup completed" -Level 'SUCCESS'
             Write-TaskLog -Context $Context -Message "Windows Disk Cleanup completed" -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             Write-Log -Context $Context -Message "Windows Disk Cleanup failed: $_" -Level 'WARNING'
         }
         
@@ -2462,13 +2559,15 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     try {
                         Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
                         Write-Log -Context $Context -Message "Cleared Chrome cache: $path" -Level 'SUCCESS'
-                    } catch {
+                    }
+                    catch {
                         Write-Log -Context $Context -Message "Failed to clear Chrome cache: $path - $_" -Level 'WARNING'
                     }
                 }
             }
             Write-TaskLog -Context $Context -Message "Chrome browser cache cleared" -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             Write-Log -Context $Context -Message "Chrome cleanup failed: $_" -Level 'WARNING'
         }
         
@@ -2485,13 +2584,15 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     try {
                         Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
                         Write-Log -Context $Context -Message "Cleared Edge cache: $path" -Level 'SUCCESS'
-                    } catch {
+                    }
+                    catch {
                         Write-Log -Context $Context -Message "Failed to clear Edge cache: $path - $_" -Level 'WARNING'
                     }
                 }
             }
             Write-TaskLog -Context $Context -Message "Microsoft Edge browser cache cleared" -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             Write-Log -Context $Context -Message "Edge cleanup failed: $_" -Level 'WARNING'
         }
         
@@ -2506,14 +2607,16 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                         try {
                             Remove-Item -Path $cachePath -Recurse -Force -ErrorAction SilentlyContinue
                             Write-Log -Context $Context -Message "Cleared Firefox cache for profile: $($currentFirefoxProfile.Name)" -Level 'SUCCESS'
-                        } catch {
+                        }
+                        catch {
                             Write-Log -Context $Context -Message "Failed to clear Firefox cache for profile $($currentFirefoxProfile.Name): $_" -Level 'WARNING'
                         }
                     }
                 }
                 Write-TaskLog -Context $Context -Message "Firefox browser cache cleared" -Level 'SUCCESS'
             }
-        } catch {
+        }
+        catch {
             Write-Log -Context $Context -Message "Firefox cleanup failed: $_" -Level 'WARNING'
         }
         
@@ -2535,7 +2638,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                     $fileCount = $tempFiles.Count
                     $tempFiles | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
                     Write-Log -Context $Context -Message "Cleared $fileCount items from: $tempPath" -Level 'SUCCESS'
-                } catch {
+                }
+                catch {
                     Write-Log -Context $Context -Message "Failed to clear temp path: $tempPath - $_" -Level 'WARNING'
                 }
             }
@@ -2550,13 +2654,15 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                 try {
                     [System.Diagnostics.Eventing.Reader.EventLogSession]::GlobalSession.ClearLog($log.LogName)
                     Write-Log -Context $Context -Message "Cleared log: $($log.LogName)" -Level 'SUCCESS'
-                } catch {
+                }
+                catch {
                     # Some logs cannot be cleared, this is expected
                     Write-Log -Context $Context -Message "Could not clear log: $($log.LogName)" -Level 'INFO'
                 }
             }
             Write-TaskLog -Context $Context -Message "Windows event logs cleared" -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             Write-Log -Context $Context -Message "Event log cleanup failed: $_" -Level 'WARNING'
         }
         
@@ -2574,13 +2680,16 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
                 if ($storageSenseResult.ExitCode -eq 0) {
                     Write-Log -Context $Context -Message "Storage Sense executed successfully" -Level 'SUCCESS'
                     Write-TaskLog -Context $Context -Message "Storage Sense cleanup completed" -Level 'SUCCESS'
-                } else {
+                }
+                else {
                     Write-Log -Context $Context -Message "Storage Sense execution completed with warnings" -Level 'INFO'
                 }
-            } else {
+            }
+            else {
                 Write-Log -Context $Context -Message "Storage Sense not available on this system" -Level 'INFO'
             }
-        } catch {
+        }
+        catch {
             Write-Log -Context $Context -Message "Storage Sense execution failed: $_" -Level 'WARNING'
         }
         
@@ -2604,7 +2713,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
             Start-Service -Name 'msiserver' -ErrorAction SilentlyContinue
             
             Write-TaskLog -Context $Context -Message "Windows Update cache cleanup completed" -Level 'SUCCESS'
-        } catch {
+        }
+        catch {
             Write-Log -Context $Context -Message "Windows Update cache cleanup failed: $_" -Level 'WARNING'
         }
         
@@ -2628,7 +2738,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
         if ($finalRestorePoints) {
             $cleanupSummary += "- Validated and maintained $($finalRestorePoints.Count) restore points"
             $cleanupSummary += "- Deleted $($restorePointsToDelete.Count) old restore points"
-        } else {
+        }
+        else {
             $cleanupSummary += "- No restore points found on system"
         }
         $cleanupSummary += ""
@@ -2650,7 +2761,8 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
         $cleanupSummary | Out-File $summaryPath -Encoding UTF8
         Write-Log -Context $Context -Message "Combined maintenance summary saved to $summaryPath" -Level 'INFO'
         
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message "Task 10: Restore Point Management & Full Disk Cleanup failed: $_" -Level 'ERROR'
         Write-TaskLog -Context $Context -Message "Task 10: Restore Point Management & Full Disk Cleanup failed: $_" -Level 'ERROR'
     }
@@ -2699,7 +2811,8 @@ function Invoke-Task11_GenerateTranscriptHtml {
             $sortedTaskFolders = $Context.TaskFolders.GetEnumerator() | Sort-Object { 
                 if ($_.Key -match 'Task(\d+)_') { 
                     [int]$matches[1] 
-                } else { 
+                }
+                else { 
                     999 
                 } 
             }
@@ -2728,7 +2841,8 @@ function Invoke-Task11_GenerateTranscriptHtml {
         Write-TaskLog -Context $Context -Message "System maintenance summary generated at $outPath" -Level 'SUCCESS'
         Write-Host "[Task 11] Summary generated: $outPath"
         
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message "Task 11: Failed to generate summary: $_" -Level 'ERROR'
         Write-TaskLog -Context $Context -Message "Task 11: Failed to generate summary: $_" -Level 'ERROR'
     }
@@ -2777,7 +2891,8 @@ function Invoke-Task12_CheckAndPromptReboot {
         $pendingOps = (Get-ItemProperty -Path $pendingSession -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue)
         if ($pendingOps) { $rebootRequired = $true }
         
-    } catch {
+    }
+    catch {
         Write-Log -Context $Context -Message "Task 12: Failed to check reboot status: $_" -Level 'WARNING'
     }
     
@@ -2822,7 +2937,8 @@ function Invoke-Task12_CheckAndPromptReboot {
             Write-Log -Context $Context -Message "No user input at reboot prompt. System should be restarted manually." -Level 'WARNING'
             Write-TaskLog -Context $Context -Message "No user input at reboot prompt. System should be restarted manually." -Level 'WARNING'
         }
-    } else {
+    }
+    else {
         Write-Log -Context $Context -Message "No reboot required." -Level 'SUCCESS'
         Write-TaskLog -Context $Context -Message "No reboot required." -Level 'SUCCESS'
         
