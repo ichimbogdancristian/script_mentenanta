@@ -85,7 +85,6 @@ function Invoke-SystemMaintenancePolicy {
         Write-Host "All tasks completed successfully."
     }
     Write-Host "==============================================================="
-}
 
 # =====================[ INITIALIZATION & CLEANUP ]====================
 function Initialize-Environment {
