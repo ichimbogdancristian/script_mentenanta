@@ -34,6 +34,7 @@ function Invoke-SystemMaintenancePolicy {
         Write-Host "Example: Invoke-SystemMaintenancePolicy -Tasks @('Invoke-Task1_CentralCoordinationPolicy','Invoke-Task2_SystemProtection') -DeleteTempFiles"
         return
     }
+}
 
     $Context = @{}
     Initialize-Environment -Context $Context
