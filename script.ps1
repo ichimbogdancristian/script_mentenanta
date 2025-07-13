@@ -3948,8 +3948,7 @@ $AllTasks = @(
     'Invoke-Task9_WindowsUpdate',
     'Invoke-Task10_RestorePointAndDiskCleanup',
     'Invoke-Task11_GenerateTranscriptHtml',
-    'Invoke-Task12_CheckAndPromptReboot',
-    'Invoke-Task11_Finalization'
+    'Invoke-Task12_CheckAndPromptReboot'
 )
 
 Invoke-SystemMaintenancePolicy -Tasks $AllTasks
