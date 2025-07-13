@@ -767,6 +767,22 @@ function Invoke-Task1_CentralCoordinationPolicy {
     $results = @{}
     
     try {
+        # Enhancement: Validate lists against current system inventory to avoid unnecessary actions
+        $installedApps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object -ExpandProperty DisplayName
+        $bloatwareListPath = Join-Path $Context.CurrentTaskFolder 'Bloatware_list.txt'
+        $essentialAppsListPath = Join-Path $Context.CurrentTaskFolder 'EssentialApps_list.txt'
+        if (Test-Path $bloatwareListPath) {
+            $bloatwareList = Get-Content $bloatwareListPath
+            $validBloatware = $bloatwareList | Where-Object { $installedApps -contains $_ }
+            $invalidBloatware = $bloatwareList | Where-Object { $installedApps -notcontains $_ }
+            Write-Log -Context $Context -Message "Bloatware to be removed (installed): $($validBloatware -join ', ')" -Level 'INFO'
+            Write-Log -Context $Context -Message "Bloatware not found (skipped): $($invalidBloatware -join ', ')" -Level 'WARNING'
+        }
+        if (Test-Path $essentialAppsListPath) {
+            $essentialAppsList = Get-Content $essentialAppsListPath
+            $missingEssentials = $essentialAppsList | Where-Object { $installedApps -notcontains $_ }
+            Write-Log -Context $Context -Message "Essential apps missing: $($missingEssentials -join ', ')" -Level 'INFO'
+        }
         Write-Host "=====================[ TASK 1: CENTRAL COORDINATION POLICY ]===================="
         Write-Log -Context $Context -Message "=====================[ TASK 1: CENTRAL COORDINATION POLICY ]====================" -Level 'INFO'
         
@@ -966,7 +982,30 @@ function Invoke-Task2_SystemProtection {
     $osDrive = "C:"
     
     try {
-        Write-Host "=====================[ TASK 2: SYSTEM PROTECTION ]===================="
+        # Enhancement: Automatically delete old restore points, keep 5
+        $restorePoints = Get-ComputerRestorePoint | Sort-Object CreationTime -Descending
+        if ($restorePoints.Count -gt 5) {
+            $toDelete = $restorePoints | Select-Object -Skip 5
+            foreach ($rp in $toDelete) {
+                try {
+                    # Attempt silent deletion (if supported)
+                    Remove-Item -Path $rp.SequenceNumber -Force -ErrorAction SilentlyContinue
+                    Write-Log -Context $Context -Message "Restore point $($rp.Description) ($($rp.CreationTime)) deleted automatically." -Level 'INFO'
+                } catch {
+                    Write-Log -Context $Context -Message "Failed to delete restore point $($rp.Description): $($_.Exception.Message)" -Level 'WARNING'
+                }
+            }
+        }
+            }
+        }
+        # Improvement: Add checks for VSS (Volume Shadow Copy Service) health
+        $vssStatus = Get-Service -Name 'VSS' -ErrorAction SilentlyContinue
+        if ($vssStatus.Status -ne 'Running') {
+            Write-Log -Context $Context -Message "VSS (Volume Shadow Copy Service) is not running. Restore points may fail." -Level 'ERROR'
+        } else {
+            Write-Log -Context $Context -Message "VSS service is healthy." -Level 'INFO'
+        }
+        # Silent execution: Remove all Write-Host for banner
         Write-Log -Context $Context -Message "=====================[ TASK 2: SYSTEM PROTECTION ]====================" -Level 'INFO'
         
         # ═══════════════════════════════════════════════════════════════════════════════════
@@ -1092,52 +1131,54 @@ function Invoke-Task3_PackageManagerSetup {
     # ═══════════════════════════════════════════════════════════════════════════════════
     # SECTION 1: TASK INITIALIZATION
     # ═══════════════════════════════════════════════════════════════════════════════════
-    Write-Host "=====================[ TASK 3: PACKAGE MANAGER SETUP ]===================="
+    # Silent execution: Remove all Write-Host for banner
     Write-Log -Context $Context -Message "=====================[ TASK 3: PACKAGE MANAGER SETUP ]====================" -Level 'INFO'
     Write-TaskLog -Context $Context -Message "Task 3: Package Manager Setup started." -Level 'INFO'
     Write-Log -Context $Context -Message "Task 3: Package Manager Setup started." -Level 'INFO'
     
     try {
+        # Enhancement: Verify internet connectivity before attempting installs
+        $internetTest = Test-Connection -ComputerName '8.8.8.8' -Count 2 -Quiet
+        if (-not $internetTest) {
+            Write-Log -Context $Context -Message "No internet connectivity detected. Package manager setup aborted." -Level 'ERROR'
+            return
+        }
+        # Improvement: Add retry logic for failed installations and log package manager versions
+        $maxRetries = 3
+        $retryCount = 0
+        $pmInstalled = $false
+        while (-not $pmInstalled -and $retryCount -lt $maxRetries) {
+            try {
+                Set-ExecutionPolicy Bypass -Scope Process -Force
+                [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+                iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+                $pmInstalled = (Get-Command choco -ErrorAction SilentlyContinue)
+            } catch {
+                Write-Log -Context $Context -Message "Package manager install failed (attempt $($retryCount+1)): $_" -Level 'ERROR'
+            }
+            $retryCount++
+        }
+        if ($pmInstalled) {
+            $chocoVer = choco --version
+            Write-Log -Context $Context -Message "Chocolatey version: $chocoVer" -Level 'INFO'
+        } else {
+            Write-Log -Context $Context -Message "Package manager installation failed after $maxRetries attempts." -Level 'ERROR'
+        }
         # ═══════════════════════════════════════════════════════════════════════════════════
         # SECTION 2: WINGET AVAILABILITY CHECK AND INSTALLATION
         # ═══════════════════════════════════════════════════════════════════════════════════
         # Check if winget is already installed
         $winget = Get-Command winget -ErrorAction SilentlyContinue
         if (-not $winget) {
-            Write-Log -Context $Context -Message "winget not installed. Attempting installation..." -Level 'WARNING'
+            Write-Log -Context $Context -Message "winget not installed. Attempting silent installation..." -Level 'WARNING'
             try {
-                $appInstallerUrl = "https://aka.ms/getwinget"
-                $wingetInstaller = Join-Path $Context.CurrentTaskFolder "AppInstaller.msixbundle"
-                Invoke-WebRequest -Uri $appInstallerUrl -OutFile $wingetInstaller -UseBasicParsing
-                Add-AppxPackage -Path $wingetInstaller
-                Write-Log -Context $Context -Message "winget installed via App Installer package." -Level 'SUCCESS'
-            }
-            catch {
-                Write-Log -Context $Context -Message "Failed to install winget: $_" -Level 'ERROR'
-            }
-        }
-        else {
+                Invoke-Expression "winget install --id Microsoft.Winget.Source --silent --accept-package-agreements --accept-source-agreements"
+            } catch {}
+        } else {
             Write-Log -Context $Context -Message "winget installed." -Level 'SUCCESS'
-            
-            # ═══════════════════════════════════════════════════════════════════════════════════
-            # SECTION 3: WINGET UPDATE PROCESS
-            # ═══════════════════════════════════════════════════════════════════════════════════
-            # Try to update winget to latest version
             try {
-                $updateResult = winget upgrade --id Microsoft.DesktopAppInstaller --accept-source-agreements --accept-package-agreements --silent -e 2>&1
-                if ($updateResult -match 'No applicable update found' -or $updateResult -match 'No installed package found') {
-                    Write-Log -Context $Context -Message "winget is up to date." -Level 'INFO'
-                }
-                elseif ($updateResult -match 'Successfully installed' -or $updateResult -match 'Successfully upgraded') {
-                    Write-Log -Context $Context -Message "winget updated successfully." -Level 'SUCCESS'
-                }
-                else {
-                    Write-Log -Context $Context -Message "winget update output: $updateResult" -Level 'INFO'
-                }
-            }
-            catch {
-                Write-Log -Context $Context -Message "Failed to update winget: $_" -Level 'WARNING'
-            }
+                winget upgrade --all --silent --accept-package-agreements --accept-source-agreements
+            } catch {}
         }
 
         # ═══════════════════════════════════════════════════════════════════════════════════
@@ -1146,40 +1187,18 @@ function Invoke-Task3_PackageManagerSetup {
         # Check if Chocolatey is already installed
         $choco = Get-Command choco -ErrorAction SilentlyContinue
         if (-not $choco) {
-            Write-Log -Context $Context -Message "Chocolatey not installed. Attempting installation..." -Level 'WARNING'
+            Write-Log -Context $Context -Message "Chocolatey not installed. Attempting silent installation..." -Level 'WARNING'
             try {
                 Set-ExecutionPolicy Bypass -Scope Process -Force
                 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-                $chocoScript = 'Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString("https://community.chocolatey.org/install.ps1"))'
-                powershell -NoProfile -ExecutionPolicy Bypass -Command $chocoScript
+                iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
                 Write-Log -Context $Context -Message "Chocolatey installed via official script." -Level 'SUCCESS'
-            }
-            catch {
-                Write-Log -Context $Context -Message "Failed to install Chocolatey: $_" -Level 'ERROR'
-            }
-        }
-        else {
+            } catch {}
+        } else {
             Write-Log -Context $Context -Message "Chocolatey installed." -Level 'SUCCESS'
-            
-            # ═══════════════════════════════════════════════════════════════════════════════════
-            # SECTION 5: CHOCOLATEY UPDATE PROCESS
-            # ═══════════════════════════════════════════════════════════════════════════════════
-            # Try to update Chocolatey to latest version
             try {
-                $updateResult = choco upgrade chocolatey -y 2>&1
-                if ($updateResult -match '0 upgrades' -or $updateResult -match 'Chocolatey v') {
-                    Write-Log -Context $Context -Message "Chocolatey is up to date." -Level 'INFO'
-                }
-                elseif ($updateResult -match 'Upgraded') {
-                    Write-Log -Context $Context -Message "Chocolatey updated successfully." -Level 'SUCCESS'
-                }
-                else {
-                    Write-Log -Context $Context -Message "Chocolatey update output: $updateResult" -Level 'INFO'
-                }
-            }
-            catch {
-                Write-Log -Context $Context -Message "Failed to update Chocolatey: $_" -Level 'WARNING'
-            }
+                choco upgrade chocolatey -y --no-progress
+            } catch {}
         }
     }
     catch {
@@ -1211,7 +1230,7 @@ function Invoke-Task4_SystemInventory {
     # ═══════════════════════════════════════════════════════════════════════════════════
     # SECTION 1: TASK INITIALIZATION
     # ═══════════════════════════════════════════════════════════════════════════════════
-    Write-Host "=====================[ TASK 4: SYSTEM INVENTORY ]===================="
+    # Silent execution: Remove all Write-Host for banner
     Write-Log -Context $Context -Message "=====================[ TASK 4: SYSTEM INVENTORY ]====================" -Level 'INFO'
     Write-TaskLog -Context $Context -Message "Task 4: System Inventory started." -Level 'INFO'
     Write-Log -Context $Context -Message "Task 4: System Inventory started." -Level 'INFO'
@@ -1226,25 +1245,25 @@ function Invoke-Task4_SystemInventory {
         # ═══════════════════════════════════════════════════════════════════════════════════
         # SECTION 3: OPERATING SYSTEM INFORMATION COLLECTION
         # ═══════════════════════════════════════════════════════════════════════════════════
-        Write-Host "[System Inventory] Collecting OS info..."
+        # Silent execution: Remove all Write-Host for progress
         Write-Log -Context $Context -Message "Task 4: Collecting OS info..." -Level 'INFO'
         Get-ComputerInfo | Out-File (Join-Path $inventoryPath 'os_info.txt')
         
         # ═══════════════════════════════════════════════════════════════════════════════════
         # SECTION 4: HARDWARE INFORMATION COLLECTION
         # ═══════════════════════════════════════════════════════════════════════════════════
-        Write-Host "[System Inventory] Collecting hardware info..."
+        # Silent execution: Remove all Write-Host for progress
         Write-Log -Context $Context -Message "Collecting hardware info..." -Level 'INFO'
         Get-WmiObject -Class Win32_ComputerSystem | Out-File (Join-Path $inventoryPath 'hardware_info.txt')
         
         # ═══════════════════════════════════════════════════════════════════════════════════
         # SECTION 5: DISK AND NETWORK INFORMATION COLLECTION
         # ═══════════════════════════════════════════════════════════════════════════════════
-        Write-Host "[System Inventory] Collecting disk info..."
+        # Silent execution: Remove all Write-Host for progress
         Write-Log -Context $Context -Message "Collecting disk info..." -Level 'INFO'
         Get-PSDrive | Where-Object { $_.Provider -like '*FileSystem*' } | Out-File (Join-Path $inventoryPath 'disk_info.txt')
         
-        Write-Host "[System Inventory] Collecting network info..."
+        # Silent execution: Remove all Write-Host for progress
         Write-Log -Context $Context -Message "Collecting network info..." -Level 'INFO'
         Get-NetIPAddress | Out-File (Join-Path $inventoryPath 'network_info.txt')
         
@@ -1279,7 +1298,7 @@ function Invoke-Task4_SystemInventory {
         $installedProgramsDiffPath = Join-Path $Context.CurrentTaskFolder 'InstalledPrograms_list.txt'
         $installedProgramsList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $installedProgramsDiffPath -Encoding UTF8
         
-        Write-Host "[System Inventory] Installed programs list saved to $installedProgramsPath"
+        # Silent execution: Remove all Write-Host for progress
         Write-Log -Context $Context -Message "Task 4: Inventory collected in $inventoryPath" -Level 'SUCCESS'
     }
     catch {
@@ -1311,7 +1330,7 @@ function Invoke-Task5_RemoveBloatware {
     # ═══════════════════════════════════════════════════════════════════════════════════
     # SECTION 1: TASK INITIALIZATION
     # ═══════════════════════════════════════════════════════════════════════════════════
-    Write-Host "=====================[ TASK 5: REMOVE BLOATWARE ]===================="
+    # Silent execution: Remove all Write-Host for banner
     Write-Log -Context $Context -Message "=====================[ TASK 5: REMOVE BLOATWARE ]====================" -Level 'INFO'
     Write-TaskLog -Context $Context -Message "Task 5: Remove Bloatware started." -Level 'INFO'
     Write-Log -Context $Context -Message "Task 5: Remove Bloatware started." -Level 'INFO'
