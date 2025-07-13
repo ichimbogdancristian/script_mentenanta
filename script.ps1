@@ -122,6 +122,160 @@ function Use-AllScriptTasks {
 }
 
 # [PRE-TASK 0] Set up log file one folder up from the script's folder
+$function:Apply-AllTweaks = {
+    param($TaskLogPath)
+    Write-Log '[START] Apply All Tweaks' 'INFO' $TaskLogPath
+    # 1. Disable Cortana and Web Search in Start Menu
+    try {
+        $cortanaReg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search'
+        Set-ItemProperty -Path $cortanaReg -Name 'CortanaConsent' -Value 0 -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $cortanaReg -Name 'BingSearchEnabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Cortana and Bing web search disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable Cortana/Web Search: $_" 'WARN' $TaskLogPath }
+
+    # 2. Remove unwanted context menu items (OneDrive, Share)
+    try {
+        Remove-Item 'HKCR:\AllFilesystemObjects\shellex\ContextMenuHandlers\Share' -Force -ErrorAction SilentlyContinue
+        Remove-Item 'HKCR:\Directory\Background\shellex\ContextMenuHandlers\OneDrive' -Force -ErrorAction SilentlyContinue
+        Write-Log 'Unwanted context menu items removed.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to remove context menu items: $_" 'WARN' $TaskLogPath }
+
+    # 3. Disable automatic driver updates via Windows Update
+    try {
+        $driverReg = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching'
+        Set-ItemProperty -Path $driverReg -Name 'SearchOrderConfig' -Value 0 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Automatic driver updates disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable driver updates: $_" 'WARN' $TaskLogPath }
+
+    # 4. Turn off location tracking and advertising ID
+    try {
+        $privacyReg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo'
+        Set-ItemProperty -Path $privacyReg -Name 'Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        $locReg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location'
+        Set-ItemProperty -Path $locReg -Name 'Value' -Value 'Deny' -Force -ErrorAction SilentlyContinue
+        Write-Log 'Location tracking and advertising ID disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable location/ad ID: $_" 'WARN' $TaskLogPath }
+
+    # 5. Disable background apps
+    try {
+        $bgReg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications'
+        Set-ItemProperty -Path $bgReg -Name 'GlobalUserDisabled' -Value 1 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Background apps disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable background apps: $_" 'WARN' $TaskLogPath }
+
+    # 6. Disable Game Bar and Game DVR
+    try {
+        $gameReg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR'
+        Set-ItemProperty -Path $gameReg -Name 'AppCaptureEnabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $gameReg -Name 'AudioCaptureEnabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        $gameBarReg = 'HKCU:\Software\Microsoft\GameBar'
+        Set-ItemProperty -Path $gameBarReg -Name 'AllowAutoGameMode' -Value 0 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Game Bar and Game DVR disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable Game Bar/DVR: $_" 'WARN' $TaskLogPath }
+
+    # 7. Turn off Feedback and Diagnostics
+    try {
+        $diagReg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy'
+        Set-ItemProperty -Path $diagReg -Name 'TailoredExperiencesWithDiagnosticDataEnabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Feedback and diagnostics disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable feedback/diagnostics: $_" 'WARN' $TaskLogPath }
+
+    # 8. Disable SmartScreen for apps and Edge
+    try {
+        $ssReg = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer'
+        Set-ItemProperty -Path $ssReg -Name 'SmartScreenEnabled' -Value 'Off' -Force -ErrorAction SilentlyContinue
+        $edgeSSReg = 'HKCU:\Software\Microsoft\Edge\SmartScreenEnabled'
+        Set-ItemProperty -Path $edgeSSReg -Name 'SmartScreenEnabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        Write-Log 'SmartScreen disabled for apps and Edge.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable SmartScreen: $_" 'WARN' $TaskLogPath }
+
+    # 9. Remove pre-installed Appx bloatware (already covered by Remove-Bloatware)
+
+    # 10. Disable automatic app updates from Microsoft Store
+    try {
+        $storeReg = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore'
+        if (-not (Test-Path $storeReg)) { New-Item -Path $storeReg -Force | Out-Null }
+        Set-ItemProperty -Path $storeReg -Name 'AutoDownload' -Value 2 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Automatic app updates from Store disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable Store auto updates: $_" 'WARN' $TaskLogPath }
+
+    # 11. Set UAC to highest level
+    try {
+        $uacReg = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+        Set-ItemProperty -Path $uacReg -Name 'ConsentPromptBehaviorAdmin' -Value 2 -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $uacReg -Name 'PromptOnSecureDesktop' -Value 1 -Force -ErrorAction SilentlyContinue
+        Write-Log 'UAC set to highest level.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to set UAC: $_" 'WARN' $TaskLogPath }
+
+    # 12. Disable Fast Startup
+    try {
+        $fastReg = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power'
+        Set-ItemProperty -Path $fastReg -Name 'HiberbootEnabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Fast Startup disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable Fast Startup: $_" 'WARN' $TaskLogPath }
+
+    # 13. Disable Windows Tips and Suggestions
+    try {
+        $tipsReg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        Set-ItemProperty -Path $tipsReg -Name 'SubscribedContent-310093Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $tipsReg -Name 'SubscribedContent-338388Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $tipsReg -Name 'SubscribedContent-353694Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Windows Tips and Suggestions disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable Tips/Suggestions: $_" 'WARN' $TaskLogPath }
+
+    # 14. Disable Telemetry (already covered by Disable-Telemetry)
+
+    # 15. Disable Error Reporting and CEIP
+    try {
+        $ceipReg = 'HKLM:\SOFTWARE\Microsoft\SQMClient\Windows'
+        Set-ItemProperty -Path $ceipReg -Name 'CEIPEnable' -Value 0 -Force -ErrorAction SilentlyContinue
+        $errorReg = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting'
+        Set-ItemProperty -Path $errorReg -Name 'Disabled' -Value 1 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Error Reporting and CEIP disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable Error Reporting/CEIP: $_" 'WARN' $TaskLogPath }
+
+    # 16. Set Explorer to show file extensions and hidden files
+    try {
+        $explReg = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+        Set-ItemProperty -Path $explReg -Name 'HideFileExt' -Value 0 -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $explReg -Name 'Hidden' -Value 1 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Explorer set to show file extensions and hidden files.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to set Explorer options: $_" 'WARN' $TaskLogPath }
+
+    # 17. Disable automatic restart after updates
+    try {
+        $wuReg = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
+        if (-not (Test-Path $wuReg)) { New-Item -Path $wuReg -Force | Out-Null }
+        Set-ItemProperty -Path $wuReg -Name 'NoAutoRebootWithLoggedOnUsers' -Value 1 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Automatic restart after updates disabled.' 'INFO' $TaskLogPath
+    } catch { Write-Log "Failed to disable auto restart: $_" 'WARN' $TaskLogPath }
+
+    Write-Log '[END] Apply All Tweaks' 'INFO' $TaskLogPath
+}
+$function:Disable-Widgets-MeetNow = {
+    param($TaskLogPath)
+    Write-Log '[START] Disable Widgets and Meet Now' 'INFO' $TaskLogPath
+    # Disable Widgets (Windows 11)
+    try {
+        $widgetsRegPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+        Set-ItemProperty -Path $widgetsRegPath -Name 'TaskbarDa' -Value 0 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Widgets disabled (TaskbarDa=0).' 'INFO' $TaskLogPath
+    } catch {
+        Write-Log "Failed to disable Widgets: $_" 'WARN' $TaskLogPath
+    }
+    # Disable Meet Now (Windows 10/11)
+    try {
+        $meetNowRegPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+        if (-not (Test-Path $meetNowRegPath)) {
+            New-Item -Path $meetNowRegPath -Force | Out-Null
+        }
+        Set-ItemProperty -Path $meetNowRegPath -Name 'HideSCAMeetNow' -Value 1 -Force -ErrorAction SilentlyContinue
+        Write-Log 'Meet Now disabled (HideSCAMeetNow=1).' 'INFO' $TaskLogPath
+    } catch {
+        Write-Log "Failed to disable Meet Now: $_" 'WARN' $TaskLogPath
+    }
+    Write-Log '[END] Disable Widgets and Meet Now' 'INFO' $TaskLogPath
+}
 $parentFolder = Split-Path $PSScriptRoot -Parent
 $logPath = Join-Path $parentFolder "maintenance.log"
 # [PRE-TASK 1] Logging & Task Functions
