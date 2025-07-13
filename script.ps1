@@ -1947,7 +1947,7 @@ try {
                     # Create a batch file to launch the deferred script
                     $batchPath = Join-Path $Context.CurrentTaskFolder 'DeferredPowerShellUpdate.bat'
                     $batchContent = @"
-@echo off
+@echo 
 echo Starting deferred PowerShell 7 update...
 timeout /t 3 /nobreak > nul
 powershell.exe -ExecutionPolicy Bypass -File "$deferredScriptPath"
