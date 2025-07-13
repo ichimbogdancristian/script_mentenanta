@@ -12,7 +12,6 @@ $global:ScriptTasks = @(
         Write-Log '[START] Update All Apps and Packages' 'INFO'
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             try {
-                Write-Log 'Running: winget upgrade --all --silent --accept-source-agreements --accept-package-agreements' 'INFO'
                 winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
                 Write-Log 'winget upgrade completed.' 'INFO'
             } catch {
@@ -395,11 +394,6 @@ Write-Log "[TASK 1] Ensure Winget, Choco & NuGet Installed/Updated - END" 'INFO'
 
 
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
-
-# Ensure dependencies before anything else
-Test-Winget
-Test-Choco
-Test-NuGet
 
 ### Centralized temp folder and essential/bloatware lists
 $global:TempFolder = Join-Path $env:TEMP "ScriptMentenanta_$(Get-Random)"
