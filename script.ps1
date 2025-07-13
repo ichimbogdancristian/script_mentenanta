@@ -323,7 +323,6 @@ function Start-TaskLog {
     )
     
     $delimiter = "=" * 100
-    $subDelimiter = "-" * 80
     
     # LOG HEADER SECTION
     Write-TaskLog -Context $Context -Section "HEADER" -Level "INFO" -Message $delimiter
@@ -356,13 +355,12 @@ function Write-TaskSection {
         [string]$Message = ""
     )
     
-    $subDelimiter = "-" * 80
-    Write-TaskLog -Context $Context -Section $SectionName -Level "INFO" -Message $subDelimiter
+    Write-TaskLog -Context $Context -Section $SectionName -Level "INFO" -Message ("-" * 80)
     Write-TaskLog -Context $Context -Section $SectionName -Level "INFO" -Message "SECTION: $SectionName"
     if ($Message) {
         Write-TaskLog -Context $Context -Section $SectionName -Level "INFO" -Message $Message
     }
-    Write-TaskLog -Context $Context -Section $SectionName -Level "INFO" -Message $subDelimiter
+    Write-TaskLog -Context $Context -Section $SectionName -Level "INFO" -Message ("-" * 80)
 }
 
 function Complete-TaskLog {
