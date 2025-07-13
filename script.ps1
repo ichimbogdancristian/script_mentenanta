@@ -13,11 +13,7 @@
 # - Log all errors and successes
 # - Remove environment at the end
 # - Optionally delete temp files with -DeleteTempFiles switch
-function Remove-Environment {
-# Usage:
-# Invoke-SystemMaintenancePolicy -Tasks @('Task1', 'Task2') [-DeleteTempFiles]
-#
-# =====================[ END POLICY CONTROLLER HEADER ]====================
+
 
 function Invoke-SystemMaintenancePolicy {
     param(
