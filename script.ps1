@@ -92,7 +92,9 @@ function Invoke-SystemMaintenancePolicy {
 function Initialize-Environment {
     param([hashtable]$Context)
     # Use unified temp folder location with task subdirectories
-    $mainTempFolder = Join-Path $PSScriptRoot "SystemMaintenance_Temp"
+    # Use repo folder for all temp files
+    $repoFolder = $PSScriptRoot
+    $mainTempFolder = Join-Path $repoFolder "SystemMaintenance_Temp"
     $Context.TempFolder = $mainTempFolder
     
     # Create main temp folder if it doesn't exist
@@ -176,54 +178,19 @@ function Remove-Environment {
     Write-Host "[Cleanup] Environment cleanup completed."
     Write-Host "[Cleanup] Script execution finished."
 
-    # Final message about temp folders and cleanup option
+    # Always delete the repo temp folder after saving the report
     if ($Context.TempFolder -and (Test-Path $Context.TempFolder)) {
-        if ($DeleteTempFiles) {
-            # Automatic deletion without prompting
-            try {
-                # Close any remaining file handles first
-                [System.GC]::Collect()
-                [System.GC]::WaitForPendingFinalizers()
-
-                Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
-                Write-Host "✅ Temporary files deleted automatically."
-                Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
-            }
-            catch {
-                Write-Host "❌ Failed to delete temporary files: $_"
-                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
-                Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
-            }
+        try {
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+            Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
+            Write-Host "✅ Repo temp folder deleted automatically."
+            Write-Log -Context $Context -Message "Repo temp folder deleted automatically." -Level 'INFO'
         }
-        else {
-            # Interactive mode - ask user
-            Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
-            Write-Host "   These folders contain logs, reports, and generated files from each task."
-
-            # Ask user if they want to delete the temp folder
-            Write-Host "`nDo you want to delete the temporary files now? [Y/N]" -NoNewline
-            $response = Read-Host " "
-
-            if ($response -match '^[Yy]') {
-                try {
-                    # Close any remaining file handles first
-                    [System.GC]::Collect()
-                    [System.GC]::WaitForPendingFinalizers()
-
-                    Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
-                    Write-Host "✅ Temporary files deleted successfully."
-                    Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
-                }
-                catch {
-                    Write-Host "❌ Failed to delete temporary files: $_"
-                    Write-Host "   You can manually delete: $($Context.TempFolder)"
-                    Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
-                }
-            }
-            else {
-                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
-                Write-Host "   You can safely delete them manually when no longer needed."
-            }
+        catch {
+            Write-Host "❌ Failed to delete repo temp folder: $_"
+            Write-Host "📁 Repo temp files preserved at: $($Context.TempFolder)"
+            Write-Log -Context $Context -Message "Failed to delete repo temp folder: $_" -Level 'WARNING'
         }
     }
 }
