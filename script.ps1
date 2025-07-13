@@ -3009,8 +3009,6 @@ function Invoke-Task11_GenerateTranscriptHtml {
     Write-Log -Context $Context -Message "Task 11: Generating comprehensive HTML report with statistics and per-task analysis..." -Level 'INFO'
     
     try {
-        # Simple text-based report for now
-    try {
         # Gather system info
         $SystemName = $env:COMPUTERNAME
         $OSVersion = (Get-CimInstance Win32_OperatingSystem).Caption + " " + (Get-CimInstance Win32_OperatingSystem).Version
@@ -3019,11 +3017,11 @@ function Invoke-Task11_GenerateTranscriptHtml {
 
         # Collect per-task stats and sections
         $TaskStats = @{
-            Total = $Context.TaskFolders.Count
-            Successful = 0
-            WithWarnings = 0
-            WithErrors = 0
-            TotalFiles = 0
+            Total           = $Context.TaskFolders.Count
+            Successful      = 0
+            WithWarnings    = 0
+            WithErrors      = 0
+            TotalFiles      = 0
             TotalLogEntries = 0
         }
         $TaskSections = @()
@@ -3036,19 +3034,19 @@ function Invoke-Task11_GenerateTranscriptHtml {
 
             # Dummy analysis for demonstration (replace with real analysis if available)
             $TaskAnalysis = @{
-                Number = ($taskName -replace '[^\d]', '') -as [int]
-                Name = $taskName
-                Status = 'SUCCESS'
+                Number         = ($taskName -replace '[^\d]', '') -as [int]
+                Name           = $taskName
+                Status         = 'SUCCESS'
                 FilesGenerated = $filesGenerated
-                LogEntries = 0
-                Duration = 'N/A'
-                SpaceUsed = ($taskFiles | Measure-Object -Property Length -Sum).Sum
-                ItemsAdded = @()
-                ItemsRemoved = @()
-                ItemsUpdated = @()
-                Errors = @()
-                Warnings = @()
-                Successes = @("Completed successfully")
+                LogEntries     = 0
+                Duration       = 'N/A'
+                SpaceUsed      = ($taskFiles | Measure-Object -Property Length -Sum).Sum
+                ItemsAdded     = @()
+                ItemsRemoved   = @()
+                ItemsUpdated   = @()
+                Errors         = @()
+                Warnings       = @()
+                Successes      = @("Completed successfully")
             }
             $TaskStats.Successful += 1
 
