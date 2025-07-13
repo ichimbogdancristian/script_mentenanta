@@ -213,117 +213,117 @@ function Remove-Environment {
     }
 }
 
-    Write-Host "`n====================[ CLEANUP ]===================="
-    Write-Log -Context $Context -Message "Starting environment cleanup..." -Level 'INFO'
+Write-Host "`n====================[ CLEANUP ]===================="
+Write-Log -Context $Context -Message "Starting environment cleanup..." -Level 'INFO'
 
-    # Handle deferred updates before cleanup
-    if ($Context.ContainsKey('DeferredUpdates') -and $Context.DeferredUpdates.Count -gt 0) {
-        Write-Host "`n⚠️  DEFERRED UPDATES DETECTED"
-        Write-Host "The following updates were deferred to prevent script interruption:"
+# Handle deferred updates before cleanup
+if ($Context.ContainsKey('DeferredUpdates') -and $Context.DeferredUpdates.Count -gt 0) {
+    Write-Host "`n⚠️  DEFERRED UPDATES DETECTED"
+    Write-Host "The following updates were deferred to prevent script interruption:"
 
-        foreach ($deferredUpdate in $Context.DeferredUpdates) {
-            if ($deferredUpdate.Type -eq 'PowerShell7Update') {
-                Write-Host "📦 PowerShell 7 Updates:"
-                foreach ($update in $deferredUpdate.Updates) {
-                    Write-Host "   • $($update.Name): $($update.Version) → $($update.AvailableVersion)"
+    foreach ($deferredUpdate in $Context.DeferredUpdates) {
+        if ($deferredUpdate.Type -eq 'PowerShell7Update') {
+            Write-Host "📦 PowerShell 7 Updates:"
+            foreach ($update in $deferredUpdate.Updates) {
+                Write-Host "   • $($update.Name): $($update.Version) → $($update.AvailableVersion)"
+            }
+
+            Write-Host "`nDo you want to run the PowerShell 7 update now? [Y/N]" -NoNewline
+            $response = Read-Host " "
+
+            if ($response -match '^[Yy]') {
+                Write-Host "Starting PowerShell 7 update..."
+                try {
+                    # Run the deferred update script
+                    Start-Process -FilePath $deferredUpdate.BatchPath -Wait
+                    Write-Log -Context $Context -Message "PowerShell 7 deferred update completed." -Level 'SUCCESS'
                 }
-
-                Write-Host "`nDo you want to run the PowerShell 7 update now? [Y/N]" -NoNewline
-                $response = Read-Host " "
-
-                if ($response -match '^[Yy]') {
-                    Write-Host "Starting PowerShell 7 update..."
-                    try {
-                        # Run the deferred update script
-                        Start-Process -FilePath $deferredUpdate.BatchPath -Wait
-                        Write-Log -Context $Context -Message "PowerShell 7 deferred update completed." -Level 'SUCCESS'
-                    }
-                    catch {
-                        Write-Host "Failed to start deferred update: $_"
-                        Write-Host "You can manually run: $($deferredUpdate.BatchPath)"
-                        Write-Log -Context $Context -Message "Failed to start deferred PowerShell update: $_" -Level 'ERROR'
-                    }
+                catch {
+                    Write-Host "Failed to start deferred update: $_"
+                    Write-Host "You can manually run: $($deferredUpdate.BatchPath)"
+                    Write-Log -Context $Context -Message "Failed to start deferred PowerShell update: $_" -Level 'ERROR'
                 }
-                else {
-                    Write-Host "PowerShell 7 update skipped."
-                    Write-Host "To update later, run: $($deferredUpdate.BatchPath)"
-                    Write-Log -Context $Context -Message "User skipped PowerShell 7 deferred update." -Level 'INFO'
-                }
+            }
+            else {
+                Write-Host "PowerShell 7 update skipped."
+                Write-Host "To update later, run: $($deferredUpdate.BatchPath)"
+                Write-Log -Context $Context -Message "User skipped PowerShell 7 deferred update." -Level 'INFO'
             }
         }
     }
+}
 
+try {
+    Stop-Transcript | Out-Null
+}
+catch {
+    # Transcript might not be running
+}
+
+# Close all log file handles
+if ($Context.ContainsKey('LogFile') -and $Context.LogFile -and $Context.LogFile -is [System.IO.StreamWriter]) {
     try {
-        Stop-Transcript | Out-Null
+        $Context.LogFile.Close()
+        $Context.LogFile.Dispose()
     }
     catch {
-        # Transcript might not be running
+        Write-Warning "Failed to close log file: $_"
     }
+}
 
-    # Close all log file handles
-    if ($Context.ContainsKey('LogFile') -and $Context.LogFile -and $Context.LogFile -is [System.IO.StreamWriter]) {
+Write-Host "[Cleanup] Environment cleanup completed."
+Write-Host "[Cleanup] Script execution finished."
+
+# Final message about temp folders and cleanup option
+if ($Context.TempFolder -and (Test-Path $Context.TempFolder)) {
+    if ($DeleteTempFiles) {
+        # Automatic deletion without prompting
         try {
-            $Context.LogFile.Close()
-            $Context.LogFile.Dispose()
+            # Close any remaining file handles first
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+
+            Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
+            Write-Host "✅ Temporary files deleted automatically."
+            Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
         }
         catch {
-            Write-Warning "Failed to close log file: $_"
+            Write-Host "❌ Failed to delete temporary files: $_"
+            Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
+            Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
         }
     }
+    else {
+        # Interactive mode - ask user
+        Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
+        Write-Host "   These folders contain logs, reports, and generated files from each task."
 
-    Write-Host "[Cleanup] Environment cleanup completed."
-    Write-Host "[Cleanup] Script execution finished."
+        # Ask user if they want to delete the temp folder
+        Write-Host "`nDo you want to delete the temporary files now? [Y/N]" -NoNewline
+        $response = Read-Host " "
 
-    # Final message about temp folders and cleanup option
-    if ($Context.TempFolder -and (Test-Path $Context.TempFolder)) {
-        if ($DeleteTempFiles) {
-            # Automatic deletion without prompting
+        if ($response -match '^[Yy]') {
             try {
                 # Close any remaining file handles first
                 [System.GC]::Collect()
                 [System.GC]::WaitForPendingFinalizers()
 
                 Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
-                Write-Host "✅ Temporary files deleted automatically."
-                Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
+                Write-Host "✅ Temporary files deleted successfully."
+                Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
             }
             catch {
                 Write-Host "❌ Failed to delete temporary files: $_"
-                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
+                Write-Host "   You can manually delete: $($Context.TempFolder)"
                 Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
             }
         }
         else {
-            # Interactive mode - ask user
-            Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
-            Write-Host "   These folders contain logs, reports, and generated files from each task."
-
-            # Ask user if they want to delete the temp folder
-            Write-Host "`nDo you want to delete the temporary files now? [Y/N]" -NoNewline
-            $response = Read-Host " "
-
-            if ($response -match '^[Yy]') {
-                try {
-                    # Close any remaining file handles first
-                    [System.GC]::Collect()
-                    [System.GC]::WaitForPendingFinalizers()
-
-                    Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
-                    Write-Host "✅ Temporary files deleted successfully."
-                    Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
-                }
-                catch {
-                    Write-Host "❌ Failed to delete temporary files: $_"
-                    Write-Host "   You can manually delete: $($Context.TempFolder)"
-                    Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
-                }
-            }
-            else {
-                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
-                Write-Host "   You can safely delete them manually when no longer needed."
-            }
+            Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
+            Write-Host "   You can safely delete them manually when no longer needed."
         }
     }
+}
 
 
 function Invoke-ScriptValidation {
@@ -991,18 +991,18 @@ function Invoke-Task2_SystemProtection {
                     # Attempt silent deletion (if supported)
                     Remove-Item -Path $rp.SequenceNumber -Force -ErrorAction SilentlyContinue
                     Write-Log -Context $Context -Message "Restore point $($rp.Description) ($($rp.CreationTime)) deleted automatically." -Level 'INFO'
-                } catch {
+                }
+                catch {
                     Write-Log -Context $Context -Message "Failed to delete restore point $($rp.Description): $($_.Exception.Message)" -Level 'WARNING'
                 }
-            }
-        }
             }
         }
         # Improvement: Add checks for VSS (Volume Shadow Copy Service) health
         $vssStatus = Get-Service -Name 'VSS' -ErrorAction SilentlyContinue
         if ($vssStatus.Status -ne 'Running') {
             Write-Log -Context $Context -Message "VSS (Volume Shadow Copy Service) is not running. Restore points may fail." -Level 'ERROR'
-        } else {
+        }
+        else {
             Write-Log -Context $Context -Message "VSS service is healthy." -Level 'INFO'
         }
         # Silent execution: Remove all Write-Host for banner
@@ -1151,9 +1151,10 @@ function Invoke-Task3_PackageManagerSetup {
             try {
                 Set-ExecutionPolicy Bypass -Scope Process -Force
                 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-                iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+                Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
                 $pmInstalled = (Get-Command choco -ErrorAction SilentlyContinue)
-            } catch {
+            }
+            catch {
                 Write-Log -Context $Context -Message "Package manager install failed (attempt $($retryCount+1)): $_" -Level 'ERROR'
             }
             $retryCount++
@@ -1161,7 +1162,8 @@ function Invoke-Task3_PackageManagerSetup {
         if ($pmInstalled) {
             $chocoVer = choco --version
             Write-Log -Context $Context -Message "Chocolatey version: $chocoVer" -Level 'INFO'
-        } else {
+        }
+        else {
             Write-Log -Context $Context -Message "Package manager installation failed after $maxRetries attempts." -Level 'ERROR'
         }
         # ═══════════════════════════════════════════════════════════════════════════════════
@@ -1173,12 +1175,15 @@ function Invoke-Task3_PackageManagerSetup {
             Write-Log -Context $Context -Message "winget not installed. Attempting silent installation..." -Level 'WARNING'
             try {
                 Invoke-Expression "winget install --id Microsoft.Winget.Source --silent --accept-package-agreements --accept-source-agreements"
-            } catch {}
-        } else {
+            }
+            catch {}
+        }
+        else {
             Write-Log -Context $Context -Message "winget installed." -Level 'SUCCESS'
             try {
                 winget upgrade --all --silent --accept-package-agreements --accept-source-agreements
-            } catch {}
+            }
+            catch {}
         }
 
         # ═══════════════════════════════════════════════════════════════════════════════════
@@ -1191,14 +1196,17 @@ function Invoke-Task3_PackageManagerSetup {
             try {
                 Set-ExecutionPolicy Bypass -Scope Process -Force
                 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-                iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+                Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
                 Write-Log -Context $Context -Message "Chocolatey installed via official script." -Level 'SUCCESS'
-            } catch {}
-        } else {
+            }
+            catch {}
+        }
+        else {
             Write-Log -Context $Context -Message "Chocolatey installed." -Level 'SUCCESS'
             try {
                 choco upgrade chocolatey -y --no-progress
-            } catch {}
+            }
+            catch {}
         }
     }
     catch {
