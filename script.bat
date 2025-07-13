@@ -7,7 +7,7 @@ if "%SCRIPT_DIR:~-1%"=="\\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 echo [INFO] Script directory is: %SCRIPT_DIR%
 
 REM Set variables
-set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
+set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 set "ZIP_NAME=%SCRIPT_DIR%script_mentenanta.zip"
 set "EXTRACTED_DIR=%SCRIPT_DIR%script_mentenanta"
 set "PS_SCRIPT=script.ps1"
