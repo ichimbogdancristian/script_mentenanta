@@ -2194,28 +2194,28 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
             $diagnosticsReport += "SYSTEM HEALTH STATUS:"
             
             if ($needsSFC) {
-                $diagnosticsReport += "✗ SFC (System File Checker) scan RECOMMENDED"
+                $diagnosticsReport += "[RECOMMENDED] SFC (System File Checker) scan"
                 $diagnosticsReport += "  Reason: System file corruption indicators detected"
                 $diagnosticsReport += "  Command: sfc /scannow"
             } else {
-                $diagnosticsReport += "✓ SFC scan not required - no system file issues detected"
+                $diagnosticsReport += "[OK] SFC scan not required - no system file issues detected"
             }
-            
+
             if ($needsCHKDSK) {
-                $diagnosticsReport += "✗ CHKDSK (Check Disk) scan RECOMMENDED"
+                $diagnosticsReport += "[RECOMMENDED] CHKDSK (Check Disk) scan"
                 $diagnosticsReport += "  Reason: Disk/file system errors detected"
                 $diagnosticsReport += "  Command: chkdsk C: /f /r (requires reboot)"
             } else {
-                $diagnosticsReport += "✓ CHKDSK not required - no disk errors detected"
+                $diagnosticsReport += "[OK] CHKDSK not required - no disk errors detected"
             }
-            
+
             if ($needsDISM) {
-                $diagnosticsReport += "✗ DISM (Component Store) repair RECOMMENDED"
+                $diagnosticsReport += "[RECOMMENDED] DISM (Component Store) repair"
                 $diagnosticsReport += "  Reason: Windows component issues detected"
                 $diagnosticsReport += "  Commands: dism /online /cleanup-image /scanhealth"
                 $diagnosticsReport += "           dism /online /cleanup-image /restorehealth"
             } else {
-                $diagnosticsReport += "✓ DISM repair not required - component store appears healthy"
+                $diagnosticsReport += "[OK] DISM repair not required - component store appears healthy"
             }
             
             $diagnosticsReport += ""
@@ -2249,13 +2249,13 @@ function Invoke-Task10_RestorePointAndDiskCleanup {
             $freeSpaceGB = [math]::Round($systemDrive.FreeSpace / 1GB, 2)
             $totalSpaceGB = [math]::Round($systemDrive.Size / 1GB, 2)
             $freeSpacePercent = [math]::Round(($systemDrive.FreeSpace / $systemDrive.Size) * 100, 1)
-            $diagnosticsReport += "System Drive Space: $freeSpaceGB GB free of $totalSpaceGB GB total ($freeSpacePercent% free)"
+            $diagnosticsReport += "System Drive Space: $freeSpaceGB GB free of $totalSpaceGB GB total ($freeSpacePercent`% free)"
             
             # Memory usage
             $totalRAM = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
             $availableRAM = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 2)
             $usedRAMPercent = [math]::Round((($totalRAM - $availableRAM) / $totalRAM) * 100, 1)
-            $diagnosticsReport += "Memory Usage: $usedRAMPercent% used ($availableRAM GB free of $totalRAM GB total)"
+            $diagnosticsReport += "Memory Usage: $usedRAMPercent`% used ($availableRAM GB free of $totalRAM GB total)"
             
             # Windows version
             $osInfo = Get-CimInstance Win32_OperatingSystem
