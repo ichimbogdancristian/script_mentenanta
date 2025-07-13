@@ -1,3 +1,10 @@
+# =====================[ SYSTEM MAINTENANCE SCRIPT ]====================
+# Version: 1.1.0
+# Last Updated: 2025-07-13
+# Author: Bogdan
+# Description: Modular Windows maintenance automation with robust logging and error handling
+# ======================================================================
+
 # =====================[ SYSTEM MAINTENANCE POLICY CONTROLLER ]====================
 # All tasks must:
 # - Accept a [hashtable]$Context parameter for shared state and logging
@@ -17,48 +24,66 @@
 
 function Invoke-SystemMaintenancePolicy {
     param(
+        [Parameter(Mandatory=$true, Position=0)]
         [string[]]$Tasks,
         [switch]$DeleteTempFiles
     )
+
+    if (-not $Tasks -or $Tasks.Count -eq 0) {
+        Write-Host "Usage: Invoke-SystemMaintenancePolicy -Tasks <Task1,Task2,...> [-DeleteTempFiles]"
+        Write-Host "Example: Invoke-SystemMaintenancePolicy -Tasks @('Invoke-Task1_CentralCoordinationPolicy','Invoke-Task2_SystemProtection') -DeleteTempFiles"
+        return
+    }
+
     $Context = @{}
     Initialize-Environment -Context $Context
     $taskIndex = 0
+    $runTimestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $Context.RunTimestamp = $runTimestamp
+    $Context.ErrorLogPath = Join-Path $Context.TempFolder ("SystemMaintenance_errors_$runTimestamp.log")
+    $Context.LogPath = Join-Path $Context.TempFolder ("SystemMaintenance_$runTimestamp.log")
+    Start-Transcript -Path (Join-Path $Context.TempFolder ("transcript_log_$runTimestamp.txt")) -Append
+
+    $overallErrors = @()
     foreach ($TaskName in $Tasks) {
-        # Skip null or empty tasks
         if (-not $TaskName) {
             Write-Host "Skipping null/empty task at index $($taskIndex + 1)"
             continue
         }
-        
         $taskIndex++
-        
-        # Use the task name directly
         $Context.TaskName = $TaskName
-        
-        # Verify the function exists
         if (-not (Get-Command $TaskName -ErrorAction SilentlyContinue)) {
             Write-Host "Warning: Function $TaskName not found. Skipping task $taskIndex."
             continue
         }
-    
         try {
-            # Create task-specific folder with shorter, cleaner name
             $cleanTaskName = $Context.TaskName -replace '^Invoke-Task\d+_', '' -replace '[^\w\-]', '_'
             $shortFolderName = "Task${taskIndex}_${cleanTaskName}"
             $taskFolderPath = New-TaskFolder -Context $Context -TaskName $shortFolderName
             $Context.TaskLogPath = Join-Path $taskFolderPath ("Task${taskIndex}_${cleanTaskName}_log.txt")
-            
             Write-TaskLog -Context $Context -Message "Starting $($Context.TaskName)" -Level 'INFO'
-            
-            # Execute the function by name
             & $TaskName -Context $Context
-            
             Write-TaskLog -Context $Context -Message "$($Context.TaskName) completed successfully." -Level 'SUCCESS'
         } catch {
-            Write-TaskLog -Context $Context -Message "Task failed: $_" -Level 'ERROR'
+            $errMsg = "Task failed: $_"
+            Write-TaskLog -Context $Context -Message $errMsg -Level 'ERROR'
+            $overallErrors += $errMsg
+            Add-Content -Path $Context.ErrorLogPath -Value ("[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $errMsg") -Encoding UTF8
         }
     }
     Remove-Environment -Context $Context -DeleteTempFiles:$DeleteTempFiles
+
+    # Summary banner
+    Write-Host "\n====================[ MAINTENANCE SUMMARY ]===================="
+    Write-Host "Run Timestamp: $runTimestamp"
+    Write-Host "Log File: $($Context.LogPath)"
+    if ($overallErrors.Count -gt 0) {
+        Write-Host "Errors encountered during run: $($overallErrors.Count)"
+        Write-Host "See error log: $($Context.ErrorLogPath)"
+    } else {
+        Write-Host "All tasks completed successfully."
+    }
+    Write-Host "==============================================================="
 }
 
 # =====================[ INITIALIZATION & CLEANUP ]====================
