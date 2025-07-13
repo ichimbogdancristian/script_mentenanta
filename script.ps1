@@ -23,6 +23,12 @@
 
 
 function Invoke-SystemMaintenancePolicy {
+    <#
+    .SYNOPSIS
+        Orchestrates the execution of all maintenance tasks in order, passing shared context and handling logging, errors, and cleanup.
+    .DESCRIPTION
+        Initializes environment, runs each specified task, logs results, and performs cleanup. Optionally deletes temp files after execution.
+    #>
     param(
         [Parameter(Mandatory = $true, Position = 0)]
         [string[]]$Tasks,
@@ -90,6 +96,12 @@ function Invoke-SystemMaintenancePolicy {
 
 # =====================[ INITIALIZATION & CLEANUP ]====================
 function Initialize-Environment {
+    <#
+    .SYNOPSIS
+        Sets up the main environment and temp folder for the maintenance run, storing paths in the shared context.
+    .DESCRIPTION
+        Creates a unified temp folder in the repo directory, initializes logging paths, and prepares context for all tasks.
+    #>
     param([hashtable]$Context)
     # Use unified temp folder location with task subdirectories
     # Use repo folder for all temp files
@@ -110,6 +122,12 @@ function Initialize-Environment {
 }
 
 function Remove-Environment {
+    <#
+    .SYNOPSIS
+        Cleans up the environment after all tasks, handles deferred updates, closes logs, and deletes temp files if requested.
+    .DESCRIPTION
+        Prompts for deferred updates, closes log handles, and deletes the temp folder automatically or interactively based on parameters.
+    #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
@@ -311,6 +329,12 @@ function Remove-Environment {
 function Invoke-ScriptValidation {
     <#
     .SYNOPSIS
+        Validates the structure, formatting, and best practices of a PowerShell script file.
+    .DESCRIPTION
+        Checks for incomplete functions, unused variables, syntax errors, and non-standard verbs. Outputs a script map and any detected issues.
+    #>
+    <#
+    .SYNOPSIS
         Validates PowerShell script structure, formatting, and best practices.
     .DESCRIPTION
         Checks for incomplete functions, unused variables, syntax errors, and provides a script map for navigation.
@@ -382,6 +406,12 @@ function Invoke-ScriptValidation {
 
 # =====================[ TASK FOLDER MANAGEMENT ]====================
 function New-TaskFolder {
+    <#
+    .SYNOPSIS
+        Creates a new folder for a specific task within the temp directory and stores its path in the context.
+    .DESCRIPTION
+        Ensures safe folder naming, handles path length limits, and returns the folder path for file storage and logging.
+    #>
     param(
         [hashtable]$Context,
         [string]$TaskName
@@ -393,9 +423,9 @@ function New-TaskFolder {
     if ($taskFolderName.Length -gt 50) {
         $taskFolderName = $taskFolderName.Substring(0, 50)
     }
-    
+
     $taskFolderPath = Join-Path $Context.TempFolder $taskFolderName
-    
+
     # Additional safety check for path length (Windows has ~260 char limit)
     if ($taskFolderPath.Length -gt 200) {
         $shorterName = "Task_" + [System.IO.Path]::GetRandomFileName().Replace('.', '')
@@ -416,6 +446,12 @@ function New-TaskFolder {
 }
 
 function Get-TaskFolder {
+    <#
+    .SYNOPSIS
+        Retrieves the folder path for a given task from the context, using direct or normalized lookup.
+    .DESCRIPTION
+        Returns the path for the specified task, or warns if not found. Used for accessing task-specific files and logs.
+    #>
     param(
         [hashtable]$Context,
         [string]$TaskName
@@ -454,6 +490,12 @@ function Get-TaskFolder {
 # =====================================================================================
 
 function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes a standardized log entry to the main log file and outputs it to the console.
+    .DESCRIPTION
+        Formats log messages with timestamp and level, and appends them to the main log file in the temp folder.
+    #>
     param(
         [hashtable]$Context,
         [string]$Message,
@@ -470,6 +512,12 @@ function Write-Log {
 }
 
 function Write-TaskLog {
+    <#
+    .SYNOPSIS
+        Writes a log entry to the current task's log file, falling back to the main log or console if needed.
+    .DESCRIPTION
+        Formats and writes log messages with section, level, and task name, ensuring robust logging for each task.
+    #>
     param(
         [hashtable]$Context,
         [string]$Message,
@@ -518,6 +566,12 @@ function Write-TaskLog {
 }
 
 function Start-TaskLog {
+    <#
+    .SYNOPSIS
+        Initializes a new task log with header information and stores the start time for performance metrics.
+    .DESCRIPTION
+        Logs metadata, system info, parameters, and sets up the log structure for the task.
+    #>
     param(
         [hashtable]$Context,
         [string]$TaskName,
@@ -552,6 +606,12 @@ function Start-TaskLog {
 }
 
 function Write-TaskSection {
+    <#
+    .SYNOPSIS
+        Writes a section delimiter and section name to the current task log for clarity and navigation.
+    .DESCRIPTION
+        Used to separate major phases in the task log, improving readability and structure.
+    #>
     param(
         [hashtable]$Context,
         [string]$SectionName,
@@ -567,6 +627,12 @@ function Write-TaskSection {
 }
 
 function Complete-TaskLog {
+    <#
+    .SYNOPSIS
+        Finalizes the current task log with results, errors, performance metrics, and footer information.
+    .DESCRIPTION
+        Summarizes the task outcome, logs errors and execution time, and provides next steps if specified.
+    #>
     param(
         [hashtable]$Context,
         [string]$TaskName,
@@ -623,6 +689,12 @@ function Complete-TaskLog {
 }
 
 function Write-StateSnapshot {
+    <#
+    .SYNOPSIS
+        Logs a snapshot of system or task state before or after execution for auditing and diagnostics.
+    .DESCRIPTION
+        Records key state data and timestamps in the task log for pre- and post-execution analysis.
+    #>
     param(
         [hashtable]$Context,
         [string]$SnapshotType,  # PRE_EXECUTION or POST_EXECUTION
@@ -641,6 +713,12 @@ function Write-StateSnapshot {
 }
 
 function Write-ExecutionStep {
+    <#
+    .SYNOPSIS
+        Logs a single execution step, including action, result, and level, to the current task log.
+    .DESCRIPTION
+        Used to document each operation performed within a task, supporting detailed step-by-step logging.
+    #>
     param(
         [hashtable]$Context,
         [string]$StepName,
@@ -670,6 +748,12 @@ function Write-ExecutionStep {
 #   4. File output and storage in task folder
 # =====================================================================================
 function Invoke-Task1_CentralCoordinationPolicy {
+    <#
+    .SYNOPSIS
+        Establishes centralized lists and coordination policies for the maintenance process.
+    .DESCRIPTION
+        Creates and validates bloatware and essential apps lists, stores them in the task folder, and logs all steps and results.
+    #>
     param([hashtable]$Context)
     
     # Initialize extensive task logging
