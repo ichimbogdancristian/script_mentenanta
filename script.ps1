@@ -116,6 +116,9 @@ function Initialize-Environment {
     
     # Initialize task folders collection
     $Context.TaskFolders = @{}
+
+    # Set default current task folder to main temp folder for initial tasks
+    $Context.CurrentTaskFolder = $Context.TempFolder
     
     $Context.LogPath = Join-Path $Context.TempFolder 'SystemMaintenance.log'
     Write-Log -Context $Context -Message "Main temp folder created: $($Context.TempFolder)" -Level 'INFO'
@@ -3847,12 +3850,12 @@ Invoke-SystemMaintenancePolicy -Tasks $AllTasks
 #   4. Handle deferred PowerShell 7 updates
 #   5. Close logs and output summary
 # =====================================================================================
-function Invoke-Task11_Finalization {
+function Invoke-Task13_Finalization {
     param([hashtable]$Context)
 
-    Write-Host "=====================[ TASK 11: FINALIZATION & REPORTING ]===================="
-    Write-Log -Context $Context -Message "=====================[ TASK 11: FINALIZATION & REPORTING ]====================" -Level 'INFO'
-    Write-TaskLog -Context $Context -Message "Task 11: Finalization & Reporting started." -Level 'INFO'
+    Write-Host "=====================[ TASK 13: FINALIZATION & REPORTING ]===================="
+    Write-Log -Context $Context -Message "=====================[ TASK 13: FINALIZATION & REPORTING ]====================" -Level 'INFO'
+    Write-TaskLog -Context $Context -Message "Task 13: Finalization & Reporting started." -Level 'INFO'
 
     try {
         # 1. Compile logs, stats, and summaries
