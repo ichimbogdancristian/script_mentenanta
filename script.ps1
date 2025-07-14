@@ -246,9 +246,6 @@ function Remove-Environment {
             }
         }
     }
-}
-
-
 function Invoke-ScriptValidation {
     <#
     .SYNOPSIS
