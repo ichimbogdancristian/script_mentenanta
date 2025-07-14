@@ -276,7 +276,7 @@ function Invoke-ScriptValidation {
     # Check for incomplete functions
     $scriptContent = Get-Content $ScriptPath -Raw
     $functionMatches = [regex]::Matches($scriptContent, 'function\s+\w+\s*\{')
-    $endMatches = [regex]::Matches($scriptContent, '\}')
+    $endMatches = [regex]::Matches($scriptContent, '\\}')
     if ($functionMatches.Count -ne $endMatches.Count) {
         $errors += "Mismatch between function declarations and closing braces. Check for incomplete functions."
     }
@@ -307,124 +307,118 @@ function Invoke-ScriptValidation {
             $errors += "Non-approved PowerShell verb used in function: $func"
         }
     }
-
-    # Script map for navigation
-    Write-Host "`n====================[ SCRIPT MAP ]===================="
-    foreach ($func in $functionNames) {
-        Write-Host "Function: $func"
-    }
-    Write-Host "======================================================"
-
-    # Output errors
-    if ($errors.Count -gt 0) {
-        Write-Host "`nScript validation found issues:"
-        foreach ($err in $errors) {
-            Write-Host " - $err"
-        }
-    }
-    else {
-        Write-Host "No major issues detected. Script structure appears valid."
-    }
-}
-
-# =====================[ TASK FOLDER MANAGEMENT ]====================
-function New-TaskFolder {
-    <#
-    .SYNOPSIS
-        Creates a new folder for a specific task within the temp directory and stores its path in the context.
-    .DESCRIPTION
-        Ensures safe folder naming, handles path length limits, and returns the folder path for file storage and logging.
-    #>
-    param(
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
         [hashtable]$Context,
-        [string]$TaskName
+        [switch]$DeleteTempFiles
     )
-    # Sanitize folder name and ensure it's not too long
-    $taskFolderName = $TaskName -replace '[^\w\-_]', '_'  # Sanitize folder name
-    
-    # Truncate folder name if it's too long to prevent path length issues
-    if ($taskFolderName.Length -gt 50) {
-        $taskFolderName = $taskFolderName.Substring(0, 50)
-    }
 
-    $taskFolderPath = Join-Path $Context.TempFolder $taskFolderName
+    Write-Host "`n====================[ CLEANUP ]===================="
+    Write-Log -Context $Context -Message "Starting environment cleanup..." -Level 'INFO'
 
-    # Additional safety check for path length (Windows has ~260 char limit)
-    if ($taskFolderPath.Length -gt 200) {
-        $shorterName = "Task_" + [System.IO.Path]::GetRandomFileName().Replace('.', '')
-        $taskFolderPath = Join-Path $Context.TempFolder $shorterName
-        Write-Log -Context $Context -Message "Using shortened folder name due to path length: $shorterName" -Level 'WARNING'
-    }
-    
-    if (-not (Test-Path $taskFolderPath)) {
-        New-Item -ItemType Directory -Path $taskFolderPath -Force | Out-Null
-    }
-    
-    # Store the task folder path in context for later reference
-    $Context.TaskFolders[$TaskName] = $taskFolderPath
-    $Context.CurrentTaskFolder = $taskFolderPath
-    
-    Write-Log -Context $Context -Message "Created task folder: $taskFolderPath" -Level 'INFO'
-    return $taskFolderPath
-}
+    # Handle deferred updates before cleanup
+    if ($Context.ContainsKey('DeferredUpdates') -and $Context.DeferredUpdates.Count -gt 0) {
+        Write-Host "`n⚠️  DEFERRED UPDATES DETECTED"
+        Write-Host "The following updates were deferred to prevent script interruption:"
 
-function Get-TaskFolder {
-    <#
-    .SYNOPSIS
-        Retrieves the folder path for a given task from the context, using direct or normalized lookup.
-    .DESCRIPTION
-        Returns the path for the specified task, or warns if not found. Used for accessing task-specific files and logs.
-    #>
-    param(
-        [hashtable]$Context,
-        [string]$TaskName
-    )
-    # Try direct lookup, fallback to normalized key if not found
-    if ($Context.TaskFolders.ContainsKey($TaskName)) {
-        return $Context.TaskFolders[$TaskName]
-    }
-    else {
-        $normalizedName = $TaskName -replace '[^\w\-_]', '_'
-        if ($Context.TaskFolders.ContainsKey($normalizedName)) {
-            return $Context.TaskFolders[$normalizedName]
-        }
-        else {
-            Write-Warning "Task folder for '$TaskName' not found."
-            return $null
+        foreach ($deferredUpdate in $Context.DeferredUpdates) {
+            if ($deferredUpdate.Type -eq 'PowerShell7Update') {
+                Write-Host "📦 PowerShell 7 Updates:"
+                foreach ($update in $deferredUpdate.Updates) {
+                    Write-Host "   • $($update.Name): $($update.Version) → $($update.AvailableVersion)"
+                }
+
+                Write-Host "`nDo you want to run the PowerShell 7 update now? [Y/N]" -NoNewline
+                $response = Read-Host " "
+
+                if ($response -match '^[Yy]') {
+                    Write-Host "Starting PowerShell 7 update..."
+                    try {
+                        # Run the deferred update script
+                        Start-Process -FilePath $deferredUpdate.BatchPath -Wait
+                        Write-Log -Context $Context -Message "PowerShell 7 deferred update completed." -Level 'SUCCESS'
+                    } catch {
+                        Write-Host "Failed to start deferred update: $_"
+                        Write-Host "You can manually run: $($deferredUpdate.BatchPath)"
+                        Write-Log -Context $Context -Message "Failed to start deferred PowerShell update: $_" -Level 'ERROR'
+                    }
+                } else {
+                    Write-Host "PowerShell 7 update skipped."
+                    Write-Host "To update later, run: $($deferredUpdate.BatchPath)"
+                    Write-Log -Context $Context -Message "User skipped PowerShell 7 deferred update." -Level 'INFO'
+                }
+            }
         }
     }
+
+    try {
+        Stop-Transcript | Out-Null
+    } catch {
+        # Transcript might not be running
+    }
+
+    # Close all log file handles
+    if ($Context.ContainsKey('LogFile') -and $Context.LogFile -and ($Context.LogFile.GetType().FullName -eq 'System.IO.StreamWriter')) {
+        try {
+            $Context.LogFile.Close()
+            $Context.LogFile.Dispose()
+        } catch {
+            Write-Warning "Failed to close log file: $_"
+        }
+    }
+
+    Write-Host "[Cleanup] Environment cleanup completed."
+    Write-Host "[Cleanup] Script execution finished."
+
+    # Final message about temp folders and cleanup option
+    if ($Context.TempFolder -and (Test-Path $Context.TempFolder)) {
+        if ($DeleteTempFiles) {
+            # Automatic deletion without prompting
+            try {
+                # Close any remaining file handles first
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+
+                Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
+                Write-Host "✅ Temporary files deleted automatically."
+                Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
+            } catch {
+                Write-Host "❌ Failed to delete temporary files: $_"
+                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
+                Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
+            }
+        } else {
+            # Interactive mode - ask user
+            Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
+            Write-Host "   These folders contain logs, reports, and generated files from each task."
+
+            # Ask user if they want to delete the temp folder
+            Write-Host "`nDo you want to delete the temporary files now? [Y/N]" -NoNewline
+            $response = Read-Host " "
+
+            if ($response -match '^[Yy]') {
+                try {
+                    # Close any remaining file handles first
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+
+                    Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
+                    Write-Host "✅ Temporary files deleted successfully."
+                    Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
+                } catch {
+                    Write-Host "❌ Failed to delete temporary files: $_"
+                    Write-Host "   You can manually delete: $($Context.TempFolder)"
+                    Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
+                }
+            } else {
+                Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
+                Write-Host "   You can safely delete them manually when no longer needed."
+            }
+        }
+    }
+    # Add missing closing brace for function
 }
-
-# =====================[ ENHANCED LOGGING SYSTEM ]====================
-
-# =====================================================================================
-# GLOBAL TASK SUMMARIES ARRAY
-if (-not (Get-Variable -Name 'TaskSummaries' -Scope Global -ErrorAction SilentlyContinue)) {
-    $Global:TaskSummaries = @()
-}
-# STANDARDIZED LOG STRUCTURE POLICY
-# =====================================================================================
-# All task logs follow this standardized structure with clear section delimiters:
-# 1. LOG HEADER - Task metadata, timestamp, system info
-# 2. TASK INITIALIZATION - Setup and parameter validation  
-# 3. PRE-EXECUTION STATE - System state before changes
-# 4. EXECUTION STEPS - Detailed step-by-step operations
-# 5. RESULTS SUMMARY - What was accomplished/changed
-# 6. POST-EXECUTION STATE - System state after changes
-# 7. ERROR HANDLING - Any errors encountered and recovery actions
-# 8. PERFORMANCE METRICS - Timing and resource usage
-# 9. LOG FOOTER - Task completion status and next steps
-# =====================================================================================
-
-function Write-Log {
-    <#
-    .SYNOPSIS
-        Writes a standardized log entry to the main log file and outputs it to the console.
-    .DESCRIPTION
-        Formats log messages with timestamp and level, and appends them to the main log file in the temp folder.
-    #>
-    param(
-        [hashtable]$Context,
         [string]$Message,
         [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS')]
         [string]$Level = 'INFO'
