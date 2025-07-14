@@ -276,7 +276,7 @@ function Invoke-ScriptValidation {
     # Check for incomplete functions
     $scriptContent = Get-Content $ScriptPath -Raw
     $functionMatches = [regex]::Matches($scriptContent, 'function\s+\w+\s*\{')
-    $endMatches = [regex]::Matches($scriptContent, '\\}')
+    $endMatches = [regex]::Matches($scriptContent, '}')
     if ($functionMatches.Count -ne $endMatches.Count) {
         $errors += "Mismatch between function declarations and closing braces. Check for incomplete functions."
     }
