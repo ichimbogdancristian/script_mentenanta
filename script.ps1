@@ -115,6 +115,35 @@ function Invoke-SystemMaintenancePolicy {
     Write-Host "==============================================================="
 }
 
+# =====================[ TASK FOLDER HELPERS ]====================
+function New-TaskFolder {
+    param(
+        [hashtable]$Context,
+        [string]$TaskName
+    )
+    if (-not $Context.TaskFolders) { $Context.TaskFolders = @{} }
+    $mainTemp = $Context.TempFolder
+    $folderName = $TaskName -replace '[^\w\-]', '_'
+    $taskFolder = Join-Path $mainTemp $folderName
+    if (-not (Test-Path $taskFolder)) {
+        New-Item -ItemType Directory -Path $taskFolder -Force | Out-Null
+    }
+    $Context.TaskFolders[$TaskName] = $taskFolder
+    $Context.CurrentTaskFolder = $taskFolder
+    return $taskFolder
+}
+
+function Get-TaskFolder {
+    param(
+        [hashtable]$Context,
+        [string]$TaskName
+    )
+    if ($Context.TaskFolders.ContainsKey($TaskName)) {
+        return $Context.TaskFolders[$TaskName]
+    }
+    return $Context.TempFolder
+}
+
 # =====================[ INITIALIZATION & CLEANUP ]====================
 function Initialize-Environment {
     <#
