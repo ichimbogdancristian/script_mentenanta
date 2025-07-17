@@ -59,7 +59,7 @@ function Invoke-CentralCoordinationPolicy {
         'ESET', 'CCleaner', 'Driver Booster', 'DriverPack', 'PC App Store', 'PC Accelerate', 'PC Optimizer',
         'Reimage Repair', 'Advanced SystemCare', 'Adobe Creative Cloud', 'Adobe Genuine Service',
         'OneDrive', 'Hulu', 'Amazon Prime Video', 'Instagram', 
-        'TikTok', 'Power2Go', 'PowerDirector',  'YouTube'
+        'TikTok', 'Power2Go', 'PowerDirector', 'YouTube'
     ) | Sort-Object -Unique
     # Write unified bloatware list to temp transcript file
     $bloatwareListPath = Join-Path $Script:TempFolder 'Bloatware_list.txt'
@@ -119,10 +119,10 @@ function Write-TaskReport {
     )
     $entry = "[{0}] [{1}] {2} {3}" -f (Get-Date -Format 'HH:mm:ss'), $Status, $TaskName, $Message
     switch ($Status) {
-        'START'   { Write-Host "`n====================[ $TaskName ]====================" -ForegroundColor Cyan }
+        'START' { Write-Host "`n====================[ $TaskName ]====================" -ForegroundColor Cyan }
         'SUCCESS' { Write-Host "[SUCCESS] $TaskName $Message" -ForegroundColor Green }
-        'ERROR'   { Write-Host "[ERROR] $TaskName $Message" -ForegroundColor Red }
-        default   { Write-Host $entry }
+        'ERROR' { Write-Host "[ERROR] $TaskName $Message" -ForegroundColor Red }
+        default { Write-Host $entry }
     }
     Add-Content -Path $Script:TaskReportPath -Value $entry -Encoding UTF8
 }
@@ -168,7 +168,8 @@ function Invoke-Task {
     try {
         & $TaskScript
         Write-Host "[SUCCESS] $TaskName" -ForegroundColor Green
-    } catch {
+    }
+    catch {
         Write-Host "[ERROR] $TaskName failed: $_" -ForegroundColor Red
         Write-ErrorLog -Function "Invoke-Task:$TaskName" -Message $_
     }
@@ -189,7 +190,8 @@ function Test-SystemRestore {
         if ($srStatus) {
             $restoreEnabled = $true
             $transcript += "[{0}] System Restore is already enabled." -f ((Get-Date).ToString('HH:mm:ss'))
-        } else {
+        }
+        else {
             $transcript += "[{0}] Enabling System Restore on {1}..." -f ((Get-Date).ToString('HH:mm:ss')), $osDrive
             Enable-ComputerRestore -Drive $osDrive -ErrorAction Stop
             $restoreEnabled = $true
@@ -199,12 +201,14 @@ function Test-SystemRestore {
             $transcript += "[{0}] Creating a system restore point..." -f ((Get-Date).ToString('HH:mm:ss'))
             Checkpoint-Computer -Description "System Maintenance Script" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
             $transcript += "[{0}] System restore point created." -f ((Get-Date).ToString('HH:mm:ss'))
-        } else {
+        }
+        else {
             $transcript += "[{0}] [WARN] Could not enable System Restore on {1}." -f ((Get-Date).ToString('HH:mm:ss')), $osDrive
         }
         $transcript += "[{0}] [SUCCESS] System Restore Protection" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "System Restore Protection" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] System Restore check/creation failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Test-SystemRestore" -Message $_
         Write-TaskReport -TaskName "System Restore Protection" -Status "ERROR" -Message $_
@@ -229,7 +233,8 @@ function Test-PackageManagers {
             Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile "$Script:TempFolder\AppInstaller.msixbundle" -UseBasicParsing
             Add-AppxPackage -Path "$Script:TempFolder\AppInstaller.msixbundle"
             $transcript += "[{0}] winget installed." -f ((Get-Date).ToString('HH:mm:ss'))
-        } else {
+        }
+        else {
             $transcript += "[{0}] winget found. Upgrading winget..." -f ((Get-Date).ToString('HH:mm:ss'))
             winget upgrade --id Microsoft.Winget.Source --accept-source-agreements --accept-package-agreements --silent
             $transcript += "[{0}] winget upgraded." -f ((Get-Date).ToString('HH:mm:ss'))
@@ -241,14 +246,16 @@ function Test-PackageManagers {
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
             Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
             $transcript += "[{0}] Chocolatey installed." -f ((Get-Date).ToString('HH:mm:ss'))
-        } else {
+        }
+        else {
             $transcript += "[{0}] Chocolatey found. Upgrading Chocolatey..." -f ((Get-Date).ToString('HH:mm:ss'))
             choco upgrade chocolatey -y
             $transcript += "[{0}] Chocolatey upgraded." -f ((Get-Date).ToString('HH:mm:ss'))
         }
         $transcript += "[{0}] [SUCCESS] Package Manager Setup" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Package Manager Setup" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Package manager check/installation failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Test-PackageManagers" -Message $_
         Write-TaskReport -TaskName "Package Manager Setup" -Status "ERROR" -Message $_
@@ -274,7 +281,7 @@ function Get-Inventory {
         $transcript += "[{0}] Collecting hardware info..." -f ((Get-Date).ToString('HH:mm:ss'))
         Get-WmiObject -Class Win32_ComputerSystem | Out-File (Join-Path $inventoryPath 'hardware_info.txt')
         $transcript += "[{0}] Collecting disk info..." -f ((Get-Date).ToString('HH:mm:ss'))
-        Get-PSDrive | Where-Object {$_.Provider -like '*FileSystem*'} | Out-File (Join-Path $inventoryPath 'disk_info.txt')
+        Get-PSDrive | Where-Object { $_.Provider -like '*FileSystem*' } | Out-File (Join-Path $inventoryPath 'disk_info.txt')
         $transcript += "[{0}] Collecting network info..." -f ((Get-Date).ToString('HH:mm:ss'))
         Get-NetIPAddress | Out-File (Join-Path $inventoryPath 'network_info.txt')
         $Script:InstalledProgramsList = @()
@@ -285,15 +292,16 @@ function Get-Inventory {
             $wingetList = winget list --source winget | Select-Object -Skip 1
             $Script:InstalledProgramsList += $wingetList | ForEach-Object { $_.Split(' ')[0] }
         }
-    $Script:InstalledProgramsList = $Script:InstalledProgramsList | Where-Object { $_ -and $_.Trim() -ne '' }
-    $installedProgramsPath = Join-Path $inventoryPath 'installed_programs.txt'
-    $Script:InstalledProgramsList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $installedProgramsPath
-    $installedProgramsDiffPath = Join-Path $Script:TempFolder 'InstalledPrograms_list.txt'
-    $Script:InstalledProgramsList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $installedProgramsDiffPath -Encoding UTF8
+        $Script:InstalledProgramsList = $Script:InstalledProgramsList | Where-Object { $_ -and $_.Trim() -ne '' }
+        $installedProgramsPath = Join-Path $inventoryPath 'installed_programs.txt'
+        $Script:InstalledProgramsList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $installedProgramsPath
+        $installedProgramsDiffPath = Join-Path $Script:TempFolder 'InstalledPrograms_list.txt'
+        $Script:InstalledProgramsList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $installedProgramsDiffPath -Encoding UTF8
         $transcript += "[{0}] Inventory collected in {1}" -f ((Get-Date).ToString('HH:mm:ss')), $inventoryPath
         $transcript += "[{0}] [SUCCESS] System Inventory" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "System Inventory" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Inventory collection failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Get-Inventory" -Message $_
         Write-TaskReport -TaskName "System Inventory" -Status "ERROR" -Message $_
@@ -348,7 +356,8 @@ function Uninstall-Bloatware {
                     try {
                         Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
                         $transcript += "[{0}] Removed AppX package: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $case.AppX
-                    } catch {
+                    }
+                    catch {
                         $transcript += "[{0}] [WARN] Failed to remove AppX package: {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $case.AppX, $_
                     }
                 }
@@ -357,7 +366,8 @@ function Uninstall-Bloatware {
                 $wingetResult = winget uninstall --id $case.Winget --exact --silent --accept-source-agreements --accept-package-agreements 2>&1
                 if ($wingetResult -notmatch 'No installed package found') {
                     $transcript += "[{0}] Uninstalled via winget: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $case.Winget
-                } else {
+                }
+                else {
                     $transcript += "[{0}] [WARN] Winget could not uninstall: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $case.Winget
                 }
             }
@@ -408,10 +418,12 @@ function Uninstall-Bloatware {
                             $transcript += "[{0}] Uninstalled via Uninstall-Package: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $match
                             $removed += $match
                             continue
-                        } catch {}
+                        }
+                        catch {}
                     }
                     $transcript += "[{0}] [WARN] Could not uninstall {1} using any method." -f ((Get-Date).ToString('HH:mm:ss')), $match
-                } catch {
+                }
+                catch {
                     $transcript += "[{0}] [WARN] Failed to uninstall {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $match, $_
                 }
             }
@@ -421,7 +433,8 @@ function Uninstall-Bloatware {
         $transcript += "[{0}] Bloatware removal complete. Diff list saved to {1}." -f ((Get-Date).ToString('HH:mm:ss')), $diffListPath
         $transcript += "[{0}] [SUCCESS] Remove Bloatware" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Remove Bloatware" -Status "SUCCESS" -Message ("Removed: {0}" -f ($removed -join ', '))
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Bloatware removal failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Uninstall-Bloatware" -Message $_
         Write-TaskReport -TaskName "Remove Bloatware" -Status "ERROR" -Message $_
@@ -430,7 +443,8 @@ function Uninstall-Bloatware {
     Write-Host "`n====================[ Remove Bloatware Summary ]====================" -ForegroundColor Cyan
     if ($removed.Count -gt 0) {
         Write-Host ("Removed: {0}" -f ($removed -join ', ')) -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "No bloatware was removed." -ForegroundColor Yellow
     }
     $endTime = Get-Date
@@ -470,10 +484,12 @@ function Install-EssentialApps {
             if (-not $officeInstalled) {
                 $essentialApps += @{ Name = 'LibreOffice'; Winget = 'TheDocumentFoundation.LibreOffice'; Choco = 'libreoffice-fresh' }
                 $transcript += "[{0}] LibreOffice added to essential apps list." -f ((Get-Date).ToString('HH:mm:ss'))
-            } else {
+            }
+            else {
                 $transcript += "[{0}] Microsoft Office is installed. Skipping LibreOffice installation." -f ((Get-Date).ToString('HH:mm:ss'))
             }
-        } else {
+        }
+        else {
             $transcript += "[{0}] LibreOffice is already installed. Skipping." -f ((Get-Date).ToString('HH:mm:ss'))
         }
         # --- Create diff list: only essential apps that are NOT installed ---
@@ -505,13 +521,14 @@ function Install-EssentialApps {
                     try {
                         $wingetResult = winget install --id $($app.Winget) --accept-source-agreements --accept-package-agreements --silent -e 2>&1
                         if ($wingetResult -match 'Installer failed with exit code: 1618') {
-                        $transcript += "[{0}] [WARN] Windows Installer is busy (exit code 1618) for {1}. Attempt {2}/3. Retrying in {3} seconds..." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $retryCount, $retryDelay
+                            $transcript += "[{0}] [WARN] Windows Installer is busy (exit code 1618) for {1}. Attempt {2}/3. Retrying in {3} seconds..." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $retryCount, $retryDelay
                             Start-Sleep -Seconds $retryDelay
                             continue
                         }
                         $installedVia = 'winget'
                         $installSucceeded = $true
-                    } catch {
+                    }
+                    catch {
                         $transcript += "[{0}] [WARN] winget failed for {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $_
                     }
                 }
@@ -519,13 +536,14 @@ function Install-EssentialApps {
                     try {
                         $chocoResult = choco install $($app.Choco) -y 2>&1
                         if ($chocoResult -match '1618') {
-                        $transcript += "[{0}] [WARN] Windows Installer is busy (exit code 1618) for {1} via choco. Attempt {2}/3. Retrying in {3} seconds..." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $retryCount, $retryDelay
+                            $transcript += "[{0}] [WARN] Windows Installer is busy (exit code 1618) for {1} via choco. Attempt {2}/3. Retrying in {3} seconds..." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $retryCount, $retryDelay
                             Start-Sleep -Seconds $retryDelay
                             continue
                         }
                         $installedVia = 'choco'
                         $installSucceeded = $true
-                    } catch {
+                    }
+                    catch {
                         $transcript += "[{0}] [WARN] choco failed for {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $_
                     }
                 }
@@ -533,9 +551,11 @@ function Install-EssentialApps {
             }
             if ($installSucceeded -and $installedVia) {
                 $transcript += "[{0}] Installed {1} via {2}." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $installedVia
-            } elseif (-not $installSucceeded) {
+            }
+            elseif (-not $installSucceeded) {
                 $transcript += "[{0}] [ERROR] Could not install {1} after {2} attempts due to Windows Installer being busy (exit code 1618). Skipping." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $maxRetries
-            } elseif (-not $installedVia) {
+            }
+            elseif (-not $installedVia) {
                 $transcript += "[{0}] [ERROR] Could not install {1} via winget or choco." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name
             }
         }
@@ -543,7 +563,8 @@ function Install-EssentialApps {
         $transcript += "[{0}] Essential apps installation complete. Diff list saved to {1}." -f ((Get-Date).ToString('HH:mm:ss')), $diffListPath
         $transcript += "[{0}] [SUCCESS] Install Essential Apps" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Install Essential Apps" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Essential apps installation failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Install-EssentialApps" -Message $_
         Write-TaskReport -TaskName "Install Essential Apps" -Status "ERROR" -Message $_
@@ -655,7 +676,8 @@ function Disable-Telemetry {
                     Disable-ScheduledTask -TaskPath $task -ErrorAction SilentlyContinue
                     $transcript += "[{0}] Disabled scheduled task: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $task
                 }
-            } catch {
+            }
+            catch {
                 $transcript += "[{0}] [WARN] Could not disable scheduled task: {1} - {2}" -f ((Get-Date).ToString('HH:mm:ss')), $task, $_
             }
         }
@@ -697,7 +719,8 @@ function Disable-Telemetry {
 
         $transcript += "[{0}] [SUCCESS] Disable Telemetry & Privacy" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Disable Telemetry" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Telemetry/privacy hardening failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Disable-Telemetry" -Message $_
         Write-TaskReport -TaskName "Disable Telemetry" -Status "ERROR" -Message $_
@@ -723,7 +746,8 @@ function Update-Windows {
                 Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -ErrorAction SilentlyContinue
                 Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -AllowClobber -ErrorAction SilentlyContinue
                 $transcript += "[{0}] PSWindowsUpdate module installed." -f ((Get-Date).ToString('HH:mm:ss'))
-            } catch {
+            }
+            catch {
                 $transcript += "[{0}] [WARN] Could not install PSWindowsUpdate module: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
             }
         }
@@ -732,7 +756,8 @@ function Update-Windows {
             Write-Progress -Activity "Windows Update" -Status "Checking and installing updates..." -PercentComplete 50
             Get-WindowsUpdate -AcceptAll -Install -AutoReboot -ErrorAction Stop
             $transcript += "[{0}] Windows Update completed." -f ((Get-Date).ToString('HH:mm:ss'))
-        } catch {
+        }
+        catch {
             $transcript += "[{0}] [WARN] Get-WindowsUpdate failed: {1}. Trying wuauclt..." -f ((Get-Date).ToString('HH:mm:ss')), $_
             Write-Progress -Activity "Windows Update" -Status "Triggering wuauclt..." -PercentComplete 80
             wuauclt /detectnow /updatenow
@@ -741,7 +766,8 @@ function Update-Windows {
         Write-Progress -Activity "Windows Update" -Status "Complete" -Completed
         $transcript += "[{0}] [SUCCESS] Windows Update & Upgrade" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Windows Update & Upgrade" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Windows Update & Upgrade failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Update-Windows" -Message $_
         Write-TaskReport -TaskName "Windows Update & Upgrade" -Status "ERROR" -Message $_
@@ -768,11 +794,13 @@ function Update-AllPackages {
             $transcript += "[{0}] All packages processed via winget." -f ((Get-Date).ToString('HH:mm:ss'))
             $transcript += "[{0}] [SUCCESS] Upgrade All Packages" -f ((Get-Date).ToString('HH:mm:ss'))
             Write-TaskReport -TaskName "Upgrade All Packages" -Status "SUCCESS"
-        } else {
+        }
+        else {
             Write-Progress -Activity "Winget Upgrade" -Status "winget not found. Skipping." -Completed
             $transcript += "[{0}] [WARN] winget not found. Skipping package upgrade." -f ((Get-Date).ToString('HH:mm:ss'))
         }
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Winget upgrade all failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Update-AllPackages" -Message $_
         Write-TaskReport -TaskName "Upgrade All Packages" -Status "ERROR" -Message $_
@@ -796,7 +824,8 @@ function Clear-BrowserData {
             try {
                 $profilePath = (Get-ItemProperty $_.PsPath).ProfileImagePath
                 if ($profilePath -and (Test-Path $profilePath)) { $profilePath }
-            } catch {}
+            }
+            catch {}
         } | Where-Object { $_ -and (Test-Path $_) }
         $browsers = @(
             @{ Name = 'Edge'; Paths = @('AppData\Local\Microsoft\Edge\User Data\Default\Cache', 'AppData\Local\Microsoft\Edge\User Data\Default\Cookies') },
@@ -827,10 +856,12 @@ function Clear-BrowserData {
                             if ($relPath -like '*Cache*') {
                                 Remove-Item -Path $fullPath -Recurse -Force -ErrorAction SilentlyContinue
                                 $transcript += "[{0}] Cleared cache for {1} in {2}." -f ((Get-Date).ToString('HH:mm:ss')), $browser.Name, $profile
-                            } elseif ($relPath -like '*Cookies*') {
+                            }
+                            elseif ($relPath -like '*Cookies*') {
                                 Remove-Item -Path $fullPath -Force -ErrorAction SilentlyContinue
                                 $transcript += "[{0}] Cleared cookies for {1} in {2}." -f ((Get-Date).ToString('HH:mm:ss')), $browser.Name, $profile
-                            } elseif ($browser.Name -eq 'Firefox' -and (Test-Path $fullPath)) {
+                            }
+                            elseif ($browser.Name -eq 'Firefox' -and (Test-Path $fullPath)) {
                                 Get-ChildItem $fullPath -Directory | ForEach-Object {
                                     $cache2 = Join-Path $_.FullName 'cache2'
                                     $cookies = Join-Path $_.FullName 'cookies.sqlite'
@@ -838,7 +869,8 @@ function Clear-BrowserData {
                                         try {
                                             Remove-Item -Path $cache2 -Recurse -Force -ErrorAction SilentlyContinue
                                             $transcript += "[{0}] Cleared Firefox cache2 in {1}." -f ((Get-Date).ToString('HH:mm:ss')), $_.FullName
-                                        } catch {
+                                        }
+                                        catch {
                                             $transcript += "[{0}] [WARN] Failed to clear Firefox cache2 in {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $_.FullName, $_
                                         }
                                     }
@@ -846,13 +878,15 @@ function Clear-BrowserData {
                                         try {
                                             Remove-Item -Path $cookies -Force -ErrorAction SilentlyContinue
                                             $transcript += "[{0}] Cleared Firefox cookies in {1}." -f ((Get-Date).ToString('HH:mm:ss')), $_.FullName
-                                        } catch {
+                                        }
+                                        catch {
                                             $transcript += "[{0}] [WARN] Failed to clear Firefox cookies in {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $_.FullName, $_
                                         }
                                     }
                                 }
                             }
-                        } catch {
+                        }
+                        catch {
                             $transcript += "[{0}] [WARN] Failed to clear {1} for {2} in {3}: {4}" -f ((Get-Date).ToString('HH:mm:ss')), $relPath, $browser.Name, $profile, $_
                         }
                     }
@@ -862,7 +896,8 @@ function Clear-BrowserData {
         Write-Progress -Activity "Browser Data Cleanup" -Status "Complete" -Completed
         $transcript += "[{0}] [SUCCESS] Browser cache and cookies cleanup complete." -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Cleanup Browser Data" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Browser data cleanup failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Clear-BrowserData" -Message $_
         Write-TaskReport -TaskName "Cleanup Browser Data" -Status "ERROR" -Message $_
@@ -873,7 +908,7 @@ function Clear-BrowserData {
     $transcript | Out-File $outPath -Encoding UTF8
 }
 
-    # -- Subtask 7.2: DNS CACHE CLEANUP (was 7.3)
+# -- Subtask 7.2: DNS CACHE CLEANUP (was 7.3)
 function Clear-DnsCache {
     $transcript = @()
     $startTime = Get-Date
@@ -884,12 +919,14 @@ function Clear-DnsCache {
         if (Get-Command Clear-DnsClientCache -ErrorAction SilentlyContinue) {
             Clear-DnsClientCache
             $transcript += "[{0}] DNS client cache cleared." -f ((Get-Date).ToString('HH:mm:ss'))
-        } else {
+        }
+        else {
             $transcript += "[{0}] [WARN] Clear-DnsClientCache cmdlet not available on this system. Skipping DNS cache cleanup." -f ((Get-Date).ToString('HH:mm:ss'))
         }
         $transcript += "[{0}] [SUCCESS] Clear DNS Cache" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Clear DNS Cache" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] DNS cache cleanup failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Clear-DnsCache" -Message $_
         Write-TaskReport -TaskName "Clear DNS Cache" -Status "ERROR" -Message $_
@@ -917,14 +954,16 @@ function Get-LogSurvey {
         try {
             Write-Progress -Activity "Log Survey" -Status "Collecting system/application logs..." -PercentComplete 30
             Import-Module Microsoft.PowerShell.Diagnostics -ErrorAction Stop
-            $systemErrors = Get-WinEvent -FilterHashtable @{LogName='System'; Level=2; StartTime=$since} -ErrorAction Stop | Select-Object TimeCreated, Id, LevelDisplayName, Message
-            $appErrors = Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2; StartTime=$since} -ErrorAction Stop | Select-Object TimeCreated, Id, LevelDisplayName, Message
-        } catch {
+            $systemErrors = Get-WinEvent -FilterHashtable @{LogName = 'System'; Level = 2; StartTime = $since } -ErrorAction Stop | Select-Object TimeCreated, Id, LevelDisplayName, Message
+            $appErrors = Get-WinEvent -FilterHashtable @{LogName = 'Application'; Level = 2; StartTime = $since } -ErrorAction Stop | Select-Object TimeCreated, Id, LevelDisplayName, Message
+        }
+        catch {
             $transcript += "[{0}] [WARN] Get-WinEvent failed (likely due to missing temp files or permissions). Falling back to Get-EventLog." -f ((Get-Date).ToString('HH:mm:ss'))
             try {
                 $systemErrors = Get-EventLog -LogName System -EntryType Error -After $since -ErrorAction Stop | Select-Object TimeGenerated, EventID, EntryType, Message
                 $appErrors = Get-EventLog -LogName Application -EntryType Error -After $since -ErrorAction Stop | Select-Object TimeGenerated, EventID, EntryType, Message
-            } catch {
+            }
+            catch {
                 $transcript += "[{0}] [WARN] Get-EventLog also failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
             }
         }
@@ -942,8 +981,10 @@ function Get-LogSurvey {
                     $logDate = $matches[1]
                     try {
                         return ([datetime]$logDate -ge $since)
-                    } catch { return $false }
-                } else {
+                    }
+                    catch { return $false }
+                }
+                else {
                     return $false
                 }
             }
@@ -954,7 +995,8 @@ function Get-LogSurvey {
         $transcript += "[{0}] Log survey complete. Results in {1}." -f ((Get-Date).ToString('HH:mm:ss')), $logPath
         $transcript += "[{0}] [SUCCESS] Survey Logs" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Survey Logs" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Log survey failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Get-LogSurvey" -Message $_
         Write-TaskReport -TaskName "Survey Logs" -Status "ERROR" -Message $_
@@ -988,7 +1030,8 @@ function Protect-RestorePoints {
                 try {
                     vssadmin delete shadows /for=C: /oldest /quiet | Out-Null
                     $transcript += "[{0}] Deleted old restore point: {1} [{2}]" -f ((Get-Date).ToString('HH:mm:ss')), $rp.Description, $rp.CreationTime
-                } catch {
+                }
+                catch {
                     $transcript += "[{0}] [WARN] Could not delete restore point: {1} [{2}]" -f ((Get-Date).ToString('HH:mm:ss')), $rp.Description, $rp.CreationTime
                 }
             }
@@ -1003,7 +1046,8 @@ function Protect-RestorePoints {
         $transcript += "[{0}] Restore points validation complete. Details in {1}." -f ((Get-Date).ToString('HH:mm:ss')), $logPath
         $transcript += "[{0}] [SUCCESS] Validate Restore Points" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Validate Restore Points" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Restore points validation failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Protect-RestorePoints" -Message $_
         Write-TaskReport -TaskName "Validate Restore Points" -Status "ERROR" -Message $_
@@ -1053,10 +1097,12 @@ function Optimize-Disk {
                 try {
                     Remove-Item -Path (Join-Path $path $pattern) -Recurse -Force -ErrorAction SilentlyContinue
                     $transcript += "[{0}] Cleaned: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $name
-                } catch {
+                }
+                catch {
                     $transcript += "[{0}] [WARN] Failed to clean {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $name, $_
                 }
-            } else {
+            }
+            else {
                 $transcript += "[{0}] Skipped (not found): {1}" -f ((Get-Date).ToString('HH:mm:ss')), $name
             }
         }
@@ -1065,7 +1111,8 @@ function Optimize-Disk {
             try {
                 $profilePath = (Get-ItemProperty $_.PsPath).ProfileImagePath
                 if ($profilePath -and (Test-Path $profilePath)) { $profilePath }
-            } catch {}
+            }
+            catch {}
         } | Where-Object { $_ -and (Test-Path $_) }
         foreach ($profile in $userProfiles) {
             $userTemp = Join-Path $profile 'AppData\Local\Temp'
@@ -1073,14 +1120,16 @@ function Optimize-Disk {
                 try {
                     Remove-Item -Path "$userTemp\*" -Recurse -Force -ErrorAction SilentlyContinue
                     $transcript += "[{0}] Temp files cleaned for {1}." -f ((Get-Date).ToString('HH:mm:ss')), $profile
-                } catch {
+                }
+                catch {
                     $transcript += "[{0}] [WARN] Failed to clean temp for {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $profile, $_
                 }
             }
         }
         $transcript += "[{0}] [SUCCESS] Full disk cleanup complete." -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Full Disk Cleanup" -Status "SUCCESS"
-    } catch {
+    }
+    catch {
         $transcript += "[{0}] [ERROR] Disk cleanup failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
         Write-ErrorLog -Function "Optimize-Disk" -Message $_
         Write-TaskReport -TaskName "Full Disk Cleanup" -Status "ERROR" -Message $_
@@ -1176,7 +1225,7 @@ function Export-Transcript {
             # Improve task name readability for summary table
             $readableTask = $taskName -replace '_', ' '
             $readableTask = $readableTask -replace '([a-z])([A-Z])', '$1 $2'
-            $readableTask = ($readableTask -split ' ' | ForEach-Object { if ($_.Length -gt 0) { $_.Substring(0,1).ToUpper() + $_.Substring(1).ToLower() } else { $_ } }) -join ' '
+            $readableTask = ($readableTask -split ' ' | ForEach-Object { if ($_.Length -gt 0) { $_.Substring(0, 1).ToUpper() + $_.Substring(1).ToLower() } else { $_ } }) -join ' '
             $tocLinks += "<a href='#${anchor}'>$readableTask</a>"
             $logMatches = [regex]::Matches($logContent, '\[(.*?)\] \[(.*?)\](.*?)((\r?\n)+|$)')
             $firstTimestamp = $null; $lastTimestamp = $null; $statusSummary = 'SUCCESS';
@@ -1190,16 +1239,16 @@ function Export-Transcript {
                 $lastTimestamp = $timestamp
                 $statusClass = switch ($status) {
                     'SUCCESS' { 'status-success' }
-                    'ERROR'   { $statusSummary = 'ERROR'; $statusIcon = '❌'; 'status-error' }
-                    'WARN'    { if ($statusSummary -eq 'SUCCESS') { $statusSummary = 'WARN'; $statusIcon = '⚠️' }; 'status-warning' }
-                    'INFO'    { 'status-info' }
-                    default   { '' }
+                    'ERROR' { $statusSummary = 'ERROR'; $statusIcon = '❌'; 'status-error' }
+                    'WARN' { if ($statusSummary -eq 'SUCCESS') { $statusSummary = 'WARN'; $statusIcon = '⚠️' }; 'status-warning' }
+                    'INFO' { 'status-info' }
+                    default { '' }
                 }
                 $icon = switch ($status) {
                     'SUCCESS' { '✅' }
-                    'ERROR'   { '❌' }
-                    'WARN'    { '⚠️' }
-                    default   { '' }
+                    'ERROR' { '❌' }
+                    'WARN' { '⚠️' }
+                    default { '' }
                 }
                 $htmlBody += "<div><span class='timestamp'>[$timestamp]</span> <span class='$statusClass'>[$status] $icon</span> <span class='subtask'>$msg</span></div>"
             }
@@ -1210,12 +1259,19 @@ function Export-Transcript {
                     $t1 = [datetime]::ParseExact($firstTimestamp, 'HH:mm:ss', $null)
                     $t2 = [datetime]::ParseExact($lastTimestamp, 'HH:mm:ss', $null)
                     $duration = ($t2 - $t1).ToString()
-                } catch {}
+                }
+                catch {}
             }
             if (-not $statusSummary) { $statusSummary = 'N/A' }
             $htmlBody += "<div class='file-section'><h3>Raw Log</h3><pre>$( [System.Web.HttpUtility]::HtmlEncode($logContent) )</pre></div>"
             $htmlBody += "</div>"
-            $summaryRows += "<tr><td><a href='#${anchor}' style='font-weight:bold;color:#7fd1b9;text-decoration:none;'>$readableTask</a></td><td class='summary-$($statusSummary.ToLower())'>$statusIcon $statusSummary</td><td>" + ($duration -ne '' ? $duration : 'N/A') + "</td></tr>"
+            if ($duration -ne '') {
+                $durationValue = $duration
+            }
+            else {
+                $durationValue = 'N/A'
+            }
+            $summaryRows += "<tr><td><a href='#${anchor}' style='font-weight:bold;color:#7fd1b9;text-decoration:none;'>$readableTask</a></td><td class='summary-$($statusSummary.ToLower())'>$statusIcon $statusSummary</td><td>" + $durationValue + "</td></tr>"
         }
 
 
@@ -1228,7 +1284,7 @@ function Export-Transcript {
         $htmlBody = "<h2>Summary</h2><div style='overflow-x:auto;'><table class='summary-table'><tr><th style='min-width:220px;'>Task</th><th>Status</th><th>Duration</th></tr>" + ($summaryRows -join "") + "</table></div>" + $htmlBody
 
         # Do not append temporary lists (like Bloatware_list.txt, EssentialApps_list.txt, InstalledPrograms_list.txt, etc.)
-        $skipFiles = @('Bloatware_list.txt','EssentialApps_list.txt','InstalledPrograms_list.txt','BloatwareDiff_list.txt','EssentialAppsDiff_list.txt')
+        $skipFiles = @('Bloatware_list.txt', 'EssentialApps_list.txt', 'InstalledPrograms_list.txt', 'BloatwareDiff_list.txt', 'EssentialAppsDiff_list.txt')
         $otherFiles = Get-ChildItem -Path $Script:TempFolder -File | Where-Object { $_.Name -notlike '*_log.txt' -and $_.Name -ne 'system_maintenance_transcript.html' -and ($skipFiles -notcontains $_.Name) }
         foreach ($file in $otherFiles) {
             $fileContent = Get-Content $file.FullName -Raw
@@ -1238,7 +1294,8 @@ function Export-Transcript {
         # Write the HTML transcript
         Set-Content -Path $transcriptPath -Value ($htmlHeader + $htmlBody + $htmlFooter) -Encoding UTF8
         Write-Host "[INFO] HTML transcript created at $transcriptPath"
-    } catch {
+    }
+    catch {
         Write-Host "[ERROR] Failed to create HTML transcript: $_"
     }
 }
@@ -1272,13 +1329,16 @@ function Request-RebootIfNeeded {
             if ($choice -match '^(Y|y)') {
                 Write-Host "[INFO] Rebooting system..."
                 Restart-Computer -Force
-            } else {
+            }
+            else {
                 Write-Host "[INFO] Please remember to reboot your system later."
             }
-        } else {
+        }
+        else {
             Write-Host "[INFO] No reboot is required."
         }
-    } catch {
+    }
+    catch {
         Write-Host "[ERROR] Failed to check or request reboot: $_"
     }
 }
@@ -1305,6 +1365,7 @@ try {
     Invoke-Task 'Create Transcript' { Export-Transcript }
     Invoke-Task 'Prompt Reboot If Needed' { Request-RebootIfNeeded }
 
-} finally {
+}
+finally {
     Remove-Environment
 }
