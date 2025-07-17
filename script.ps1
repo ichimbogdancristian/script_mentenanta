@@ -212,14 +212,12 @@ function Remove-Environment {
                         # Run the deferred update script
                         Start-Process -FilePath $deferredUpdate.BatchPath -Wait
                         Write-Log -Context $Context -Message "PowerShell 7 deferred update completed." -Level 'SUCCESS'
-                    }
-                    catch {
+                    } catch {
                         Write-Host "Failed to start deferred update: $_"
                         Write-Host "You can manually run: $($deferredUpdate.BatchPath)"
                         Write-Log -Context $Context -Message "Failed to start deferred PowerShell update: $_" -Level 'ERROR'
                     }
-                }
-                else {
+                } else {
                     Write-Host "PowerShell 7 update skipped."
                     Write-Host "To update later, run: $($deferredUpdate.BatchPath)"
                     Write-Log -Context $Context -Message "User skipped PowerShell 7 deferred update." -Level 'INFO'
@@ -230,8 +228,7 @@ function Remove-Environment {
 
     try {
         Stop-Transcript | Out-Null
-    }
-    catch {
+    } catch {
         # Transcript might not be running
     }
 
@@ -240,8 +237,7 @@ function Remove-Environment {
         try {
             $Context.LogFile.Close()
             $Context.LogFile.Dispose()
-        }
-        catch {
+        } catch {
             Write-Warning "Failed to close log file: $_"
         }
     }
@@ -261,14 +257,12 @@ function Remove-Environment {
                 Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
                 Write-Host "✅ Temporary files deleted automatically."
                 Write-Log -Context $Context -Message "Temporary folder deleted automatically." -Level 'INFO'
-            }
-            catch {
+            } catch {
                 Write-Host "❌ Failed to delete temporary files: $_"
                 Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
                 Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
             }
-        }
-        else {
+        } else {
             # Interactive mode - ask user
             Write-Host "`n📁 Task folders preserved for review at: $($Context.TempFolder)"
             Write-Host "   These folders contain logs, reports, and generated files from each task."
@@ -286,14 +280,12 @@ function Remove-Environment {
                     Remove-Item -Path $Context.TempFolder -Recurse -Force -ErrorAction Stop
                     Write-Host "✅ Temporary files deleted successfully."
                     Write-Log -Context $Context -Message "Temporary folder deleted by user request." -Level 'INFO'
-                }
-                catch {
+                } catch {
                     Write-Host "❌ Failed to delete temporary files: $_"
                     Write-Host "   You can manually delete: $($Context.TempFolder)"
                     Write-Log -Context $Context -Message "Failed to delete temporary folder: $_" -Level 'WARNING'
                 }
-            }
-            else {
+            } else {
                 Write-Host "📁 Temporary files preserved at: $($Context.TempFolder)"
                 Write-Host "   You can safely delete them manually when no longer needed."
             }
