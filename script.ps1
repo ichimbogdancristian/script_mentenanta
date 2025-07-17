@@ -837,7 +837,7 @@ function Invoke-Task2_SystemProtection {
         Write-StateSnapshot -Context $Context -SnapshotType "PRE_EXECUTION" -StateData $preState
         
         # ═══════════════════════════════════════════════════════════════════════════════════
-        # SYSTEM RESTORE STATUS VERIFICATION SECTION
+        # SYSTEM RESTORE STATUS VERIFICATION SECTION #
         # ═══════════════════════════════════════════════════════════════════════════════════
         Write-TaskSection -Context $Context -SectionName "SYSTEM_RESTORE_STATUS" -Message "Checking current System Restore configuration"
         
