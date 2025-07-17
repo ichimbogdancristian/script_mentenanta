@@ -15,7 +15,8 @@ if (Test-Path $gitDir) {
         if ($lastCommit) {
             Write-Host "Repository last updated (last commit): $lastCommit"
         }
-    } catch {}
+    }
+    catch {}
 }
 
 # =====================[ SYSTEM MAINTENANCE SCRIPT ]====================
