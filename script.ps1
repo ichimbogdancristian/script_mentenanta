@@ -1114,15 +1114,15 @@ function Optimize-Disk {
             }
             catch {}
         } | Where-Object { $_ -and (Test-Path $_) }
-        foreach ($profile in $userProfiles) {
-            $userTemp = Join-Path $profile 'AppData\Local\Temp'
+        foreach ($userProfile in $userProfiles) {
+            $userTemp = Join-Path $userProfile 'AppData\Local\Temp'
             if (Test-Path $userTemp) {
                 try {
                     Remove-Item -Path "$userTemp\*" -Recurse -Force -ErrorAction SilentlyContinue
-                    $transcript += "[{0}] Temp files cleaned for {1}." -f ((Get-Date).ToString('HH:mm:ss')), $profile
+                    $transcript += "[{0}] Temp files cleaned for {1}." -f ((Get-Date).ToString('HH:mm:ss')), $userProfile
                 }
                 catch {
-                    $transcript += "[{0}] [WARN] Failed to clean temp for {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $profile, $_
+                    $transcript += "[{0}] [WARN] Failed to clean temp for {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $userProfile, $_
                 }
             }
         }
