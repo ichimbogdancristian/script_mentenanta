@@ -3982,5 +3982,5 @@ function Invoke-Task13_Finalization {
         Write-Log -Context $Context -Message "Finalization failed: $_" -Level 'ERROR'
         Write-TaskLog -Context $Context -Message "Finalization failed: $_" -Level 'ERROR'
     }
-    Write-TaskLog -Context $Context -Message "Task 11 completed." -Level 'SUCCESS'
+    Write-TaskLog -Context $Context -Message "Task 13 completed." -Level 'SUCCESS'
 }
