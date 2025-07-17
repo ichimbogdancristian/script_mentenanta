@@ -834,7 +834,7 @@ function Clear-BrowserData {
         )
         $totalProfiles = ($userProfiles | Measure-Object).Count
         $profileIdx = 0
-        foreach ($profile in $userProfiles) {
+        foreach ($userProfile in $userProfiles) {
             $profileIdx++
             $totalBrowsers = ($browsers | Measure-Object).Count
             $browserIdx = 0
@@ -845,7 +845,7 @@ function Clear-BrowserData {
                     $pathIdx++
                     $progressPercent = [int](($profileIdx / $totalProfiles) * 100)
                     Write-Progress -Activity "Browser Data Cleanup" -Status ("Profile {0}/{1}, {2} {3}/{4}" -f $profileIdx, $totalProfiles, $browser.Name, $browserIdx, $totalBrowsers) -PercentComplete $progressPercent
-                    $fullPath = Join-Path $profile $relPath
+                    $fullPath = Join-Path $userProfile $relPath
                     if (Test-Path $fullPath) {
                         try {
                             $procName = $browser.Name
@@ -855,11 +855,11 @@ function Clear-BrowserData {
                             }
                             if ($relPath -like '*Cache*') {
                                 Remove-Item -Path $fullPath -Recurse -Force -ErrorAction SilentlyContinue
-                                $transcript += "[{0}] Cleared cache for {1} in {2}." -f ((Get-Date).ToString('HH:mm:ss')), $browser.Name, $profile
+                                $transcript += "[{0}] Cleared cache for {1} in {2}." -f ((Get-Date).ToString('HH:mm:ss')), $browser.Name, $userProfile
                             }
                             elseif ($relPath -like '*Cookies*') {
                                 Remove-Item -Path $fullPath -Force -ErrorAction SilentlyContinue
-                                $transcript += "[{0}] Cleared cookies for {1} in {2}." -f ((Get-Date).ToString('HH:mm:ss')), $browser.Name, $profile
+                                $transcript += "[{0}] Cleared cookies for {1} in {2}." -f ((Get-Date).ToString('HH:mm:ss')), $browser.Name, $userProfile
                             }
                             elseif ($browser.Name -eq 'Firefox' -and (Test-Path $fullPath)) {
                                 Get-ChildItem $fullPath -Directory | ForEach-Object {
