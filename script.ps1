@@ -1,6 +1,26 @@
+# =====================[ SCRIPT INFO ]====================
+# Display last modified time of this script
+$scriptPath = $MyInvocation.PSCommandPath
+if (Test-Path $scriptPath) {
+    $lastModified = (Get-Item $scriptPath).LastWriteTime
+    Write-Host "Script last modified: $lastModified"
+}
+
+# Display last git commit date for the repo (if available)
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$gitDir = Join-Path $repoRoot ".git"
+if (Test-Path $gitDir) {
+    try {
+        $lastCommit = git -C $repoRoot log -1 --format="%cd" 2>$null
+        if ($lastCommit) {
+            Write-Host "Repository last updated (last commit): $lastCommit"
+        }
+    } catch {}
+}
+
 # =====================[ SYSTEM MAINTENANCE SCRIPT ]====================
 # Version: 1.1.0
-# Last Updated: 2025-07-13
+# Last Updated: 2025-07-17
 # Author: Bogdan
 # Description: Modular Windows maintenance automation with robust logging and error handling
 # ======================================================================
