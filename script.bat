@@ -30,7 +30,7 @@ if errorlevel 1 (
     set "WINGET_INSTALLER=%SCRIPT_DIR%\winget_installer.msixbundle"
     echo [INFO] Downloading Winget installer from: !WINGET_INSTALLER_URL!
     echo [INFO] Target path: !WINGET_INSTALLER!
-    powershell -NoProfile -Command "try { Invoke-WebRequest -Uri '%WINGET_INSTALLER_URL%' -OutFile '%WINGET_INSTALLER%' -ErrorAction Stop } catch { Write-Host '[ERROR] PowerShell Invoke-WebRequest download failed.'; exit 1 }"
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%WINGET_INSTALLER_URL%' -OutFile '%WINGET_INSTALLER%' -ErrorAction Stop } catch { Write-Host '[ERROR] PowerShell Invoke-WebRequest download failed.'; exit 1 }"
     if errorlevel 1 (
         echo [ERROR] PowerShell Invoke-WebRequest download failed.
         echo [MANUAL ACTION REQUIRED] Please download:
@@ -109,7 +109,7 @@ pause
 REM === [MOVE FILES IF SUBFOLDER] ===
 for /d %%D in ("%EXTRACT_DIR%\script_mentenanta-*") do (
     echo [TASK] Moving files from "%%D" to "%EXTRACT_DIR%"
-    xcopy /e /h /y "%%D\*" "%EXTRACT_DIR%\\"
+    xcopy /e /h /y "%%D\\*" "%EXTRACT_DIR%\\"
     rmdir /s /q "%%D"
 )
 pause
