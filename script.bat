@@ -44,7 +44,7 @@ if %ERRORLEVEL%==301 (
     echo [INFO] Winget was just installed. The script will restart in 5 seconds...
     echo [%date% %time%] [INFO] Winget installed, restarting script. >> "%SCRIPT_DIR%\script_mentenanta.log"
     timeout /t 5 >nul
-    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '-NoExit' -WindowStyle Normal"
+    powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/k \''%~f0\''' -WindowStyle Normal"
     exit /b
 )
 
