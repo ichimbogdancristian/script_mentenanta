@@ -14,13 +14,7 @@ set "PS_SCRIPT=script.ps1"
 
 REM --- [TASK 1] Ensure Winget is available ---
 echo [TASK] Checking for Winget...
-powershell -NoProfile -Command ^
-    "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { ^
-        Write-Host '[INFO] Winget not found. Installing...'; ^
-        Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile \"$env:TEMP\AppInstaller.msixbundle\"; ^
-        Add-AppxPackage -Path \"$env:TEMP\AppInstaller.msixbundle\"; ^
-        Write-Host '[INFO] Winget installed.' ^
-    } else { Write-Host '[INFO] Winget found.' }"
+powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host '[INFO] Winget not found. Installing...'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile \"$env:TEMP\AppInstaller.msixbundle\"; Add-AppxPackage -Path \"$env:TEMP\AppInstaller.msixbundle\"; Write-Host '[INFO] Winget installed.' } else { Write-Host '[INFO] Winget found.' }"
 powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { exit 301 }"
 if %ERRORLEVEL%==301 (
     echo [ERROR] Winget was just installed. Please restart this script.
@@ -30,12 +24,7 @@ if %ERRORLEVEL%==301 (
 
 REM --- [TASK 2] Ensure PowerShell 7 is available ---
 echo [TASK] Checking for PowerShell 7...
-powershell -NoProfile -Command ^
-    "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { ^
-        Write-Host '[INFO] PowerShell 7 not found. Installing...'; ^
-        winget install --id Microsoft.Powershell --accept-source-agreements --accept-package-agreements --silent; ^
-        Write-Host '[INFO] PowerShell 7 installed.' ^
-    } else { Write-Host '[INFO] PowerShell 7 found.' }"
+powershell -NoProfile -Command "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { Write-Host '[INFO] PowerShell 7 not found. Installing...'; winget install --id Microsoft.Powershell --accept-source-agreements --accept-package-agreements --silent; Write-Host '[INFO] PowerShell 7 installed.' } else { Write-Host '[INFO] PowerShell 7 found.' }"
 
 REM --- [TASK 3] Download repository ZIP ---
 echo [TASK] Downloading repository...
