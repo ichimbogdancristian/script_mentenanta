@@ -17,6 +17,14 @@ echo   ZIP_NAME: %ZIP_NAME%
 echo   EXTRACTED_DIR: %EXTRACTED_DIR%
 echo   PS_SCRIPT: %PS_SCRIPT%
 
+REM --- [TASK 2] PACKAGE MANAGER SETUP ---
+REM Check and install Winget if missing
+echo [TASK 2] Checking for Winget...
+powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host '[INFO] Winget not found. Installing...'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile '$env:TEMP\AppInstaller.msixbundle' -UseBasicParsing; Add-AppxPackage -Path '$env:TEMP\AppInstaller.msixbundle'; Write-Host '[INFO] Winget installed.' } else { Write-Host '[INFO] Winget found.' }"
+REM Check and install PowerShell 7 if missing
+echo [TASK 2] Checking for PowerShell 7...
+powershell -NoProfile -Command "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { Write-Host '[INFO] PowerShell 7 not found. Installing...'; winget install --id Microsoft.Powershell --accept-source-agreements --accept-package-agreements --silent; Write-Host '[INFO] PowerShell 7 installed.' } else { Write-Host '[INFO] PowerShell 7 found.' }"
+
 REM Download the repo as zip (force TLS 1.2 for GitHub compatibility)
 echo [STEP] Downloading repository to %ZIP_NAME% ...
 powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_NAME%' -ErrorAction Stop } catch { Write-Host '[ERROR] Download failed.'; if ($_.Exception) { Write-Host $_.Exception.Message }; exit 1 }"
@@ -61,9 +69,9 @@ for /d %%D in ("%EXTRACTED_DIR%\script_mentenanta-*") do (
     rmdir /s /q "%%D"
 )
 
-REM Run the PowerShell script from the extracted repo
-echo [STEP] Running PowerShell script from: %EXTRACTED_DIR%\%PS_SCRIPT%
-powershell -NoProfile -ExecutionPolicy Bypass -File "%EXTRACTED_DIR%\%PS_SCRIPT%" -Verbose -ErrorAction Continue
+REM Run the PowerShell script from the extracted repo using PowerShell 7
+echo [STEP] Running PowerShell script from: %EXTRACTED_DIR%\%PS_SCRIPT% in PowerShell 7
+pwsh -NoProfile -ExecutionPolicy Bypass -File "%EXTRACTED_DIR%\%PS_SCRIPT%" -Verbose -ErrorAction Continue
 set "PS_EXIT_CODE=%ERRORLEVEL%"
 echo [INFO] PowerShell script exited with code: %PS_EXIT_CODE%
 

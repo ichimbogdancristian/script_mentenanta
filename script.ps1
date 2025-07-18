@@ -1,7 +1,10 @@
-# =====================[ CENTRAL COORDINATION POLICY ]=====================
+### [TASK 0] CENTRAL COORDINATION POLICY
+# Region: Task 0 - Central Coordination Policy (Begin)
+# Function: Invoke-CentralCoordinationPolicy
+# Description: Sets up temp folders, bloatware/app lists, and coordinates script structure.
 function Invoke-CentralCoordinationPolicy {
     <#
-        Reviews script structure, execution logic, and timeline.
+        Sets up centralized temp folder, bloatware and essential apps lists, and coordinates script structure and execution timeline.
         Ensures all tasks are executed, errors are logged, and script is maintainable.
     #>
     Write-Host "[INFO] Central Coordination Policy enforced."
@@ -66,29 +69,30 @@ function Invoke-CentralCoordinationPolicy {
     $Script:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
     # --- Centralized Essential Apps List ---
     $Script:EssentialApps = @(
-        @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit'; Choco = 'adobereader' },
-        @{ Name = 'Google Chrome'; Winget = 'Google.Chrome'; Choco = 'googlechrome' },
-        @{ Name = 'Microsoft Edge'; Winget = 'Microsoft.Edge'; Choco = 'microsoft-edge' },
-        @{ Name = 'Total Commander'; Winget = 'Ghisler.TotalCommander'; Choco = 'totalcommander' },
-        @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell' },
-        @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal' },
-        @{ Name = 'WinRAR'; Winget = 'RARLab.WinRAR'; Choco = 'winrar' },
-        @{ Name = '7-Zip'; Winget = '7zip.7zip'; Choco = '7zip' },
-        @{ Name = 'Notepad++'; Winget = 'Notepad++.Notepad++'; Choco = 'notepadplusplus' },
-        @{ Name = 'PDF24 Creator'; Winget = 'PDF24.PDF24Creator'; Choco = 'pdf24' },
-        @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime' },
-        @{ Name = 'Mail and Calendar'; Winget = 'Microsoft.WindowsCommunicationsApps'; Choco = '' },
-        @{ Name = 'Phone Link'; Winget = 'Microsoft.YourPhone'; Choco = '' },
-        @{ Name = 'Windows Calculator'; Winget = 'Microsoft.WindowsCalculator'; Choco = '' },
-        @{ Name = 'Windows Camera'; Winget = 'Microsoft.WindowsCamera'; Choco = '' },
-        @{ Name = 'Microsoft Teams'; Winget = 'Microsoft.Teams'; Choco = 'microsoft-teams' },
-        @{ Name = 'Zoom'; Winget = 'Zoom.Zoom'; Choco = 'zoom' }
+        @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit' },
+        @{ Name = 'Google Chrome'; Winget = 'Google.Chrome' },
+        @{ Name = 'Microsoft Edge'; Winget = 'Microsoft.Edge' },
+        @{ Name = 'Total Commander'; Winget = 'Ghisler.TotalCommander' },
+        @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell' },
+        @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal' },
+        @{ Name = 'WinRAR'; Winget = 'RARLab.WinRAR' },
+        @{ Name = '7-Zip'; Winget = '7zip.7zip' },
+        @{ Name = 'Notepad++'; Winget = 'Notepad++.Notepad++' },
+        @{ Name = 'PDF24 Creator'; Winget = 'PDF24.PDF24Creator' },
+        @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment' },
+        @{ Name = 'Mail and Calendar'; Winget = 'Microsoft.WindowsCommunicationsApps' },
+        @{ Name = 'Phone Link'; Winget = 'Microsoft.YourPhone' },
+        @{ Name = 'Windows Calculator'; Winget = 'Microsoft.WindowsCalculator' },
+        @{ Name = 'Windows Camera'; Winget = 'Microsoft.WindowsCamera' },
+        @{ Name = 'Microsoft Teams'; Winget = 'Microsoft.Teams' },
+        @{ Name = 'Zoom'; Winget = 'Zoom.Zoom' }
     )
     $essentialAppsListPath = Join-Path $Script:TempFolder 'EssentialApps_list.txt'
     $Script:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
 }
 
-# =====================[ GLOBALS & INITIALIZATION ]========================
+### [TASK 0.1] GLOBALS & INITIALIZATION
+# Region: Task 0.1 - Globals & Initialization (Begin)
 
 # Global error log path
 $Script:ErrorLogPath = Join-Path $env:TEMP "SystemMaintenance_ErrorLog.txt"
@@ -97,7 +101,9 @@ $Script:TaskReportPath = Join-Path $env:TEMP "SystemMaintenance_TaskReport.txt"
 
 # Logs errors with timestamp, function, and message
 
-# Enhanced error log with colorized terminal output
+### [TASK 0.2] ERROR LOGGING
+# Function: Write-ErrorLog
+# Description: Logs errors with timestamp, function name, and message to console and file.
 function Write-ErrorLog {
     param(
         [string]$Function,
@@ -110,7 +116,9 @@ function Write-ErrorLog {
 
 # Logs task/subtask status (start, success, error) with timestamp
 
-# Enhanced task report with colorized output and section headers
+### [TASK 0.3] TASK REPORTING
+# Function: Write-TaskReport
+# Description: Logs task status (start, success, error) with colorized output and section headers.
 function Write-TaskReport {
     param(
         [string]$TaskName,
@@ -127,7 +135,9 @@ function Write-TaskReport {
     Add-Content -Path $Script:TaskReportPath -Value $entry -Encoding UTF8
 }
 
-# Admin rights check
+### [TASK 0.4] ADMIN RIGHTS CHECK
+# Function: Test-Admin
+# Description: Checks for administrator rights and exits if not present.
 function Test-Admin {
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if (-not $isAdmin) {
@@ -136,6 +146,9 @@ function Test-Admin {
     }
 }
 
+### [TASK 0.5] ENVIRONMENT INITIALIZATION
+# Function: Initialize-Environment
+# Description: Creates temp folder and starts transcript log.
 function Initialize-Environment {
     if (-not $Script:TempFolder) {
         $Script:TempFolder = Join-Path $env:TEMP "SystemMaintenance_$(Get-Random)"
@@ -148,15 +161,21 @@ function Initialize-Environment {
     Write-Host "[INFO] Temp folder created: $Script:TempFolder"
 }
 
+### [TASK 0.6] ENVIRONMENT CLEANUP
+# Function: Remove-Environment
+# Description: Stops transcript and deletes temp folder.
 function Remove-Environment {
     Stop-Transcript | Out-Null
     Remove-Item -Path $Script:TempFolder -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "[INFO] Temp folder deleted."
 }
 
-# =====================[ ERROR HANDLING ]==================================
+### [TASK 0.7] ERROR HANDLING
+# Region: Task 0.7 - Error Handling (Begin)
 
-# Enhanced Invoke-Task with color, section headers, and summary
+### [TASK 0.8] TASK EXECUTION WRAPPER
+# Function: Invoke-Task
+# Description: Wraps major operations in try/catch, logs status, prints colorized output.
 function Invoke-Task {
     param(
         [Parameter(Mandatory)]
@@ -175,8 +194,10 @@ function Invoke-Task {
     }
 }
 
-# =====================[ TASK 1: SYSTEM PROTECTION ]=====================
-# -- Subtask 1.1: System Restore Protection
+### [TASK 1] SYSTEM PROTECTION
+# Region: Task 1 - System Protection (Begin)
+# Function: Test-SystemRestore
+# Description: Checks and enables System Restore, creates restore point, logs actions.
 function Test-SystemRestore {
     $transcript = @()
     $startTime = Get-Date
@@ -219,8 +240,10 @@ function Test-SystemRestore {
     $transcript | Out-File $outPath -Encoding UTF8
 }
 
-# =====================[ TASK 2: PACKAGE MANAGER SETUP ]==================
-# -- Subtask 2.1: Ensure Winget & Chocolatey
+### [TASK 2] PACKAGE MANAGER SETUP
+# Region: Task 2 - Package Manager Setup (Begin)
+# Function: Test-PackageManagers
+# Description: Ensures Winget is installed and up to date.
 function Test-PackageManagers {
     $transcript = @()
     $startTime = Get-Date
@@ -239,19 +262,6 @@ function Test-PackageManagers {
             winget upgrade --id Microsoft.Winget.Source --accept-source-agreements --accept-package-agreements --silent
             $transcript += "[{0}] winget upgraded." -f ((Get-Date).ToString('HH:mm:ss'))
         }
-        $choco = Get-Command choco -ErrorAction SilentlyContinue
-        if (-not $choco) {
-            $transcript += "[{0}] Chocolatey not found. Installing..." -f ((Get-Date).ToString('HH:mm:ss'))
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-            $transcript += "[{0}] Chocolatey installed." -f ((Get-Date).ToString('HH:mm:ss'))
-        }
-        else {
-            $transcript += "[{0}] Chocolatey found. Upgrading Chocolatey..." -f ((Get-Date).ToString('HH:mm:ss'))
-            choco upgrade chocolatey -y
-            $transcript += "[{0}] Chocolatey upgraded." -f ((Get-Date).ToString('HH:mm:ss'))
-        }
         $transcript += "[{0}] [SUCCESS] Package Manager Setup" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "Package Manager Setup" -Status "SUCCESS"
     }
@@ -266,8 +276,10 @@ function Test-PackageManagers {
     $transcript | Out-File $outPath -Encoding UTF8
 }
 
-# =====================[ TASK 3: SYSTEM INVENTORY ]=======================
-# -- Subtask 3.1: Collect System Inventory
+### [TASK 3] SYSTEM INVENTORY
+# Region: Task 3 - System Inventory (Begin)
+# Function: Get-Inventory
+# Description: Collects OS, hardware, disk, network, and installed program info.
 function Get-Inventory {
     $transcript = @()
     $startTime = Get-Date
@@ -312,9 +324,10 @@ function Get-Inventory {
     $transcript | Out-File $outPath -Encoding UTF8
 }
 
-# =====================[ TASK 4: DEBLOATING & APP MANAGEMENT ]============
-# -- Subtask 4.1: Remove Bloatware
-
+### [TASK 4] DEBLOATING & APP MANAGEMENT
+# Region: Task 4 - Debloating & App Management (Begin)
+# Function: Uninstall-Bloatware
+# Description: Removes installed bloatware using AppX, Winget, and WMI methods.
 function Uninstall-Bloatware {
     $transcript = @()
     $startTime = Get-Date
@@ -453,7 +466,9 @@ function Uninstall-Bloatware {
     $transcript | Out-File $outPath -Encoding UTF8
 }
 
-# -- Subtask 4.2: Install Essential Apps
+### [TASK 4.2] INSTALL ESSENTIAL APPS
+# Function: Install-EssentialApps
+# Description: Installs missing essential apps using Winget, with retry logic.
 function Install-EssentialApps {
     $transcript = @()
     $startTime = Get-Date
@@ -532,21 +547,6 @@ function Install-EssentialApps {
                         $transcript += "[{0}] [WARN] winget failed for {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $_
                     }
                 }
-                if (-not $installSucceeded -and $app.Choco -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-                    try {
-                        $chocoResult = choco install $($app.Choco) -y 2>&1
-                        if ($chocoResult -match '1618') {
-                            $transcript += "[{0}] [WARN] Windows Installer is busy (exit code 1618) for {1} via choco. Attempt {2}/3. Retrying in {3} seconds..." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $retryCount, $retryDelay
-                            Start-Sleep -Seconds $retryDelay
-                            continue
-                        }
-                        $installedVia = 'choco'
-                        $installSucceeded = $true
-                    }
-                    catch {
-                        $transcript += "[{0}] [WARN] choco failed for {1}: {2}" -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $_
-                    }
-                }
                 break
             }
             if ($installSucceeded -and $installedVia) {
@@ -556,7 +556,7 @@ function Install-EssentialApps {
                 $transcript += "[{0}] [ERROR] Could not install {1} after {2} attempts due to Windows Installer being busy (exit code 1618). Skipping." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name, $maxRetries
             }
             elseif (-not $installedVia) {
-                $transcript += "[{0}] [ERROR] Could not install {1} via winget or choco." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name
+                $transcript += "[{0}] [ERROR] Could not install {1} via winget." -f ((Get-Date).ToString('HH:mm:ss')), $app.Name
             }
         }
         Write-Progress -Activity "Essential Apps Installation" -Status "All essential apps processed" -Completed
@@ -575,10 +575,10 @@ function Install-EssentialApps {
     $transcript | Out-File $outPath -Encoding UTF8
 }
 
-# =====================[ TASK 5: PRIVACY & TELEMETRY ]====================
-# -- Subtask 5.1: Disable Telemetry
-
-
+### [TASK 5] PRIVACY & TELEMETRY
+# Region: Task 5 - Privacy & Telemetry (Begin)
+# Function: Disable-Telemetry
+# Description: Applies registry/service changes to disable telemetry and tracking.
 function Disable-Telemetry {
     $transcript = @()
     $startTime = Get-Date
