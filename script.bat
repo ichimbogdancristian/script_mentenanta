@@ -41,8 +41,10 @@ powershell -NoProfile -Command "
     exit 0
 "
 if %ERRORLEVEL%==301 (
-    echo [INFO] Winget was just installed. Restarting script automatically...
-    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -WindowStyle Normal"
+    echo [INFO] Winget was just installed. The script will restart in 5 seconds...
+    echo [%date% %time%] [INFO] Winget installed, restarting script. >> "%SCRIPT_DIR%\script_mentenanta.log"
+    timeout /t 5 >nul
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '-NoExit' -WindowStyle Normal"
     exit /b
 )
 
