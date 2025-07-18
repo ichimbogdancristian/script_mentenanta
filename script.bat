@@ -12,19 +12,39 @@ set "ZIP_PATH=%SCRIPT_DIR%\script_mentenanta.zip"
 set "EXTRACT_DIR=%SCRIPT_DIR%\script_mentenanta"
 set "PS_SCRIPT=script.ps1"
 
-REM --- [TASK 1] Ensure Winget is available ---
-echo [TASK] Checking for Winget...
-powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host '[INFO] Winget not found. Installing...'; $frameworkUrl = 'https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6'; $frameworkPath = \"$env:TEMP\Microsoft.UI.Xaml.2.8.6.zip\"; Invoke-WebRequest -Uri $frameworkUrl -OutFile $frameworkPath; $frameworkExtract = \"$env:TEMP\Microsoft.UI.Xaml.2.8.6\"; Expand-Archive -Path $frameworkPath -DestinationPath $frameworkExtract -Force; $appx = Get-ChildItem -Path $frameworkExtract -Filter *.appx -Recurse | Select-Object -First 1; if ($appx) { Add-AppxPackage -Path $appx.FullName }; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile \"$env:TEMP\AppInstaller.msixbundle\"; Add-AppxPackage -Path \"$env:TEMP\AppInstaller.msixbundle\"; Write-Host '[INFO] Winget installed.' } else { Write-Host '[INFO] Winget found.' }"
-powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { exit 301 } else { exit 0 }"
+REM --- [DEPENDENCY TASK] Ensure Winget and PowerShell 7 are available ---
+echo [DEPENDENCY] Checking for Winget and PowerShell 7...
+powershell -NoProfile -Command "
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        Write-Host '[INFO] Winget not found. Installing...'
+        $frameworkUrl = 'https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6'
+        $frameworkPath = \"$env:TEMP\Microsoft.UI.Xaml.2.8.6.zip\"
+        Invoke-WebRequest -Uri $frameworkUrl -OutFile $frameworkPath
+        $frameworkExtract = \"$env:TEMP\Microsoft.UI.Xaml.2.8.6\"
+        Expand-Archive -Path $frameworkPath -DestinationPath $frameworkExtract -Force
+        $appx = Get-ChildItem -Path $frameworkExtract -Filter *.appx -Recurse | Select-Object -First 1
+        if ($appx) { Add-AppxPackage -Path $appx.FullName }
+        Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile \"$env:TEMP\AppInstaller.msixbundle\"
+        Add-AppxPackage -Path \"$env:TEMP\AppInstaller.msixbundle\"
+        Write-Host '[INFO] Winget installed.'
+        exit 301
+    }
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if (-not $pwsh) {
+        Write-Host '[INFO] PowerShell 7 not found. Installing...'
+        winget install --id Microsoft.Powershell --accept-source-agreements --accept-package-agreements --silent
+        Write-Host '[INFO] PowerShell 7 installed.'
+    } else {
+        Write-Host '[INFO] PowerShell 7 found.'
+    }
+    exit 0
+"
 if %ERRORLEVEL%==301 (
     echo [INFO] Winget was just installed. Restarting script automatically...
     powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -WindowStyle Normal"
     exit /b
 )
-
-REM --- [TASK 2] Ensure PowerShell 7 is available ---
-echo [TASK] Checking for PowerShell 7...
-powershell -NoProfile -Command "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { Write-Host '[INFO] PowerShell 7 not found. Installing...'; winget install --id Microsoft.Powershell --accept-source-agreements --accept-package-agreements --silent; Write-Host '[INFO] PowerShell 7 installed.' } else { Write-Host '[INFO] PowerShell 7 found.' }"
 
 REM --- [TASK 3] Download repository ZIP ---
 echo [TASK] Downloading repository...
