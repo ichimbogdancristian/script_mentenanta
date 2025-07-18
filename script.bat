@@ -1,94 +1,103 @@
-@echo on
-setlocal
+@echo off
+setlocal enabledelayedexpansion
 
-REM Get the directory where this script is located (removes trailing backslash)
+REM --- [SETUP] Get script directory ---
 set "SCRIPT_DIR=%~dp0"
-if "%SCRIPT_DIR:~-1%"=="\\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
-echo [INFO] Script directory is: %SCRIPT_DIR%
+if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+echo [INFO] Script directory: "%SCRIPT_DIR%"
 
-REM Set variables
+REM --- [VARIABLES] ---
 set "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
-set "ZIP_NAME=%SCRIPT_DIR%script_mentenanta.zip"
-set "EXTRACTED_DIR=%SCRIPT_DIR%script_mentenanta"
+set "ZIP_PATH=%SCRIPT_DIR%\script_mentenanta.zip"
+set "EXTRACT_DIR=%SCRIPT_DIR%\script_mentenanta"
 set "PS_SCRIPT=script.ps1"
-echo [INFO] Variables set:
-echo   REPO_URL: %REPO_URL%
-echo   ZIP_NAME: %ZIP_NAME%
-echo   EXTRACTED_DIR: %EXTRACTED_DIR%
-echo   PS_SCRIPT: %PS_SCRIPT%
 
-REM --- [TASK 2] PACKAGE MANAGER SETUP ---
-REM Check and install Winget if missing
-echo [TASK 2] Checking for Winget...
-powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host '[INFO] Winget not found. Installing...'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile \"$env:TEMP\AppInstaller.msixbundle\" -UseBasicParsing; Add-AppxPackage -Path \"$env:TEMP\AppInstaller.msixbundle\"; Write-Host '[INFO] Winget installed.' } else { Write-Host '[INFO] Winget found.' }"
-REM If Winget was just installed, restart the batch to ensure it's available
+REM --- [TASK 1] Ensure Winget is available ---
+echo [TASK] Checking for Winget...
+powershell -NoProfile -Command ^
+    "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { ^
+        Write-Host '[INFO] Winget not found. Installing...'; ^
+        Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile \"$env:TEMP\AppInstaller.msixbundle\"; ^
+        Add-AppxPackage -Path \"$env:TEMP\AppInstaller.msixbundle\"; ^
+        Write-Host '[INFO] Winget installed.' ^
+    } else { Write-Host '[INFO] Winget found.' }"
 powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { exit 301 }"
 if %ERRORLEVEL%==301 (
-    echo [INFO] Winget was just installed. Please restart this script to continue.
+    echo [ERROR] Winget was just installed. Please restart this script.
     pause
     exit /b
 )
 
-REM Check and install PowerShell 7 if missing
-echo [TASK 2] Checking for PowerShell 7...
-powershell -NoProfile -Command "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { Write-Host '[INFO] PowerShell 7 not found. Installing...'; winget install --id Microsoft.Powershell --accept-source-agreements --accept-package-agreements --silent; Write-Host '[INFO] PowerShell 7 installed.' } else { Write-Host '[INFO] PowerShell 7 found.' }"
+REM --- [TASK 2] Ensure PowerShell 7 is available ---
+echo [TASK] Checking for PowerShell 7...
+powershell -NoProfile -Command ^
+    "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { ^
+        Write-Host '[INFO] PowerShell 7 not found. Installing...'; ^
+        winget install --id Microsoft.Powershell --accept-source-agreements --accept-package-agreements --silent; ^
+        Write-Host '[INFO] PowerShell 7 installed.' ^
+    } else { Write-Host '[INFO] PowerShell 7 found.' }"
 
-REM Download the repo as zip (force TLS 1.2 for GitHub compatibility)
-echo [STEP] Downloading repository to %ZIP_NAME% ...
-powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_NAME%' -ErrorAction Stop } catch { Write-Host '[ERROR] Download failed.'; if ($_.Exception) { Write-Host $_.Exception.Message }; exit 1 }"
+REM --- [TASK 3] Download repository ZIP ---
+echo [TASK] Downloading repository...
+powershell -NoProfile -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
+    try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_PATH%' -ErrorAction Stop } ^
+    catch { Write-Host '[ERROR] Download failed.'; if ($_.Exception) { Write-Host $_.Exception.Message }; exit 1 }"
 if errorlevel 1 (
-    echo [ERROR] Failed to download repository. See the error message above for details.
+    echo [ERROR] Failed to download repository.
     goto END
 )
 
-REM Remove any previous extraction
-if exist "%EXTRACTED_DIR%" (
-    echo [STEP] Removing previous folder: %EXTRACTED_DIR%
-    rmdir /s /q "%EXTRACTED_DIR%"
+REM --- [TASK 4] Remove previous extraction ---
+if exist "%EXTRACT_DIR%" (
+    echo [TASK] Removing previous folder: "%EXTRACT_DIR%"
+    rmdir /s /q "%EXTRACT_DIR%"
     if errorlevel 1 (
-        echo [ERROR] Failed to remove previous folder: %EXTRACTED_DIR%
+        echo [ERROR] Failed to remove previous folder.
         goto END
     )
 )
 
-REM Extract the zip (requires PowerShell 5+)
-echo [STEP] Extracting repository to %EXTRACTED_DIR% ...
-powershell -NoProfile -Command "try { Expand-Archive -Path '%ZIP_NAME%' -DestinationPath '%EXTRACTED_DIR%' -Force -ErrorAction Stop } catch { Write-Host '[ERROR] Extraction failed.'; if ($_.Exception) { Write-Host $_.Exception.Message }; exit 1 }"
+REM --- [TASK 5] Extract ZIP ---
+echo [TASK] Extracting repository...
+powershell -NoProfile -Command ^
+    "try { Expand-Archive -Path '%ZIP_PATH%' -DestinationPath '%EXTRACT_DIR%' -Force -ErrorAction Stop } ^
+    catch { Write-Host '[ERROR] Extraction failed.'; if ($_.Exception) { Write-Host $_.Exception.Message }; exit 1 }"
 if errorlevel 1 (
-    echo [ERROR] Failed to extract repository. Exiting.
+    echo [ERROR] Failed to extract repository.
     goto END
 )
 
-REM Delete the zip file
-echo [STEP] Deleting zip file: %ZIP_NAME%
-del "%ZIP_NAME%"
+REM --- [TASK 6] Delete ZIP file ---
+echo [TASK] Deleting ZIP file...
+del "%ZIP_PATH%"
 if errorlevel 1 (
-    echo [ERROR] Failed to delete zip file: %ZIP_NAME%
+    echo [ERROR] Failed to delete ZIP file.
 )
 
-REM Move extracted content from subfolder to %EXTRACTED_DIR% if needed
-for /d %%D in ("%EXTRACTED_DIR%\script_mentenanta-*") do (
-    echo [STEP] Moving extracted files from %%D to %EXTRACTED_DIR%
-    xcopy /e /h /y "%%D\*" "%EXTRACTED_DIR%\"
+REM --- [TASK 7] Move extracted content if in subfolder ---
+for /d %%D in ("%EXTRACT_DIR%\script_mentenanta-*") do (
+    echo [TASK] Moving files from "%%D" to "%EXTRACT_DIR%"
+    xcopy /e /h /y "%%D\*" "%EXTRACT_DIR%\"
     if errorlevel 1 (
-        echo [ERROR] Failed to move files from %%D to %EXTRACTED_DIR%
+        echo [ERROR] Failed to move files.
         goto END
     )
     rmdir /s /q "%%D"
 )
 
-REM Run the PowerShell script from the extracted repo using PowerShell 7
-echo [STEP] Running PowerShell script from: %EXTRACTED_DIR%\%PS_SCRIPT% in PowerShell 7
-pwsh -NoProfile -ExecutionPolicy Bypass -File "%EXTRACTED_DIR%\%PS_SCRIPT%" -Verbose -ErrorAction Continue
+REM --- [TASK 8] Run PowerShell script ---
+echo [TASK] Running PowerShell script: "%EXTRACT_DIR%\%PS_SCRIPT%"
+pwsh -NoProfile -ExecutionPolicy Bypass -File "%EXTRACT_DIR%\%PS_SCRIPT%" -Verbose
 set "PS_EXIT_CODE=%ERRORLEVEL%"
 echo [INFO] PowerShell script exited with code: %PS_EXIT_CODE%
 
-if not %PS_EXIT_CODE%==0 (
-    echo [ERROR] There was an error running script.ps1. Please check your permissions and requirements.
+if not "%PS_EXIT_CODE%"=="0" (
+    echo [ERROR] script.ps1 failed. Check permissions and requirements.
 )
 
 :END
 echo.
 echo [INFO] Script finished.
-set /p CLOSE_PROMPT="Press Enter to close this window..."
+pause
 endlocal
