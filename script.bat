@@ -20,7 +20,15 @@ echo   PS_SCRIPT: %PS_SCRIPT%
 REM --- [TASK 2] PACKAGE MANAGER SETUP ---
 REM Check and install Winget if missing
 echo [TASK 2] Checking for Winget...
-powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host '[INFO] Winget not found. Installing...'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile '$env:TEMP\AppInstaller.msixbundle' -UseBasicParsing; Add-AppxPackage -Path '$env:TEMP\AppInstaller.msixbundle'; Write-Host '[INFO] Winget installed.' } else { Write-Host '[INFO] Winget found.' }"
+powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host '[INFO] Winget not found. Installing...'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile \"$env:TEMP\AppInstaller.msixbundle\" -UseBasicParsing; Add-AppxPackage -Path \"$env:TEMP\AppInstaller.msixbundle\"; Write-Host '[INFO] Winget installed.' } else { Write-Host '[INFO] Winget found.' }"
+REM If Winget was just installed, restart the batch to ensure it's available
+powershell -NoProfile -Command "if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { exit 301 }"
+if %ERRORLEVEL%==301 (
+    echo [INFO] Winget was just installed. Please restart this script to continue.
+    pause
+    exit /b
+)
+
 REM Check and install PowerShell 7 if missing
 echo [TASK 2] Checking for PowerShell 7...
 powershell -NoProfile -Command "if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { Write-Host '[INFO] PowerShell 7 not found. Installing...'; winget install --id Microsoft.Powershell --accept-source-agreements --accept-package-agreements --silent; Write-Host '[INFO] PowerShell 7 installed.' } else { Write-Host '[INFO] PowerShell 7 found.' }"
