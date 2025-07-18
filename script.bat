@@ -21,11 +21,28 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM === [DEPENDENCY CHECK] ===
+
+REM Check for Winget
 where winget >nul 2>&1
 if errorlevel 1 (
-    echo [INFO] Winget not found. Please install Winget manually.
-    goto END
+    echo [INFO] Winget not found. Attempting to install...
+    set "WINGET_INSTALLER_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+    set "WINGET_INSTALLER=%SCRIPT_DIR%\winget_installer.msixbundle"
+    powershell -NoProfile -Command "try { Invoke-WebRequest -Uri '%WINGET_INSTALLER_URL%' -OutFile '%WINGET_INSTALLER%' -ErrorAction Stop } catch { Write-Host '[ERROR] Winget installer download failed.'; exit 1 }"
+    if errorlevel 1 (
+        echo [ERROR] Failed to download Winget installer.
+        goto END
+    )
+    powershell -NoProfile -Command "Add-AppxPackage -Path '%WINGET_INSTALLER%'"
+    if errorlevel 1 (
+        echo [ERROR] Failed to install Winget.
+        goto END
+    )
+    del "%WINGET_INSTALLER%"
+    echo [INFO] Winget installed.
 )
+
+REM Check for PowerShell 7
 where pwsh >nul 2>&1
 if errorlevel 1 (
     echo [INFO] PowerShell 7 (pwsh) not found. Installing...
@@ -34,6 +51,7 @@ if errorlevel 1 (
         echo [ERROR] Failed to install PowerShell 7.
         goto END
     )
+    echo [INFO] PowerShell 7 installed.
 )
 
 REM === [DOWNLOAD REPO] ===
