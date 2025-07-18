@@ -66,6 +66,7 @@ if errorlevel 1 (
     echo [ERROR] Failed to download repository.
     goto END
 )
+pause
 
 REM --- [TASK 4] Remove previous extraction ---
 if exist "%EXTRACT_DIR%" (
@@ -76,6 +77,7 @@ if exist "%EXTRACT_DIR%" (
         goto END
     )
 )
+pause
 
 REM --- [TASK 5] Extract ZIP ---
 echo [TASK] Extracting repository...
@@ -86,6 +88,7 @@ if errorlevel 1 (
     echo [ERROR] Failed to extract repository.
     goto END
 )
+pause
 
 REM --- [TASK 6] Delete ZIP file ---
 echo [TASK] Deleting ZIP file...
@@ -93,6 +96,7 @@ del "%ZIP_PATH%"
 if errorlevel 1 (
     echo [ERROR] Failed to delete ZIP file.
 )
+pause
 
 REM --- [TASK 7] Move extracted content if in subfolder ---
 for /d %%D in ("%EXTRACT_DIR%\script_mentenanta-*") do (
@@ -104,6 +108,7 @@ for /d %%D in ("%EXTRACT_DIR%\script_mentenanta-*") do (
     )
     rmdir /s /q "%%D"
 )
+pause
 
 REM --- [TASK 8] Run PowerShell script ---
 echo [TASK] Running PowerShell script: "%EXTRACT_DIR%\%PS_SCRIPT%"
@@ -122,6 +127,7 @@ if not "%PS_EXIT_CODE%"=="0" (
     pause >nul
     goto END
 )
+pause
 
 :END
 echo.
