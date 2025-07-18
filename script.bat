@@ -115,9 +115,12 @@ if errorlevel 1 (
 pwsh -NoProfile -ExecutionPolicy Bypass -File "%EXTRACT_DIR%\%PS_SCRIPT%" -Verbose
 set "PS_EXIT_CODE=%ERRORLEVEL%"
 echo [INFO] PowerShell script exited with code: %PS_EXIT_CODE%
-
 if not "%PS_EXIT_CODE%"=="0" (
-    echo [ERROR] script.ps1 failed. Check permissions and requirements.
+    echo [ERROR] script.ps1 failed with exit code %PS_EXIT_CODE%. Check permissions, requirements, and logs.
+    echo [%date% %time%] [ERROR] script.ps1 failed with exit code %PS_EXIT_CODE%. >> "%SCRIPT_DIR%\script_mentenanta.log"
+    echo [INFO] Press any key to review the error and close this window.
+    pause >nul
+    goto END
 )
 
 :END
