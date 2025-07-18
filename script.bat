@@ -13,6 +13,14 @@ set "EXTRACT_DIR=%SCRIPT_DIR%\script_mentenanta"
 set "PS_SCRIPT=script.ps1"
 
 REM --- [DEPENDENCY TASK] Ensure Winget and PowerShell 7 are available ---
+REM Check for admin rights
+net session >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] This script requires administrator privileges.
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
+
 echo [DEPENDENCY] Checking for Winget and PowerShell 7...
 powershell -NoProfile -Command "
     $winget = Get-Command winget -ErrorAction SilentlyContinue
@@ -44,7 +52,7 @@ if %ERRORLEVEL%==301 (
     echo [INFO] Winget was just installed. The script will restart in 5 seconds...
     echo [%date% %time%] [INFO] Winget installed, restarting script. >> "%SCRIPT_DIR%\script_mentenanta.log"
     timeout /t 5 >nul
-    powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/k \''%~f0\''' -WindowStyle Normal"
+    powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/k \"%~f0\"' -WindowStyle Normal"
     exit /b
 )
 
