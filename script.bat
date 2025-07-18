@@ -107,6 +107,11 @@ for /d %%D in ("%EXTRACT_DIR%\script_mentenanta-*") do (
 
 REM --- [TASK 8] Run PowerShell script ---
 echo [TASK] Running PowerShell script: "%EXTRACT_DIR%\%PS_SCRIPT%"
+where pwsh >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] PowerShell 7 (pwsh) not found. Aborting.
+    goto END
+)
 pwsh -NoProfile -ExecutionPolicy Bypass -File "%EXTRACT_DIR%\%PS_SCRIPT%" -Verbose
 set "PS_EXIT_CODE=%ERRORLEVEL%"
 echo [INFO] PowerShell script exited with code: %PS_EXIT_CODE%
