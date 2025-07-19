@@ -40,7 +40,7 @@ if errorlevel 1 (
         goto END
     )
     if exist "%WINGET_INSTALLER%" (
-        powershell -NoProfile -Command "Add-AppxPackage -Path '%WINGET_INSTALLER%'"
+        powershell -NoProfile -Command "Add-AppxPackage -Path \"%WINGET_INSTALLER%\""
         if errorlevel 1 (
             echo [ERROR] Failed to install Winget.
             goto END
