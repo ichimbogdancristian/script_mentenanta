@@ -30,7 +30,7 @@ if errorlevel 1 (
     set "WINGET_INSTALLER=%SCRIPT_DIR%\winget_installer.msixbundle"
     echo [INFO] Downloading Winget installer from: !WINGET_INSTALLER_URL!
     echo [INFO] Target path: !WINGET_INSTALLER!
-    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%WINGET_INSTALLER_URL%' -OutFile '%WINGET_INSTALLER%' -ErrorAction Stop } catch { Write-Host '[ERROR] PowerShell Invoke-WebRequest download failed.'; exit 1 }"
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '!WINGET_INSTALLER_URL!' -OutFile '!WINGET_INSTALLER!' -ErrorAction Stop } catch { Write-Host '[ERROR] PowerShell Invoke-WebRequest download failed.'; exit 1 }"
     if errorlevel 1 (
         echo [ERROR] PowerShell Invoke-WebRequest download failed.
         echo [MANUAL ACTION REQUIRED] Please download:
@@ -71,7 +71,7 @@ if errorlevel 1 (
 
 REM === [DOWNLOAD REPO] ===
 echo [TASK] Downloading repository ZIP...
-powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_PATH%' -ErrorAction Stop } catch { Write-Host '[ERROR] Download failed.'; exit 1 }"
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri '!REPO_URL!' -OutFile '!ZIP_PATH!' -ErrorAction Stop } catch { Write-Host '[ERROR] Download failed.'; exit 1 }"
 if errorlevel 1 (
     echo [ERROR] Failed to download repository.
     goto END
@@ -91,7 +91,7 @@ pause
 
 REM === [EXTRACT ZIP] ===
 echo [TASK] Extracting ZIP...
-powershell -NoProfile -Command "try { Expand-Archive -Path '%ZIP_PATH%' -DestinationPath '%EXTRACT_DIR%' -Force -ErrorAction Stop } catch { Write-Host '[ERROR] Extraction failed.'; exit 1 }"
+powershell -NoProfile -Command "try { Expand-Archive -Path '!ZIP_PATH!' -DestinationPath '!EXTRACT_DIR!' -Force -ErrorAction Stop } catch { Write-Host '[ERROR] Extraction failed.'; exit 1 }"
 if errorlevel 1 (
     echo [ERROR] Failed to extract ZIP.
     goto END
@@ -116,12 +116,12 @@ pause
 
 REM === [RUN POWERSHELL SCRIPT] ===
 echo [TASK] Running PowerShell script...
-pwsh -NoProfile -ExecutionPolicy Bypass -File "%EXTRACT_DIR%\%PS_SCRIPT%" -Verbose
+pwsh -NoProfile -ExecutionPolicy Bypass -File "!EXTRACT_DIR!\!PS_SCRIPT!" -Verbose
 set "PS_EXIT_CODE=%ERRORLEVEL%"
-echo [INFO] PowerShell script exited with code: %PS_EXIT_CODE%
-if not "%PS_EXIT_CODE%"=="0" (
-    echo [ERROR] script.ps1 failed with exit code %PS_EXIT_CODE%. See log: %LOG_FILE%
-    echo [%date% %time%] [ERROR] script.ps1 failed with exit code %PS_EXIT_CODE%. >> "%LOG_FILE%"
+echo [INFO] PowerShell script exited with code: !PS_EXIT_CODE!
+if not "!PS_EXIT_CODE!"=="0" (
+    echo [ERROR] script.ps1 failed with exit code !PS_EXIT_CODE!. See log: !LOG_FILE!
+    echo [%date% %time%] [ERROR] script.ps1 failed with exit code !PS_EXIT_CODE!. >> "!LOG_FILE!"
     pause
     goto END
 )
