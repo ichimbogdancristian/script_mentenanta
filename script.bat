@@ -488,9 +488,6 @@ if not exist "script_mentenanta" (
 echo ✓ Repository successfully updated with latest version
 
 :run_script
-echo.
-echo Step 4: Running maintenance script
-echo ========================================
 
 REM Ensure we're in the script directory
 cd /d "%SCRIPT_DIR%"
@@ -506,74 +503,14 @@ if not exist "script.ps1" (
 )
 
 echo ✓ Found script.ps1
-echo Running script.ps1 with %PWSH_CMD%...
-echo Bypassing execution policy for this session...
+echo Launching script.ps1 in a new PowerShell 7 window with administrator rights...
 
-REM Show which PowerShell we're using
-if "%PWSH_CMD%"=="pwsh" (
-    echo Using PowerShell 7
-    pwsh --version
-    pwsh -ExecutionPolicy Bypass -File "script.ps1"
-) else if "%PWSH_CMD%"=="powershell" (
-    echo Using Windows PowerShell
-    powershell -Command "$PSVersionTable.PSVersion"
-    powershell -ExecutionPolicy Bypass -File "script.ps1"
-) else (
-    echo Using PowerShell at: %PWSH_CMD%
-    "%PWSH_CMD%" --version
-    "%PWSH_CMD%" -ExecutionPolicy Bypass -File "script.ps1"
-)
+REM Launch script.ps1 in a new PowerShell 7 window as administrator
+REM If PWSH_CMD is not set, fallback to pwsh
+if not defined PWSH_CMD set "PWSH_CMD=pwsh"
 
-set SCRIPT_EXIT_CODE=%errorLevel%
+REM Use PowerShell to start a new window with admin rights
+powershell -Command "Start-Process -FilePath '%PWSH_CMD%' -ArgumentList '-ExecutionPolicy','Bypass','-File','script.ps1' -Verb RunAs"
 
-if %SCRIPT_EXIT_CODE% NEQ 0 (
-    echo Script execution completed with exit code: %SCRIPT_EXIT_CODE%
-) else (
-    echo ✓ Script execution completed successfully!
-)
-
-echo.
-echo ========================================
-echo Setup and execution completed!
-echo ========================================
-echo.
-echo Summary:
-echo - Administrator privileges: ✓ Verified/Obtained automatically
-echo - WinGet: Checked and installed if needed
-echo - PowerShell 7: Checked and installed if needed  
-echo - Repository: Downloaded/updated with latest version
-echo - Maintenance script: Executed
-echo.
-
-REM Show final PowerShell status
-echo Final PowerShell status:
-if "%PWSH_CMD%"=="pwsh" (
-    echo ✓ Using PowerShell 7
-) else if "%PWSH_CMD%"=="powershell" (
-    echo ⚠ Using Windows PowerShell (PowerShell 7 installation may have failed)
-) else (
-    echo ✓ Using PowerShell 7 from: %PWSH_CMD%
-)
-
-REM Ask user if they want to keep temp files for debugging
-echo Do you want to keep temporary files for debugging? (y/N)
-choice /c YN /n /t 10 /d N /m "Press Y for Yes, N for No (auto-selecting N in 10 seconds): "
-if errorlevel 2 goto :cleanup
-if errorlevel 1 goto :no_cleanup
-
-:cleanup
-echo Cleaning up temporary files...
-cd /d "%TEMP%\.."
-rmdir /s /q "%TEMP_DIR%" >nul 2>&1
-goto :exit
-
-:no_cleanup
-echo Temporary files kept in: %TEMP_DIR%
-echo Installation log (if exists): %TEMP_DIR%\ps7_install.log
-
-:exit
-echo.
-echo Press any key to exit...
-pause >nul
-
-exit /b %SCRIPT_EXIT_CODE%
+REM Immediately close the batch window
+exit /b 0
