@@ -7,24 +7,45 @@ echo Including ALL required dependencies for fresh Windows installs
 echo ========================================
 
 REM Check if running as administrator and relaunch if not
+echo Checking administrator privileges...
 net session >nul 2>&1
 if %errorLevel% NEQ 0 (
     echo This script requires administrator privileges.
     echo Attempting to relaunch with administrator privileges...
     
+    REM Get the full path of the current script
     set "SCRIPT_PATH=%~f0"
-    powershell -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', '\"!SCRIPT_PATH!\"' -Verb RunAs -Wait"
+    echo Script path: !SCRIPT_PATH!
+    
+    REM Create a VBS script for elevation (more reliable than PowerShell)
+    echo Set UAC = CreateObject^("Shell.Application"^) > "%TEMP%\elevate.vbs"
+    echo UAC.ShellExecute "cmd.exe", "/c ""!SCRIPT_PATH!""", "", "runas", 1 >> "%TEMP%\elevate.vbs"
+    
+    REM Try VBS elevation first
+    cscript //NoLogo "%TEMP%\elevate.vbs" >nul 2>&1
+    if %errorLevel% EQU 0 (
+        echo Elevation request sent via VBS
+        del "%TEMP%\elevate.vbs" >nul 2>&1
+        exit /b 0
+    )
+    
+    REM Fallback to PowerShell elevation
+    echo VBS method failed, trying PowerShell elevation...
+    powershell -Command "try { Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', '\"!SCRIPT_PATH!\"' -Verb RunAs -WindowStyle Normal } catch { Write-Host 'PowerShell elevation failed'; exit 1 }"
     
     if %errorLevel% NEQ 0 (
-        echo Failed to obtain administrator privileges.
-        echo Please manually run this script as administrator.
+        echo Both elevation methods failed.
+        echo Please manually right-click this script and select "Run as administrator"
         pause
         exit /b 1
     )
     
-    echo Script relaunched with administrator privileges.
+    echo Script elevation request sent.
     exit /b 0
 )
+
+echo ✓ Running with administrator privileges
+timeout /t 2 /nobreak >nul
 
 echo ✓ Running with administrator privileges
 
@@ -32,10 +53,54 @@ REM Get the directory where this script is located
 set SCRIPT_DIR=%~dp0
 echo Script running from: %SCRIPT_DIR%
 
+REM Add some debug information
+echo Current user: %USERNAME%
+echo Current directory: %CD%
+echo Script directory: %SCRIPT_DIR%
+echo System: %OS% %PROCESSOR_ARCHITECTURE%
+echo.
+
+REM Verify we actually have admin rights
+echo Verifying administrator privileges...
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" >nul 2>&1
+if %errorLevel% NEQ 0 (
+    echo ✗ Administrator verification failed
+    echo Please ensure you're running as administrator
+    pause
+    exit /b 1
+) else (
+    echo ✓ Administrator privileges confirmed
+)
+
 REM Create temp directory for downloads
 set TEMP_DIR=%TEMP%\winget_complete_setup_%RANDOM%
-if not exist "%TEMP_DIR%" mkdir "%TEMP_DIR%"
-echo Using temp directory: %TEMP_DIR%
+echo Creating temp directory: %TEMP_DIR%
+if not exist "%TEMP_DIR%" (
+    mkdir "%TEMP_DIR%"
+    if %errorLevel% NEQ 0 (
+        echo ✗ Failed to create temp directory
+        echo Trying alternative temp location...
+        set TEMP_DIR=%USERPROFILE%\Desktop\temp_winget_setup
+        mkdir "%TEMP_DIR%" 2>nul
+        if not exist "%TEMP_DIR%" (
+            echo ✗ Failed to create any temp directory
+            pause
+            exit /b 1
+        )
+    )
+)
+echo ✓ Using temp directory: %TEMP_DIR%
+
+REM Test temp directory access
+echo test > "%TEMP_DIR%\test.txt" 2>nul
+if exist "%TEMP_DIR%\test.txt" (
+    del "%TEMP_DIR%\test.txt"
+    echo ✓ Temp directory access confirmed
+) else (
+    echo ✗ Cannot write to temp directory
+    pause
+    exit /b 1
+)
 
 REM Initialize status variables
 set "VCREDIST_INSTALLED=false"
@@ -49,6 +114,18 @@ set "PWSH_INSTALLED=false"
 echo.
 echo Step 1: Installing Visual C++ Redistributable (Required for all dependencies)
 echo ========================================
+
+REM Test internet connectivity first
+echo Testing internet connectivity...
+ping -n 1 google.com >nul 2>&1
+if %errorLevel% NEQ 0 (
+    echo ✗ No internet connection detected
+    echo Please check your internet connection and try again
+    pause
+    exit /b 1
+) else (
+    echo ✓ Internet connection confirmed
+)
 
 REM Check if Visual C++ Redistributable is installed
 echo Checking Visual C++ Redistributable 2015-2022...
@@ -72,34 +149,52 @@ if "%VCREDIST_INSTALLED%"=="false" (
     
     REM Method 1: Microsoft download
     echo Downloading VC++ Redistributable (Method 1)...
-    powershell -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile 'vc_redist.x64.exe' -UseBasicParsing -TimeoutSec 60; Write-Host 'Download completed' } catch { Write-Host 'Download failed'; exit 1 }"
+    powershell -Command "try { Write-Host 'Starting download...'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile 'vc_redist.x64.exe' -UseBasicParsing -TimeoutSec 60; Write-Host 'Download completed successfully'; exit 0 } catch { Write-Host ('Download failed: ' + $_.Exception.Message); exit 1 }"
     
-    if not exist "vc_redist.x64.exe" (
+    if exist "vc_redist.x64.exe" (
+        echo ✓ VC++ Redistributable downloaded successfully
+    ) else (
         echo Method 1 failed, trying direct link (Method 2)...
-        powershell -Command "try { $client = New-Object System.Net.WebClient; $client.DownloadTimeout = 60000; $client.DownloadFile('https://download.microsoft.com/download/9/3/F/93FCF1E7-E6A4-478B-96E7-D4B285925B00/vc_redist.x64.exe', 'vc_redist.x64.exe') } catch { Write-Host 'WebClient failed' }"
+        powershell -Command "try { Write-Host 'Trying alternative download...'; $client = New-Object System.Net.WebClient; $client.DownloadTimeout = 60000; $client.DownloadFile('https://download.microsoft.com/download/9/3/F/93FCF1E7-E6A4-478B-96E7-D4B285925B00/vc_redist.x64.exe', 'vc_redist.x64.exe'); Write-Host 'Alternative download completed' } catch { Write-Host ('WebClient failed: ' + $_.Exception.Message) }"
     )
     
     if not exist "vc_redist.x64.exe" (
         echo Method 2 failed, trying alternative source (Method 3)...
-        powershell -Command "try { Invoke-WebRequest -Uri 'https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe' -OutFile 'vc_redist_aio.exe' -UseBasicParsing -TimeoutSec 60 } catch { }"
+        powershell -Command "try { Invoke-WebRequest -Uri 'https://github.com/abbodi1406/vcredist/releases/latest/download/VisualCppRedist_AIO_x86_x64.exe' -OutFile 'vc_redist_aio.exe' -UseBasicParsing -TimeoutSec 60; Write-Host 'Third method completed' } catch { Write-Host 'Third method failed' }"
         if exist "vc_redist_aio.exe" ren "vc_redist_aio.exe" "vc_redist.x64.exe"
     )
     
     if exist "vc_redist.x64.exe" (
         echo Installing VC++ Redistributable...
-        "vc_redist.x64.exe" /quiet /norestart
-        timeout /t 30 /nobreak >nul
+        echo This may take a few minutes, please wait...
+        start /wait "" "vc_redist.x64.exe" /quiet /norestart
+        echo Installation command completed with exit code: %errorLevel%
         
-        REM Verify installation
+        REM Give more time for installation
+        echo Waiting for installation to complete...
+        timeout /t 45 /nobreak >nul
+        
+        REM Verify installation with multiple methods
+        echo Verifying installation...
         reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" /v "Version" >nul 2>&1
         if %errorLevel% EQU 0 (
-            echo ✓ Visual C++ Redistributable installed successfully
+            echo ✓ Visual C++ Redistributable installed successfully (x64)
             set "VCREDIST_INSTALLED=true"
         ) else (
-            echo Warning: VC++ Redistributable installation may have failed
+            reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" /v "Version" >nul 2>&1
+            if %errorLevel% EQU 0 (
+                echo ✓ Visual C++ Redistributable installed successfully (WOW64)
+                set "VCREDIST_INSTALLED=true"
+            ) else (
+                echo Warning: VC++ Redistributable installation verification failed
+                echo Continuing anyway - some components may not work properly
+            )
         )
     ) else (
-        echo Warning: Could not download VC++ Redistributable, continuing anyway...
+        echo ✗ All download methods failed for VC++ Redistributable
+        echo This may cause issues with other components
+        echo Continuing anyway...
+        pause
     )
 )
 
