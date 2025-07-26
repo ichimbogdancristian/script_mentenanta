@@ -264,9 +264,13 @@ function Test-PackageManagers {
         $winget = Get-Command winget -ErrorAction SilentlyContinue
         if (-not $winget) {
             $transcript += "[{0}] winget not found. Attempting to install..." -f ((Get-Date).ToString('HH:mm:ss'))
-            Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile "$Script:TempFolder\AppInstaller.msixbundle" -UseBasicParsing
-            Add-AppxPackage -Path "$Script:TempFolder\AppInstaller.msixbundle"
-            $transcript += "[{0}] winget installed." -f ((Get-Date).ToString('HH:mm:ss'))
+            if ($PSVersionTable.PSEdition -eq 'Desktop') {
+                Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile "$Script:TempFolder\AppInstaller.msixbundle" -UseBasicParsing
+                Add-AppxPackage -Path "$Script:TempFolder\AppInstaller.msixbundle"
+                $transcript += "[{0}] winget installed." -f ((Get-Date).ToString('HH:mm:ss'))
+            } else {
+                $transcript += "[{0}] [WARN] winget install via AppxPackage is not supported in PowerShell 7+. Please install winget manually." -f ((Get-Date).ToString('HH:mm:ss'))
+            }
         }
         else {
             $transcript += "[{0}] winget found. Upgrading winget..." -f ((Get-Date).ToString('HH:mm:ss'))
@@ -302,7 +306,12 @@ function Get-Inventory {
         $transcript += "[{0}] Collecting OS info..." -f ((Get-Date).ToString('HH:mm:ss'))
         Get-ComputerInfo | Out-File (Join-Path $inventoryPath 'os_info.txt')
         $transcript += "[{0}] Collecting hardware info..." -f ((Get-Date).ToString('HH:mm:ss'))
-        Get-WmiObject -Class Win32_ComputerSystem | Out-File (Join-Path $inventoryPath 'hardware_info.txt')
+        # Use Get-CimInstance for PowerShell 7+, fallback to Get-WmiObject for Windows PowerShell
+        if ($PSVersionTable.PSEdition -eq 'Desktop') {
+            Get-WmiObject -Class Win32_ComputerSystem | Out-File (Join-Path $inventoryPath 'hardware_info.txt')
+        } else {
+            Get-CimInstance -ClassName Win32_ComputerSystem | Out-File (Join-Path $inventoryPath 'hardware_info.txt')
+        }
         $transcript += "[{0}] Collecting disk info..." -f ((Get-Date).ToString('HH:mm:ss'))
         Get-PSDrive | Where-Object { $_.Provider -like '*FileSystem*' } | Out-File (Join-Path $inventoryPath 'disk_info.txt')
         $transcript += "[{0}] Collecting network info..." -f ((Get-Date).ToString('HH:mm:ss'))
@@ -310,7 +319,10 @@ function Get-Inventory {
         $Script:InstalledProgramsList = @()
         $Script:InstalledProgramsList += Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object -ExpandProperty DisplayName -ErrorAction SilentlyContinue
         $Script:InstalledProgramsList += Get-ItemProperty HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object -ExpandProperty DisplayName -ErrorAction SilentlyContinue
-        $Script:InstalledProgramsList += Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
+        # Only run Get-AppxPackage in Windows PowerShell
+        if ($PSVersionTable.PSEdition -eq 'Desktop') {
+            $Script:InstalledProgramsList += Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name
+        }
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             $wingetList = winget list --source winget | Select-Object -Skip 1
             $Script:InstalledProgramsList += $wingetList | ForEach-Object { $_.Split(' ')[0] }
@@ -348,8 +360,13 @@ function Uninstall-Bloatware {
         $transcript += "[{0}] Scanning for bloatware apps to remove..." -f ((Get-Date).ToString('HH:mm:ss'))
         Write-Progress -Activity "Bloatware Removal" -Status "Initializing..." -PercentComplete 0
         $bloatwareListPath = Join-Path $Script:TempFolder 'Bloatware_list.txt'
-        $bloatwareList = Get-Content $bloatwareListPath | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_ | ConvertFrom-Json }
         $installedProgramsDiffPath = Join-Path $Script:TempFolder 'InstalledPrograms_list.txt'
+        if (!(Test-Path $bloatwareListPath) -or !(Test-Path $installedProgramsDiffPath)) {
+            Write-ErrorLog -Function "Uninstall-Bloatware" -Message "Required inventory files not found. Skipping bloatware removal."
+            Write-Host "[ERROR] Required inventory files not found. Skipping bloatware removal." -ForegroundColor Red
+            return
+        }
+        $bloatwareList = Get-Content $bloatwareListPath | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_ | ConvertFrom-Json }
         $installed = Get-Content $installedProgramsDiffPath | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_ | ConvertFrom-Json }
 
         # --- Create diff list: only bloatware that is actually installed ---
@@ -373,7 +390,7 @@ function Uninstall-Bloatware {
         # Remove special-case bloatware first (robust method)
         foreach ($key in $BloatwareSpecialCases.Keys) {
             $case = $BloatwareSpecialCases[$key]
-            if ($case.AppX) {
+            if ($case.AppX -and $PSVersionTable.PSEdition -eq 'Desktop') {
                 $pkg = Get-AppxPackage -AllUsers | Where-Object { $_.Name -eq $case.AppX }
                 if ($pkg) {
                     $transcript += "[{0}] Removing AppX package: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $case.AppX
@@ -408,14 +425,16 @@ function Uninstall-Bloatware {
             foreach ($match in $bloatMatches) {
                 try {
                     # 1. Try AppX removal (use robust mapping if available)
-                    $appxName = if ($BloatwareSpecialCases.ContainsKey($bloat) -and $BloatwareSpecialCases[$bloat].AppX) { $BloatwareSpecialCases[$bloat].AppX } else { $bloat }
-                    $pkg = Get-AppxPackage -AllUsers | Where-Object { $_.Name -eq $appxName }
-                    if ($pkg) {
-                        $transcript += "[{0}] Removing AppX package: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $appxName
-                        Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
-                        $transcript += "[{0}] Removed AppX package: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $appxName
-                        $removed += $bloat
-                        continue
+                    if ($PSVersionTable.PSEdition -eq 'Desktop') {
+                        $appxName = if ($BloatwareSpecialCases.ContainsKey($bloat) -and $BloatwareSpecialCases[$bloat].AppX) { $BloatwareSpecialCases[$bloat].AppX } else { $bloat }
+                        $pkg = Get-AppxPackage -AllUsers | Where-Object { $_.Name -eq $appxName }
+                        if ($pkg) {
+                            $transcript += "[{0}] Removing AppX package: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $appxName
+                            Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
+                            $transcript += "[{0}] Removed AppX package: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $appxName
+                            $removed += $bloat
+                            continue
+                        }
                     }
                     # 2. Try winget uninstall (use robust mapping if available)
                     $wingetId = if ($BloatwareSpecialCases.ContainsKey($bloat) -and $BloatwareSpecialCases[$bloat].Winget) { $BloatwareSpecialCases[$bloat].Winget } else { $match }
@@ -428,12 +447,14 @@ function Uninstall-Bloatware {
                         }
                     }
                     # 3. Try WMI uninstall
-                    $wmic = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -eq $match }
-                    if ($wmic) {
-                        $wmic.Uninstall() | Out-Null
-                        $transcript += "[{0}] Uninstalled via WMI: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $match
-                        $removed += $match
-                        continue
+                    if ($PSVersionTable.PSEdition -eq 'Desktop') {
+                        $wmic = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -eq $match }
+                        if ($wmic) {
+                            $wmic.Uninstall() | Out-Null
+                            $transcript += "[{0}] Uninstalled via WMI: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $match
+                            $removed += $match
+                            continue
+                        }
                     }
                     # 4. Try Uninstall-Package (PowerShell PackageManagement)
                     if (Get-Command Uninstall-Package -ErrorAction SilentlyContinue) {
@@ -1027,7 +1048,7 @@ function Protect-RestorePoints {
     try {
         $transcript += "[{0}] Validating and pruning restore points..." -f ((Get-Date).ToString('HH:mm:ss'))
         Write-Progress -Activity "Restore Points" -Status "Collecting restore points..." -PercentComplete 0
-        if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+        if ($PSVersionTable.PSEdition -eq 'Desktop' -and (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue)) {
             $restorePoints = Get-ComputerRestorePoint | Sort-Object -Property CreationTime -Descending
             $logPath = Join-Path $Script:TempFolder 'restore_points_log.txt'
             $initialCount = $restorePoints.Count
@@ -1059,8 +1080,8 @@ function Protect-RestorePoints {
             $transcript += "[{0}] [SUCCESS] Validate Restore Points" -f ((Get-Date).ToString('HH:mm:ss'))
             Write-TaskReport -TaskName "Validate Restore Points" -Status "SUCCESS"
         } else {
-            $transcript += "[{0}] [WARN] Get-ComputerRestorePoint is not available in PowerShell 7. Skipping restore point validation." -f ((Get-Date).ToString('HH:mm:ss'))
-            Write-TaskReport -TaskName "Validate Restore Points" -Status "WARN" -Message "Get-ComputerRestorePoint not available in PowerShell 7. Skipped."
+            $transcript += "[{0}] [WARN] Restore point validation is not available in PowerShell 7. Skipping." -f ((Get-Date).ToString('HH:mm:ss'))
+            Write-TaskReport -TaskName "Validate Restore Points" -Status "WARN" -Message "Restore point validation not available in PowerShell 7. Skipped."
         }
     }
     catch {
