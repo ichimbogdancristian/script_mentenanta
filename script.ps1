@@ -1186,7 +1186,8 @@ function Optimize-Disk {
 # -- Task 10: Create HTML Transcript in Dark Mode --
 function Export-Transcript {
     try {
-        $transcriptPath = Join-Path $PSScriptRoot 'System_Maintenance.html'
+        $parentDir = Split-Path $PSScriptRoot -Parent
+        $transcriptPath = Join-Path $parentDir 'System_Maintenance.html'
         $htmlHeader = @"
 <!DOCTYPE html>
 <html lang='en'>
