@@ -6,15 +6,12 @@ echo Setting up WinGet, PowerShell 7, and running maintenance script
 echo ========================================
 
 REM Check if running as administrator
+
 net session >nul 2>&1
 if %errorLevel% NEQ 0 (
-    echo This script requires administrator privileges.
-    echo Please right-click this script and select "Run as administrator"
-    echo.
-    echo Alternative: Open Command Prompt as Administrator and run this script
-    echo.
-    pause
-    exit /b 1
+    echo Requesting administrator privileges...
+    powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '' -Verb RunAs"
+    exit /b
 )
 
 echo ✓ Running with administrator privileges
