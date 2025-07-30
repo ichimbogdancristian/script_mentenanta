@@ -1,4 +1,6 @@
+
 @echo off
+chcp 65001 >nul 2>&1 || chcp 850 >nul 2>&1
 setlocal enabledelayedexpansion
 
 echo ========================================
@@ -14,7 +16,7 @@ if %errorLevel% NEQ 0 (
     exit /b
 )
 
-echo ✓ Running with administrator privileges
+echo [OK] Running with administrator privileges
 
 REM Get the directory where this script is located
 set SCRIPT_DIR=%~dp0
@@ -38,32 +40,32 @@ echo Checking Microsoft.VCLibs installation...
 cd /d "%TEMP_DIR%"
 powershell -Command "try { $packages = Get-AppxPackage -Name 'Microsoft.VCLibs*'; if ($packages -and ($packages | Where-Object {[version]$_.Version -ge '14.0'})) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
 if %errorLevel% EQU 0 (
-    echo ✓ Microsoft.VCLibs is already installed
+    echo [OK] Microsoft.VCLibs is already installed
     set "VCLIBS_INSTALLED=true"
 ) else (
-    echo ✗ Microsoft.VCLibs not found or outdated
+    echo [FAIL] Microsoft.VCLibs not found or outdated
 )
 
 REM Check UI.Xaml installation
 echo Checking Microsoft.UI.Xaml installation...
 powershell -Command "try { $packages = Get-AppxPackage -Name 'Microsoft.UI.Xaml*'; if ($packages -and ($packages | Where-Object {[version]$_.Version -ge '2.7'})) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
 if %errorLevel% EQU 0 (
-    echo ✓ Microsoft.UI.Xaml 2.7+ is already installed
+    echo [OK] Microsoft.UI.Xaml 2.7+ is already installed
     set "XAML_INSTALLED=true"
 ) else (
-    echo ✗ Microsoft.UI.Xaml 2.7+ not found
+    echo [FAIL] Microsoft.UI.Xaml 2.7+ not found
 )
 
 REM Check WinGet installation
 echo Checking WinGet installation...
 where winget >nul 2>&1
 if %errorLevel% EQU 0 (
-    echo ✓ WinGet is already installed
+    echo [OK] WinGet is already installed
     winget --version
     set "WINGET_INSTALLED=true"
     goto check_pwsh
 ) else (
-    echo ✗ WinGet not found
+    echo [FAIL] WinGet not found
 )
 
 REM Install VCLibs if not installed
@@ -76,13 +78,13 @@ if "%VCLIBS_INSTALLED%"=="false" (
         echo Installing VCLibs package...
         powershell -Command "try { Add-AppxPackage -Path 'VCLibs.appx' } catch { Write-Host 'Install failed'; exit 1 }"
         if %errorLevel% EQU 0 (
-            echo ✓ VCLibs installed successfully
+            echo [OK] VCLibs installed successfully
             set "VCLIBS_INSTALLED=true"
         ) else (
-            echo ✗ VCLibs installation failed
+            echo [FAIL] VCLibs installation failed
         )
     ) else (
-        echo ✗ Failed to download VCLibs
+        echo [FAIL] Failed to download VCLibs
     )
 )
 
@@ -96,13 +98,13 @@ if "%XAML_INSTALLED%"=="false" (
         echo Installing UI.Xaml package...
         powershell -Command "try { Add-AppxPackage -Path 'Microsoft.UI.Xaml.2.8.appx' } catch { Write-Host 'Install failed'; exit 1 }"
         if %errorLevel% EQU 0 (
-            echo ✓ UI.Xaml installed successfully
+            echo [OK] UI.Xaml installed successfully
             set "XAML_INSTALLED=true"
         ) else (
-            echo ✗ UI.Xaml installation failed
+            echo [FAIL] UI.Xaml installation failed
         )
     ) else (
-        echo ✗ Failed to download/extract UI.Xaml
+        echo [FAIL] Failed to download/extract UI.Xaml
     )
 )
 
@@ -117,7 +119,7 @@ if "%WINGET_INSTALLED%"=="false" (
         powershell -Command "try { Add-AppxPackage -Path 'Microsoft.DesktopAppInstaller.msixbundle' } catch { Write-Host 'Install failed'; exit 1 }"
         
         if %errorLevel% EQU 0 (
-            echo ✓ WinGet installed successfully
+            echo [OK] WinGet installed successfully
             set "WINGET_INSTALLED=true"
             echo Waiting for WinGet to be available...
             timeout /t 10 /nobreak >nul
@@ -128,7 +130,7 @@ if "%WINGET_INSTALLED%"=="false" (
                 set "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WindowsApps"
             )
         ) else (
-            echo ✗ WinGet installation failed
+            echo [FAIL] WinGet installation failed
         )
     ) else (
         echo ✗ Failed to download WinGet
@@ -144,7 +146,7 @@ REM Check if PowerShell 7 is already installed
 echo Checking PowerShell 7 installation...
 where pwsh >nul 2>&1
 if %errorLevel% EQU 0 (
-    echo ✓ PowerShell 7 is already installed
+    echo [OK] PowerShell 7 is already installed
     pwsh --version
     set "PWSH_CMD=pwsh"
     goto check_repo
@@ -153,21 +155,21 @@ if %errorLevel% EQU 0 (
 REM Check common installation paths
 set "PS7_FOUND=false"
 if exist "%ProgramFiles%\PowerShell\7\pwsh.exe" (
-    echo ✓ PowerShell 7 found at: %ProgramFiles%\PowerShell\7\pwsh.exe
+    echo [OK] PowerShell 7 found at: %ProgramFiles%\PowerShell\7\pwsh.exe
     set "PWSH_CMD=%ProgramFiles%\PowerShell\7\pwsh.exe"
     set "PS7_FOUND=true"
     goto check_repo
 )
 
 if exist "%ProgramFiles(x86)%\PowerShell\7\pwsh.exe" (
-    echo ✓ PowerShell 7 found at: %ProgramFiles(x86)%\PowerShell\7\pwsh.exe
+    echo [OK] PowerShell 7 found at: %ProgramFiles(x86)%\PowerShell\7\pwsh.exe
     set "PWSH_CMD=%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
     set "PS7_FOUND=true"
     goto check_repo
 )
 
 if "%PS7_FOUND%"=="false" (
-    echo ✗ PowerShell 7 not found, installing...
+    echo [FAIL] PowerShell 7 not found, installing...
     
     REM Try WinGet first if available
     where winget >nul 2>&1
@@ -179,7 +181,7 @@ if "%PS7_FOUND%"=="false" (
         REM Check if installation succeeded
         where pwsh >nul 2>&1
         if %errorLevel% EQU 0 (
-            echo ✓ PowerShell 7 installed successfully via WinGet
+            echo [OK] PowerShell 7 installed successfully via WinGet
             set "PWSH_CMD=pwsh"
             goto check_repo
         )
@@ -200,19 +202,19 @@ if "%PS7_FOUND%"=="false" (
         REM Check installation
         where pwsh >nul 2>&1
         if %errorLevel% EQU 0 (
-            echo ✓ PowerShell 7 installed successfully
+        echo [OK] PowerShell 7 installed successfully
             set "PWSH_CMD=pwsh"
         ) else if exist "%ProgramFiles%\PowerShell\7\pwsh.exe" (
-            echo ✓ PowerShell 7 installed at: %ProgramFiles%\PowerShell\7\pwsh.exe
+        echo [OK] PowerShell 7 installed at: %ProgramFiles%\PowerShell\7\pwsh.exe
             set "PWSH_CMD=%ProgramFiles%\PowerShell\7\pwsh.exe"
         ) else (
-            echo ✗ PowerShell 7 installation verification failed
-            echo Using Windows PowerShell instead...
+        echo [FAIL] PowerShell 7 installation verification failed
+        echo [INFO] Using Windows PowerShell instead...
             set "PWSH_CMD=powershell"
         )
     ) else (
-        echo ✗ Failed to download PowerShell 7
-        echo Using Windows PowerShell instead...
+    echo [FAIL] Failed to download PowerShell 7
+    echo [INFO] Using Windows PowerShell instead...
         set "PWSH_CMD=powershell"
     )
 )
@@ -267,11 +269,11 @@ echo ========================================
 cd /d "%SCRIPT_DIR%\script_mentenanta"
 
 if not exist "script.ps1" (
-    echo ✗ script.ps1 not found
+    echo [FAIL] script.ps1 not found
     exit /b 1
 )
 
-echo ✓ Found script.ps1
+echo [OK] Found script.ps1
 echo Running with: %PWSH_CMD%
 
 if "%PWSH_CMD%"=="pwsh" (
@@ -290,9 +292,9 @@ echo Setup completed!
 echo ========================================
 
 if %SCRIPT_EXIT_CODE% EQU 0 (
-    echo ✓ All operations completed successfully
+    echo [OK] All operations completed successfully
 ) else (
-    echo ⚠ Script completed with exit code: %SCRIPT_EXIT_CODE%
+    echo [WARN] Script completed with exit code: %SCRIPT_EXIT_CODE%
 )
 
 REM Cleanup
