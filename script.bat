@@ -11,8 +11,8 @@ REM Check if running as administrator
 net session >nul 2>&1
 if !errorLevel! neq 0 (
     echo [ADMIN] Requesting administrator privileges...
-    powershell -Command "Start-Process -FilePath '!~f0!' -ArgumentList '' -Verb RunAs"
-    exit /b 1
+    powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '' -Verb RunAs"
+    exit /b 0
 )
 
 echo [OK] Running with administrator privileges
@@ -356,22 +356,24 @@ if not exist "script.ps1" (
 )
 
 echo [OK] Found maintenance script: script.ps1
-echo [RUN] Executing with: !PWSH_CMD!
+echo [LAUNCH] Starting PowerShell 7 with admin rights in new window...
 
-if "!PWSH_CMD!"=="pwsh" (
-    pwsh -NoProfile -ExecutionPolicy Bypass -File "script.ps1"
-) else if "!PWSH_CMD!"=="powershell" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "script.ps1"
+REM Check if PowerShell 7 is available and launch it with admin rights in a new window
+if "!PS7_INSTALLED!"=="true" (
+    if "!PWSH_CMD!"=="pwsh" (
+        echo [INFO] Using system-available PowerShell 7
+        powershell -Command "Start-Process -FilePath 'pwsh' -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '!SCRIPT_DIR!\script_mentenanta\script.ps1' -Verb RunAs"
+    ) else (
+        echo [INFO] Using PowerShell 7 from: !PWSH_CMD!
+        powershell -Command "Start-Process -FilePath '!PWSH_CMD!' -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '!SCRIPT_DIR!\script_mentenanta\script.ps1' -Verb RunAs"
+    )
+    echo [OK] PowerShell 7 launched with admin rights in new window
+    echo [INFO] The maintenance script is now running in a separate window
 ) else (
-    "!PWSH_CMD!" -NoProfile -ExecutionPolicy Bypass -File "script.ps1"
-)
-
-set "SCRIPT_EXIT_CODE=!errorLevel!"
-
-if !SCRIPT_EXIT_CODE! equ 0 (
-    echo [OK] Maintenance script completed successfully
-) else (
-    echo [WARN] Maintenance script exited with code: !SCRIPT_EXIT_CODE!
+    echo [FALLBACK] PowerShell 7 not available, using Windows PowerShell...
+    powershell -Command "Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '!SCRIPT_DIR!\script_mentenanta\script.ps1' -Verb RunAs"
+    echo [OK] Windows PowerShell launched with admin rights in new window
+    echo [INFO] The maintenance script is now running in a separate window
     set /a ERROR_COUNT+=1
 )
 goto :eof
@@ -400,17 +402,16 @@ echo ========================================
 if !ERROR_COUNT! equ 0 (
     echo [SUCCESS] Setup completed successfully!
     echo [INFO] Your system is now ready for use.
+    echo [INFO] The maintenance script has been launched in a separate window.
 ) else (
     echo [WARNING] Setup completed with !ERROR_COUNT! error(s).
     echo [INFO] Some components may not be fully functional.
+    echo [INFO] The maintenance script has been launched in a separate window.
 )
 
 echo.
-echo Press any key to exit...
-pause >nul
+echo [INFO] This window will close automatically in 10 seconds...
+echo [INFO] The maintenance script continues running in the new PowerShell window.
+timeout /t 10 /nobreak >nul
 
-if defined SCRIPT_EXIT_CODE (
-    exit /b !SCRIPT_EXIT_CODE!
-) else (
-    exit /b !ERROR_COUNT!
-)
+exit /b !ERROR_COUNT!
