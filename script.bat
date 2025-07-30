@@ -9,10 +9,11 @@ echo ========================================
 
 REM Check if running as administrator
 net session >nul 2>&1
-if !errorLevel! neq 0 (
+if %errorLevel% neq 0 (
     echo [ADMIN] Requesting administrator privileges...
-    powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList '' -Verb RunAs"
-    exit /b 0
+    echo [INFO] This window will close and reopen with admin rights...
+    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit
 )
 
 echo [OK] Running with administrator privileges
