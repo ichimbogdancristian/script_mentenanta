@@ -2,14 +2,26 @@
 chcp 65001 >nul 2>&1 || chcp 850 >nul 2>&1
 setlocal enabledelayedexpansion
 
-echo ========================================
-echo Windows Fresh Install Setup Script
-echo Setting up WinGet, PowerShell 7, and maintenance tools
-echo ========================================
+echo ===============================================
+echo    Windows Maintenance Script v2.0
+echo    Enhanced with repository downloading
+echo    - Automatic dependency installation (WinGet, PowerShell 7)
+echo    - Repository downloading with fallback to local files
+echo    - Scheduled task automation for restarts
+echo    - Modular architecture support
+echo ===============================================
 
-REM ========================================
-REM Windows 10/11 Compatibility & Reliability Enhancements
-REM ========================================
+REM Check if running as administrator
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [ADMIN] Requesting administrator privileges...
+    echo [INFO] This window will close and reopen with admin rights...
+    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit
+)
+
+echo [INFO] Running with administrator privileges...
+
 REM Check Windows version (Windows 10 = 10.0.x, Windows 11 = 10.0.x with build 22000+)
 for /f "tokens=4-6 delims=. " %%i in ('ver') do (
     set "WIN_MAJOR=%%i"
@@ -27,28 +39,30 @@ if "!WIN_MAJOR!" NEQ "10" (
 
 echo [INFO] Windows version detected: !WIN_MAJOR!.!WIN_MINOR!.!WIN_BUILD!
 
-REM Check if running as administrator
-net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo [ADMIN] Requesting administrator privileges...
-    echo [INFO] This window will close and reopen with admin rights...
-    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
-    exit
-)
-
-echo [OK] Running with administrator privileges
-
 REM Initialize variables
 set "SCRIPT_DIR=%~dp0"
-set "TEMP_DIR=%TEMP%\windows_setup_%RANDOM%"
+set "TEMP_DIR=%TEMP%\windows_maintenance_%RANDOM%"
 set "VCLIBS_INSTALLED=false"
 set "XAML_INSTALLED=false"
 set "WINGET_INSTALLED=false"
 set "PS7_INSTALLED=false"
 set "ERROR_COUNT=0"
+set "USE_LOCAL_FILES=false"
 
 echo [INFO] Script directory: !SCRIPT_DIR!
 echo [INFO] Temp directory: !TEMP_DIR!
+
+REM Check if we have local modular files (MaintenanceOrchestrator.ps1 and config)
+set "LOCAL_SCRIPT_PATH=%~dp0MaintenanceOrchestrator.ps1"
+set "LOCAL_CONFIG_PATH=%~dp0config\maintenance-config.json"
+
+if exist "!LOCAL_SCRIPT_PATH!" if exist "!LOCAL_CONFIG_PATH!" (
+    echo [INFO] Local modular files detected - using enhanced architecture
+    set "USE_LOCAL_FILES=true"
+) else (
+    echo [INFO] Local modular files not found - will download repository
+    set "USE_LOCAL_FILES=false"
+)
 
 REM Create temp directory
 if not exist "!TEMP_DIR!" (
@@ -155,33 +169,15 @@ if !errorLevel! neq 0 (
 
 echo.
 echo ========================================
-echo Step 4: Scheduled Task & Restart Check
+echo Step 4: Maintenance Script Setup
 echo ========================================
 
-call :check_scheduled_task_and_restart
-
-echo.
-echo ========================================
-echo Step 5: Maintenance Script Setup
-echo ========================================
-
-call :download_maintenance_script
-
-echo.
-echo ========================================
-echo Step 6: Running Maintenance Script
-echo ========================================
-
-call :run_maintenance_script
-
-REM ========================================
-REM User Instructions for Fresh Install
-REM ========================================
-echo.
-echo [INFO] For best results, run this script immediately after a fresh install of Windows 10 or 11.
-echo [INFO] Always right-click and select "Run as administrator".
-echo [INFO] If you see any errors, check the log and re-run the script.
-echo.
+if "!USE_LOCAL_FILES!"=="true" (
+    call :run_local_maintenance_script
+) else (
+    call :download_maintenance_script
+    call :run_maintenance_script
+)
 
 goto cleanup
 
@@ -462,6 +458,72 @@ if "!PS7_INSTALLED!"=="true" (
     powershell -Command "Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '!SCRIPT_DIR!\script_mentenanta\script.ps1' -Verb RunAs"
     echo [OK] Windows PowerShell launched with admin rights in new window
     echo [INFO] The maintenance script is now running in a separate window
+    set /a ERROR_COUNT+=1
+)
+goto :eof
+
+:run_local_maintenance_script
+echo [LOCAL] Using local modular maintenance script...
+
+REM Parse command line arguments for the new modular script
+set "PS_ARGS="
+set "TEST_MODE="
+set "GENERATE_REPORT="
+set "TASK_FILTER="
+
+:PARSE_ARGS_LOCAL
+if "%~1"=="" goto :ARGS_DONE_LOCAL
+if /i "%~1"=="-test" (
+    set "TEST_MODE=-TestMode"
+    shift
+    goto :PARSE_ARGS_LOCAL
+)
+if /i "%~1"=="-report" (
+    set "GENERATE_REPORT=-GenerateReport"
+    shift
+    goto :PARSE_ARGS_LOCAL
+)
+if /i "%~1"=="-tasks" (
+    if not "%~2"=="" (
+        set "TASK_FILTER=-TaskFilter @('%~2')"
+        shift
+        shift
+        goto :PARSE_ARGS_LOCAL
+    )
+)
+shift
+goto :PARSE_ARGS_LOCAL
+
+:ARGS_DONE_LOCAL
+
+REM Check for PowerShell 7 first (preferred)
+where pwsh >nul 2>&1
+if %errorLevel% equ 0 (
+    echo [INFO] PowerShell 7 detected, using pwsh.exe
+    set "PS_COMMAND=pwsh"
+) else (
+    echo [WARNING] PowerShell 7 not found, using Windows PowerShell
+    set "PS_COMMAND=powershell"
+)
+
+REM Build PowerShell command
+set "PS_ARGS=-ConfigPath '!LOCAL_CONFIG_PATH!' !TEST_MODE! !GENERATE_REPORT! !TASK_FILTER!"
+
+echo.
+echo [INFO] Starting modular maintenance session...
+echo [INFO] Command: !PS_COMMAND! -ExecutionPolicy Bypass -File "!LOCAL_SCRIPT_PATH!" !PS_ARGS!
+echo.
+
+REM Execute the maintenance script directly (not in new window for local execution)
+!PS_COMMAND! -ExecutionPolicy Bypass -File "!LOCAL_SCRIPT_PATH!" !PS_ARGS!
+set "MAINTENANCE_RESULT=%errorLevel%"
+
+if !MAINTENANCE_RESULT! equ 0 (
+    echo.
+    echo [SUCCESS] Modular maintenance session completed successfully
+) else (
+    echo.
+    echo [ERROR] Modular maintenance session failed with exit code: !MAINTENANCE_RESULT!
     set /a ERROR_COUNT+=1
 )
 goto :eof
