@@ -8,9 +8,16 @@ function Invoke-CentralCoordinationPolicy {
         Ensures all tasks are executed, errors are logged, and script is maintainable.
     #>
     # --- Windows 10/11 Compatibility Check ---
-    $osVersion = (Get-CimInstance Win32_OperatingSystem).Version
-    if ($osVersion -notmatch '^10\.|^11\.') {
+    $osInfo = Get-CimInstance Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osName = $osInfo.Caption
+    Write-Host "[INFO] Detected OS: $osName (Version: $osVersion)"
+    
+    # Windows 10 and 11 both report version 10.0.x, so check major version
+    $majorVersion = $osVersion.Split('.')[0]
+    if ($majorVersion -ne '10') {
         Write-Host "[ERROR] This script is designed for Windows 10 or 11 only." -ForegroundColor Red
+        Write-Host "[INFO] Detected version: $osVersion" -ForegroundColor Yellow
         exit 1
     }
     # --- Admin Rights Check ---

@@ -10,12 +10,22 @@ echo ========================================
 REM ========================================
 REM Windows 10/11 Compatibility & Reliability Enhancements
 REM ========================================
-ver | findstr /i "10.0.\|11.0." >nul 2>&1
-if !errorLevel! neq 0 (
+REM Check Windows version (Windows 10 = 10.0.x, Windows 11 = 10.0.x with build 22000+)
+for /f "tokens=4-6 delims=. " %%i in ('ver') do (
+    set "WIN_MAJOR=%%i"
+    set "WIN_MINOR=%%j"
+    set "WIN_BUILD=%%k"
+)
+
+REM Windows 10 and 11 both report as 10.0.x, so check if major version is 10
+if "!WIN_MAJOR!" NEQ "10" (
     echo [ERROR] This script is designed for Windows 10 or 11 only.
+    echo [INFO] Detected Windows version: !WIN_MAJOR!.!WIN_MINOR!.!WIN_BUILD!
     pause
     exit /b 1
 )
+
+echo [INFO] Windows version detected: !WIN_MAJOR!.!WIN_MINOR!.!WIN_BUILD!
 
 REM Check if running as administrator
 net session >nul 2>&1
