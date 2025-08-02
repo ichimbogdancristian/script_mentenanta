@@ -216,52 +216,44 @@ function Test-SystemRestore {
     $transcript += "[{0}] [START] System Restore Protection" -f ($startTime.ToString('HH:mm:ss'))
     Write-TaskReport -TaskName "System Restore Protection" -Status "START"
     try {
-        $restoreEnabled = $false
-        $osDrive = "C:"
-        $transcript += "[{0}] Checking if System Restore is enabled on {1}" -f ((Get-Date).ToString('HH:mm:ss')), $osDrive
-        # Only run System Restore steps in Windows PowerShell, not PowerShell Core/7+
-        if ($PSVersionTable.PSEdition -eq 'Desktop') {
-            if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
-                $srStatus = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
-                if ($srStatus) {
-                    $restoreEnabled = $true
-                    $transcript += "[{0}] System Restore is already enabled." -f ((Get-Date).ToString('HH:mm:ss'))
-                }
-                else {
-                    $transcript += "[{0}] Enabling System Restore on {1}..." -f ((Get-Date).ToString('HH:mm:ss')), $osDrive
-                    Enable-ComputerRestore -Drive $osDrive -ErrorAction Stop
-                    $restoreEnabled = $true
-                    $transcript += "[{0}] System Restore enabled." -f ((Get-Date).ToString('HH:mm:ss'))
-                }
-                if ($restoreEnabled) {
-                    $transcript += "[{0}] Creating a system restore point..." -f ((Get-Date).ToString('HH:mm:ss'))
-                    Checkpoint-Computer -Description "System Maintenance Script" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
-                    $transcript += "[{0}] System restore point created." -f ((Get-Date).ToString('HH:mm:ss'))
-                }
-                else {
-                    $transcript += "[{0}] [WARN] Could not enable System Restore on {1}." -f ((Get-Date).ToString('HH:mm:ss')), $osDrive
-                }
+        # Check if System Restore cmdlets are available (they may not be in PowerShell 7)
+        if (Get-Command -Name "Get-ComputerRestorePoint" -ErrorAction SilentlyContinue) {
+            $restoreEnabled = $false
+            $osDrive = "C:"
+            
+            # Check if System Restore is already enabled
+            $restorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
+            if ($restorePoints) {
+                $restoreEnabled = $true
+                $transcript += "[{0}] System Restore is already enabled." -f ((Get-Date).ToString('HH:mm:ss'))
+                Write-Host "[OK] System Restore is already enabled"
             }
             else {
-                $transcript += "[{0}] [WARN] Get-ComputerRestorePoint is not available. Skipping System Restore check/creation." -f ((Get-Date).ToString('HH:mm:ss'))
+                $transcript += "[{0}] Enabling System Restore on {1}..." -f ((Get-Date).ToString('HH:mm:ss')), $osDrive
+                Write-Host "[ENABLE] Enabling System Restore for drive $osDrive"
+                Enable-ComputerRestore -Drive $osDrive -ErrorAction Stop
+                $restoreEnabled = $true
+                $transcript += "[{0}] System Restore enabled." -f ((Get-Date).ToString('HH:mm:ss'))
+            }
+            if ($restoreEnabled) {
+                $transcript += "[{0}] Creating a system restore point..." -f ((Get-Date).ToString('HH:mm:ss'))
+                Write-Host "[CREATE] Creating system restore point..."
+                Checkpoint-Computer -Description "Before System Maintenance" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+                $transcript += "[{0}] System restore point created." -f ((Get-Date).ToString('HH:mm:ss'))
+                Write-Host "[SUCCESS] System restore point created"
             }
         }
         else {
             $transcript += "[{0}] [WARN] System Restore cmdlets are not available in PowerShell 7+. Skipping System Restore steps." -f ((Get-Date).ToString('HH:mm:ss'))
-            Write-TaskReport -TaskName "System Restore Protection" -Status "WARN" -Message "System Restore cmdlets not available in PowerShell 7+. Skipped."
+            Write-Host "[WARN] System Restore cmdlets not available in PowerShell 7+. Skipped." -ForegroundColor Yellow
         }
         $transcript += "[{0}] [SUCCESS] System Restore Protection" -f ((Get-Date).ToString('HH:mm:ss'))
         Write-TaskReport -TaskName "System Restore Protection" -Status "SUCCESS"
     }
     catch {
-        if ($_.Exception.Message -like "*Get-ComputerRestorePoint*" -or $_.Exception.Message -like "*Enable-ComputerRestore*" -or $_.Exception.Message -like "*Checkpoint-Computer*") {
-            $transcript += "[{0}] [WARN] System Restore cmdlets are not available in PowerShell 7. Skipping System Restore steps." -f ((Get-Date).ToString('HH:mm:ss'))
-            Write-TaskReport -TaskName "System Restore Protection" -Status "WARN" -Message "System Restore cmdlets not available. Skipped."
-        } else {
-            $transcript += "[{0}] [ERROR] System Restore check/creation failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
-            Write-ErrorLog -Function "Test-SystemRestore" -Message $_
-            Write-TaskReport -TaskName "System Restore Protection" -Status "ERROR" -Message $_
-        }
+        $transcript += "[{0}] [ERROR] System Restore check/creation failed: {1}" -f ((Get-Date).ToString('HH:mm:ss')), $_
+        Write-ErrorLog -Function "Test-SystemRestore" -Message $_
+        Write-TaskReport -TaskName "System Restore Protection" -Status "ERROR" -Message $_
     }
     $endTime = Get-Date
     $transcript += "[{0}] [END] System Restore Protection" -f ($endTime.ToString('HH:mm:ss'))
@@ -286,7 +278,8 @@ function Test-PackageManagers {
                 Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile "$Script:TempFolder\AppInstaller.msixbundle" -UseBasicParsing
                 Add-AppxPackage -Path "$Script:TempFolder\AppInstaller.msixbundle"
                 $transcript += "[{0}] winget installed." -f ((Get-Date).ToString('HH:mm:ss'))
-            } else {
+            }
+            else {
                 $transcript += "[{0}] [WARN] winget install via AppxPackage is not supported in PowerShell 7+. Please install winget manually." -f ((Get-Date).ToString('HH:mm:ss'))
             }
         }
@@ -327,7 +320,8 @@ function Get-Inventory {
         # Use Get-CimInstance for PowerShell 7+, fallback to Get-WmiObject for Windows PowerShell
         if ($PSVersionTable.PSEdition -eq 'Desktop') {
             Get-WmiObject -Class Win32_ComputerSystem | Out-File (Join-Path $inventoryPath 'hardware_info.txt')
-        } else {
+        }
+        else {
             Get-CimInstance -ClassName Win32_ComputerSystem | Out-File (Join-Path $inventoryPath 'hardware_info.txt')
         }
         $transcript += "[{0}] Collecting disk info..." -f ((Get-Date).ToString('HH:mm:ss'))
@@ -1097,7 +1091,8 @@ function Protect-RestorePoints {
             $transcript += "[{0}] Restore points validation complete. Details in {1}." -f ((Get-Date).ToString('HH:mm:ss')), $logPath
             $transcript += "[{0}] [SUCCESS] Validate Restore Points" -f ((Get-Date).ToString('HH:mm:ss'))
             Write-TaskReport -TaskName "Validate Restore Points" -Status "SUCCESS"
-        } else {
+        }
+        else {
             $transcript += "[{0}] [WARN] Restore point validation is not available in PowerShell 7. Skipping." -f ((Get-Date).ToString('HH:mm:ss'))
             Write-TaskReport -TaskName "Validate Restore Points" -Status "WARN" -Message "Restore point validation not available in PowerShell 7. Skipped."
         }
@@ -1425,4 +1420,6 @@ finally {
     Write-Host "\n[INFO] For best results, run this script immediately after a fresh install of Windows 10 or 11."
     Write-Host "[INFO] Always right-click and select 'Run as administrator' for the batch file."
     Write-Host "[INFO] If you see any errors, check the log and re-run the script."
+    Write-Host "\n[INFO] Script execution completed. Press any key to exit..."
+    Read-Host
 }

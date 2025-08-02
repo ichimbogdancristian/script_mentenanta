@@ -2,26 +2,20 @@
 chcp 65001 >nul 2>&1 || chcp 850 >nul 2>&1
 setlocal enabledelayedexpansion
 
+echo ========================================
+echo Windows Fresh Install Setup Script
+echo Setting up WinGet, PowerShell 7, and maintenance tools
+echo ========================================
+
 REM ========================================
 REM Windows 10/11 Compatibility & Reliability Enhancements
 REM ========================================
 ver | findstr /i "10.0.\|11.0." >nul 2>&1
 if !errorLevel! neq 0 (
     echo [ERROR] This script is designed for Windows 10 or 11 only.
+    pause
     exit /b 1
 )
-
-REM Double-check admin rights (redundant but safe)
-whoami /groups | findstr /i "S-1-5-32-544" >nul 2>&1
-if !errorLevel! neq 0 (
-    echo [ERROR] Administrator privileges required. Please run as administrator.
-    exit /b 1
-)
-
-echo ========================================
-echo Windows Fresh Install Setup Script
-echo Setting up WinGet, PowerShell 7, and maintenance tools
-echo ========================================
 
 REM Check if running as administrator
 net session >nul 2>&1
