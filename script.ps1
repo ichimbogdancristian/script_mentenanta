@@ -7,6 +7,24 @@ function Invoke-CentralCoordinationPolicy {
         Sets up centralized temp folder, bloatware and essential apps lists, and coordinates script structure and execution timeline.
         Ensures all tasks are executed, errors are logged, and script is maintainable.
     #>
+    # --- Windows 10/11 Compatibility Check ---
+    $osVersion = (Get-CimInstance Win32_OperatingSystem).Version
+    if ($osVersion -notmatch '^10\.|^11\.') {
+        Write-Host "[ERROR] This script is designed for Windows 10 or 11 only." -ForegroundColor Red
+        exit 1
+    }
+    # --- Admin Rights Check ---
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        Write-Host "[ERROR] Administrator privileges required. Please run PowerShell as administrator." -ForegroundColor Red
+        exit 1
+    }
+    # --- Execution Policy Check ---
+    $execPolicy = Get-ExecutionPolicy
+    Write-Host "[INFO] PowerShell execution policy: $execPolicy"
+    if ($execPolicy -ne 'Bypass' -and $execPolicy -ne 'Unrestricted') {
+        Write-Host "[WARN] PowerShell execution policy is not Bypass/Unrestricted. For best results, set to Bypass." -ForegroundColor Yellow
+    }
     Write-Host "[INFO] Central Coordination Policy enforced."
     # --- Centralized Temp Folder Creation ---
     $Script:TempFolder = Join-Path $env:TEMP "SystemMaintenance_$(Get-Random)"
@@ -1404,4 +1422,7 @@ try {
 }
 finally {
     Remove-Environment
+    Write-Host "\n[INFO] For best results, run this script immediately after a fresh install of Windows 10 or 11."
+    Write-Host "[INFO] Always right-click and select 'Run as administrator' for the batch file."
+    Write-Host "[INFO] If you see any errors, check the log and re-run the script."
 }

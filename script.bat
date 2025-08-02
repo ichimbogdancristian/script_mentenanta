@@ -2,6 +2,22 @@
 chcp 65001 >nul 2>&1 || chcp 850 >nul 2>&1
 setlocal enabledelayedexpansion
 
+REM ========================================
+REM Windows 10/11 Compatibility & Reliability Enhancements
+REM ========================================
+ver | findstr /i "10.0.\|11.0." >nul 2>&1
+if !errorLevel! neq 0 (
+    echo [ERROR] This script is designed for Windows 10 or 11 only.
+    exit /b 1
+)
+
+REM Double-check admin rights (redundant but safe)
+whoami /groups | findstr /i "S-1-5-32-544" >nul 2>&1
+if !errorLevel! neq 0 (
+    echo [ERROR] Administrator privileges required. Please run as administrator.
+    exit /b 1
+)
+
 echo ========================================
 echo Windows Fresh Install Setup Script
 echo Setting up WinGet, PowerShell 7, and maintenance tools
@@ -53,6 +69,13 @@ if !errorLevel! neq 0 (
     echo [ERROR] PowerShell is not available
     set /a ERROR_COUNT+=1
     goto cleanup
+)
+
+REM Check PowerShell execution policy
+for /f "tokens=*" %%e in ('powershell -Command "Get-ExecutionPolicy"') do set "PS_EXEC_POLICY=%%e"
+echo [INFO] PowerShell execution policy: !PS_EXEC_POLICY!
+if /i "!PS_EXEC_POLICY!" NEQ "Bypass" if /i "!PS_EXEC_POLICY!" NEQ "Unrestricted" (
+    echo [WARN] PowerShell execution policy is not Bypass/Unrestricted. For best results, set to Bypass.
 )
 
 echo [OK] System requirements check passed
@@ -119,25 +142,85 @@ if !errorLevel! equ 0 (
     )
 )
 
+REM Final check for admin rights before running maintenance script
+net session >nul 2>&1
+if !errorLevel! neq 0 (
+    echo [ERROR] Lost admin privileges before running maintenance script. Please re-run as administrator.
+    exit /b 1
+)
+
 echo.
 echo ========================================
-echo Step 4: Maintenance Script Setup
+echo Step 4: Scheduled Task & Restart Check
+echo ========================================
+
+call :check_scheduled_task_and_restart
+
+echo.
+echo ========================================
+echo Step 5: Maintenance Script Setup
 echo ========================================
 
 call :download_maintenance_script
 
 echo.
 echo ========================================
-echo Step 5: Running Maintenance Script
+echo Step 6: Running Maintenance Script
 echo ========================================
 
 call :run_maintenance_script
+
+REM ========================================
+REM User Instructions for Fresh Install
+REM ========================================
+echo.
+echo [INFO] For best results, run this script immediately after a fresh install of Windows 10 or 11.
+echo [INFO] Always right-click and select "Run as administrator".
+echo [INFO] If you see any errors, check the log and re-run the script.
+echo.
 
 goto cleanup
 
 REM ========================================
 REM FUNCTION DEFINITIONS
 REM ========================================
+
+:check_scheduled_task_and_restart
+echo [CHECK] Checking for existing scheduled task for script.bat...
+powershell -NoProfile -Command "try { $task = Get-ScheduledTask -TaskName 'ScriptMentenantaStartup' -ErrorAction SilentlyContinue; if ($task) { Unregister-ScheduledTask -TaskName 'ScriptMentenantaStartup' -Confirm:$false; Write-Host '[REMOVED] Existing scheduled task for script.bat removed'; exit 0 } else { Write-Host '[INFO] No existing scheduled task found'; exit 1 } } catch { Write-Host '[INFO] No existing scheduled task found'; exit 1 }" 2>nul
+if !errorLevel! equ 0 (
+    echo [OK] Removed existing scheduled task
+) else (
+    echo [OK] No existing scheduled task to remove
+)
+
+echo [CHECK] Checking for pending OS restarts...
+powershell -NoProfile -Command "try { $restartPending = $false; if (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -ErrorAction SilentlyContinue) { $restartPending = $true } if (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue) { $restartPending = $true } if (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending' -ErrorAction SilentlyContinue) { $restartPending = $true } if ($restartPending) { exit 0 } else { exit 1 } } catch { exit 1 }" 2>nul
+
+if !errorLevel! equ 0 (
+    echo [WARNING] Pending OS restart detected!
+    echo [CREATE] Creating scheduled task to run script.bat at startup with 1-minute delay...
+    
+    REM Create scheduled task with proper admin rights and 1-minute delay
+    powershell -NoProfile -Command "try { $action = New-ScheduledTaskAction -Execute '%~f0'; $trigger = New-ScheduledTaskTrigger -AtStartup; $trigger.Delay = 'PT1M'; $principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -LogonType ServiceAccount -RunLevel Highest; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; Register-ScheduledTask -TaskName 'ScriptMentenantaStartup' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Windows Fresh Install Setup Script - Auto-restart continuation'; Write-Host '[OK] Scheduled task created successfully'; exit 0 } catch { Write-Host '[ERROR] Failed to create scheduled task:' $_.Exception.Message; exit 1 }"
+    
+    if !errorLevel! equ 0 (
+        echo [OK] Scheduled task created successfully
+        echo [INFO] Task will run at next startup with 1-minute delay and admin rights
+        echo [RESTART] System will restart now to apply pending changes...
+        echo [INFO] After restart, this script will continue automatically
+        timeout /t 10 /nobreak >nul
+        shutdown /r /t 0 /c "Restarting to apply pending OS updates - Script will continue automatically"
+        exit
+    ) else (
+        echo [ERROR] Failed to create scheduled task
+        echo [WARNING] Continuing without restart - some updates may not be applied
+        set /a ERROR_COUNT+=1
+    )
+) else (
+    echo [OK] No pending OS restart detected, continuing...
+)
+goto :eof
 
 :install_vclibs
 echo [DOWNLOAD] Microsoft.VCLibs.x64.14.00.Desktop.appx...
