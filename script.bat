@@ -7,7 +7,7 @@ echo    Windows Maintenance Script v2.0
 echo    Enhanced with repository downloading
 echo    - Automatic dependency installation (WinGet, PowerShell 7)
 echo    - Repository downloading with fallback to local files
-echo    - Scheduled task automation for restarts
+echo    - Scheduled task automation for restarts and monthly maintenance
 echo    - Modular architecture support
 echo ===============================================
 
@@ -169,7 +169,21 @@ if !errorLevel! neq 0 (
 
 echo.
 echo ========================================
-echo Step 4: Maintenance Script Setup
+echo Step 4: Scheduled Task & Restart Management
+echo ========================================
+
+call :check_scheduled_task_and_restart
+
+echo.
+echo ========================================
+echo Step 5: Monthly Maintenance Task Setup
+echo ========================================
+
+call :create_monthly_maintenance_task
+
+echo.
+echo ========================================
+echo Step 6: Maintenance Script Setup
 echo ========================================
 
 if "!USE_LOCAL_FILES!"=="true" (
@@ -186,12 +200,12 @@ REM FUNCTION DEFINITIONS
 REM ========================================
 
 :check_scheduled_task_and_restart
-echo [CHECK] Checking for existing scheduled task for script.bat...
-powershell -NoProfile -Command "try { $task = Get-ScheduledTask -TaskName 'ScriptMentenantaStartup' -ErrorAction SilentlyContinue; if ($task) { Unregister-ScheduledTask -TaskName 'ScriptMentenantaStartup' -Confirm:$false; Write-Host '[REMOVED] Existing scheduled task for script.bat removed'; exit 0 } else { Write-Host '[INFO] No existing scheduled task found'; exit 1 } } catch { Write-Host '[INFO] No existing scheduled task found'; exit 1 }" 2>nul
+echo [CHECK] Checking for existing scheduled task for script.bat startup...
+powershell -NoProfile -Command "try { $task = Get-ScheduledTask -TaskName 'ScriptMentenantaStartup' -ErrorAction SilentlyContinue; if ($task) { Unregister-ScheduledTask -TaskName 'ScriptMentenantaStartup' -Confirm:$false; Write-Host '[REMOVED] Existing startup scheduled task removed'; exit 0 } else { Write-Host '[INFO] No existing startup scheduled task found'; exit 1 } } catch { Write-Host '[INFO] No existing startup scheduled task found'; exit 1 }" 2>nul
 if !errorLevel! equ 0 (
-    echo [OK] Removed existing scheduled task
+    echo [OK] Removed existing startup scheduled task
 ) else (
-    echo [OK] No existing scheduled task to remove
+    echo [OK] No existing startup scheduled task to remove
 )
 
 echo [CHECK] Checking for pending OS restarts...
@@ -202,10 +216,10 @@ if !errorLevel! equ 0 (
     echo [CREATE] Creating scheduled task to run script.bat at startup with 1-minute delay...
     
     REM Create scheduled task with proper admin rights and 1-minute delay
-    powershell -NoProfile -Command "try { $action = New-ScheduledTaskAction -Execute '%~f0'; $trigger = New-ScheduledTaskTrigger -AtStartup; $trigger.Delay = 'PT1M'; $principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -LogonType ServiceAccount -RunLevel Highest; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; Register-ScheduledTask -TaskName 'ScriptMentenantaStartup' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Windows Fresh Install Setup Script - Auto-restart continuation'; Write-Host '[OK] Scheduled task created successfully'; exit 0 } catch { Write-Host '[ERROR] Failed to create scheduled task:' $_.Exception.Message; exit 1 }"
+    powershell -NoProfile -Command "try { $action = New-ScheduledTaskAction -Execute '%~f0'; $trigger = New-ScheduledTaskTrigger -AtStartup; $trigger.Delay = 'PT1M'; $principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -LogonType ServiceAccount -RunLevel Highest; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit 'PT2H'; Register-ScheduledTask -TaskName 'ScriptMentenantaStartup' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Windows Maintenance Script - Auto-restart continuation with admin privileges'; Write-Host '[OK] Startup scheduled task created successfully'; exit 0 } catch { Write-Host '[ERROR] Failed to create startup scheduled task:' $_.Exception.Message; exit 1 }"
     
     if !errorLevel! equ 0 (
-        echo [OK] Scheduled task created successfully
+        echo [OK] Startup scheduled task created successfully
         echo [INFO] Task will run at next startup with 1-minute delay and admin rights
         echo [RESTART] System will restart now to apply pending changes...
         echo [INFO] After restart, this script will continue automatically
@@ -213,12 +227,35 @@ if !errorLevel! equ 0 (
         shutdown /r /t 0 /c "Restarting to apply pending OS updates - Script will continue automatically"
         exit
     ) else (
-        echo [ERROR] Failed to create scheduled task
+        echo [ERROR] Failed to create startup scheduled task
         echo [WARNING] Continuing without restart - some updates may not be applied
         set /a ERROR_COUNT+=1
     )
 ) else (
     echo [OK] No pending OS restart detected, continuing...
+)
+goto :eof
+
+:create_monthly_maintenance_task
+echo [CHECK] Checking for existing monthly maintenance task...
+powershell -NoProfile -Command "try { $task = Get-ScheduledTask -TaskName 'ScriptMentenantaMonthlyMaintenance' -ErrorAction SilentlyContinue; if ($task) { Write-Host '[INFO] Monthly maintenance task already exists'; exit 0 } else { Write-Host '[INFO] No existing monthly maintenance task found'; exit 1 } } catch { Write-Host '[INFO] No existing monthly maintenance task found'; exit 1 }" 2>nul
+
+if !errorLevel! equ 0 (
+    echo [OK] Monthly maintenance task already exists
+) else (
+    echo [CREATE] Creating monthly maintenance scheduled task...
+    
+    REM Create monthly scheduled task to run at 1 AM on the 1st of every month
+    powershell -NoProfile -Command "try { $action = New-ScheduledTaskAction -Execute '%~f0'; $trigger = New-ScheduledTaskTrigger -Monthly -DaysOfMonth 1 -At '01:00'; $principal = New-ScheduledTaskPrincipal -UserId 'BUILTIN\Administrators' -LogonType ServiceAccount -RunLevel Highest; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit 'PT3H' -WakeToRun; Register-ScheduledTask -TaskName 'ScriptMentenantaMonthlyMaintenance' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Windows Maintenance Script - Monthly automated maintenance at 1 AM on the 1st of every month'; Write-Host '[OK] Monthly maintenance scheduled task created successfully'; exit 0 } catch { Write-Host '[ERROR] Failed to create monthly maintenance task:' $_.Exception.Message; exit 1 }"
+    
+    if !errorLevel! equ 0 (
+        echo [OK] Monthly maintenance scheduled task created successfully
+        echo [INFO] Task will run at 1 AM on the 1st of every month with admin rights
+        echo [INFO] Task includes wake-to-run functionality for sleeping computers
+    ) else (
+        echo [ERROR] Failed to create monthly maintenance scheduled task
+        set /a ERROR_COUNT+=1
+    )
 )
 goto :eof
 
@@ -546,17 +583,36 @@ echo VCLibs 14.0+:        !VCLIBS_INSTALLED!
 echo UI.Xaml 2.7+:        !XAML_INSTALLED!
 echo WinGet:               !WINGET_INSTALLED!
 echo PowerShell 7:         !PS7_INSTALLED!
+echo Local Files Used:     !USE_LOCAL_FILES!
 echo Errors encountered:   !ERROR_COUNT!
+echo ========================================
+
+echo.
+echo ========================================
+echo Scheduled Tasks Status
+echo ========================================
+powershell -NoProfile -Command "try { $monthlyTask = Get-ScheduledTask -TaskName 'ScriptMentenantaMonthlyMaintenance' -ErrorAction SilentlyContinue; if ($monthlyTask) { Write-Host 'Monthly Maintenance:  CREATED (1st of month at 1 AM)' } else { Write-Host 'Monthly Maintenance:  NOT CREATED' } } catch { Write-Host 'Monthly Maintenance:  NOT CREATED' }" 2>nul
+powershell -NoProfile -Command "try { $startupTask = Get-ScheduledTask -TaskName 'ScriptMentenantaStartup' -ErrorAction SilentlyContinue; if ($startupTask) { Write-Host 'Startup Task:         ACTIVE (will run at next startup)' } else { Write-Host 'Startup Task:         NOT ACTIVE' } } catch { Write-Host 'Startup Task:         NOT ACTIVE' }" 2>nul
 echo ========================================
 
 if !ERROR_COUNT! equ 0 (
     echo [SUCCESS] Setup completed successfully!
     echo [INFO] Your system is now ready for use.
-    echo [INFO] The maintenance script has been launched in a separate window.
+    if "!USE_LOCAL_FILES!"=="true" (
+        echo [INFO] The modular maintenance script has been executed.
+    ) else (
+        echo [INFO] The maintenance script has been launched in a separate window.
+    )
+    echo [INFO] Monthly maintenance task has been scheduled for 1 AM on the 1st of every month.
 ) else (
     echo [WARNING] Setup completed with !ERROR_COUNT! error(s).
     echo [INFO] Some components may not be fully functional.
-    echo [INFO] The maintenance script has been launched in a separate window.
+    if "!USE_LOCAL_FILES!"=="true" (
+        echo [INFO] The modular maintenance script execution may have issues.
+    ) else (
+        echo [INFO] The maintenance script has been launched in a separate window.
+    )
+    echo [INFO] Check scheduled tasks status above for monthly maintenance setup.
 )
 
 echo.
