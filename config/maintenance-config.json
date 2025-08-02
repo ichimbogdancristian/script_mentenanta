@@ -1,0 +1,115 @@
+{
+  "system": {
+    "requiresAdmin": true,
+    "minWindowsVersion": "10.0",
+    "tempDirectory": "%TEMP%\\MaintenanceScript",
+    "logLevel": "Info",
+    "logRetentionDays": 30
+  },
+  "dependencies": {
+    "powershell7": {
+      "required": true,
+      "downloadUrl": "https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.0-win-x64.msi",
+      "installArgs": "/quiet /norestart"
+    },
+    "winget": {
+      "required": true,
+      "packageName": "Microsoft.DesktopAppInstaller"
+    },
+    "vcLibs": {
+      "required": true,
+      "packageName": "Microsoft.VCLibs.140.00.UWPDesktop",
+      "downloadUrl": "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
+    },
+    "uiXaml": {
+      "required": true,
+      "packageName": "Microsoft.UI.Xaml.2.8",
+      "downloadUrl": "https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6"
+    }
+  },
+  "maintenanceTasks": {
+    "systemRestore": {
+      "enabled": true,
+      "description": "Enable System Restore point",
+      "priority": 1
+    },
+    "defenderScan": {
+      "enabled": true,
+      "description": "Quick Defender scan",
+      "priority": 2,
+      "scanType": "Quick"
+    },
+    "diskCleanup": {
+      "enabled": true,
+      "description": "Clean temporary files and caches",
+      "priority": 3,
+      "includeRecycleBin": false,
+      "includeTempFiles": true,
+      "includeSystemCache": true
+    },
+    "defragmentation": {
+      "enabled": true,
+      "description": "Defragment system drives",
+      "priority": 4,
+      "driveTypes": ["fixed"],
+      "skipSsd": true
+    },
+    "windowsUpdates": {
+      "enabled": true,
+      "description": "Install Windows Updates",
+      "priority": 5,
+      "includeOptional": false,
+      "rebootIfRequired": false
+    },
+    "registryCleanup": {
+      "enabled": true,
+      "description": "Clean registry entries",
+      "priority": 6,
+      "backupRegistry": true
+    },
+    "serviceOptimization": {
+      "enabled": true,
+      "description": "Optimize Windows services",
+      "priority": 7,
+      "createBackup": true
+    },
+    "privacySettings": {
+      "enabled": true,
+      "description": "Configure privacy settings",
+      "priority": 8,
+      "telemetryLevel": "Security"
+    },
+    "startupOptimization": {
+      "enabled": true,
+      "description": "Optimize startup programs",
+      "priority": 9,
+      "disableUnnecessary": true
+    },
+    "systemFileCheck": {
+      "enabled": true,
+      "description": "Run SFC and DISM checks",
+      "priority": 10,
+      "runSfc": true,
+      "runDism": true
+    },
+    "debloating": {
+      "enabled": false,
+      "description": "Remove bloatware applications",
+      "priority": 11,
+      "safeMode": true,
+      "createRestorePoint": true
+    }
+  },
+  "reporting": {
+    "generateReport": true,
+    "includeSystemInfo": true,
+    "emailReport": false,
+    "reportFormat": "html"
+  },
+  "scheduling": {
+    "taskName": "SystemMaintenance",
+    "schedule": "weekly",
+    "time": "02:00",
+    "dayOfWeek": "Sunday"
+  }
+}
