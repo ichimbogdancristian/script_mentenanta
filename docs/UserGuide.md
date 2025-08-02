@@ -3,10 +3,18 @@
 ## Overview
 The Windows Maintenance Script v2.0 is a modular, configuration-driven system maintenance tool that automates various Windows optimization and cleaning tasks.
 
+### Dual-Mode Operation
+The script automatically detects and operates in one of two modes:
+
+1. **Modular Mode**: When `MaintenanceOrchestrator.ps1` and `config/maintenance-config.json` are present locally, uses the enhanced modular architecture with JSON configuration
+2. **Legacy Mode**: When local modular files are not found, automatically downloads the latest repository version and runs the traditional `script.ps1`
+
+This design ensures backward compatibility while providing enhanced functionality when the full modular system is available.
+
 ## Quick Start
 
 ### Basic Usage
-1. **Right-click** `script-v2.bat` and select **"Run as administrator"**
+1. **Right-click** `script.bat` and select **"Run as administrator"**
 2. The script will automatically check dependencies and run all enabled maintenance tasks
 3. Review the results and generated reports
 
@@ -24,6 +32,19 @@ The Windows Maintenance Script v2.0 is a modular, configuration-driven system ma
 # Generate detailed report
 .\MaintenanceOrchestrator.ps1 -GenerateReport
 ```
+
+### Automatic Dependency Management
+The script automatically handles all required dependencies:
+- **WinGet**: Downloads and installs if not present
+- **PowerShell 7**: Preferred execution environment, falls back to Windows PowerShell
+- **Microsoft VCLibs**: Runtime libraries for modern Windows applications
+- **Microsoft UI.Xaml**: User interface framework components
+
+### Restart Handling
+If the system requires a restart (e.g., for pending Windows updates), the script:
+1. Creates a scheduled task to continue execution after restart
+2. Schedules restart with 1-minute delay for proper initialization
+3. Automatically removes the scheduled task after completion
 
 ## Configuration
 
@@ -112,12 +133,12 @@ Edit `config\maintenance-config.json` to customize:
 
 ## Command Line Options
 
-### Batch Script (`script-v2.bat`)
+### Batch Script (`script.bat`)
 ```batch
-script-v2.bat                    # Run all enabled tasks
-script-v2.bat -test             # Test mode (no changes)
-script-v2.bat -report           # Generate detailed report
-script-v2.bat -tasks "diskCleanup,defenderScan"  # Run specific tasks
+script.bat                       # Run all enabled tasks
+script.bat -test                 # Test mode (no changes)
+script.bat -report               # Generate detailed report
+script.bat -tasks "diskCleanup,defenderScan"  # Run specific tasks
 ```
 
 ### PowerShell Script (`MaintenanceOrchestrator.ps1`)
@@ -194,7 +215,7 @@ The script can create a scheduled task for automatic maintenance:
 1. Open Task Scheduler
 2. Create Basic Task
 3. Set trigger (daily/weekly/monthly)
-4. Set action to run `script-v2.bat`
+4. Set action to run `script.bat`
 5. Configure to run with highest privileges
 
 ## Troubleshooting
@@ -206,14 +227,20 @@ The script can create a scheduled task for automatic maintenance:
 - Check Windows version compatibility (Windows 10/11)
 - Verify PowerShell execution policy
 
-**2. Task failures**
+**2. Modular vs Legacy mode issues**
+- If experiencing issues with modular mode, temporarily rename `MaintenanceOrchestrator.ps1` to force legacy mode
+- Ensure `config/maintenance-config.json` exists and is valid JSON for modular mode
+- Check internet connectivity if script needs to download repository in legacy mode
+
+**3. Task failures**
 - Check log files for detailed error messages
 - Ensure sufficient disk space
 - Verify internet connection for updates
 
-**3. Dependency issues**
+**4. Dependency issues**
 - Script automatically installs WinGet and PowerShell 7
 - Manual installation may be required in corporate environments
+- Check dependency installation logs in the console output
 
 ### Getting Help
 1. Check log files in `logs\` directory

@@ -1,46 +1,81 @@
 # Copilot Instructions for script_mentenanta
 
 ## Project Overview
-This project automates the setup and execution of a Windows maintenance script. It uses a batch file (`script.bat`) as the entry point to:
-- Check for and install dependencies: WinGet, PowerShell 7, Microsoft.VCLibs, and Microsoft.UI.Xaml
-- Download the latest maintenance script repository from GitHub
-- Run a PowerShell script (`script.ps1`) for actual maintenance tasks
+A modular Windows maintenance automation framework that operates in dual-mode:
+1. **Modular Mode**: Uses `MaintenanceOrchestrator.ps1` with JSON configuration and PowerShell modules for local execution
+2. **Legacy Mode**: Downloads latest repository version and runs traditional `script.ps1` for backwards compatibility
 
-## Key Files
-- `script.bat`: Main orchestrator. Handles admin checks, dependency installation, repo download, and script execution.
-- `script.ps1`: The PowerShell maintenance script (must be present in the downloaded repo).
-- `instructions.md`: Project-specific PowerShell and scripting guidelines.
+Entry point is `script.bat` which detects local modular files (`MaintenanceOrchestrator.ps1` + `config/maintenance-config.json`) and switches between modes automatically.
 
-## Essential Patterns & Conventions
-- **Admin Privileges**: All setup must run as administrator. The batch script checks and prompts if not.
-- **Dependency Checks**: Uses PowerShell and batch logic to verify/install WinGet, PowerShell 7, and required AppX packages. Installs missing components automatically.
-- **Repository Handling**: Always downloads and extracts the latest repo version to a clean directory before running scripts.
-- **Script Execution**: Prefers PowerShell 7 (`pwsh`), falls back to Windows PowerShell if needed.
-- **Cleanup**: Temporary files and directories are removed at the end of execution.
+## Architecture Components
+
+### Core Files
+- `script.bat`: Dual-mode orchestrator with dependency management and admin privilege checking
+- `MaintenanceOrchestrator.ps1`: Modular maintenance coordinator with task filtering and reporting
+- `config/maintenance-config.json`: JSON-driven task configuration with priority-based execution
+- `modules/`: PowerShell modules for configuration, logging, and system tasks
+- `script.ps1`: Legacy monolithic maintenance script (backwards compatibility)
+
+### Module Architecture
+- **ConfigManager.psm1**: JSON config loading, task filtering, system requirements validation
+- **LoggingManager.psm1**: Centralized logging with levels, retention, and task-specific tracking
+- **SystemTasks.psm1**: Individual maintenance task implementations with consistent error handling
+
+## Essential Patterns
+
+### Task Configuration Pattern
+```json
+"taskName": {
+  "enabled": true,
+  "description": "Task description",
+  "priority": 1,
+  "taskSpecificSettings": "value"
+}
+```
+Tasks execute in priority order (lower numbers first). Use `Get-EnabledTasks` to filter active tasks.
+
+### Command Line Arguments
+```bash
+# Batch entry point
+script.bat -test -report -tasks "diskCleanup,defenderScan"
+
+# Direct PowerShell execution  
+.\MaintenanceOrchestrator.ps1 -TestMode -TaskFilter @('systemRestore') -GenerateReport
+```
+
+### Error Handling Convention
+All functions use try/catch with `Write-LogMessage -Level "Error"` and return success/failure booleans. Tasks failures don't stop session execution.
 
 ## Developer Workflows
-- **Run the project**: Right-click `script.bat` and select "Run as administrator".
-- **Debugging**: Use `echo` statements in the batch file and `Write-Host` in PowerShell for step tracing. Check `%errorLevel%` after each critical step.
-- **Update maintenance logic**: Edit `script.ps1` in the repo. The batch script will always fetch the latest version.
 
-## Project-Specific Guidelines
-- Follow PowerShell style and safety rules from `instructions.md` (e.g., use approved verbs, robust parameter validation, modular functions, secure credential handling).
-- Keep all logic for dependency installation and repo management in `script.bat`.
-- Do not hardcode paths; use environment variables and relative paths as in the batch script.
-- Ensure all scripts are idempotent and safe to re-run.
+### Run Maintenance
+- **Full run**: Right-click `script.bat` → "Run as administrator" 
+- **Test mode**: `script.bat -test` (simulates without changes)
+- **Specific tasks**: `script.bat -tasks "diskCleanup,systemRestore"`
 
-## Example: Adding a New Dependency
-To add a new tool to the setup:
-1. Add a check and install logic in `script.bat` (following the VCLibs/XAML/WinGet pattern).
-2. Document the change in `instructions.md` if it affects PowerShell code style or workflow.
+### Add New Maintenance Task
+1. Add function to `modules/SystemTasks.psm1` following `Invoke-TaskName` pattern
+2. Add configuration section to `config/maintenance-config.json` with priority
+3. Update switch statement in `MaintenanceOrchestrator.ps1` line ~130
+4. Add unit test in `tests/unit-tests.ps1`
 
-## External Integrations
-- Downloads from GitHub and NuGet for dependencies and scripts.
-- Uses PowerShell and WinGet for package management.
+### Testing & Debugging
+- Run `tests/Test-MaintenanceScript.ps1` for comprehensive testing
+- Use `-TestMode` for safe execution without system changes
+- Check `logs/` directory for detailed execution logs with task-specific tracking
+- Generated HTML reports in `reports/` directory
 
-## Testing & Validation
-- Manual: Run `script.bat` as admin and verify all steps complete without errors.
-- Automated: (Not present, but recommended) Add sample test cases for PowerShell functions as described in `instructions.md`.
+## Critical Dependencies
+- **Automatic Installation**: script.bat handles WinGet, PowerShell 7, VCLibs, UI.Xaml
+- **Admin Privileges**: Required for all operations, automatically prompted
+- **Windows 10/11**: Version detection with compatibility checks
+- **Scheduled Tasks**: Auto-creation for restart scenarios with 1-minute startup delay
+
+## Integration Points
+- **GitHub Downloads**: Repository self-updating when modular files not present  
+- **WinGet Package Management**: Software installation and updates
+- **Windows Restart Handling**: Scheduled task continuation after required reboots
+- **HTML Report Generation**: Cross-system compatible reporting with error aggregation
 
 ---
-For more details on PowerShell best practices, see `instructions.md`.
+See `docs/UserGuide.md` for task-specific configurations and `instructions.md` for PowerShell coding standards.
