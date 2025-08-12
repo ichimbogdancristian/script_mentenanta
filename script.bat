@@ -77,300 +77,226 @@ FOR /F "tokens=*" %%i IN ('powershell -Command "(Get-CimInstance Win32_Operating
 ECHO [%TIME%] [INFO] Detected Windows version: %OS_VERSION%
 
 REM -----------------------------------------------------------------------------
-REM PowerShell 7 Installation/Update
-REM Environment: Windows 10/11 with Winget or internet access for MSI download
-REM Purpose: Install/update PowerShell 7 for enhanced script.ps1 features
-REM Logic: Check pwsh.exe → Try Winget install → Fallback to MSI → Verify
-REM Crash Prevention: Multiple fallback methods, continues with Windows PS if failed
+REM Dependency Management System - Centralized & Improved
+REM Environment: Windows 10/11 with admin rights, internet connection
+REM Purpose: Install and verify all required dependencies using unified approach
+REM Architecture: Configuration-driven, ordered installation, unified error handling
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking PowerShell 7...
-where pwsh.exe >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [WARN] PowerShell 7 not found. Attempting to install...
-    REM Method 1: Try winget installation
-    winget install --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements --silent >nul 2>&1
-    timeout /t 5 /nobreak >nul
-    where pwsh.exe >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        ECHO [%TIME%] [INFO] PowerShell 7 installed successfully via Winget.
-    ) ELSE (
-        ECHO [%TIME%] [WARN] Winget installation failed. Trying direct MSI method...
-        REM Method 2: Direct MSI installation
-        powershell -ExecutionPolicy Bypass -Command "try { $tempPath = $env:TEMP; $scriptPath = Join-Path $tempPath 'install-powershell.ps1'; Invoke-WebRequest -Uri 'https://aka.ms/install-powershell.ps1' -OutFile $scriptPath -UseBasicParsing; & $scriptPath -UseMSI -Quiet; Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue; Write-Host '[INFO] PowerShell 7 installed via MSI.' } catch { Write-Host '[ERROR] PowerShell 7 install failed:' $_.Exception.Message }"
-        timeout /t 10 /nobreak >nul
-        where pwsh.exe >nul 2>&1
-        IF %ERRORLEVEL% EQU 0 (
-            ECHO [%TIME%] [INFO] PowerShell 7 installation verified successfully.
-        ) ELSE (
-            ECHO [%TIME%] [ERROR] PowerShell 7 installation failed completely.
-        )
-    )
-) ELSE (
-    ECHO [%TIME%] [INFO] PowerShell 7 already installed. Checking for updates...
-    winget upgrade --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements --silent >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        ECHO [%TIME%] [INFO] PowerShell 7 updated.
-    ) ELSE (
-        ECHO [%TIME%] [INFO] PowerShell 7 is up to date.
-    )
-)
 
-REM -----------------------------------------------------------------------------
-REM Dependency: Winget
-REM Installs or updates Winget using multiple fallback methods for reliability.
-REM Silent, non-interactive, and robust against errors.
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking Winget...
-where winget.exe >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [WARN] Winget not found. Attempting to install...
-    REM Method 1: Try installing via PowerShell and App Installer
-    powershell -ExecutionPolicy Bypass -Command "try { $tempPath = $env:TEMP; $bundlePath = Join-Path $tempPath 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile $bundlePath -UseBasicParsing; Add-AppxPackage -Path $bundlePath; Remove-Item $bundlePath -Force -ErrorAction SilentlyContinue; Write-Host '[INFO] Winget installed via App Installer.' } catch { Write-Host '[ERROR] Winget install failed:' $_.Exception.Message }"
-    REM Verify installation
-    timeout /t 5 /nobreak >nul
-    where winget.exe >nul 2>&1
-    IF %ERRORLEVEL% NEQ 0 (
-        ECHO [%TIME%] [WARN] Winget installation may have failed. Trying alternative method...
-        REM Method 2: Try downloading latest release directly from GitHub
-        powershell -ExecutionPolicy Bypass -Command "try { $latestUrl = (Invoke-RestMethod 'https://api.github.com/repos/microsoft/winget-cli/releases/latest').assets | Where-Object { $_.name -like '*msixbundle' } | Select-Object -First 1 -ExpandProperty browser_download_url; $tempPath = $env:TEMP; $bundlePath = Join-Path $tempPath 'winget-latest.msixbundle'; Invoke-WebRequest -Uri $latestUrl -OutFile $bundlePath -UseBasicParsing; Add-AppxPackage -Path $bundlePath; Remove-Item $bundlePath -Force -ErrorAction SilentlyContinue; Write-Host '[INFO] Winget installed via GitHub release.' } catch { Write-Host '[WARN] Alternative Winget install also failed:' $_.Exception.Message }"
-    )
-) ELSE (
-    ECHO [%TIME%] [INFO] Winget already installed. Checking for updates...
-    winget upgrade --id Microsoft.DesktopAppInstaller --accept-source-agreements --accept-package-agreements --silent >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        ECHO [%TIME%] [INFO] Winget updated.
-    ) ELSE (
-        ECHO [%TIME%] [INFO] Winget is up to date.
-    )
-)
+REM Dependency Configuration - Easy to modify and extend
+SET "DEP_COUNT=6"
+SET "DEP_1_NAME=PowerShell 7"
+SET "DEP_1_CHECK=pwsh.exe --version"
+SET "DEP_1_INSTALL_PRIMARY=winget install --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements --silent"
+SET "DEP_1_INSTALL_FALLBACK=powershell -ExecutionPolicy Bypass -Command \"try { $tempPath = $env:TEMP; $scriptPath = Join-Path $tempPath 'install-powershell.ps1'; Invoke-WebRequest -Uri 'https://aka.ms/install-powershell.ps1' -OutFile $scriptPath -UseBasicParsing; & $scriptPath -UseMSI -Quiet; Remove-Item $scriptPath -Force -ErrorAction SilentlyContinue } catch { exit 1 }\""
+SET "DEP_1_UPDATE=winget upgrade --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements --silent"
+SET "DEP_1_CRITICAL=NO"
 
-REM -----------------------------------------------------------------------------
-REM Dependency: Chocolatey
-REM Checks for Chocolatey in PATH and common locations, fixes PATH if needed.
-REM Installs silently if missing, verifies installation, and updates if present.
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking Chocolatey installation...
-SET "CHOCO_INSTALLED=NO"
-SET "CHOCO_PATH_ISSUE=NO"
+SET "DEP_2_NAME=Winget"
+SET "DEP_2_CHECK=winget.exe --version"
+SET "DEP_2_INSTALL_PRIMARY=powershell -ExecutionPolicy Bypass -Command \"try { $tempPath = $env:TEMP; $bundlePath = Join-Path $tempPath 'Microsoft.DesktopAppInstaller.msixbundle'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile $bundlePath -UseBasicParsing; Add-AppxPackage -Path $bundlePath; Remove-Item $bundlePath -Force -ErrorAction SilentlyContinue } catch { exit 1 }\""
+SET "DEP_2_INSTALL_FALLBACK=powershell -ExecutionPolicy Bypass -Command \"try { $latestUrl = (Invoke-RestMethod 'https://api.github.com/repos/microsoft/winget-cli/releases/latest').assets | Where-Object { $_.name -like '*msixbundle' } | Select-Object -First 1 -ExpandProperty browser_download_url; $tempPath = $env:TEMP; $bundlePath = Join-Path $tempPath 'winget-latest.msixbundle'; Invoke-WebRequest -Uri $latestUrl -OutFile $bundlePath -UseBasicParsing; Add-AppxPackage -Path $bundlePath; Remove-Item $bundlePath -Force -ErrorAction SilentlyContinue } catch { exit 1 }\""
+SET "DEP_2_UPDATE=winget upgrade --id Microsoft.DesktopAppInstaller --accept-source-agreements --accept-package-agreements --silent"
+SET "DEP_2_CRITICAL=NO"
 
-REM Method 1: Check if choco command is accessible
-choco --version >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    SET "CHOCO_INSTALLED=YES"
-    ECHO [%TIME%] [INFO] Chocolatey is accessible via command line.
-) ELSE (
-    REM Method 2: Check if chocolatey.exe exists in common locations
-    IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" (
-        SET "CHOCO_INSTALLED=YES"
-        SET "CHOCO_PATH_ISSUE=YES"
-        ECHO [%TIME%] [WARN] Chocolatey is installed but not in PATH. Adding to PATH...
-        SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
-        choco --version >nul 2>&1
-        IF %ERRORLEVEL% EQU 0 (
-            SET "CHOCO_PATH_ISSUE=NO"
-            ECHO [%TIME%] [INFO] Chocolatey is now accessible after PATH correction.
-        ) ELSE (
-            ECHO [%TIME%] [WARN] Chocolatey still not accessible after PATH correction.
-        )
-    ) ELSE (
-        REM Method 3: Check alternative installation location
-        IF EXIST "%ALLUSERSPROFILE%\chocolatey\bin\choco.exe" (
-            SET "CHOCO_INSTALLED=YES"
-            SET "CHOCO_PATH_ISSUE=YES"
-            ECHO [%TIME%] [WARN] Chocolatey found in alternative location. Adding to PATH...
-            SET "PATH=%PATH%;%ALLUSERSPROFILE%\chocolatey\bin"
-            choco --version >nul 2>&1
-            IF %ERRORLEVEL% EQU 0 (
-                SET "CHOCO_PATH_ISSUE=NO"
-                ECHO [%TIME%] [INFO] Chocolatey is now accessible from alternative location.
-            )
-        ) ELSE (
-            ECHO [%TIME%] [INFO] Chocolatey not found in any standard locations.
-        )
-    )
-)
+SET "DEP_3_NAME=Chocolatey"
+SET "DEP_3_CHECK=choco --version"
+SET "DEP_3_INSTALL_PRIMARY=powershell -ExecutionPolicy Bypass -Command \"Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; try { Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) } catch { exit 1 }\""
+SET "DEP_3_INSTALL_FALLBACK="
+SET "DEP_3_UPDATE=choco upgrade chocolatey -y --limit-output"
+SET "DEP_3_CRITICAL=NO"
+SET "DEP_3_PATH_LOCATIONS=%ProgramData%\chocolatey\bin;%ALLUSERSPROFILE%\chocolatey\bin"
 
-IF "%CHOCO_INSTALLED%"=="NO" (
-    ECHO [%TIME%] [WARN] Chocolatey not found. Attempting to install...
-    powershell -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; try { Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host '[INFO] Chocolatey installation completed.' } catch { Write-Host '[ERROR] Chocolatey install failed:' $_.Exception.Message }"
-    
-    REM Refresh environment variables and verify installation
-    CALL refreshenv.cmd >nul 2>&1
-    timeout /t 5 /nobreak >nul
-    
-    REM Re-verify installation with multiple methods
-    choco --version >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        ECHO [%TIME%] [INFO] Chocolatey installation verified successfully.
-        SET "CHOCO_INSTALLED=YES"
-    ) ELSE (
-        ECHO [%TIME%] [WARN] Chocolatey command not accessible. Checking installation manually...
-        IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" (
-            ECHO [%TIME%] [INFO] Chocolatey executable found. Adding to PATH manually...
-            SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
-            choco --version >nul 2>&1
-            IF %ERRORLEVEL% EQU 0 (
-                ECHO [%TIME%] [INFO] Chocolatey is now accessible after manual PATH correction.
-                SET "CHOCO_INSTALLED=YES"
-            ) ELSE (
-                ECHO [%TIME%] [ERROR] Chocolatey installation failed - executable found but not functional.
-            )
-        ) ELSE (
-            ECHO [%TIME%] [ERROR] Chocolatey installation failed completely - no executable found.
-        )
-    )
-) ELSE (
-    IF "%CHOCO_PATH_ISSUE%"=="NO" (
-        ECHO [%TIME%] [INFO] Chocolatey is properly installed and accessible. Checking for updates...
-        choco upgrade chocolatey -y --limit-output >nul 2>&1
-        IF %ERRORLEVEL% EQU 0 (
-            ECHO [%TIME%] [INFO] Chocolatey updated successfully.
-        ) ELSE (
-            ECHO [%TIME%] [INFO] Chocolatey is up to date or update not needed.
-        )
-    ) ELSE (
-        ECHO [%TIME%] [WARN] Chocolatey installation has PATH issues but is accessible now.
-    )
-)
+SET "DEP_4_NAME=NuGet CLI"
+SET "DEP_4_CHECK=nuget help"
+SET "DEP_4_INSTALL_PRIMARY=powershell -ExecutionPolicy Bypass -Command \"try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $nugetPath = '%ProgramData%\nuget'; if (-not (Test-Path $nugetPath)) { New-Item -Path $nugetPath -ItemType Directory -Force }; Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile (Join-Path $nugetPath 'nuget.exe') -UseBasicParsing -TimeoutSec 30 } catch { exit 1 }\""
+SET "DEP_4_INSTALL_FALLBACK="
+SET "DEP_4_UPDATE=powershell -ExecutionPolicy Bypass -Command \"try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile '%ProgramData%\nuget\nuget.exe' -UseBasicParsing -TimeoutSec 30 } catch { exit 1 }\""
+SET "DEP_4_CRITICAL=NO"
+SET "DEP_4_PATH_LOCATIONS=%ProgramData%\nuget"
 
-REM -----------------------------------------------------------------------------
-REM NuGet CLI Installation
-REM Environment: Internet connection, %ProgramData% write access, admin rights
-REM Purpose: Install/update nuget.exe for package management operations
-REM Logic: Check nuget command → Download to ProgramData → Add to PATH → Verify
-REM Crash Prevention: Silent download, PATH checks, continues on failure
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking NuGet (unattended)...
-SET "NUGET_PATH=%ProgramData%\nuget"
-SET "NUGET_EXE=%NUGET_PATH%\nuget.exe"
-IF NOT EXIST "%NUGET_PATH%" MKDIR "%NUGET_PATH%" >nul 2>&1
+SET "DEP_5_NAME=NuGet PowerShell Provider"
+SET "DEP_5_CHECK=powershell -Command \"(Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue).Version -ge [version]'2.8.5.201'\""
+SET "DEP_5_INSTALL_PRIMARY=powershell -ExecutionPolicy Bypass -Command \"try { $ErrorActionPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope AllUsers -Confirm:$false -SkipPublisherCheck -AllowClobber -ErrorAction Stop } catch { exit 1 }\""
+SET "DEP_5_INSTALL_FALLBACK="
+SET "DEP_5_UPDATE="
+SET "DEP_5_CRITICAL=NO"
 
-REM Try to run nuget help to check if NuGet is available
-nuget help >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [WARN] NuGet not found. Installing silently...
-    REM Attempt silent download using PowerShell with robust error handling
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile \"%NUGET_EXE%\" -UseBasicParsing -TimeoutSec 30; Write-Host '[INFO] NuGet downloaded successfully.' } catch { Write-Host '[ERROR] NuGet download failed. Continuing without NuGet.' }"
-    IF EXIST "%NUGET_EXE%" (
-        ECHO [%TIME%] [INFO] NuGet download successful. Adding to PATH silently...
-        ECHO %PATH% | FIND /I "%NUGET_PATH%" >nul 2>&1
-        IF %ERRORLEVEL% NEQ 0 (
-            setx PATH "%NUGET_PATH%;%PATH%" /M >nul 2>&1
-            SET "PATH=%NUGET_PATH%;%PATH%"
-        )
-        "%NUGET_EXE%" help >nul 2>&1
-        IF %ERRORLEVEL% EQU 0 (
-            ECHO [%TIME%] [INFO] NuGet installation verified successfully.
-        ) ELSE (
-            ECHO [%TIME%] [ERROR] NuGet executable found but not functional. Will continue without NuGet.
-        )
-    ) ELSE (
-        ECHO [%TIME%] [ERROR] NuGet download failed - file not found. Will continue without NuGet.
-    )
-) ELSE (
-    ECHO [%TIME%] [INFO] NuGet already installed. Updating to latest version silently...
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' -OutFile \"%NUGET_EXE%\" -UseBasicParsing -TimeoutSec 30; Write-Host '[INFO] NuGet updated successfully.' } catch { Write-Host '[ERROR] NuGet update failed. Continuing with current version.' }"
-)
+SET "DEP_6_NAME=PSWindowsUpdate Module"
+SET "DEP_6_CHECK=powershell -Command \"Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue\""
+SET "DEP_6_INSTALL_PRIMARY=powershell -ExecutionPolicy Bypass -Command \"try { $ErrorActionPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Confirm:$false -SkipPublisherCheck -AllowClobber -AcceptLicense -ErrorAction Stop } catch { exit 1 }\""
+SET "DEP_6_INSTALL_FALLBACK="
+SET "DEP_6_UPDATE=powershell -Command \"try { Update-Module -Name PSWindowsUpdate -Force -ErrorAction Stop } catch { exit 1 }\""
+SET "DEP_6_CRITICAL=NO"
 
-REM -----------------------------------------------------------------------------
-REM PowerShell NuGet Provider Installation
-REM Environment: Requires PowerShell 5.1+, internet connection, admin rights
-REM Purpose: Installs/updates NuGet provider for PowerShell package management
-REM Logic: Check version → Set PSGallery trusted → Install silently with all flags
-REM Crash Prevention: Wrapped in try/catch, uses -ErrorAction SilentlyContinue
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking NuGet PowerShell Provider...
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ErrorActionPreference = 'SilentlyContinue'; $ProgressPreference = 'SilentlyContinue'; $WarningPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $env:PACKAGEMANAGEMENT_PROVIDER_AUTODOWNLOAD = 'true'; $provider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue; if (-not $provider -or $provider.Version -lt [version]'2.8.5.201') { Write-Host '[INFO] Installing NuGet provider silently...'; try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue } catch { }; $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope AllUsers -Confirm:$false -SkipPublisherCheck -AllowClobber -ErrorAction SilentlyContinue; Write-Host '[INFO] NuGet PowerShell provider installed.' } else { Write-Host '[INFO] NuGet PowerShell provider already available.' } } catch { Write-Host '[WARN] NuGet provider install failed. Continuing...' }"
-
-REM -----------------------------------------------------------------------------
-REM PowerShell Module Installation: PSWindowsUpdate
-REM Environment: Requires PowerShell 5.1+, NuGet provider, internet connection
-REM Purpose: Installs PSWindowsUpdate module for automated Windows Updates
-REM Logic: Check if module exists → Set PSGallery trusted → Install with all flags
-REM Crash Prevention: Wrapped in try/catch, continues on failure with warning
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Installing required PowerShell modules...
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ErrorActionPreference = 'SilentlyContinue'; $ProgressPreference = 'SilentlyContinue'; $WarningPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $env:PACKAGEMANAGEMENT_PROVIDER_AUTODOWNLOAD = 'true'; try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue } catch { }; if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) { Write-Host '[INFO] Installing PSWindowsUpdate module...'; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Confirm:$false -SkipPublisherCheck -AllowClobber -AcceptLicense -ErrorAction SilentlyContinue; Write-Host '[INFO] PSWindowsUpdate module installed.' } else { Write-Host '[INFO] PSWindowsUpdate module already available.' } } catch { Write-Host '[WARN] PSWindowsUpdate install failed. Continuing...' }"
-
-REM -----------------------------------------------------------------------------
-REM PowerShell Module Check: Appx
-REM Environment: Windows 10/11 with UWP support (not available on Server Core)
-REM Purpose: Verify Appx module availability for UWP/Store app management
-REM Logic: Check if module exists → Try to import → Log status/warning
-REM Crash Prevention: Uses try/catch, graceful degradation if unavailable
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking Appx module availability...
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) { Import-Module Appx -ErrorAction SilentlyContinue; Write-Host '[INFO] Appx module is available and functional.' } else { Write-Host '[WARN] Appx module not available on this platform. UWP app management will be limited.' } } catch { Write-Host '[WARN] Appx module cannot be imported on this platform.' }"
-
-REM -----------------------------------------------------------------------------
-REM System Component Verification
-REM Environment: Windows 10/11 system with standard tools and PowerShell cmdlets
-REM Purpose: Verify essential Windows components needed by script.ps1
-REM Logic: Check file paths and cmdlet availability → Report missing components
-REM Crash Prevention: Uses try/catch, continues even if checks fail
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking essential Windows components...
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $components = @(); if (-not (Test-Path '$env:SystemRoot\System32\cleanmgr.exe')) { $components += 'cleanmgr.exe (Disk Cleanup)' }; if (-not (Get-Command Get-ComputerInfo -ErrorAction SilentlyContinue)) { $components += 'Get-ComputerInfo cmdlet' }; if (-not (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) { $components += 'Get-CimInstance cmdlet' }; if ($components.Count -gt 0) { Write-Host '[WARN] Missing components:' ($components -join ', ') } else { Write-Host '[INFO] All essential Windows components are available.' } } catch { Write-Host '[WARN] Error checking Windows components. Continuing...' }"
-
-REM -----------------------------------------------------------------------------
-REM Dependency Status Summary Report
-REM Environment: After all dependency installation attempts completed
-REM Purpose: Generate comprehensive status report of all package managers/modules
-REM Logic: Test each dependency → Categorize as working/missing → Report status
-REM Crash Prevention: Individual checks isolated, script continues regardless
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Performing comprehensive dependency verification...
-SET "DEPS_MISSING="
+ECHO [%TIME%] [INFO] Starting centralized dependency management...
+SET "DEPS_SUCCESS=0"
+SET "DEPS_FAILED=0"
 SET "DEPS_WORKING="
+SET "DEPS_MISSING="
 
-REM Check Winget
-winget --version >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    SET "DEPS_WORKING=%DEPS_WORKING% Winget"
-) ELSE (
-    SET "DEPS_MISSING=%DEPS_MISSING% Winget"
+REM Process each dependency in order
+FOR /L %%i IN (1,1,%DEP_COUNT%) DO (
+    CALL :ProcessDependency %%i
 )
 
-REM Check Chocolatey
-choco --version >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    SET "DEPS_WORKING=%DEPS_WORKING% Chocolatey"
-) ELSE (
-    SET "DEPS_MISSING=%DEPS_MISSING% Chocolatey"
-)
-
-REM Check NuGet
-nuget help >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    SET "DEPS_WORKING=%DEPS_WORKING% NuGet"
-) ELSE (
-    SET "DEPS_MISSING=%DEPS_MISSING% NuGet"
-)
-
-REM Check PowerShell modules
-powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue) { Write-Host 'PSWindowsUpdate-OK' } else { Write-Host 'PSWindowsUpdate-MISSING' } } catch { Write-Host 'PSWindowsUpdate-ERROR' }" > %TEMP%\psmodule_check.txt
-SET /P PSMODULE_STATUS=<%TEMP%\psmodule_check.txt
-DEL /F /Q %TEMP%\psmodule_check.txt >nul 2>&1
-IF "%PSMODULE_STATUS%"=="PSWindowsUpdate-OK" (
-    SET "DEPS_WORKING=%DEPS_WORKING% PSWindowsUpdate"
-) ELSE (
-    SET "DEPS_MISSING=%DEPS_MISSING% PSWindowsUpdate"
-)
-
-ECHO [%TIME%] [INFO] Dependency Status Summary:
-IF NOT "%DEPS_WORKING%"=="" (
-    ECHO [%TIME%] [INFO] Working dependencies:%DEPS_WORKING%
-)
-IF NOT "%DEPS_MISSING%"=="" (
-    ECHO [%TIME%] [WARN] Missing dependencies:%DEPS_MISSING%
+REM Final status report
+ECHO [%TIME%] [INFO] === Dependency Installation Summary ===
+ECHO [%TIME%] [INFO] Successfully processed: %DEPS_SUCCESS%/%DEP_COUNT% dependencies
+IF %DEPS_FAILED% GTR 0 (
+    ECHO [%TIME%] [WARN] Failed dependencies: %DEPS_FAILED%
+    ECHO [%TIME%] [WARN] Missing:%DEPS_MISSING%
     ECHO [%TIME%] [WARN] Some maintenance features may be limited.
 ) ELSE (
     ECHO [%TIME%] [INFO] All dependencies are working correctly.
 )
+IF NOT "%DEPS_WORKING%"=="" (
+    ECHO [%TIME%] [INFO] Working:%DEPS_WORKING%
+)
+ECHO [%TIME%] [INFO] === End Dependency Summary ===
+
+REM Final PATH update for current session
+CALL :UpdateSessionPath
+
+GOTO :ContinueAfterDependencies
 
 REM -----------------------------------------------------------------------------
-REM ...existing code...
+REM Unified Dependency Processing Function
+REM Handles installation, update, verification, and PATH management
+REM -----------------------------------------------------------------------------
+:ProcessDependency
+SETLOCAL EnableDelayedExpansion
+SET "DEP_NUM=%1"
+SET "DEP_NAME=!DEP_%DEP_NUM%_NAME!"
+SET "DEP_CHECK=!DEP_%DEP_NUM%_CHECK!"
+SET "DEP_INSTALL_PRIMARY=!DEP_%DEP_NUM%_INSTALL_PRIMARY!"
+SET "DEP_INSTALL_FALLBACK=!DEP_%DEP_NUM%_INSTALL_FALLBACK!"
+SET "DEP_UPDATE=!DEP_%DEP_NUM%_UPDATE!"
+SET "DEP_CRITICAL=!DEP_%DEP_NUM%_CRITICAL!"
+SET "DEP_PATH_LOCATIONS=!DEP_%DEP_NUM%_PATH_LOCATIONS!"
 
+ECHO [%TIME%] [INFO] Processing dependency: !DEP_NAME!
+
+REM Check if already installed
+!DEP_CHECK! >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    ECHO [%TIME%] [INFO] !DEP_NAME! is already available.
+    IF NOT "!DEP_UPDATE!"=="" (
+        ECHO [%TIME%] [INFO] Checking for updates...
+        !DEP_UPDATE! >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            ECHO [%TIME%] [INFO] !DEP_NAME! updated successfully.
+        ) ELSE (
+            ECHO [%TIME%] [INFO] !DEP_NAME! is up to date or update not needed.
+        )
+    )
+    SET /A DEPS_SUCCESS+=1
+    SET "DEPS_WORKING=!DEPS_WORKING! !DEP_NAME!"
+    GOTO :ProcessDependency_End
+)
+
+REM Check for PATH issues if locations are specified
+IF NOT "!DEP_PATH_LOCATIONS!"=="" (
+    CALL :CheckAndFixPath "!DEP_PATH_LOCATIONS!" "!DEP_CHECK!" "!DEP_NAME!"
+    IF !ERRORLEVEL! EQU 0 (
+        SET /A DEPS_SUCCESS+=1
+        SET "DEPS_WORKING=!DEPS_WORKING! !DEP_NAME!"
+        GOTO :ProcessDependency_End
+    )
+)
+
+REM Install using primary method
+ECHO [%TIME%] [INFO] Installing !DEP_NAME! (primary method)...
+!DEP_INSTALL_PRIMARY! >nul 2>&1
+timeout /t 3 /nobreak >nul
+
+REM Verify primary installation
+!DEP_CHECK! >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    ECHO [%TIME%] [INFO] !DEP_NAME! installed successfully (primary method).
+    SET /A DEPS_SUCCESS+=1
+    SET "DEPS_WORKING=!DEPS_WORKING! !DEP_NAME!"
+    GOTO :ProcessDependency_End
+)
+
+REM Try fallback method if available
+IF NOT "!DEP_INSTALL_FALLBACK!"=="" (
+    ECHO [%TIME%] [WARN] Primary installation failed. Trying fallback method...
+    !DEP_INSTALL_FALLBACK! >nul 2>&1
+    timeout /t 5 /nobreak >nul
+    
+    REM Verify fallback installation
+    !DEP_CHECK! >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        ECHO [%TIME%] [INFO] !DEP_NAME! installed successfully (fallback method).
+        SET /A DEPS_SUCCESS+=1
+        SET "DEPS_WORKING=!DEPS_WORKING! !DEP_NAME!"
+        GOTO :ProcessDependency_End
+    )
+)
+
+REM Installation failed
+IF "!DEP_CRITICAL!"=="YES" (
+    ECHO [%TIME%] [ERROR] Critical dependency !DEP_NAME! installation failed.
+) ELSE (
+    ECHO [%TIME%] [WARN] Optional dependency !DEP_NAME! installation failed.
+)
+SET /A DEPS_FAILED+=1
+SET "DEPS_MISSING=!DEPS_MISSING! !DEP_NAME!"
+
+:ProcessDependency_End
+ENDLOCAL & SET "DEPS_SUCCESS=%DEPS_SUCCESS%" & SET "DEPS_FAILED=%DEPS_FAILED%" & SET "DEPS_WORKING=%DEPS_WORKING%" & SET "DEPS_MISSING=%DEPS_MISSING%"
+GOTO :EOF
+
+REM -----------------------------------------------------------------------------
+REM PATH Management Function
+REM Checks common installation locations and fixes PATH if needed
+REM -----------------------------------------------------------------------------
+:CheckAndFixPath
+SETLOCAL
+SET "LOCATIONS=%~1"
+SET "CHECK_COMMAND=%~2"
+SET "TOOL_NAME=%~3"
+SET "FOUND=NO"
+
+FOR %%P IN (%LOCATIONS%) DO (
+    IF EXIST "%%P" (
+        ECHO [%TIME%] [INFO] Found !TOOL_NAME! at %%P, adding to PATH...
+        SET "PATH=%PATH%;%%P"
+        %CHECK_COMMAND% >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            ECHO [%TIME%] [INFO] !TOOL_NAME! is now accessible after PATH correction.
+            SET "FOUND=YES"
+            GOTO :CheckAndFixPath_End
+        )
+    )
+)
+
+:CheckAndFixPath_End
+IF "%FOUND%"=="YES" (
+    ENDLOCAL & SET "PATH=%PATH%"
+    EXIT /B 0
+) ELSE (
+    ENDLOCAL
+    EXIT /B 1
+)
+
+REM -----------------------------------------------------------------------------
+REM Session PATH Update Function
+REM Updates PATH for current session with all dependency locations
+REM -----------------------------------------------------------------------------
+:UpdateSessionPath
+ECHO %PATH% | FIND /I "%ProgramData%\chocolatey\bin" >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 (
+    IF EXIST "%ProgramData%\chocolatey\bin" SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
+)
+ECHO %PATH% | FIND /I "%ProgramData%\nuget" >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 (
+    IF EXIST "%ProgramData%\nuget" SET "PATH=%PATH%;%ProgramData%\nuget"
+)
+GOTO :EOF
+
+:ContinueAfterDependencies
 
 REM -----------------------------------------------------------------------------
 REM Startup Task Management
@@ -391,8 +317,6 @@ IF %ERRORLEVEL% EQU 0 (
         ECHO [%TIME%] [WARN] Failed to delete previous startup task. Continuing...
     )
 )
-REM Only create startup task if needed (pending restart logic below)
-
 REM -----------------------------------------------------------------------------
 REM System Restart Detection and Handling
 REM Environment: Windows registry access for checking pending operations
@@ -427,39 +351,6 @@ IF "%RESTART_STATUS%"=="RESTART_REQUIRED" (
     )
 ) ELSE (
     ECHO [%TIME%] [INFO] No pending restarts detected. Continuing with maintenance...
-)
-
-REM -----------------------------------------------------------------------------
-REM Final Pre-Download Dependency Check
-REM Environment: After all installation attempts, before repo operations
-REM Purpose: Final verification that critical tools are working before proceeding
-REM Logic: Test Winget, Chocolatey, PowerShell 7 → Set status flag → Log warnings
-REM Crash Prevention: Individual checks isolated, continues with limited functionality
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Performing final dependency verification...
-SET "FINAL_STATUS=OK"
-
-winget --version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [WARN] Winget is not accessible. Package management may be limited.
-    SET "FINAL_STATUS=LIMITED"
-)
-
-choco --version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [WARN] Chocolatey is not accessible. Package management may be limited.
-    SET "FINAL_STATUS=LIMITED"
-)
-
-pwsh.exe -Version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [WARN] PowerShell 7 is not accessible. Using Windows PowerShell instead.
-)
-
-IF "%FINAL_STATUS%"=="OK" (
-    ECHO [%TIME%] [INFO] All dependencies verified. System ready for maintenance.
-) ELSE (
-    ECHO [%TIME%] [WARN] Some dependencies are missing. Maintenance will proceed with limited functionality.
 )
 
 REM -----------------------------------------------------------------------------

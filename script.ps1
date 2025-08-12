@@ -46,31 +46,41 @@ $global:ScriptTasks = @(
     # Logic: Tries both package managers, logs all actions and errors.
     @{ Name = 'UpdateAllPackages'; Function = {
             Write-Log '[START] Update All Apps and Packages' 'INFO'
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
+            
+            # Update using Winget if available
+            if ($global:HasWinget) {
                 try {
+                    Write-Log 'Running winget upgrade for all packages...' 'INFO'
                     winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
-                    Write-Log 'winget upgrade completed.' 'INFO'
+                    Write-Log 'Winget upgrade completed successfully.' 'INFO'
                 }
                 catch {
-                    Write-Log "winget upgrade failed: $_" 'WARN'
+                    Write-Log "Winget upgrade failed: $_" 'WARN'
                 }
             }
             else {
-                Write-Log 'winget not found, skipping winget upgrades.' 'WARN'
+                Write-Log 'Winget not available, skipping winget upgrades.' 'WARN'
             }
-            if (Get-Command choco -ErrorAction SilentlyContinue) {
+            
+            # Update using Chocolatey if available
+            if ($global:HasChocolatey) {
                 try {
-                    Write-Log 'Running: choco upgrade all -y' 'INFO'
-                    choco upgrade all -y
-                    Write-Log 'choco upgrade completed.' 'INFO'
+                    Write-Log 'Running chocolatey upgrade for all packages...' 'INFO'
+                    choco upgrade all -y --limit-output
+                    Write-Log 'Chocolatey upgrade completed successfully.' 'INFO'
                 }
                 catch {
-                    Write-Log "choco upgrade failed: $_" 'WARN'
+                    Write-Log "Chocolatey upgrade failed: $_" 'WARN'
                 }
             }
             else {
-                Write-Log 'choco not found, skipping choco upgrades.' 'WARN'
+                Write-Log 'Chocolatey not available, skipping chocolatey upgrades.' 'WARN'
             }
+            
+            if (-not $global:HasWinget -and -not $global:HasChocolatey) {
+                Write-Log 'No package managers available for updates. Consider installing Winget or Chocolatey.' 'WARN'
+            }
+            
             Write-Log '[END] Update All Apps and Packages' 'INFO'
         }; Description = 'Update all apps and packages' 
     },
@@ -81,32 +91,40 @@ $global:ScriptTasks = @(
     @{ Name = 'WindowsUpdateCheck'; Function = {
             if (-not $global:Config.SkipWindowsUpdates) {
                 Write-Log 'Checking for Windows Updates...' 'INFO'
-                try {
-                    if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
-                        try {
-                            Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -ErrorAction Stop
-                            Write-Log 'PSWindowsUpdate module installed.' 'INFO'
-                        }
-                        catch {
-                            Write-Log "Failed to install PSWindowsUpdate module: $_" 'WARN'
-                        }
+                
+                if (-not $global:HasPSWindowsUpdate) {
+                    Write-Log 'PSWindowsUpdate module not available. Attempting inline installation...' 'WARN'
+                    try {
+                        Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -ErrorAction Stop
+                        Write-Log 'PSWindowsUpdate module installed successfully.' 'INFO'
+                        $global:HasPSWindowsUpdate = $true
                     }
-                    Import-Module PSWindowsUpdate -ErrorAction SilentlyContinue
-                    if (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue) {
-                        $updates = Get-WindowsUpdate -AcceptAll -Install -ErrorAction Stop
-                        if ($updates) {
-                            Write-Log ("Installed updates: " + ($updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique | Out-String)) 'INFO'
-                        }
-                        else {
-                            Write-Log 'No new updates were found or installed.' 'INFO'
-                        }
-                    }
-                    else {
-                        Write-Log 'Get-WindowsUpdate command not available. Please update PowerShell or install PSWindowsUpdate.' 'WARN'
+                    catch {
+                        Write-Log "Failed to install PSWindowsUpdate module: $_. Skipping Windows Updates." 'WARN'
+                        return
                     }
                 }
-                catch {
-                    Write-Log "Failed to check or install Windows Updates: $_" 'WARN'
+                
+                if (Import-ModuleWithGracefulFallback -ModuleName 'PSWindowsUpdate' -FallbackMessage 'Windows Updates will be skipped') {
+                    try {
+                        if (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue) {
+                            Write-Log 'Scanning for available Windows Updates...' 'INFO'
+                            $updates = Get-WindowsUpdate -AcceptAll -Install -ErrorAction Stop
+                            if ($updates) {
+                                $updateTitles = $updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique
+                                Write-Log "Installed updates: $($updateTitles -join ', ')" 'INFO'
+                            }
+                            else {
+                                Write-Log 'No new updates were found or installed.' 'INFO'
+                            }
+                        }
+                        else {
+                            Write-Log 'Get-WindowsUpdate command not available after module import.' 'WARN'
+                        }
+                    }
+                    catch {
+                        Write-Log "Failed to check or install Windows Updates: $_" 'WARN'
+                    }
                 }
             }
             else {
@@ -589,7 +607,7 @@ else {
     Write-Log "No config.json found. Using defaults." 'INFO'
 }
 
-### Check Windows version and compat-ibility
+### Check Windows version and compatibility
 $os = Get-CimInstance Win32_OperatingSystem
 $osVersion = $os.Version
 $osCaption = $os.Caption
@@ -598,6 +616,102 @@ if ($osVersion -lt '10.0') {
     Write-Log "Unsupported Windows version. Exiting." 'ERROR'
     exit 2
 }
+
+### PowerShell-specific Dependency Management
+function Test-PowerShellDependencies {
+    param()
+    
+    Write-Log '[DEPENDENCIES] Verifying PowerShell-specific dependencies...' 'INFO'
+    $dependencyStatus = @{}
+    
+    # Test Module Availability
+    $modules = @(
+        @{ Name = 'Appx'; Critical = $false; Description = 'UWP/Store app management' },
+        @{ Name = 'PSWindowsUpdate'; Critical = $false; Description = 'Windows Update management' },
+        @{ Name = 'DISM'; Critical = $false; Description = 'Windows image servicing' }
+    )
+    
+    foreach ($module in $modules) {
+        $moduleName = $module.Name
+        $available = $null -ne (Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue)
+        $dependencyStatus[$moduleName] = $available
+        
+        if ($available) {
+            Write-Log "[DEPENDENCIES] Module '$moduleName' is available" 'VERBOSE'
+        } else {
+            $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
+            Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
+        }
+    }
+    
+    # Test Command Availability
+    $commands = @(
+        @{ Name = 'winget'; Critical = $false; Description = 'Windows Package Manager' },
+        @{ Name = 'choco'; Critical = $false; Description = 'Chocolatey Package Manager' },
+        @{ Name = 'dism'; Critical = $true; Description = 'Windows Image Servicing' }
+    )
+    
+    foreach ($command in $commands) {
+        $commandName = $command.Name
+        $available = $null -ne (Get-Command $commandName -ErrorAction SilentlyContinue)
+        $dependencyStatus[$commandName] = $available
+        
+        if ($available) {
+            Write-Log "[DEPENDENCIES] Command '$commandName' is available" 'VERBOSE'
+        } else {
+            $level = if ($command.Critical) { 'ERROR' } else { 'WARN' }
+            Write-Log "[DEPENDENCIES] Command '$commandName' is not available ($($command.Description))" $level
+        }
+    }
+    
+    # Set global dependency flags for graceful degradation
+    $global:HasWinget = $dependencyStatus['winget']
+    $global:HasChocolatey = $dependencyStatus['choco']
+    $global:HasAppxModule = $dependencyStatus['Appx']
+    $global:HasPSWindowsUpdate = $dependencyStatus['PSWindowsUpdate']
+    $global:HasDISM = $dependencyStatus['DISM'] -and $dependencyStatus['dism']
+    
+    # Summary report
+    $working = ($dependencyStatus.GetEnumerator() | Where-Object { $_.Value } | Measure-Object).Count
+    $total = $dependencyStatus.Count
+    $missing = $total - $working
+    
+    Write-Log "[DEPENDENCIES] Status: $working/$total dependencies available" 'INFO'
+    if ($missing -gt 0) {
+        $missingList = ($dependencyStatus.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object { $_.Key }) -join ', '
+        Write-Log "[DEPENDENCIES] Missing: $missingList" 'WARN'
+        Write-Log "[DEPENDENCIES] Some features will use graceful degradation" 'INFO'
+    } else {
+        Write-Log "[DEPENDENCIES] All dependencies are available" 'INFO'
+    }
+    
+    return $dependencyStatus
+}
+
+function Import-ModuleWithGracefulFallback {
+    param(
+        [string]$ModuleName,
+        [string]$FallbackMessage = "Module not available, skipping operations"
+    )
+    
+    if (Get-Module -ListAvailable -Name $ModuleName -ErrorAction SilentlyContinue) {
+        try {
+            Import-Module $ModuleName -ErrorAction Stop
+            Write-Log "[MODULE] Successfully imported $ModuleName" 'VERBOSE'
+            return $true
+        }
+        catch {
+            Write-Log "[MODULE] Failed to import $ModuleName : $_" 'WARN'
+            return $false
+        }
+    } else {
+        Write-Log "[MODULE] $ModuleName not available. $FallbackMessage" 'WARN'
+        return $false
+    }
+}
+
+# Initialize dependency status
+$global:DependencyStatus = Test-PowerShellDependencies
 
 ### Check for required PowerShell version
 
