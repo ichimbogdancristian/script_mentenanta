@@ -257,7 +257,7 @@ function Remove-AppxPackageCompatible {
         $command += " -ErrorAction Stop"
         
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove AppX package $PackageFullName"
-        return $result -ne $null
+        return $null -ne $result
     }
     else {
         # Native PowerShell 5.1
@@ -323,7 +323,7 @@ function Remove-AppxProvisionedPackageCompatible {
         $command += " -ErrorAction Stop"
         
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove provisioned AppX package $PackageName"
-        return $result -ne $null
+        return $null -ne $result
     }
     else {
         # Native PowerShell 5.1
@@ -352,7 +352,7 @@ function Enable-ComputerRestoreCompatible {
         $command = "Enable-ComputerRestore -Drive '$Drive' -ErrorAction Stop"
         
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Enable System Restore on $Drive"
-        return $result -ne $null
+        return $null -ne $result
     }
     else {
         # Native PowerShell 5.1
@@ -377,7 +377,7 @@ function Checkpoint-ComputerCompatible {
         $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType' -ErrorAction Stop"
         
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Create restore point: $Description"
-        return $result -ne $null
+        return $null -ne $result
     }
     else {
         # Native PowerShell 5.1
@@ -429,7 +429,7 @@ catch {
 "@
         
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Install Windows Updates"
-        return $result -ne $null
+        return $null -ne $result
     }
     else {
         # Native PowerShell 5.1
@@ -614,7 +614,7 @@ function Get-ExtensiveSystemInventory {
 
     Write-Log "[Inventory] Collecting services..." 'INFO'
     try {
-        Get-Service -ErrorAction SilentlyContinue | Where-Object { $_ -ne $null } | Select-Object Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
+        Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | Select-Object Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
         Write-Log "[Inventory] Services collected." 'INFO'
     }
     catch { Write-Log "[Inventory] Services failed: $_" 'WARN' }
@@ -909,7 +909,7 @@ function Test-PowerShellDependencies {
                 try {
                     $testCommand = "Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue | Select-Object Name"
                     $result = Invoke-WindowsPowerShellCommand -Command $testCommand -Description "Test $moduleName availability"
-                    $available = $result -ne $null
+                    $available = $null -ne $result
                 }
                 catch {
                     $available = $false
@@ -1060,7 +1060,7 @@ function Install-EssentialApps {
     try {
         $appxPackages = Get-AppxPackageCompatible -AllUsers
         if ($appxPackages -and $appxPackages.Count -gt 0) {
-            $appxNames = $appxPackages | ForEach-Object { $_.Name } | Where-Object { $_ -ne $null }
+            $appxNames = $appxPackages | ForEach-Object { $_.Name } | Where-Object { $null -ne $_ }
             $installedApps += $appxNames
             Write-Log "[EssentialApps] Collected $($appxNames.Count) AppX packages from inventory" 'INFO'
         }
@@ -1111,7 +1111,7 @@ function Install-EssentialApps {
         foreach ($key in $uninstallKeys) {
             $regApps = Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
                 (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
-            } | Where-Object { $_ -ne $null }
+            } | Where-Object { $null -ne $_ }
             $installedApps += $regApps
         }
         Write-Log "[EssentialApps] Collected registry entries from inventory" 'INFO'
@@ -1121,7 +1121,7 @@ function Install-EssentialApps {
     }
 
     # Remove duplicates
-    $installedApps = $installedApps | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
+    $installedApps = $installedApps | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
     Write-Log "[EssentialApps] Total unique installed applications found: $($installedApps.Count)" 'INFO'
 
     # Filter essential apps to only those NOT already installed
@@ -1379,7 +1379,7 @@ function Remove-Bloatware {
     try {
         $appxPackages = Get-AppxPackageCompatible -AllUsers
         if ($appxPackages -and $appxPackages.Count -gt 0) {
-            $appxNames = $appxPackages | ForEach-Object { $_.Name } | Where-Object { $_ -ne $null }
+            $appxNames = $appxPackages | ForEach-Object { $_.Name } | Where-Object { $null -ne $_ }
             $installedApps += $appxNames
             Write-Log "[Bloatware] Collected $($appxNames.Count) AppX packages from inventory" 'INFO'
         }
@@ -1431,7 +1431,7 @@ function Remove-Bloatware {
         foreach ($key in $uninstallKeys) {
             $regApps += Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
                 (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
-            } | Where-Object { $_ -ne $null }
+            } | Where-Object { $null -ne $_ }
         }
         $installedApps += $regApps
         Write-Log "[Bloatware] Collected $($regApps.Count) registry entries from inventory" 'INFO'
@@ -1441,7 +1441,7 @@ function Remove-Bloatware {
     }
     
     # Remove duplicates and create a comprehensive list
-    $installedApps = $installedApps | Where-Object { $_ -ne $null -and $_ -ne '' } | Sort-Object -Unique
+    $installedApps = $installedApps | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
     Write-Log "[Bloatware] Total unique installed applications found: $($installedApps.Count)" 'INFO'
     
     # Now filter bloatware list to only include apps that are actually installed
@@ -1482,7 +1482,7 @@ function Remove-Bloatware {
         try {
             $testCommand = "Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue | Select-Object Name"
             $result = Invoke-WindowsPowerShellCommand -Command $testCommand -Description "Test Appx module"
-            $appxAvailable = $result -ne $null
+            $appxAvailable = $null -ne $result
             if ($appxAvailable) {
                 Write-Log "Appx module available via Windows PowerShell" 'INFO'
             }
