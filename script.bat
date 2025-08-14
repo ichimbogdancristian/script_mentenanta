@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  script_mentenanta - Windows Maintenance Automation Launcher (Refactored)
+REM  script_mentenanta - Windows Maintenance Automation Launcher (Repaired)
 REM  Purpose: Entry point for all maintenance operations. Handles dependency
 REM           installation, scheduled task setup, repo download/update, and
 REM           launches PowerShell orchestrator (script.ps1).
@@ -27,7 +27,7 @@ REM ----------------------------------------------------------------------------
 NET SESSION >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
     ECHO [%TIME%] [WARN] Not running as Administrator. Relaunching with admin rights...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    powershell -Command "Start-Process '%~f0' -Verb RunAs" >nul 2>&1
     EXIT /B 0
 )
 
@@ -40,7 +40,7 @@ IF "%PS_VERSION%"=="" SET PS_VERSION=0
 IF %PS_VERSION% LSS 5 (
     ECHO [%TIME%] [ERROR] PowerShell 5.1 or higher is required. Current version: %PS_VERSION%
     ECHO [%TIME%] [ERROR] Please install PowerShell 5.1 or newer and try again.
-    pause
+    timeout /t 30 /nobreak >nul
     EXIT /B 3
 )
 ECHO [%TIME%] [INFO] PowerShell version: %PS_VERSION%
@@ -53,166 +53,252 @@ IF "%OS_VERSION%"=="" SET OS_VERSION=Unknown
 ECHO [%TIME%] [INFO] Detected Windows version: %OS_VERSION%
 
 REM -----------------------------------------------------------------------------
-REM Enhanced Monthly Scheduled Task Setup
+REM Enhanced Monthly Scheduled Task Setup - FIXED
 REM Ensures a monthly scheduled task is created to run this script as admin.
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Setting up enhanced monthly scheduled task '%TASK_NAME%'...
 
-REM Check if task already exists
+REM Check if task already exists and delete it
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     ECHO [%TIME%] [INFO] Existing monthly task found. Deleting for recreation...
     schtasks /Delete /TN "%TASK_NAME%" /F >nul 2>&1
-    IF %ERRORLEVEL% NEQ 0 (
-        ECHO [%TIME%] [WARN] Failed to delete existing task, but continuing...
-    )
 )
 
-REM Create enhanced monthly task with robust parameters
-schtasks /Create ^
-    /SC MONTHLY ^
-    /MO 1 ^
-    /D 1 ^
-    /TN "%TASK_NAME%" ^
-    /TR "cmd.exe /c \"\"%SCRIPT_PATH%\"\"" ^
-    /ST 01:00 ^
-    /RL HIGHEST ^
-    /RU SYSTEM ^
-    /IT ^
-    /Z ^
-    /F >nul 2>&1
+REM Create monthly task with corrected XML approach for better compatibility
+powershell -ExecutionPolicy Bypass -Command ^
+"$xml = @'^
+<?xml version='1.0' encoding='UTF-16'?>^
+<Task version='1.2' xmlns='http://schemas.microsoft.com/windows/2004/02/mit/task'>^
+  <RegistrationInfo>^
+    <Description>Monthly Windows Maintenance Script</Description>^
+  </RegistrationInfo>^
+  <Triggers>^
+    <CalendarTrigger>^
+      <StartBoundary>2025-01-01T01:00:00</StartBoundary>^
+      <Enabled>true</Enabled>^
+      <ScheduleByMonth>^
+        <DaysOfMonth>^
+          <Day>1</Day>^
+        </DaysOfMonth>^
+        <Months>^
+          <January /><February /><March /><April /><May /><June />^
+          <July /><August /><September /><October /><November /><December />^
+        </Months>^
+      </ScheduleByMonth>^
+    </CalendarTrigger>^
+  </Triggers>^
+  <Principals>^
+    <Principal id='Author'>^
+      <UserId>S-1-5-18</UserId>^
+      <RunLevel>HighestAvailable</RunLevel>^
+    </Principal>^
+  </Principals>^
+  <Settings>^
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>^
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>^
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>^
+    <AllowHardTerminate>true</AllowHardTerminate>^
+    <StartWhenAvailable>true</StartWhenAvailable>^
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>^
+    <IdleSettings>^
+      <StopOnIdleEnd>false</StopOnIdleEnd>^
+      <RestartOnIdle>false</RestartOnIdle>^
+    </IdleSettings>^
+    <AllowStartOnDemand>true</AllowStartOnDemand>^
+    <Enabled>true</Enabled>^
+    <Hidden>false</Hidden>^
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>^
+    <WakeToRun>false</WakeToRun>^
+    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>^
+    <Priority>7</Priority>^
+  </Settings>^
+  <Actions Context='Author'>^
+    <Exec>^
+      <Command>cmd.exe</Command>^
+      <Arguments>/c \`"%SCRIPT_PATH%\`"</Arguments>^
+      <WorkingDirectory>%SCRIPT_DIR%</WorkingDirectory>^
+    </Exec>^
+  </Actions>^
+</Task>^
+'@; try { Register-ScheduledTask -TaskName '%TASK_NAME%' -Xml $xml -Force; Write-Host '[INFO] Monthly scheduled task created successfully' } catch { Write-Host '[ERROR] Failed to create monthly task:' $_.Exception.Message; exit 1 }"
 
 IF %ERRORLEVEL% EQU 0 (
     ECHO [%TIME%] [INFO] Monthly scheduled task created successfully.
     
-    REM Verify task was created and get details
-    schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
+    REM Verify task was created
+    schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
         ECHO [%TIME%] [INFO] Task verification successful.
-        FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
-            ECHO [%TIME%] [INFO] Next scheduled run: %%i
-        )
     )
 ) ELSE (
-    ECHO [%TIME%] [ERROR] Failed to create monthly scheduled task.
-    ECHO [%TIME%] [ERROR] Attempting alternative creation method...
+    ECHO [%TIME%] [ERROR] Failed to create monthly scheduled task with XML method.
+    ECHO [%TIME%] [INFO] Attempting simplified creation...
     
-    REM Alternative creation method without some parameters
+    REM Fallback to simplified method
     schtasks /Create /SC MONTHLY /D 1 /TN "%TASK_NAME%" /TR "cmd.exe /c \"%SCRIPT_PATH%\"" /ST 01:00 /RL HIGHEST /F >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
-        ECHO [%TIME%] [INFO] Monthly task created with basic parameters.
+        ECHO [%TIME%] [INFO] Monthly task created with simplified method.
     ) ELSE (
-        ECHO [%TIME%] [ERROR] Both creation methods failed. Monthly scheduling not available.
+        ECHO [%TIME%] [WARN] Monthly scheduling failed with both methods.
     )
 )
 
 REM -----------------------------------------------------------------------------
 REM Startup Task Management - Check and Remove if Exists
-REM This task should only exist temporarily after a system restart.
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Checking startup task '%STARTUP_TASK_NAME%'...
 schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
-    ECHO [%TIME%] [INFO] Existing startup task found. Removing...
+    ECHO [%TIME%] [INFO] Removing existing startup task...
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
         ECHO [%TIME%] [INFO] Startup task removed successfully.
-    ) ELSE (
-        ECHO [%TIME%] [WARN] Failed to remove startup task, but continuing...
     )
-) ELSE (
-    ECHO [%TIME%] [INFO] No existing startup task found.
 )
 
 REM -----------------------------------------------------------------------------
-REM System Restart Detection and Handling
-REM Check if Windows requires a restart, create startup task if needed, restart immediately
+REM System Restart Detection and Handling - SIMPLIFIED AND FIXED
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Checking for pending system restarts...
 SET "RESTART_NEEDED=NO"
 
-REM Check Windows Update reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    ECHO [%TIME%] [INFO] Windows Update restart required.
-    SET "RESTART_NEEDED=YES"
-)
+REM Check multiple restart indicators
+powershell -ExecutionPolicy Bypass -Command ^
+"$restartNeeded = $false; ^
+if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') { $restartNeeded = $true }; ^
+if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') { $restartNeeded = $true }; ^
+if (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue) { $restartNeeded = $true }; ^
+if ($restartNeeded) { Write-Output 'YES' } else { Write-Output 'NO' }" > "%TEMP%\restart_check.txt"
 
-REM Check Component Based Servicing reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    ECHO [%TIME%] [INFO] Component Based Servicing restart pending.
-    SET "RESTART_NEEDED=YES"
-)
-
-REM Check pending file operations
-REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    ECHO [%TIME%] [INFO] Pending file rename operations detected.
-    SET "RESTART_NEEDED=YES"
-)
+SET /P RESTART_NEEDED=<"%TEMP%\restart_check.txt"
+DEL "%TEMP%\restart_check.txt" >nul 2>&1
 
 IF "%RESTART_NEEDED%"=="YES" (
     ECHO [%TIME%] [WARN] System restart is required. Creating startup task and restarting...
-    REM Create startup task to run 120 seconds (2 minutes) after system boot with admin rights
-    schtasks /Create /SC ONSTART /TN "%STARTUP_TASK_NAME%" /TR "cmd /c \"timeout /t 120 /nobreak >nul && \"%SCRIPT_PATH%\"\"" /RL HIGHEST /F >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        ECHO [%TIME%] [INFO] Startup task created successfully. Will run 120 seconds after system boot.
-        ECHO [%TIME%] [INFO] Restarting system immediately...
-        shutdown /r /t 5 /c "System restart required for maintenance continuation"
-        ECHO [%TIME%] [INFO] System will restart in 5 seconds...
-        timeout /t 10 /nobreak >nul
-        EXIT /B 0
-    ) ELSE (
-        ECHO [%TIME%] [ERROR] Failed to create startup task. Continuing without restart...
-    )
+    
+    REM Create startup task
+    powershell -ExecutionPolicy Bypass -Command ^
+    "$xml = @'^
+    <?xml version='1.0' encoding='UTF-16'?>^
+    <Task version='1.2' xmlns='http://schemas.microsoft.com/windows/2004/02/mit/task'>^
+      <Triggers>^
+        <BootTrigger>^
+          <Enabled>true</Enabled>^
+          <Delay>PT2M</Delay>^
+        </BootTrigger>^
+      </Triggers>^
+      <Principals>^
+        <Principal>^
+          <UserId>S-1-5-18</UserId>^
+          <RunLevel>HighestAvailable</RunLevel>^
+        </Principal>^
+      </Principals>^
+      <Settings>^
+        <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>^
+        <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>^
+        <AllowStartOnDemand>true</AllowStartOnDemand>^
+        <StartWhenAvailable>true</StartWhenAvailable>^
+        <DeleteExpiredTaskAfter>PT0S</DeleteExpiredTaskAfter>^
+      </Settings>^
+      <Actions>^
+        <Exec>^
+          <Command>cmd.exe</Command>^
+          <Arguments>/c \`"%SCRIPT_PATH%\`"</Arguments>^
+        </Exec>^
+      </Actions>^
+    </Task>^
+    '@; try { Register-ScheduledTask -TaskName '%STARTUP_TASK_NAME%' -Xml $xml -Force; Write-Host '[INFO] Startup task created' } catch { Write-Host '[ERROR] Failed to create startup task' }"
+    
+    ECHO [%TIME%] [INFO] Restarting system in 10 seconds...
+    ECHO [%TIME%] [INFO] Script will continue automatically after restart.
+    timeout /t 10 /nobreak >nul
+    shutdown /r /t 0 /c "System restart required for maintenance continuation" /f
+    EXIT /B 0
 ) ELSE (
-    ECHO [%TIME%] [INFO] No pending restart detected. No startup task needed. Continuing with script...
+    ECHO [%TIME%] [INFO] No pending restart detected. Continuing...
 )
 
 REM -----------------------------------------------------------------------------
-REM Dependency Management - Fixed for Unattended Installation
+REM Dependency Management - FIXED FOR UNATTENDED INSTALLATION
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Starting dependency installation...
+ECHO [%TIME%] [INFO] Starting dependency installation (fully unattended)...
 
-REM Check and install NuGet PackageProvider first (fully unattended)
-ECHO [%TIME%] [INFO] Checking NuGet PackageProvider...
-powershell -ExecutionPolicy Bypass -Command "if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:$false; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' $_.Exception.Message; exit 1 } } else { Write-Host '[INFO] NuGet PackageProvider already available' }"
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [WARN] NuGet PackageProvider installation failed, but continuing...
-)
+REM Set TLS 1.2 and install NuGet PackageProvider completely unattended
+ECHO [%TIME%] [INFO] Installing NuGet PackageProvider (unattended)...
+powershell -ExecutionPolicy Bypass -Command ^
+"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
+if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { ^
+    try { ^
+        $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -ForceBootstrap; ^
+        Write-Host '[INFO] NuGet PackageProvider installed successfully' ^
+    } catch { ^
+        Write-Host '[WARN] NuGet installation failed:' $_.Exception.Message ^
+    } ^
+} else { ^
+    Write-Host '[INFO] NuGet PackageProvider already available' ^
+}"
 
-REM Set PowerShell Gallery as trusted (required for module installations)
-ECHO [%TIME%] [INFO] Configuring PowerShell Gallery...
-powershell -ExecutionPolicy Bypass -Command "try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; Write-Host '[INFO] PowerShell Gallery configured as trusted' } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exception.Message }"
+REM Set PowerShell Gallery as trusted
+ECHO [%TIME%] [INFO] Configuring PowerShell Gallery as trusted...
+powershell -ExecutionPolicy Bypass -Command ^
+"try { ^
+    Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; ^
+    Write-Host '[INFO] PowerShell Gallery configured as trusted' ^
+} catch { ^
+    Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exception.Message ^
+}"
 
-REM Install PSWindowsUpdate module (most important for maintenance)
-ECHO [%TIME%] [INFO] Installing PSWindowsUpdate module...
-powershell -ExecutionPolicy Bypass -Command "if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:$false; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' $_.Exception.Message; exit 1 } } else { Write-Host '[INFO] PSWindowsUpdate module already available' }"
-IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [WARN] PSWindowsUpdate module installation failed.
-)
+REM Install PSWindowsUpdate module
+ECHO [%TIME%] [INFO] Installing PSWindowsUpdate module (unattended)...
+powershell -ExecutionPolicy Bypass -Command ^
+"if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { ^
+    try { ^
+        $null = Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:`$false -SkipPublisherCheck; ^
+        Write-Host '[INFO] PSWindowsUpdate module installed successfully' ^
+    } catch { ^
+        Write-Host '[WARN] PSWindowsUpdate installation failed:' $_.Exception.Message ^
+    } ^
+} else { ^
+    Write-Host '[INFO] PSWindowsUpdate module already available' ^
+}"
 
-REM Try to install Chocolatey (optional but useful)
+REM Install Chocolatey (optional)
 ECHO [%TIME%] [INFO] Checking Chocolatey installation...
-choco --version >nul 2>&1
+WHERE choco >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [INFO] Installing Chocolatey...
-    powershell -ExecutionPolicy Bypass -Command "try { Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host '[INFO] Chocolatey installed successfully' } catch { Write-Host '[WARN] Chocolatey installation failed, but this is optional:' $_.Exception.Message }"
-    REM Refresh PATH to include Chocolatey
-    IF EXIST "%ProgramData%\chocolatey\bin" (
-        SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
-    )
+    ECHO [%TIME%] [INFO] Installing Chocolatey (unattended)...
+    powershell -ExecutionPolicy Bypass -Command ^
+    "try { ^
+        Set-ExecutionPolicy Bypass -Scope Process -Force; ^
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; ^
+        $env:chocolateyUseWindowsCompression = 'true'; ^
+        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); ^
+        Write-Host '[INFO] Chocolatey installed successfully' ^
+    } catch { ^
+        Write-Host '[WARN] Chocolatey installation failed (optional):' $_.Exception.Message ^
+    }"
+    
+    REM Refresh environment variables
+    CALL refreshenv >nul 2>&1
+    IF EXIST "%ProgramData%\chocolatey\bin" SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
 ) ELSE (
     ECHO [%TIME%] [INFO] Chocolatey is already installed.
 )
 
-REM Try to install Winget if not available (Windows 11 usually has it, Windows 10 might not)
+REM Check for winget and attempt installation if needed
 ECHO [%TIME%] [INFO] Checking Windows Package Manager (winget)...
-winget --version >nul 2>&1
+WHERE winget >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    ECHO [%TIME%] [INFO] Winget not found, attempting installation...
-    powershell -ExecutionPolicy Bypass -Command "try { $progressPreference = 'silentlyContinue'; Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe; Write-Host '[INFO] Winget installation attempted' } catch { Write-Host '[WARN] Winget installation failed, but this is optional for Windows 10:' $_.Exception.Message }"
+    ECHO [%TIME%] [INFO] Attempting winget installation...
+    powershell -ExecutionPolicy Bypass -Command ^
+    "try { ^
+        $progressPreference = 'silentlyContinue'; ^
+        Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop; ^
+        Write-Host '[INFO] Winget registration attempted' ^
+    } catch { ^
+        Write-Host '[WARN] Winget installation failed (optional for Windows 10):' $_.Exception.Message ^
+    }"
 ) ELSE (
     ECHO [%TIME%] [INFO] Winget is already available.
 )
@@ -220,186 +306,154 @@ IF %ERRORLEVEL% NEQ 0 (
 ECHO [%TIME%] [INFO] Dependency installation phase completed.
 
 REM -----------------------------------------------------------------------------
-REM System Restart Detection - Simplified
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking for pending system restarts...
-SET "RESTART_NEEDED=NO"
-
-REM Check Windows Update reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-IF %ERRORLEVEL% EQU 0 SET "RESTART_NEEDED=YES"
-
-REM Check Component Based Servicing reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF %ERRORLEVEL% EQU 0 SET "RESTART_NEEDED=YES"
-
-REM Check pending file operations
-REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
-IF %ERRORLEVEL% EQU 0 SET "RESTART_NEEDED=YES"
-
-IF "%RESTART_NEEDED%"=="YES" (
-    ECHO [%TIME%] [WARN] System restart is pending. Creating startup task...
-    schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-    )
-    schtasks /Create /SC ONSTART /TN "%STARTUP_TASK_NAME%" /TR "cmd /c \"timeout /t 60 /nobreak >nul && \"%SCRIPT_PATH%\"\"" /RL HIGHEST /DELAY 00:01 /F >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        ECHO [%TIME%] [INFO] Startup task created. Restarting system in 15 seconds...
-        ECHO [%TIME%] [INFO] Press Ctrl+C to cancel restart.
-        timeout /t 15
-        shutdown /r /t 5 /c "System restart required for maintenance continuation"
-        EXIT /B 0
-    ) ELSE (
-        ECHO [%TIME%] [WARN] Failed to create startup task. Continuing without restart...
-    )
-) ELSE (
-    ECHO [%TIME%] [INFO] No pending restart detected. Continuing...
-)
-
-REM -----------------------------------------------------------------------------
-REM Repository Download - Simplified
+REM Repository Download and Extraction - SIMPLIFIED
 REM -----------------------------------------------------------------------------
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 SET "ZIP_FILE=%TEMP%\script_mentenanta.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 
 ECHO [%TIME%] [INFO] Downloading latest repository...
-powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing; Write-Host '[INFO] Repository downloaded successfully' } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
+powershell -ExecutionPolicy Bypass -Command ^
+"try { ^
+    $ProgressPreference = 'SilentlyContinue'; ^
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
+    Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing -TimeoutSec 60; ^
+    Write-Host '[INFO] Repository downloaded successfully' ^
+} catch { ^
+    Write-Host '[ERROR] Download failed:' $_.Exception.Message; ^
+    exit 1 ^
+}"
 
 IF %ERRORLEVEL% NEQ 0 (
     ECHO [%TIME%] [ERROR] Failed to download repository. Check internet connection.
-    pause
+    timeout /t 30 /nobreak >nul
     EXIT /B 2
 )
 
-IF NOT EXIST "%ZIP_FILE%" (
-    ECHO [%TIME%] [ERROR] Download failed - ZIP file not created.
-    pause
-    EXIT /B 2
-)
-
-REM -----------------------------------------------------------------------------
-REM Repository Cleanup - Remove existing folder if it exists
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking for existing repository folder...
+REM Clean up existing extraction folder
+ECHO [%TIME%] [INFO] Cleaning up existing repository folder...
 IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
-    ECHO [%TIME%] [INFO] Existing repository folder found. Removing for clean extraction...
     RMDIR /S /Q "%SCRIPT_DIR%%EXTRACT_FOLDER%" >nul 2>&1
     IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
-        ECHO [%TIME%] [WARN] Could not remove existing folder completely. Attempting forced removal...
-        powershell -ExecutionPolicy Bypass -Command "try { Remove-Item -Path '%SCRIPT_DIR%%EXTRACT_FOLDER%' -Recurse -Force -ErrorAction Stop; Write-Host '[INFO] Existing folder removed successfully' } catch { Write-Host '[WARN] Failed to remove existing folder:' $_.Exception.Message }"
-    ) ELSE (
-        ECHO [%TIME%] [INFO] Existing repository folder removed successfully.
+        powershell -ExecutionPolicy Bypass -Command ^
+        "try { Remove-Item -Path '%SCRIPT_DIR%%EXTRACT_FOLDER%' -Recurse -Force; Write-Host '[INFO] Existing folder removed' } catch { Write-Host '[WARN] Could not remove existing folder' }"
     )
-) ELSE (
-    ECHO [%TIME%] [INFO] No existing repository folder found. Proceeding with clean extraction.
 )
 
-REM -----------------------------------------------------------------------------
-REM Repository Extraction - Using PowerShell (More Reliable)
-REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Extracting repository to clean folder...
-powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%SCRIPT_DIR%'); Write-Host '[INFO] Repository extracted successfully' } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
+REM Extract repository
+ECHO [%TIME%] [INFO] Extracting repository...
+powershell -ExecutionPolicy Bypass -Command ^
+"try { ^
+    Add-Type -AssemblyName System.IO.Compression.FileSystem; ^
+    [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%SCRIPT_DIR%'); ^
+    Write-Host '[INFO] Repository extracted successfully' ^
+} catch { ^
+    Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; ^
+    exit 1 ^
+}"
 
 IF %ERRORLEVEL% NEQ 0 (
     ECHO [%TIME%] [ERROR] Failed to extract repository.
-    pause
+    timeout /t 30 /nobreak >nul
     EXIT /B 3
 )
 
 REM Clean up ZIP file
 DEL /F /Q "%ZIP_FILE%" >nul 2>&1
 
-REM Check if extraction worked
+REM Verify extraction
 IF NOT EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
-    ECHO [%TIME%] [ERROR] Extraction failed - folder not found: %SCRIPT_DIR%%EXTRACT_FOLDER%
-    ECHO [%TIME%] [INFO] Available folders:
-    DIR "%SCRIPT_DIR%" /AD /B
-    pause
+    ECHO [%TIME%] [ERROR] Extraction failed - folder not found.
+    timeout /t 30 /nobreak >nul
     EXIT /B 3
 )
 
-ECHO [%TIME%] [INFO] Repository extracted to clean folder: %SCRIPT_DIR%%EXTRACT_FOLDER%
+ECHO [%TIME%] [INFO] Repository extracted successfully to: %SCRIPT_DIR%%EXTRACT_FOLDER%
 
 REM -----------------------------------------------------------------------------
-REM PowerShell 7 Detection and Installation (if needed)
+REM PowerShell 7 Detection and Installation - IMPROVED
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking PowerShell 7 availability...
+ECHO [%TIME%] [INFO] Checking for PowerShell 7...
 SET "PS7_AVAILABLE=NO"
+SET "PS7_PATH="
 
-pwsh.exe -Version >nul 2>&1
+REM Check common PowerShell 7 locations
+WHERE pwsh.exe >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     SET "PS7_AVAILABLE=YES"
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    ECHO [%TIME%] [INFO] PowerShell 7 found: %PS7_VERSION%
+    ECHO [%TIME%] [INFO] PowerShell 7 found in PATH: %PS7_VERSION%
+    SET "PS7_PATH=pwsh.exe"
 ) ELSE (
-    ECHO [%TIME%] [WARN] PowerShell 7 not found. Attempting installation via winget...
-    winget install --id Microsoft.Powershell --source winget --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        ECHO [%TIME%] [INFO] PowerShell 7 installation completed. Refreshing PATH...
-        REM Refresh PATH environment variable
-        FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "NEW_PATH=%%B"
-        SET "PATH=%NEW_PATH%"
-        
-        REM Check again after installation
-        pwsh.exe -Version >nul 2>&1
-        IF %ERRORLEVEL% EQU 0 (
-            SET "PS7_AVAILABLE=YES"
-            FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-            ECHO [%TIME%] [INFO] PowerShell 7 successfully installed: %PS7_VERSION%
-        ) ELSE (
-            ECHO [%TIME%] [WARN] PowerShell 7 installation may require system restart to be available.
-        )
+    REM Check default installation paths
+    IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+        SET "PS7_AVAILABLE=YES"
+        SET "PS7_PATH=%ProgramFiles%\PowerShell\7\pwsh.exe"
+        FOR /F "tokens=*" %%i IN ('"%PS7_PATH%" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+        ECHO [%TIME%] [INFO] PowerShell 7 found at default location: %PS7_VERSION%
     ) ELSE (
-        ECHO [%TIME%] [WARN] PowerShell 7 installation failed. Will use Windows PowerShell instead.
+        ECHO [%TIME%] [WARN] PowerShell 7 not found. Attempting installation...
+        
+        REM Try winget installation
+        WHERE winget >nul 2>&1
+        IF %ERRORLEVEL% EQU 0 (
+            winget install --id Microsoft.Powershell --source winget --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+            IF %ERRORLEVEL% EQU 0 (
+                ECHO [%TIME%] [INFO] PowerShell 7 installation completed.
+                REM Check again after installation
+                WHERE pwsh.exe >nul 2>&1
+                IF %ERRORLEVEL% EQU 0 (
+                    SET "PS7_AVAILABLE=YES"
+                    SET "PS7_PATH=pwsh.exe"
+                    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+                    ECHO [%TIME%] [INFO] PowerShell 7 installed successfully: %PS7_VERSION%
+                ) ELSE IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+                    SET "PS7_AVAILABLE=YES"
+                    SET "PS7_PATH=%ProgramFiles%\PowerShell\7\pwsh.exe"
+                    FOR /F "tokens=*" %%i IN ('"%PS7_PATH%" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+                    ECHO [%TIME%] [INFO] PowerShell 7 installed at default location: %PS7_VERSION%
+                )
+            ) ELSE (
+                ECHO [%TIME%] [WARN] PowerShell 7 installation via winget failed.
+            )
+        ) ELSE (
+            ECHO [%TIME%] [WARN] Winget not available for PowerShell 7 installation.
+        )
     )
 )
 
 REM -----------------------------------------------------------------------------
-REM Launch PowerShell Script with Priority for PowerShell 7
+REM Launch PowerShell Script - FIXED TO PRIORITIZE POWERSHELL 7
 REM -----------------------------------------------------------------------------
 SET "PS1_PATH=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
 
 IF NOT EXIST "%PS1_PATH%" (
     ECHO [%TIME%] [ERROR] PowerShell script not found: %PS1_PATH%
-    ECHO [%TIME%] [INFO] Contents of extracted folder:
-    DIR "%SCRIPT_DIR%%EXTRACT_FOLDER%" /B
-    pause
+    timeout /t 30 /nobreak >nul
     EXIT /B 4
 )
 
 ECHO [%TIME%] [INFO] Launching PowerShell maintenance script...
 
 IF "%PS7_AVAILABLE%"=="YES" (
-    ECHO [%TIME%] [INFO] Using PowerShell 7 environment...
-    START "Maintenance Script - PowerShell 7" pwsh.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
+    ECHO [%TIME%] [INFO] Using PowerShell 7: %PS7_VERSION%
+    CD /D "%SCRIPT_DIR%%EXTRACT_FOLDER%"
+    START "Maintenance Script - PowerShell 7" "%PS7_PATH%" -ExecutionPolicy Bypass -File "%PS1_PATH%"
 ) ELSE (
-    ECHO [%TIME%] [INFO] Using Windows PowerShell environment...
+    ECHO [%TIME%] [INFO] Using Windows PowerShell as fallback...
+    CD /D "%SCRIPT_DIR%%EXTRACT_FOLDER%"
     START "Maintenance Script - Windows PowerShell" powershell.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
 )
 
 IF %ERRORLEVEL% EQU 0 (
-    ECHO [%TIME%] [INFO] PowerShell script launched successfully in new window.
-    ECHO [%TIME%] [INFO] Maintenance operations are now running in the background.
-    ECHO.
-    ECHO [%TIME%] [INFO] This launcher will close automatically in 120 seconds...
-    ECHO [%TIME%] [INFO] Press any key to close immediately, or wait for automatic closure.
-    
-    REM 120-second countdown with visual feedback
-    FOR /L %%i IN (120,-10,10) DO (
-        ECHO [%TIME%] [INFO] Closing in %%i seconds...
-        timeout /t 10 /nobreak >nul
-    )
-    
-    ECHO [%TIME%] [INFO] Final countdown: 10 seconds...
+    ECHO [%TIME%] [INFO] PowerShell script launched successfully.
+    ECHO [%TIME%] [INFO] Maintenance operations are now running in a separate window.
+    ECHO [%TIME%] [INFO] This launcher will close in 10 seconds...
     timeout /t 10 /nobreak >nul
-    
     ECHO [%TIME%] [INFO] Batch launcher completed successfully.
 ) ELSE (
     ECHO [%TIME%] [ERROR] Failed to launch PowerShell script.
-    ECHO [%TIME%] [ERROR] Please check the PowerShell script path and permissions.
-    pause
+    timeout /t 30 /nobreak >nul
 )
 
 ENDLOCAL
