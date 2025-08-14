@@ -8,12 +8,13 @@
 # Each task is modular, robust, and designed for unattended execution in enterprise or home environments.
 #
 # Key Environment Details:
-# - Requires PowerShell 5.1+
+# - Compatible with PowerShell 7+ and Windows PowerShell 5.1
 # - Must be run as Administrator
 # - Uses $PSScriptRoot for all temp and log files
-# - Integrates with Winget, Chocolatey, AppX, DISM, Registry, and Windows Capabilities
+# - Integrates with Winget, Chocolatey, AppX (via Windows PowerShell), DISM, Registry, and Windows Capabilities
 # - All actions are silent/non-interactive
 # - Graceful degradation if dependencies are missing
+# - Automatically switches to Windows PowerShell for legacy module operations
 #
 # Task Array: $global:ScriptTasks
 # Each entry defines a maintenance task with its logic, description, and config-driven enable/disable.
@@ -92,39 +93,12 @@ $global:ScriptTasks = @(
             if (-not $global:Config.SkipWindowsUpdates) {
                 Write-Log 'Checking for Windows Updates...' 'INFO'
                 
-                if (-not $global:HasPSWindowsUpdate) {
-                    Write-Log 'PSWindowsUpdate module not available. Attempting inline installation...' 'WARN'
-                    try {
-                        Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -ErrorAction Stop
-                        Write-Log 'PSWindowsUpdate module installed successfully.' 'INFO'
-                        $global:HasPSWindowsUpdate = $true
-                    }
-                    catch {
-                        Write-Log "Failed to install PSWindowsUpdate module: $_. Skipping Windows Updates." 'WARN'
-                        return
-                    }
+                $success = Install-WindowsUpdatesCompatible
+                if ($success) {
+                    Write-Log 'Windows Updates check and installation completed.' 'INFO'
                 }
-                
-                if (Import-ModuleWithGracefulFallback -ModuleName 'PSWindowsUpdate' -FallbackMessage 'Windows Updates will be skipped') {
-                    try {
-                        if (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue) {
-                            Write-Log 'Scanning for available Windows Updates...' 'INFO'
-                            $updates = Get-WindowsUpdate -AcceptAll -Install -ErrorAction Stop
-                            if ($updates) {
-                                $updateTitles = $updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique
-                                Write-Log "Installed updates: $($updateTitles -join ', ')" 'INFO'
-                            }
-                            else {
-                                Write-Log 'No new updates were found or installed.' 'INFO'
-                            }
-                        }
-                        else {
-                            Write-Log 'Get-WindowsUpdate command not available after module import.' 'WARN'
-                        }
-                    }
-                    catch {
-                        Write-Log "Failed to check or install Windows Updates: $_" 'WARN'
-                    }
+                else {
+                    Write-Log 'Windows Updates check failed or no updates available.' 'WARN'
                 }
             }
             else {
@@ -205,7 +179,308 @@ function Use-AllScriptTasks {
 # [PRE-TASK 0] Set up log file in the repo folder
 $logPath = Join-Path $PSScriptRoot "maintenance.log"
 
-# [PRE-TASK 1] Logging & Task Functions
+### PowerShell 7 Compatibility Functions
+function Invoke-WindowsPowerShellCommand {
+    param(
+        [string]$Command,
+        [string]$Description = "Windows PowerShell command"
+    )
+    
+    Write-Log "[PS5.1] Executing via Windows PowerShell: $Description" 'INFO'
+    
+    try {
+        # Create a script block to execute in Windows PowerShell
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
+        
+        $result = & powershell.exe -EncodedCommand $encodedCommand
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "[PS5.1] Successfully executed: $Description" 'INFO'
+            return $result
+        } else {
+            Write-Log "[PS5.1] Command failed with exit code $LASTEXITCODE`: $Description" 'WARN'
+            return $null
+        }
+    }
+    catch {
+        Write-Log "[PS5.1] Exception executing command: $_" 'ERROR'
+        return $null
+    }
+}
+
+function Get-AppxPackageCompatible {
+    param(
+        [string]$Name = "*",
+        [switch]$AllUsers
+    )
+    
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Use Windows PowerShell for Appx operations
+        $command = "Import-Module Appx -ErrorAction SilentlyContinue; Get-AppxPackage"
+        if ($AllUsers) { $command += " -AllUsers" }
+        if ($Name -ne "*") { $command += " -Name '$Name'" }
+        $command += " | Select-Object Name, PackageFullName, Publisher | ConvertTo-Json -Depth 3"
+        
+        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get AppX packages"
+        if ($result) {
+            try {
+                return ($result | ConvertFrom-Json)
+            }
+            catch {
+                Write-Log "Failed to parse AppX package JSON: $_" 'WARN'
+                return @()
+            }
+        }
+        return @()
+    }
+    else {
+        # Native PowerShell 5.1
+        if ($AllUsers) {
+            return Get-AppxPackage -Name $Name -AllUsers -ErrorAction SilentlyContinue
+        }
+        else {
+            return Get-AppxPackage -Name $Name -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Remove-AppxPackageCompatible {
+    param(
+        [string]$PackageFullName,
+        [switch]$AllUsers
+    )
+    
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Use Windows PowerShell for Appx operations
+        $command = "Import-Module Appx -ErrorAction SilentlyContinue; Remove-AppxPackage -Package '$PackageFullName'"
+        if ($AllUsers) { $command += " -AllUsers" }
+        $command += " -ErrorAction Stop"
+        
+        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove AppX package $PackageFullName"
+        return $result -ne $null
+    }
+    else {
+        # Native PowerShell 5.1
+        try {
+            if ($AllUsers) {
+                Remove-AppxPackage -Package $PackageFullName -AllUsers -ErrorAction Stop
+            }
+            else {
+                Remove-AppxPackage -Package $PackageFullName -ErrorAction Stop
+            }
+            return $true
+        }
+        catch {
+            return $false
+        }
+    }
+}
+
+function Get-AppxProvisionedPackageCompatible {
+    param(
+        [switch]$Online
+    )
+    
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Use Windows PowerShell for Appx operations
+        $command = "Import-Module Dism -ErrorAction SilentlyContinue; Get-AppxProvisionedPackage"
+        if ($Online) { $command += " -Online" }
+        $command += " | Select-Object DisplayName, PackageName | ConvertTo-Json -Depth 3"
+        
+        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get provisioned AppX packages"
+        if ($result) {
+            try {
+                return ($result | ConvertFrom-Json)
+            }
+            catch {
+                Write-Log "Failed to parse provisioned AppX package JSON: $_" 'WARN'
+                return @()
+            }
+        }
+        return @()
+    }
+    else {
+        # Native PowerShell 5.1
+        if ($Online) {
+            return Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+        }
+        else {
+            return Get-AppxProvisionedPackage -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Remove-AppxProvisionedPackageCompatible {
+    param(
+        [string]$PackageName,
+        [switch]$Online
+    )
+    
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Use Windows PowerShell for Appx operations
+        $command = "Import-Module Dism -ErrorAction SilentlyContinue; Remove-AppxProvisionedPackage -PackageName '$PackageName'"
+        if ($Online) { $command += " -Online" }
+        $command += " -ErrorAction Stop"
+        
+        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove provisioned AppX package $PackageName"
+        return $result -ne $null
+    }
+    else {
+        # Native PowerShell 5.1
+        try {
+            if ($Online) {
+                Remove-AppxProvisionedPackage -Online -PackageName $PackageName -ErrorAction Stop
+            }
+            else {
+                Remove-AppxProvisionedPackage -PackageName $PackageName -ErrorAction Stop
+            }
+            return $true
+        }
+        catch {
+            return $false
+        }
+    }
+}
+
+function Enable-ComputerRestoreCompatible {
+    param(
+        [string]$Drive
+    )
+    
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Use Windows PowerShell for System Restore operations
+        $command = "Enable-ComputerRestore -Drive '$Drive' -ErrorAction Stop"
+        
+        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Enable System Restore on $Drive"
+        return $result -ne $null
+    }
+    else {
+        # Native PowerShell 5.1
+        try {
+            Enable-ComputerRestore -Drive $Drive -ErrorAction Stop
+            return $true
+        }
+        catch {
+            return $false
+        }
+    }
+}
+
+function Checkpoint-ComputerCompatible {
+    param(
+        [string]$Description,
+        [string]$RestorePointType = 'MODIFY_SETTINGS'
+    )
+    
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Use Windows PowerShell for System Restore operations
+        $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType' -ErrorAction Stop"
+        
+        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Create restore point: $Description"
+        return $result -ne $null
+    }
+    else {
+        # Native PowerShell 5.1
+        try {
+            Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
+            return $true
+        }
+        catch {
+            return $false
+        }
+    }
+}
+
+function Install-WindowsUpdatesCompatible {
+    param()
+    
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Use Windows PowerShell for PSWindowsUpdate
+        $command = @"
+# Check if PSWindowsUpdate is installed
+if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
+    try {
+        Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:`$false -ErrorAction Stop
+        Write-Host 'PSWindowsUpdate module installed successfully.'
+    }
+    catch {
+        Write-Host "Failed to install PSWindowsUpdate module: `$_"
+        exit 1
+    }
+}
+
+Import-Module PSWindowsUpdate -ErrorAction Stop
+
+# Get and install updates
+try {
+    `$updates = Get-WindowsUpdate -AcceptAll -Install -ErrorAction Stop
+    if (`$updates) {
+        `$updateTitles = `$updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique
+        Write-Host "Installed updates: `$(`$updateTitles -join ', ')"
+    }
+    else {
+        Write-Host 'No new updates were found or installed.'
+    }
+}
+catch {
+    Write-Host "Failed to check or install Windows Updates: `$_"
+    exit 1
+}
+"@
+        
+        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Install Windows Updates"
+        return $result -ne $null
+    }
+    else {
+        # Native PowerShell 5.1
+        try {
+            if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
+                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -ErrorAction Stop
+                Write-Log 'PSWindowsUpdate module installed successfully.' 'INFO'
+            }
+            
+            Import-Module PSWindowsUpdate -ErrorAction Stop
+            
+            $updates = Get-WindowsUpdate -AcceptAll -Install -ErrorAction Stop
+            if ($updates) {
+                $updateTitles = $updates | Select-Object -ExpandProperty Title -ErrorAction SilentlyContinue -Unique
+                Write-Log "Installed updates: $($updateTitles -join ', ')" 'INFO'
+            }
+            else {
+                Write-Log 'No new updates were found or installed.' 'INFO'
+            }
+            return $true
+        }
+        catch {
+            Write-Log "Failed to check or install Windows Updates: $_" 'WARN'
+            return $false
+        }
+    }
+}
+
+function Get-StartAppsCompatible {
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Use Windows PowerShell for Get-StartApps
+        $command = "Get-StartApps | Select-Object Name, AppId | ConvertTo-Json -Depth 2"
+        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get Start menu apps"
+        if ($result) {
+            try {
+                return ($result | ConvertFrom-Json)
+            }
+            catch {
+                Write-Log "Failed to parse Start apps JSON: $_" 'WARN'
+                return @()
+            }
+        }
+        return @()
+    }
+    else {
+        # Native PowerShell 5.1
+        return Get-StartApps -ErrorAction SilentlyContinue
+    }
+}
+
+### [PRE-TASK 1] Logging & Task Functions
 function Write-Log {
     param(
         [string]$Message,
@@ -262,33 +537,26 @@ function Get-ExtensiveSystemInventory {
 
     Write-Log "[Inventory] Collecting installed Appx apps..." 'INFO'
     try {
-        # Check if Appx module is available and can be imported
-        if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) {
-            try {
-                Import-Module Appx -ErrorAction Stop
-                Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
-                Write-Log "[Inventory] Appx apps collected." 'INFO'
-            }
-            catch {
-                Write-Log "[Inventory] Appx module could not be imported or used: $_" 'WARN'
-                # Create empty file to indicate attempt was made
-                "Appx module not available on this platform" | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
-            }
+        # Use compatibility function for AppX operations
+        $appxPackages = Get-AppxPackageCompatible -AllUsers
+        if ($appxPackages -and $appxPackages.Count -gt 0) {
+            $appxPackages | Select-Object Name, PackageFullName | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
+            Write-Log "[Inventory] Appx apps collected." 'INFO'
         }
         else {
-            Write-Log "[Inventory] Appx module not available on this platform." 'WARN'
-            "Appx module not available on this platform" | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
+            Write-Log "[Inventory] No Appx apps found or module not available." 'WARN'
+            "No Appx apps found or module not available" | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
         }
     }
     catch { 
         Write-Log "[Inventory] Appx apps failed: $_" 'WARN'
-        "Appx collection failed" | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
+        "Appx collection failed: $_" | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
     }
 
     Write-Log "[Inventory] Collecting installed winget apps (source: winget, timeout: 2min)..." 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         $wingetOutput = Join-Path $inventoryFolder 'inventory_winget.txt'
-        $wingetArgs = @('list', '--source', 'winget', '--accept-source-agreements')
+        $wingetArgs = @('list', '--accept-source-agreements')
         try {
             $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -PassThru
             $timeout = 120 # seconds
@@ -622,25 +890,66 @@ function Test-PowerShellDependencies {
     param()
     
     Write-Log '[DEPENDENCIES] Verifying PowerShell-specific dependencies...' 'INFO'
+    Write-Log "[DEPENDENCIES] Running PowerShell version: $($PSVersionTable.PSVersion.ToString())" 'INFO'
     $dependencyStatus = @{}
     
-    # Test Module Availability
+    # Test Module Availability (with PowerShell 7 compatibility notes)
     $modules = @(
-        @{ Name = 'Appx'; Critical = $false; Description = 'UWP/Store app management' },
-        @{ Name = 'PSWindowsUpdate'; Critical = $false; Description = 'Windows Update management' },
+        @{ Name = 'Appx'; Critical = $false; Description = 'UWP/Store app management (via Windows PowerShell)' },
+        @{ Name = 'PSWindowsUpdate'; Critical = $false; Description = 'Windows Update management (via Windows PowerShell)' },
         @{ Name = 'DISM'; Critical = $false; Description = 'Windows image servicing' }
     )
     
     foreach ($module in $modules) {
         $moduleName = $module.Name
-        $available = $null -ne (Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue)
-        $dependencyStatus[$moduleName] = $available
         
-        if ($available) {
-            Write-Log "[DEPENDENCIES] Module '$moduleName' is available" 'VERBOSE'
-        } else {
-            $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
-            Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # For PowerShell 7, check if Windows PowerShell can access these modules
+            if ($moduleName -in @('Appx', 'PSWindowsUpdate')) {
+                try {
+                    $testCommand = "Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue | Select-Object Name"
+                    $result = Invoke-WindowsPowerShellCommand -Command $testCommand -Description "Test $moduleName availability"
+                    $available = $result -ne $null
+                }
+                catch {
+                    $available = $false
+                }
+                $dependencyStatus[$moduleName] = $available
+                
+                if ($available) {
+                    Write-Log "[DEPENDENCIES] Module '$moduleName' is available via Windows PowerShell" 'VERBOSE'
+                }
+                else {
+                    $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
+                    Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
+                }
+            }
+            else {
+                # Regular module check for PowerShell 7 compatible modules
+                $available = $null -ne (Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue)
+                $dependencyStatus[$moduleName] = $available
+                
+                if ($available) {
+                    Write-Log "[DEPENDENCIES] Module '$moduleName' is available" 'VERBOSE'
+                }
+                else {
+                    $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
+                    Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
+                }
+            }
+        }
+        else {
+            # Windows PowerShell 5.1 - native check
+            $available = $null -ne (Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue)
+            $dependencyStatus[$moduleName] = $available
+            
+            if ($available) {
+                Write-Log "[DEPENDENCIES] Module '$moduleName' is available" 'VERBOSE'
+            }
+            else {
+                $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
+                Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
+            }
         }
     }
     
@@ -658,7 +967,8 @@ function Test-PowerShellDependencies {
         
         if ($available) {
             Write-Log "[DEPENDENCIES] Command '$commandName' is available" 'VERBOSE'
-        } else {
+        }
+        else {
             $level = if ($command.Critical) { 'ERROR' } else { 'WARN' }
             Write-Log "[DEPENDENCIES] Command '$commandName' is not available ($($command.Description))" $level
         }
@@ -681,7 +991,8 @@ function Test-PowerShellDependencies {
         $missingList = ($dependencyStatus.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object { $_.Key }) -join ', '
         Write-Log "[DEPENDENCIES] Missing: $missingList" 'WARN'
         Write-Log "[DEPENDENCIES] Some features will use graceful degradation" 'INFO'
-    } else {
+    }
+    else {
         Write-Log "[DEPENDENCIES] All dependencies are available" 'INFO'
     }
     
@@ -704,7 +1015,8 @@ function Import-ModuleWithGracefulFallback {
             Write-Log "[MODULE] Failed to import $ModuleName : $_" 'WARN'
             return $false
         }
-    } else {
+    }
+    else {
         Write-Log "[MODULE] $ModuleName not available. $FallbackMessage" 'WARN'
         return $false
     }
@@ -718,6 +1030,14 @@ $global:DependencyStatus = Test-PowerShellDependencies
 if ($PSVersionTable.PSVersion.Major -lt 5) {
     Write-Log "PowerShell 5.1 or higher is required. Exiting." 'ERROR'
     exit 3
+}
+
+# Log PowerShell version and compatibility mode
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    Write-Log "Running in PowerShell 7+ compatibility mode. Legacy operations will use Windows PowerShell 5.1." 'INFO'
+}
+else {
+    Write-Log "Running in Windows PowerShell 5.1 native mode." 'INFO'
 }
 
 
@@ -738,13 +1058,14 @@ function Install-EssentialApps {
 
     # AppX packages
     try {
-        if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) {
-            Import-Module Appx -ErrorAction SilentlyContinue
-            $appxPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
-            $installedApps += $appxPackages
-            Write-Log "[EssentialApps] Collected $($appxPackages.Count) AppX packages from inventory" 'INFO'
+        $appxPackages = Get-AppxPackageCompatible -AllUsers
+        if ($appxPackages -and $appxPackages.Count -gt 0) {
+            $appxNames = $appxPackages | ForEach-Object { $_.Name } | Where-Object { $_ -ne $null }
+            $installedApps += $appxNames
+            Write-Log "[EssentialApps] Collected $($appxNames.Count) AppX packages from inventory" 'INFO'
         }
-    } catch {
+    }
+    catch {
         Write-Log "[EssentialApps] Failed to collect AppX inventory: $_" 'WARN'
     }
 
@@ -754,12 +1075,13 @@ function Install-EssentialApps {
             $wingetOutput = winget list --accept-source-agreements 2>$null
             if ($wingetOutput) {
                 $wingetApps = $wingetOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Name|^-+|^$' } |
-                    ForEach-Object { ($_ -split '\s+')[0] }
+                ForEach-Object { ($_ -split '\s+')[0] }
                 $installedApps += $wingetApps
                 Write-Log "[EssentialApps] Collected $($wingetApps.Count) Winget packages from inventory" 'INFO'
             }
         }
-    } catch {
+    }
+    catch {
         Write-Log "[EssentialApps] Failed to collect Winget inventory: $_" 'WARN'
     }
 
@@ -769,12 +1091,13 @@ function Install-EssentialApps {
             $chocoOutput = choco list --local-only 2>$null
             if ($chocoOutput) {
                 $chocoApps = $chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } |
-                    ForEach-Object { ($_ -split '\s+')[0] }
+                ForEach-Object { ($_ -split '\s+')[0] }
                 $installedApps += $chocoApps
                 Write-Log "[EssentialApps] Collected $($chocoApps.Count) Chocolatey packages from inventory" 'INFO'
             }
         }
-    } catch {
+    }
+    catch {
         Write-Log "[EssentialApps] Failed to collect Chocolatey inventory: $_" 'WARN'
     }
 
@@ -792,7 +1115,8 @@ function Install-EssentialApps {
             $installedApps += $regApps
         }
         Write-Log "[EssentialApps] Collected registry entries from inventory" 'INFO'
-    } catch {
+    }
+    catch {
         Write-Log "[EssentialApps] Failed to collect Registry inventory: $_" 'WARN'
     }
 
@@ -849,7 +1173,8 @@ function Install-EssentialApps {
                 if ($wingetProc.ExitCode -eq 0) {
                     $installSuccess = $true
                     $installMethod = "winget"
-                } else {
+                }
+                else {
                     Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
                 }
             }
@@ -860,7 +1185,8 @@ function Install-EssentialApps {
                 if ($chocoProc.ExitCode -eq 0) {
                     $installSuccess = $true
                     $installMethod = "choco"
-                } else {
+                }
+                else {
                     Write-Log "$($app.Name) choco install failed with exit code $($chocoProc.ExitCode)" 'WARN'
                 }
             }
@@ -868,16 +1194,19 @@ function Install-EssentialApps {
                 Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
                 $success++
                 $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
-            } elseif (-not $wingetAvailable -and -not $chocoAvailable) {
+            }
+            elseif (-not $wingetAvailable -and -not $chocoAvailable) {
                 Write-Log "Skipped installation of $($app.Name): No installer available (winget/choco missing)" 'WARN'
                 $skipped++
                 $detailedResults += "SKIPPED: $($app.Name) (no installer available)"
-            } else {
+            }
+            else {
                 Write-Log "Failed to install $($app.Name) (no available installer succeeded)" 'WARN'
                 $fail++
                 $detailedResults += "FAIL: $($app.Name) (installer failed)"
             }
-        } catch {
+        }
+        catch {
             Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
             $fail++
             $detailedResults += "FAIL: $($app.Name) (exception)"
@@ -903,10 +1232,11 @@ function Install-EssentialApps {
             }
         }
         if (-not $officeInstalled) {
-            $officeApps = Get-StartApps | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
+            $officeApps = Get-StartAppsCompatible | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
             if ($officeApps) { $officeInstalled = $true }
         }
-    } catch {
+    }
+    catch {
         Write-Log "Error checking for Microsoft Office: $_" 'WARN'
     }
 
@@ -923,7 +1253,8 @@ function Install-EssentialApps {
                 if ($libreProc.ExitCode -eq 0) {
                     Write-Log "LibreOffice installed via winget." 'INFO'
                     $libreSuccess = $true
-                } else {
+                }
+                else {
                     Write-Log "LibreOffice winget install failed with exit code $($libreProc.ExitCode)" 'WARN'
                 }
             }
@@ -933,17 +1264,20 @@ function Install-EssentialApps {
                 if ($chocoLibreProc.ExitCode -eq 0) {
                     Write-Log "LibreOffice installed via choco." 'INFO'
                     $libreSuccess = $true
-                } else {
+                }
+                else {
                     Write-Log "LibreOffice choco install failed with exit code $($chocoLibreProc.ExitCode)" 'WARN'
                 }
             }
             if (-not $libreSuccess) {
                 Write-Log "No installer found or succeeded for LibreOffice." 'WARN'
             }
-        } catch {
+        }
+        catch {
             Write-Log "Failed to install LibreOffice: $_" 'WARN'
         }
-    } else {
+    }
+    else {
         Write-Log "Microsoft Office detected. Skipping LibreOffice installation." 'INFO'
     }
 
@@ -975,7 +1309,7 @@ try {
     }
     # Also check for Office apps in Start Menu
     if (-not $officeInstalled) {
-        $officeApps = Get-StartApps | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
+        $officeApps = Get-StartAppsCompatible | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
         if ($officeApps) { $officeInstalled = $true }
     }
 }
@@ -1043,11 +1377,11 @@ function Remove-Bloatware {
     
     # Collect from AppX packages
     try {
-        if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) {
-            Import-Module Appx -ErrorAction SilentlyContinue
-            $appxPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
-            $installedApps += $appxPackages
-            Write-Log "[Bloatware] Collected $($appxPackages.Count) AppX packages from inventory" 'INFO'
+        $appxPackages = Get-AppxPackageCompatible -AllUsers
+        if ($appxPackages -and $appxPackages.Count -gt 0) {
+            $appxNames = $appxPackages | ForEach-Object { $_.Name } | Where-Object { $_ -ne $null }
+            $installedApps += $appxNames
+            Write-Log "[Bloatware] Collected $($appxNames.Count) AppX packages from inventory" 'INFO'
         }
     }
     catch {
@@ -1143,16 +1477,38 @@ function Remove-Bloatware {
 
     # Check if Appx module is available
     $appxAvailable = $false
-    try {
-        if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) {
-            Import-Module Appx -ErrorAction Stop
-            $appxAvailable = $true
-            Write-Log "Appx module loaded successfully" 'INFO'
-        } else {
-            Write-Log "Appx module not available on this platform" 'WARN'
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # For PowerShell 7, check if Windows PowerShell can access Appx
+        try {
+            $testCommand = "Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue | Select-Object Name"
+            $result = Invoke-WindowsPowerShellCommand -Command $testCommand -Description "Test Appx module"
+            $appxAvailable = $result -ne $null
+            if ($appxAvailable) {
+                Write-Log "Appx module available via Windows PowerShell" 'INFO'
+            }
+            else {
+                Write-Log "Appx module not available on this platform" 'WARN'
+            }
         }
-    } catch {
-        Write-Log "Failed to load Appx module: $_" 'WARN'
+        catch {
+            Write-Log "Failed to test Appx module: $_" 'WARN'
+        }
+    }
+    else {
+        # Windows PowerShell 5.1
+        try {
+            if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) {
+                Import-Module Appx -ErrorAction Stop
+                $appxAvailable = $true
+                Write-Log "Appx module loaded successfully" 'INFO'
+            }
+            else {
+                Write-Log "Appx module not available on this platform" 'WARN'
+            }
+        }
+        catch {
+            Write-Log "Failed to load Appx module: $_" 'WARN'
+        }
     }
 
     # Check DISM availability
@@ -1163,26 +1519,26 @@ function Remove-Bloatware {
     }
 
     $enhancedPatterns = @{
-        'Microsoft.3DBuilder' = @('3DBuilder', '*3DBuilder*')
-        'Microsoft.BingWeather' = @('BingWeather', '*Weather*', '*MSN Weather*')
-        'Microsoft.GetHelp' = @('GetHelp', '*Get Help*')
-        'Microsoft.Getstarted' = @('Getstarted', '*Get Started*', '*Tips*')
+        'Microsoft.3DBuilder'                    = @('3DBuilder', '*3DBuilder*')
+        'Microsoft.BingWeather'                  = @('BingWeather', '*Weather*', '*MSN Weather*')
+        'Microsoft.GetHelp'                      = @('GetHelp', '*Get Help*')
+        'Microsoft.Getstarted'                   = @('Getstarted', '*Get Started*', '*Tips*')
         'Microsoft.MicrosoftSolitaireCollection' = @('MicrosoftSolitaireCollection', '*Solitaire*')
-        'Microsoft.WindowsFeedbackHub' = @('WindowsFeedbackHub', '*Feedback*')
-        'Microsoft.XboxApp' = @('XboxApp', '*Xbox*', 'Microsoft.GamingApp')
-        'Microsoft.ZuneMusic' = @('ZuneMusic', '*Groove*', '*Music*')
-        'Microsoft.ZuneVideo' = @('ZuneVideo', '*Movies*', '*Video*')
-        'Microsoft.People' = @('People', '*People*')
-        'Microsoft.WindowsMaps' = @('WindowsMaps', '*Maps*')
-        'Microsoft.MixedReality.Portal' = @('MixedReality.Portal', '*Mixed Reality*', '*MR*')
-        'Microsoft.Office.OneNote' = @('Office.OneNote', '*OneNote*')
-        'Microsoft.SkypeApp' = @('SkypeApp', '*Skype*')
-        'Microsoft.Wallet' = @('Wallet', '*Wallet*')
-        'king.com.CandyCrushSaga' = @('*CandyCrush*', '*king.com*')
-        'Microsoft.Paint' = @('Paint', '*Paint 3D*', 'Microsoft.MSPaint')
-        'Microsoft.YourPhone' = @('YourPhone', '*Your Phone*', '*Phone Link*')
-        'Microsoft.PowerAutomateDesktop' = @('PowerAutomateDesktop', '*Power Automate*')
-        'MicrosoftTeams' = @('MicrosoftTeams', '*Teams*', '*Microsoft Teams*')
+        'Microsoft.WindowsFeedbackHub'           = @('WindowsFeedbackHub', '*Feedback*')
+        'Microsoft.XboxApp'                      = @('XboxApp', '*Xbox*', 'Microsoft.GamingApp')
+        'Microsoft.ZuneMusic'                    = @('ZuneMusic', '*Groove*', '*Music*')
+        'Microsoft.ZuneVideo'                    = @('ZuneVideo', '*Movies*', '*Video*')
+        'Microsoft.People'                       = @('People', '*People*')
+        'Microsoft.WindowsMaps'                  = @('WindowsMaps', '*Maps*')
+        'Microsoft.MixedReality.Portal'          = @('MixedReality.Portal', '*Mixed Reality*', '*MR*')
+        'Microsoft.Office.OneNote'               = @('Office.OneNote', '*OneNote*')
+        'Microsoft.SkypeApp'                     = @('SkypeApp', '*Skype*')
+        'Microsoft.Wallet'                       = @('Wallet', '*Wallet*')
+        'king.com.CandyCrushSaga'                = @('*CandyCrush*', '*king.com*')
+        'Microsoft.Paint'                        = @('Paint', '*Paint 3D*', 'Microsoft.MSPaint')
+        'Microsoft.YourPhone'                    = @('YourPhone', '*Your Phone*', '*Phone Link*')
+        'Microsoft.PowerAutomateDesktop'         = @('PowerAutomateDesktop', '*Power Automate*')
+        'MicrosoftTeams'                         = @('MicrosoftTeams', '*Teams*', '*Microsoft Teams*')
     }
 
     foreach ($app in $bloatwareToRemove) {
@@ -1192,24 +1548,30 @@ function Remove-Bloatware {
             if ($appxAvailable) {
                 $patterns = if ($enhancedPatterns.ContainsKey($app)) { $enhancedPatterns[$app] } else { @($app, "*$app*") }
                 foreach ($pattern in $patterns) {
-                    $appxPackages = Get-AppxPackage -Name $pattern -AllUsers -ErrorAction SilentlyContinue
+                    $appxPackages = Get-AppxPackageCompatible -Name $pattern -AllUsers
                     foreach ($pkg in $appxPackages) {
                         if ($pkg.PackageFullName) {
                             try {
-                                Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
-                                Write-Log "Removed AppX package: $($pkg.Name) ($($pkg.PackageFullName))" 'INFO'
-                                $appRemoved = $true
-                            } catch {}
+                                $success = Remove-AppxPackageCompatible -PackageFullName $pkg.PackageFullName -AllUsers
+                                if ($success) {
+                                    Write-Log "Removed AppX package: $($pkg.Name) ($($pkg.PackageFullName))" 'INFO'
+                                    $appRemoved = $true
+                                }
+                            }
+                            catch {}
                         }
                     }
-                    $provisionedPackages = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
-                        Where-Object { $_.DisplayName -like $pattern }
+                    $provisionedPackages = Get-AppxProvisionedPackageCompatible -Online |
+                    Where-Object { $_.DisplayName -like $pattern }
                     foreach ($pkg in $provisionedPackages) {
                         try {
-                            Remove-AppxProvisionedPackage -Online -PackageName $pkg.PackageName -ErrorAction Stop
-                            Write-Log "Removed provisioned package: $($pkg.DisplayName) ($($pkg.PackageName))" 'INFO'
-                            $appRemoved = $true
-                        } catch {}
+                            $success = Remove-AppxProvisionedPackageCompatible -Online -PackageName $pkg.PackageName
+                            if ($success) {
+                                Write-Log "Removed provisioned package: $($pkg.DisplayName) ($($pkg.PackageName))" 'INFO'
+                                $appRemoved = $true
+                            }
+                        }
+                        catch {}
                     }
                 }
             }
@@ -1226,7 +1588,8 @@ function Remove-Bloatware {
                                     dism /online /remove-provisionedappxpackage /packagename:"$packageName" /NoRestart
                                     Write-Log "DISM removed provisioned package: $packageName" 'INFO'
                                     $appRemoved = $true
-                                } catch {}
+                                }
+                                catch {}
                             }
                         }
                     }
@@ -1246,7 +1609,8 @@ function Remove-Bloatware {
                             $appRemoved = $true
                             break
                         }
-                    } catch {}
+                    }
+                    catch {}
                 }
             }
             # Chocolatey removal
@@ -1261,31 +1625,36 @@ function Remove-Bloatware {
                             $appRemoved = $true
                             break
                         }
-                    } catch {}
+                    }
+                    catch {}
                 }
             }
             # Windows Capabilities removal
             try {
                 $capabilities = Get-WindowsCapability -Online -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
                 foreach ($capability in $capabilities) {
                     if ($capability.State -eq 'Installed') {
                         try {
                             Remove-WindowsCapability -Online -Name $capability.Name -ErrorAction Stop
                             Write-Log "Removed Windows Capability: $($capability.Name)" 'INFO'
                             $appRemoved = $true
-                        } catch {}
+                        }
+                        catch {}
                     }
                 }
-            } catch {}
+            }
+            catch {}
             # Update counters
             if ($appRemoved) {
                 $removed++
                 Write-Log "Successfully removed bloatware: $app" 'INFO'
-            } else {
+            }
+            else {
                 Write-Log "Bloatware not found or removal failed: $app" 'INFO'
             }
-        } catch {
+        }
+        catch {
             Write-Log "Exception during removal of $app`: $_" 'ERROR'
             $failed++
         }
@@ -1306,7 +1675,8 @@ function Remove-Bloatware {
                 Set-ItemProperty -Path $regKey -Name 'PreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
                 Set-ItemProperty -Path $regKey -Name 'SubscribedContentEnabled' -Value 0 -ErrorAction SilentlyContinue
                 Write-Log "Disabled app reinstallation via Content Delivery Manager" 'INFO'
-            } catch {}
+            }
+            catch {}
         }
     }
 
@@ -1628,26 +1998,56 @@ function Protect-SystemRestore {
     $drive = "C:\\"
     $restoreEnabled = $false
     try {
-        $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
-        if ($sr.Enable -eq $true) {
-            $restoreEnabled = $true
-            Write-Log "System Restore is already enabled on $drive" 'INFO'
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # Use Windows PowerShell for System Restore operations
+            $checkCommand = "Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop | Select-Object Enable"
+            $result = Invoke-WindowsPowerShellCommand -Command $checkCommand -Description "Check System Restore status"
+            
+            if ($result -and $result.Enable -eq $true) {
+                $restoreEnabled = $true
+                Write-Log "System Restore is already enabled on $drive" 'INFO'
+            }
+            else {
+                Write-Log "System Restore is not enabled. Enabling..." 'INFO'
+                $enableSuccess = Enable-ComputerRestoreCompatible -Drive $drive
+                if ($enableSuccess) {
+                    $restoreEnabled = $true
+                    Write-Log "System Restore enabled on $drive" 'INFO'
+                }
+                else {
+                    Write-Log "Failed to enable System Restore on $drive" 'WARN'
+                }
+            }
         }
         else {
-            Write-Log "System Restore is not enabled. Enabling..." 'INFO'
-            Enable-ComputerRestore -Drive $drive
-            $restoreEnabled = $true
-            Write-Log "System Restore enabled on $drive" 'INFO'
+            # Windows PowerShell 5.1 native
+            $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
+            if ($sr.Enable -eq $true) {
+                $restoreEnabled = $true
+                Write-Log "System Restore is already enabled on $drive" 'INFO'
+            }
+            else {
+                Write-Log "System Restore is not enabled. Enabling..." 'INFO'
+                Enable-ComputerRestore -Drive $drive
+                $restoreEnabled = $true
+                Write-Log "System Restore enabled on $drive" 'INFO'
+            }
         }
     }
     catch {
         Write-Log "Could not determine or enable System Restore: $_" 'WARN'
     }
+    
     if ($restoreEnabled) {
         try {
             Write-Log "Creating a system restore point..." 'INFO'
-            Checkpoint-Computer -Description "Pre-maintenance restore point" -RestorePointType 'MODIFY_SETTINGS'
-            Write-Log "System restore point created." 'INFO'
+            $checkpointSuccess = Checkpoint-ComputerCompatible -Description "Pre-maintenance restore point" -RestorePointType 'MODIFY_SETTINGS'
+            if ($checkpointSuccess) {
+                Write-Log "System restore point created." 'INFO'
+            }
+            else {
+                Write-Log "Failed to create restore point." 'WARN'
+            }
         }
         catch {
             Write-Log "Failed to create restore point: $_" 'WARN'
