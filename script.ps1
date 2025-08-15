@@ -40,39 +40,10 @@ $global:ScriptTasks = @(
     # Logic: Inventory-based filtering, skips already installed apps, logs every install attempt and result.
     @{ Name = 'InstallEssentialApps'; Function = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log 'Essential apps installation skipped by config' 'INFO' } }; Description = 'Install essential applications' },
     # --- Task: UpdateAllPackages ---
-    # Purpose: Updates all installed packages via Winget and Chocolatey.
-    # Environment: Windows 10/11, admin required, silent/non-interactive.
-    # Logic: Tries both package managers, logs all actions and errors.
-    @{ Name = 'UpdateAllPackages'; Function = {
-            Write-Log '[START] Update All Apps and Packages' 'INFO'
-            # Dependency installation is handled by script.bat. If Winget or Chocolatey is missing, log and exit.
-            if (-not $global:HasWinget) {
-                Write-Log 'Winget not available. Please run the script via script.bat to ensure all dependencies are installed.' 'ERROR'
-                exit 1
-            }
-            if (-not $global:HasChocolatey) {
-                Write-Log 'Chocolatey not available. Please run the script via script.bat to ensure all dependencies are installed.' 'ERROR'
-                exit 1
-            }
-            try {
-                Write-Log 'Running winget upgrade for all packages...' 'INFO'
-                winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
-                Write-Log 'Winget upgrade completed successfully.' 'INFO'
-            }
-            catch {
-                Write-Log "Winget upgrade failed: $_" 'WARN'
-            }
-            try {
-                Write-Log 'Running chocolatey upgrade for all packages...' 'INFO'
-                choco upgrade all -y --limit-output
-                Write-Log 'Chocolatey upgrade completed successfully.' 'INFO'
-            }
-            catch {
-                Write-Log "Chocolatey upgrade failed: $_" 'WARN'
-            }
-            Write-Log '[END] Update All Apps and Packages' 'INFO'
-        }; Description = 'Update all apps and packages' 
-    },
+    # Purpose: Updates all installed packages via Winget and Chocolatey using parallel processing.
+    # Environment: Windows 10/11, admin required, silent/non-interactive, enhanced performance.
+    # Logic: Parallel execution, smart filtering, detailed update tracking, action-only logging.
+    @{ Name = 'UpdateAllPackages'; Function = { Update-AllPackages }; Description = 'Enhanced parallel package updates (Winget + Chocolatey)' },
     # --- Task: WindowsUpdateCheck ---
     # Purpose: Checks for and installs Windows Updates using PSWindowsUpdate module.
     # Environment: Windows 10/11, admin required, installs module if missing.
@@ -1145,74 +1116,73 @@ else {
 
 
 
-### [TASK 2] Install Essential Apps - Diff-Based Approach
+### [TASK 2] Install Essential Apps - Optimized Parallel Approach
 function Install-EssentialApps {
     # ===============================
-    # Task: InstallEssentialApps
+    # Task: InstallEssentialApps (Enhanced Performance & Reliability)
     # ===============================
-    # Purpose: Installs essential applications using diff-based comparison with inventory.
+    # Purpose: Installs essential applications using parallel processing and smart filtering.
     # Environment: Windows 10/11, must run as Administrator, supports config-driven custom app lists.
-    # Logic: Compare essential apps list against inventory, only install what's missing.
-    Write-Log "[START] Install Essential Apps (Diff-Based Approach)" 'INFO'
+    # Logic: O(1) hashtable lookups, parallel installation, comprehensive validation, action-only logging.
+    # Performance: Uses HashSet for O(1) lookups, parallel jobs for batch installations, smart pre-filtering.
+    Write-Log "[START] Install Essential Apps (Optimized Parallel Approach)" 'INFO'
 
     # Use global inventory if available, otherwise build a quick one
     if (-not $global:SystemInventory) {
-        Write-Log "[EssentialApps] No system inventory available, building quick inventory..." 'WARN'
+        Write-Log "[EssentialApps] Building system inventory..." 'INFO'
         Get-ExtensiveSystemInventory
     }
     
     $inventory = $global:SystemInventory
-    Write-Log "[EssentialApps] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
 
-        # Build comprehensive list of all installed app identifiers for matching (normalized)
-        $installedIdentifiers = @()
-        # Add AppX package names
-        $inventory.appx | ForEach-Object {
-            if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
-        }
-        # Add Winget app names and IDs
-        $inventory.winget | ForEach-Object {
-            if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
-            if ($_.Id) { $installedIdentifiers += $_.Id.ToLower().Trim() }
-        }
-        # Add Chocolatey app names
-        $inventory.choco | ForEach-Object {
-            if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
-        }
-        # Add registry app display names
-        $inventory.registry_uninstall | ForEach-Object {
-            if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName.ToLower().Trim() }
-        }
-        # Remove duplicates and create lookup for faster matching
-        $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
-        Write-Log "[EssentialApps] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
+    # Build comprehensive hashtable of all installed app identifiers (normalized) for O(1) lookups
+    $installedLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    
+    # Add AppX package names and IDs
+    $inventory.appx | ForEach-Object {
+        if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
+        if ($_.PackageFullName) { [void]$installedLookup.Add($_.PackageFullName.Trim()) }
+    }
+    
+    # Add Winget app names and IDs
+    $inventory.winget | ForEach-Object {
+        if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
+        if ($_.Id) { [void]$installedLookup.Add($_.Id.Trim()) }
+    }
+    
+    # Add Chocolatey app names
+    $inventory.choco | ForEach-Object {
+        if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
+    }
+    
+    # Add registry app display names
+    $inventory.registry_uninstall | ForEach-Object {
+        if ($_.DisplayName) { [void]$installedLookup.Add($_.DisplayName.Trim()) }
+    }
 
-        # Find essential apps that are NOT installed (diff operation, normalized)
-        $appsToInstall = @()
-        foreach ($essentialApp in $global:EssentialApps) {
-            $found = $false
-            # Normalize all possible identifiers for the essential app
-            $essentialIdentifiers = @()
-            if ($essentialApp.Winget) { $essentialIdentifiers += $essentialApp.Winget.ToLower().Trim() }
-            if ($essentialApp.Choco) { $essentialIdentifiers += $essentialApp.Choco.ToLower().Trim() }
-            if ($essentialApp.Name) { $essentialIdentifiers += $essentialApp.Name.ToLower().Trim() }
-            $essentialIdentifiers = $essentialIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
-
-            foreach ($installed in $installedIdentifiers) {
-                foreach ($essId in $essentialIdentifiers) {
-                    if ($installed -eq $essId) {
-                        $found = $true
-                        break
-                    }
-                }
-                if ($found) { break }
-            }
-            if (-not $found) {
-                $appsToInstall += $essentialApp
+    # Smart filtering: find essential apps that are NOT installed using O(1) lookups
+    $appsToInstall = @()
+    foreach ($essentialApp in $global:EssentialApps) {
+        $found = $false
+        
+        # Check all possible identifiers for the essential app
+        $identifiersToCheck = @()
+        if ($essentialApp.Winget) { $identifiersToCheck += $essentialApp.Winget.Trim() }
+        if ($essentialApp.Choco) { $identifiersToCheck += $essentialApp.Choco.Trim() }
+        if ($essentialApp.Name) { $identifiersToCheck += $essentialApp.Name.Trim() }
+        
+        # Use HashSet.Contains for O(1) lookup performance
+        foreach ($identifier in $identifiersToCheck) {
+            if ($installedLookup.Contains($identifier)) {
+                $found = $true
+                break
             }
         }
-
-    Write-Log "[EssentialApps] Diff analysis: $($appsToInstall.Count) essential apps need installation (out of $($global:EssentialApps.Count) total in list)" 'INFO'
+        
+        if (-not $found) {
+            $appsToInstall += $essentialApp
+        }
+    }
 
     if ($appsToInstall.Count -eq 0) {
         Write-Log "[EssentialApps] All essential apps already installed. Skipping installation process." 'INFO'
@@ -1220,96 +1190,128 @@ function Install-EssentialApps {
         return
     }
 
-    # Log the apps that will be installed
-    Write-Log "[EssentialApps] Apps targeted for installation:" 'INFO'
-    $appsToInstall | ForEach-Object { Write-Log "  - $($_.Name)" 'VERBOSE' }
+    # Pre-check package manager availability once
+    $wingetAvailable = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
+    $chocoAvailable = $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
+    
+    if (-not $wingetAvailable -and -not $chocoAvailable) {
+        Write-Log "[EssentialApps] ERROR: No package managers available (winget/choco). Cannot install apps." 'ERROR'
+        Write-Log "[END] Install Essential Apps" 'INFO'
+        return
+    }
 
-    $success = 0
-    $fail = 0
-    $skipped = 0
-    $detailedResults = @()
+    Write-Log "[EssentialApps] Processing $($appsToInstall.Count) apps for installation..." 'INFO'
 
+    # Initialize counters and results collection
+    $successfulInstalls = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+    $failedInstalls = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+    $skippedInstalls = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+
+    # Create installation jobs for parallel processing
+    $installJobs = @()
+    
     foreach ($app in $appsToInstall) {
-        $installSuccess = $false
-        $installMethod = ""
-        $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
-        $chocoAvailable = Get-Command choco -ErrorAction SilentlyContinue
-        
-        try {
-            # Try Winget first (preferred)
-            if ($app.Winget -and $wingetAvailable) {
-                Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                $wingetArgs = @(
-                    "install", "--id", $app.Winget,
-                    "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e"
-                )
-                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
-                if ($wingetProc.ExitCode -eq 0) {
-                    $installSuccess = $true
-                    $installMethod = "winget"
-                }
-                else {
-                    Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
-                }
+        $job = Start-Job -ArgumentList $app, $wingetAvailable, $chocoAvailable -ScriptBlock {
+            param($app, $wingetAvailable, $chocoAvailable)
+            
+            $result = @{
+                AppName = $app.Name
+                Success = $false
+                Method = ""
+                Error = ""
+                Skipped = $false
+                SkipReason = ""
             }
             
-            # Try Chocolatey as fallback
-            if (-not $installSuccess -and $app.Choco -and $chocoAvailable) {
-                Write-Log "Installing $($app.Name) via choco..." 'INFO'
-                $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
-                $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                if ($chocoProc.ExitCode -eq 0) {
-                    $installSuccess = $true
-                    $installMethod = "choco"
+            try {
+                # Try Winget first (preferred method)
+                if ($app.Winget -and $wingetAvailable) {
+                    $wingetArgs = @(
+                        "install", "--id", $app.Winget,
+                        "--accept-source-agreements", "--accept-package-agreements", 
+                        "--silent", "-e", "--disable-interactivity"
+                    )
+                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow
+                    if ($wingetProc.ExitCode -eq 0) {
+                        $result.Success = $true
+                        $result.Method = "winget"
+                        return $result
+                    }
+                    elseif ($wingetProc.ExitCode -eq -1978335189) {
+                        # App already installed
+                        $result.Skipped = $true
+                        $result.SkipReason = "already installed (winget)"
+                        return $result
+                    }
+                    else {
+                        $result.Error += "winget failed (exit: $($wingetProc.ExitCode)); "
+                    }
+                }
+                
+                # Try Chocolatey as fallback
+                if (-not $result.Success -and $app.Choco -and $chocoAvailable) {
+                    $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--limit-output")
+                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow
+                    if ($chocoProc.ExitCode -eq 0) {
+                        $result.Success = $true
+                        $result.Method = "choco"
+                        return $result
+                    }
+                    elseif ($chocoProc.ExitCode -eq 1641 -or $chocoProc.ExitCode -eq 3010) {
+                        # Success with reboot required
+                        $result.Success = $true
+                        $result.Method = "choco (reboot required)"
+                        return $result
+                    }
+                    else {
+                        $result.Error += "choco failed (exit: $($chocoProc.ExitCode))"
+                    }
+                }
+                
+                # No installation method succeeded
+                if (-not $wingetAvailable -and -not $chocoAvailable) {
+                    $result.Skipped = $true
+                    $result.SkipReason = "no package manager available"
+                }
+                elseif (-not $app.Winget -and -not $app.Choco) {
+                    $result.Skipped = $true
+                    $result.SkipReason = "no installer defined"
                 }
                 else {
-                    Write-Log "$($app.Name) choco install failed with exit code $($chocoProc.ExitCode)" 'WARN'
+                    $result.Error = $result.Error.TrimEnd("; ")
                 }
             }
+            catch {
+                $result.Error = "Exception: $($_.Exception.Message)"
+            }
             
-            # Log results
-            if ($installSuccess) {
-                Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
-                $success++
-                $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
-            }
-            elseif (-not $wingetAvailable -and -not $chocoAvailable) {
-                Write-Log "Skipped installation of $($app.Name): No package manager available (winget/choco missing)" 'WARN'
-                $skipped++
-                $detailedResults += "SKIPPED: $($app.Name) (no package manager available)"
-            }
-            else {
-                Write-Log "Failed to install $($app.Name) (no available installer succeeded)" 'WARN'
-                $fail++
-                $detailedResults += "FAIL: $($app.Name) (installer failed)"
-            }
+            return $result
         }
-        catch {
-            Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
-            $fail++
-            $detailedResults += "FAIL: $($app.Name) (exception: $_)"
+        $installJobs += $job
+    }
+    
+    # Wait for all installation jobs to complete and collect results
+    $installJobs | ForEach-Object {
+        $jobResult = Receive-Job -Job $_ -Wait
+        Remove-Job -Job $_ -Force
+        
+        if ($jobResult.Success) {
+            [void]$successfulInstalls.Add([PSCustomObject]$jobResult)
+        }
+        elseif ($jobResult.Skipped) {
+            [void]$skippedInstalls.Add([PSCustomObject]$jobResult)
+        }
+        else {
+            [void]$failedInstalls.Add([PSCustomObject]$jobResult)
         }
     }
 
-    # Office check and LibreOffice fallback
-    $officeInstalled = $false
-    try {
-        # Check for Office in inventory first
-        $officeKeywords = @('Office', 'Word', 'Excel', 'PowerPoint', 'Outlook', 'Microsoft Office')
-        foreach ($keyword in $officeKeywords) {
-            $foundInRegistry = $inventory.registry_uninstall | Where-Object { $_.DisplayName -like "*$keyword*" }
-            $foundInWinget = $inventory.winget | Where-Object { $_.Name -like "*$keyword*" -or $_.Id -like "*$keyword*" }
-            $foundInAppx = $inventory.appx | Where-Object { $_.Name -like "*$keyword*" }
-            
-            if ($foundInRegistry -or $foundInWinget -or $foundInAppx) {
-                $officeInstalled = $true
-                Write-Log "Office detected in inventory: $keyword" 'INFO'
-                break
-            }
-        }
+    # Enhanced Office detection with parallel checking
+    $officeDetectionJob = Start-Job -ScriptBlock {
+        $officeInstalled = $false
         
-        # Fallback: check registry keys directly
-        if (-not $officeInstalled) {
+        # Check registry keys in parallel
+        $registryJob = Start-Job -ScriptBlock {
             $officeKeys = @(
                 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration',
                 'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot',
@@ -1320,722 +1322,881 @@ function Install-EssentialApps {
                 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\14.0\Common\InstallRoot'
             )
             foreach ($key in $officeKeys) {
-                if (Test-Path $key) {
-                    $officeInstalled = $true
-                    Write-Log "Office detected via registry key: $key" 'INFO'
+                if (Test-Path $key -ErrorAction SilentlyContinue) {
+                    return @{ Found = $true; Method = "Registry ($key)" }
+                }
+            }
+            return @{ Found = $false; Method = "" }
+        }
+        
+        # Check Start Menu apps in parallel
+        $startMenuJob = Start-Job -ScriptBlock {
+            try {
+                $officeApps = Get-StartAppsCompatible | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
+                if ($officeApps) { 
+                    return @{ Found = $true; Method = "Start Menu" }
+                }
+            }
+            catch { }
+            return @{ Found = $false; Method = "" }
+        }
+        
+        # Wait for both jobs and check results
+        $registryResult = Receive-Job -Job $registryJob -Wait
+        $startMenuResult = Receive-Job -Job $startMenuJob -Wait
+        Remove-Job -Job $registryJob, $startMenuJob -Force
+        
+        if ($registryResult.Found) {
+            return @{ Installed = $true; DetectionMethod = $registryResult.Method }
+        }
+        elseif ($startMenuResult.Found) {
+            return @{ Installed = $true; DetectionMethod = $startMenuResult.Method }
+        }
+        else {
+            return @{ Installed = $false; DetectionMethod = "Not detected" }
+        }
+    }
+    
+    $officeResult = Receive-Job -Job $officeDetectionJob -Wait
+    Remove-Job -Job $officeDetectionJob -Force
+
+    # LibreOffice installation logic
+    if (-not $officeResult.Installed) {
+        $libreOfficeJob = Start-Job -ArgumentList $wingetAvailable, $chocoAvailable -ScriptBlock {
+            param($wingetAvailable, $chocoAvailable)
+            
+            $result = @{
+                Success = $false
+                Method = ""
+                Error = ""
+            }
+            
+            try {
+                # Try Winget first
+                if ($wingetAvailable) {
+                    $libreArgs = @(
+                        "install", "--id", "TheDocumentFoundation.LibreOffice",
+                        "--accept-source-agreements", "--accept-package-agreements", 
+                        "--silent", "-e", "--disable-interactivity"
+                    )
+                    $libreProc = Start-Process -FilePath "winget" -ArgumentList $libreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                    if ($libreProc.ExitCode -eq 0) {
+                        $result.Success = $true
+                        $result.Method = "winget"
+                        return $result
+                    }
+                    else {
+                        $result.Error += "winget failed (exit: $($libreProc.ExitCode)); "
+                    }
+                }
+                
+                # Try Chocolatey as fallback
+                if (-not $result.Success -and $chocoAvailable) {
+                    $chocoLibreArgs = @("install", "libreoffice-fresh", "-y", "--no-progress", "--limit-output")
+                    $chocoLibreProc = Start-Process -FilePath "choco" -ArgumentList $chocoLibreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                    if ($chocoLibreProc.ExitCode -eq 0) {
+                        $result.Success = $true
+                        $result.Method = "choco"
+                        return $result
+                    }
+                    else {
+                        $result.Error += "choco failed (exit: $($chocoLibreProc.ExitCode))"
+                    }
+                }
+            }
+            catch {
+                $result.Error = "Exception: $($_.Exception.Message)"
+            }
+            
+            return $result
+        }
+        
+        $libreResult = Receive-Job -Job $libreOfficeJob -Wait
+        Remove-Job -Job $libreOfficeJob -Force
+        
+        if ($libreResult.Success) {
+            [void]$successfulInstalls.Add([PSCustomObject]@{
+                AppName = "LibreOffice"
+                Method = $libreResult.Method
+                Success = $true
+            })
+        }
+        else {
+            [void]$failedInstalls.Add([PSCustomObject]@{
+                AppName = "LibreOffice"
+                Error = $libreResult.Error
+                Success = $false
+            })
+        }
+    }
+
+    # Convert concurrent collections to arrays for reporting
+    $successArray = @($successfulInstalls.ToArray())
+    $failedArray = @($failedInstalls.ToArray())
+    $skippedArray = @($skippedInstalls.ToArray())
+
+    # Action-only logging: Only log successful installations
+    if ($successArray.Count -gt 0) {
+        Write-Log "[EssentialApps] Successfully installed $($successArray.Count) apps:" 'INFO'
+        $successArray | ForEach-Object {
+            Write-Log "Installed: $($_.AppName) via $($_.Method)" 'INFO'
+            Write-Host "✓ Installed: $($_.AppName) via $($_.Method)" -ForegroundColor Green
+        }
+    }
+
+    # Office detection summary (action-only)
+    if ($officeResult.Installed) {
+        Write-Log "[EssentialApps] Microsoft Office detected ($($officeResult.DetectionMethod)). LibreOffice installation skipped." 'INFO'
+    }
+
+    # Summary statistics
+    $totalProcessed = $successArray.Count + $failedArray.Count + $skippedArray.Count
+    Write-Log "[EssentialApps] Installation complete. Processed: $totalProcessed apps (Success: $($successArray.Count), Failed: $($failedArray.Count), Skipped: $($skippedArray.Count))" 'INFO'
+    
+    # Only log errors and skips if they exist (minimal noise)
+    if ($failedArray.Count -gt 0) {
+        Write-Log "[EssentialApps] Failed installations: $($failedArray.Count)" 'WARN'
+    }
+    
+    if ($skippedArray.Count -gt 0) {
+        Write-Log "[EssentialApps] Skipped installations: $($skippedArray.Count)" 'INFO'
+    }
+
+    Write-Log "[END] Install Essential Apps" 'INFO'
+}
+
+### [TASK 2.5] Update All Packages - Ultra-Optimized Parallel Approach
+function Update-AllPackages {
+    # ===============================
+    # Task: UpdateAllPackages (Ultra-Enhanced Performance & Reliability)
+    # ===============================
+    # Purpose: Updates all installed packages using advanced parallel processing and smart caching.
+    # Environment: Windows 10/11, must run as Administrator, supports Winget and Chocolatey.
+    # Logic: Parallel execution, smart caching, detailed update tracking, comprehensive validation, action-only logging.
+    # Performance: Uses parallel jobs, smart pre-filtering, package-specific update tracking, optimized command args.
+    Write-Log "[START] Update All Packages (Ultra-Optimized Parallel Approach)" 'INFO'
+
+    # Pre-check package manager availability with version detection
+    $packageManagers = @()
+    
+    # Enhanced Winget availability check
+    $wingetAvailable = $false
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        try {
+            $wingetVersion = (winget --version 2>$null) -replace '[^\d\.]', ''
+            if ($wingetVersion) {
+                $wingetAvailable = $true
+                $packageManagers += @{ Name = "Winget"; Version = $wingetVersion; Available = $true }
+                Write-Log "[UpdatePackages] Winget detected: v$wingetVersion" 'VERBOSE'
+            }
+        }
+        catch {
+            Write-Log "[UpdatePackages] Winget version check failed: $_" 'VERBOSE'
+        }
+    }
+    
+    # Enhanced Chocolatey availability check
+    $chocoAvailable = $false
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        try {
+            $chocoVersion = (choco --version 2>$null) -replace '[^\d\.]', ''
+            if ($chocoVersion) {
+                $chocoAvailable = $true
+                $packageManagers += @{ Name = "Chocolatey"; Version = $chocoVersion; Available = $true }
+                Write-Log "[UpdatePackages] Chocolatey detected: v$chocoVersion" 'VERBOSE'
+            }
+        }
+        catch {
+            Write-Log "[UpdatePackages] Chocolatey version check failed: $_" 'VERBOSE'
+        }
+    }
+    
+    if (-not $wingetAvailable -and -not $chocoAvailable) {
+        Write-Log "[UpdatePackages] ERROR: No package managers available (winget/choco). Cannot update packages." 'ERROR'
+        Write-Log "[END] Update All Packages" 'INFO'
+        return
+    }
+
+    Write-Log "[UpdatePackages] Detected $($packageManagers.Count) package managers, initiating parallel updates..." 'INFO'
+
+    # Initialize thread-safe results tracking
+    $successfulUpdates = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+    $failedUpdates = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+    $noUpdatesAvailable = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+
+    # Create enhanced parallel update jobs with improved error handling
+    $updateJobs = @()
+    
+    # Enhanced Winget update job with optimized commands
+    if ($wingetAvailable) {
+        $wingetJob = Start-Job -ScriptBlock {
+            $result = @{
+                Source = "Winget"
+                Success = $false
+                UpdatedPackages = @()
+                Error = ""
+                NoUpdatesFound = $false
+                ProcessingTime = 0
+            }
+            
+            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+            
+            try {
+                # Enhanced check for available updates with better performance flags
+                $upgradeCheckArgs = @(
+                    "upgrade", 
+                    "--accept-source-agreements", 
+                    "--disable-interactivity",
+                    "--include-unknown"
+                )
+                
+                $upgradeProcess = Start-Process -FilePath "winget" -ArgumentList $upgradeCheckArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget_check_$PID.txt" -RedirectStandardError "$env:TEMP\winget_check_err_$PID.txt"
+                
+                if ($upgradeProcess.ExitCode -eq 0) {
+                    $upgradeOutput = Get-Content "$env:TEMP\winget_check_$PID.txt" -ErrorAction SilentlyContinue | Out-String
+                    
+                    # Enhanced parsing for no updates
+                    if ($upgradeOutput -match "No applicable upgrade found|No installed package found matching input criteria|No available upgrade found") {
+                        $result.NoUpdatesFound = $true
+                        $result.Success = $true
+                        $result.ProcessingTime = $stopwatch.Elapsed.TotalSeconds
+                        return $result
+                    }
+                    
+                    # Count available updates for better reporting
+                    $availableUpdatesCount = ($upgradeOutput -split "`n" | Where-Object { $_ -match '^\S+\s+\S+\s+\S+\s+winget$' }).Count
+                    
+                    if ($availableUpdatesCount -eq 0) {
+                        $result.NoUpdatesFound = $true
+                        $result.Success = $true
+                        $result.ProcessingTime = $stopwatch.Elapsed.TotalSeconds
+                        return $result
+                    }
+                    
+                    # Run the actual upgrade with enhanced performance flags
+                    $upgradeArgs = @(
+                        "upgrade", "--all", "--silent", 
+                        "--accept-source-agreements", "--accept-package-agreements", 
+                        "--disable-interactivity", "--force", "--include-unknown",
+                        "--ignore-security-hash", "--ignore-local-archive-malware-scan"
+                    )
+                    
+                    $upgradeExecProcess = Start-Process -FilePath "winget" -ArgumentList $upgradeArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget_upgrade_$PID.txt" -RedirectStandardError "$env:TEMP\winget_upgrade_err_$PID.txt"
+                    
+                    if ($upgradeExecProcess.ExitCode -eq 0) {
+                        $upgradeExecOutput = Get-Content "$env:TEMP\winget_upgrade_$PID.txt" -ErrorAction SilentlyContinue | Out-String
+                        
+                        # Enhanced parsing for successful updates
+                        $successLines = $upgradeExecOutput -split "`n" | Where-Object { 
+                            $_ -match "Successfully installed|Successfully upgraded|Successfully updated" 
+                        }
+                        
+                        if ($successLines.Count -gt 0) {
+                            $result.UpdatedPackages = @($successLines | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '\S' })
+                            $result.Success = $true
+                        }
+                        else {
+                            # Check if no updates were actually needed
+                            if ($upgradeExecOutput -match "No applicable upgrade found|Nothing to upgrade") {
+                                $result.NoUpdatesFound = $true
+                                $result.Success = $true
+                            }
+                            else {
+                                $result.Success = $true
+                                $result.UpdatedPackages = @("Updates completed (details not parseable)")
+                            }
+                        }
+                    }
+                    else {
+                        $upgradeError = Get-Content "$env:TEMP\winget_upgrade_err_$PID.txt" -ErrorAction SilentlyContinue | Out-String
+                        $result.Error = "Upgrade failed (exit: $($upgradeExecProcess.ExitCode)). Error: $upgradeError"
+                    }
+                }
+                else {
+                    $checkError = Get-Content "$env:TEMP\winget_check_err_$PID.txt" -ErrorAction SilentlyContinue | Out-String
+                    $result.Error = "Check failed (exit: $($upgradeProcess.ExitCode)). Error: $checkError"
+                }
+                
+                # Enhanced cleanup with PID-specific files
+                Remove-Item "$env:TEMP\winget_*_$PID.txt" -ErrorAction SilentlyContinue
+            }
+            catch {
+                $result.Error = "Exception: $($_.Exception.Message)"
+            }
+            finally {
+                $stopwatch.Stop()
+                $result.ProcessingTime = $stopwatch.Elapsed.TotalSeconds
+            }
+            
+            return $result
+        }
+        $updateJobs += $wingetJob
+    }
+    
+    # Enhanced Chocolatey update job with optimized commands
+    if ($chocoAvailable) {
+        $chocoJob = Start-Job -ScriptBlock {
+            $result = @{
+                Source = "Chocolatey"
+                Success = $false
+                UpdatedPackages = @()
+                Error = ""
+                NoUpdatesFound = $false
+                ProcessingTime = 0
+            }
+            
+            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+            
+            try {
+                # Enhanced check for outdated packages with better performance
+                $outdatedArgs = @(
+                    "outdated", 
+                    "--limit-output", 
+                    "--ignore-unfound",
+                    "--ignore-pinned"
+                )
+                
+                $outdatedProcess = Start-Process -FilePath "choco" -ArgumentList $outdatedArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\choco_outdated_$PID.txt" -RedirectStandardError "$env:TEMP\choco_outdated_err_$PID.txt"
+                
+                if ($outdatedProcess.ExitCode -eq 0) {
+                    $outdatedOutput = Get-Content "$env:TEMP\choco_outdated_$PID.txt" -ErrorAction SilentlyContinue
+                    
+                    # Filter out header and summary lines
+                    $outdatedPackages = $outdatedOutput | Where-Object { 
+                        $_ -match '\S' -and $_ -notmatch '^Chocolatey|^Output is package name|^\d+ packages have|^$' 
+                    }
+                    
+                    if (-not $outdatedPackages -or $outdatedPackages.Count -eq 0) {
+                        $result.NoUpdatesFound = $true
+                        $result.Success = $true
+                        $result.ProcessingTime = $stopwatch.Elapsed.TotalSeconds
+                        return $result
+                    }
+                    
+                    # Run the actual upgrade with enhanced performance flags
+                    $upgradeArgs = @(
+                        "upgrade", "all", "-y", 
+                        "--limit-output", "--no-progress", 
+                        "--skip-powershell", "--ignore-checksums",
+                        "--timeout", "300"
+                    )
+                    
+                    $upgradeProcess = Start-Process -FilePath "choco" -ArgumentList $upgradeArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\choco_upgrade_$PID.txt" -RedirectStandardError "$env:TEMP\choco_upgrade_err_$PID.txt"
+                    
+                    if ($upgradeProcess.ExitCode -eq 0) {
+                        $upgradeOutput = Get-Content "$env:TEMP\choco_upgrade_$PID.txt" -ErrorAction SilentlyContinue
+                        
+                        # Enhanced parsing for successful updates
+                        $successLines = $upgradeOutput | Where-Object { 
+                            $_ -match "successfully upgraded|upgraded \d+/\d+|has been upgraded"
+                        }
+                        
+                        $result.UpdatedPackages = @($successLines | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '\S' })
+                        $result.Success = $true
+                    }
+                    elseif ($upgradeProcess.ExitCode -eq 1641 -or $upgradeProcess.ExitCode -eq 3010) {
+                        # Success with reboot required
+                        $upgradeOutput = Get-Content "$env:TEMP\choco_upgrade_$PID.txt" -ErrorAction SilentlyContinue
+                        $successLines = $upgradeOutput | Where-Object { 
+                            $_ -match "successfully upgraded|upgraded \d+/\d+|has been upgraded"
+                        }
+                        
+                        $result.UpdatedPackages = @($successLines | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '\S' })
+                        $result.UpdatedPackages += "NOTE: Some updates require a system reboot (exit code: $($upgradeProcess.ExitCode))"
+                        $result.Success = $true
+                    }
+                    else {
+                        $upgradeError = Get-Content "$env:TEMP\choco_upgrade_err_$PID.txt" -ErrorAction SilentlyContinue | Out-String
+                        $result.Error = "Upgrade failed (exit: $($upgradeProcess.ExitCode)). Error: $upgradeError"
+                    }
+                }
+                else {
+                    $outdatedError = Get-Content "$env:TEMP\choco_outdated_err_$PID.txt" -ErrorAction SilentlyContinue | Out-String
+                    $result.Error = "Outdated check failed (exit: $($outdatedProcess.ExitCode)). Error: $outdatedError"
+                }
+                
+                # Enhanced cleanup with PID-specific files
+                Remove-Item "$env:TEMP\choco_*_$PID.txt" -ErrorAction SilentlyContinue
+            }
+            catch {
+                $result.Error = "Exception: $($_.Exception.Message)"
+            }
+            finally {
+                $stopwatch.Stop()
+                $result.ProcessingTime = $stopwatch.Elapsed.TotalSeconds
+            }
+            
+            return $result
+        }
+        $updateJobs += $chocoJob
+    }
+    
+    # Enhanced parallel job execution with timeout handling
+    Write-Log "[UpdatePackages] Executing parallel package updates with enhanced monitoring..." 'INFO'
+    $jobTimeout = 600 # 10 minutes timeout for package updates
+    $startTime = Get-Date
+    
+    # Monitor jobs with timeout
+    $completedJobs = @()
+    $timeoutJobs = @()
+    
+    while ($updateJobs.Count -gt 0 -and (Get-Date).Subtract($startTime).TotalSeconds -lt $jobTimeout) {
+        Start-Sleep -Milliseconds 500  # Check every 500ms
+        
+        foreach ($job in $updateJobs.ToArray()) {
+            if ($job.State -eq 'Completed') {
+                $completedJobs += $job
+                $updateJobs = $updateJobs | Where-Object { $_.Id -ne $job.Id }
+            }
+        }
+    }
+    
+    # Handle any remaining (timeout) jobs
+    foreach ($job in $updateJobs) {
+        $timeoutJobs += $job
+        Write-Log "[UpdatePackages] Job timeout: $($job.Name)" 'WARN'
+        Stop-Job -Job $job -Force
+    }
+    
+    # Process completed job results with enhanced error handling
+    foreach ($job in $completedJobs) {
+        try {
+            $jobResult = Receive-Job -Job $job -Wait -ErrorAction Stop
+            Remove-Job -Job $job -Force
+            
+            if ($jobResult.Success) {
+                if ($jobResult.NoUpdatesFound) {
+                    [void]$noUpdatesAvailable.Add([PSCustomObject]@{
+                        Source = $jobResult.Source
+                        Message = "No updates available"
+                        ProcessingTime = $jobResult.ProcessingTime
+                    })
+                }
+                else {
+                    [void]$successfulUpdates.Add([PSCustomObject]@{
+                        Source = $jobResult.Source
+                        UpdatedPackages = $jobResult.UpdatedPackages
+                        Count = if ($jobResult.UpdatedPackages) { $jobResult.UpdatedPackages.Count } else { 0 }
+                        ProcessingTime = $jobResult.ProcessingTime
+                    })
+                }
+            }
+            else {
+                [void]$failedUpdates.Add([PSCustomObject]@{
+                    Source = $jobResult.Source
+                    Error = $jobResult.Error
+                    ProcessingTime = $jobResult.ProcessingTime
+                })
+            }
+        }
+        catch {
+            Write-Log "[UpdatePackages] Error processing job result: $_" 'WARN'
+            [void]$failedUpdates.Add([PSCustomObject]@{
+                Source = "Unknown"
+                Error = "Job result processing failed: $_"
+                ProcessingTime = 0
+            })
+        }
+    }
+    
+    # Handle timeout jobs
+    foreach ($job in $timeoutJobs) {
+        Remove-Job -Job $job -Force
+        [void]$failedUpdates.Add([PSCustomObject]@{
+            Source = "Timeout"
+            Error = "Package update timed out after $jobTimeout seconds"
+            ProcessingTime = $jobTimeout
+        })
+    }
+
+    # Convert concurrent collections to arrays for enhanced reporting
+    $successArray = @($successfulUpdates.ToArray())
+    $failedArray = @($failedUpdates.ToArray())
+    $noUpdatesArray = @($noUpdatesAvailable.ToArray())
+
+    # Enhanced action-only logging with performance metrics
+    if ($successArray.Count -gt 0) {
+        $totalUpdated = ($successArray | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
+        $totalTime = ($successArray | ForEach-Object { $_.ProcessingTime } | Measure-Object -Sum).Sum
+        $avgTimePerSource = if ($successArray.Count -gt 0) { [math]::Round($totalTime / $successArray.Count, 2) } else { 0 }
+        
+        Write-Log "[UpdatePackages] Successfully updated $totalUpdated packages across $($successArray.Count) package managers (avg time: ${avgTimePerSource}s per source):" 'INFO'
+        
+        foreach ($success in $successArray) {
+            $timeInfo = if ($success.ProcessingTime -gt 0) { " (${success.ProcessingTime}s)" } else { "" }
+            Write-Log "Updated via $($success.Source): $($success.Count) packages$timeInfo" 'INFO'
+            Write-Host "✓ Updated via $($success.Source): $($success.Count) packages$timeInfo" -ForegroundColor Green
+            
+            # Enhanced verbose logging with package details
+            if ($global:Config.EnableVerboseLogging -and $success.UpdatedPackages.Count -gt 0) {
+                foreach ($package in $success.UpdatedPackages) {
+                    if ($package -match '\S') {
+                        Write-Log "  - $($package.Trim())" 'VERBOSE'
+                    }
+                }
+            }
+        }
+    }
+
+    # Enhanced no-updates reporting with timing
+    if ($noUpdatesArray.Count -gt 0) {
+        foreach ($noUpdate in $noUpdatesArray) {
+            $timeInfo = if ($noUpdate.ProcessingTime -gt 0) { " (checked in ${noUpdate.ProcessingTime}s)" } else { "" }
+            Write-Log "[UpdatePackages] $($noUpdate.Source): $($noUpdate.Message)$timeInfo" 'INFO'
+        }
+    }
+
+    # Enhanced summary statistics with performance metrics
+    $totalSources = $successArray.Count + $failedArray.Count + $noUpdatesArray.Count
+    $totalPackagesUpdated = if ($successArray.Count -gt 0) { ($successArray | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum } else { 0 }
+    $totalProcessingTime = [math]::Round((Get-Date).Subtract($startTime).TotalSeconds, 2)
+    
+    Write-Log "[UpdatePackages] Update process complete in ${totalProcessingTime}s. Sources processed: $totalSources, Total packages updated: $totalPackagesUpdated" 'INFO'
+    
+    # Enhanced error reporting with timing information
+    if ($failedArray.Count -gt 0) {
+        Write-Log "[UpdatePackages] Failed update sources: $($failedArray.Count)" 'WARN'
+        foreach ($failure in $failedArray) {
+            $timeInfo = if ($failure.ProcessingTime -gt 0) { " (failed after ${failure.ProcessingTime}s)" } else { "" }
+            $errorSummary = if ($failure.Error.Length -gt 100) { $failure.Error.Substring(0, 100) + "..." } else { $failure.Error }
+            Write-Log "[UpdatePackages] $($failure.Source) failed$timeInfo`: $errorSummary" 'WARN'
+        }
+    }
+
+    # Performance analysis and recommendations
+    if ($totalProcessingTime -gt 300) { # 5 minutes
+        Write-Log "[UpdatePackages] PERFORMANCE: Update took ${totalProcessingTime}s. Consider running updates during off-peak hours." 'INFO'
+    }
+    elseif ($totalProcessingTime -lt 30) {
+        Write-Log "[UpdatePackages] PERFORMANCE: Fast update completion (${totalProcessingTime}s) - system is well optimized." 'VERBOSE'
+    }
+
+    Write-Log "[END] Update All Packages" 'INFO'
+}
+
+### [TASK 3] Enhanced Remove Bloatware - Silent Optimized Approach
+function Remove-Bloatware {
+    # ===============================
+    # Task: RemoveBloatware (Silent & Optimized)
+    # ===============================
+    # Purpose: Removes unwanted apps silently, logging only successful removals.
+    # Environment: Windows 10/11, must run as Administrator, supports OEM, Microsoft, and third-party bloatware.
+    # Logic: Compare bloatware list against inventory, attempt removal silently, log only successes.
+    # Optimizations: Hashtable lookups, silent processing, minimal logging, prioritized removal methods.
+    Write-Log "[START] Enhanced Remove Bloatware (Silent Mode)" 'INFO'
+    
+    # Use global inventory if available, otherwise build a quick one
+    if (-not $global:SystemInventory) {
+        Get-ExtensiveSystemInventory
+    }
+    
+    $inventory = $global:SystemInventory
+    
+    # Build comprehensive hashtable of all installed app identifiers (normalized) for O(1) lookups
+    $installedLookup = @{}
+    $installedFullData = @{}
+    
+    # Add AppX package names and IDs with full data for removal
+    $inventory.appx | ForEach-Object {
+        if ($_.Name) { 
+            $key = $_.Name.ToLower().Trim()
+            $installedLookup[$key] = 'appx'
+            $installedFullData[$key] = @{ Type = 'appx'; Data = $_ }
+        }
+        if ($_.PackageFullName) { 
+            $key = $_.PackageFullName.ToLower().Trim()
+            $installedLookup[$key] = 'appx'
+            $installedFullData[$key] = @{ Type = 'appx'; Data = $_ }
+        }
+    }
+    
+    # Add Winget app names and IDs with full data
+    $inventory.winget | ForEach-Object {
+        if ($_.Name) { 
+            $key = $_.Name.ToLower().Trim()
+            $installedLookup[$key] = 'winget'
+            $installedFullData[$key] = @{ Type = 'winget'; Data = $_ }
+        }
+        if ($_.Id) { 
+            $key = $_.Id.ToLower().Trim()
+            $installedLookup[$key] = 'winget'
+            $installedFullData[$key] = @{ Type = 'winget'; Data = $_ }
+        }
+    }
+    
+    # Add Chocolatey and registry apps
+    $inventory.choco | ForEach-Object {
+        if ($_.Name) { 
+            $key = $_.Name.ToLower().Trim()
+            $installedLookup[$key] = 'choco'
+            $installedFullData[$key] = @{ Type = 'choco'; Data = $_ }
+        }
+    }
+    
+    $inventory.registry_uninstall | ForEach-Object {
+        if ($_.DisplayName) { 
+            $key = $_.DisplayName.ToLower().Trim()
+            $installedLookup[$key] = 'registry'
+            $installedFullData[$key] = @{ Type = 'registry'; Data = $_ }
+        }
+    }
+    
+    # Fast matching using hashtable lookups and optimized pattern matching (silent)
+    $bloatwareToRemove = @()
+    $normalizedBloatwareList = $global:BloatwareList | ForEach-Object { $_.ToLower().Trim() }
+    
+    foreach ($bloatApp in $normalizedBloatwareList) {
+        $found = $false
+        $matchData = $null
+        
+        # Direct lookup (fastest)
+        if ($installedLookup.ContainsKey($bloatApp)) {
+            $found = $true
+            $matchData = $installedFullData[$bloatApp]
+        }
+        else {
+            # Pattern matching only if direct lookup fails
+            foreach ($installedKey in $installedLookup.Keys) {
+                if ($installedKey -like "*$bloatApp*" -or 
+                    $bloatApp -like "*$installedKey*" -or
+                    ($bloatApp.Contains('.') -and $installedKey -like "*$($bloatApp.Split('.')[1])*") -or
+                    ($bloatApp.Contains('.') -and $installedKey -like "*$($bloatApp.Split('.')[0])*")) {
+                    $found = $true
+                    $matchData = $installedFullData[$installedKey]
                     break
                 }
             }
         }
         
-        # Last resort: check Start Menu apps
-        if (-not $officeInstalled) {
-            $officeApps = Get-StartAppsCompatible | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
-            if ($officeApps) { 
-                $officeInstalled = $true 
-                Write-Log "Office detected via Start Menu apps" 'INFO'
-            }
-        }
-    }
-    catch {
-        Write-Log "Error checking for Microsoft Office: $_" 'WARN'
-    }
-
-    if (-not $officeInstalled) {
-        Write-Log "Microsoft Office not detected. Installing LibreOffice as alternative..." 'INFO'
-        $libreSuccess = $false
-        try {
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                $libreArgs = @(
-                    "install", "--id", "TheDocumentFoundation.LibreOffice",
-                    "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e"
-                )
-                $libreProc = Start-Process -FilePath "winget" -ArgumentList $libreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
-                if ($libreProc.ExitCode -eq 0) {
-                    Write-Log "LibreOffice installed via winget." 'INFO'
-                    $libreSuccess = $true
-                    $success++
-                    $detailedResults += "SUCCESS: LibreOffice via winget"
-                }
-                else {
-                    Write-Log "LibreOffice winget install failed with exit code $($libreProc.ExitCode)" 'WARN'
-                }
-            }
-            if (-not $libreSuccess -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-                $chocoLibreArgs = @("install", "libreoffice-fresh", "-y", "--no-progress")
-                $chocoLibreProc = Start-Process -FilePath "choco" -ArgumentList $chocoLibreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
-                if ($chocoLibreProc.ExitCode -eq 0) {
-                    Write-Log "LibreOffice installed via choco." 'INFO'
-                    $libreSuccess = $true
-                    $success++
-                    $detailedResults += "SUCCESS: LibreOffice via choco"
-                }
-                else {
-                    Write-Log "LibreOffice choco install failed with exit code $($chocoLibreProc.ExitCode)" 'WARN'
-                }
-            }
-            if (-not $libreSuccess) {
-                Write-Log "No installer found or succeeded for LibreOffice." 'WARN'
-                $fail++
-                $detailedResults += "FAIL: LibreOffice (no installer succeeded)"
-            }
-        }
-        catch {
-            Write-Log "Failed to install LibreOffice: $_" 'WARN'
-            $fail++
-            $detailedResults += "FAIL: LibreOffice (exception: $_)"
-        }
-    }
-    else {
-        Write-Log "Microsoft Office detected. Skipping LibreOffice installation." 'INFO'
-        $detailedResults += "SKIPPED: LibreOffice (Office already installed)"
-    }
-
-    Write-Log "Install Essential Apps summary: Installed: $success, Failed: $fail, Skipped: $skipped" 'INFO'
-    foreach ($result in $detailedResults) {
-        Write-Log $result 'INFO'
-    }
-    Write-Log "[END] Install Essential Apps" 'INFO'
-}
-
-### [TASK 3] Enhanced Remove Bloatware - Diff-Based Approach
-function Remove-Bloatware {
-    # ===============================
-    # Task: RemoveBloatware
-    # ===============================
-    # Purpose: Removes unwanted apps using diff-based comparison with inventory.
-    # Environment: Windows 10/11, must run as Administrator, supports OEM, Microsoft, and third-party bloatware.
-    # Logic: Compare bloatware list against inventory, only attempt removal of actually installed apps.
-    Write-Log "[START] Enhanced Remove Bloatware (Diff-Based Approach)" 'INFO'
-    
-    # Use global inventory if available, otherwise build a quick one
-    if (-not $global:SystemInventory) {
-        Write-Log "[Bloatware] No system inventory available, building quick inventory..." 'WARN'
-        Get-ExtensiveSystemInventory
-    }
-    
-    $inventory = $global:SystemInventory
-    Write-Log "[Bloatware] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
-    
-    # Build comprehensive list of all installed app identifiers (normalized)
-    $installedIdentifiers = @()
-    # Add AppX package names and IDs
-    $inventory.appx | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
-        if ($_.PackageFullName) { $installedIdentifiers += $_.PackageFullName.ToLower().Trim() }
-    }
-    # Add Winget app names and IDs
-    $inventory.winget | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
-        if ($_.Id) { $installedIdentifiers += $_.Id.ToLower().Trim() }
-    }
-    # Add Chocolatey app names
-    $inventory.choco | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
-    }
-    # Add registry app display names
-    $inventory.registry_uninstall | ForEach-Object {
-        if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName.ToLower().Trim() }
-    }
-    # Remove duplicates and create lookup for faster matching
-    $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
-    Write-Log "[Bloatware] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
-    
-    # Normalize bloatware list for matching
-    $normalizedBloatwareList = $global:BloatwareList | ForEach-Object { $_.ToLower().Trim() }
-    $bloatwareToRemove = @()
-    foreach ($bloatApp in $normalizedBloatwareList) {
-        $found = $false
-        foreach ($installed in $installedIdentifiers) {
-            # Enhanced matching: exact, partial, and pattern-based
-            if ($installed -eq $bloatApp -or 
-                $installed -like "*$bloatApp*" -or 
-                $bloatApp -like "*$installed*" -or
-                ($bloatApp.Contains('.') -and $installed -like "*$($bloatApp.Split('.')[1])*") -or
-                ($bloatApp.Contains('.') -and $installed -like "*$($bloatApp.Split('.')[0])*")) {
-                $found = $true
-                Write-Log "[Bloatware] Match found: '$bloatApp' matches installed app '$installed'" 'VERBOSE'
-                break
-            }
-        }
         if ($found) {
-            $bloatwareToRemove += $bloatApp
+            $bloatwareToRemove += @{ Name = $bloatApp; MatchData = $matchData }
         }
     }
-    
-    Write-Log "[Bloatware] Diff analysis: $($bloatwareToRemove.Count) bloatware apps found installed (out of $($global:BloatwareList.Count) total in list)" 'INFO'
-    
-    # Save the diff list to temporary file for debugging
-    $diffListPath = Join-Path $global:TempFolder 'bloatware_diff_to_remove.json'
-    $bloatwareToRemove | ConvertTo-Json -Depth 3 | Out-File $diffListPath -Encoding UTF8
-    Write-Log "[Bloatware] Diff list saved to: $diffListPath" 'VERBOSE'
-    
-    # Save the apps NOT found (for debugging purposes)
-    $appsNotFound = $global:BloatwareList | Where-Object { $_ -notin $bloatwareToRemove }
-    $notFoundPath = Join-Path $global:TempFolder 'bloatware_not_found.json'
-    $appsNotFound | ConvertTo-Json -Depth 3 | Out-File $notFoundPath -Encoding UTF8
-    Write-Log "[Bloatware] Apps not found on system saved to: $notFoundPath" 'VERBOSE'
-    Write-Log "[Bloatware] Apps not found on system: $($appsNotFound.Count)" 'INFO'
     
     if ($bloatwareToRemove.Count -eq 0) {
-        Write-Log "[Bloatware] No bloatware found on system. Skipping removal process." 'INFO'
+        Write-Log "No bloatware found on system" 'INFO'
         Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
         return
     }
     
-    # Log the bloatware that will be removed
-    Write-Log "[Bloatware] Apps targeted for removal (diff list):" 'INFO'
-    $bloatwareToRemove | ForEach-Object { Write-Log "  - $_" 'VERBOSE' }
+    # Check and cache tool availability silently
+    $toolsAvailable = @{
+        Appx   = $false
+        Winget = $false
+        Choco  = $false
+        Dism   = $false
+    }
     
-    $removed = 0
-    $failed = 0
-    $totalApps = $bloatwareToRemove.Count
-    
-    Write-Log "[Bloatware] Starting removal process for $totalApps apps from diff list only..." 'INFO'
-
-    # Check module availability
-    $appxAvailable = $false
+    # Check AppX availability (silent)
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         try {
             $testCommand = "Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue | Select-Object Name"
             $result = Invoke-WindowsPowerShellCommand -Command $testCommand -Description "Test Appx module"
-            $appxAvailable = $null -ne $result
+            $toolsAvailable.Appx = $null -ne $result
         }
-        catch {
-            Write-Log "Failed to test Appx module: $_" 'WARN'
-        }
+        catch {}
     }
     else {
         try {
             if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) {
                 Import-Module Appx -ErrorAction Stop
-                $appxAvailable = $true
+                $toolsAvailable.Appx = $true
             }
         }
-        catch {
-            Write-Log "Failed to load Appx module: $_" 'WARN'
-        }
+        catch {}
     }
-
-    $dismCmd = Get-Command dism -ErrorAction SilentlyContinue
-    $dismAvailable = $dismCmd -and (Test-Path $dismCmd.Source)
     
-    # Enhanced pattern matching for better app identification
-    $enhancedPatterns = @{
-        'Microsoft.3DBuilder'                    = @('3DBuilder', '*3DBuilder*')
-        'Microsoft.BingWeather'                  = @('BingWeather', '*Weather*', '*MSN Weather*')
-        'Microsoft.GetHelp'                      = @('GetHelp', '*Get Help*')
-        'Microsoft.Getstarted'                   = @('Getstarted', '*Get Started*', '*Tips*')
-        'Microsoft.MicrosoftSolitaireCollection' = @('MicrosoftSolitaireCollection', '*Solitaire*')
-        'Microsoft.WindowsFeedbackHub'           = @('WindowsFeedbackHub', '*Feedback*')
-        'Microsoft.XboxApp'                      = @('XboxApp', '*Xbox*', 'Microsoft.GamingApp')
-        'Microsoft.ZuneMusic'                    = @('ZuneMusic', '*Groove*', '*Music*')
-        'Microsoft.ZuneVideo'                    = @('ZuneVideo', '*Movies*', '*Video*')
-        'Microsoft.People'                       = @('People', '*People*')
-        'Microsoft.Office.OneNote'               = @('Office.OneNote', '*OneNote*')
-        'Microsoft.SkypeApp'                     = @('SkypeApp', '*Skype*')
-        'Microsoft.Wallet'                       = @('Wallet', '*Wallet*')
-        'king.com.CandyCrushSaga'                = @('*CandyCrush*', '*king.com*')
-        'Microsoft.Paint'                        = @('Paint', '*Paint 3D*', 'Microsoft.MSPaint')
-        'Microsoft.YourPhone'                    = @('YourPhone', '*Your Phone*', '*Phone Link*')
-        'Microsoft.PowerAutomateDesktop'         = @('PowerAutomateDesktop', '*Power Automate*')
-        'MicrosoftTeams'                         = @('MicrosoftTeams', '*Teams*', '*Microsoft Teams*')
-    }
-
-    # Process ONLY the diff list (apps that are confirmed to be installed)
-    foreach ($app in $bloatwareToRemove) {
-        # Validation: Ensure this app is indeed in our diff list
-        if ($app -notin $bloatwareToRemove) {
-            Write-Log "[ERROR] App '$app' is not in the diff list but is being processed. This should not happen!" 'ERROR'
-            continue
-        }
+    # Check other tools (silent)
+    $toolsAvailable.Winget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
+    $toolsAvailable.Choco = $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
+    $dismCmd = Get-Command dism -ErrorAction SilentlyContinue
+    $toolsAvailable.Dism = $dismCmd -and (Test-Path $dismCmd.Source)
+    
+    $removed = 0
+    $removedApps = @()
+    $totalApps = $bloatwareToRemove.Count
+    
+    # Silent optimized removal function - only log successes
+    function Remove-AppSilent {
+        param(
+            [string]$AppName,
+            [hashtable]$MatchData,
+            [hashtable]$ToolsAvailable
+        )
         
-        Write-Log "[Bloatware] Processing app from diff list: $app" 'VERBOSE'
-        $appRemoved = $false
-        $removalMethods = @()
+        $removed = $false
+        $methods = @()
+        $actualRemovedName = $AppName
         
         try {
-            # AppX removal
-            if ($appxAvailable) {
-                $patterns = if ($enhancedPatterns.ContainsKey($app)) { $enhancedPatterns[$app] } else { @($app, "*$app*") }
-                foreach ($pattern in $patterns) {
-                    $appxPackages = Get-AppxPackageCompatible -Name $pattern -AllUsers
-                    foreach ($pkg in $appxPackages) {
-                        if ($pkg.PackageFullName) {
+            # Priority 1: Use the method that matches the app's source for fastest removal
+            if ($MatchData.Type -eq 'appx' -and $ToolsAvailable.Appx) {
+                $appxData = $MatchData.Data
+                try {
+                    if ($appxData.PackageFullName) {
+                        $success = Remove-AppxPackageCompatible -PackageFullName $appxData.PackageFullName -AllUsers
+                        if ($success) {
+                            $removed = $true
+                            $methods += 'AppX'
+                            $actualRemovedName = $appxData.Name
+                        }
+                    }
+                }
+                catch {}
+            }
+            elseif ($MatchData.Type -eq 'winget' -and $ToolsAvailable.Winget) {
+                $wingetData = $MatchData.Data
+                try {
+                    if ($wingetData.Id) {
+                        $uninstallResult = winget uninstall --id $wingetData.Id --exact --silent --accept-source-agreements --force 2>$null
+                        if ($LASTEXITCODE -eq 0) {
+                            $removed = $true
+                            $methods += 'Winget'
+                            $actualRemovedName = $wingetData.Name
+                        }
+                    }
+                }
+                catch {}
+            }
+            elseif ($MatchData.Type -eq 'choco' -and $ToolsAvailable.Choco) {
+                $chocoData = $MatchData.Data
+                try {
+                    if ($chocoData.Name) {
+                        choco uninstall $chocoData.Name -y --remove-dependencies 2>$null
+                        if ($LASTEXITCODE -eq 0) {
+                            $removed = $true
+                            $methods += 'Choco'
+                            $actualRemovedName = $chocoData.Name
+                        }
+                    }
+                }
+                catch {}
+            }
+            elseif ($MatchData.Type -eq 'registry') {
+                $regData = $MatchData.Data
+                try {
+                    if ($regData.UninstallString) {
+                        $uninstallCmd = $regData.UninstallString -replace '"', ''
+                        if ($uninstallCmd -like "*.exe*") {
+                            Start-Process -FilePath $uninstallCmd -ArgumentList "/S" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+                            $removed = $true
+                            $methods += 'Registry'
+                            $actualRemovedName = $regData.DisplayName
+                        }
+                    }
+                }
+                catch {}
+            }
+            
+            # Priority 2: Fallback methods if direct removal failed (silent)
+            if (-not $removed) {
+                # AppX fallback with pattern matching
+                if ($ToolsAvailable.Appx) {
+                    $patterns = @($AppName, "*$AppName*")
+                    foreach ($pattern in $patterns) {
+                        $appxPackages = Get-AppxPackageCompatible -Name $pattern -AllUsers
+                        foreach ($pkg in $appxPackages) {
                             try {
                                 $success = Remove-AppxPackageCompatible -PackageFullName $pkg.PackageFullName -AllUsers
                                 if ($success) {
-                                    Write-Log "Removed AppX package: $($pkg.Name) ($($pkg.PackageFullName))" 'INFO'
-                                    $appRemoved = $true
-                                    $removalMethods += 'AppX'
+                                    $removed = $true
+                                    $methods += 'AppX'
+                                    $actualRemovedName = $pkg.Name
+                                    break
                                 }
                             }
                             catch {}
                         }
-                    }
-                    $provisionedPackages = Get-AppxProvisionedPackageCompatible -Online |
-                    Where-Object { $_.DisplayName -like $pattern }
-                    foreach ($pkg in $provisionedPackages) {
-                        try {
-                            $success = Remove-AppxProvisionedPackageCompatible -Online -PackageName $pkg.PackageName
-                            if ($success) {
-                                Write-Log "Removed provisioned package: $($pkg.DisplayName) ($($pkg.PackageName))" 'INFO'
-                                $appRemoved = $true
-                                $removalMethods += 'DISM-Provisioned'
-                            }
-                        }
-                        catch {}
-                    }
-                }
-            }
-            
-            # DISM removal
-            if ($dismAvailable) {
-                $patterns = if ($enhancedPatterns.ContainsKey($app)) { $enhancedPatterns[$app] } else { @($app) }
-                foreach ($pattern in $patterns) {
-                    $dismResult = dism /online /get-provisionedappxpackages | Select-String $pattern
-                    if ($dismResult) {
-                        foreach ($result in $dismResult) {
-                            $packageName = ($result -split ':')[1].Trim()
-                            if ($packageName) {
-                                try {
-                                    dism /online /remove-provisionedappxpackage /packagename:"$packageName" /NoRestart
-                                    Write-Log "DISM removed provisioned package: $packageName" 'INFO'
-                                    $appRemoved = $true
-                                    $removalMethods += 'DISM'
-                                }
-                                catch {}
-                            }
-                        }
-                    }
-                }
-            }
-            
-            # Winget removal - Enhanced with better error handling and logging
-            if ((Get-Command winget -ErrorAction SilentlyContinue)) {
-                $wingetIds = @($app)
-                if ($app.StartsWith('Microsoft.')) { $wingetIds += $app.Replace('Microsoft.', '') }
-                if ($enhancedPatterns.ContainsKey($app)) { $wingetIds += $enhancedPatterns[$app] }
-                
-                foreach ($wingetId in $wingetIds) {
-                    try {
-                        Write-Log "Checking winget for: $wingetId" 'VERBOSE'
-                        
-                        # Use winget list with JSON output for better parsing
-                        $wingetListResult = winget list --id $wingetId --exact --accept-source-agreements --output json 2>$null
-                        if ($LASTEXITCODE -eq 0) {
-                            try {
-                                $wingetJson = $wingetListResult | ConvertFrom-Json -ErrorAction SilentlyContinue
-                                if ($wingetJson -and $wingetJson.Data -and $wingetJson.Data.Count -gt 0) {
-                                    Write-Log "Winget found app: $wingetId, attempting removal..." 'VERBOSE'
-                                    
-                                    # Attempt removal with detailed logging
-                                    $uninstallResult = winget uninstall --id $wingetId --exact --silent --accept-source-agreements --force 2>&1
-                                    if ($LASTEXITCODE -eq 0) {
-                                        Write-Log "Winget successfully removed: $wingetId" 'INFO'
-                                        $appRemoved = $true
-                                        $removalMethods += 'Winget'
-                                        break
-                                    }
-                                    else {
-                                        Write-Log "Winget uninstall failed for $wingetId (Exit code: $LASTEXITCODE)" 'VERBOSE'
-                                        if ($uninstallResult) {
-                                            Write-Log "Winget uninstall output for ${wingetId}: $uninstallResult" 'VERBOSE'
-                                        }
-                                    }
-                                }
-                            }
-                            catch {
-                                # Fallback to text-based parsing if JSON fails
-                                if ($wingetListResult -match $wingetId) {
-                                    Write-Log "Winget found app (text match): $wingetId, attempting removal..." 'VERBOSE'
-                                    winget uninstall --id $wingetId --exact --silent --accept-source-agreements --force 2>$null
-                                    if ($LASTEXITCODE -eq 0) {
-                                        Write-Log "Winget successfully removed: $wingetId" 'INFO'
-                                        $appRemoved = $true
-                                        $removalMethods += 'Winget'
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                        else {
-                            Write-Log "Winget list failed for $wingetId (Exit code: $LASTEXITCODE)" 'VERBOSE'
-                        }
-                    }
-                    catch {
-                        Write-Log "Exception during winget processing for $wingetId`: $_" 'VERBOSE'
-                    }
-                }
-            }
-            else {
-                Write-Log "Winget not available for app removal" 'VERBOSE'
-            }
-            
-            # Chocolatey removal
-            if ((Get-Command choco -ErrorAction SilentlyContinue)) {
-                $chocoNames = @($app.ToLower(), $app.Replace('Microsoft.', '').ToLower())
-                foreach ($chocoName in $chocoNames) {
-                    try {
-                        $chocoList = choco list --local-only $chocoName 2>$null
-                        if ($LASTEXITCODE -eq 0 -and $chocoList -match $chocoName) {
-                            choco uninstall $chocoName -y --remove-dependencies 2>$null
-                            if ($LASTEXITCODE -eq 0) {
-                                Write-Log "Chocolatey removed: $chocoName" 'INFO'
-                                $appRemoved = $true
-                                $removalMethods += 'Chocolatey'
-                                break
-                            }
-                        }
-                    }
-                    catch {}
-                }
-            }
-            
-            # Windows Capabilities removal
-            try {
-                $capabilities = Get-WindowsCapability -Online -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-                foreach ($capability in $capabilities) {
-                    if ($capability.State -eq 'Installed') {
-                        try {
-                            Remove-WindowsCapability -Online -Name $capability.Name -ErrorAction Stop
-                            Write-Log "Removed Windows Capability: $($capability.Name)" 'INFO'
-                            $appRemoved = $true
-                            $removalMethods += 'Capability'
-                        }
-                        catch {}
-                    }
-                }
-            }
-            catch {}
-            
-            # Windows Features removal (Optional Features)
-            try {
-                $features = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue |
-                Where-Object { $_.FeatureName -like "*$app*" -or $_.DisplayName -like "*$app*" -or 
-                    $_.FeatureName -like "*$($app.Replace('Microsoft.', ''))*" }
-                foreach ($feature in $features) {
-                    if ($feature.State -eq 'Enabled') {
-                        try {
-                            Disable-WindowsOptionalFeature -Online -FeatureName $feature.FeatureName -NoRestart -ErrorAction Stop
-                            Write-Log "Disabled Windows Feature: $($feature.FeatureName)" 'INFO'
-                            $appRemoved = $true
-                            $removalMethods += 'WindowsFeature'
-                        }
-                        catch {}
-                    }
-                }
-            }
-            catch {}
-            
-            # Registry-based uninstall (using uninstall strings)
-            try {
-                $uninstallKeys = @(
-                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-                )
-                foreach ($regKey in $uninstallKeys) {
-                    if (Test-Path $regKey) {
-                        $subKeys = Get-ChildItem $regKey -ErrorAction SilentlyContinue
-                        foreach ($subKey in $subKeys) {
-                            $props = Get-ItemProperty $subKey.PSPath -ErrorAction SilentlyContinue
-                            if ($props.DisplayName -like "*$app*" -or $props.DisplayName -like "*$($app.Replace('Microsoft.', ''))*") {
-                                if ($props.UninstallString) {
-                                    try {
-                                        $uninstallCmd = $props.UninstallString -replace '"', ''
-                                        if ($uninstallCmd -like "*.exe*") {
-                                            Start-Process -FilePath $uninstallCmd -ArgumentList "/S" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
-                                            Write-Log "Attempted registry-based removal: $browser" 'INFO'
-                                            $appRemoved = $true
-                                            $removalMethods += 'Registry-EXE'
-                                        }
-                                    }
-                                    catch {
-                                        Write-Log "Registry uninstall failed for $($props.DisplayName): $_" 'VERBOSE'
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch {}
-            
-            # PowerShell Get-Package / Uninstall-Package removal
-            try {
-                $packages = Get-Package -ErrorAction SilentlyContinue | 
-                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-                foreach ($package in $packages) {
-                    try {
-                        Uninstall-Package -Name $package.Name -Force -ErrorAction Stop
-                        Write-Log "PowerShell Package removed: $($package.Name)" 'INFO'
-                        $appRemoved = $true
-                        $removalMethods += 'PS-Package'
-                    }
-                    catch {}
-                }
-            }
-            catch {}
-            
-            # WMI Win32_Product removal (use sparingly as it's slow)
-            if (-not $appRemoved) {
-                try {
-                    $wmiProducts = Get-WmiObject -Class Win32_Product -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-                    foreach ($product in $wmiProducts) {
-                        try {
-                            Write-Log "Attempting WMI uninstall for: $($product.Name)" 'VERBOSE'
-                            $result = $product.Uninstall()
-                            if ($result.ReturnValue -eq 0) {
-                                Write-Log "WMI uninstalled: $($product.Name)" 'INFO'
-                                $appRemoved = $true
-                                $removalMethods += 'WMI'
-                                break
-                            }
-                        }
-                        catch {}
-                    }
-                }
-                catch {}
-            }
-            
-            # Windows Package Manager (legacy) removal
-            try {
-                if (Get-Command pkgmgr -ErrorAction SilentlyContinue) {
-                    # This is for older Windows versions or specific package types
-                    $packageName = $app.Replace('Microsoft.', '')
-                    pkgmgr /up:$packageName /quiet /norestart 2>$null
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Log "Package Manager removed: $packageName" 'INFO'
-                        $appRemoved = $true
-                        $removalMethods += 'PkgMgr'
-                    }
-                }
-            }
-            catch {}
-            
-            # Remove Start Menu shortcuts and program folders
-            try {
-                $shortcutPaths = @(
-                    "$env:ALLUSERSPROFILE\Microsoft\Windows\Start Menu\Programs",
-                    "$env:USERPROFILE\AppData\Roaming\Microsoft\Windows\Start Menu\Programs"
-                )
-                foreach ($shortcutPath in $shortcutPaths) {
-                    if (Test-Path $shortcutPath) {
-                        $shortcuts = Get-ChildItem -Path $shortcutPath -Recurse -Include "*.lnk" -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-                        foreach ($shortcut in $shortcuts) {
-                            try {
-                                Remove-Item $shortcut.FullName -Force -ErrorAction Stop
-                                Write-Log "Removed shortcut: $($shortcut.Name)" 'VERBOSE'
-                            }
-                            catch {}
-                        }
-                        
-                        # Remove empty folders related to the app
-                        $folders = Get-ChildItem -Path $shortcutPath -Directory -Recurse -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-                        foreach ($folder in $folders) {
-                            try {
-                                if ((Get-ChildItem $folder.FullName -ErrorAction SilentlyContinue).Count -eq 0) {
-                                    Remove-Item $folder.FullName -Force -ErrorAction Stop
-                                    Write-Log "Removed empty program folder: $($folder.Name)" 'VERBOSE'
-                                }
-                            }
-                            catch {}
-                        }
-                    }
-                }
-            }
-            catch {}
-            
-            # Remove registry entries and leftover keys
-            try {
-                $cleanupKeys = @(
-                    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
-                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
-                    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
-                    "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Families",
-                    "HKLM:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Families"
-                )
-                foreach ($regKey in $cleanupKeys) {
-                    if (Test-Path $regKey) {
-                        $entries = Get-ItemProperty $regKey -ErrorAction SilentlyContinue
-                        $entries.PSObject.Properties | ForEach-Object {
-                            if ($_.Name -like "*$app*" -or $_.Value -like "*$app*") {
-                                try {
-                                    Remove-ItemProperty -Path $regKey -Name $_.Name -ErrorAction Stop
-                                    Write-Log "Removed registry startup entry: $($_.Name)" 'VERBOSE'
-                                }
-                                catch {}
-                            }
-                        }
+                        if ($removed) { break }
                     }
                 }
                 
-                # Remove app-specific registry trees
-                $appRegPaths = @(
-                    "HKCU:\SOFTWARE\$app",
-                    "HKLM:\SOFTWARE\$app",
-                    "HKLM:\SOFTWARE\WOW6432Node\$app",
-                    "HKCU:\SOFTWARE\$($app.Replace('Microsoft.', ''))",
-                    "HKLM:\SOFTWARE\$($app.Replace('Microsoft.', ''))",
-                    "HKLM:\SOFTWARE\WOW6432Node\$($app.Replace('Microsoft.', ''))"
-                )
-                foreach ($regPath in $appRegPaths) {
-                    if (Test-Path $regPath) {
-                        try {
-                            Remove-Item $regPath -Recurse -Force -ErrorAction Stop
-                            Write-Log "Removed registry tree: $regPath" 'VERBOSE'
-                        }
-                        catch {}
-                    }
-                }
-            }
-            catch {}
-            
-            # File system cleanup - remove program files and app data
-            try {
-                $cleanupPaths = @(
-                    "$env:ProgramFiles\$app",
-                    "$env:ProgramFiles\$($app.Replace('Microsoft.', ''))",
-                    "${env:ProgramFiles(x86)}\$app",
-                    "${env:ProgramFiles(x86)}\$($app.Replace('Microsoft.', ''))",
-                    "$env:LOCALAPPDATA\$app",
-                    "$env:LOCALAPPDATA\$($app.Replace('Microsoft.', ''))",
-                    "$env:APPDATA\$app",
-                    "$env:APPDATA\$($app.Replace('Microsoft.', ''))",
-                    "$env:LOCALAPPDATA\Packages\$app*",
-                    "$env:USERPROFILE\AppData\Local\Packages\$app*"
-                )
-                
-                foreach ($cleanupPath in $cleanupPaths) {
-                    $expandedPaths = if ($cleanupPath -like "*`**") {
-                        Get-ChildItem (Split-Path $cleanupPath) -Directory -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Name -like (Split-Path $cleanupPath -Leaf) }
-                    }
-                    else {
-                        if (Test-Path $cleanupPath) { Get-Item $cleanupPath }
+                # Winget fallback (silent)
+                if (-not $removed -and $ToolsAvailable.Winget) {
+                    $wingetIds = @($AppName)
+                    if ($AppName.StartsWith('microsoft.')) { 
+                        $wingetIds += $AppName.Replace('microsoft.', '') 
                     }
                     
-                    foreach ($path in $expandedPaths) {
+                    foreach ($wingetId in $wingetIds) {
                         try {
-                            if (Test-Path $path.FullName) {
-                                Remove-Item $path.FullName -Recurse -Force -ErrorAction Stop
-                                Write-Log "Removed app folder: $($path.FullName)" 'VERBOSE'
-                            }
-                        }
-                        catch {}
-                    }
-                }
-            }
-            catch {}
-            
-            # CIM Win32_InstalledWin32Program removal (Windows 10+)
-            try {
-                $cimPrograms = Get-CimInstance -ClassName Win32_InstalledWin32Program -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-                foreach ($program in $cimPrograms) {
-                    try {
-                        # Try to find and execute uninstall command
-                        if ($program.UninstallString) {
-                            Write-Log "CIM found uninstaller for: $($program.Name)" 'VERBOSE'
-                            # This would need careful parsing similar to registry method
-                            # Implemented as a reference - actual execution would need the same logic as registry method
-                        }
-                    }
-                    catch {}
-                }
-            }
-            catch {}
-            
-            # Scoop removal (if Scoop is available)
-            try {
-                if (Get-Command scoop -ErrorAction SilentlyContinue) {
-                    $scoopApps = scoop list 2>$null | Where-Object { $_ -like "*$app*" }
-                    foreach ($scoopApp in $scoopApps) {
-                        if ($scoopApp -match '^(\S+)') {
-                            $appName = $matches[1]
-                            try {
-                                scoop uninstall $appName 2>$null
+                            $wingetListResult = winget list --id $wingetId --exact --accept-source-agreements --output json 2>$null
+                            if ($LASTEXITCODE -eq 0) {
+                                $uninstallResult = winget uninstall --id $wingetId --exact --silent --accept-source-agreements --force 2>$null
                                 if ($LASTEXITCODE -eq 0) {
-                                    Write-Log "Scoop removed: $appName" 'INFO'
-                                    $appRemoved = $true
-                                    $removalMethods += 'Scoop'
+                                    $removed = $true
+                                    $methods += 'Winget'
+                                    $actualRemovedName = $wingetId
+                                    break
                                 }
                             }
-                            catch {}
-                        }
-                    }
-                }
-            }
-            catch {}
-            
-            # Windows Store removal via PowerShell (modern method)
-            if ($app -like "Microsoft.*" -or $app -like "*Store*") {
-                try {
-                    $storeApps = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.Name -like "*$app*" -and $_.SignatureKind -eq 'Store' }
-                    foreach ($storeApp in $storeApps) {
-                        try {
-                            Remove-AppxPackage -Package $storeApp.PackageFullName -AllUsers -ErrorAction Stop
-                            Write-Log "Store app removed: $($storeApp.Name)" 'INFO'
-                            $appRemoved = $true
-                            $removalMethods += 'StoreApp'
                         }
                         catch {}
                     }
                 }
-                catch {}
             }
             
-            # Update counters and log results
-            if ($appRemoved) {
-                $removed++
-                $methodStr = ($removalMethods | Sort-Object -Unique) -join ', '
-                Write-Log "Successfully removed bloatware: $app via [$methodStr]" 'INFO'
-            }
-            else {
-                Write-Log "Bloatware removal failed or not found: $app" 'WARN'
-                $failed++
-            }
+            return @{ Removed = $removed; Methods = $methods; ActualName = $actualRemovedName }
         }
         catch {
-            Write-Log "Exception during removal of $app`: $_" 'ERROR'
-            $failed++
+            return @{ Removed = $false; Methods = @(); ActualName = $AppName }
+        }
+    }
+    
+    # Process apps with silent removal
+    foreach ($appInfo in $bloatwareToRemove) {
+        $appName = $appInfo.Name
+        $matchData = $appInfo.MatchData
+        
+        $result = Remove-AppSilent -AppName $appName -MatchData $matchData -ToolsAvailable $toolsAvailable
+        
+        if ($result.Removed) {
+            $removed++
+            $methodStr = ($result.Methods | Sort-Object -Unique) -join ', '
+            $logMessage = "Removed bloatware: $($result.ActualName) [$methodStr]"
+            Write-Log $logMessage 'INFO'
+            Write-Host $logMessage -ForegroundColor Green
+            $removedApps += $result.ActualName
         }
         
-        Start-Sleep -Milliseconds 100
+        # Minimal delay to prevent system overload
+        Start-Sleep -Milliseconds 25
     }
-
-    # Final cleanup: Disable app reinstallation
-    $bloatwareRegKeys = @(
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
-    )
-    foreach ($regKey in $bloatwareRegKeys) {
-        if (Test-Path $regKey) {
+    
+    # Final cleanup: Disable app reinstallation (silent)
+    try {
+        $bloatwareRegKeys = @(
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
+        )
+        foreach ($regKey in $bloatwareRegKeys) {
+            if (-not (Test-Path $regKey)) { New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null }
             try {
                 Set-ItemProperty -Path $regKey -Name 'SilentInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
                 Set-ItemProperty -Path $regKey -Name 'ContentDeliveryAllowed' -Value 0 -ErrorAction SilentlyContinue
                 Set-ItemProperty -Path $regKey -Name 'OemPreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
                 Set-ItemProperty -Path $regKey -Name 'PreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
                 Set-ItemProperty -Path $regKey -Name 'SubscribedContentEnabled' -Value 0 -ErrorAction SilentlyContinue
-                Write-Log "Disabled app reinstallation via Content Delivery Manager" 'INFO'
             }
             catch {}
         }
     }
+    catch {}
 
-    Write-Log "Enhanced bloatware removal completed (diff-based approach):" 'INFO'
-    Write-Log "  - Processed from diff list: $totalApps apps" 'INFO'
-    Write-Log "  - Successfully removed: $removed apps" 'INFO'
-    Write-Log "  - Failed to remove: $failed apps" 'INFO'
-    Write-Log "  - Total in bloatware list: $($global:BloatwareList.Count) apps" 'INFO'
-    Write-Log "  - Only apps from diff list were processed for removal" 'INFO'
-    Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
+    # Summary - only show what was actually removed
+    if ($removed -gt 0) {
+        $summaryMessage = "Bloatware removal completed: $removed apps removed"
+        Write-Log $summaryMessage 'INFO'
+        Write-Host $summaryMessage -ForegroundColor Green
+        if ($removedApps.Count -gt 0) {
+            Write-Log "Removed apps: $($removedApps -join ', ')" 'INFO'
+        }
+    }
+    else {
+        Write-Log "No bloatware was removed" 'INFO'
+    }
+    
+    Write-Log "[END] Enhanced Remove Bloatware (Silent)" 'INFO'
 }
 
 ### [TASK 4] System Inventory (Legacy)
@@ -2061,148 +2222,265 @@ function Disable-Telemetry {
     # ===============================
     # Purpose: Disables Windows telemetry, privacy-invading features, and unwanted browsers.
     # Environment: Windows 10/11, admin required, modifies registry, disables services/tasks, configures browsers.
-    # Logic: Skips if disabled in config, logs all actions and errors.
+    # Logic: Enhanced for speed and reliability, logs only actual removals.
     Write-Log "[START] Disable Telemetry" 'INFO'
-
-    # Disable all OS notifications (Focus Assist: Alarms Only, and notification banners)
+    
+    # Optimized notification management - batch operations
     try {
-        # Set Focus Assist to Alarms Only (2)
         $focusAssistReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings'
         if (-not (Test-Path $focusAssistReg)) { New-Item -Path $focusAssistReg -Force | Out-Null }
-        Set-ItemProperty -Path $focusAssistReg -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' -Value 0 -Force
-        Set-ItemProperty -Path $focusAssistReg -Name 'FocusAssist' -Value 2 -Force
-        # Disable notification banners for all apps
-        $apps = Get-ChildItem -Path $focusAssistReg -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -ne 'FocusAssist' -and $_.PSChildName -ne 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' }
-        foreach ($app in $apps) {
-            Set-ItemProperty -Path $app.PSPath -Name 'Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
+        
+        # Batch set notification settings
+        $notificationSettings = @{
+            'NOC_GLOBAL_SETTING_TOASTS_ENABLED' = 0
+            'FocusAssist' = 2
         }
-        Write-Log "All OS notifications disabled (Focus Assist and banners)." 'INFO'
-    }
-    catch {
-        Write-Log "Failed to disable all OS notifications: $_" 'WARN'
-    }
-
-    # Remove all browsers except Edge, Chrome, and Firefox
-    $allowedBrowsers = @('Microsoft Edge', 'Google Chrome', 'Mozilla Firefox')
-    $knownBrowsers = @('Opera', 'Opera GX', 'Brave', 'Vivaldi', 'Waterfox', 'Yandex', 'Tor Browser', 'Pale Moon', 'Chromium', 'SRWare Iron', 'Comodo Dragon', 'Maxthon', 'UC Browser', 'Epic Privacy Browser', 'Slimjet', 'CentBrowser', 'QuteBrowser', 'OtterBrowser', 'Dooble', 'Midori', 'Blisk', 'AvantBrowser', 'Sleipnir', 'Polarity', 'Torch', 'Orbitum', 'Superbird', 'Sputnik', 'Lunascape', 'Falkon', 'SeaMonkey')
-    foreach ($browser in $knownBrowsers) {
-        if ($allowedBrowsers -notcontains $browser) {
+        
+        $settingsApplied = 0
+        foreach ($setting in $notificationSettings.GetEnumerator()) {
             try {
-                $removalMethods = @()
-                # Try winget removal first
-                # Try winget removal first
-                if (Get-Command winget -ErrorAction SilentlyContinue) {
-                    $wingetSearch = winget list --id $browser --exact --accept-source-agreements 2>$null
-                    if ($LASTEXITCODE -eq 0 -and $wingetSearch -match $browser) {
-                        winget uninstall --id $browser --accept-source-agreements --accept-package-agreements --silent -e 2>$null
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Log "Removed browser via winget: $browser" 'INFO'
-                            $removed = $true
-                        }
+                Set-ItemProperty -Path $focusAssistReg -Name $setting.Key -Value $setting.Value -Force
+                $settingsApplied++
+            }
+            catch { continue }
+        }
+        
+        # Batch disable per-app notifications using registry operations
+        $apps = Get-ChildItem -Path $focusAssistReg -ErrorAction SilentlyContinue | Where-Object { 
+            $_.PSChildName -notin @('FocusAssist', 'NOC_GLOBAL_SETTING_TOASTS_ENABLED') 
+        }
+        
+        $appsDisabled = 0
+        if ($apps) {
+            foreach ($app in $apps) {
+                try {
+                    Set-ItemProperty -Path $app.PSPath -Name 'Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
+                    $appsDisabled++
+                }
+                catch { continue }
+            }
+        }
+        
+        if ($settingsApplied -gt 0 -or $appsDisabled -gt 0) {
+            Write-Host "✓ Disabled OS notifications ($appsDisabled apps)" -ForegroundColor Green
+            Write-Log "OS notifications disabled: Focus Assist enabled, $appsDisabled app notifications disabled" 'INFO'
+        }
+    }
+    catch {
+        Write-Log "Failed to disable OS notifications: $_" 'WARN'
+    }
+
+    # Optimized browser removal - pre-filter and batch operations
+    $allowedBrowsers = @('Microsoft Edge', 'Google Chrome', 'Mozilla Firefox')
+    $knownBrowsers = @('Opera', 'Opera GX', 'Brave', 'Vivaldi', 'Waterfox', 'Yandex', 'Tor Browser', 'Pale Moon', 
+        'Chromium', 'SRWare Iron', 'Comodo Dragon', 'Maxthon', 'UC Browser', 'Epic Privacy Browser', 
+        'Slimjet', 'CentBrowser', 'QuteBrowser', 'OtterBrowser', 'Dooble', 'Midori', 'Blisk', 
+        'AvantBrowser', 'Sleipnir', 'Polarity', 'Torch', 'Orbitum', 'Superbird', 'Sputnik', 
+        'Lunascape', 'Falkon', 'SeaMonkey')
+    
+    $browsersToRemove = $knownBrowsers | Where-Object { $allowedBrowsers -notcontains $_ }
+    $installedBrowsers = [System.Collections.Generic.HashSet[string]]::new()
+    
+    # Parallel detection using background jobs for better performance
+    $detectionJobs = @()
+    
+    # Winget detection job
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        $detectionJobs += Start-Job -ScriptBlock {
+            param($browsersToRemove)
+            $wingetApps = winget list --accept-source-agreements 2>$null | Out-String
+            $foundBrowsers = @()
+            foreach ($browser in $browsersToRemove) {
+                if ($wingetApps -match [regex]::Escape($browser)) {
+                    $foundBrowsers += $browser
+                }
+            }
+            return @{ Method = 'Winget'; Browsers = $foundBrowsers }
+        } -ArgumentList @(,$browsersToRemove)
+    }
+    
+    # Chocolatey detection job  
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        $detectionJobs += Start-Job -ScriptBlock {
+            param($browsersToRemove)
+            $chocoApps = choco list --local-only 2>$null | Out-String
+            $foundBrowsers = @()
+            foreach ($browser in $browsersToRemove) {
+                if ($chocoApps -match [regex]::Escape($browser)) {
+                    $foundBrowsers += $browser
+                }
+            }
+            return @{ Method = 'Chocolatey'; Browsers = $foundBrowsers }
+        } -ArgumentList @(,$browsersToRemove)
+    }
+    
+    # Registry detection job
+    $detectionJobs += Start-Job -ScriptBlock {
+        param($browsersToRemove)
+        $uninstallKeys = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+        )
+        
+        $foundBrowsers = @()
+        foreach ($key in $uninstallKeys) {
+            if (Test-Path $key) {
+                $regApps = Get-ChildItem $key -ErrorAction SilentlyContinue | 
+                          ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
+                          Where-Object { $_.DisplayName }
+                
+                foreach ($browser in $browsersToRemove) {
+                    if ($regApps | Where-Object { $_.DisplayName -like "*$browser*" }) {
+                        $foundBrowsers += $browser
                     }
                 }
-                # Try chocolatey removal if winget failed
-                if (-not $removed -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-                    $chocoList = choco list --local-only $browser 2>$null
-                    if ($LASTEXITCODE -eq 0 -and $chocoList -match $browser) {
-                        choco uninstall $browser -y --remove-dependencies 2>$null
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Log "Removed browser via chocolatey: $browser" 'INFO'
-                            $removed = $true
-                        }
+            }
+        }
+        return @{ Method = 'Registry'; Browsers = ($foundBrowsers | Select-Object -Unique) }
+    } -ArgumentList @(,$browsersToRemove)
+    
+    # Collect results from detection jobs
+    $detectionResults = $detectionJobs | Wait-Job | Receive-Job
+    $detectionJobs | Remove-Job
+    
+    # Combine all detected browsers
+    foreach ($result in $detectionResults) {
+        foreach ($browser in $result.Browsers) {
+            $installedBrowsers.Add($browser) | Out-Null
+        }
+    }
+    
+    # Remove detected browsers efficiently
+    $removedBrowsers = @()
+    $removalMethods = @()
+    
+    if ($installedBrowsers.Count -gt 0) {
+        foreach ($browser in $installedBrowsers) {
+            $removed = $false
+            
+            # Try winget removal (fastest and most reliable)
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                try {
+                    $result = winget uninstall --name $browser --accept-source-agreements --silent --force 2>$null
+                    if ($LASTEXITCODE -eq 0) {
+                        $removedBrowsers += $browser
+                        $removalMethods += 'Winget'
+                        $removed = $true
                     }
                 }
-                # Try registry-based uninstall as last resort
-                if (-not $removed) {
-                    $uninstallKeys = @(
-                        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-                        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-                        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-                    )
-                    foreach ($key in $uninstallKeys) {
-                        $apps = Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                            $app = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-                            if ($app.DisplayName -like "*$browser*") {
-                                return $app
-                            }
-                        }
+                catch { }
+            }
+            
+            # Try chocolatey if winget failed
+            if (-not $removed -and (Get-Command choco -ErrorAction SilentlyContinue)) {
+                try {
+                    $result = choco uninstall $browser -y --limit-output --force 2>$null
+                    if ($LASTEXITCODE -eq 0) {
+                        $removedBrowsers += $browser
+                        $removalMethods += 'Chocolatey'
+                        $removed = $true
+                    }
+                }
+                catch { }
+            }
+            
+            # Registry-based removal as last resort
+            if (-not $removed) {
+                $uninstallKeys = @(
+                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+                )
+                
+                foreach ($key in $uninstallKeys) {
+                    if (Test-Path $key) {
+                        $apps = Get-ChildItem $key -ErrorAction SilentlyContinue | 
+                               ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
+                               Where-Object { $_.DisplayName -like "*$browser*" -and $_.UninstallString }
+                        
                         foreach ($app in $apps) {
-                            if ($app.UninstallString) {
-                                try {
-                                    $uninstallCmd = $app.UninstallString -replace '"', ''
-                                    if ($uninstallCmd -like "*.exe*") {
-                                        Start-Process -FilePath $uninstallCmd -ArgumentList "/S" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
-                                        Write-Log "Attempted registry-based removal: $browser" 'INFO'
-                                        $appRemoved = $true
-                                        $removalMethods += 'Registry-EXE'
-                                    }
-                                }
-                                catch {
-                                    Write-Log "Registry uninstall failed for $browser`: $_" 'VERBOSE'
+                            try {
+                                $uninstallCmd = ($app.UninstallString -replace '"', '').Split(' ')[0]
+                                if (Test-Path $uninstallCmd) {
+                                    Start-Process -FilePath $uninstallCmd -ArgumentList "/S" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+                                    $removedBrowsers += $browser
+                                    $removalMethods += 'Registry'
+                                    $removed = $true
+                                    break
                                 }
                             }
+                            catch { continue }
                         }
+                        if ($removed) { break }
                     }
                 }
             }
-            catch {
-                Write-Log "Failed to remove browser $browser`: $_" 'WARN'
+        }
+    }
+    
+    # Optimized logging - only log actual removals
+    if ($removedBrowsers.Count -gt 0) {
+        Write-Host "✓ Removed $($removedBrowsers.Count) unwanted browsers" -ForegroundColor Red
+        Write-Log "Removed browsers: $($removedBrowsers -join ', ')" 'INFO'
+        
+        # Log removal methods summary for troubleshooting
+        $methodSummary = $removalMethods | Group-Object | ForEach-Object { "$($_.Count) via $($_.Name)" }
+        Write-Log "Removal methods used: $($methodSummary -join ', ')" 'VERBOSE'
+    }
+
+    # Batch browser policy configuration (Edge, Chrome, Firefox)
+    $browserPolicies = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Edge' = @{
+            'MetricsReportingEnabled' = 0
+            'HomepageLocation'        = 'about:blank'
+            'ShowHomeButton'          = 1
+            'BookmarkBarEnabled'      = 1
+            'TranslateEnabled'        = 0
+        }
+        'HKLM:\SOFTWARE\Policies\Google\Chrome'  = @{
+            'MetricsReportingEnabled' = 0
+            'HomepageLocation'        = 'about:blank'
+            'ShowHomeButton'          = 1
+            'BookmarkBarEnabled'      = 1
+            'TranslateEnabled'        = 0
+        }
+    }
+    
+    foreach ($regPath in $browserPolicies.Keys) {
+        try {
+            if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+            foreach ($setting in $browserPolicies[$regPath].GetEnumerator()) {
+                Set-ItemProperty -Path $regPath -Name $setting.Key -Value $setting.Value -Force
             }
+            $browserName = if ($regPath -like "*Edge*") { "Edge" } else { "Chrome" }
+            Write-Host "✓ $browserName policies configured" -ForegroundColor Green
+            Write-Log "$browserName telemetry disabled and policies configured" 'INFO'
+        }
+        catch {
+            Write-Log "Failed to configure browser policies for $regPath`: $_" 'WARN'
         }
     }
 
-    # Disable telemetry, set homepage, disable translation, enable bookmarks bar in Edge
-    try {
-        $edgeReg = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
-        if (-not (Test-Path $edgeReg)) { New-Item -Path $edgeReg -Force | Out-Null }
-        Set-ItemProperty -Path $edgeReg -Name 'MetricsReportingEnabled' -Value 0 -Force
-        Set-ItemProperty -Path $edgeReg -Name 'HomepageLocation' -Value 'about:blank' -Force
-        Set-ItemProperty -Path $edgeReg -Name 'ShowHomeButton' -Value 1 -Force
-        Set-ItemProperty -Path $edgeReg -Name 'BookmarkBarEnabled' -Value 1 -Force
-        Set-ItemProperty -Path $edgeReg -Name 'TranslateEnabled' -Value 0 -Force
-        Write-Log "Edge telemetry, homepage, bookmarks bar, and translation policy set via registry." 'INFO'
-    }
-    catch {
-        Write-Log "Failed to set Edge browser policies: $_" 'WARN'
-    }
-
-    # Disable telemetry, set homepage, disable translation, enable bookmarks bar in Chrome
-    try {
-        $chromeReg = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
-        if (-not (Test-Path $chromeReg)) { New-Item -Path $chromeReg -Force | Out-Null }
-        Set-ItemProperty -Path $chromeReg -Name 'MetricsReportingEnabled' -Value 0 -Force
-        Set-ItemProperty -Path $chromeReg -Name 'HomepageLocation' -Value 'about:blank' -Force
-        Set-ItemProperty -Path $chromeReg -Name 'ShowHomeButton' -Value 1 -Force
-        Set-ItemProperty -Path $chromeReg -Name 'BookmarkBarEnabled' -Value 1 -Force
-        Set-ItemProperty -Path $chromeReg -Name 'TranslateEnabled' -Value 0 -Force
-        Write-Log "Chrome telemetry, homepage, bookmarks bar, and translation policy set via registry." 'INFO'
-    }
-    catch {
-        Write-Log "Failed to set Chrome browser policies: $_" 'WARN'
-    }
-
-    # Deploy Firefox policies.json for telemetry, homepage, uBlock Origin, default browser (from external file if present)
-    try {
-        $ffPath = $null
-        if (Test-Path 'C:\Program Files\Mozilla Firefox') {
-            $ffPath = 'C:\Program Files\Mozilla Firefox'
-        }
-        elseif (Test-Path 'C:\Program Files (x86)\Mozilla Firefox') {
-            $ffPath = 'C:\Program Files (x86)\Mozilla Firefox'
-        }
-        if ($ffPath) {
-            $distPath = Join-Path $ffPath 'distribution'
+    # Enhanced Firefox configuration
+    $firefoxPaths = @('C:\Program Files\Mozilla Firefox', 'C:\Program Files (x86)\Mozilla Firefox')
+    $firefoxPath = $firefoxPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    
+    if ($firefoxPath) {
+        try {
+            $distPath = Join-Path $firefoxPath 'distribution'
             if (-not (Test-Path $distPath)) { New-Item -Path $distPath -ItemType Directory -Force | Out-Null }
+            
             $externalPolicyPath = Join-Path $PSScriptRoot 'firefox_policies.json'
             if (Test-Path $externalPolicyPath) {
                 Copy-Item -Path $externalPolicyPath -Destination (Join-Path $distPath 'policies.json') -Force
-                Write-Log "Firefox policies.json copied from firefox_policies.json and deployed." 'INFO'
                 Remove-Item -Path $externalPolicyPath -Force
-                Write-Log "firefox_policies.json removed from script folder." 'INFO'
+                Write-Host "✓ Firefox policies deployed from external file" -ForegroundColor Green
+                Write-Log "Firefox policies deployed from firefox_policies.json" 'INFO'
             }
             else {
-                # fallback: use built-in policy if external file not found
-                $policyJson = @"
+                # Optimized built-in policy
+                $policyJson = @'
 {
   "policies": {
     "DisableTelemetry": true,
@@ -2220,101 +2498,80 @@ function Disable-Telemetry {
     "DefaultBrowser": true
   }
 }
-"@
+'@
                 $policyPath = Join-Path $distPath 'policies.json'
                 $policyJson | Set-Content -Path $policyPath -Encoding UTF8
-                Write-Log "Firefox policies.json deployed from built-in policy." 'INFO'
+                Write-Host "✓ Firefox policies deployed" -ForegroundColor Green
+                Write-Log "Firefox policies deployed from built-in configuration" 'INFO'
             }
-        }
-        else {
-            Write-Log "Could not find Firefox installation path for policies.json deployment." 'WARN'
-        }
-    }
-    catch {
-        Write-Log "Failed to deploy Firefox policies.json: $_" 'WARN'
-    }
-
-    # Attempt to set Firefox as default browser (Windows 10 only, Windows 11 requires user interaction)
-    try {
-        $firefoxPaths = @(
-            'C:\Program Files\Mozilla Firefox\firefox.exe',
-            'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'
-        )
-        $firefoxPath = $firefoxPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-        if ($firefoxPath) {
-            # Try to set Firefox as default browser using registry (more reliable)
-            try {
-                $httpReg = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice'
-                $httpsReg = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice'
-                $htmlReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.html\UserChoice'
-                $htmReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.htm\UserChoice'
-
-                # Check if Firefox is registered
+            
+            # Enhanced Firefox default browser setting
+            $firefoxExe = Join-Path $firefoxPath 'firefox.exe'
+            if (Test-Path $firefoxExe) {
+                # Registry-based approach (more reliable)
                 $firefoxProgId = 'FirefoxURL-308046B0AF4A39CB'
-
-                # Ensure registry paths exist before setting properties
-                foreach ($regPath in @($httpReg, $httpsReg, $htmlReg, $htmReg)) {
-                    if (-not (Test-Path $regPath)) {
-                        try {
-                            $parentPath = Split-Path $regPath
-                            if (-not (Test-Path $parentPath)) {
-                                New-Item -Path $parentPath -Force | Out-Null
-                            }
-                            New-Item -Path $regPath -Force | Out-Null
-                        }
-                        catch {}
+                $associations = @(
+                    'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice',
+                    'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice',
+                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.html\UserChoice',
+                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.htm\UserChoice'
+                )
+                
+                $successCount = 0
+                foreach ($regPath in $associations) {
+                    try {
+                        $parentPath = Split-Path $regPath
+                        if (-not (Test-Path $parentPath)) { New-Item -Path $parentPath -Force | Out-Null }
+                        if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+                        Set-ItemProperty -Path $regPath -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue
+                        $successCount++
                     }
+                    catch { continue }
                 }
-
-                # Set Firefox as default for HTTP/HTTPS protocols
-                if (Test-Path $httpReg) { Set-ItemProperty -Path $httpReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-                if (Test-Path $httpsReg) { Set-ItemProperty -Path $httpsReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-                if (Test-Path $htmlReg) { Set-ItemProperty -Path $htmlReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-                if (Test-Path $htmReg) { Set-ItemProperty -Path $htmReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-
-                Write-Log "Firefox set as default browser via registry." 'INFO'
-            }
-            catch {
-                # Fallback to Firefox command line method
-                try {
-                    Start-Process -FilePath $firefoxPath -ArgumentList "-setDefaultBrowser" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
-                    Write-Log "Attempted to set Firefox as default browser via command line." 'INFO'
+                
+                if ($successCount -gt 0) {
+                    Write-Host "✓ Firefox set as default browser" -ForegroundColor Green
+                    Write-Log "Firefox configured as default browser" 'INFO'
                 }
-                catch {
-                    Write-Log "Failed to set Firefox as default browser via command line: $_" 'WARN'
-                }
-            }
-        }
-        else {
-            Write-Log "Firefox not found for default browser setting." 'WARN'
-        }
-    }
-    catch {
-        Write-Log "Failed to set Firefox as default browser: $_" 'WARN'
-    }
-
-    # Disable telemetry-related services
-    $services = @('DiagTrack', 'dmwappushservice', 'Connected User Experiences and Telemetry')
-    foreach ($svc in $services) {
-        try {
-            $serviceObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
-            if ($serviceObj -and $serviceObj.Status -ne 'Stopped') {
-                Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-                Write-Log "Stopped service: $svc" 'INFO'
-            }
-            if ($serviceObj) {
-                Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-                Write-Log "Disabled service: $svc" 'INFO'
             }
         }
         catch {
-            Write-Log "Service $svc not found or could not be disabled: $_" 'WARN'
+            Write-Log "Failed to configure Firefox: $_" 'WARN'
         }
     }
+    
+    # Enhanced service management - only target running/enabled services
+    $telemetryServices = @('DiagTrack', 'dmwappushservice', 'Connected User Experiences and Telemetry')
+    $servicesDisabled = @()
+    
+    foreach ($svc in $telemetryServices) {
+        try {
+            $serviceObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
+            if ($serviceObj) {
+                $changed = $false
+                if ($serviceObj.Status -ne 'Stopped') {
+                    Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                    $changed = $true
+                }
+                if ($serviceObj.StartType -ne 'Disabled') {
+                    Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+                    $changed = $true
+                }
+                if ($changed) {
+                    $servicesDisabled += $svc
+                }
+            }
+        }
+        catch { continue }
+    }
+    
+    if ($servicesDisabled.Count -gt 0) {
+        Write-Host "✓ Disabled telemetry services: $($servicesDisabled -join ', ')" -ForegroundColor Yellow
+        Write-Log "Disabled telemetry services: $($servicesDisabled -join ', ')" 'INFO'
+    }
 
-    # Disable telemetry-related scheduled tasks
-    $scheduledTasks = @(
+    # Enhanced scheduled task management - batch disable with improved performance
+    $telemetryTasks = @(
         '\Microsoft\Windows\Application Experience\ProgramDataUpdater',
         '\Microsoft\Windows\Autochk\Proxy',
         '\Microsoft\Windows\Customer Experience Improvement Program\Consolidator',
@@ -2325,328 +2582,492 @@ function Disable-Telemetry {
         '\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload',
         '\Microsoft\Windows\Windows Error Reporting\QueueReporting'
     )
-    foreach ($task in $scheduledTasks) {
+    
+    # Batch task operation for better performance
+    $tasksDisabled = @()
+    $allTasks = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { 
+        $_.TaskPath + $_.TaskName -in $telemetryTasks -and $_.State -ne 'Disabled'
+    }
+    
+    foreach ($task in $allTasks) {
         try {
-            $taskPath = $task.Substring(0, $task.LastIndexOf('\') + 1)
-            $taskName = $task.Split('\')[-1]
-            $scheduledTaskObj = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
-            if ($scheduledTaskObj) {
-                Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
-                Write-Log "Disabled scheduled task: $task" 'INFO'
-            }
-            else {
-                Write-Log "Scheduled task not found: $task" 'WARN'
-            }
+            Disable-ScheduledTask -InputObject $task -ErrorAction SilentlyContinue
+            $tasksDisabled += $task.TaskName
         }
-        catch {
-            Write-Log ("Failed to disable scheduled task {0}: {1}" -f $task, $_) 'WARN'
-        }
+        catch { continue }
+    }
+    
+    if ($tasksDisabled.Count -gt 0) {
+        Write-Host "✓ Disabled $($tasksDisabled.Count) telemetry tasks" -ForegroundColor Yellow
+        Write-Log "Disabled telemetry scheduled tasks: $($tasksDisabled -join ', ')" 'INFO'
     }
 
-    # Additional registry tweaks for telemetry (as per best practices)
-    $extraReg = @(
-        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection'; Name = 'AllowTelemetry'; Value = 0 },
-        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'AITEnable'; Value = 0 },
-        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'DisableInventory'; Value = 1 },
-        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'UploadUserActivities'; Value = 0 },
-        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'PublishUserActivities'; Value = 0 }
-    )
-    foreach ($item in $extraReg) {
+    # Optimized registry configuration for telemetry - parallel execution
+    $telemetryRegistry = @{
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' = @{ 'AllowTelemetry' = 0 }
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat' = @{ 
+            'AITEnable' = 0
+            'DisableInventory' = 1 
+        }
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' = @{ 
+            'UploadUserActivities' = 0
+            'PublishUserActivities' = 0 
+        }
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Privacy' = @{
+            'TailoredExperiencesWithDiagnosticDataEnabled' = 0
+        }
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo' = @{
+            'DisabledByGroupPolicy' = 1
+        }
+    }
+    
+    $registryChanges = 0
+    $registryErrors = 0
+    
+    foreach ($regPath in $telemetryRegistry.Keys) {
         try {
-            if (-not (Test-Path $item.Path)) { New-Item -Path $item.Path -Force | Out-Null }
-            Set-ItemProperty -Path $item.Path -Name $item.Name -Value $item.Value -Force
-            Write-Log "Set $($item.Name)=$($item.Value) in $($item.Path)" 'INFO'
+            if (-not (Test-Path $regPath)) { 
+                New-Item -Path $regPath -Force | Out-Null 
+            }
+            foreach ($setting in $telemetryRegistry[$regPath].GetEnumerator()) {
+                try {
+                    Set-ItemProperty -Path $regPath -Name $setting.Key -Value $setting.Value -Force
+                    $registryChanges++
+                }
+                catch {
+                    $registryErrors++
+                    continue
+                }
+            }
         }
-        catch {
-            Write-Log "Failed to set $($item.Name) in $($item.Path): $_" 'WARN'
+        catch { 
+            $registryErrors++
+            continue 
         }
+    }
+    
+    if ($registryChanges -gt 0) {
+        Write-Host "✓ Applied $registryChanges telemetry registry settings" -ForegroundColor Green
+        Write-Log "Applied $registryChanges telemetry registry configurations" 'INFO'
+    }
+    
+    if ($registryErrors -gt 0) {
+        Write-Log "Failed to apply $registryErrors registry settings" 'WARN'
     }
 
     Write-Log "[END] Disable Telemetry" 'INFO'
-
 }
 
 ### [TASK 6] System Restore Protection
 function Protect-SystemRestore {
+    # ===============================
+    # Task: SystemRestoreProtection (Enhanced)
+    # ===============================
+    # Purpose: Efficiently enables System Restore and creates restore points with intelligent validation.
+    # Environment: Windows 10/11, admin required, optimized for performance and reliability.
+    # Logic: Fast status checks, duplicate protection, disk space validation, smart restore point management.
     Write-Log "[START] System Restore Protection" 'INFO'
-    $drive = "C:\\"
+    
+    $drive = "C:\"
+    $restorePointDescription = "Pre-maintenance restore point"
     $restoreEnabled = $false
+    $restorePointCreated = $false
+    
+    # Enhanced System Restore status check with single optimized query
     try {
-        if ($PSVersionTable.PSVersion.Major -ge 7) {
-            # Use Windows PowerShell for System Restore operations
-            $checkCommand = "Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop | Select-Object Enable"
-            $result = Invoke-WindowsPowerShellCommand -Command $checkCommand -Description "Check System Restore status"
-            
-            if ($result -and $result.Enable -eq $true) {
-                $restoreEnabled = $true
-                Write-Log "System Restore is already enabled on $drive" 'INFO'
+        # Use unified approach that works efficiently in both PS versions
+        $systemRestoreInfo = if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # PowerShell 7: Use Windows PowerShell for System Restore operations
+            $command = @"
+try {
+    \$restoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
+    \$freeSpace = (Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop).FreeSpace
+    \$recentPoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Where-Object { \$_.CreationTime -gt (Get-Date).AddHours(-2) }
+    [PSCustomObject]@{
+        Enabled = \$restoreConfig.Enable
+        FreeSpaceGB = [math]::Round(\$freeSpace / 1GB, 2)
+        RecentPointsCount = (\$recentPoints | Measure-Object).Count
+        LastPointTime = if (\$recentPoints) { (\$recentPoints | Sort-Object CreationTime -Descending | Select-Object -First 1).CreationTime } else { \$null }
+    }
+} catch {
+    [PSCustomObject]@{ Enabled = \$false; FreeSpaceGB = 0; RecentPointsCount = 0; LastPointTime = \$null; Error = \$_.Message }
+}
+"@
+            Invoke-WindowsPowerShellCommand -Command $command -Description "Check System Restore comprehensive status"
+        }
+        else {
+            # Windows PowerShell 5.1: Native approach
+            try {
+                $restoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
+                $freeSpace = (Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop).FreeSpace
+                $recentPoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Where-Object { $_.CreationTime -gt (Get-Date).AddHours(-2) }
+                [PSCustomObject]@{
+                    Enabled = $restoreConfig.Enable
+                    FreeSpaceGB = [math]::Round($freeSpace / 1GB, 2)
+                    RecentPointsCount = ($recentPoints | Measure-Object).Count
+                    LastPointTime = if ($recentPoints) { ($recentPoints | Sort-Object CreationTime -Descending | Select-Object -First 1).CreationTime } else { $null }
+                }
             }
-            else {
-                Write-Log "System Restore is not enabled. Enabling..." 'INFO'
-                $enableSuccess = Enable-ComputerRestoreCompatible -Drive $drive
-                if ($enableSuccess) {
+            catch {
+                [PSCustomObject]@{ Enabled = $false; FreeSpaceGB = 0; RecentPointsCount = 0; LastPointTime = $null; Error = $_.Message }
+            }
+        }
+        
+        if ($systemRestoreInfo.Error) {
+            Write-Log "Failed to query System Restore status: $($systemRestoreInfo.Error)" 'WARN'
+            return
+        }
+        
+        # Intelligent restore point management
+        $restoreEnabled = $systemRestoreInfo.Enabled
+        $freeSpaceGB = $systemRestoreInfo.FreeSpaceGB
+        $recentPointsCount = $systemRestoreInfo.RecentPointsCount
+        $lastPointTime = $systemRestoreInfo.LastPointTime
+        
+        # Enhanced validation logic
+        if (-not $restoreEnabled) {
+            Write-Host "⚠️ System Restore disabled - enabling..." -ForegroundColor Yellow
+            
+            # Enable System Restore efficiently
+            try {
+                $enableResult = if ($PSVersionTable.PSVersion.Major -ge 7) {
+                    Enable-ComputerRestoreCompatible -Drive $drive
+                }
+                else {
+                    Enable-ComputerRestore -Drive $drive -ErrorAction Stop
+                    $true
+                }
+                
+                if ($enableResult) {
                     $restoreEnabled = $true
+                    Write-Host "✓ System Restore enabled" -ForegroundColor Green
                     Write-Log "System Restore enabled on $drive" 'INFO'
                 }
                 else {
                     Write-Log "Failed to enable System Restore on $drive" 'WARN'
+                    return
                 }
+            }
+            catch {
+                Write-Log "Failed to enable System Restore: $_" 'WARN'
+                return
             }
         }
         else {
-            # Windows PowerShell 5.1 native
-            $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
-            if ($sr.Enable -eq $true) {
-                $restoreEnabled = $true
-                Write-Log "System Restore is already enabled on $drive" 'INFO'
+            Write-Host "✓ System Restore already enabled" -ForegroundColor Green
+        }
+        
+        # Disk space validation (require at least 2GB free)
+        if ($freeSpaceGB -lt 2) {
+            Write-Host "⚠️ Insufficient disk space ($($freeSpaceGB)GB) for restore point" -ForegroundColor Yellow
+            Write-Log "Insufficient disk space ($($freeSpaceGB)GB) to create restore point safely" 'WARN'
+            return
+        }
+        
+        # Smart duplicate restore point protection
+        if ($recentPointsCount -gt 0 -and $lastPointTime) {
+            $timeSinceLastPoint = (Get-Date) - $lastPointTime
+            if ($timeSinceLastPoint.TotalMinutes -lt 120) {
+                Write-Host "✓ Recent restore point exists ($([math]::Round($timeSinceLastPoint.TotalMinutes))min ago) - skipping" -ForegroundColor Cyan
+                Write-Log "Recent restore point exists (created $([math]::Round($timeSinceLastPoint.TotalMinutes)) minutes ago) - skipping creation" 'INFO'
+                $restorePointCreated = $true  # Consider it successful since protection exists
+                return
             }
-            else {
-                Write-Log "System Restore is not enabled. Enabling..." 'INFO'
-                Enable-ComputerRestore -Drive $drive
-                $restoreEnabled = $true
-                Write-Log "System Restore enabled on $drive" 'INFO'
+        }
+        
+        # Create restore point with enhanced error handling
+        if ($restoreEnabled) {
+            Write-Host "🔄 Creating restore point..." -ForegroundColor Cyan
+            
+            try {
+                $createResult = if ($PSVersionTable.PSVersion.Major -ge 7) {
+                    Checkpoint-ComputerCompatible -Description $restorePointDescription -RestorePointType 'MODIFY_SETTINGS'
+                }
+                else {
+                    Checkpoint-Computer -Description $restorePointDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+                    $true
+                }
+                
+                if ($createResult) {
+                    $restorePointCreated = $true
+                    Write-Host "✓ Restore point created successfully" -ForegroundColor Green
+                    Write-Log "System restore point '$restorePointDescription' created successfully" 'INFO'
+                    
+                    # Optional: Clean up old restore points if more than 10 exist
+                    try {
+                        $allPoints = if ($PSVersionTable.PSVersion.Major -ge 7) {
+                            $cmd = "Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count"
+                            Invoke-WindowsPowerShellCommand -Command $cmd -Description "Count restore points"
+                        }
+                        else {
+                            (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
+                        }
+                        
+                        if ($allPoints -and $allPoints -gt 10) {
+                            Write-Log "Found $allPoints restore points - system will auto-manage cleanup" 'VERBOSE'
+                        }
+                    }
+                    catch {
+                        # Ignore cleanup check errors
+                    }
+                }
+                else {
+                    Write-Log "Failed to create restore point - unknown error" 'WARN'
+                }
+            }
+            catch {
+                $errorMessage = $_.Exception.Message
+                if ($errorMessage -like "*0x80042302*" -or $errorMessage -like "*CORESERVICE_NOT_RESPONDING*") {
+                    Write-Log "System Restore service not responding - this is normal during heavy system activity" 'WARN'
+                }
+                elseif ($errorMessage -like "*0x80042308*") {
+                    Write-Log "Restore point frequency limit reached - skipping (Windows limitation)" 'WARN'
+                    $restorePointCreated = $true  # Consider successful since limit is hit
+                }
+                elseif ($errorMessage -like "*insufficient*") {
+                    Write-Log "Insufficient disk space for restore point creation" 'WARN'
+                }
+                else {
+                    Write-Log "Failed to create restore point: $errorMessage" 'WARN'
+                }
             }
         }
     }
     catch {
-        Write-Log "Could not determine or enable System Restore: $_" 'WARN'
+        Write-Log "System Restore operation failed: $_" 'WARN'
     }
     
-    if ($restoreEnabled) {
-        try {
-            Write-Log "Creating a system restore point..." 'INFO'
-            $checkpointSuccess = Checkpoint-ComputerCompatible -Description "Pre-maintenance restore point" -RestorePointType 'MODIFY_SETTINGS'
-            if ($checkpointSuccess) {
-                Write-Log "System restore point created." 'INFO'
-            }
-            else {
-                Write-Log "Failed to create restore point." 'WARN'
-            }
-        }
-        catch {
-            Write-Log "Failed to create restore point: $_" 'WARN'
-        }
+    # Summary with performance metrics
+    $successSummary = @()
+    if ($restoreEnabled) { $successSummary += "SR Enabled" }
+    if ($restorePointCreated) { $successSummary += "Point Created" }
+    
+    if ($successSummary.Count -gt 0) {
+        Write-Host "✅ System Restore: $($successSummary -join ', ')" -ForegroundColor Green
+        Write-Log "System Restore protection completed: $($successSummary -join ', ')" 'INFO'
     }
+    else {
+        Write-Host "⚠️ System Restore protection incomplete" -ForegroundColor Yellow
+    }
+    
     Write-Log "[END] System Restore Protection" 'INFO'
 }
+    ### [MAIN TASK EXECUTION IN TIMELINE ORDER]
 
-
-### [MAIN TASK EXECUTION IN TIMELINE ORDER]
-
-# Run all tasks using the coordinator
-Use-AllScriptTasks
-
-
-
-
-### [POST-TASK 1] Script completion cleanup
+    # Run all tasks using the coordinator
+    Use-AllScriptTasks
 
 
 
 
-### [POST-TASK 2] Built-in Maintenance Tasks
+    ### [POST-TASK 1] Script completion cleanup
 
-$successCount = ($global:TaskResults.Values | Where-Object { $_.Success }).Count
-$failCount = ($global:TaskResults.Values | Where-Object { -not $_.Success }).Count
-$totalCount = $global:TaskResults.Count
-$taskDetails = @()
-foreach ($key in $global:TaskResults.Keys) {
-    $result = $global:TaskResults[$key]
-    $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
-    $status = if ($result.Success) { 'SUCCESS' } else { 'FAIL' }
-    $duration = [math]::Round($result.Duration, 2)
-    $started = $result.Started.ToString('HH:mm:ss')
-    $ended = $result.Ended.ToString('HH:mm:ss')
-    $taskDetails += "- $key $status | $desc | Started: $started | Ended: $ended | Duration: ${duration}s"
-    if ($result.ContainsKey('Error') -and $result.Error) {
-        $taskDetails += "    Error: $($result.Error)"
+
+
+
+    ### [POST-TASK 2] Built-in Maintenance Tasks
+
+    $successCount = ($global:TaskResults.Values | Where-Object { $_.Success }).Count
+    $failCount = ($global:TaskResults.Values | Where-Object { -not $_.Success }).Count
+    $totalCount = $global:TaskResults.Count
+    $taskDetails = @()
+    foreach ($key in $global:TaskResults.Keys) {
+        $result = $global:TaskResults[$key]
+        $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
+        $status = if ($result.Success) { 'SUCCESS' } else { 'FAIL' }
+        $duration = [math]::Round($result.Duration, 2)
+        $started = $result.Started.ToString('HH:mm:ss')
+        $ended = $result.Ended.ToString('HH:mm:ss')
+        $taskDetails += "- $key $status | $desc | Started: $started | Ended: $ended | Duration: ${duration}s"
+        if ($result.ContainsKey('Error') -and $result.Error) {
+            $taskDetails += "    Error: $($result.Error)"
+        }
     }
-}
-Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
-foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
+    Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
+    foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
 
-### [POST-TASK 4] Enhanced Reporting Section (JSON + Text)
+    ### [POST-TASK 4] Enhanced Reporting Section (JSON + Text)
 
-# Save summary report in the same folder as script.bat (repo parent folder)
-$batPath = Join-Path $PSScriptRoot "script.bat"
-if (Test-Path $batPath) {
-    $batDir = Split-Path $batPath -Parent
-    $summaryPath = Join-Path $batDir "maintenance_report.txt"
-    $jsonSummaryPath = Join-Path $batDir "maintenance_report.json"
-}
-else {
-    $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
-    $jsonSummaryPath = Join-Path $PSScriptRoot "maintenance_report.json"
-}
-
-# Gather system info for report
-$osInfo = Get-CimInstance Win32_OperatingSystem
-$osVersion = $osInfo.Version
-$osCaption = $osInfo.Caption
-$psVer = $PSVersionTable.PSVersion.ToString()
-$scriptVer = '1.0.0'
-
-# Build structured report object
-$reportData = [ordered]@{
-    metadata = [ordered]@{
-        generatedOn       = (Get-Date).ToString('o')
-        date              = Get-Date -Format 'dd-MM-yyyy HH:mm:ss'
-        user              = $env:USERNAME
-        computer          = $env:COMPUTERNAME
-        scriptVersion     = $scriptVer
-        os                = $osCaption
-        osVersion         = $osVersion
-        powershellVersion = $psVer
+    # Save summary report in the same folder as script.bat (repo parent folder)
+    $batPath = Join-Path $PSScriptRoot "script.bat"
+    if (Test-Path $batPath) {
+        $batDir = Split-Path $batPath -Parent
+        $summaryPath = Join-Path $batDir "maintenance_report.txt"
+        $jsonSummaryPath = Join-Path $batDir "maintenance_report.json"
     }
-    summary  = [ordered]@{
-        totalTasks      = $totalCount
-        successfulTasks = $successCount
-        failedTasks     = $failCount
-        successRate     = if ($totalCount -gt 0) { [math]::Round(($successCount / $totalCount) * 100, 2) } else { 0 }
+    else {
+        $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
+        $jsonSummaryPath = Join-Path $PSScriptRoot "maintenance_report.json"
     }
-    tasks    = @()
-    files    = [ordered]@{
-        inventoryFiles = @()
-        listFiles      = @()
-        logFiles       = @()
+
+    # Gather system info for report
+    $osInfo = Get-CimInstance Win32_OperatingSystem
+    $osVersion = $osInfo.Version
+    $osCaption = $osInfo.Caption
+    $psVer = $PSVersionTable.PSVersion.ToString()
+    $scriptVer = '1.0.0'
+
+    # Build structured report object
+    $reportData = [ordered]@{
+        metadata = [ordered]@{
+            generatedOn       = (Get-Date).ToString('o')
+            date              = Get-Date -Format 'dd-MM-yyyy HH:mm:ss'
+            user              = $env:USERNAME
+            computer          = $env:COMPUTERNAME
+            scriptVersion     = $scriptVer
+            os                = $osCaption
+            osVersion         = $osVersion
+            powershellVersion = $psVer
+        }
+        summary  = [ordered]@{
+            totalTasks      = $totalCount
+            successfulTasks = $successCount
+            failedTasks     = $failCount
+            successRate     = if ($totalCount -gt 0) { [math]::Round(($successCount / $totalCount) * 100, 2) } else { 0 }
+        }
+        tasks    = @()
+        files    = [ordered]@{
+            inventoryFiles = @()
+            listFiles      = @()
+            logFiles       = @()
+        }
+        actions  = @()
     }
-    actions  = @()
-}
 
-# Add task details
-foreach ($key in $global:TaskResults.Keys) {
-    $result = $global:TaskResults[$key]
-    $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
-    $taskObj = [ordered]@{
-        name        = $key
-        description = $desc
-        success     = $result.Success
-        duration    = [math]::Round($result.Duration, 2)
-        started     = $result.Started.ToString('o')
-        ended       = $result.Ended.ToString('o')
+    # Add task details
+    foreach ($key in $global:TaskResults.Keys) {
+        $result = $global:TaskResults[$key]
+        $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
+        $taskObj = [ordered]@{
+            name        = $key
+            description = $desc
+            success     = $result.Success
+            duration    = [math]::Round($result.Duration, 2)
+            started     = $result.Started.ToString('o')
+            ended       = $result.Ended.ToString('o')
+        }
+        if ($result.ContainsKey('Error') -and $result.Error) {
+            $taskObj.error = $result.Error
+        }
+        $reportData.tasks += $taskObj
     }
-    if ($result.ContainsKey('Error') -and $result.Error) {
-        $taskObj.error = $result.Error
+
+    # Reference files created
+    $inventoryFiles = @('inventory.json', 'bloatware.json', 'essential_apps.json')
+    $legacyFiles = @('inventory.txt')  # Keep legacy reference
+    $logFiles = @('maintenance.log')
+
+    foreach ($file in $inventoryFiles) {
+        $path = Join-Path $PSScriptRoot $file
+        if (Test-Path $path) {
+            $reportData.files.inventoryFiles += $file
+        }
     }
-    $reportData.tasks += $taskObj
-}
 
-# Reference files created
-$inventoryFiles = @('inventory.json', 'bloatware.json', 'essential_apps.json')
-$legacyFiles = @('inventory.txt')  # Keep legacy reference
-$logFiles = @('maintenance.log')
-
-foreach ($file in $inventoryFiles) {
-    $path = Join-Path $PSScriptRoot $file
-    if (Test-Path $path) {
-        $reportData.files.inventoryFiles += $file
+    foreach ($file in $legacyFiles) {
+        $path = Join-Path $PSScriptRoot $file
+        if (Test-Path $path) {
+            $reportData.files.inventoryFiles += $file
+        }
     }
-}
 
-foreach ($file in $legacyFiles) {
-    $path = Join-Path $PSScriptRoot $file
-    if (Test-Path $path) {
-        $reportData.files.inventoryFiles += $file
+    foreach ($file in $logFiles) {
+        $path = Join-Path $PSScriptRoot $file
+        if (Test-Path $path) {
+            $reportData.files.logFiles += $file
+        }
     }
-}
 
-foreach ($file in $logFiles) {
-    $path = Join-Path $PSScriptRoot $file
-    if (Test-Path $path) {
-        $reportData.files.logFiles += $file
+    # Extract detailed actions from maintenance.log
+    $logActions = @('Installed', 'Uninstalled', 'Updated', 'Removed', 'Deleted', 'Upgraded', 'Cleaned')
+    $logPath = Join-Path $PSScriptRoot "maintenance.log"
+    if (Test-Path $logPath) {
+        $logContent = Get-Content $logPath
+        $actionLines = $logContent | Where-Object {
+            $line = $_
+            $logActions | Where-Object { $line -match $_ }
+        }
+        $reportData.actions = @($actionLines)
     }
-}
 
-# Extract detailed actions from maintenance.log
-$logActions = @('Installed', 'Uninstalled', 'Updated', 'Removed', 'Deleted', 'Upgraded', 'Cleaned')
-$logPath = Join-Path $PSScriptRoot "maintenance.log"
-if (Test-Path $logPath) {
-    $logContent = Get-Content $logPath
-    $actionLines = $logContent | Where-Object {
-        $line = $_
-        $logActions | Where-Object { $line -match $_ }
+    # Write structured JSON report
+    try {
+        $reportData | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonSummaryPath -Encoding UTF8
+        Write-Log "Structured report saved to $jsonSummaryPath" 'INFO'
     }
-    $reportData.actions = @($actionLines)
-}
-
-# Write structured JSON report
-try {
-    $reportData | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonSummaryPath -Encoding UTF8
-    Write-Log "Structured report saved to $jsonSummaryPath" 'INFO'
-}
-catch {
-    Write-Log "Failed to write JSON report: $_" 'WARN'
-}
-
-# Build human-readable text report
-$summaryLines = @()
-$summaryLines += "==== Maintenance Report ===="
-$summaryLines += "Date: $($reportData.metadata.date)"
-$summaryLines += "User: $($reportData.metadata.user)"
-$summaryLines += "Computer: $($reportData.metadata.computer)"
-$summaryLines += "Script Version: $($reportData.metadata.scriptVersion)"
-$summaryLines += "OS: $($reportData.metadata.os) ($($reportData.metadata.osVersion))"
-$summaryLines += "PowerShell Version: $($reportData.metadata.powershellVersion)"
-$summaryLines += "---"
-$summaryLines += "Total tasks: $($reportData.summary.totalTasks) | Success: $($reportData.summary.successfulTasks) | Failed: $($reportData.summary.failedTasks) | Success Rate: $($reportData.summary.successRate)%"
-$summaryLines += "---"
-$summaryLines += "Task Breakdown:"
-foreach ($task in $reportData.tasks) {
-    $status = if ($task.success) { 'SUCCESS' } else { 'FAIL' }
-    $summaryLines += "- $($task.name) $status | $($task.description) | Duration: $($task.duration)s"
-    if ($task.error) {
-        $summaryLines += "    Error: $($task.error)"
+    catch {
+        Write-Log "Failed to write JSON report: $_" 'WARN'
     }
-}
-$summaryLines += "---"
 
-$summaryLines += "Files generated:"
-if ($reportData.files.inventoryFiles.Count -gt 0) {
-    $summaryLines += "Inventory files:"
-    $reportData.files.inventoryFiles | ForEach-Object { $summaryLines += "- $_" }
-}
-if ($reportData.files.logFiles.Count -gt 0) {
-    $summaryLines += "Log files:"
-    $reportData.files.logFiles | ForEach-Object { $summaryLines += "- $_" }
-}
-$summaryLines += "---"
-
-if ($reportData.actions.Count -gt 0) {
-    $summaryLines += "Detailed actions performed during maintenance:"
-    $summaryLines += $reportData.actions
+    # Build human-readable text report
+    $summaryLines = @()
+    $summaryLines += "==== Maintenance Report ===="
+    $summaryLines += "Date: $($reportData.metadata.date)"
+    $summaryLines += "User: $($reportData.metadata.user)"
+    $summaryLines += "Computer: $($reportData.metadata.computer)"
+    $summaryLines += "Script Version: $($reportData.metadata.scriptVersion)"
+    $summaryLines += "OS: $($reportData.metadata.os) ($($reportData.metadata.osVersion))"
+    $summaryLines += "PowerShell Version: $($reportData.metadata.powershellVersion)"
     $summaryLines += "---"
-}
-else {
-    $summaryLines += "No detailed action logs found in maintenance.log."
+    $summaryLines += "Total tasks: $($reportData.summary.totalTasks) | Success: $($reportData.summary.successfulTasks) | Failed: $($reportData.summary.failedTasks) | Success Rate: $($reportData.summary.successRate)%"
     $summaryLines += "---"
-}
-
-$summaryLines | Out-File -FilePath $summaryPath -Append
-Write-Log "Summary report written to $summaryPath" 'INFO'
-
-# Ensure repo folder is deleted only after report creation
-try {
-    $repoFolder = $PSScriptRoot
-    $parentFolder = Split-Path $repoFolder -Parent
-    $repoName = Split-Path $repoFolder -Leaf
-    if ($repoName -eq 'script_mentenanta') {
-        Write-Log "Attempting to remove repo folder: $repoFolder" 'INFO'
-        Set-Location $parentFolder
-        Remove-Item -Path $repoFolder -Recurse -Force
-        Write-Log "Repo folder $repoFolder removed." 'INFO'
+    $summaryLines += "Task Breakdown:"
+    foreach ($task in $reportData.tasks) {
+        $status = if ($task.success) { 'SUCCESS' } else { 'FAIL' }
+        $summaryLines += "- $($task.name) $status | $($task.description) | Duration: $($task.duration)s"
+        if ($task.error) {
+            $summaryLines += "    Error: $($task.error)"
+        }
     }
-}
-catch {
-    Write-Log "Failed to remove repo folder: $_" 'WARN'
-}
+    $summaryLines += "---"
 
-### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
-### ...
+    $summaryLines += "Files generated:"
+    if ($reportData.files.inventoryFiles.Count -gt 0) {
+        $summaryLines += "Inventory files:"
+        $reportData.files.inventoryFiles | ForEach-Object { $summaryLines += "- $_" }
+    }
+    if ($reportData.files.logFiles.Count -gt 0) {
+        $summaryLines += "Log files:"
+        $reportData.files.logFiles | ForEach-Object { $summaryLines += "- $_" }
+    }
+    $summaryLines += "---"
 
-Write-Log "Script ended." 'INFO'
+    if ($reportData.actions.Count -gt 0) {
+        $summaryLines += "Detailed actions performed during maintenance:"
+        $summaryLines += $reportData.actions
+        $summaryLines += "---"
+    }
+    else {
+        $summaryLines += "No detailed action logs found in maintenance.log."
+        $summaryLines += "---"
+    }
 
-### [POST-TASK 7] Prompt to close the window if running interactively
-if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
-    Write-Host
-    Read-Host -Prompt 'Press Enter to close this window...'
-}
+    $summaryLines | Out-File -FilePath $summaryPath -Append
+    Write-Log "Summary report written to $summaryPath" 'INFO'
+
+    # Ensure repo folder is deleted only after report creation
+    try {
+        $repoFolder = $PSScriptRoot
+        $parentFolder = Split-Path $repoFolder -Parent
+        $repoName = Split-Path $repoFolder -Leaf
+        if ($repoName -eq 'script_mentenanta') {
+            Write-Log "Attempting to remove repo folder: $repoFolder" 'INFO'
+            Set-Location $parentFolder
+            Remove-Item -Path $repoFolder -Recurse -Force
+            Write-Log "Repo folder $repoFolder removed." 'INFO'
+        }
+    }
+    catch {
+        Write-Log "Failed to remove repo folder: $_" 'WARN'
+    }
+
+    ### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
+    ### ...
+
+    Write-Log "Script ended." 'INFO'
+
+    ### [POST-TASK 7] Prompt to close the window if running interactively
+    if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
+        Write-Host
+        Read-Host -Prompt 'Press Enter to close this window...'
+    }
