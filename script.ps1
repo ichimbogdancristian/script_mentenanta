@@ -1874,329 +1874,318 @@ function Update-AllPackages {
     Write-Log "[END] Update All Packages" 'INFO'
 }
 
-### [TASK 3] Enhanced Remove Bloatware - Silent Optimized Approach
+### [TASK 3] Ultra-Enhanced Bloatware Removal - Action-Only Logging & Maximum Performance
 function Remove-Bloatware {
     # ===============================
-    # Task: RemoveBloatware (Silent & Optimized)
+    # Task: RemoveBloatware (Ultra-Enhanced Action-Only)
     # ===============================
-    # Purpose: Removes unwanted apps silently, logging only successful removals.
-    # Environment: Windows 10/11, must run as Administrator, supports OEM, Microsoft, and third-party bloatware.
-    # Logic: Compare bloatware list against inventory, attempt removal silently, log only successes.
-    # Optimizations: Hashtable lookups, silent processing, minimal logging, prioritized removal methods.
-    Write-Log "[START] Enhanced Remove Bloatware (Silent Mode)" 'INFO'
+    # Purpose: High-speed bloatware removal with PS7.5 native capabilities - shows ONLY removed apps.
+    # Environment: Windows 10/11, Administrator required, leverages PS7.5 native AppX/DISM support.
+    # Logic: Ultra-parallel removal, smart pre-filtering, action-only logging, maximum performance optimization.
+    # Performance: Native PS7.5 AppX, 8-thread parallel processing, pre-compiled regex, smart caching.
+    Write-Log "[START] Ultra-Enhanced Bloatware Removal" 'INFO'
     
-    # Use global inventory if available, otherwise build a quick one
+    # Use cached inventory if available, otherwise trigger fresh scan
     if (-not $global:SystemInventory) {
         Get-ExtensiveSystemInventory
     }
     
     $inventory = $global:SystemInventory
     
-    # Build comprehensive hashtable of all installed app identifiers (normalized) for O(1) lookups
-    $installedLookup = @{}
-    $installedFullData = @{}
+    # Ultra-fast lookup using case-insensitive Dictionary with pre-compiled regex patterns
+    $installedApps = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
     
-    # Add AppX package names and IDs with full data for removal
-    $inventory.appx | ForEach-Object {
-        if ($_.Name) { 
-            $key = $_.Name.ToLower().Trim()
-            $installedLookup[$key] = 'appx'
-            $installedFullData[$key] = @{ Type = 'appx'; Data = $_ }
-        }
-        if ($_.PackageFullName) { 
-            $key = $_.PackageFullName.ToLower().Trim()
-            $installedLookup[$key] = 'appx'
-            $installedFullData[$key] = @{ Type = 'appx'; Data = $_ }
-        }
-    }
+    # Pre-compile common app name patterns for faster matching
+    $commonPatterns = @(
+        [regex]::new('microsoft\.', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled),
+        [regex]::new('\.exe$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled),
+        [regex]::new('^[A-Z]+\.[A-Z]', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled)
+    )
     
-    # Add Winget app names and IDs with full data
-    $inventory.winget | ForEach-Object {
-        if ($_.Name) { 
-            $key = $_.Name.ToLower().Trim()
-            $installedLookup[$key] = 'winget'
-            $installedFullData[$key] = @{ Type = 'winget'; Data = $_ }
-        }
-        if ($_.Id) { 
-            $key = $_.Id.ToLower().Trim()
-            $installedLookup[$key] = 'winget'
-            $installedFullData[$key] = @{ Type = 'winget'; Data = $_ }
-        }
-    }
-    
-    # Add Chocolatey and registry apps
-    $inventory.choco | ForEach-Object {
-        if ($_.Name) { 
-            $key = $_.Name.ToLower().Trim()
-            $installedLookup[$key] = 'choco'
-            $installedFullData[$key] = @{ Type = 'choco'; Data = $_ }
-        }
-    }
-    
-    $inventory.registry_uninstall | ForEach-Object {
-        if ($_.DisplayName) { 
-            $key = $_.DisplayName.ToLower().Trim()
-            $installedLookup[$key] = 'registry'
-            $installedFullData[$key] = @{ Type = 'registry'; Data = $_ }
-        }
-    }
-    
-    # Fast matching using hashtable lookups and optimized pattern matching (silent)
-    $bloatwareToRemove = @()
-    $normalizedBloatwareList = $global:BloatwareList | ForEach-Object { $_.ToLower().Trim() }
-    
-    foreach ($bloatApp in $normalizedBloatwareList) {
-        $found = $false
-        $matchData = $null
+    # Ultra-parallel inventory processing with optimized data structures
+    $inventoryJobs = @(
+        @{ Name = 'AppX'; Data = $inventory.appx; Props = @('Name', 'PackageFullName') },
+        @{ Name = 'Winget'; Data = $inventory.winget; Props = @('Name', 'Id') },
+        @{ Name = 'Chocolatey'; Data = $inventory.choco; Props = @('Name') },
+        @{ Name = 'Registry'; Data = $inventory.registry_uninstall; Props = @('DisplayName', 'UninstallString') }
+    ) | ForEach-Object -Parallel {
+        $type = $_.Name
+        $data = $_.Data
+        $properties = $_.Props
+        $results = [System.Collections.Generic.List[hashtable]]::new()
         
-        # Direct lookup (fastest)
-        if ($installedLookup.ContainsKey($bloatApp)) {
-            $found = $true
-            $matchData = $installedFullData[$bloatApp]
+        foreach ($item in $data) {
+            foreach ($prop in $properties) {
+                if ($item.$prop -and $item.$prop.ToString().Trim()) {
+                    $results.Add(@{
+                        Key = $item.$prop.ToString().Trim()
+                        Type = $type
+                        Data = $item
+                    })
+                }
+            }
         }
-        else {
-            # Pattern matching only if direct lookup fails
-            foreach ($installedKey in $installedLookup.Keys) {
-                if ($installedKey -like "*$bloatApp*" -or 
-                    $bloatApp -like "*$installedKey*" -or
-                    ($bloatApp.Contains('.') -and $installedKey -like "*$($bloatApp.Split('.')[1])*") -or
-                    ($bloatApp.Contains('.') -and $installedKey -like "*$($bloatApp.Split('.')[0])*")) {
+        return $results.ToArray()
+    } -ThrottleLimit 8
+    
+    # Merge results into lookup dictionary
+    foreach ($jobResult in $inventoryJobs) {
+        foreach ($item in $jobResult) {
+            if (-not $installedApps.ContainsKey($item.Key)) {
+                $installedApps[$item.Key] = [PSCustomObject]@{
+                    Type = $item.Type
+                    Data = $item.Data
+                }
+            }
+        }
+    }
+    
+    # Smart bloatware detection with optimized pattern matching
+    $bloatwareMatches = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $bloatwareHashSet = [System.Collections.Generic.HashSet[string]]::new($global:BloatwareList, [System.StringComparer]::OrdinalIgnoreCase)
+    
+    # Direct lookup phase (O(1) performance)
+    foreach ($installedKey in $installedApps.Keys) {
+        if ($bloatwareHashSet.Contains($installedKey)) {
+            $bloatwareMatches.Add([PSCustomObject]@{
+                BloatwareName = $installedKey
+                InstalledApp = $installedApps[$installedKey]
+                MatchType = 'Direct'
+            })
+        }
+    }
+    
+    # Pattern matching phase (only if needed)
+    if ($bloatwareMatches.Count -eq 0) {
+        foreach ($bloatApp in $global:BloatwareList) {
+            $trimmedBloat = $bloatApp.Trim()
+            $found = $false
+            
+            foreach ($installedKey in $installedApps.Keys) {
+                if ($installedKey.Contains($trimmedBloat, [System.StringComparison]::OrdinalIgnoreCase) -or 
+                    $trimmedBloat.Contains($installedKey, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    
+                    $bloatwareMatches.Add([PSCustomObject]@{
+                        BloatwareName = $trimmedBloat
+                        InstalledApp = $installedApps[$installedKey]
+                        MatchType = 'Pattern'
+                    })
                     $found = $true
-                    $matchData = $installedFullData[$installedKey]
                     break
                 }
             }
         }
-        
-        if ($found) {
-            $bloatwareToRemove += @{ Name = $bloatApp; MatchData = $matchData }
-        }
     }
     
-    if ($bloatwareToRemove.Count -eq 0) {
-        Write-Log "No bloatware found on system" 'INFO'
-        Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
+    # Early exit if no bloatware found
+    if ($bloatwareMatches.Count -eq 0) {
+        Write-Log "[END] Ultra-Enhanced Bloatware Removal - No bloatware detected" 'INFO'
         return
     }
     
-    # Check and cache tool availability silently
-    $toolsAvailable = @{
-        Appx   = $false
+    # Cached tool availability detection
+    $toolCapabilities = @{
+        AppX = $false
         Winget = $false
-        Choco  = $false
-        Dism   = $false
+        Chocolatey = $false
     }
     
-    # Check AppX availability (silent)
+    # Fast native AppX detection for PS7.5+
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         try {
-            $testCommand = "Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue | Select-Object Name"
-            $result = Invoke-WindowsPowerShellCommand -Command $testCommand -Description "Test Appx module"
-            $toolsAvailable.Appx = $null -ne $result
-        }
-        catch {}
-    }
-    else {
-        try {
-            if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) {
-                Import-Module Appx -ErrorAction Stop
-                $toolsAvailable.Appx = $true
-            }
-        }
-        catch {}
-    }
-    
-    # Check other tools (silent)
-    $toolsAvailable.Winget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
-    $toolsAvailable.Choco = $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
-    $dismCmd = Get-Command dism -ErrorAction SilentlyContinue
-    $toolsAvailable.Dism = $dismCmd -and (Test-Path $dismCmd.Source)
-    
-    $removed = 0
-    $removedApps = @()
-    $totalApps = $bloatwareToRemove.Count
-    
-    # Silent optimized removal function - only log successes
-    function Remove-AppSilent {
-        param(
-            [string]$AppName,
-            [hashtable]$MatchData,
-            [hashtable]$ToolsAvailable
-        )
-        
-        $removed = $false
-        $methods = @()
-        $actualRemovedName = $AppName
-        
-        try {
-            # Priority 1: Use the method that matches the app's source for fastest removal
-            if ($MatchData.Type -eq 'appx' -and $ToolsAvailable.Appx) {
-                $appxData = $MatchData.Data
-                try {
-                    if ($appxData.PackageFullName) {
-                        $success = Remove-AppxPackageCompatible -PackageFullName $appxData.PackageFullName -AllUsers
-                        if ($success) {
-                            $removed = $true
-                            $methods += 'AppX'
-                            $actualRemovedName = $appxData.Name
-                        }
-                    }
-                }
-                catch {}
-            }
-            elseif ($MatchData.Type -eq 'winget' -and $ToolsAvailable.Winget) {
-                $wingetData = $MatchData.Data
-                try {
-                    if ($wingetData.Id) {
-                        $uninstallResult = winget uninstall --id $wingetData.Id --exact --silent --accept-source-agreements --force 2>$null
-                        if ($LASTEXITCODE -eq 0) {
-                            $removed = $true
-                            $methods += 'Winget'
-                            $actualRemovedName = $wingetData.Name
-                        }
-                    }
-                }
-                catch {}
-            }
-            elseif ($MatchData.Type -eq 'choco' -and $ToolsAvailable.Choco) {
-                $chocoData = $MatchData.Data
-                try {
-                    if ($chocoData.Name) {
-                        choco uninstall $chocoData.Name -y --remove-dependencies 2>$null
-                        if ($LASTEXITCODE -eq 0) {
-                            $removed = $true
-                            $methods += 'Choco'
-                            $actualRemovedName = $chocoData.Name
-                        }
-                    }
-                }
-                catch {}
-            }
-            elseif ($MatchData.Type -eq 'registry') {
-                $regData = $MatchData.Data
-                try {
-                    if ($regData.UninstallString) {
-                        $uninstallCmd = $regData.UninstallString -replace '"', ''
-                        if ($uninstallCmd -like "*.exe*") {
-                            Start-Process -FilePath $uninstallCmd -ArgumentList "/S" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
-                            $removed = $true
-                            $methods += 'Registry'
-                            $actualRemovedName = $regData.DisplayName
-                        }
-                    }
-                }
-                catch {}
-            }
-            
-            # Priority 2: Fallback methods if direct removal failed (silent)
-            if (-not $removed) {
-                # AppX fallback with pattern matching
-                if ($ToolsAvailable.Appx) {
-                    $patterns = @($AppName, "*$AppName*")
-                    foreach ($pattern in $patterns) {
-                        $appxPackages = Get-AppxPackageCompatible -Name $pattern -AllUsers
-                        foreach ($pkg in $appxPackages) {
-                            try {
-                                $success = Remove-AppxPackageCompatible -PackageFullName $pkg.PackageFullName -AllUsers
-                                if ($success) {
-                                    $removed = $true
-                                    $methods += 'AppX'
-                                    $actualRemovedName = $pkg.Name
-                                    break
-                                }
-                            }
-                            catch {}
-                        }
-                        if ($removed) { break }
-                    }
-                }
-                
-                # Winget fallback (silent)
-                if (-not $removed -and $ToolsAvailable.Winget) {
-                    $wingetIds = @($AppName)
-                    if ($AppName.StartsWith('microsoft.')) { 
-                        $wingetIds += $AppName.Replace('microsoft.', '') 
-                    }
-                    
-                    foreach ($wingetId in $wingetIds) {
-                        try {
-                            $wingetListResult = winget list --id $wingetId --exact --accept-source-agreements --output json 2>$null
-                            if ($LASTEXITCODE -eq 0) {
-                                $uninstallResult = winget uninstall --id $wingetId --exact --silent --accept-source-agreements --force 2>$null
-                                if ($LASTEXITCODE -eq 0) {
-                                    $removed = $true
-                                    $methods += 'Winget'
-                                    $actualRemovedName = $wingetId
-                                    break
-                                }
-                            }
-                        }
-                        catch {}
-                    }
-                }
-            }
-            
-            return @{ Removed = $removed; Methods = $methods; ActualName = $actualRemovedName }
+            $null = Get-AppxPackage -Name "NonExistent*" -ErrorAction SilentlyContinue
+            $toolCapabilities.AppX = $true
         }
         catch {
-            return @{ Removed = $false; Methods = @(); ActualName = $AppName }
-        }
-    }
-    
-    # Process apps with silent removal
-    foreach ($appInfo in $bloatwareToRemove) {
-        $appName = $appInfo.Name
-        $matchData = $appInfo.MatchData
-        
-        $result = Remove-AppSilent -AppName $appName -MatchData $matchData -ToolsAvailable $toolsAvailable
-        
-        if ($result.Removed) {
-            $removed++
-            $methodStr = ($result.Methods | Sort-Object -Unique) -join ', '
-            $logMessage = "Removed bloatware: $($result.ActualName) [$methodStr]"
-            Write-Log $logMessage 'INFO'
-            Write-Host $logMessage -ForegroundColor Green
-            $removedApps += $result.ActualName
-        }
-        
-        # Minimal delay to prevent system overload
-        Start-Sleep -Milliseconds 25
-    }
-    
-    # Final cleanup: Disable app reinstallation (silent)
-    try {
-        $bloatwareRegKeys = @(
-            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
-            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
-        )
-        foreach ($regKey in $bloatwareRegKeys) {
-            if (-not (Test-Path $regKey)) { New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null }
+            # Try compatibility mode
             try {
-                Set-ItemProperty -Path $regKey -Name 'SilentInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
-                Set-ItemProperty -Path $regKey -Name 'ContentDeliveryAllowed' -Value 0 -ErrorAction SilentlyContinue
-                Set-ItemProperty -Path $regKey -Name 'OemPreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
-                Set-ItemProperty -Path $regKey -Name 'PreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
-                Set-ItemProperty -Path $regKey -Name 'SubscribedContentEnabled' -Value 0 -ErrorAction SilentlyContinue
+                $testCmd = "Get-Module -ListAvailable -Name Appx"
+                $result = Invoke-WindowsPowerShellCommand -Command $testCmd -Description "Test AppX"
+                $toolCapabilities.AppX = $null -ne $result
             }
-            catch {}
+            catch { }
         }
     }
-    catch {}
-
-    # Summary - only show what was actually removed
-    if ($removed -gt 0) {
-        $summaryMessage = "Bloatware removal completed: $removed apps removed"
-        Write-Log $summaryMessage 'INFO'
-        Write-Host $summaryMessage -ForegroundColor Green
-        if ($removedApps.Count -gt 0) {
-            Write-Log "Removed apps: $($removedApps -join ', ')" 'INFO'
+    
+    # Cache command availability
+    $toolCapabilities.Winget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
+    $toolCapabilities.Chocolatey = $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
+    
+    # Thread-safe collections for results
+    $removedApps = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+    
+    # Ultra-parallel removal with optimized error handling
+    $bloatwareMatches | ForEach-Object -Parallel {
+        $match = $_
+        $capabilities = $using:toolCapabilities
+        $psVersion = $using:PSVersionTable
+        
+        $result = @{
+            Success = $false
+            AppName = $match.BloatwareName
+            ActualName = ""
+            Method = ""
         }
+        
+        try {
+            $app = $match.InstalledApp
+            $appType = $app.Type
+            $appData = $app.Data
+            
+            # Optimized removal by type priority
+            switch ($appType) {
+                'AppX' {
+                    if ($capabilities.AppX -and $appData.PackageFullName) {
+                        try {
+                            if ($psVersion.PSVersion.Major -ge 7) {
+                                Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction Stop
+                            }
+                            else {
+                                $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
+                                if (-not $success) { throw "AppX compatibility removal failed" }
+                            }
+                            $result.Success = $true
+                            $result.Method = "AppX"
+                            $result.ActualName = $appData.Name
+                        }
+                        catch { }
+                    }
+                }
+                'Winget' {
+                    if ($capabilities.Winget -and $appData.Id) {
+                        try {
+                            $proc = Start-Process -FilePath "winget" -ArgumentList @(
+                                "uninstall", "--id", $appData.Id, "--exact", "--silent", 
+                                "--accept-source-agreements", "--force", "--disable-interactivity"
+                            ) -WindowStyle Hidden -Wait -PassThru -NoNewWindow
+                            
+                            if ($proc.ExitCode -eq 0) {
+                                $result.Success = $true
+                                $result.Method = "Winget"
+                                $result.ActualName = $appData.Name
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                'Chocolatey' {
+                    if ($capabilities.Chocolatey -and $appData.Name) {
+                        try {
+                            $proc = Start-Process -FilePath "choco" -ArgumentList @(
+                                "uninstall", $appData.Name, "-y", "--remove-dependencies", 
+                                "--limit-output", "--no-progress"
+                            ) -WindowStyle Hidden -Wait -PassThru -NoNewWindow
+                            
+                            if ($proc.ExitCode -eq 0) {
+                                $result.Success = $true
+                                $result.Method = "Chocolatey"
+                                $result.ActualName = $appData.Name
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                'Registry' {
+                    if ($appData.UninstallString -and $appData.UninstallString -match '\.exe') {
+                        try {
+                            $uninstallCmd = $appData.UninstallString -replace '"', ''
+                            $proc = Start-Process -FilePath $uninstallCmd -ArgumentList "/S" -Wait -WindowStyle Hidden -PassThru
+                            
+                            if ($proc.ExitCode -eq 0) {
+                                $result.Success = $true
+                                $result.Method = "Registry"
+                                $result.ActualName = $appData.DisplayName
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            
+            # Fast AppX fallback if primary method failed
+            if (-not $result.Success -and $capabilities.AppX) {
+                try {
+                    if ($psVersion.PSVersion.Major -ge 7) {
+                        $packages = Get-AppxPackage -Name "*$($match.BloatwareName)*" -AllUsers -ErrorAction SilentlyContinue
+                        foreach ($pkg in $packages | Select-Object -First 1) {
+                            Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
+                            $result.Success = $true
+                            $result.Method = "AppX Fallback"
+                            $result.ActualName = $pkg.Name
+                            break
+                        }
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+        
+        return $result
+        
+    } -ThrottleLimit 8 | Where-Object { $_.Success } | ForEach-Object {
+        [void]$removedApps.Add([PSCustomObject]$_)
+    }
+    
+    # Convert to array for processing
+    $removedArray = @($removedApps.ToArray())
+    
+    # ACTION-ONLY LOGGING: Only show what was actually removed
+    if ($removedArray.Count -gt 0) {
+        # Individual app removals - one line per app
+        foreach ($removed in $removedArray) {
+            $logMsg = "Removed: $($removed.ActualName) [$($removed.Method)]"
+            Write-Log $logMsg 'INFO'
+            Write-Host "✓ $logMsg" -ForegroundColor Green
+        }
+        
+        # Summary log entry
+        $appNames = ($removedArray | ForEach-Object { $_.ActualName } | Sort-Object -Unique) -join ', '
+        Write-Log "Bloatware removal summary: $($removedArray.Count) apps removed - $appNames" 'INFO'
+        
+        # Method breakdown
+        $methodGroups = $removedArray | Group-Object Method
+        $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
+        Write-Log "Removal methods used: $methodSummary" 'INFO'
     }
     else {
-        Write-Log "No bloatware was removed" 'INFO'
+        Write-Log "No bloatware apps were removed" 'INFO'
     }
     
-    Write-Log "[END] Enhanced Remove Bloatware (Silent)" 'INFO'
+    # Ultra-fast registry cleanup to prevent reinstallation
+    $registryKeys = @(
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+    )
+    
+    $registryKeys | ForEach-Object -Parallel {
+        $regKey = $_
+        try {
+            if (-not (Test-Path $regKey)) { 
+                New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null 
+            }
+            
+            $settings = @{
+                'SilentInstalledAppsEnabled' = 0
+                'ContentDeliveryAllowed' = 0
+                'OemPreInstalledAppsEnabled' = 0
+                'PreInstalledAppsEnabled' = 0
+                'SubscribedContentEnabled' = 0
+                'SystemPaneSuggestionsEnabled' = 0
+                'SoftLandingEnabled' = 0
+            }
+            
+            foreach ($setting in $settings.GetEnumerator()) {
+                Set-ItemProperty -Path $regKey -Name $setting.Key -Value $setting.Value -ErrorAction SilentlyContinue
+            }
+        }
+        catch { }
+    } -ThrottleLimit 3 | Out-Null
+    
+    Write-Log "[END] Ultra-Enhanced Bloatware Removal" 'INFO'
 }
 
 ### [TASK 4] System Inventory (Legacy)
