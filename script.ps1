@@ -1,6 +1,6 @@
-# ===============================
+# =============================================
 # Windows Maintenance Script - Task Coordinator
-# ===============================
+# =============================================
 # This script is designed to automate and orchestrate a full suite of Windows maintenance tasks.
 # It is intended to run as Administrator on Windows 10/11, with all actions logged and reported.
 # Each task is modular, robust, and designed for unattended execution in enterprise or home environments.
