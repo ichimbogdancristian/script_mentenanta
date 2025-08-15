@@ -1521,7 +1521,7 @@ function Install-EssentialApps {
                         "--accept-source-agreements", "--accept-package-agreements", 
                         "--silent", "-e", "--disable-interactivity"
                     )
-                    $libreProc = Start-Process -FilePath "winget" -ArgumentList $libreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                    $libreProc = Start-Process -FilePath "winget" -ArgumentList $libreArgs -WindowStyle Hidden -Wait -PassThru
                     if ($libreProc.ExitCode -eq 0) {
                         $result.Success = $true
                         $result.Method = "winget"
@@ -1535,7 +1535,7 @@ function Install-EssentialApps {
                 # Try Chocolatey as fallback
                 if (-not $result.Success -and $chocoAvailable) {
                     $chocoLibreArgs = @("install", "libreoffice-fresh", "-y", "--no-progress", "--limit-output")
-                    $chocoLibreProc = Start-Process -FilePath "choco" -ArgumentList $chocoLibreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
+                    $chocoLibreProc = Start-Process -FilePath "choco" -ArgumentList $chocoLibreArgs -WindowStyle Hidden -Wait -PassThru
                     if ($chocoLibreProc.ExitCode -eq 0) {
                         $result.Success = $true
                         $result.Method = "choco"
@@ -2035,9 +2035,7 @@ function Remove-Bloatware {
     $inventory = $global:SystemInventory
     
     # Ultra-fast lookup using case-insensitive Dictionary with pre-compiled regex patterns
-    $installedApps = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new(
-        [System.StringComparer]::OrdinalIgnoreCase
-    )
+    $installedApps = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new([System.StringComparer]::OrdinalIgnoreCase)
     
     # Pre-compile common app name patterns for faster matching
     $commonPatterns = @(
@@ -2201,7 +2199,7 @@ function Remove-Bloatware {
                             $proc = Start-Process -FilePath "winget" -ArgumentList @(
                                 "uninstall", "--id", $appData.Id, "--exact", "--silent", 
                                 "--accept-source-agreements", "--force", "--disable-interactivity"
-                            ) -WindowStyle Hidden -Wait -PassThru -NoNewWindow
+                            ) -WindowStyle Hidden -Wait -PassThru
                             
                             if ($proc.ExitCode -eq 0) {
                                 $result.Success = $true
@@ -2218,7 +2216,7 @@ function Remove-Bloatware {
                             $proc = Start-Process -FilePath "choco" -ArgumentList @(
                                 "uninstall", $appData.Name, "-y", "--remove-dependencies", 
                                 "--limit-output", "--no-progress"
-                            ) -WindowStyle Hidden -Wait -PassThru -NoNewWindow
+                            ) -WindowStyle Hidden -Wait -PassThru
                             
                             if ($proc.ExitCode -eq 0) {
                                 $result.Success = $true
