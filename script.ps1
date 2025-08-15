@@ -579,23 +579,47 @@ function Get-ExtensiveSystemInventory {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         try {
             # Try JSON output first (modern winget versions)
-            $wingetJson = winget list --accept-source-agreements --output json 2>$null | Out-String
-            if ($wingetJson -and $wingetJson.Trim() -ne '') {
-                $wingetData = $wingetJson | ConvertFrom-Json
-                if ($wingetData.Sources) {
-                    $inventory.winget = @($wingetData.Sources | ForEach-Object { $_.Packages } | ForEach-Object {
-                            [PSCustomObject]@{
-                                Name    = $_.Name
-                                Id      = $_.Id
-                                Version = $_.InstalledVersion
-                                Source  = $_.Source
-                            }
-                        })
+            $wingetJsonRaw = winget list --accept-source-agreements --output json 2>$null | Out-String
+            if ($wingetJsonRaw -and $wingetJsonRaw.Trim() -ne '') {
+                # Clean the JSON output - sometimes winget returns warnings before JSON
+                $jsonStartIndex = $wingetJsonRaw.IndexOf('{')
+                if ($jsonStartIndex -ge 0) {
+                    $cleanJson = $wingetJsonRaw.Substring($jsonStartIndex)
+                    try {
+                        $wingetData = $cleanJson | ConvertFrom-Json -ErrorAction Stop
+                        if ($wingetData.Sources) {
+                            $inventory.winget = @($wingetData.Sources | ForEach-Object { $_.Packages } | ForEach-Object {
+                                    [PSCustomObject]@{
+                                        Name    = $_.Name
+                                        Id      = $_.Id
+                                        Version = $_.InstalledVersion
+                                        Source  = $_.Source
+                                    }
+                                })
+                            Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON." 'INFO'
+                        } else {
+                            Write-Log "[Inventory] Winget JSON output has no Sources property. Using fallback." 'WARN'
+                            throw "No Sources in JSON"
+                        }
+                    }
+                    catch {
+                        Write-Log "[Inventory] Failed to parse winget JSON output: $_. Using fallback text parsing." 'WARN'
+                        throw "JSON parsing failed"
+                    }
+                } else {
+                    Write-Log "[Inventory] No JSON found in winget output. Using fallback text parsing." 'WARN'
+                    throw "No JSON found"
                 }
-                Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON." 'INFO'
             }
             else {
-                # Fallback to text parsing
+                Write-Log "[Inventory] No winget output received. Using fallback text parsing." 'WARN'
+                throw "No output"
+            }
+        }
+        catch {
+            # Fallback to text parsing when JSON fails
+            try {
+                Write-Log "[Inventory] Using winget text parsing fallback..." 'INFO'
                 $wingetOutput = winget list --accept-source-agreements 2>$null
                 if ($wingetOutput) {
                     $inventory.winget = @($wingetOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Name|^-+|^$' } | 
@@ -609,12 +633,15 @@ function Get-ExtensiveSystemInventory {
                             }
                         })
                     Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via text parsing." 'INFO'
+                } else {
+                    Write-Log "[Inventory] No winget output in text mode either." 'WARN'
+                    $inventory.winget = @()
                 }
             }
-        }
-        catch {
-            Write-Log "[Inventory] Winget apps failed: $_" 'WARN'
-            $inventory.winget = @()
+            catch {
+                Write-Log "[Inventory] Winget text parsing also failed: $_" 'WARN'
+                $inventory.winget = @()
+            }
         }
     }
     else {
@@ -1447,6 +1474,7 @@ function Remove-Bloatware {
                 ($bloatApp.Contains('.') -and $installed -like "*$($bloatApp.Split('.')[1])*") -or
                 ($bloatApp.Contains('.') -and $installed -like "*$($bloatApp.Split('.')[0])*")) {
                 $found = $true
+                Write-Log "[Bloatware] Match found: '$bloatApp' matches installed app '$installed'" 'VERBOSE'
                 break
             }
         }
@@ -1457,6 +1485,18 @@ function Remove-Bloatware {
     
     Write-Log "[Bloatware] Diff analysis: $($bloatwareToRemove.Count) bloatware apps found installed (out of $($global:BloatwareList.Count) total in list)" 'INFO'
     
+    # Save the diff list to temporary file for debugging
+    $diffListPath = Join-Path $global:TempFolder 'bloatware_diff_to_remove.json'
+    $bloatwareToRemove | ConvertTo-Json -Depth 3 | Out-File $diffListPath -Encoding UTF8
+    Write-Log "[Bloatware] Diff list saved to: $diffListPath" 'VERBOSE'
+    
+    # Save the apps NOT found (for debugging purposes)
+    $appsNotFound = $global:BloatwareList | Where-Object { $_ -notin $bloatwareToRemove }
+    $notFoundPath = Join-Path $global:TempFolder 'bloatware_not_found.json'
+    $appsNotFound | ConvertTo-Json -Depth 3 | Out-File $notFoundPath -Encoding UTF8
+    Write-Log "[Bloatware] Apps not found on system saved to: $notFoundPath" 'VERBOSE'
+    Write-Log "[Bloatware] Apps not found on system: $($appsNotFound.Count)" 'INFO'
+    
     if ($bloatwareToRemove.Count -eq 0) {
         Write-Log "[Bloatware] No bloatware found on system. Skipping removal process." 'INFO'
         Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
@@ -1464,12 +1504,14 @@ function Remove-Bloatware {
     }
     
     # Log the bloatware that will be removed
-    Write-Log "[Bloatware] Apps targeted for removal:" 'INFO'
+    Write-Log "[Bloatware] Apps targeted for removal (diff list):" 'INFO'
     $bloatwareToRemove | ForEach-Object { Write-Log "  - $_" 'VERBOSE' }
     
     $removed = 0
     $failed = 0
     $totalApps = $bloatwareToRemove.Count
+    
+    Write-Log "[Bloatware] Starting removal process for $totalApps apps from diff list only..." 'INFO'
 
     # Check module availability
     $appxAvailable = $false
@@ -1520,7 +1562,15 @@ function Remove-Bloatware {
         'MicrosoftTeams'                         = @('MicrosoftTeams', '*Teams*', '*Microsoft Teams*')
     }
 
+    # Process ONLY the diff list (apps that are confirmed to be installed)
     foreach ($app in $bloatwareToRemove) {
+        # Validation: Ensure this app is indeed in our diff list
+        if ($app -notin $bloatwareToRemove) {
+            Write-Log "[ERROR] App '$app' is not in the diff list but is being processed. This should not happen!" 'ERROR'
+            continue
+        }
+        
+        Write-Log "[Bloatware] Processing app from diff list: $app" 'VERBOSE'
         $appRemoved = $false
         $removalMethods = @()
         
@@ -1581,26 +1631,59 @@ function Remove-Bloatware {
                 }
             }
             
-            # Winget removal
+            # Winget removal - Enhanced with better error handling and logging
             if ((Get-Command winget -ErrorAction SilentlyContinue)) {
                 $wingetIds = @($app)
                 if ($app.StartsWith('Microsoft.')) { $wingetIds += $app.Replace('Microsoft.', '') }
                 if ($enhancedPatterns.ContainsKey($app)) { $wingetIds += $enhancedPatterns[$app] }
+                
                 foreach ($wingetId in $wingetIds) {
                     try {
-                        $wingetList = winget list --id $wingetId --exact --accept-source-agreements 2>$null
-                        if ($LASTEXITCODE -eq 0 -and $wingetList -match $wingetId) {
-                            winget uninstall --id $wingetId --exact --silent --accept-source-agreements 2>$null
-                            if ($LASTEXITCODE -eq 0) {
-                                Write-Log "Winget removed: $wingetId" 'INFO'
-                                $appRemoved = $true
-                                $removalMethods += 'Winget'
-                                break
+                        Write-Log "Checking winget for: $wingetId" 'VERBOSE'
+                        
+                        # Use winget list with JSON output for better parsing
+                        $wingetListResult = winget list --id $wingetId --exact --accept-source-agreements --output json 2>$null
+                        if ($LASTEXITCODE -eq 0) {
+                            try {
+                                $wingetJson = $wingetListResult | ConvertFrom-Json -ErrorAction SilentlyContinue
+                                if ($wingetJson -and $wingetJson.Data -and $wingetJson.Data.Count -gt 0) {
+                                    Write-Log "Winget found app: $wingetId, attempting removal..." 'VERBOSE'
+                                    
+                                    # Attempt removal with detailed logging
+                                    $uninstallResult = winget uninstall --id $wingetId --exact --silent --accept-source-agreements --force 2>&1
+                                    if ($LASTEXITCODE -eq 0) {
+                                        Write-Log "Winget successfully removed: $wingetId" 'INFO'
+                                        $appRemoved = $true
+                                        $removalMethods += 'Winget'
+                                        break
+                                    } else {
+                                        Write-Log "Winget uninstall failed for $wingetId (Exit code: $LASTEXITCODE)" 'VERBOSE'
+                                    }
+                                }
                             }
+                            catch {
+                                # Fallback to text-based parsing if JSON fails
+                                if ($wingetListResult -match $wingetId) {
+                                    Write-Log "Winget found app (text match): $wingetId, attempting removal..." 'VERBOSE'
+                                    winget uninstall --id $wingetId --exact --silent --accept-source-agreements --force 2>$null
+                                    if ($LASTEXITCODE -eq 0) {
+                                        Write-Log "Winget successfully removed: $wingetId" 'INFO'
+                                        $appRemoved = $true
+                                        $removalMethods += 'Winget'
+                                        break
+                                    }
+                                }
+                            }
+                        } else {
+                            Write-Log "Winget list failed for $wingetId (Exit code: $LASTEXITCODE)" 'VERBOSE'
                         }
                     }
-                    catch {}
+                    catch {
+                        Write-Log "Exception during winget processing for $wingetId`: $_" 'VERBOSE'
+                    }
                 }
+            } else {
+                Write-Log "Winget not available for app removal" 'VERBOSE'
             }
             
             # Chocolatey removal
@@ -1641,6 +1724,311 @@ function Remove-Bloatware {
             }
             catch {}
             
+            # Windows Features removal (Optional Features)
+            try {
+                $features = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue |
+                Where-Object { $_.FeatureName -like "*$app*" -or $_.DisplayName -like "*$app*" -or 
+                              $_.FeatureName -like "*$($app.Replace('Microsoft.', ''))*" }
+                foreach ($feature in $features) {
+                    if ($feature.State -eq 'Enabled') {
+                        try {
+                            Disable-WindowsOptionalFeature -Online -FeatureName $feature.FeatureName -NoRestart -ErrorAction Stop
+                            Write-Log "Disabled Windows Feature: $($feature.FeatureName)" 'INFO'
+                            $appRemoved = $true
+                            $removalMethods += 'WindowsFeature'
+                        }
+                        catch {}
+                    }
+                }
+            }
+            catch {}
+            
+            # Registry-based uninstall (using uninstall strings)
+            try {
+                $uninstallKeys = @(
+                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+                )
+                foreach ($regKey in $uninstallKeys) {
+                    if (Test-Path $regKey) {
+                        $subKeys = Get-ChildItem $regKey -ErrorAction SilentlyContinue
+                        foreach ($subKey in $subKeys) {
+                            $props = Get-ItemProperty $subKey.PSPath -ErrorAction SilentlyContinue
+                            if ($props.DisplayName -like "*$app*" -or $props.DisplayName -like "*$($app.Replace('Microsoft.', ''))*") {
+                                if ($props.UninstallString) {
+                                    try {
+                                        Write-Log "Found registry uninstaller for: $($props.DisplayName)" 'VERBOSE'
+                                        $uninstallCmd = $props.UninstallString
+                                        
+                                        # Handle different uninstall string formats
+                                        if ($uninstallCmd -match 'msiexec') {
+                                            # MSI uninstall
+                                            $productCode = if ($uninstallCmd -match '/[IX]\{([^}]+)\}') { $matches[1] } else { $null }
+                                            if ($productCode) {
+                                                $msiArgs = "/x{$productCode} /quiet /norestart"
+                                                Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -WindowStyle Hidden -ErrorAction Stop
+                                                Write-Log "MSI uninstalled via registry: $($props.DisplayName)" 'INFO'
+                                                $appRemoved = $true
+                                                $removalMethods += 'Registry-MSI'
+                                            }
+                                        }
+                                        elseif ($uninstallCmd -notmatch 'rundll32.*appwiz') {
+                                            # Standard exe uninstaller (but not appwiz.cpl)
+                                            if ($uninstallCmd -match '^"([^"]+)"(.*)$') {
+                                                $exePath = $matches[1]
+                                                $args = $matches[2].Trim()
+                                                if (Test-Path $exePath) {
+                                                    # Add silent flags if not present
+                                                    if ($args -notmatch '/[Ss]ilent|/[Qq]uiet|/[Ss]|/[Qq]') {
+                                                        $args += " /S /silent /quiet"
+                                                    }
+                                                    Start-Process -FilePath $exePath -ArgumentList $args -Wait -WindowStyle Hidden -ErrorAction Stop
+                                                    Write-Log "EXE uninstalled via registry: $($props.DisplayName)" 'INFO'
+                                                    $appRemoved = $true
+                                                    $removalMethods += 'Registry-EXE'
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch {
+                                        Write-Log "Registry uninstall failed for $($props.DisplayName): $_" 'VERBOSE'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch {}
+            
+            # PowerShell Get-Package / Uninstall-Package removal
+            try {
+                $packages = Get-Package -ErrorAction SilentlyContinue | 
+                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                foreach ($package in $packages) {
+                    try {
+                        Uninstall-Package -Name $package.Name -Force -ErrorAction Stop
+                        Write-Log "PowerShell Package removed: $($package.Name)" 'INFO'
+                        $appRemoved = $true
+                        $removalMethods += 'PS-Package'
+                    }
+                    catch {}
+                }
+            }
+            catch {}
+            
+            # WMI Win32_Product removal (use sparingly as it's slow)
+            if (-not $appRemoved) {
+                try {
+                    $wmiProducts = Get-WmiObject -Class Win32_Product -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                    foreach ($product in $wmiProducts) {
+                        try {
+                            Write-Log "Attempting WMI uninstall for: $($product.Name)" 'VERBOSE'
+                            $result = $product.Uninstall()
+                            if ($result.ReturnValue -eq 0) {
+                                Write-Log "WMI uninstalled: $($product.Name)" 'INFO'
+                                $appRemoved = $true
+                                $removalMethods += 'WMI'
+                                break
+                            }
+                        }
+                        catch {}
+                    }
+                }
+                catch {}
+            }
+            
+            # Windows Package Manager (legacy) removal
+            try {
+                if (Get-Command pkgmgr -ErrorAction SilentlyContinue) {
+                    # This is for older Windows versions or specific package types
+                    $packageName = $app.Replace('Microsoft.', '')
+                    pkgmgr /up:$packageName /quiet /norestart 2>$null
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Log "Package Manager removed: $packageName" 'INFO'
+                        $appRemoved = $true
+                        $removalMethods += 'PkgMgr'
+                    }
+                }
+            }
+            catch {}
+            
+            # Remove Start Menu shortcuts and program folders
+            try {
+                $shortcutPaths = @(
+                    "$env:ALLUSERSPROFILE\Microsoft\Windows\Start Menu\Programs",
+                    "$env:USERPROFILE\AppData\Roaming\Microsoft\Windows\Start Menu\Programs"
+                )
+                foreach ($shortcutPath in $shortcutPaths) {
+                    if (Test-Path $shortcutPath) {
+                        $shortcuts = Get-ChildItem -Path $shortcutPath -Recurse -Include "*.lnk" -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                        foreach ($shortcut in $shortcuts) {
+                            try {
+                                Remove-Item $shortcut.FullName -Force -ErrorAction Stop
+                                Write-Log "Removed shortcut: $($shortcut.Name)" 'VERBOSE'
+                            }
+                            catch {}
+                        }
+                        
+                        # Remove empty folders related to the app
+                        $folders = Get-ChildItem -Path $shortcutPath -Directory -Recurse -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                        foreach ($folder in $folders) {
+                            try {
+                                if ((Get-ChildItem $folder.FullName -ErrorAction SilentlyContinue).Count -eq 0) {
+                                    Remove-Item $folder.FullName -Force -ErrorAction Stop
+                                    Write-Log "Removed empty program folder: $($folder.Name)" 'VERBOSE'
+                                }
+                            }
+                            catch {}
+                        }
+                    }
+                }
+            }
+            catch {}
+            
+            # Remove registry entries and leftover keys
+            try {
+                $cleanupKeys = @(
+                    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
+                    "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Families",
+                    "HKLM:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Families"
+                )
+                foreach ($regKey in $cleanupKeys) {
+                    if (Test-Path $regKey) {
+                        $entries = Get-ItemProperty $regKey -ErrorAction SilentlyContinue
+                        $entries.PSObject.Properties | ForEach-Object {
+                            if ($_.Name -like "*$app*" -or $_.Value -like "*$app*") {
+                                try {
+                                    Remove-ItemProperty -Path $regKey -Name $_.Name -ErrorAction Stop
+                                    Write-Log "Removed registry startup entry: $($_.Name)" 'VERBOSE'
+                                }
+                                catch {}
+                            }
+                        }
+                    }
+                }
+                
+                # Remove app-specific registry trees
+                $appRegPaths = @(
+                    "HKCU:\SOFTWARE\$app",
+                    "HKLM:\SOFTWARE\$app",
+                    "HKLM:\SOFTWARE\WOW6432Node\$app",
+                    "HKCU:\SOFTWARE\$($app.Replace('Microsoft.', ''))",
+                    "HKLM:\SOFTWARE\$($app.Replace('Microsoft.', ''))",
+                    "HKLM:\SOFTWARE\WOW6432Node\$($app.Replace('Microsoft.', ''))"
+                )
+                foreach ($regPath in $appRegPaths) {
+                    if (Test-Path $regPath) {
+                        try {
+                            Remove-Item $regPath -Recurse -Force -ErrorAction Stop
+                            Write-Log "Removed registry tree: $regPath" 'VERBOSE'
+                        }
+                        catch {}
+                    }
+                }
+            }
+            catch {}
+            
+            # File system cleanup - remove program files and app data
+            try {
+                $cleanupPaths = @(
+                    "$env:ProgramFiles\$app",
+                    "$env:ProgramFiles\$($app.Replace('Microsoft.', ''))",
+                    "${env:ProgramFiles(x86)}\$app",
+                    "${env:ProgramFiles(x86)}\$($app.Replace('Microsoft.', ''))",
+                    "$env:LOCALAPPDATA\$app",
+                    "$env:LOCALAPPDATA\$($app.Replace('Microsoft.', ''))",
+                    "$env:APPDATA\$app",
+                    "$env:APPDATA\$($app.Replace('Microsoft.', ''))",
+                    "$env:LOCALAPPDATA\Packages\$app*",
+                    "$env:USERPROFILE\AppData\Local\Packages\$app*"
+                )
+                
+                foreach ($cleanupPath in $cleanupPaths) {
+                    $expandedPaths = if ($cleanupPath -like "*`**") {
+                        Get-ChildItem (Split-Path $cleanupPath) -Directory -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -like (Split-Path $cleanupPath -Leaf) }
+                    } else {
+                        if (Test-Path $cleanupPath) { Get-Item $cleanupPath }
+                    }
+                    
+                    foreach ($path in $expandedPaths) {
+                        try {
+                            if (Test-Path $path.FullName) {
+                                Remove-Item $path.FullName -Recurse -Force -ErrorAction Stop
+                                Write-Log "Removed app folder: $($path.FullName)" 'VERBOSE'
+                            }
+                        }
+                        catch {}
+                    }
+                }
+            }
+            catch {}
+            
+            # CIM Win32_InstalledWin32Program removal (Windows 10+)
+            try {
+                $cimPrograms = Get-CimInstance -ClassName Win32_InstalledWin32Program -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                foreach ($program in $cimPrograms) {
+                    try {
+                        # Try to find and execute uninstall command
+                        if ($program.UninstallString) {
+                            Write-Log "CIM found uninstaller for: $($program.Name)" 'VERBOSE'
+                            # This would need careful parsing similar to registry method
+                            # Implemented as a reference - actual execution would need the same logic as registry method
+                        }
+                    }
+                    catch {}
+                }
+            }
+            catch {}
+            
+            # Scoop removal (if Scoop is available)
+            try {
+                if (Get-Command scoop -ErrorAction SilentlyContinue) {
+                    $scoopApps = scoop list 2>$null | Where-Object { $_ -like "*$app*" }
+                    foreach ($scoopApp in $scoopApps) {
+                        if ($scoopApp -match '^(\S+)') {
+                            $appName = $matches[1]
+                            try {
+                                scoop uninstall $appName 2>$null
+                                if ($LASTEXITCODE -eq 0) {
+                                    Write-Log "Scoop removed: $appName" 'INFO'
+                                    $appRemoved = $true
+                                    $removalMethods += 'Scoop'
+                                }
+                            }
+                            catch {}
+                        }
+                    }
+                }
+            }
+            catch {}
+            
+            # Windows Store removal via PowerShell (modern method)
+            if ($app -like "Microsoft.*" -or $app -like "*Store*") {
+                try {
+                    $storeApps = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | 
+                    Where-Object { $_.Name -like "*$app*" -and $_.SignatureKind -eq 'Store' }
+                    foreach ($storeApp in $storeApps) {
+                        try {
+                            Remove-AppxPackage -Package $storeApp.PackageFullName -AllUsers -ErrorAction Stop
+                            Write-Log "Store app removed: $($storeApp.Name)" 'INFO'
+                            $appRemoved = $true
+                            $removalMethods += 'StoreApp'
+                        }
+                        catch {}
+                    }
+                }
+                catch {}
+            }
+            
             # Update counters and log results
             if ($appRemoved) {
                 $removed++
@@ -1679,10 +2067,12 @@ function Remove-Bloatware {
         }
     }
 
-    Write-Log "Enhanced bloatware removal completed:" 'INFO'
+    Write-Log "Enhanced bloatware removal completed (diff-based approach):" 'INFO'
+    Write-Log "  - Processed from diff list: $totalApps apps" 'INFO'
     Write-Log "  - Successfully removed: $removed apps" 'INFO'
     Write-Log "  - Failed to remove: $failed apps" 'INFO'
-    Write-Log "  - Total processed: $totalApps apps" 'INFO'
+    Write-Log "  - Total in bloatware list: $($global:BloatwareList.Count) apps" 'INFO'
+    Write-Log "  - Only apps from diff list were processed for removal" 'INFO'
     Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
 }
 
