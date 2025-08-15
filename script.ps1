@@ -1,5 +1,3 @@
-
-
 # ===============================
 # Windows Maintenance Script - Task Coordinator
 # ===============================
@@ -1497,7 +1495,8 @@ function Remove-Bloatware {
         }
     }
 
-    $dismAvailable = $null -ne (Get-Command dism -ErrorAction SilentlyContinue)
+    $dismCmd = Get-Command dism -ErrorAction SilentlyContinue
+    $dismAvailable = $dismCmd -and (Test-Path $dismCmd.Source)
     
     # Enhanced pattern matching for better app identification
     $enhancedPatterns = @{
@@ -1511,8 +1510,6 @@ function Remove-Bloatware {
         'Microsoft.ZuneMusic'                    = @('ZuneMusic', '*Groove*', '*Music*')
         'Microsoft.ZuneVideo'                    = @('ZuneVideo', '*Movies*', '*Video*')
         'Microsoft.People'                       = @('People', '*People*')
-        'Microsoft.WindowsMaps'                  = @('WindowsMaps', '*Maps*')
-        'Microsoft.MixedReality.Portal'          = @('MixedReality.Portal', '*Mixed Reality*', '*MR*')
         'Microsoft.Office.OneNote'               = @('Office.OneNote', '*OneNote*')
         'Microsoft.SkypeApp'                     = @('SkypeApp', '*Skype*')
         'Microsoft.Wallet'                       = @('Wallet', '*Wallet*')
