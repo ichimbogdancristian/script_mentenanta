@@ -198,6 +198,31 @@ function Use-AllScriptTasks {
 # [PRE-TASK 0] Set up log file in the repo folder
 $logPath = Join-Path $PSScriptRoot "maintenance.log"
 
+# [PRE-TASK 1] Essential Logging Function - MUST BE DEFINED EARLY
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE')][string]$Level = 'INFO'
+    )
+    
+    # Skip verbose messages if verbose logging is disabled
+    if ($Level -eq 'VERBOSE' -and -not $global:Config.EnableVerboseLogging) {
+        return
+    }
+    
+    $timestamp = Get-Date -Format 'HH:mm:ss'
+    $entry = "[$timestamp] [$Level] $Message"
+    $entry | Out-File -FilePath $logPath -Append
+    
+    # Color-code output based on level
+    switch ($Level) {
+        'ERROR' { Write-Host $entry -ForegroundColor Red }
+        'WARN' { Write-Host $entry -ForegroundColor Yellow }
+        'VERBOSE' { Write-Host $entry -ForegroundColor Gray }
+        default { Write-Host $entry }
+    }
+}
+
 ### PowerShell 7 Compatibility Functions
 function Invoke-WindowsPowerShellCommand {
     param(
@@ -492,31 +517,7 @@ function Get-StartAppsCompatible {
     }
 }
 
-### [PRE-TASK 1] Logging & Task Functions
-function Write-Log {
-    param(
-        [string]$Message,
-        [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE')][string]$Level = 'INFO'
-    )
-    
-    # Skip verbose messages if verbose logging is disabled
-    if ($Level -eq 'VERBOSE' -and -not $global:Config.EnableVerboseLogging) {
-        return
-    }
-    
-    $timestamp = Get-Date -Format 'HH:mm:ss'
-    $entry = "[$timestamp] [$Level] $Message"
-    $entry | Out-File -FilePath $logPath -Append
-    
-    # Color-code output based on level
-    switch ($Level) {
-        'ERROR' { Write-Host $entry -ForegroundColor Red }
-        'WARN' { Write-Host $entry -ForegroundColor Yellow }
-        'VERBOSE' { Write-Host $entry -ForegroundColor Gray }
-        default { Write-Host $entry }
-    }
-}
-
+### [PRE-TASK 1] Task Functions
 function Invoke-Task {
     param(
         [string]$TaskName,
@@ -2229,11 +2230,11 @@ function Disable-Telemetry {
     $policyJson | Set-Content -Path $policyPath -Encoding UTF8
     Write-Log "Firefox policies.json deployed from built-in policy." 'INFO'
 }
-        
+
 else {
     Write-Log "Could not find Firefox installation path for policies.json deployment." 'WARN'
 }
-    
+
 catch {
     Write-Log "Failed to deploy Firefox policies.json: $_" 'WARN'
 }
