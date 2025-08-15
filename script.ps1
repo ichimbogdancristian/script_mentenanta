@@ -95,7 +95,7 @@ $global:ScriptTasks = @(
             Write-Log "Deleted $deletedFiles temp files from temp folders." 'INFO'
             try {
                 $cleanmgrArgs = '/AUTOCLEAN'
-                $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
+                $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -Wait -PassThru
                 if ($proc.ExitCode -eq 0) {
                     Write-Log 'Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN).' 'INFO'
                 }
@@ -576,7 +576,7 @@ function Get-ExtensiveSystemInventory {
                     Write-Log "[Inventory] Winget JSON attempt $attempts..." 'VERBOSE'
                     
                     # Use more robust JSON extraction
-                    $wingetProcess = Start-Process -FilePath "winget" -ArgumentList @("list", "--accept-source-agreements", "--output", "json") -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget_output_$PID.json" -RedirectStandardError "$env:TEMP\winget_error_$PID.txt"
+                    $wingetProcess = Start-Process -FilePath "winget" -ArgumentList @("list", "--accept-source-agreements", "--output", "json") -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\winget_output_$PID.json" -RedirectStandardError "$env:TEMP\winget_error_$PID.txt"
                     
                     if ($wingetProcess.ExitCode -eq 0 -and (Test-Path "$env:TEMP\winget_output_$PID.json")) {
                         $wingetJsonRaw = Get-Content "$env:TEMP\winget_output_$PID.json" -Raw -ErrorAction SilentlyContinue
@@ -1373,7 +1373,7 @@ function Install-EssentialApps {
                         "--accept-source-agreements", "--accept-package-agreements", 
                         "--silent", "-e", "--disable-interactivity"
                     )
-                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow
+                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
                     if ($wingetProc.ExitCode -eq 0) {
                         $result.Success = $true
                         $result.Method = "winget"
@@ -1393,7 +1393,7 @@ function Install-EssentialApps {
                 # Try Chocolatey as fallback
                 if (-not $result.Success -and $app.Choco -and $chocoAvailable) {
                     $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--limit-output")
-                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow
+                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
                     if ($chocoProc.ExitCode -eq 0) {
                         $result.Success = $true
                         $result.Method = "choco"
@@ -1692,7 +1692,7 @@ function Update-AllPackages {
                     "--include-unknown"
                 )
                 
-                $upgradeProcess = Start-Process -FilePath "winget" -ArgumentList $upgradeCheckArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget_check_$PID.txt" -RedirectStandardError "$env:TEMP\winget_check_err_$PID.txt"
+                $upgradeProcess = Start-Process -FilePath "winget" -ArgumentList $upgradeCheckArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\winget_check_$PID.txt" -RedirectStandardError "$env:TEMP\winget_check_err_$PID.txt"
                 
                 if ($upgradeProcess.ExitCode -eq 0) {
                     $upgradeOutput = Get-Content "$env:TEMP\winget_check_$PID.txt" -ErrorAction SilentlyContinue | Out-String
@@ -1723,7 +1723,7 @@ function Update-AllPackages {
                         "--ignore-security-hash", "--ignore-local-archive-malware-scan"
                     )
                     
-                    $upgradeExecProcess = Start-Process -FilePath "winget" -ArgumentList $upgradeArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget_upgrade_$PID.txt" -RedirectStandardError "$env:TEMP\winget_upgrade_err_$PID.txt"
+                    $upgradeExecProcess = Start-Process -FilePath "winget" -ArgumentList $upgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\winget_upgrade_$PID.txt" -RedirectStandardError "$env:TEMP\winget_upgrade_err_$PID.txt"
                     
                     if ($upgradeExecProcess.ExitCode -eq 0) {
                         $upgradeExecOutput = Get-Content "$env:TEMP\winget_upgrade_$PID.txt" -ErrorAction SilentlyContinue | Out-String
@@ -1798,7 +1798,7 @@ function Update-AllPackages {
                     "--ignore-pinned"
                 )
                 
-                $outdatedProcess = Start-Process -FilePath "choco" -ArgumentList $outdatedArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\choco_outdated_$PID.txt" -RedirectStandardError "$env:TEMP\choco_outdated_err_$PID.txt"
+                $outdatedProcess = Start-Process -FilePath "choco" -ArgumentList $outdatedArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\choco_outdated_$PID.txt" -RedirectStandardError "$env:TEMP\choco_outdated_err_$PID.txt"
                 
                 if ($outdatedProcess.ExitCode -eq 0) {
                     $outdatedOutput = Get-Content "$env:TEMP\choco_outdated_$PID.txt" -ErrorAction SilentlyContinue
@@ -1823,7 +1823,7 @@ function Update-AllPackages {
                         "--timeout", "300"
                     )
                     
-                    $upgradeProcess = Start-Process -FilePath "choco" -ArgumentList $upgradeArgs -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\choco_upgrade_$PID.txt" -RedirectStandardError "$env:TEMP\choco_upgrade_err_$PID.txt"
+                    $upgradeProcess = Start-Process -FilePath "choco" -ArgumentList $upgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\choco_upgrade_$PID.txt" -RedirectStandardError "$env:TEMP\choco_upgrade_err_$PID.txt"
                     
                     if ($upgradeProcess.ExitCode -eq 0) {
                         $upgradeOutput = Get-Content "$env:TEMP\choco_upgrade_$PID.txt" -ErrorAction SilentlyContinue
@@ -2084,7 +2084,10 @@ function Remove-Bloatware {
     
     # Smart bloatware detection with optimized pattern matching
     $bloatwareMatches = [System.Collections.Generic.List[PSCustomObject]]::new()
-    $bloatwareHashSet = [System.Collections.Generic.HashSet[string]]::new($global:BloatwareList, [System.StringComparer]::OrdinalIgnoreCase)
+    $bloatwareHashSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($item in $global:BloatwareList) {
+        [void]$bloatwareHashSet.Add($item)
+    }
     
     # Direct lookup phase (O(1) performance)
     foreach ($installedKey in $installedApps.Keys) {
