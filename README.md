@@ -1,87 +1,78 @@
 
-# Windows Maintenance Automation Project
+# Windows Maintenance Automation Script
 
-## Big Picture & Architecture
-- **Entry Point:** `script.bat` (batch file) is the main launcher. It checks/installs dependencies (PowerShell 7, Winget, Chocolatey, NuGet, PSWindowsUpdate, Appx), sets up scheduled tasks, downloads/updates the repo, and launches `script.ps1` with admin rights.
-- **Orchestration:** `script.ps1` (PowerShell) coordinates all maintenance logic via modular functions for inventory, bloatware removal, essential app install, updates, telemetry, restore, and cleanup. All actions are logged.
-- **Task Coordination:** Tasks are defined in `$global:ScriptTasks` with metadata for centralized execution and reporting.
-- **Config:** Optional `config.json` customizes behavior (see below for format).
-- **Reporting:** Generates `maintenance_report.txt` and detailed inventory files after each run.
+## Overview
+Automates essential Windows maintenance tasks for IT, sysadmins, and power users. Combines inventory, bloatware removal, app installation, updates, telemetry/privacy tweaks, cleanup, and reporting into a single, repeatable workflow.
 
-## Environment & Prerequisites
-- Windows 10/11
-- PowerShell 5.1+ (PowerShell 7 preferred, auto-installed if missing)
-- Administrator privileges (auto-elevated by batch)
-- Internet connection for package managers
+## Project Structure
+- `script.bat`: Batch file entry point. Handles dependency checks, auto-elevation, repo update, and launches `script.ps1` as administrator.
+- `script.ps1`: Main PowerShell script. Contains all maintenance logic, modular functions, and orchestrates tasks.
+- `README.md`: Project documentation, usage, and configuration details.
+- `.github/copilot-instructions.md`: AI agent instructions and conventions.
+- `maintenance.log`: Log file for all operations (created at runtime).
+- `maintenance_report.txt`: Summary report after each run (created at runtime).
+- `config.json`: Optional, for custom settings (see below).
 
-## Workflow
-1. **Run as Administrator:** Always start with `script.bat` (auto-elevates if needed).
-2. **Dependency Checks:** Batch script ensures all required tools/modules are installed or logs warnings and continues with degraded functionality.
-3. **Scheduled Tasks:** Monthly and startup scheduled tasks are auto-created for recurring and post-restart runs.
-4. **Repo Updates:** Batch script downloads and extracts the latest repo ZIP from GitHub before each run.
-5. **PowerShell Orchestration:** `script.ps1` runs all tasks in order, logs actions/errors, and generates reports.
+## Logic & Syntax
+- **Batch (`script.bat`)**: Windows batch syntax for dependency checks, elevation, repo update, and PowerShell invocation. Color-coded console output for status.
+- **PowerShell (`script.ps1`)**: PowerShell 7 syntax. Modular functions for each maintenance task. Advanced error handling, logging, and color-coded output. Centralized task coordination via `$global:ScriptTasks` array.
+- **Config (`config.json`)**: JSON format. Customizes task execution, exclusions, and reporting.
 
-## Configuration
-Place a custom `config.json` in the script directory to override defaults. Example options:
+## Formatting Conventions
+- Indentation: 4 spaces for PowerShell, tabs for batch files.
+- Function names: PascalCase for PowerShell functions.
+- Comments: Descriptive, with region markers for major sections.
+- Logging: All actions/errors logged to `maintenance.log` with timestamps and color codes.
+- Reports: Human-readable summary in `maintenance_report.txt`, detailed inventory files for audit.
+
+## Environment of Execution
+- **OS:** Windows 10/11 (x64, ARM64 supported)
+- **Shell:** PowerShell 7 (auto-installed if missing)
+- **Dependencies:** Winget, Chocolatey, NuGet, PSWindowsUpdate, Appx (checked/installed at runtime)
+- **Execution:** Always run as administrator (auto-elevated by batch file)
+- **Scheduled Tasks:** Monthly/startup tasks auto-created for recurring runs and post-restart continuation
+- **Repo Update:** Batch file downloads/extracts latest repo ZIP from GitHub before each run
+
+## Usage
+1. Double-click `script.bat` or run it from an elevated command prompt.
+2. Optionally edit `config.json` to customize tasks, exclusions, or reporting.
+3. Review `maintenance.log` and `maintenance_report.txt` after each run.
+
+## Configuration (`config.json`)
+See example below. All keys are optional.
 ```json
 {
-  "SkipBloatwareRemoval": false,
-  "SkipEssentialApps": false,
-  "SkipWindowsUpdates": false,
-  "SkipTelemetryDisable": false,
-  "SkipSystemRestore": false,
-  "EnableVerboseLogging": false,
-  "CustomEssentialApps": [ { "Name": "App", "Winget": "Publisher.AppId", "Choco": "choco-name" } ],
-  "CustomBloatwareList": [ "AppName1", "AppName2" ]
+  "ExcludeTasks": ["RemoveBloatware", "InstallApps"],
+  "AppWhitelist": ["Firefox", "LibreOffice"],
+  "ReportLevel": "detailed"
 }
 ```
 
-## Features & Patterns
-- **Inventory Collection:** Combines AppX, Winget, Chocolatey, Registry, Services, Tasks, Drivers, Updates for a complete system/app list.
-- **Bloatware Removal:** Uses AppX, DISM, Winget, Choco, Capabilities, Registry, with enhanced pattern matching for app names.
-- **Essential Apps:** Installs curated apps via Winget/Choco, skips already-installed, installs LibreOffice if Office is missing.
-- **Browser Management:** Removes non-whitelisted browsers, configures Firefox/Chrome/Edge policies, sets Firefox as default if possible.
-- **Windows Updates:** Uses PSWindowsUpdate module (auto-installs if missing).
-- **Telemetry & Privacy:** Disables telemetry services, scheduled tasks, and applies registry tweaks for privacy.
-- **Logging:** All actions/errors are logged to `maintenance.log` (color-coded output).
-- **Reporting:** Generates `maintenance_report.txt` and inventory files for audit and troubleshooting.
-- **Graceful Degradation:** Logs warnings and continues if tools/modules are missing.
+## Example Execution Flow
+1. User runs `script.bat` (double-click or scheduled task).
+2. Batch file checks dependencies, auto-elevates, updates repo, launches `script.ps1` as admin.
+3. PowerShell script loads config, defines `$global:ScriptTasks`, and executes each task in order:
+   - Inventory collection
+   - Bloatware removal
+   - Essential app install
+   - Browser management
+   - Windows updates
+   - Telemetry/privacy tweaks
+   - Restore/cleanup
+   - Reporting
+4. All output logged to `maintenance.log` and console.
+5. Reports generated after completion.
 
-## Key Files
-- `script.bat`: Batch launcher for dependency setup, repo update, and script execution.
-- `script.ps1`: Main PowerShell script with all maintenance logic.
-- `maintenance.log`: Log file for all operations.
-- `maintenance_report.txt`: Summary report after each run.
-- `config.json`: Optional, for custom settings.
+## Troubleshooting
+- Check `maintenance.log` for errors and warnings.
+- Review `maintenance_report.txt` for summary and details.
+- Ensure all dependencies are installed and up to date.
 
-## Example Patterns
-- **Task Definition:**
-  ```powershell
-  $global:ScriptTasks = @(
-    @{ Name = 'RemoveBloatware'; Function = { Remove-Bloatware }; Description = '...' },
-    # ...
-  )
-  ```
-- **Inventory Collection:**
-  ```powershell
-  Get-ComputerInfo | Out-File ...
-  Get-AppxPackage -AllUsers | ...
-  winget list ...
-  choco list --local-only ...
-  Get-Service | ...
-  Get-ScheduledTask | ...
-  Get-CimInstance Win32_PnPSignedDriver | ...
-  Get-HotFix | ...
-  ```
-- **Bloatware Removal:**
-  ```powershell
-  Remove-AppxPackage ...
-  dism /online /remove-provisionedappxpackage ...
-  winget uninstall ...
-  choco uninstall ...
-  Remove-WindowsCapability ...
-  ```
-- **Browser Management:**
+## Contributing
+Pull requests and feedback are welcome! See `.github/copilot-instructions.md` for AI agent conventions and best practices.
+
+## License
+[MIT](LICENSE)
   ```powershell
   # Remove non-whitelisted browsers
   # Configure Firefox, Chrome, Edge policies

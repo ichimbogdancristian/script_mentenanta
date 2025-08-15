@@ -597,7 +597,8 @@ function Get-ExtensiveSystemInventory {
                                     }
                                 })
                             Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON." 'INFO'
-                        } else {
+                        }
+                        else {
                             Write-Log "[Inventory] Winget JSON output has no Sources property. Using fallback." 'WARN'
                             throw "No Sources in JSON"
                         }
@@ -606,7 +607,8 @@ function Get-ExtensiveSystemInventory {
                         Write-Log "[Inventory] Failed to parse winget JSON output: $_. Using fallback text parsing." 'WARN'
                         throw "JSON parsing failed"
                     }
-                } else {
+                }
+                else {
                     Write-Log "[Inventory] No JSON found in winget output. Using fallback text parsing." 'WARN'
                     throw "No JSON found"
                 }
@@ -633,7 +635,8 @@ function Get-ExtensiveSystemInventory {
                             }
                         })
                     Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via text parsing." 'INFO'
-                } else {
+                }
+                else {
                     Write-Log "[Inventory] No winget output in text mode either." 'WARN'
                     $inventory.winget = @()
                 }
@@ -1656,8 +1659,12 @@ function Remove-Bloatware {
                                         $appRemoved = $true
                                         $removalMethods += 'Winget'
                                         break
-                                    } else {
+                                    }
+                                    else {
                                         Write-Log "Winget uninstall failed for $wingetId (Exit code: $LASTEXITCODE)" 'VERBOSE'
+                                        if ($uninstallResult) {
+                                            Write-Log "Winget uninstall output for ${wingetId}: $uninstallResult" 'VERBOSE'
+                                        }
                                     }
                                 }
                             }
@@ -1674,7 +1681,8 @@ function Remove-Bloatware {
                                     }
                                 }
                             }
-                        } else {
+                        }
+                        else {
                             Write-Log "Winget list failed for $wingetId (Exit code: $LASTEXITCODE)" 'VERBOSE'
                         }
                     }
@@ -1682,7 +1690,8 @@ function Remove-Bloatware {
                         Write-Log "Exception during winget processing for $wingetId`: $_" 'VERBOSE'
                     }
                 }
-            } else {
+            }
+            else {
                 Write-Log "Winget not available for app removal" 'VERBOSE'
             }
             
@@ -1728,7 +1737,7 @@ function Remove-Bloatware {
             try {
                 $features = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue |
                 Where-Object { $_.FeatureName -like "*$app*" -or $_.DisplayName -like "*$app*" -or 
-                              $_.FeatureName -like "*$($app.Replace('Microsoft.', ''))*" }
+                    $_.FeatureName -like "*$($app.Replace('Microsoft.', ''))*" }
                 foreach ($feature in $features) {
                     if ($feature.State -eq 'Enabled') {
                         try {
@@ -1777,13 +1786,13 @@ function Remove-Bloatware {
                                             # Standard exe uninstaller (but not appwiz.cpl)
                                             if ($uninstallCmd -match '^"([^"]+)"(.*)$') {
                                                 $exePath = $matches[1]
-                                                $args = $matches[2].Trim()
+                                                $exeArgs = $matches[2].Trim()
                                                 if (Test-Path $exePath) {
                                                     # Add silent flags if not present
-                                                    if ($args -notmatch '/[Ss]ilent|/[Qq]uiet|/[Ss]|/[Qq]') {
-                                                        $args += " /S /silent /quiet"
+                                                    if ($exeArgs -notmatch '/[Ss]ilent|/[Qq]uiet|/[Ss]|/[Qq]') {
+                                                        $exeArgs += " /S /silent /quiet"
                                                     }
-                                                    Start-Process -FilePath $exePath -ArgumentList $args -Wait -WindowStyle Hidden -ErrorAction Stop
+                                                    Start-Process -FilePath $exePath -ArgumentList $exeArgs -Wait -WindowStyle Hidden -ErrorAction Stop
                                                     Write-Log "EXE uninstalled via registry: $($props.DisplayName)" 'INFO'
                                                     $appRemoved = $true
                                                     $removalMethods += 'Registry-EXE'
@@ -1954,7 +1963,8 @@ function Remove-Bloatware {
                     $expandedPaths = if ($cleanupPath -like "*`**") {
                         Get-ChildItem (Split-Path $cleanupPath) -Directory -ErrorAction SilentlyContinue |
                         Where-Object { $_.Name -like (Split-Path $cleanupPath -Leaf) }
-                    } else {
+                    }
+                    else {
                         if (Test-Path $cleanupPath) { Get-Item $cleanupPath }
                     }
                     
