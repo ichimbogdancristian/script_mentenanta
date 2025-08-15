@@ -21,185 +21,226 @@ $global:ScriptTasks = @(
     # Environment: Windows 10/11, Administrator required, C:\ drive focus
     # Logic: Config-driven skip, PowerShell native cmdlets, duplicate protection
     # Dependencies: SystemRestoreConfig, Checkpoint-Computer, registry fallbacks
-    @{ Name = 'SystemRestoreProtection'; Function = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log 'System Restore Protection skipped by config' 'INFO' } }; Description = 'AI_DESC: Enable System Restore and create pre-maintenance checkpoint' },
-    
-    # Task: SystemInventory
-    # Purpose: Collects comprehensive system information for reporting and analysis.
-    # Environment: Windows 10/11, any user context, outputs to inventory.txt
-    # Logic: Get-ComputerInfo based, structured data collection, file output
-    # Dependencies: WMI/CIM cmdlets, file system access
-    @{ Name = 'SystemInventory'; Function = { Get-SystemInventory }; Description = 'AI_DESC: Collect and export comprehensive system inventory data' },
-    
-    # Task: RemoveBloatware
-    # Purpose: Multi-method removal of unwanted applications and components.
-    # Environment: Windows 10/11, Administrator required, AppX/DISM/Registry access
-    # Logic: Parallel processing, inventory-based filtering, action-only logging
-    # Dependencies: AppX cmdlets, DISM, Winget, Chocolatey, Windows Capabilities
-    @{ Name = 'RemoveBloatware'; Function = { if (-not $global:Config.SkipBloatwareRemoval) { Remove-Bloatware } else { Write-Log 'Bloatware removal skipped by config' 'INFO' } }; Description = 'AI_DESC: Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' },
-    
-    # Task: InstallEssentialApps
-    # Purpose: Parallel installation of curated essential applications.
-    # Environment: Windows 10/11, Administrator required, package manager access
-    # Logic: HashSet optimization, parallel processing, smart filtering, custom app support
-    # Dependencies: Winget, Chocolatey, inventory system, config.json integration
-    @{ Name = 'InstallEssentialApps'; Function = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log 'Essential apps installation skipped by config' 'INFO' } }; Description = 'AI_DESC: Install curated essential applications with parallel processing' },
-    
-    # Task: UpdateAllPackages
-    # Purpose: Ultra-parallel update of all installed packages.
-    # Environment: Windows 10/11, Administrator required, enhanced performance focus
-    # Logic: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
-    # Dependencies: Winget, Chocolatey, parallel processing capabilities
-    @{ Name = 'UpdateAllPackages'; Function = { Update-AllPackages }; Description = 'AI_DESC: Ultra-parallel package updates with performance optimization' },
-    
-    # Task: WindowsUpdateCheck
-    # Purpose: Check and install Windows Updates via PSWindowsUpdate module.
-    # Environment: Windows 10/11, Administrator required, PSWindowsUpdate module
-    # Logic: Config-driven skip, module auto-install, comprehensive error handling
-    # Dependencies: PSWindowsUpdate module, Windows Update service, PowerShell compatibility
-    @{ Name = 'WindowsUpdateCheck'; Function = {
-            if (-not $global:Config.SkipWindowsUpdates) {
-                Write-Log 'AI_ACTION: Initiating Windows Updates check and installation' 'INFO'
-                
-                $success = Install-WindowsUpdatesCompatible
-                if ($success) {
-                    Write-Log 'AI_RESULT: Windows Updates completed successfully' 'INFO'
-                }
-                else {
-                    Write-Log 'AI_RESULT: Windows Updates failed or no updates available' 'WARN'
-                }
+@{ Name = 'SystemRestoreProtection'; Function = { 
+    if (-not $global:Config.SkipSystemRestore) { 
+        Protect-SystemRestore
+        return $true
+    } else { 
+        Write-Log 'System Restore Protection skipped by config' 'INFO'
+        return $false
+    } 
+}; Description = 'AI_DESC: Enable System Restore and create pre-maintenance checkpoint' },
+
+# Task: SystemInventory
+# Purpose: Collects comprehensive system information for reporting and analysis.
+# Environment: Windows 10/11, any user context, outputs to inventory.txt
+# Logic: Get-ComputerInfo based, structured data collection, file output
+# Dependencies: WMI/CIM cmdlets, file system access
+@{ Name = 'SystemInventory'; Function = { 
+    Get-SystemInventory
+    return $true
+}; Description = 'AI_DESC: Collect and export comprehensive system inventory data' },
+
+# Task: RemoveBloatware
+# Purpose: Multi-method removal of unwanted applications and components.
+# Environment: Windows 10/11, Administrator required, AppX/DISM/Registry access
+# Logic: Parallel processing, inventory-based filtering, action-only logging
+# Dependencies: AppX cmdlets, DISM, Winget, Chocolatey, Windows Capabilities
+@{ Name = 'RemoveBloatware'; Function = { 
+    if (-not $global:Config.SkipBloatwareRemoval) { 
+        Remove-Bloatware
+        return $true
+    } else { 
+        Write-Log 'Bloatware removal skipped by config' 'INFO'
+        return $false
+    } 
+}; Description = 'AI_DESC: Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' },
+
+# Task: InstallEssentialApps
+# Purpose: Parallel installation of curated essential applications.
+# Environment: Windows 10/11, Administrator required, package manager access
+# Logic: HashSet optimization, parallel processing, smart filtering, custom app support
+# Dependencies: Winget, Chocolatey, inventory system, config.json integration
+@{ Name = 'InstallEssentialApps'; Function = { 
+    if (-not $global:Config.SkipEssentialApps) { 
+        Install-EssentialApps
+        return $true
+    } else { 
+        Write-Log 'Essential apps installation skipped by config' 'INFO'
+        return $false
+    } 
+}; Description = 'AI_DESC: Install curated essential applications with parallel processing' },
+
+# Task: UpdateAllPackages
+# Purpose: Ultra-parallel update of all installed packages.
+# Environment: Windows 10/11, Administrator required, enhanced performance focus
+# Logic: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
+# Dependencies: Winget, Chocolatey, parallel processing capabilities
+@{ Name = 'UpdateAllPackages'; Function = { 
+    Update-AllPackages
+    return $true
+}; Description = 'AI_DESC: Ultra-parallel package updates with performance optimization' },
+
+# Task: WindowsUpdateCheck
+# Purpose: Check and install Windows Updates via PSWindowsUpdate module.
+# Environment: Windows 10/11, Administrator required, PSWindowsUpdate module
+# Logic: Config-driven skip, module auto-install, comprehensive error handling
+# Dependencies: PSWindowsUpdate module, Windows Update service, PowerShell compatibility
+@{ Name = 'WindowsUpdateCheck'; Function = {
+        if (-not $global:Config.SkipWindowsUpdates) {
+            Write-Log 'AI_ACTION: Initiating Windows Updates check and installation' 'INFO'
+            $success = Install-WindowsUpdatesCompatible
+            if ($success) {
+                Write-Log 'AI_RESULT: Windows Updates completed successfully' 'INFO'
+                return $true
             }
             else {
-                Write-Log 'AI_CONFIG: Windows Updates check skipped by configuration' 'INFO'
+                Write-Log 'AI_RESULT: Windows Updates failed or no updates available' 'WARN'
+                return $false
             }
-        }; Description = 'AI_DESC: Check and install Windows Updates with PSWindowsUpdate module' 
-    },
-    
-    # Task: DisableTelemetry
-    # Purpose: Disable Windows telemetry and privacy-invasive features.
-    # Environment: Windows 10/11, Administrator required, registry/service modification
-    # Logic: Parallel browser detection, batch registry operations, service management
-    # Dependencies: Registry access, service control, browser configuration files
-    @{ Name = 'DisableTelemetry'; Function = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log 'Telemetry disable skipped by config' 'INFO' } }; Description = 'AI_DESC: Disable telemetry, privacy features, and configure browser privacy' },
-    
-    # Task: CleanTempAndDisk
-    # Purpose: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup).
-    # Environment: Windows 10/11, Administrator preferred, disk cleanup utilities
-    # Logic: Multi-folder temp cleanup, parallel deletion, cleanmgr.exe, Storage Sense, DISM, Delivery Optimization, action-only logging
-    # Dependencies: File system access, cleanmgr.exe, temp folder permissions, DISM, Storage Sense
-        @{ Name = 'CleanTempAndDisk'; Function = {
-                Write-Log '[AI_START] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
-                $cleanupStart = Get-Date
-                $deletedFiles = 0
-                $deletedFolders = 0
-                $errorCount = 0
-                $cleanupTargets = @(
-                    $env:TEMP,
-                    "$env:SystemRoot\Temp",
-                    "$env:LOCALAPPDATA\Temp",
-                    "$env:USERPROFILE\AppData\Local\Temp",
-                    "$env:USERPROFILE\AppData\Roaming\Temp",
-                    "$env:USERPROFILE\AppData\Local\Microsoft\Windows\INetCache",
-                    "$env:USERPROFILE\AppData\Local\Microsoft\Windows\WebCache",
-                    "$env:USERPROFILE\AppData\Local\Google\Chrome\User Data\Default\Cache",
-                    "$env:USERPROFILE\AppData\Local\Mozilla\Firefox\Profiles",
-                    "$env:USERPROFILE\AppData\Local\Microsoft\Edge\User Data\Default\Cache",
-                    "$env:SystemRoot\SoftwareDistribution\Download",
-                    "$env:SystemRoot\SoftwareDistribution\DataStore",
-                    "$env:SystemRoot\Logs",
-                    "$env:SystemRoot\Prefetch",
-                    "$env:SystemRoot\WinSxS\Temp",
-                    "$env:SystemRoot\Installer\$PatchCache$",
-                    "$env:SystemRoot\System32\LogFiles",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Temp",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Windows\INetCache",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Windows\WebCache",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Google\Chrome\User Data\Default\Cache",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Mozilla\Firefox\Profiles",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Edge\User Data\Default\Cache",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalCache",
-                    "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.CloudExperienceHost_cw5n1h2txyewy\LocalCache"
-                )
-                $cleanupTargets = $cleanupTargets | Sort-Object -Unique
-                $allItems = @()
-                foreach ($folder in $cleanupTargets) {
-                    if (Test-Path $folder) {
-                        try {
-                            $items = Get-ChildItem -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
-                            $allItems += $items
-                        } catch {
-                            Write-Log "AI_ERROR: Failed to enumerate $folder: $_" 'WARN'
-                            $errorCount++
-                        }
-                    }
-                }
-                if ($allItems.Count -gt 0) {
-                    Write-Log "[AI_CLEANUP] Deleting $($allItems.Count) files/folders in parallel..." 'INFO'
-                    $allItems | ForEach-Object -Parallel {
-                        try {
-                            if ($_.PSIsContainer) {
-                                Remove-Item $_.FullName -Force -Recurse -ErrorAction Stop
-                                [System.Threading.Interlocked]::Increment([ref]$using:deletedFolders)
-                            } else {
-                                Remove-Item $_.FullName -Force -ErrorAction Stop
-                                [System.Threading.Interlocked]::Increment([ref]$using:deletedFiles)
-                            }
-                        } catch {
-                            [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                            Write-Log "AI_ERROR: Failed to delete $($_.FullName): $_" 'WARN'
-                        }
-                    } -ThrottleLimit 8
-                }
-                Write-Log "[AI_RESULT] Deleted $deletedFiles files and $deletedFolders folders from all cleanup targets" 'INFO'
-                # Run Disk Cleanup (cleanmgr)
-                try {
-                    $cleanmgrArgs = '/AUTOCLEAN'
-                    $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -Wait -PassThru
-                    if ($proc.ExitCode -eq 0) {
-                        Write-Log '[AI_SUCCESS] Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN)' 'INFO'
-                    } else {
-                        Write-Log "AI_ERROR: Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
-                    }
-                } catch {
-                    Write-Log "AI_ERROR: Disk cleanup operation failed: $_" 'WARN'
-                }
-                # Run Storage Sense (if available)
-                if (Get-Command Start-StorageSense -ErrorAction SilentlyContinue) {
-                    try {
-                        Start-StorageSense -ErrorAction Stop
-                        Write-Log '[AI_SUCCESS] Storage Sense cleanup completed' 'INFO'
-                    } catch {
-                        Write-Log "AI_ERROR: Storage Sense cleanup failed: $_" 'WARN'
-                    }
-                }
-                # Run WinSxS component cleanup
-                try {
-                    $dismProc = Start-Process -FilePath 'dism.exe' -ArgumentList '/Online','/Cleanup-Image','/StartComponentCleanup','/Quiet' -WindowStyle Hidden -Wait -PassThru
-                    if ($dismProc.ExitCode -eq 0) {
-                        Write-Log '[AI_SUCCESS] WinSxS component cleanup completed' 'INFO'
-                    } else {
-                        Write-Log "AI_ERROR: WinSxS cleanup exited with code $($dismProc.ExitCode)" 'WARN'
-                    }
-                } catch {
-                    Write-Log "AI_ERROR: WinSxS cleanup failed: $_" 'WARN'
-                }
-                # Run Delivery Optimization cache cleanup
-                try {
-                    $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
-                    if ($doProc.ExitCode -eq 0) {
-                        Write-Log '[AI_SUCCESS] Delivery Optimization cache cleanup completed' 'INFO'
-                    } else {
-                        Write-Log "AI_ERROR: Delivery Optimization cleanup exited with code $($doProc.ExitCode)" 'WARN'
-                    }
-                } catch {
-                    Write-Log "AI_ERROR: Delivery Optimization cleanup failed: $_" 'WARN'
-                }
-                $cleanupEnd = Get-Date
-                $duration = ($cleanupEnd - $cleanupStart).TotalSeconds
-                Write-Log "[AI_PERFORMANCE] Full system cleanup completed in $([math]::Round($duration,2)) seconds" 'INFO'
-                Write-Log '[AI_END] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
-            }; Description = 'AI_DESC: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup)' 
         }
+        else {
+            Write-Log 'AI_CONFIG: Windows Updates check skipped by configuration' 'INFO'
+            return $false
+        }
+    }; Description = 'AI_DESC: Check and install Windows Updates with PSWindowsUpdate module' 
+},
+
+# Task: DisableTelemetry
+# Purpose: Disable Windows telemetry and privacy-invasive features.
+# Environment: Windows 10/11, Administrator required, registry/service modification
+# Logic: Parallel browser detection, batch registry operations, service management
+# Dependencies: Registry access, service control, browser configuration files
+@{ Name = 'DisableTelemetry'; Function = { 
+    if (-not $global:Config.SkipTelemetryDisable) { 
+        Disable-Telemetry
+        return $true
+    } else { 
+        Write-Log 'Telemetry disable skipped by config' 'INFO'
+        return $false
+    } 
+}; Description = 'AI_DESC: Disable telemetry, privacy features, and configure browser privacy' },
+
+# Task: CleanTempAndDisk
+# Purpose: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup).
+# Environment: Windows 10/11, Administrator preferred, disk cleanup utilities
+# Logic: Multi-folder temp cleanup, parallel deletion, cleanmgr.exe, Storage Sense, DISM, Delivery Optimization, action-only logging
+# Dependencies: File system access, cleanmgr.exe, temp folder permissions, DISM, Storage Sense
+@{ Name = 'CleanTempAndDisk'; Function = {
+        Write-Log '[AI_START] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
+        $cleanupStart = Get-Date
+        $deletedFiles = 0
+        $deletedFolders = 0
+        $errorCount = 0
+        $cleanupTargets = @(
+            $env:TEMP,
+            "$env:SystemRoot\Temp",
+            "$env:LOCALAPPDATA\Temp",
+            "$env:USERPROFILE\AppData\Local\Temp",
+            "$env:USERPROFILE\AppData\Roaming\Temp",
+            "$env:USERPROFILE\AppData\Local\Microsoft\Windows\INetCache",
+            "$env:USERPROFILE\AppData\Local\Microsoft\Windows\WebCache",
+            "$env:USERPROFILE\AppData\Local\Google\Chrome\User Data\Default\Cache",
+            "$env:USERPROFILE\AppData\Local\Mozilla\Firefox\Profiles",
+            "$env:USERPROFILE\AppData\Local\Microsoft\Edge\User Data\Default\Cache",
+            "$env:SystemRoot\SoftwareDistribution\Download",
+            "$env:SystemRoot\SoftwareDistribution\DataStore",
+            "$env:SystemRoot\Logs",
+            "$env:SystemRoot\Prefetch",
+            "$env:SystemRoot\WinSxS\Temp",
+            "$env:SystemRoot\Installer\PatchCache",
+            "$env:SystemRoot\System32\LogFiles",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Temp",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Windows\INetCache",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Windows\WebCache",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Google\Chrome\User Data\Default\Cache",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Mozilla\Firefox\Profiles",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Edge\User Data\Default\Cache",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalCache",
+            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.CloudExperienceHost_cw5n1h2txyewy\LocalCache"
+        )
+        $cleanupTargets = $cleanupTargets | Sort-Object -Unique
+        $allItems = @()
+        foreach ($folder in $cleanupTargets) {
+            if (Test-Path $folder) {
+                try {
+                    $items = Get-ChildItem -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
+                    $allItems += $items
+                } catch {
+                    Write-Log "AI_ERROR: Failed to enumerate $folder`: $_" 'WARN'
+                    $errorCount++
+                }
+            }
+        }
+        if ($allItems.Count -gt 0) {
+            Write-Log "[AI_CLEANUP] Deleting $($allItems.Count) files/folders in parallel..." 'INFO'
+            $allItems | ForEach-Object -Parallel {
+                try {
+                    if ($_.PSIsContainer) {
+                        Remove-Item $_.FullName -Force -Recurse -ErrorAction Stop
+                        [System.Threading.Interlocked]::Increment([ref]$using:deletedFolders)
+                    } else {
+                        Remove-Item $_.FullName -Force -ErrorAction Stop
+                        [System.Threading.Interlocked]::Increment([ref]$using:deletedFiles)
+                    }
+                } catch {
+                    [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
+                    Write-Log "AI_ERROR: Failed to delete $($_.FullName): $_" 'WARN'
+                }
+            } -ThrottleLimit 8
+        }
+        Write-Log "[AI_RESULT] Deleted $deletedFiles files and $deletedFolders folders from all cleanup targets" 'INFO'
+        # Run Disk Cleanup (cleanmgr)
+        try {
+            $cleanmgrArgs = '/AUTOCLEAN'
+            $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -Wait -PassThru
+            if ($proc.ExitCode -eq 0) {
+                Write-Log '[AI_SUCCESS] Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN)' 'INFO'
+            } else {
+                Write-Log "AI_ERROR: Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
+            }
+        } catch {
+            Write-Log "AI_ERROR: Disk cleanup operation failed: $_" 'WARN'
+        }
+        # Run Storage Sense (if available)
+        if (Get-Command Start-StorageSense -ErrorAction SilentlyContinue) {
+            try {
+                Start-StorageSense -ErrorAction Stop
+                Write-Log '[AI_SUCCESS] Storage Sense cleanup completed' 'INFO'
+            } catch {
+                Write-Log "AI_ERROR: Storage Sense cleanup failed: $_" 'WARN'
+            }
+        }
+        # Run WinSxS component cleanup
+        try {
+            $dismProc = Start-Process -FilePath 'dism.exe' -ArgumentList '/Online','/Cleanup-Image','/StartComponentCleanup','/Quiet' -WindowStyle Hidden -Wait -PassThru
+            if ($dismProc.ExitCode -eq 0) {
+                Write-Log '[AI_SUCCESS] WinSxS component cleanup completed' 'INFO'
+            } else {
+                Write-Log "AI_ERROR: WinSxS cleanup exited with code $($dismProc.ExitCode)" 'WARN'
+            }
+        } catch {
+            Write-Log "AI_ERROR: WinSxS cleanup failed: $_" 'WARN'
+        }
+        # Run Delivery Optimization cache cleanup
+        try {
+            $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
+            if ($doProc.ExitCode -eq 0) {
+                Write-Log '[AI_SUCCESS] Delivery Optimization cache cleanup completed' 'INFO'
+            } else {
+                Write-Log "AI_ERROR: Delivery Optimization cleanup exited with code $($doProc.ExitCode)" 'WARN'
+            }
+        } catch {
+            Write-Log "AI_ERROR: Delivery Optimization cleanup failed: $_" 'WARN'
+        }
+        $cleanupEnd = Get-Date
+        $duration = ($cleanupEnd - $cleanupStart).TotalSeconds
+        Write-Log "[AI_PERFORMANCE] Full system cleanup completed in $([math]::Round($duration,2)) seconds" 'INFO'
+        Write-Log '[AI_END] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
+        return $true
+    }; Description = 'AI_DESC: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup)' 
+}
 )
 
 ### AI_CONFIG: Load configuration from config.json (if exists) - MUST BE EARLY
@@ -236,7 +277,6 @@ if (Test-Path $configPath) {
 }
 
 # AI_COORDINATOR: Main task execution orchestrator function
-# AI_PURPOSE: Executes all defined maintenance tasks with timing and result tracking
 # AI_LOGIC: Sequential task execution with comprehensive error handling and performance metrics
 function Use-AllScriptTasks {
     Write-Log '[AI_COORDINATION] Initiating all maintenance tasks execution sequence' 'INFO'
