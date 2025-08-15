@@ -1164,54 +1164,53 @@ function Install-EssentialApps {
     $inventory = $global:SystemInventory
     Write-Log "[EssentialApps] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
 
-    # Build comprehensive list of all installed app identifiers for matching
-    $installedIdentifiers = @()
-    
-    # Add AppX package names
-    $inventory.appx | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-    }
-    
-    # Add Winget app names and IDs
-    $inventory.winget | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-        if ($_.Id) { $installedIdentifiers += $_.Id }
-    }
-    
-    # Add Chocolatey app names
-    $inventory.choco | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-    }
-    
-    # Add registry app display names
-    $inventory.registry_uninstall | ForEach-Object {
-        if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName }
-    }
-    
-    # Remove duplicates and create lookup for faster matching
-    $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
-    Write-Log "[EssentialApps] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
+        # Build comprehensive list of all installed app identifiers for matching (normalized)
+        $installedIdentifiers = @()
+        # Add AppX package names
+        $inventory.appx | ForEach-Object {
+            if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
+        }
+        # Add Winget app names and IDs
+        $inventory.winget | ForEach-Object {
+            if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
+            if ($_.Id) { $installedIdentifiers += $_.Id.ToLower().Trim() }
+        }
+        # Add Chocolatey app names
+        $inventory.choco | ForEach-Object {
+            if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
+        }
+        # Add registry app display names
+        $inventory.registry_uninstall | ForEach-Object {
+            if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName.ToLower().Trim() }
+        }
+        # Remove duplicates and create lookup for faster matching
+        $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
+        Write-Log "[EssentialApps] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
 
-    # Find essential apps that are NOT installed (diff operation)
-    $appsToInstall = @()
-    foreach ($essentialApp in $global:EssentialApps) {
-        $found = $false
-        foreach ($installed in $installedIdentifiers) {
-            # Enhanced matching: check Name, Winget ID, Choco ID, and partial matches
-            if (
-                ($essentialApp.Name -and ($installed -like "*$($essentialApp.Name)*" -or $installed -eq $essentialApp.Name)) -or
-                ($essentialApp.Winget -and ($installed -eq $essentialApp.Winget -or $installed -like "*$($essentialApp.Winget)*")) -or
-                ($essentialApp.Choco -and ($installed -eq $essentialApp.Choco -or $installed -like "*$($essentialApp.Choco)*")) -or
-                ($essentialApp.Name -and $installed -like "*$($essentialApp.Name.Split(' ')[0])*")
-            ) {
-                $found = $true
-                break
+        # Find essential apps that are NOT installed (diff operation, normalized)
+        $appsToInstall = @()
+        foreach ($essentialApp in $global:EssentialApps) {
+            $found = $false
+            # Normalize all possible identifiers for the essential app
+            $essentialIdentifiers = @()
+            if ($essentialApp.Winget) { $essentialIdentifiers += $essentialApp.Winget.ToLower().Trim() }
+            if ($essentialApp.Choco) { $essentialIdentifiers += $essentialApp.Choco.ToLower().Trim() }
+            if ($essentialApp.Name) { $essentialIdentifiers += $essentialApp.Name.ToLower().Trim() }
+            $essentialIdentifiers = $essentialIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
+
+            foreach ($installed in $installedIdentifiers) {
+                foreach ($essId in $essentialIdentifiers) {
+                    if ($installed -eq $essId) {
+                        $found = $true
+                        break
+                    }
+                }
+                if ($found) { break }
+            }
+            if (-not $found) {
+                $appsToInstall += $essentialApp
             }
         }
-        if (-not $found) {
-            $appsToInstall += $essentialApp
-        }
-    }
 
     Write-Log "[EssentialApps] Diff analysis: $($appsToInstall.Count) essential apps need installation (out of $($global:EssentialApps.Count) total in list)" 'INFO'
 
@@ -1418,38 +1417,34 @@ function Remove-Bloatware {
     $inventory = $global:SystemInventory
     Write-Log "[Bloatware] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
     
-    # Build comprehensive list of all installed app identifiers
+    # Build comprehensive list of all installed app identifiers (normalized)
     $installedIdentifiers = @()
-    
     # Add AppX package names and IDs
     $inventory.appx | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-        if ($_.PackageFullName) { $installedIdentifiers += $_.PackageFullName }
+        if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
+        if ($_.PackageFullName) { $installedIdentifiers += $_.PackageFullName.ToLower().Trim() }
     }
-    
     # Add Winget app names and IDs
     $inventory.winget | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-        if ($_.Id) { $installedIdentifiers += $_.Id }
+        if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
+        if ($_.Id) { $installedIdentifiers += $_.Id.ToLower().Trim() }
     }
-    
     # Add Chocolatey app names
     $inventory.choco | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
+        if ($_.Name) { $installedIdentifiers += $_.Name.ToLower().Trim() }
     }
-    
     # Add registry app display names
     $inventory.registry_uninstall | ForEach-Object {
-        if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName }
+        if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName.ToLower().Trim() }
     }
-    
     # Remove duplicates and create lookup for faster matching
     $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
     Write-Log "[Bloatware] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
     
-    # Find bloatware that is actually installed (diff operation)
+    # Normalize bloatware list for matching
+    $normalizedBloatwareList = $global:BloatwareList | ForEach-Object { $_.ToLower().Trim() }
     $bloatwareToRemove = @()
-    foreach ($bloatApp in $global:BloatwareList) {
+    foreach ($bloatApp in $normalizedBloatwareList) {
         $found = $false
         foreach ($installed in $installedIdentifiers) {
             # Enhanced matching: exact, partial, and pattern-based
