@@ -445,19 +445,13 @@ IF !ERRORLEVEL! EQU 0 (
     ECHO [%TIME%] [INFO] PowerShell script launched successfully in new window.
     ECHO [%TIME%] [INFO] Maintenance operations are now running in the background.
     ECHO.
-    ECHO [%TIME%] [INFO] This launcher will close automatically in 120 seconds...
-    ECHO [%TIME%] [INFO] Press any key to close immediately, or wait for automatic closure.
-    
-    REM 120-second countdown with visual feedback
-    FOR /L %%i IN (120,-10,10) DO (
+    ECHO [%TIME%] [INFO] This launcher will close automatically in 10 seconds...
+    FOR /L %%i IN (10,-1,1) DO (
         ECHO [%TIME%] [INFO] Closing in %%i seconds...
-        timeout /t 10 /nobreak >nul
+        timeout /t 1 /nobreak >nul
     )
-    
-    ECHO [%TIME%] [INFO] Final countdown: 10 seconds...
-    timeout /t 10 /nobreak >nul
-    
-    ECHO [%TIME%] [INFO] Batch launcher completed successfully.
+    ECHO [%TIME%] [INFO] Batch launcher completed successfully. Window will now close.
+    EXIT
 ) ELSE (
     ECHO [%TIME%] [ERROR] Failed to launch PowerShell script.
     ECHO [%TIME%] [ERROR] Please check the PowerShell script path and permissions.

@@ -197,7 +197,8 @@ function Invoke-WindowsPowerShellCommand {
         if ($LASTEXITCODE -eq 0) {
             Write-Log "[PS5.1] Successfully executed: $Description" 'INFO'
             return $result
-        } else {
+        }
+        else {
             Write-Log "[PS5.1] Command failed with exit code $LASTEXITCODE`: $Description" 'WARN'
             return $null
         }
@@ -524,124 +525,216 @@ function Invoke-Task {
 
 ### [PRE-TASK 2] Extensive System Inventory (Initial)
 function Get-ExtensiveSystemInventory {
-    Write-Log "[START] Extensive System Inventory" 'INFO'
+    Write-Log "[START] Extensive System Inventory (JSON Format)" 'INFO'
     $inventoryFolder = $PSScriptRoot
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
 
+    # Build structured inventory object
+    $inventory = [ordered]@{
+        metadata           = [ordered]@{
+            generatedOn   = (Get-Date).ToString('o')
+            scriptVersion = '1.0.0'
+            hostname      = $env:COMPUTERNAME
+            user          = $env:USERNAME
+            powershell    = $PSVersionTable.PSVersion.ToString()
+        }
+        system             = @{}
+        appx               = @()
+        winget             = @()
+        choco              = @()
+        registry_uninstall = @()
+        services           = @()
+        scheduled_tasks    = @()
+        drivers            = @()
+        updates            = @()
+    }
+
     Write-Log "[Inventory] Collecting system info..." 'INFO'
     try {
-        Get-ComputerInfo | Out-File (Join-Path $inventoryFolder 'inventory_system.txt')
+        $systemInfo = Get-ComputerInfo
+        $inventory.system = $systemInfo
         Write-Log "[Inventory] System info collected." 'INFO'
     }
-    catch { Write-Log "[Inventory] System info failed: $_" 'WARN' }
+    catch { 
+        Write-Log "[Inventory] System info failed: $_" 'WARN'
+        $inventory.system = @{ error = $_.ToString() }
+    }
 
     Write-Log "[Inventory] Collecting installed Appx apps..." 'INFO'
     try {
-        # Use compatibility function for AppX operations
         $appxPackages = Get-AppxPackageCompatible -AllUsers
         if ($appxPackages -and $appxPackages.Count -gt 0) {
-            $appxPackages | Select-Object Name, PackageFullName | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
-            Write-Log "[Inventory] Appx apps collected." 'INFO'
+            $inventory.appx = @($appxPackages | Select-Object Name, PackageFullName, Publisher)
+            Write-Log "[Inventory] Collected $($inventory.appx.Count) Appx apps." 'INFO'
         }
         else {
             Write-Log "[Inventory] No Appx apps found or module not available." 'WARN'
-            "No Appx apps found or module not available" | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
+            $inventory.appx = @()
         }
     }
     catch { 
         Write-Log "[Inventory] Appx apps failed: $_" 'WARN'
-        "Appx collection failed: $_" | Out-File (Join-Path $inventoryFolder 'inventory_appx.txt')
+        $inventory.appx = @()
     }
 
-    Write-Log "[Inventory] Collecting installed winget apps (source: winget, timeout: 2min)..." 'INFO'
+    Write-Log "[Inventory] Collecting installed winget apps..." 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-        $wingetOutput = Join-Path $inventoryFolder 'inventory_winget.txt'
-        $wingetArgs = @('list', '--accept-source-agreements')
         try {
-            $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -WindowStyle Hidden -RedirectStandardOutput $wingetOutput -PassThru
-            $timeout = 120 # seconds
-            $interval = 30 # seconds
-            $elapsed = 0
-            while (!$proc.HasExited -and $elapsed -lt $timeout) {
-                Start-Sleep -Seconds $interval
-                $elapsed += $interval
-                if (!$proc.HasExited) {
-                    Write-Log "[Inventory] Winget list still running... ($elapsed sec elapsed)" 'INFO'
+            # Try JSON output first (modern winget versions)
+            $wingetJson = winget list --accept-source-agreements --output json 2>$null | Out-String
+            if ($wingetJson -and $wingetJson.Trim() -ne '') {
+                $wingetData = $wingetJson | ConvertFrom-Json
+                if ($wingetData.Sources) {
+                    $inventory.winget = @($wingetData.Sources | ForEach-Object { $_.Packages } | ForEach-Object {
+                            [PSCustomObject]@{
+                                Name    = $_.Name
+                                Id      = $_.Id
+                                Version = $_.InstalledVersion
+                                Source  = $_.Source
+                            }
+                        })
                 }
-            }
-            if (!$proc.HasExited) {
-                Write-Log "[Inventory] Winget list timed out after $timeout seconds. Attempting to stop process." 'WARN'
-                try { $proc | Stop-Process -Force } catch {}
-            }
-            if (Test-Path $wingetOutput -and (Get-Content $wingetOutput | Measure-Object -Line).Lines -gt 0) {
-                Write-Log "[Inventory] Winget apps collected." 'INFO'
+                Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON." 'INFO'
             }
             else {
-                Write-Log "[Inventory] Winget apps output is empty or failed." 'WARN'
+                # Fallback to text parsing
+                $wingetOutput = winget list --accept-source-agreements 2>$null
+                if ($wingetOutput) {
+                    $inventory.winget = @($wingetOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Name|^-+|^$' } | 
+                        ForEach-Object { 
+                            $parts = $_ -split '\s+', 3
+                            [PSCustomObject]@{
+                                Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
+                                Id      = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                                Version = if ($parts.Count -gt 2) { $parts[2] } else { $null }
+                                Source  = 'text-parsed'
+                            }
+                        })
+                    Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via text parsing." 'INFO'
+                }
             }
         }
         catch {
             Write-Log "[Inventory] Winget apps failed: $_" 'WARN'
+            $inventory.winget = @()
         }
+    }
+    else {
+        Write-Log "[Inventory] Winget not available." 'WARN'
+        $inventory.winget = @()
     }
 
     Write-Log "[Inventory] Collecting installed choco apps..." 'INFO'
     if (Get-Command choco -ErrorAction SilentlyContinue) {
         try {
-            choco list --local-only > (Join-Path $inventoryFolder 'inventory_choco.txt')
-            Write-Log "[Inventory] Choco apps collected." 'INFO'
+            $chocoOutput = choco list --local-only 2>$null
+            if ($chocoOutput) {
+                $inventory.choco = @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
+                    ForEach-Object { 
+                        $parts = $_ -split '\s+', 2
+                        [PSCustomObject]@{
+                            Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
+                            Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                        }
+                    })
+                Write-Log "[Inventory] Collected $($inventory.choco.Count) choco apps." 'INFO'
+            }
         }
-        catch { Write-Log "[Inventory] Choco apps failed: $_" 'WARN' }
+        catch { 
+            Write-Log "[Inventory] Choco apps failed: $_" 'WARN'
+            $inventory.choco = @()
+        }
+    }
+    else {
+        Write-Log "[Inventory] Chocolatey not available." 'WARN'
+        $inventory.choco = @()
     }
 
     Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO'
-    $regApps = @()
     $uninstallKeys = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
     )
     try {
-        foreach ($key in $uninstallKeys) {
-            $regApps += Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
-            }
-        }
-        $regApps | Sort-Object -Unique | Out-File (Join-Path $inventoryFolder 'inventory_registry.txt')
-        Write-Log "[Inventory] Registry uninstall keys collected." 'INFO'
+        $inventory.registry_uninstall = @(foreach ($key in $uninstallKeys) {
+                Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+                    $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                    if ($props.DisplayName) {
+                        [PSCustomObject]@{ 
+                            DisplayName     = $props.DisplayName
+                            UninstallString = $props.UninstallString
+                            Publisher       = $props.Publisher
+                            Version         = $props.DisplayVersion
+                        }
+                    }
+                }
+            })
+        Write-Log "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries." 'INFO'
     }
-    catch { Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN' }
+    catch { 
+        Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN'
+        $inventory.registry_uninstall = @()
+    }
 
     Write-Log "[Inventory] Collecting services..." 'INFO'
     try {
-        Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | Select-Object Name, Status, StartType | Out-File (Join-Path $inventoryFolder 'inventory_services.txt')
-        Write-Log "[Inventory] Services collected." 'INFO'
+        $inventory.services = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | 
+            Select-Object Name, Status, StartType)
+        Write-Log "[Inventory] Collected $($inventory.services.Count) services." 'INFO'
     }
-    catch { Write-Log "[Inventory] Services failed: $_" 'WARN' }
+    catch { 
+        Write-Log "[Inventory] Services failed: $_" 'WARN'
+        $inventory.services = @()
+    }
 
     Write-Log "[Inventory] Collecting scheduled tasks..." 'INFO'
     try {
-        Get-ScheduledTask | Select-Object TaskName, TaskPath, State | Out-File (Join-Path $inventoryFolder 'inventory_tasks.txt')
-        Write-Log "[Inventory] Scheduled tasks collected." 'INFO'
+        $inventory.scheduled_tasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | 
+            Select-Object TaskName, TaskPath, State)
+        Write-Log "[Inventory] Collected $($inventory.scheduled_tasks.Count) scheduled tasks." 'INFO'
     }
-    catch { Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN' }
+    catch { 
+        Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN'
+        $inventory.scheduled_tasks = @()
+    }
 
     Write-Log "[Inventory] Collecting drivers..." 'INFO'
     try {
-        Get-CimInstance Win32_PnPSignedDriver | Select-Object DeviceName, DriverVersion, Manufacturer | Out-File (Join-Path $inventoryFolder 'inventory_drivers.txt')
-        Write-Log "[Inventory] Drivers collected." 'INFO'
+        $inventory.drivers = @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | 
+            Select-Object DeviceName, DriverVersion, Manufacturer)
+        Write-Log "[Inventory] Collected $($inventory.drivers.Count) drivers." 'INFO'
     }
-    catch { Write-Log "[Inventory] Drivers failed: $_" 'WARN' }
+    catch { 
+        Write-Log "[Inventory] Drivers failed: $_" 'WARN'
+        $inventory.drivers = @()
+    }
 
     Write-Log "[Inventory] Collecting Windows updates..." 'INFO'
     try {
-        Get-HotFix | Select-Object Description, HotFixID, InstalledOn | Out-File (Join-Path $inventoryFolder 'inventory_updates.txt')
-        Write-Log "[Inventory] Windows updates collected." 'INFO'
+        $inventory.updates = @(Get-HotFix -ErrorAction SilentlyContinue | 
+            Select-Object Description, HotFixID, InstalledOn)
+        Write-Log "[Inventory] Collected $($inventory.updates.Count) Windows updates." 'INFO'
     }
-    catch { Write-Log "[Inventory] Windows updates failed: $_" 'WARN' }
+    catch { 
+        Write-Log "[Inventory] Windows updates failed: $_" 'WARN'
+        $inventory.updates = @()
+    }
 
-    Write-Log "Extensive system inventory files created in $inventoryFolder" 'INFO'
-    Write-Log "[END] Extensive System Inventory" 'INFO'
+    # Write structured inventory.json
+    $inventoryPath = Join-Path $inventoryFolder 'inventory.json'
+    try {
+        $inventory | ConvertTo-Json -Depth 6 | Out-File -FilePath $inventoryPath -Encoding UTF8
+        Write-Log "[Inventory] Structured inventory saved to inventory.json" 'INFO'
+        
+        # Store global reference for diff operations
+        $global:SystemInventory = $inventory
+    }
+    catch {
+        Write-Log "[Inventory] Failed to write inventory.json: $_" 'WARN'
+    }
+
+    Write-Log "[END] Extensive System Inventory (JSON Format)" 'INFO'
 }
 
 # [PRE-TASK 3] Run inventory before anything else
@@ -809,8 +902,8 @@ if ($global:Config.CustomBloatwareList -and $global:Config.CustomBloatwareList.C
     Write-Log "Added $($global:Config.CustomBloatwareList.Count) custom bloatware entries from config" 'INFO'
 }
 
-$bloatwareListPath = Join-Path $global:TempFolder 'Bloatware_list.txt'
-$global:BloatwareList | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $bloatwareListPath -Encoding UTF8
+$bloatwareListPath = Join-Path $global:TempFolder 'bloatware.json'
+$global:BloatwareList | ConvertTo-Json -Depth 3 | Out-File $bloatwareListPath -Encoding UTF8
 
 ### Essential Apps List
 $global:EssentialApps = @(
@@ -835,8 +928,8 @@ if ($global:Config.CustomEssentialApps -and $global:Config.CustomEssentialApps.C
     Write-Log "Added $($global:Config.CustomEssentialApps.Count) custom essential apps from config" 'INFO'
 }
 
-$essentialAppsListPath = Join-Path $global:TempFolder 'EssentialApps_list.txt'
-$global:EssentialApps | ForEach-Object { $_ | ConvertTo-Json -Compress } | Out-File $essentialAppsListPath -Encoding UTF8
+$essentialAppsListPath = Join-Path $global:TempFolder 'essential_apps.json'
+$global:EssentialApps | ConvertTo-Json -Depth 5 | Out-File $essentialAppsListPath -Encoding UTF8
 
 ### Load configuration (if exists)
 $configPath = Join-Path $PSScriptRoot "config.json"
@@ -1042,98 +1135,64 @@ else {
 
 
 
-### [TASK 2] Install Essential Apps (Dependencies handled by batch script)
+### [TASK 2] Install Essential Apps - Diff-Based Approach
 function Install-EssentialApps {
     # ===============================
     # Task: InstallEssentialApps
     # ===============================
-    # Purpose: Installs a curated list of essential applications using Winget and Chocolatey.
+    # Purpose: Installs essential applications using diff-based comparison with inventory.
     # Environment: Windows 10/11, must run as Administrator, supports config-driven custom app lists.
-    # Logic: Inventory-based filtering, skips already installed apps, logs every install attempt and result.
-    Write-Log "[START] Install Essential Apps" 'INFO'
+    # Logic: Compare essential apps list against inventory, only install what's missing.
+    Write-Log "[START] Install Essential Apps (Diff-Based Approach)" 'INFO'
 
-    # Gather installed applications from inventory data
-    Write-Log "[EssentialApps] Building comprehensive installed apps inventory..." 'INFO'
-    $installedApps = @()
+    # Use global inventory if available, otherwise build a quick one
+    if (-not $global:SystemInventory) {
+        Write-Log "[EssentialApps] No system inventory available, building quick inventory..." 'WARN'
+        Get-ExtensiveSystemInventory
+    }
+    
+    $inventory = $global:SystemInventory
+    Write-Log "[EssentialApps] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
 
-    # AppX packages
-    try {
-        $appxPackages = Get-AppxPackageCompatible -AllUsers
-        if ($appxPackages -and $appxPackages.Count -gt 0) {
-            $appxNames = $appxPackages | ForEach-Object { $_.Name } | Where-Object { $null -ne $_ }
-            $installedApps += $appxNames
-            Write-Log "[EssentialApps] Collected $($appxNames.Count) AppX packages from inventory" 'INFO'
-        }
+    # Build comprehensive list of all installed app identifiers for matching
+    $installedIdentifiers = @()
+    
+    # Add AppX package names
+    $inventory.appx | ForEach-Object {
+        if ($_.Name) { $installedIdentifiers += $_.Name }
     }
-    catch {
-        Write-Log "[EssentialApps] Failed to collect AppX inventory: $_" 'WARN'
+    
+    # Add Winget app names and IDs
+    $inventory.winget | ForEach-Object {
+        if ($_.Name) { $installedIdentifiers += $_.Name }
+        if ($_.Id) { $installedIdentifiers += $_.Id }
     }
+    
+    # Add Chocolatey app names
+    $inventory.choco | ForEach-Object {
+        if ($_.Name) { $installedIdentifiers += $_.Name }
+    }
+    
+    # Add registry app display names
+    $inventory.registry_uninstall | ForEach-Object {
+        if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName }
+    }
+    
+    # Remove duplicates and create lookup for faster matching
+    $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
+    Write-Log "[EssentialApps] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
 
-    # Winget packages
-    try {
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            $wingetOutput = winget list --accept-source-agreements 2>$null
-            if ($wingetOutput) {
-                $wingetApps = $wingetOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Name|^-+|^$' } |
-                ForEach-Object { ($_ -split '\s+')[0] }
-                $installedApps += $wingetApps
-                Write-Log "[EssentialApps] Collected $($wingetApps.Count) Winget packages from inventory" 'INFO'
-            }
-        }
-    }
-    catch {
-        Write-Log "[EssentialApps] Failed to collect Winget inventory: $_" 'WARN'
-    }
-
-    # Chocolatey packages
-    try {
-        if (Get-Command choco -ErrorAction SilentlyContinue) {
-            $chocoOutput = choco list --local-only 2>$null
-            if ($chocoOutput) {
-                $chocoApps = $chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } |
-                ForEach-Object { ($_ -split '\s+')[0] }
-                $installedApps += $chocoApps
-                Write-Log "[EssentialApps] Collected $($chocoApps.Count) Chocolatey packages from inventory" 'INFO'
-            }
-        }
-    }
-    catch {
-        Write-Log "[EssentialApps] Failed to collect Chocolatey inventory: $_" 'WARN'
-    }
-
-    # Registry (Programs and Features)
-    try {
-        $uninstallKeys = @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-        )
-        foreach ($key in $uninstallKeys) {
-            $regApps = Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
-            } | Where-Object { $null -ne $_ }
-            $installedApps += $regApps
-        }
-        Write-Log "[EssentialApps] Collected registry entries from inventory" 'INFO'
-    }
-    catch {
-        Write-Log "[EssentialApps] Failed to collect Registry inventory: $_" 'WARN'
-    }
-
-    # Remove duplicates
-    $installedApps = $installedApps | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
-    Write-Log "[EssentialApps] Total unique installed applications found: $($installedApps.Count)" 'INFO'
-
-    # Filter essential apps to only those NOT already installed
+    # Find essential apps that are NOT installed (diff operation)
     $appsToInstall = @()
     foreach ($essentialApp in $global:EssentialApps) {
         $found = $false
-        foreach ($installedApp in $installedApps) {
+        foreach ($installed in $installedIdentifiers) {
+            # Enhanced matching: check Name, Winget ID, Choco ID, and partial matches
             if (
-                ($essentialApp.Name -and $installedApp -like "*$($essentialApp.Name)*") -or
-                ($essentialApp.Winget -and ($installedApp -eq $essentialApp.Winget -or $installedApp -like "*$($essentialApp.Winget)*")) -or
-                ($essentialApp.Choco -and ($installedApp -eq $essentialApp.Choco -or $installedApp -like "*$($essentialApp.Choco)*")) -or
-                ($installedApp -like "*$($essentialApp.Name.Split(' ')[0])*")
+                ($essentialApp.Name -and ($installed -like "*$($essentialApp.Name)*" -or $installed -eq $essentialApp.Name)) -or
+                ($essentialApp.Winget -and ($installed -eq $essentialApp.Winget -or $installed -like "*$($essentialApp.Winget)*")) -or
+                ($essentialApp.Choco -and ($installed -eq $essentialApp.Choco -or $installed -like "*$($essentialApp.Choco)*")) -or
+                ($essentialApp.Name -and $installed -like "*$($essentialApp.Name.Split(' ')[0])*")
             ) {
                 $found = $true
                 break
@@ -1144,13 +1203,17 @@ function Install-EssentialApps {
         }
     }
 
-    Write-Log "[EssentialApps] Found $($appsToInstall.Count) essential apps to install (out of $($global:EssentialApps.Count) total in list)" 'INFO'
+    Write-Log "[EssentialApps] Diff analysis: $($appsToInstall.Count) essential apps need installation (out of $($global:EssentialApps.Count) total in list)" 'INFO'
 
     if ($appsToInstall.Count -eq 0) {
         Write-Log "[EssentialApps] All essential apps already installed. Skipping installation process." 'INFO'
         Write-Log "[END] Install Essential Apps" 'INFO'
         return
     }
+
+    # Log the apps that will be installed
+    Write-Log "[EssentialApps] Apps targeted for installation:" 'INFO'
+    $appsToInstall | ForEach-Object { Write-Log "  - $($_.Name)" 'VERBOSE' }
 
     $success = 0
     $fail = 0
@@ -1162,7 +1225,9 @@ function Install-EssentialApps {
         $installMethod = ""
         $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
         $chocoAvailable = Get-Command choco -ErrorAction SilentlyContinue
+        
         try {
+            # Try Winget first (preferred)
             if ($app.Winget -and $wingetAvailable) {
                 Write-Log "Installing $($app.Name) via winget..." 'INFO'
                 $wingetArgs = @(
@@ -1178,6 +1243,8 @@ function Install-EssentialApps {
                     Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
                 }
             }
+            
+            # Try Chocolatey as fallback
             if (-not $installSuccess -and $app.Choco -and $chocoAvailable) {
                 Write-Log "Installing $($app.Name) via choco..." 'INFO'
                 $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
@@ -1190,15 +1257,17 @@ function Install-EssentialApps {
                     Write-Log "$($app.Name) choco install failed with exit code $($chocoProc.ExitCode)" 'WARN'
                 }
             }
+            
+            # Log results
             if ($installSuccess) {
                 Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
                 $success++
                 $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
             }
             elseif (-not $wingetAvailable -and -not $chocoAvailable) {
-                Write-Log "Skipped installation of $($app.Name): No installer available (winget/choco missing)" 'WARN'
+                Write-Log "Skipped installation of $($app.Name): No package manager available (winget/choco missing)" 'WARN'
                 $skipped++
-                $detailedResults += "SKIPPED: $($app.Name) (no installer available)"
+                $detailedResults += "SKIPPED: $($app.Name) (no package manager available)"
             }
             else {
                 Write-Log "Failed to install $($app.Name) (no available installer succeeded)" 'WARN'
@@ -1209,31 +1278,54 @@ function Install-EssentialApps {
         catch {
             Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
             $fail++
-            $detailedResults += "FAIL: $($app.Name) (exception)"
+            $detailedResults += "FAIL: $($app.Name) (exception: $_)"
         }
     }
 
     # Office check and LibreOffice fallback
     $officeInstalled = $false
     try {
-        $officeKeys = @(
-            'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration',
-            'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\Microsoft\Office\15.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\Microsoft\Office\14.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\15.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\14.0\Common\InstallRoot'
-        )
-        foreach ($key in $officeKeys) {
-            if (Test-Path $key) {
+        # Check for Office in inventory first
+        $officeKeywords = @('Office', 'Word', 'Excel', 'PowerPoint', 'Outlook', 'Microsoft Office')
+        foreach ($keyword in $officeKeywords) {
+            $foundInRegistry = $inventory.registry_uninstall | Where-Object { $_.DisplayName -like "*$keyword*" }
+            $foundInWinget = $inventory.winget | Where-Object { $_.Name -like "*$keyword*" -or $_.Id -like "*$keyword*" }
+            $foundInAppx = $inventory.appx | Where-Object { $_.Name -like "*$keyword*" }
+            
+            if ($foundInRegistry -or $foundInWinget -or $foundInAppx) {
                 $officeInstalled = $true
+                Write-Log "Office detected in inventory: $keyword" 'INFO'
                 break
             }
         }
+        
+        # Fallback: check registry keys directly
+        if (-not $officeInstalled) {
+            $officeKeys = @(
+                'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration',
+                'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot',
+                'HKLM:\SOFTWARE\Microsoft\Office\15.0\Common\InstallRoot',
+                'HKLM:\SOFTWARE\Microsoft\Office\14.0\Common\InstallRoot',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\InstallRoot',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\15.0\Common\InstallRoot',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\14.0\Common\InstallRoot'
+            )
+            foreach ($key in $officeKeys) {
+                if (Test-Path $key) {
+                    $officeInstalled = $true
+                    Write-Log "Office detected via registry key: $key" 'INFO'
+                    break
+                }
+            }
+        }
+        
+        # Last resort: check Start Menu apps
         if (-not $officeInstalled) {
             $officeApps = Get-StartAppsCompatible | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
-            if ($officeApps) { $officeInstalled = $true }
+            if ($officeApps) { 
+                $officeInstalled = $true 
+                Write-Log "Office detected via Start Menu apps" 'INFO'
+            }
         }
     }
     catch {
@@ -1253,6 +1345,8 @@ function Install-EssentialApps {
                 if ($libreProc.ExitCode -eq 0) {
                     Write-Log "LibreOffice installed via winget." 'INFO'
                     $libreSuccess = $true
+                    $success++
+                    $detailedResults += "SUCCESS: LibreOffice via winget"
                 }
                 else {
                     Write-Log "LibreOffice winget install failed with exit code $($libreProc.ExitCode)" 'WARN'
@@ -1264,6 +1358,8 @@ function Install-EssentialApps {
                 if ($chocoLibreProc.ExitCode -eq 0) {
                     Write-Log "LibreOffice installed via choco." 'INFO'
                     $libreSuccess = $true
+                    $success++
+                    $detailedResults += "SUCCESS: LibreOffice via choco"
                 }
                 else {
                     Write-Log "LibreOffice choco install failed with exit code $($chocoLibreProc.ExitCode)" 'WARN'
@@ -1271,189 +1367,87 @@ function Install-EssentialApps {
             }
             if (-not $libreSuccess) {
                 Write-Log "No installer found or succeeded for LibreOffice." 'WARN'
+                $fail++
+                $detailedResults += "FAIL: LibreOffice (no installer succeeded)"
             }
         }
         catch {
             Write-Log "Failed to install LibreOffice: $_" 'WARN'
+            $fail++
+            $detailedResults += "FAIL: LibreOffice (exception: $_)"
         }
     }
     else {
         Write-Log "Microsoft Office detected. Skipping LibreOffice installation." 'INFO'
+        $detailedResults += "SKIPPED: LibreOffice (Office already installed)"
     }
 
-    Write-Log ("Install Essential Apps summary: Installed: {0}, Failed: {1}, Skipped: {2}" -f $success, $fail, $skipped) 'INFO'
+    Write-Log "Install Essential Apps summary: Installed: $success, Failed: $fail, Skipped: $skipped" 'INFO'
     foreach ($result in $detailedResults) {
         Write-Log $result 'INFO'
     }
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
-    
-# Check for Microsoft Office, install LibreOffice if not present
-$officeInstalled = $false
-try {
-    # Check for Office via registry (common for Office 2016/2019/2021/365)
-    $officeKeys = @(
-        'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration',
-        'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot',
-        'HKLM:\SOFTWARE\Microsoft\Office\15.0\Common\InstallRoot',
-        'HKLM:\SOFTWARE\Microsoft\Office\14.0\Common\InstallRoot',
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\InstallRoot',
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\15.0\Common\InstallRoot',
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\14.0\Common\InstallRoot'
-    )
-    foreach ($key in $officeKeys) {
-        if (Test-Path $key) {
-            $officeInstalled = $true
-            break
-        }
-    }
-    # Also check for Office apps in Start Menu
-    if (-not $officeInstalled) {
-        $officeApps = Get-StartAppsCompatible | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
-        if ($officeApps) { $officeInstalled = $true }
-    }
-}
-catch {
-    Write-Log "Error checking for Microsoft Office: $_" 'WARN'
-}
-if (-not $officeInstalled) {
-    Write-Log "Microsoft Office not detected. Installing LibreOffice as alternative..." 'INFO'
-    $libreSuccess = $false
-    try {
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            $libreArgs = @("install", "--id", "TheDocumentFoundation.LibreOffice", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-            $libreProc = Start-Process -FilePath "winget" -ArgumentList $libreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
-            if ($libreProc.ExitCode -eq 0) {
-                Write-Log "LibreOffice installed via winget." 'INFO'
-                $libreSuccess = $true
-            }
-            else {
-                Write-Log "LibreOffice winget install failed with exit code $($libreProc.ExitCode)" 'WARN'
-            }
-        }
-        if (-not $libreSuccess -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-            $chocoLibreArgs = @("install", "libreoffice-fresh", "-y", "--no-progress")
-            $chocoLibreProc = Start-Process -FilePath "choco" -ArgumentList $chocoLibreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
-            if ($chocoLibreProc.ExitCode -eq 0) {
-                Write-Log "LibreOffice installed via choco." 'INFO'
-                $libreSuccess = $true
-            }
-            else {
-                Write-Log "LibreOffice choco install failed with exit code $($chocoLibreProc.ExitCode)" 'WARN'
-            }
-        }
-        if (-not $libreSuccess) {
-            Write-Log "No installer found or succeeded for LibreOffice." 'WARN'
-        }
-    }
-    catch {
-        Write-Log "Failed to install LibreOffice: $_" 'WARN'
-    }
-}
-else {
-    Write-Log "Microsoft Office detected. Skipping LibreOffice installation." 'INFO'
-}
-Write-Log ("Install Essential Apps summary: Installed: {0}, Failed: {1}, Skipped: {2}" -f $success, $fail, $skipped) 'INFO'
-foreach ($result in $detailedResults) {
-    Write-Log $result 'INFO'
-}
-Write-Log "[END] Install Essential Apps" 'INFO'
 
-
-
-### [TASK 3] Enhanced Remove Bloatware - Multi-Method Approach
+### [TASK 3] Enhanced Remove Bloatware - Diff-Based Approach
 function Remove-Bloatware {
     # ===============================
     # Task: RemoveBloatware
     # ===============================
-    # Purpose: Removes unwanted apps using multiple methods (AppX, DISM, Winget, Choco, Registry, Capabilities).
+    # Purpose: Removes unwanted apps using diff-based comparison with inventory.
     # Environment: Windows 10/11, must run as Administrator, supports OEM, Microsoft, and third-party bloatware.
-    # Logic: Inventory-based filtering, robust error handling, logs every removal attempt and result.
-    Write-Log "[START] Enhanced Remove Bloatware (Multi-Method Approach)" 'INFO'
+    # Logic: Compare bloatware list against inventory, only attempt removal of actually installed apps.
+    Write-Log "[START] Enhanced Remove Bloatware (Diff-Based Approach)" 'INFO'
     
-    # First, gather all installed applications from inventory data
-    Write-Log "[Bloatware] Building comprehensive installed apps inventory..." 'INFO'
-    $installedApps = @()
-    
-    # Collect from AppX packages
-    try {
-        $appxPackages = Get-AppxPackageCompatible -AllUsers
-        if ($appxPackages -and $appxPackages.Count -gt 0) {
-            $appxNames = $appxPackages | ForEach-Object { $_.Name } | Where-Object { $null -ne $_ }
-            $installedApps += $appxNames
-            Write-Log "[Bloatware] Collected $($appxNames.Count) AppX packages from inventory" 'INFO'
-        }
-    }
-    catch {
-        Write-Log "[Bloatware] Failed to collect AppX inventory: $_" 'WARN'
+    # Use global inventory if available, otherwise build a quick one
+    if (-not $global:SystemInventory) {
+        Write-Log "[Bloatware] No system inventory available, building quick inventory..." 'WARN'
+        Get-ExtensiveSystemInventory
     }
     
-    # Collect from Winget
-    try {
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            $wingetOutput = winget list --accept-source-agreements 2>$null
-            if ($wingetOutput) {
-                $wingetApps = $wingetOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Name|^-+|^$' } | 
-                ForEach-Object { ($_ -split '\s+')[0] }
-                $installedApps += $wingetApps
-                Write-Log "[Bloatware] Collected $($wingetApps.Count) Winget packages from inventory" 'INFO'
-            }
-        }
-    }
-    catch {
-        Write-Log "[Bloatware] Failed to collect Winget inventory: $_" 'WARN'
+    $inventory = $global:SystemInventory
+    Write-Log "[Bloatware] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
+    
+    # Build comprehensive list of all installed app identifiers
+    $installedIdentifiers = @()
+    
+    # Add AppX package names and IDs
+    $inventory.appx | ForEach-Object {
+        if ($_.Name) { $installedIdentifiers += $_.Name }
+        if ($_.PackageFullName) { $installedIdentifiers += $_.PackageFullName }
     }
     
-    # Collect from Chocolatey
-    try {
-        if (Get-Command choco -ErrorAction SilentlyContinue) {
-            $chocoOutput = choco list --local-only 2>$null
-            if ($chocoOutput) {
-                $chocoApps = $chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
-                ForEach-Object { ($_ -split '\s+')[0] }
-                $installedApps += $chocoApps
-                Write-Log "[Bloatware] Collected $($chocoApps.Count) Chocolatey packages from inventory" 'INFO'
-            }
-        }
-    }
-    catch {
-        Write-Log "[Bloatware] Failed to collect Chocolatey inventory: $_" 'WARN'
+    # Add Winget app names and IDs
+    $inventory.winget | ForEach-Object {
+        if ($_.Name) { $installedIdentifiers += $_.Name }
+        if ($_.Id) { $installedIdentifiers += $_.Id }
     }
     
-    # Collect from Registry (Programs and Features)
-    try {
-        $regApps = @()
-        $uninstallKeys = @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-        )
-        foreach ($key in $uninstallKeys) {
-            $regApps += Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName
-            } | Where-Object { $null -ne $_ }
-        }
-        $installedApps += $regApps
-        Write-Log "[Bloatware] Collected $($regApps.Count) registry entries from inventory" 'INFO'
-    }
-    catch {
-        Write-Log "[Bloatware] Failed to collect Registry inventory: $_" 'WARN'
+    # Add Chocolatey app names
+    $inventory.choco | ForEach-Object {
+        if ($_.Name) { $installedIdentifiers += $_.Name }
     }
     
-    # Remove duplicates and create a comprehensive list
-    $installedApps = $installedApps | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
-    Write-Log "[Bloatware] Total unique installed applications found: $($installedApps.Count)" 'INFO'
+    # Add registry app display names
+    $inventory.registry_uninstall | ForEach-Object {
+        if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName }
+    }
     
-    # Now filter bloatware list to only include apps that are actually installed
+    # Remove duplicates and create lookup for faster matching
+    $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
+    Write-Log "[Bloatware] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
+    
+    # Find bloatware that is actually installed (diff operation)
     $bloatwareToRemove = @()
     foreach ($bloatApp in $global:BloatwareList) {
         $found = $false
-        foreach ($installedApp in $installedApps) {
-            # Check for exact match or partial match (case-insensitive)
-            if ($installedApp -eq $bloatApp -or 
-                $installedApp -like "*$bloatApp*" -or 
-                $bloatApp -like "*$installedApp*" -or
-                ($bloatApp.Contains('.') -and $installedApp -like "*$($bloatApp.Split('.')[1])*")) {
+        foreach ($installed in $installedIdentifiers) {
+            # Enhanced matching: exact, partial, and pattern-based
+            if ($installed -eq $bloatApp -or 
+                $installed -like "*$bloatApp*" -or 
+                $bloatApp -like "*$installed*" -or
+                ($bloatApp.Contains('.') -and $installed -like "*$($bloatApp.Split('.')[1])*") -or
+                ($bloatApp.Contains('.') -and $installed -like "*$($bloatApp.Split('.')[0])*")) {
                 $found = $true
                 break
             }
@@ -1463,7 +1457,7 @@ function Remove-Bloatware {
         }
     }
     
-    Write-Log "[Bloatware] Found $($bloatwareToRemove.Count) bloatware apps actually installed (out of $($global:BloatwareList.Count) total in list)" 'INFO'
+    Write-Log "[Bloatware] Diff analysis: $($bloatwareToRemove.Count) bloatware apps found installed (out of $($global:BloatwareList.Count) total in list)" 'INFO'
     
     if ($bloatwareToRemove.Count -eq 0) {
         Write-Log "[Bloatware] No bloatware found on system. Skipping removal process." 'INFO'
@@ -1471,39 +1465,31 @@ function Remove-Bloatware {
         return
     }
     
+    # Log the bloatware that will be removed
+    Write-Log "[Bloatware] Apps targeted for removal:" 'INFO'
+    $bloatwareToRemove | ForEach-Object { Write-Log "  - $_" 'VERBOSE' }
+    
     $removed = 0
     $failed = 0
     $totalApps = $bloatwareToRemove.Count
 
-    # Check if Appx module is available
+    # Check module availability
     $appxAvailable = $false
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # For PowerShell 7, check if Windows PowerShell can access Appx
         try {
             $testCommand = "Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue | Select-Object Name"
             $result = Invoke-WindowsPowerShellCommand -Command $testCommand -Description "Test Appx module"
             $appxAvailable = $null -ne $result
-            if ($appxAvailable) {
-                Write-Log "Appx module available via Windows PowerShell" 'INFO'
-            }
-            else {
-                Write-Log "Appx module not available on this platform" 'WARN'
-            }
         }
         catch {
             Write-Log "Failed to test Appx module: $_" 'WARN'
         }
     }
     else {
-        # Windows PowerShell 5.1
         try {
             if (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue) {
                 Import-Module Appx -ErrorAction Stop
                 $appxAvailable = $true
-                Write-Log "Appx module loaded successfully" 'INFO'
-            }
-            else {
-                Write-Log "Appx module not available on this platform" 'WARN'
             }
         }
         catch {
@@ -1511,13 +1497,9 @@ function Remove-Bloatware {
         }
     }
 
-    # Check DISM availability
-    $dismAvailable = $false
-    if (Get-Command dism -ErrorAction SilentlyContinue) {
-        $dismAvailable = $true
-        Write-Log "DISM command available" 'INFO'
-    }
-
+    $dismAvailable = $null -ne (Get-Command dism -ErrorAction SilentlyContinue)
+    
+    # Enhanced pattern matching for better app identification
     $enhancedPatterns = @{
         'Microsoft.3DBuilder'                    = @('3DBuilder', '*3DBuilder*')
         'Microsoft.BingWeather'                  = @('BingWeather', '*Weather*', '*MSN Weather*')
@@ -1543,6 +1525,8 @@ function Remove-Bloatware {
 
     foreach ($app in $bloatwareToRemove) {
         $appRemoved = $false
+        $removalMethods = @()
+        
         try {
             # AppX removal
             if ($appxAvailable) {
@@ -1556,6 +1540,7 @@ function Remove-Bloatware {
                                 if ($success) {
                                     Write-Log "Removed AppX package: $($pkg.Name) ($($pkg.PackageFullName))" 'INFO'
                                     $appRemoved = $true
+                                    $removalMethods += 'AppX'
                                 }
                             }
                             catch {}
@@ -1569,14 +1554,16 @@ function Remove-Bloatware {
                             if ($success) {
                                 Write-Log "Removed provisioned package: $($pkg.DisplayName) ($($pkg.PackageName))" 'INFO'
                                 $appRemoved = $true
+                                $removalMethods += 'DISM-Provisioned'
                             }
                         }
                         catch {}
                     }
                 }
             }
+            
             # DISM removal
-            if ($dismAvailable -and -not $appRemoved) {
+            if ($dismAvailable) {
                 $patterns = if ($enhancedPatterns.ContainsKey($app)) { $enhancedPatterns[$app] } else { @($app) }
                 foreach ($pattern in $patterns) {
                     $dismResult = dism /online /get-provisionedappxpackages | Select-String $pattern
@@ -1588,6 +1575,7 @@ function Remove-Bloatware {
                                     dism /online /remove-provisionedappxpackage /packagename:"$packageName" /NoRestart
                                     Write-Log "DISM removed provisioned package: $packageName" 'INFO'
                                     $appRemoved = $true
+                                    $removalMethods += 'DISM'
                                 }
                                 catch {}
                             }
@@ -1595,8 +1583,9 @@ function Remove-Bloatware {
                     }
                 }
             }
+            
             # Winget removal
-            if ((Get-Command winget -ErrorAction SilentlyContinue) -and -not $appRemoved) {
+            if ((Get-Command winget -ErrorAction SilentlyContinue)) {
                 $wingetIds = @($app)
                 if ($app.StartsWith('Microsoft.')) { $wingetIds += $app.Replace('Microsoft.', '') }
                 if ($enhancedPatterns.ContainsKey($app)) { $wingetIds += $enhancedPatterns[$app] }
@@ -1605,30 +1594,38 @@ function Remove-Bloatware {
                         $wingetList = winget list --id $wingetId --exact --accept-source-agreements 2>$null
                         if ($LASTEXITCODE -eq 0 -and $wingetList -match $wingetId) {
                             winget uninstall --id $wingetId --exact --silent --accept-source-agreements 2>$null
-                            Write-Log "Winget removed: $wingetId" 'INFO'
-                            $appRemoved = $true
-                            break
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-Log "Winget removed: $wingetId" 'INFO'
+                                $appRemoved = $true
+                                $removalMethods += 'Winget'
+                                break
+                            }
                         }
                     }
                     catch {}
                 }
             }
+            
             # Chocolatey removal
-            if ((Get-Command choco -ErrorAction SilentlyContinue) -and -not $appRemoved) {
+            if ((Get-Command choco -ErrorAction SilentlyContinue)) {
                 $chocoNames = @($app.ToLower(), $app.Replace('Microsoft.', '').ToLower())
                 foreach ($chocoName in $chocoNames) {
                     try {
                         $chocoList = choco list --local-only $chocoName 2>$null
                         if ($LASTEXITCODE -eq 0 -and $chocoList -match $chocoName) {
                             choco uninstall $chocoName -y --remove-dependencies 2>$null
-                            Write-Log "Chocolatey removed: $chocoName" 'INFO'
-                            $appRemoved = $true
-                            break
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-Log "Chocolatey removed: $chocoName" 'INFO'
+                                $appRemoved = $true
+                                $removalMethods += 'Chocolatey'
+                                break
+                            }
                         }
                     }
                     catch {}
                 }
             }
+            
             # Windows Capabilities removal
             try {
                 $capabilities = Get-WindowsCapability -Online -ErrorAction SilentlyContinue |
@@ -1639,29 +1636,34 @@ function Remove-Bloatware {
                             Remove-WindowsCapability -Online -Name $capability.Name -ErrorAction Stop
                             Write-Log "Removed Windows Capability: $($capability.Name)" 'INFO'
                             $appRemoved = $true
+                            $removalMethods += 'Capability'
                         }
                         catch {}
                     }
                 }
             }
             catch {}
-            # Update counters
+            
+            # Update counters and log results
             if ($appRemoved) {
                 $removed++
-                Write-Log "Successfully removed bloatware: $app" 'INFO'
+                $methodStr = ($removalMethods | Sort-Object -Unique) -join ', '
+                Write-Log "Successfully removed bloatware: $app via [$methodStr]" 'INFO'
             }
             else {
-                Write-Log "Bloatware not found or removal failed: $app" 'INFO'
+                Write-Log "Bloatware removal failed or not found: $app" 'WARN'
+                $failed++
             }
         }
         catch {
             Write-Log "Exception during removal of $app`: $_" 'ERROR'
             $failed++
         }
+        
         Start-Sleep -Milliseconds 100
     }
 
-    # Final cleanup: Remove empty bloatware-related registry keys
+    # Final cleanup: Disable app reinstallation
     $bloatwareRegKeys = @(
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
@@ -2091,16 +2093,18 @@ foreach ($key in $global:TaskResults.Keys) {
 Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
 foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
 
-### [POST-TASK 4] Enhanced Reporting Section
+### [POST-TASK 4] Enhanced Reporting Section (JSON + Text)
 
 # Save summary report in the same folder as script.bat (repo parent folder)
 $batPath = Join-Path $PSScriptRoot "script.bat"
 if (Test-Path $batPath) {
     $batDir = Split-Path $batPath -Parent
     $summaryPath = Join-Path $batDir "maintenance_report.txt"
+    $jsonSummaryPath = Join-Path $batDir "maintenance_report.json"
 }
 else {
     $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
+    $jsonSummaryPath = Join-Path $PSScriptRoot "maintenance_report.json"
 }
 
 # Gather system info for report
@@ -2110,34 +2114,78 @@ $osCaption = $osInfo.Caption
 $psVer = $PSVersionTable.PSVersion.ToString()
 $scriptVer = '1.0.0'
 
-$summaryLines = @()
-$summaryLines += "==== Maintenance Report ===="
-$summaryLines += "Date: $(Get-Date -Format 'dd-MM-yyyy HH:mm:ss')"
-$summaryLines += "User: $env:USERNAME"
-$summaryLines += "Computer: $env:COMPUTERNAME"
-$summaryLines += "Script Version: $scriptVer"
-$summaryLines += "OS: $osCaption ($osVersion)"
-$summaryLines += "PowerShell Version: $psVer"
-$summaryLines += "---"
-$summaryLines += "Total tasks: $totalCount | Success: $successCount | Failed: $failCount"
-$summaryLines += "---"
-$summaryLines += "Task Breakdown:"
-$summaryLines += $taskDetails
-$summaryLines += "---"
+# Build structured report object
+$reportData = [ordered]@{
+    metadata = [ordered]@{
+        generatedOn       = (Get-Date).ToString('o')
+        date              = Get-Date -Format 'dd-MM-yyyy HH:mm:ss'
+        user              = $env:USERNAME
+        computer          = $env:COMPUTERNAME
+        scriptVersion     = $scriptVer
+        os                = $osCaption
+        osVersion         = $osVersion
+        powershellVersion = $psVer
+    }
+    summary  = [ordered]@{
+        totalTasks      = $totalCount
+        successfulTasks = $successCount
+        failedTasks     = $failCount
+        successRate     = if ($totalCount -gt 0) { [math]::Round(($successCount / $totalCount) * 100, 2) } else { 0 }
+    }
+    tasks    = @()
+    files    = [ordered]@{
+        inventoryFiles = @()
+        listFiles      = @()
+        logFiles       = @()
+    }
+    actions  = @()
+}
 
-# Reference inventory files
-$inventoryFiles = @('inventory_system.txt', 'inventory_appx.txt', 'inventory_winget.txt', 'inventory_choco.txt', 'inventory_registry.txt', 'inventory_services.txt', 'inventory_tasks.txt', 'inventory_drivers.txt', 'inventory_updates.txt')
-$inventoryFolder = $PSScriptRoot
-$summaryLines += "Inventory files generated (see folder):"
+# Add task details
+foreach ($key in $global:TaskResults.Keys) {
+    $result = $global:TaskResults[$key]
+    $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
+    $taskObj = [ordered]@{
+        name        = $key
+        description = $desc
+        success     = $result.Success
+        duration    = [math]::Round($result.Duration, 2)
+        started     = $result.Started.ToString('o')
+        ended       = $result.Ended.ToString('o')
+    }
+    if ($result.ContainsKey('Error') -and $result.Error) {
+        $taskObj.error = $result.Error
+    }
+    $reportData.tasks += $taskObj
+}
+
+# Reference files created
+$inventoryFiles = @('inventory.json', 'bloatware.json', 'essential_apps.json')
+$legacyFiles = @('inventory.txt')  # Keep legacy reference
+$logFiles = @('maintenance.log')
+
 foreach ($file in $inventoryFiles) {
-    $path = Join-Path $inventoryFolder $file
+    $path = Join-Path $PSScriptRoot $file
     if (Test-Path $path) {
-        $summaryLines += "- $file"
+        $reportData.files.inventoryFiles += $file
     }
 }
-$summaryLines += "---"
 
-# Enhanced: Extract details from maintenance.log for installed/uninstalled/updated/removed/deleted actions
+foreach ($file in $legacyFiles) {
+    $path = Join-Path $PSScriptRoot $file
+    if (Test-Path $path) {
+        $reportData.files.inventoryFiles += $file
+    }
+}
+
+foreach ($file in $logFiles) {
+    $path = Join-Path $PSScriptRoot $file
+    if (Test-Path $path) {
+        $reportData.files.logFiles += $file
+    }
+}
+
+# Extract detailed actions from maintenance.log
 $logActions = @('Installed', 'Uninstalled', 'Updated', 'Removed', 'Deleted', 'Upgraded', 'Cleaned')
 $logPath = Join-Path $PSScriptRoot "maintenance.log"
 if (Test-Path $logPath) {
@@ -2146,18 +2194,58 @@ if (Test-Path $logPath) {
         $line = $_
         $logActions | Where-Object { $line -match $_ }
     }
-    if ($actionLines.Count -gt 0) {
-        $summaryLines += "Detailed actions performed during maintenance:"
-        $summaryLines += $actionLines
-        $summaryLines += "---"
-    }
-    else {
-        $summaryLines += "No detailed action logs found in maintenance.log."
-        $summaryLines += "---"
+    $reportData.actions = @($actionLines)
+}
+
+# Write structured JSON report
+try {
+    $reportData | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonSummaryPath -Encoding UTF8
+    Write-Log "Structured report saved to $jsonSummaryPath" 'INFO'
+}
+catch {
+    Write-Log "Failed to write JSON report: $_" 'WARN'
+}
+
+# Build human-readable text report
+$summaryLines = @()
+$summaryLines += "==== Maintenance Report ===="
+$summaryLines += "Date: $($reportData.metadata.date)"
+$summaryLines += "User: $($reportData.metadata.user)"
+$summaryLines += "Computer: $($reportData.metadata.computer)"
+$summaryLines += "Script Version: $($reportData.metadata.scriptVersion)"
+$summaryLines += "OS: $($reportData.metadata.os) ($($reportData.metadata.osVersion))"
+$summaryLines += "PowerShell Version: $($reportData.metadata.powershellVersion)"
+$summaryLines += "---"
+$summaryLines += "Total tasks: $($reportData.summary.totalTasks) | Success: $($reportData.summary.successfulTasks) | Failed: $($reportData.summary.failedTasks) | Success Rate: $($reportData.summary.successRate)%"
+$summaryLines += "---"
+$summaryLines += "Task Breakdown:"
+foreach ($task in $reportData.tasks) {
+    $status = if ($task.success) { 'SUCCESS' } else { 'FAIL' }
+    $summaryLines += "- $($task.name) $status | $($task.description) | Duration: $($task.duration)s"
+    if ($task.error) {
+        $summaryLines += "    Error: $($task.error)"
     }
 }
+$summaryLines += "---"
+
+$summaryLines += "Files generated:"
+if ($reportData.files.inventoryFiles.Count -gt 0) {
+    $summaryLines += "Inventory files:"
+    $reportData.files.inventoryFiles | ForEach-Object { $summaryLines += "- $_" }
+}
+if ($reportData.files.logFiles.Count -gt 0) {
+    $summaryLines += "Log files:"
+    $reportData.files.logFiles | ForEach-Object { $summaryLines += "- $_" }
+}
+$summaryLines += "---"
+
+if ($reportData.actions.Count -gt 0) {
+    $summaryLines += "Detailed actions performed during maintenance:"
+    $summaryLines += $reportData.actions
+    $summaryLines += "---"
+}
 else {
-    $summaryLines += "maintenance.log not found for detailed actions."
+    $summaryLines += "No detailed action logs found in maintenance.log."
     $summaryLines += "---"
 }
 
