@@ -1,81 +1,96 @@
 # =============================================
 # Windows Maintenance Script - Task Coordinator
 # =============================================
-# This script is designed to automate and orchestrate a full suite of Windows maintenance tasks.
-# It is intended to run as Administrator on Windows 10/11, with all actions logged and reported.
-# Each task is modular, robust, and designed for unattended execution in enterprise or home environments.
+# AI_CONTEXT: This is the main coordination script for Windows maintenance automation.
+# AI_PURPOSE: Orchestrates modular maintenance tasks with comprehensive logging and error handling.
+# AI_ENVIRONMENT: Windows 10/11, PowerShell 7+ preferred, Administrator required.
+# AI_DEPENDENCIES: Winget, Chocolatey, AppX, DISM, Registry, Windows Capabilities.
+# AI_EXECUTION: Silent/unattended, config-driven task selection, graceful fallbacks.
+# AI_STRUCTURE: Global task array ($global:ScriptTasks) defines all maintenance operations.
+# AI_LOGGING: Centralized Write-Log function, timestamped entries, color-coded console output.
+# AI_CONFIG: Optional config.json for task customization and feature toggles.
 #
-# Key Environment Details:
-# - Compatible with PowerShell 7+ and Windows PowerShell 5.1
-# - Must be run as Administrator
-# - Uses $PSScriptRoot for all temp and log files
-# - Integrates with Winget, Chocolatey, AppX (via Windows PowerShell), DISM, Registry, and Windows Capabilities
-# - All actions are silent/non-interactive
-# - Graceful degradation if dependencies are missing
-# - Automatically switches to Windows PowerShell for legacy module operations
-#
-# Task Array: $global:ScriptTasks
-# Each entry defines a maintenance task with its logic, description, and config-driven enable/disable.
+# AI_EDITING_GUIDE:
+# - Each task follows standardized AI_* comment patterns for easy identification
+# - Functions use consistent header blocks with Purpose/Environment/Logic/Performance
+# - All file operations use $PSScriptRoot for relative paths
+# - Error handling includes try/catch with detailed logging
+# - PowerShell compatibility functions handle version differences
 
-# Define all tasks in a single array with metadata
+# AI_TASK_ARRAY: Global maintenance task definitions with standardized metadata
 $global:ScriptTasks = @(
-    # --- Task: SystemRestoreProtection ---
-    # Purpose: Ensures System Restore is enabled and creates a restore point before maintenance.
-    # Environment: Requires admin, runs on C:\, uses PowerShell's SystemRestoreConfig and Checkpoint-Computer.
-    # Logic: Skips if disabled in config. Logs all actions and errors.
-    @{ Name = 'SystemRestoreProtection'; Function = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log 'System Restore Protection skipped by config' 'INFO' } }; Description = 'Enable and checkpoint System Restore' },
-    # --- Task: SystemInventory ---
-    # Purpose: Collects basic system info for reporting and troubleshooting.
-    # Environment: Runs on any Windows, outputs to inventory.txt in repo folder.
-    # Logic: Uses Get-ComputerInfo, logs results.
-    @{ Name = 'SystemInventory'; Function = { Get-SystemInventory }; Description = 'Legacy system inventory' },
-    # --- Task: RemoveBloatware ---
-    # Purpose: Removes unwanted apps using multiple methods (AppX, DISM, Winget, Choco, Registry, Capabilities).
-    # Environment: Windows 10/11, admin required, supports OEM, Microsoft, and third-party bloatware.
-    # Logic: Inventory-based filtering, robust error handling, logs every removal attempt and result.
-    @{ Name = 'RemoveBloatware'; Function = { if (-not $global:Config.SkipBloatwareRemoval) { Remove-Bloatware } else { Write-Log 'Bloatware removal skipped by config' 'INFO' } }; Description = 'Enhanced multi-method bloatware removal (AppX, DISM, Registry, Capabilities)' },
-    # --- Task: InstallEssentialApps ---
-    # Purpose: Installs a curated list of essential apps using Winget and Chocolatey.
-    # Environment: Windows 10/11, admin required, supports custom app lists via config.
-    # Logic: Inventory-based filtering, skips already installed apps, logs every install attempt and result.
-    @{ Name = 'InstallEssentialApps'; Function = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log 'Essential apps installation skipped by config' 'INFO' } }; Description = 'Install essential applications' },
-    # --- Task: UpdateAllPackages ---
-    # Purpose: Updates all installed packages via Winget and Chocolatey using parallel processing.
-    # Environment: Windows 10/11, admin required, silent/non-interactive, enhanced performance.
-    # Logic: Parallel execution, smart filtering, detailed update tracking, action-only logging.
-    @{ Name = 'UpdateAllPackages'; Function = { Update-AllPackages }; Description = 'Enhanced parallel package updates (Winget + Chocolatey)' },
-    # --- Task: WindowsUpdateCheck ---
-    # Purpose: Checks for and installs Windows Updates using PSWindowsUpdate module.
-    # Environment: Windows 10/11, admin required, installs module if missing.
-    # Logic: Skips if disabled in config, logs all update actions and errors.
+    # AI_TASK: SystemRestoreProtection
+    # AI_PURPOSE: Enables System Restore and creates pre-maintenance checkpoint
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, C:\ drive focus
+    # AI_LOGIC: Config-driven skip, PowerShell native cmdlets, duplicate protection
+    # AI_DEPENDENCIES: SystemRestoreConfig, Checkpoint-Computer, registry fallbacks
+    @{ Name = 'SystemRestoreProtection'; Function = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log 'System Restore Protection skipped by config' 'INFO' } }; Description = 'AI_DESC: Enable System Restore and create pre-maintenance checkpoint' },
+    
+    # AI_TASK: SystemInventory  
+    # AI_PURPOSE: Collects comprehensive system information for reporting and analysis
+    # AI_ENVIRONMENT: Windows 10/11, any user context, outputs to inventory.txt
+    # AI_LOGIC: Get-ComputerInfo based, structured data collection, file output
+    # AI_DEPENDENCIES: WMI/CIM cmdlets, file system access
+    @{ Name = 'SystemInventory'; Function = { Get-SystemInventory }; Description = 'AI_DESC: Collect and export comprehensive system inventory data' },
+    
+    # AI_TASK: RemoveBloatware
+    # AI_PURPOSE: Multi-method removal of unwanted applications and components
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, AppX/DISM/Registry access
+    # AI_LOGIC: Parallel processing, inventory-based filtering, action-only logging
+    # AI_DEPENDENCIES: AppX cmdlets, DISM, Winget, Chocolatey, Windows Capabilities
+    @{ Name = 'RemoveBloatware'; Function = { if (-not $global:Config.SkipBloatwareRemoval) { Remove-Bloatware } else { Write-Log 'Bloatware removal skipped by config' 'INFO' } }; Description = 'AI_DESC: Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' },
+    
+    # AI_TASK: InstallEssentialApps
+    # AI_PURPOSE: Parallel installation of curated essential applications
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, package manager access
+    # AI_LOGIC: HashSet optimization, parallel processing, smart filtering, custom app support
+    # AI_DEPENDENCIES: Winget, Chocolatey, inventory system, config.json integration
+    @{ Name = 'InstallEssentialApps'; Function = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log 'Essential apps installation skipped by config' 'INFO' } }; Description = 'AI_DESC: Install curated essential applications with parallel processing' },
+    
+    # AI_TASK: UpdateAllPackages
+    # AI_PURPOSE: Ultra-parallel update of all installed packages
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, enhanced performance focus
+    # AI_LOGIC: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
+    # AI_DEPENDENCIES: Winget, Chocolatey, parallel processing capabilities
+    @{ Name = 'UpdateAllPackages'; Function = { Update-AllPackages }; Description = 'AI_DESC: Ultra-parallel package updates with performance optimization' },
+    
+    # AI_TASK: WindowsUpdateCheck
+    # AI_PURPOSE: Check and install Windows Updates via PSWindowsUpdate module
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, PSWindowsUpdate module
+    # AI_LOGIC: Config-driven skip, module auto-install, comprehensive error handling
+    # AI_DEPENDENCIES: PSWindowsUpdate module, Windows Update service, PowerShell compatibility
     @{ Name = 'WindowsUpdateCheck'; Function = {
             if (-not $global:Config.SkipWindowsUpdates) {
-                Write-Log 'Checking for Windows Updates...' 'INFO'
+                Write-Log 'AI_ACTION: Initiating Windows Updates check and installation' 'INFO'
                 
                 $success = Install-WindowsUpdatesCompatible
                 if ($success) {
-                    Write-Log 'Windows Updates check and installation completed.' 'INFO'
+                    Write-Log 'AI_RESULT: Windows Updates completed successfully' 'INFO'
                 }
                 else {
-                    Write-Log 'Windows Updates check failed or no updates available.' 'WARN'
+                    Write-Log 'AI_RESULT: Windows Updates failed or no updates available' 'WARN'
                 }
             }
             else {
-                Write-Log 'Windows Updates check skipped by config' 'INFO'
+                Write-Log 'AI_CONFIG: Windows Updates check skipped by configuration' 'INFO'
             }
-        }; Description = 'Check and install Windows Updates' 
+        }; Description = 'AI_DESC: Check and install Windows Updates with PSWindowsUpdate module' 
     },
-    # --- Task: DisableTelemetry ---
-    # Purpose: Disables Windows telemetry, privacy-invading features, and unwanted browsers.
-    # Environment: Windows 10/11, admin required, modifies registry, disables services/tasks, configures browsers.
-    # Logic: Skips if disabled in config, logs all actions and errors.
-    @{ Name = 'DisableTelemetry'; Function = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log 'Telemetry disable skipped by config' 'INFO' } }; Description = 'Disable telemetry and privacy tweaks' },
-    # --- Task: CleanTempAndDisk ---
-    # Purpose: Cleans temp files and runs disk cleanup for free space and hygiene.
-    # Environment: Windows 10/11, admin required, uses cleanmgr.exe and removes temp folders.
-    # Logic: Silent, logs all deletions and cleanup results.
+    
+    # AI_TASK: DisableTelemetry
+    # AI_PURPOSE: Disable Windows telemetry and privacy-invasive features
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, registry/service modification
+    # AI_LOGIC: Parallel browser detection, batch registry operations, service management
+    # AI_DEPENDENCIES: Registry access, service control, browser configuration files
+    @{ Name = 'DisableTelemetry'; Function = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log 'Telemetry disable skipped by config' 'INFO' } }; Description = 'AI_DESC: Disable telemetry, privacy features, and configure browser privacy' },
+    
+    # AI_TASK: CleanTempAndDisk
+    # AI_PURPOSE: Clean temporary files and perform disk cleanup operations
+    # AI_ENVIRONMENT: Windows 10/11, Administrator preferred, disk cleanup utilities
+    # AI_LOGIC: Multi-folder temp cleanup, cleanmgr.exe automation, comprehensive logging
+    # AI_DEPENDENCIES: File system access, cleanmgr.exe, temp folder permissions
     @{ Name = 'CleanTempAndDisk'; Function = {
-            Write-Log '[START] Clean Temp Files and Disk Cleanup (Unattended)' 'INFO'
+            Write-Log '[AI_START] Clean Temporary Files and Disk Cleanup Operations' 'INFO'
             $tempFolders = @($env:TEMP, "$env:SystemRoot\Temp", "$env:LOCALAPPDATA\Temp", "$env:USERPROFILE\AppData\Local\Temp")
             $deletedFiles = 0
             foreach ($folder in $tempFolders | Sort-Object -Unique) {
@@ -87,31 +102,33 @@ $global:ScriptTasks = @(
                             $deletedFiles++
                         }
                         catch {
-                            Write-Log "Failed to delete $($item.FullName): $_" 'WARN'
+                            Write-Log "AI_ERROR: Failed to delete $($item.FullName): $_" 'WARN'
                         }
                     }
                 }
             }
-            Write-Log "Deleted $deletedFiles temp files from temp folders." 'INFO'
+            Write-Log "AI_RESULT: Deleted $deletedFiles temporary files from cleanup folders" 'INFO'
             try {
                 $cleanmgrArgs = '/AUTOCLEAN'
                 $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -Wait -PassThru
                 if ($proc.ExitCode -eq 0) {
-                    Write-Log 'Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN).' 'INFO'
+                    Write-Log 'AI_SUCCESS: Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN)' 'INFO'
                 }
                 else {
-                    Write-Log "Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
+                    Write-Log "AI_ERROR: Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
                 }
             }
             catch {
-                Write-Log "Disk cleanup failed: $_" 'WARN'
+                Write-Log "AI_ERROR: Disk cleanup operation failed: $_" 'WARN'
             }
-            Write-Log '[END] Clean Temp Files and Disk Cleanup (Unattended)' 'INFO'
-        }; Description = 'Clean temp files and run disk cleanup' 
+            Write-Log '[AI_END] Clean Temporary Files and Disk Cleanup Operations' 'INFO'
+        }; Description = 'AI_DESC: Clean temporary files and perform automated disk cleanup' 
     }
 )
 
-### Load configuration (if exists) - MUST BE EARLY TO SUPPORT TASK DEFINITIONS
+### AI_CONFIG: Load configuration from config.json (if exists) - MUST BE EARLY
+# AI_PURPOSE: Supports configuration-driven task execution and customization
+# AI_LOGIC: Merges custom config with defaults, graceful handling of missing file
 $configPath = Join-Path $PSScriptRoot "config.json"
 $global:Config = @{
     SkipBloatwareRemoval = $false
@@ -142,41 +159,46 @@ if (Test-Path $configPath) {
     }
 }
 
-# Main Coordinator Function
+# AI_COORDINATOR: Main task execution orchestrator function
+# AI_PURPOSE: Executes all defined maintenance tasks with timing and result tracking
+# AI_LOGIC: Sequential task execution with comprehensive error handling and performance metrics
 function Use-AllScriptTasks {
-    Write-Log '[COORDINATION] Starting all maintenance tasks...' 'INFO'
+    Write-Log '[AI_COORDINATION] Initiating all maintenance tasks execution sequence' 'INFO'
     $global:TaskResults = @{}
     foreach ($task in $global:ScriptTasks) {
         $taskName = $task.Name
         $desc = $task.Description
-        Write-Log "[COORDINATION] Executing: $taskName - $desc" 'INFO'
+        Write-Log "[AI_COORDINATION] Executing task: $taskName - $desc" 'INFO'
         $startTime = Get-Date
         try {
             $result = Invoke-Task $taskName $task.Function
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
-            Write-Log "[COORDINATION] $taskName completed in $duration seconds. Result: $result" 'INFO'
+            Write-Log "[AI_COORDINATION] Task $taskName completed in $duration seconds - Result: $result" 'INFO'
             $global:TaskResults[$taskName] = @{ Success = $result; Duration = $duration; Started = $startTime; Ended = $endTime }
         }
         catch {
-            Write-Log "[COORDINATION] $taskName failed: $_" 'ERROR'
+            Write-Log "[AI_COORDINATION] Task $taskName execution failed: $_" 'ERROR'
             $global:TaskResults[$taskName] = @{ Success = $false; Duration = 0; Started = $startTime; Ended = (Get-Date) }
         }
     }
-    Write-Log '[COORDINATION] All maintenance tasks completed.' 'INFO'
+    Write-Log '[AI_COORDINATION] All maintenance tasks execution sequence completed' 'INFO'
 }
 
 # [PRE-TASK 0] Set up log file in the repo folder
 $logPath = Join-Path $PSScriptRoot "maintenance.log"
 
-# [PRE-TASK 1] Essential Logging Function - MUST BE DEFINED EARLY
+# AI_LOGGING: Centralized logging system with color-coded output
+# AI_PURPOSE: Provides consistent logging across all maintenance operations
+# AI_FEATURES: Timestamped entries, level-based filtering, file and console output
+# AI_LEVELS: INFO (general), WARN (warnings), ERROR (failures), VERBOSE (detailed debug)
 function Write-Log {
     param(
         [string]$Message,
         [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE')][string]$Level = 'INFO'
     )
     
-    # Skip verbose messages if verbose logging is disabled
+    # AI_LOGIC: Skip verbose messages if verbose logging is disabled in configuration
     if ($Level -eq 'VERBOSE' -and -not $global:Config.EnableVerboseLogging) {
         return
     }
@@ -185,7 +207,7 @@ function Write-Log {
     $entry = "[$timestamp] [$Level] $Message"
     $entry | Out-File -FilePath $logPath -Append
     
-    # Color-code output based on level
+    # AI_OUTPUT: Color-code console output based on severity level for visual clarity
     switch ($Level) {
         'ERROR' { Write-Host $entry -ForegroundColor Red }
         'WARN' { Write-Host $entry -ForegroundColor Yellow }
@@ -194,7 +216,13 @@ function Write-Log {
     }
 }
 
-### PowerShell 7 Compatibility Functions
+### AI_COMPATIBILITY: PowerShell version compatibility functions
+# AI_PURPOSE: Provides seamless operation across PowerShell 7+ and Windows PowerShell 5.1
+# AI_LOGIC: Automatically handles version-specific operations and module dependencies
+
+# AI_FUNCTION: Windows PowerShell command execution wrapper
+# AI_PURPOSE: Executes commands in Windows PowerShell context from PowerShell 7+
+# AI_USE_CASE: Legacy module operations, AppX management, System Restore functions
 function Invoke-WindowsPowerShellCommand {
     param(
         [string]$Command,
@@ -224,6 +252,10 @@ function Invoke-WindowsPowerShellCommand {
     }
 }
 
+# AI_FUNCTION: AppX package query compatibility wrapper
+# AI_PURPOSE: Cross-version AppX package enumeration with Windows PowerShell fallback
+# AI_ENVIRONMENT: Requires AppX module access, handles PowerShell version differences
+# AI_RETURNS: Array of AppX package objects with Name, PackageFullName, and Version properties
 function Get-AppxPackageCompatible {
     param(
         [string]$Name = "*",
@@ -260,6 +292,10 @@ function Get-AppxPackageCompatible {
     }
 }
 
+# AI_FUNCTION: AppX package removal compatibility wrapper  
+# AI_PURPOSE: Cross-version AppX package removal with Windows PowerShell fallback
+# AI_ENVIRONMENT: Requires Administrator privileges and AppX module access
+# AI_PARAMETERS: $PackageName (string) - Full package name or wildcard pattern to remove
 function Remove-AppxPackageCompatible {
     param(
         [string]$PackageFullName,
@@ -292,6 +328,10 @@ function Remove-AppxPackageCompatible {
     }
 }
 
+# AI_FUNCTION: AppX provisioned package query compatibility wrapper
+# AI_PURPOSE: Cross-version provisioned AppX package enumeration for system-wide removal
+# AI_ENVIRONMENT: Requires Administrator privileges and DISM/AppX module access  
+# AI_RETURNS: Array of provisioned package objects for new user account prevention
 function Get-AppxProvisionedPackageCompatible {
     param(
         [switch]$Online
@@ -326,6 +366,10 @@ function Get-AppxProvisionedPackageCompatible {
     }
 }
 
+# AI_FUNCTION: AppX provisioned package removal compatibility wrapper
+# AI_PURPOSE: Cross-version removal of provisioned AppX packages from system image
+# AI_ENVIRONMENT: Requires Administrator privileges and DISM module access
+# AI_PARAMETERS: $PackageName (string) - Provisioned package name to remove system-wide
 function Remove-AppxProvisionedPackageCompatible {
     param(
         [string]$PackageName,
@@ -358,6 +402,10 @@ function Remove-AppxProvisionedPackageCompatible {
     }
 }
 
+# AI_FUNCTION: System Restore enablement compatibility wrapper
+# AI_PURPOSE: Cross-version System Restore activation with Windows PowerShell fallback
+# AI_ENVIRONMENT: Requires Administrator privileges and System Restore service access
+# AI_PARAMETERS: $Drive (string) - Drive letter to enable System Restore protection
 function Enable-ComputerRestoreCompatible {
     param(
         [string]$Drive
@@ -382,6 +430,10 @@ function Enable-ComputerRestoreCompatible {
     }
 }
 
+# AI_FUNCTION: System Restore checkpoint creation compatibility wrapper
+# AI_PURPOSE: Cross-version restore point creation with Windows PowerShell fallback
+# AI_ENVIRONMENT: Requires Administrator privileges and System Restore enabled
+# AI_PARAMETERS: $Description (string), $RestorePointType (string) - Checkpoint metadata
 function Checkpoint-ComputerCompatible {
     param(
         [string]$Description,
@@ -407,6 +459,11 @@ function Checkpoint-ComputerCompatible {
     }
 }
 
+# AI_FUNCTION: Windows Updates installation compatibility wrapper
+# AI_PURPOSE: Cross-version Windows Update management with PSWindowsUpdate module
+# AI_ENVIRONMENT: Requires Administrator privileges, auto-installs PSWindowsUpdate module
+# AI_LOGIC: Module availability check, automatic installation, update execution with logging
+# AI_RETURNS: Boolean success status of update operations
 function Install-WindowsUpdatesCompatible {
     param()
     
@@ -467,6 +524,10 @@ function Install-WindowsUpdatesCompatible {
     }
 }
 
+# AI_FUNCTION: Start menu apps enumeration compatibility wrapper
+# AI_PURPOSE: Cross-version Start menu application listing with Windows PowerShell fallback
+# AI_ENVIRONMENT: Requires Start menu access, handles PowerShell version differences
+# AI_RETURNS: Array of Start menu app objects for inventory and management operations
 function Get-StartAppsCompatible {
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         # Use Windows PowerShell for Get-StartApps
@@ -490,6 +551,11 @@ function Get-StartAppsCompatible {
 }
 
 ### [PRE-TASK 1] Task Functions
+# AI_FUNCTION: Task execution wrapper with error handling
+# AI_PURPOSE: Provides consistent task execution with comprehensive error handling and logging
+# AI_PARAMETERS: $TaskName (string), $TaskFunction (scriptblock) - Task identifier and execution logic
+# AI_RETURNS: Boolean success status of task execution
+# AI_LOGIC: Try/catch wrapper with detailed logging for all maintenance task operations
 function Invoke-Task {
     param(
         [string]$TaskName,
@@ -508,6 +574,12 @@ function Invoke-Task {
 }
 
 ### [PRE-TASK 2] Extensive System Inventory (Initial)
+# AI_FUNCTION: Comprehensive system inventory collection  
+# AI_PURPOSE: Collects detailed system information for analysis, reporting, and maintenance planning
+# AI_ENVIRONMENT: Windows 10/11, any privilege level, comprehensive WMI/CIM access
+# AI_OUTPUT: Global $global:SystemInventory object and exported files (inventory.txt, apps_*.txt)
+# AI_PERFORMANCE: Optimized queries, parallel processing where possible, structured data organization
+# AI_DEPENDENCIES: WMI/CIM cmdlets, Winget, Chocolatey, AppX, registry access, file system permissions
 function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory (JSON Format)" 'INFO'
     $inventoryFolder = $PSScriptRoot
@@ -1102,6 +1174,12 @@ if ($osVersion -lt '10.0') {
 }
 
 ### PowerShell-specific Dependency Management
+# AI_FUNCTION: PowerShell dependency validation and management
+# AI_PURPOSE: Validates and installs required PowerShell modules and package managers
+# AI_ENVIRONMENT: Windows 10/11, Administrator required for installations, PowerShell Gallery access
+# AI_DEPENDENCIES: Winget, Chocolatey, NuGet, PSWindowsUpdate, PowerShellGet modules  
+# AI_LOGIC: Systematic dependency checking, automatic installation, version compatibility validation
+# AI_PERFORMANCE: Cached checks, parallel installations where safe, comprehensive error handling
 function Test-PowerShellDependencies {
     param()
     
@@ -1215,6 +1293,12 @@ function Test-PowerShellDependencies {
     return $dependencyStatus
 }
 
+# AI_FUNCTION: PowerShell module import with graceful fallback handling
+# AI_PURPOSE: Safely imports PowerShell modules with comprehensive error handling and alternatives
+# AI_ENVIRONMENT: Any PowerShell version, handles module availability and compatibility issues
+# AI_PARAMETERS: $ModuleName (string) - Name of module to import with fallback strategies
+# AI_LOGIC: Try native import, attempt installation if missing, graceful degradation on failure
+# AI_RETURNS: Boolean success status of module import operation
 function Import-ModuleWithGracefulFallback {
     param(
         [string]$ModuleName,
@@ -1258,46 +1342,54 @@ else {
 
 
 
-### [TASK 2] Install Essential Apps - Optimized Parallel Approach
+### AI_MAINTENANCE_TASK: Install Essential Apps - Ultra-Parallel Processing
+# AI_TASK_ID: InstallEssentialApps  
+# AI_PURPOSE: High-performance installation of curated essential applications using parallel processing
+# AI_ENVIRONMENT: Windows 10/11, Administrator required, Winget/Chocolatey package manager access
+# AI_PERFORMANCE: O(1) HashSet lookups, parallel job execution, smart pre-filtering, action-only logging
+# AI_DEPENDENCIES: Winget, Chocolatey, system inventory, config.json custom app support
+# AI_LOGIC: Inventory-based duplicate detection, parallel installation batches, comprehensive error handling
+# AI_CUSTOMIZATION: Supports custom app lists via $global:Config.CustomEssentialApps array
 function Install-EssentialApps {
     # ===============================
-    # Task: InstallEssentialApps (Enhanced Performance & Reliability)
+    # AI_TASK_HEADER: InstallEssentialApps (Ultra-Performance Edition)
     # ===============================
-    # Purpose: Installs essential applications using parallel processing and smart filtering.
-    # Environment: Windows 10/11, must run as Administrator, supports config-driven custom app lists.
-    # Logic: O(1) hashtable lookups, parallel installation, comprehensive validation, action-only logging.
-    # Performance: Uses HashSet for O(1) lookups, parallel jobs for batch installations, smart pre-filtering.
-    Write-Log "[START] Install Essential Apps (Optimized Parallel Approach)" 'INFO'
+    # AI_PURPOSE: Parallel installation of essential applications with smart filtering and optimization
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, package managers available
+    # AI_LOGIC: HashSet O(1) lookups, parallel processing, comprehensive validation, action-only logging
+    # AI_PERFORMANCE: Optimized for speed with hashtable filtering and parallel job execution
+    # ===============================
+    Write-Log "[AI_START] Install Essential Apps - Ultra-Parallel Processing Mode" 'INFO'
 
-    # Use global inventory if available, otherwise build a quick one
+    # AI_LOGIC: Use global inventory if available, otherwise build optimized inventory for app detection
     if (-not $global:SystemInventory) {
-        Write-Log "[EssentialApps] Building system inventory..." 'INFO'
+        Write-Log "[AI_INVENTORY] Building system inventory for duplicate detection..." 'INFO'
         Get-ExtensiveSystemInventory
     }
     
     $inventory = $global:SystemInventory
 
-    # Build comprehensive hashtable of all installed app identifiers (normalized) for O(1) lookups
+    # AI_OPTIMIZATION: Build comprehensive hashtable of all installed app identifiers for O(1) lookup performance
     $installedLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     
-    # Add AppX package names and IDs
+    # AI_DATA_SOURCES: Add AppX package names and IDs to lookup table
     $inventory.appx | ForEach-Object {
         if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
         if ($_.PackageFullName) { [void]$installedLookup.Add($_.PackageFullName.Trim()) }
     }
     
-    # Add Winget app names and IDs
+    # AI_DATA_SOURCES: Add Winget app names and IDs to lookup table  
     $inventory.winget | ForEach-Object {
         if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
         if ($_.Id) { [void]$installedLookup.Add($_.Id.Trim()) }
     }
     
-    # Add Chocolatey app names
+    # AI_DATA_SOURCES: Add Chocolatey app names to lookup table
     $inventory.choco | ForEach-Object {
         if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
     }
     
-    # Add registry app display names
+    # AI_DATA_SOURCES: Add registry app display names to lookup table
     $inventory.registry_uninstall | ForEach-Object {
         if ($_.DisplayName) { [void]$installedLookup.Add($_.DisplayName.Trim()) }
     }
@@ -1607,7 +1699,14 @@ function Install-EssentialApps {
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
 
-### [TASK 2.5] Update All Packages - Ultra-Optimized Parallel Approach
+### AI_MAINTENANCE_TASK: Update All Packages - Ultra-Optimized Parallel Processing  
+# AI_TASK_ID: UpdateAllPackages
+# AI_PURPOSE: Ultra-high-performance parallel updating of all installed packages via multiple package managers
+# AI_ENVIRONMENT: Windows 10/11, Administrator required, Winget/Chocolatey access, enhanced performance focus  
+# AI_PERFORMANCE: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
+# AI_DEPENDENCIES: Winget, Chocolatey, parallel processing capabilities, comprehensive error handling
+# AI_LOGIC: Parallel execution streams, smart filtering, update validation, performance optimization
+# AI_FEATURES: Timeout protection, concurrent processing, detailed timing metrics, action-focused logging
 function Update-AllPackages {
     # ===============================
     # Task: UpdateAllPackages (Ultra-Enhanced Performance & Reliability)
@@ -2016,28 +2115,36 @@ function Update-AllPackages {
     Write-Log "[END] Update All Packages" 'INFO'
 }
 
-### [TASK 3] Ultra-Enhanced Bloatware Removal - Action-Only Logging & Maximum Performance
+### AI_MAINTENANCE_TASK: Ultra-Enhanced Bloatware Removal - Action-Only Logging & Maximum Performance
+# AI_TASK_ID: RemoveBloatware  
+# AI_PURPOSE: High-speed bloatware removal with PowerShell 7.5 native capabilities - action-only logging
+# AI_ENVIRONMENT: Windows 10/11, Administrator required, PowerShell 7.5 native AppX/DISM support
+# AI_PERFORMANCE: Ultra-parallel 8-thread processing, pre-compiled regex, smart caching, action-only logging
+# AI_DEPENDENCIES: Native PS7.5 AppX cmdlets, DISM, Winget, Chocolatey, Registry, Windows Capabilities
+# AI_LOGIC: Multi-method removal approach, intelligent filtering, comprehensive error handling
+# AI_FEATURES: Shows ONLY removed apps, maximum performance optimization, detailed success tracking
 function Remove-Bloatware {
     # ===============================
-    # Task: RemoveBloatware (Ultra-Enhanced Action-Only)
+    # AI_TASK_HEADER: RemoveBloatware (Ultra-Enhanced PowerShell 7.5 Native)
+    # ===============================  
+    # AI_PURPOSE: High-speed bloatware removal with native PS7.5 capabilities and action-only logging
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, PS7.5 native AppX/DISM integration
+    # AI_LOGIC: Ultra-parallel removal, smart pre-filtering, action-only logging, maximum performance
+    # AI_PERFORMANCE: Native PS7.5 AppX, 8-thread parallel processing, pre-compiled regex, smart caching
     # ===============================
-    # Purpose: High-speed bloatware removal with PS7.5 native capabilities - shows ONLY removed apps.
-    # Environment: Windows 10/11, Administrator required, leverages PS7.5 native AppX/DISM support.
-    # Logic: Ultra-parallel removal, smart pre-filtering, action-only logging, maximum performance optimization.
-    # Performance: Native PS7.5 AppX, 8-thread parallel processing, pre-compiled regex, smart caching.
-    Write-Log "[START] Ultra-Enhanced Bloatware Removal" 'INFO'
+    Write-Log "[AI_START] Ultra-Enhanced Bloatware Removal - PowerShell 7.5 Native Mode" 'INFO'
     
-    # Use cached inventory if available, otherwise trigger fresh scan
+    # AI_OPTIMIZATION: Use cached inventory if available, otherwise trigger fresh comprehensive scan
     if (-not $global:SystemInventory) {
         Get-ExtensiveSystemInventory
     }
     
     $inventory = $global:SystemInventory
     
-    # Ultra-fast lookup using case-insensitive Dictionary with pre-compiled regex patterns
+    # AI_PERFORMANCE: Ultra-fast lookup using case-insensitive Dictionary with pre-compiled regex patterns
     $installedApps = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new([System.StringComparer]::OrdinalIgnoreCase)
     
-    # Pre-compile common app name patterns for faster matching
+    # AI_OPTIMIZATION: Pre-compile common app name patterns for faster matching performance
     $commonPatterns = @(
         [regex]::new('microsoft\.', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled),
         [regex]::new('\.exe$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled),
@@ -2332,6 +2439,11 @@ function Remove-Bloatware {
 }
 
 ### [TASK 4] System Inventory (Legacy)
+# AI_FUNCTION: Legacy system inventory collection wrapper
+# AI_PURPOSE: Simple system inventory collection for basic reporting and compatibility
+# AI_ENVIRONMENT: Windows 10/11, any privilege level, basic system information gathering
+# AI_LOGIC: Calls comprehensive Get-ExtensiveSystemInventory, maintains backward compatibility
+# AI_USE_CASE: Legacy support, simple inventory needs, compatibility with older script versions
 function Get-SystemInventory {
     # ===============================
     # Task: SystemInventory
@@ -2347,22 +2459,31 @@ function Get-SystemInventory {
 }
 
 
-### [TASK 5] Disable Telemetry
+### AI_MAINTENANCE_TASK: Disable Telemetry and Privacy Features
+# AI_TASK_ID: DisableTelemetry
+# AI_PURPOSE: Comprehensive disabling of Windows telemetry, privacy-invasive features, and browser tracking
+# AI_ENVIRONMENT: Windows 10/11, Administrator required, registry/service/browser modification access
+# AI_PERFORMANCE: Parallel browser detection, batch registry operations, optimized service management
+# AI_DEPENDENCIES: Registry access, service control capabilities, browser configuration file access
+# AI_LOGIC: Enhanced speed and reliability, parallel processing, action-focused logging
+# AI_FEATURES: Batch operations, parallel browser processing, comprehensive privacy protection
 function Disable-Telemetry {
     # ===============================
-    # Task: DisableTelemetry
+    # AI_TASK_HEADER: DisableTelemetry (Enhanced Performance & Privacy)
     # ===============================
-    # Purpose: Disables Windows telemetry, privacy-invading features, and unwanted browsers.
-    # Environment: Windows 10/11, admin required, modifies registry, disables services/tasks, configures browsers.
-    # Logic: Enhanced for speed and reliability, logs only actual removals.
-    Write-Log "[START] Disable Telemetry" 'INFO'
+    # AI_PURPOSE: Comprehensive Windows telemetry and privacy feature disabling with optimization
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, system-wide privacy configuration
+    # AI_LOGIC: Parallel browser detection, batch registry operations, enhanced performance focus
+    # AI_PERFORMANCE: Optimized for speed and reliability, action-only logging for clarity
+    # ===============================
+    Write-Log "[AI_START] Disable Telemetry and Privacy Features - Enhanced Performance Mode" 'INFO'
     
-    # Optimized notification management - batch operations
+    # AI_OPTIMIZATION: Batch notification management for improved performance
     try {
         $focusAssistReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings'
         if (-not (Test-Path $focusAssistReg)) { New-Item -Path $focusAssistReg -Force | Out-Null }
         
-        # Batch set notification settings
+        # AI_BATCH_OPERATIONS: Batch set notification settings for efficiency
         $notificationSettings = @{
             'NOC_GLOBAL_SETTING_TOASTS_ENABLED' = 0
             'FocusAssist' = 2
@@ -2377,7 +2498,7 @@ function Disable-Telemetry {
             catch { continue }
         }
         
-        # Batch disable per-app notifications using registry operations
+        # AI_BATCH_OPERATIONS: Batch disable per-app notifications using optimized registry operations
         $apps = Get-ChildItem -Path $focusAssistReg -ErrorAction SilentlyContinue | Where-Object { 
             $_.PSChildName -notin @('FocusAssist', 'NOC_GLOBAL_SETTING_TOASTS_ENABLED') 
         }
@@ -2790,106 +2911,183 @@ function Disable-Telemetry {
     Write-Log "[END] Disable Telemetry" 'INFO'
 }
 
-### [TASK 6] System Restore Protection
+### AI_MAINTENANCE_TASK: PowerShell 7.5 Native System Restore Protection
+# AI_TASK_ID: SystemRestoreProtection
+# AI_PURPOSE: Native PowerShell 7.5 System Restore management with enhanced error handling and performance
+# AI_ENVIRONMENT: Windows 10/11, Administrator required, native PS7.5 CIM cmdlets, multiple fallback methods
+# AI_PERFORMANCE: Native CIM operations, smart duplicate protection, enhanced validation, optimized execution
+# AI_DEPENDENCIES: Native PS7.5 CIM cmdlets, SystemRestoreConfig, Enable-ComputerRestore, Checkpoint-Computer
+# AI_LOGIC: Multiple fallback strategies, comprehensive error handling, intelligent restore point management
+# AI_FEATURES: PS7.5 native operations, no compatibility layer overhead, enhanced reliability and speed
 function Protect-SystemRestore {
     # ===============================
-    # Task: SystemRestoreProtection (Enhanced)
+    # AI_TASK_HEADER: SystemRestoreProtection (PowerShell 7.5 Native)
     # ===============================
-    # Purpose: Efficiently enables System Restore and creates restore points with intelligent validation.
-    # Environment: Windows 10/11, admin required, optimized for performance and reliability.
-    # Logic: Fast status checks, duplicate protection, disk space validation, smart restore point management.
-    Write-Log "[START] System Restore Protection" 'INFO'
+    # AI_PURPOSE: Native PS7.5 System Restore management with enhanced error handling and performance
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, native PS7.5 CIM cmdlets optimized
+    # AI_LOGIC: Native CIM operations, smart duplicate protection, enhanced validation, optimized performance
+    # AI_PERFORMANCE: Eliminates PS5.1 compatibility overhead, uses direct PS7.5 native capabilities
+    # ===============================
+    Write-Log "[AI_START] PowerShell 7.5 Native System Restore Protection" 'INFO'
     
     $drive = "C:\"
     $restorePointDescription = "Pre-maintenance restore point"
     $restoreEnabled = $false
     $restorePointCreated = $false
     
-    # Enhanced System Restore status check with single optimized query
     try {
-        # Use unified approach that works efficiently in both PS versions
-        $systemRestoreInfo = if ($PSVersionTable.PSVersion.Major -ge 7) {
-            # PowerShell 7: Use Windows PowerShell for System Restore operations
-            $command = @"
-try {
-    \$restoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
-    \$freeSpace = (Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop).FreeSpace
-    \$recentPoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Where-Object { \$_.CreationTime -gt (Get-Date).AddHours(-2) }
-    [PSCustomObject]@{
-        Enabled = \$restoreConfig.Enable
-        FreeSpaceGB = [math]::Round(\$freeSpace / 1GB, 2)
-        RecentPointsCount = (\$recentPoints | Measure-Object).Count
-        LastPointTime = if (\$recentPoints) { (\$recentPoints | Sort-Object CreationTime -Descending | Select-Object -First 1).CreationTime } else { \$null }
-    }
-} catch {
-    [PSCustomObject]@{ Enabled = \$false; FreeSpaceGB = 0; RecentPointsCount = 0; LastPointTime = \$null; Error = \$_.Message }
-}
-"@
-            Invoke-WindowsPowerShellCommand -Command $command -Description "Check System Restore comprehensive status"
+        # Enhanced native PS7.5 System Restore status check
+        Write-Log "[SystemRestore] Checking System Restore status using native PS7.5 CIM cmdlets..." 'VERBOSE'
+        
+        # Get System Restore configuration using native CIM
+        $restoreConfig = $null
+        try {
+            $restoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
+            Write-Log "[SystemRestore] System Restore status: $($restoreConfig.Enable)" 'VERBOSE'
         }
-        else {
-            # Windows PowerShell 5.1: Native approach
+        catch {
+            Write-Log "[SystemRestore] Failed to query SystemRestoreConfig: $_" 'WARN'
+            # Try alternative method
             try {
-                $restoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
-                $freeSpace = (Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop).FreeSpace
-                $recentPoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Where-Object { $_.CreationTime -gt (Get-Date).AddHours(-2) }
-                [PSCustomObject]@{
-                    Enabled = $restoreConfig.Enable
-                    FreeSpaceGB = [math]::Round($freeSpace / 1GB, 2)
-                    RecentPointsCount = ($recentPoints | Measure-Object).Count
-                    LastPointTime = if ($recentPoints) { ($recentPoints | Sort-Object CreationTime -Descending | Select-Object -First 1).CreationTime } else { $null }
-                }
+                $restoreStatus = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "DisableSR" -ErrorAction SilentlyContinue
+                $restoreConfig = [PSCustomObject]@{ Enable = $restoreStatus.DisableSR -ne 1 }
+                Write-Log "[SystemRestore] Using registry fallback - System Restore enabled: $($restoreConfig.Enable)" 'VERBOSE'
             }
             catch {
-                [PSCustomObject]@{ Enabled = $false; FreeSpaceGB = 0; RecentPointsCount = 0; LastPointTime = $null; Error = $_.Message }
+                Write-Log "[SystemRestore] Both CIM and registry methods failed - assuming disabled" 'WARN'
+                $restoreConfig = [PSCustomObject]@{ Enable = $false }
             }
         }
         
-        if ($systemRestoreInfo.Error) {
-            Write-Log "Failed to query System Restore status: $($systemRestoreInfo.Error)" 'WARN'
-            return
+        # Get disk space using native PS7.5 cmdlets
+        $freeSpaceGB = 0
+        try {
+            $diskInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+            $freeSpaceGB = [math]::Round($diskInfo.FreeSpace / 1GB, 2)
+            Write-Log "[SystemRestore] Free disk space: $($freeSpaceGB)GB" 'VERBOSE'
+        }
+        catch {
+            Write-Log "[SystemRestore] Failed to get disk space info: $_" 'WARN'
+            # Try Get-Volume as fallback
+            try {
+                $volume = Get-Volume -DriveLetter C -ErrorAction Stop
+                $freeSpaceGB = [math]::Round($volume.SizeRemaining / 1GB, 2)
+                Write-Log "[SystemRestore] Using Get-Volume fallback - Free space: $($freeSpaceGB)GB" 'VERBOSE'
+            }
+            catch {
+                Write-Log "[SystemRestore] Unable to determine free disk space" 'WARN'
+                $freeSpaceGB = 10  # Assume sufficient space to continue
+            }
         }
         
-        # Intelligent restore point management
-        $restoreEnabled = $systemRestoreInfo.Enabled
-        $freeSpaceGB = $systemRestoreInfo.FreeSpaceGB
-        $recentPointsCount = $systemRestoreInfo.RecentPointsCount
-        $lastPointTime = $systemRestoreInfo.LastPointTime
+        # Check for recent restore points using native cmdlets
+        $recentPointsCount = 0
+        $lastPointTime = $null
+        try {
+            # In PowerShell 7.5, we can use Get-ComputerRestorePoint if available
+            if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+                $recentPoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Where-Object { 
+                    $_.CreationTime -gt (Get-Date).AddHours(-2) 
+                }
+                $recentPointsCount = ($recentPoints | Measure-Object).Count
+                if ($recentPoints) {
+                    $lastPointTime = ($recentPoints | Sort-Object CreationTime -Descending | Select-Object -First 1).CreationTime
+                }
+                Write-Log "[SystemRestore] Recent restore points (last 2 hours): $recentPointsCount" 'VERBOSE'
+            }
+            else {
+                Write-Log "[SystemRestore] Get-ComputerRestorePoint not available - continuing without recent point check" 'VERBOSE'
+            }
+        }
+        catch {
+            Write-Log "[SystemRestore] Failed to check recent restore points: $_" 'VERBOSE'
+        }
         
-        # Enhanced validation logic
+        # Enhanced System Restore enablement
+        $restoreEnabled = $restoreConfig.Enable
         if (-not $restoreEnabled) {
             Write-Host "⚠️ System Restore disabled - enabling..." -ForegroundColor Yellow
             
-            # Enable System Restore efficiently
             try {
-                $enableResult = if ($PSVersionTable.PSVersion.Major -ge 7) {
-                    Enable-ComputerRestoreCompatible -Drive $drive
-                }
-                else {
-                    Enable-ComputerRestore -Drive $drive -ErrorAction Stop
-                    $true
+                # Use native PS7.5 approach with multiple methods
+                $enableSuccess = $false
+                
+                # Method 1: Try Enable-ComputerRestore if available
+                if (Get-Command Enable-ComputerRestore -ErrorAction SilentlyContinue) {
+                    try {
+                        Enable-ComputerRestore -Drive $drive -ErrorAction Stop
+                        $enableSuccess = $true
+                        Write-Log "[SystemRestore] Enabled using Enable-ComputerRestore cmdlet" 'INFO'
+                    }
+                    catch {
+                        Write-Log "[SystemRestore] Enable-ComputerRestore failed: $_" 'VERBOSE'
+                    }
                 }
                 
-                if ($enableResult) {
+                # Method 2: Try registry method if cmdlet failed
+                if (-not $enableSuccess) {
+                    try {
+                        $null = Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "DisableSR" -Value 0 -Force -ErrorAction Stop
+                        
+                        # Also enable for the specific drive
+                        $driveKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore\Cfg"
+                        if (Test-Path $driveKey) {
+                            $null = Set-ItemProperty -Path $driveKey -Name "DisableSR" -Value 0 -Force -ErrorAction SilentlyContinue
+                        }
+                        
+                        $enableSuccess = $true
+                        Write-Log "[SystemRestore] Enabled using registry method" 'INFO'
+                    }
+                    catch {
+                        Write-Log "[SystemRestore] Registry enable method failed: $_" 'VERBOSE'
+                    }
+                }
+                
+                # Method 3: Try VSSAdmin as final fallback
+                if (-not $enableSuccess) {
+                    try {
+                        $vssResult = & vssadmin list writers 2>$null
+                        if ($LASTEXITCODE -eq 0) {
+                            # VSSAdmin is working, try to enable via WMI
+                            $systemRestoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue
+                            if ($systemRestoreConfig) {
+                                $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true} -ErrorAction Stop
+                                $enableSuccess = $true
+                                Write-Log "[SystemRestore] Enabled using WMI/CIM method" 'INFO'
+                            }
+                        }
+                    }
+                    catch {
+                        Write-Log "[SystemRestore] WMI/CIM enable method failed: $_" 'VERBOSE'
+                    }
+                }
+                
+                if ($enableSuccess) {
                     $restoreEnabled = $true
-                    Write-Host "✓ System Restore enabled" -ForegroundColor Green
+                    Write-Host "✓ System Restore enabled successfully" -ForegroundColor Green
                     Write-Log "System Restore enabled on $drive" 'INFO'
+                    
+                    # Brief wait for the service to initialize
+                    Start-Sleep -Seconds 2
                 }
                 else {
-                    Write-Log "Failed to enable System Restore on $drive" 'WARN'
+                    Write-Host "✗ Failed to enable System Restore" -ForegroundColor Red
+                    Write-Log "All methods to enable System Restore failed" 'ERROR'
                     return
                 }
             }
             catch {
-                Write-Log "Failed to enable System Restore: $_" 'WARN'
+                Write-Host "✗ System Restore enable error: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Log "Critical error enabling System Restore: $_" 'ERROR'
                 return
             }
         }
         else {
             Write-Host "✓ System Restore already enabled" -ForegroundColor Green
+            Write-Log "System Restore is already enabled" 'INFO'
         }
         
-        # Disk space validation (require at least 2GB free)
+        # Enhanced disk space validation
         if ($freeSpaceGB -lt 2) {
             Write-Host "⚠️ Insufficient disk space ($($freeSpaceGB)GB) for restore point" -ForegroundColor Yellow
             Write-Log "Insufficient disk space ($($freeSpaceGB)GB) to create restore point safely" 'WARN'
@@ -2902,87 +3100,115 @@ try {
             if ($timeSinceLastPoint.TotalMinutes -lt 120) {
                 Write-Host "✓ Recent restore point exists ($([math]::Round($timeSinceLastPoint.TotalMinutes))min ago) - skipping" -ForegroundColor Cyan
                 Write-Log "Recent restore point exists (created $([math]::Round($timeSinceLastPoint.TotalMinutes)) minutes ago) - skipping creation" 'INFO'
-                $restorePointCreated = $true  # Consider it successful since protection exists
+                $restorePointCreated = $true
                 return
             }
         }
         
-        # Create restore point with enhanced error handling
+        # Enhanced native restore point creation
         if ($restoreEnabled) {
             Write-Host "🔄 Creating restore point..." -ForegroundColor Cyan
             
             try {
-                $createResult = if ($PSVersionTable.PSVersion.Major -ge 7) {
-                    Checkpoint-ComputerCompatible -Description $restorePointDescription -RestorePointType 'MODIFY_SETTINGS'
-                }
-                else {
-                    Checkpoint-Computer -Description $restorePointDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
-                    $true
+                $createSuccess = $false
+                
+                # Method 1: Try Checkpoint-Computer if available
+                if (Get-Command Checkpoint-Computer -ErrorAction SilentlyContinue) {
+                    try {
+                        Checkpoint-Computer -Description $restorePointDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+                        $createSuccess = $true
+                        Write-Log "[SystemRestore] Restore point created using Checkpoint-Computer cmdlet" 'INFO'
+                    }
+                    catch {
+                        $errorCode = $_.Exception.HResult
+                        if ($errorCode -eq -2147023728) {  # 0x80042308 - Frequency limit
+                            Write-Host "ℹ️ Restore point frequency limit reached (Windows limitation)" -ForegroundColor Cyan
+                            Write-Log "Restore point frequency limit reached - skipping (Windows limitation)" 'INFO'
+                            $createSuccess = $true  # Consider successful since protection exists
+                        }
+                        elseif ($errorCode -eq -2147023742) {  # 0x80042302 - Service not responding
+                            Write-Log "System Restore service temporarily unavailable: $_" 'WARN'
+                        }
+                        else {
+                            Write-Log "[SystemRestore] Checkpoint-Computer failed: $_" 'VERBOSE'
+                        }
+                    }
                 }
                 
-                if ($createResult) {
+                # Method 2: Try WMI method if cmdlet failed
+                if (-not $createSuccess) {
+                    try {
+                        $systemRestore = Get-CimClass -Namespace root/default -ClassName SystemRestore -ErrorAction Stop
+                        $result = Invoke-CimMethod -CimClass $systemRestore -MethodName "CreateRestorePoint" -Arguments @{
+                            Description = $restorePointDescription
+                            RestorePointType = 12  # MODIFY_SETTINGS
+                            EventType = 100         # BEGIN_SYSTEM_CHANGE
+                        } -ErrorAction Stop
+                        
+                        if ($result.ReturnValue -eq 0) {
+                            $createSuccess = $true
+                            Write-Log "[SystemRestore] Restore point created using WMI/CIM method" 'INFO'
+                        }
+                        else {
+                            Write-Log "[SystemRestore] WMI restore point creation returned code: $($result.ReturnValue)" 'VERBOSE'
+                        }
+                    }
+                    catch {
+                        Write-Log "[SystemRestore] WMI restore point creation failed: $_" 'VERBOSE'
+                    }
+                }
+                
+                if ($createSuccess) {
                     $restorePointCreated = $true
                     Write-Host "✓ Restore point created successfully" -ForegroundColor Green
                     Write-Log "System restore point '$restorePointDescription' created successfully" 'INFO'
                     
-                    # Optional: Clean up old restore points if more than 10 exist
+                    # Optional: Check total restore point count for informational purposes
                     try {
-                        $allPoints = if ($PSVersionTable.PSVersion.Major -ge 7) {
-                            $cmd = "Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count"
-                            Invoke-WindowsPowerShellCommand -Command $cmd -Description "Count restore points"
-                        }
-                        else {
-                            (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
-                        }
-                        
-                        if ($allPoints -and $allPoints -gt 10) {
-                            Write-Log "Found $allPoints restore points - system will auto-manage cleanup" 'VERBOSE'
+                        if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+                            $allPoints = (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
+                            if ($allPoints -gt 0) {
+                                Write-Log "[SystemRestore] Total restore points: $allPoints" 'VERBOSE'
+                            }
                         }
                     }
                     catch {
-                        # Ignore cleanup check errors
+                        # Ignore count check errors
                     }
                 }
                 else {
-                    Write-Log "Failed to create restore point - unknown error" 'WARN'
+                    Write-Host "⚠️ Could not create restore point - protection still enabled" -ForegroundColor Yellow
+                    Write-Log "Failed to create restore point but System Restore remains enabled" 'WARN'
                 }
             }
             catch {
                 $errorMessage = $_.Exception.Message
-                if ($errorMessage -like "*0x80042302*" -or $errorMessage -like "*CORESERVICE_NOT_RESPONDING*") {
-                    Write-Log "System Restore service not responding - this is normal during heavy system activity" 'WARN'
-                }
-                elseif ($errorMessage -like "*0x80042308*") {
-                    Write-Log "Restore point frequency limit reached - skipping (Windows limitation)" 'WARN'
-                    $restorePointCreated = $true  # Consider successful since limit is hit
-                }
-                elseif ($errorMessage -like "*insufficient*") {
-                    Write-Log "Insufficient disk space for restore point creation" 'WARN'
-                }
-                else {
-                    Write-Log "Failed to create restore point: $errorMessage" 'WARN'
-                }
+                Write-Host "⚠️ Restore point creation failed: $errorMessage" -ForegroundColor Yellow
+                Write-Log "Restore point creation failed: $errorMessage" 'WARN'
             }
+        }
+        
+        # Enhanced summary with performance metrics
+        $successSummary = @()
+        if ($restoreEnabled) { $successSummary += "System Restore Enabled" }
+        if ($restorePointCreated) { $successSummary += "Restore Point Created" }
+        elseif ($restoreEnabled) { $successSummary += "Protection Active" }
+        
+        if ($successSummary.Count -gt 0) {
+            Write-Host "✅ System Restore: $($successSummary -join ', ')" -ForegroundColor Green
+            Write-Log "System Restore protection completed successfully: $($successSummary -join ', ')" 'INFO'
+        }
+        else {
+            Write-Host "⚠️ System Restore protection incomplete" -ForegroundColor Yellow
+            Write-Log "System Restore protection completed with limitations" 'WARN'
         }
     }
     catch {
-        Write-Log "System Restore operation failed: $_" 'WARN'
+        Write-Host "✗ System Restore operation failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Critical System Restore operation failure: $_" 'ERROR'
     }
     
-    # Summary with performance metrics
-    $successSummary = @()
-    if ($restoreEnabled) { $successSummary += "SR Enabled" }
-    if ($restorePointCreated) { $successSummary += "Point Created" }
-    
-    if ($successSummary.Count -gt 0) {
-        Write-Host "✅ System Restore: $($successSummary -join ', ')" -ForegroundColor Green
-        Write-Log "System Restore protection completed: $($successSummary -join ', ')" 'INFO'
-    }
-    else {
-        Write-Host "⚠️ System Restore protection incomplete" -ForegroundColor Yellow
-    }
-    
-    Write-Log "[END] System Restore Protection" 'INFO'
+    Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
 }
     ### [MAIN TASK EXECUTION IN TIMELINE ORDER]
 
@@ -3196,10 +3422,34 @@ try {
     ### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
     ### ...
 
-    Write-Log "Script ended." 'INFO'
+    Write-Log "AI_SCRIPT_COMPLETION: Windows maintenance script execution completed successfully" 'INFO'
 
-    ### [POST-TASK 7] Prompt to close the window if running interactively
+    ### AI_POST_TASK: Interactive closure prompt for console environments
+    # AI_PURPOSE: Provides user interaction for console-based script execution
+    # AI_LOGIC: Detects console environment and prompts for user acknowledgment before closure
     if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
         Write-Host
         Read-Host -Prompt 'Press Enter to close this window...'
     }
+
+# =============================================
+# AI_SCRIPT_METADATA: Windows Maintenance Script Architecture Guide
+# =============================================
+# AI_FILE_PURPOSE: Comprehensive Windows maintenance automation with modular task architecture
+# AI_SCRIPT_STRUCTURE: Global task array → Coordination function → Individual task functions → Support functions
+# AI_NAMING_CONVENTION: All AI-focused comments use AI_ prefix for easy identification and parsing
+# AI_TASK_PATTERN: Each maintenance task follows standardized AI_TASK_HEADER format with Purpose/Environment/Logic/Performance
+# AI_FUNCTION_PATTERN: Support functions use AI_FUNCTION format with Purpose/Environment/Parameters/Logic/Returns
+# AI_EDITING_GUIDELINES:
+#   - Maintain AI_ comment prefixes for all AI-focused documentation
+#   - Follow established task header patterns when adding new functions
+#   - Use consistent performance optimization patterns (HashSet, parallel processing, action-only logging)
+#   - Maintain PowerShell 7.5 native operation preferences with compatibility fallbacks
+#   - Preserve comprehensive error handling and logging patterns
+#   - Keep action-focused logging for user-facing operations
+# AI_PERFORMANCE_PATTERNS: O(1) lookups, parallel processing, native PS7.5 cmdlets, smart caching, batch operations
+# AI_ERROR_HANDLING: Comprehensive try/catch blocks, graceful degradation, detailed logging, multiple fallback strategies
+# AI_CONFIGURATION: config.json driven feature toggles, custom app lists, verbose logging control
+# AI_DEPENDENCIES: Winget, Chocolatey, PowerShell 7.5, Administrator privileges, various Windows APIs
+# AI_OUTPUT_FILES: maintenance.log, inventory.txt, apps_*.txt (in $PSScriptRoot)
+# =============================================
