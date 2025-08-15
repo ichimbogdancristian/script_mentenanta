@@ -17,6 +17,12 @@ SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 
+REM Check if this is a restart after PowerShell 7 installation
+IF "%1"=="PS7_RESTART" (
+    ECHO [%TIME%] [INFO] Script restarted after PowerShell 7 installation.
+    GOTO :SKIP_PS7_INSTALL
+)
+
 ECHO [%TIME%] [INFO] Starting maintenance script...
 ECHO [%TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME%
 
@@ -221,8 +227,15 @@ IF !ERRORLEVEL! NEQ 0 (
         msiexec /i "!PS7_INSTALLER!" /quiet /norestart
         IF !ERRORLEVEL! EQU 0 (
             ECHO [%TIME%] [INFO] PowerShell 7 installed successfully.
-            REM Refresh PATH environment variable
+            REM Refresh PATH environment variable for current session
             FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "PATH=%%B"
+            REM Add common PowerShell 7 installation paths to current session
+            IF EXIST "%ProgramFiles%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
+            IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
+            ECHO [%TIME%] [INFO] PowerShell 7 installation completed. Restarting script to use new PowerShell...
+            REM Restart the script to use newly installed PowerShell 7
+            START "" "%~f0" PS7_RESTART
+            EXIT /B 0
         ) ELSE (
             ECHO [%TIME%] [WARN] PowerShell 7 installation failed.
         )
@@ -232,6 +245,8 @@ IF !ERRORLEVEL! NEQ 0 (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
     ECHO [%TIME%] [INFO] PowerShell 7 already available: %PS7_VERSION%
 )
+
+:SKIP_PS7_INSTALL
 
 REM -----------------------------------------------------------------------------
 REM 3. NuGet PackageProvider - Direct download and installation
