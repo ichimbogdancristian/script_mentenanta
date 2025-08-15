@@ -45,41 +45,31 @@ $global:ScriptTasks = @(
     # Logic: Tries both package managers, logs all actions and errors.
     @{ Name = 'UpdateAllPackages'; Function = {
             Write-Log '[START] Update All Apps and Packages' 'INFO'
-            
-            # Update using Winget if available
-            if ($global:HasWinget) {
-                try {
-                    Write-Log 'Running winget upgrade for all packages...' 'INFO'
-                    winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
-                    Write-Log 'Winget upgrade completed successfully.' 'INFO'
-                }
-                catch {
-                    Write-Log "Winget upgrade failed: $_" 'WARN'
-                }
+            # Dependency installation is handled by script.bat. If Winget or Chocolatey is missing, log and exit.
+            if (-not $global:HasWinget) {
+                Write-Log 'Winget not available. Please run the script via script.bat to ensure all dependencies are installed.' 'ERROR'
+                exit 1
             }
-            else {
-                Write-Log 'Winget not available, skipping winget upgrades.' 'WARN'
+            if (-not $global:HasChocolatey) {
+                Write-Log 'Chocolatey not available. Please run the script via script.bat to ensure all dependencies are installed.' 'ERROR'
+                exit 1
             }
-            
-            # Update using Chocolatey if available
-            if ($global:HasChocolatey) {
-                try {
-                    Write-Log 'Running chocolatey upgrade for all packages...' 'INFO'
-                    choco upgrade all -y --limit-output
-                    Write-Log 'Chocolatey upgrade completed successfully.' 'INFO'
-                }
-                catch {
-                    Write-Log "Chocolatey upgrade failed: $_" 'WARN'
-                }
+            try {
+                Write-Log 'Running winget upgrade for all packages...' 'INFO'
+                winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
+                Write-Log 'Winget upgrade completed successfully.' 'INFO'
             }
-            else {
-                Write-Log 'Chocolatey not available, skipping chocolatey upgrades.' 'WARN'
+            catch {
+                Write-Log "Winget upgrade failed: $_" 'WARN'
             }
-            
-            if (-not $global:HasWinget -and -not $global:HasChocolatey) {
-                Write-Log 'No package managers available for updates. Consider installing Winget or Chocolatey.' 'WARN'
+            try {
+                Write-Log 'Running chocolatey upgrade for all packages...' 'INFO'
+                choco upgrade all -y --limit-output
+                Write-Log 'Chocolatey upgrade completed successfully.' 'INFO'
             }
-            
+            catch {
+                Write-Log "Chocolatey upgrade failed: $_" 'WARN'
+            }
             Write-Log '[END] Update All Apps and Packages' 'INFO'
         }; Description = 'Update all apps and packages' 
     },
@@ -393,20 +383,11 @@ function Checkpoint-ComputerCompatible {
 function Install-WindowsUpdatesCompatible {
     param()
     
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for PSWindowsUpdate
-        $command = @"
-# Check if PSWindowsUpdate is installed
-if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
-    try {
-        Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:`$false -ErrorAction Stop
-        Write-Host 'PSWindowsUpdate module installed successfully.'
-    }
-    catch {
-        Write-Host "Failed to install PSWindowsUpdate module: `$_"
+    # Dependency installation is handled by script.bat. If PSWindowsUpdate is missing, log and exit.
+    if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
+        Write-Log 'PSWindowsUpdate module missing. Please run the script via script.bat to ensure all dependencies are installed.' 'ERROR'
         exit 1
     }
-}
 
 Import-Module PSWindowsUpdate -ErrorAction Stop
 
