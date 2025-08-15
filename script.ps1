@@ -564,73 +564,215 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[Inventory] Collecting installed winget apps..." 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         try {
-            # Try JSON output first (modern winget versions)
-            $wingetJsonRaw = winget list --accept-source-agreements --output json 2>$null | Out-String
-            if ($wingetJsonRaw -and $wingetJsonRaw.Trim() -ne '') {
-                # Clean the JSON output - sometimes winget returns warnings before JSON
-                $jsonStartIndex = $wingetJsonRaw.IndexOf('{')
-                if ($jsonStartIndex -ge 0) {
-                    $cleanJson = $wingetJsonRaw.Substring($jsonStartIndex)
-                    try {
-                        $wingetData = $cleanJson | ConvertFrom-Json -ErrorAction Stop
-                        if ($wingetData.Sources) {
-                            $inventory.winget = @($wingetData.Sources | ForEach-Object { $_.Packages } | ForEach-Object {
+            # Enhanced winget parsing with multiple fallback strategies
+            $wingetSuccess = $false
+            $attempts = 0
+            $maxAttempts = 3
+            
+            # Strategy 1: Try JSON output with enhanced cleaning
+            while (-not $wingetSuccess -and $attempts -lt $maxAttempts) {
+                $attempts++
+                try {
+                    Write-Log "[Inventory] Winget JSON attempt $attempts..." 'VERBOSE'
+                    
+                    # Use more robust JSON extraction
+                    $wingetProcess = Start-Process -FilePath "winget" -ArgumentList @("list", "--accept-source-agreements", "--output", "json") -WindowStyle Hidden -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget_output_$PID.json" -RedirectStandardError "$env:TEMP\winget_error_$PID.txt"
+                    
+                    if ($wingetProcess.ExitCode -eq 0 -and (Test-Path "$env:TEMP\winget_output_$PID.json")) {
+                        $wingetJsonRaw = Get-Content "$env:TEMP\winget_output_$PID.json" -Raw -ErrorAction SilentlyContinue
+                        
+                        if ($wingetJsonRaw -and $wingetJsonRaw.Trim() -ne '') {
+                            # Enhanced JSON cleaning - handle multiple JSON patterns
+                            $cleanJson = $wingetJsonRaw
+                            
+                            # Remove any text before the first JSON bracket
+                            if ($wingetJsonRaw.Contains('{')) {
+                                $jsonStart = $wingetJsonRaw.IndexOf('{')
+                                $cleanJson = $wingetJsonRaw.Substring($jsonStart)
+                            }
+                            elseif ($wingetJsonRaw.Contains('[')) {
+                                $jsonStart = $wingetJsonRaw.IndexOf('[')
+                                $cleanJson = $wingetJsonRaw.Substring($jsonStart)
+                            }
+                            
+                            # Remove any text after the last JSON bracket
+                            $lastBrace = $cleanJson.LastIndexOf('}')
+                            $lastBracket = $cleanJson.LastIndexOf(']')
+                            $jsonEnd = [Math]::Max($lastBrace, $lastBracket)
+                            
+                            if ($jsonEnd -gt 0) {
+                                $cleanJson = $cleanJson.Substring(0, $jsonEnd + 1)
+                            }
+                            
+                            # Parse JSON with multiple format support
+                            $wingetData = $cleanJson | ConvertFrom-Json -ErrorAction Stop
+                            
+                            # Handle different winget JSON formats
+                            if ($wingetData.Sources -and $wingetData.Sources.Count -gt 0) {
+                                # Format 1: Sources -> Packages structure
+                                $inventory.winget = @($wingetData.Sources | ForEach-Object { 
+                                    if ($_.Packages) {
+                                        $_.Packages | ForEach-Object {
+                                            [PSCustomObject]@{
+                                                Name    = $_.Name
+                                                Id      = $_.Id
+                                                Version = if ($_.InstalledVersion) { $_.InstalledVersion } else { $_.Version }
+                                                Source  = if ($_.Source) { $_.Source } else { 'winget' }
+                                            }
+                                        }
+                                    }
+                                })
+                                $wingetSuccess = $true
+                                Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON (Sources format)." 'INFO'
+                            }
+                            elseif ($wingetData.Count -gt 0 -or ($wingetData -is [array] -and $wingetData.Length -gt 0)) {
+                                # Format 2: Direct array of packages
+                                $inventory.winget = @($wingetData | ForEach-Object {
                                     [PSCustomObject]@{
                                         Name    = $_.Name
                                         Id      = $_.Id
-                                        Version = $_.InstalledVersion
-                                        Source  = $_.Source
+                                        Version = if ($_.InstalledVersion) { $_.InstalledVersion } else { $_.Version }
+                                        Source  = if ($_.Source) { $_.Source } else { 'winget' }
                                     }
                                 })
-                            Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON." 'INFO'
+                                $wingetSuccess = $true
+                                Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON (Direct array format)." 'INFO'
+                            }
+                            else {
+                                Write-Log "[Inventory] Winget JSON format not recognized. Attempt $attempts failed." 'VERBOSE'
+                            }
                         }
                         else {
-                            Write-Log "[Inventory] Winget JSON output has no Sources property. Using fallback." 'WARN'
-                            throw "No Sources in JSON"
+                            Write-Log "[Inventory] Empty winget JSON output. Attempt $attempts failed." 'VERBOSE'
                         }
                     }
-                    catch {
-                        Write-Log "[Inventory] Failed to parse winget JSON output: $_. Using fallback text parsing." 'WARN'
-                        throw "JSON parsing failed"
+                    else {
+                        Write-Log "[Inventory] Winget process failed with exit code $($wingetProcess.ExitCode). Attempt $attempts failed." 'VERBOSE'
+                    }
+                    
+                    # Cleanup temp files
+                    Remove-Item "$env:TEMP\winget_output_$PID.json", "$env:TEMP\winget_error_$PID.txt" -ErrorAction SilentlyContinue
+                }
+                catch {
+                    Write-Log "[Inventory] Winget JSON attempt $attempts failed: $_" 'VERBOSE'
+                }
+                
+                if (-not $wingetSuccess -and $attempts -lt $maxAttempts) {
+                    Start-Sleep -Milliseconds 500  # Brief pause between attempts
+                }
+            }
+            
+            # Strategy 2: Enhanced text parsing fallback
+            if (-not $wingetSuccess) {
+                try {
+                    Write-Log "[Inventory] Using enhanced winget text parsing..." 'INFO'
+                    
+                    # Try different text output formats
+                    $textFormats = @(
+                        @("list", "--accept-source-agreements"),
+                        @("list", "--accept-source-agreements", "--include-unknown"),
+                        @("list")
+                    )
+                    
+                    foreach ($format in $textFormats) {
+                        try {
+                            $wingetOutput = & winget @format 2>$null
+                            if ($wingetOutput -and $wingetOutput.Count -gt 0) {
+                                
+                                # Enhanced text parsing with multiple patterns
+                                $apps = @()
+                                $headerFound = $false
+                                
+                                foreach ($line in $wingetOutput) {
+                                    # Skip until we find the header
+                                    if (-not $headerFound) {
+                                        if ($line -match '^Name\s+' -or $line -match '^-+\s+') {
+                                            $headerFound = $true
+                                        }
+                                        continue
+                                    }
+                                    
+                                    # Skip separator lines and empty lines
+                                    if ($line -match '^-+' -or $line.Trim() -eq '' -or $line -match '^\s*$') {
+                                        continue
+                                    }
+                                    
+                                    # Parse app line with flexible column detection
+                                    if ($line -match '\S') {
+                                        try {
+                                            # Split by multiple spaces to handle column alignment
+                                            $parts = $line -split '\s{2,}' | Where-Object { $_.Trim() -ne '' }
+                                            
+                                            if ($parts.Count -ge 1) {
+                                                $apps += [PSCustomObject]@{
+                                                    Name    = $parts[0].Trim()
+                                                    Id      = if ($parts.Count -gt 1) { $parts[1].Trim() } else { $parts[0].Trim() }
+                                                    Version = if ($parts.Count -gt 2) { $parts[2].Trim() } else { 'Unknown' }
+                                                    Source  = 'text-parsed'
+                                                }
+                                            }
+                                        }
+                                        catch {
+                                            # Fallback: treat entire line as app name
+                                            $apps += [PSCustomObject]@{
+                                                Name    = $line.Trim()
+                                                Id      = $line.Trim()
+                                                Version = 'Unknown'
+                                                Source  = 'text-fallback'
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if ($apps.Count -gt 0) {
+                                    $inventory.winget = $apps
+                                    $wingetSuccess = $true
+                                    Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via enhanced text parsing." 'INFO'
+                                    break
+                                }
+                            }
+                        }
+                        catch {
+                            Write-Log "[Inventory] Text parsing format failed: $_" 'VERBOSE'
+                        }
                     }
                 }
-                else {
-                    Write-Log "[Inventory] No JSON found in winget output. Using fallback text parsing." 'WARN'
-                    throw "No JSON found"
+                catch {
+                    Write-Log "[Inventory] Enhanced text parsing failed: $_" 'WARN'
                 }
             }
-            else {
-                Write-Log "[Inventory] No winget output received. Using fallback text parsing." 'WARN'
-                throw "No output"
-            }
-        }
-        catch {
-            # Fallback to text parsing when JSON fails
-            try {
-                Write-Log "[Inventory] Using winget text parsing fallback..." 'INFO'
-                $wingetOutput = winget list --accept-source-agreements 2>$null
-                if ($wingetOutput) {
-                    $inventory.winget = @($wingetOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Name|^-+|^$' } | 
-                        ForEach-Object { 
-                            $parts = $_ -split '\s+', 3
+            
+            # Final fallback: basic winget list
+            if (-not $wingetSuccess) {
+                try {
+                    Write-Log "[Inventory] Using basic winget fallback..." 'VERBOSE'
+                    $basicOutput = winget list 2>$null | Where-Object { $_ -match '\S' -and $_ -notmatch '^Name|^-+|packages available' }
+                    
+                    if ($basicOutput) {
+                        $inventory.winget = @($basicOutput | ForEach-Object {
                             [PSCustomObject]@{
-                                Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
-                                Id      = if ($parts.Count -gt 1) { $parts[1] } else { $null }
-                                Version = if ($parts.Count -gt 2) { $parts[2] } else { $null }
-                                Source  = 'text-parsed'
+                                Name    = $_.Trim()
+                                Id      = $_.Trim()
+                                Version = 'Unknown'
+                                Source  = 'basic-fallback'
                             }
                         })
-                    Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via text parsing." 'INFO'
+                        Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via basic fallback." 'INFO'
+                    }
+                    else {
+                        $inventory.winget = @()
+                        Write-Log "[Inventory] No winget apps found with any method." 'WARN'
+                    }
                 }
-                else {
-                    Write-Log "[Inventory] No winget output in text mode either." 'WARN'
+                catch {
+                    Write-Log "[Inventory] Basic winget fallback failed: $_" 'WARN'
                     $inventory.winget = @()
                 }
             }
-            catch {
-                Write-Log "[Inventory] Winget text parsing also failed: $_" 'WARN'
-                $inventory.winget = @()
-            }
+        }
+        catch {
+            Write-Log "[Inventory] All winget parsing methods failed: $_" 'WARN'
+            $inventory.winget = @()
         }
     }
     else {
