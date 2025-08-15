@@ -140,6 +140,37 @@ $global:ScriptTasks = @(
     }
 )
 
+### Load configuration (if exists) - MUST BE EARLY TO SUPPORT TASK DEFINITIONS
+$configPath = Join-Path $PSScriptRoot "config.json"
+$global:Config = @{
+    SkipBloatwareRemoval = $false
+    SkipEssentialApps    = $false
+    SkipWindowsUpdates   = $false
+    SkipTelemetryDisable = $false
+    SkipSystemRestore    = $false
+    CustomEssentialApps  = @()
+    CustomBloatwareList  = @()
+    EnableVerboseLogging = $false
+}
+
+if (Test-Path $configPath) {
+    try {
+        $config = Get-Content $configPath | ConvertFrom-Json
+        # Merge custom config with defaults
+        if ($config.SkipBloatwareRemoval) { $global:Config.SkipBloatwareRemoval = $config.SkipBloatwareRemoval }
+        if ($config.SkipEssentialApps) { $global:Config.SkipEssentialApps = $config.SkipEssentialApps }
+        if ($config.SkipWindowsUpdates) { $global:Config.SkipWindowsUpdates = $config.SkipWindowsUpdates }
+        if ($config.SkipTelemetryDisable) { $global:Config.SkipTelemetryDisable = $config.SkipTelemetryDisable }
+        if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
+        if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
+        if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
+        if ($config.EnableVerboseLogging) { $global:Config.EnableVerboseLogging = $config.EnableVerboseLogging }
+    }
+    catch {
+        # Note: Write-Log not available yet, this will be logged later
+    }
+}
+
 # Main Coordinator Function
 function Use-AllScriptTasks {
     Write-Log '[COORDINATION] Starting all maintenance tasks...' 'INFO'
@@ -941,42 +972,9 @@ if ($global:Config.CustomEssentialApps -and $global:Config.CustomEssentialApps.C
 $essentialAppsListPath = Join-Path $global:TempFolder 'essential_apps.json'
 $global:EssentialApps | ConvertTo-Json -Depth 5 | Out-File $essentialAppsListPath -Encoding UTF8
 
-### Load configuration (if exists)
-$configPath = Join-Path $PSScriptRoot "config.json"
-$global:Config = @{
-    SkipBloatwareRemoval = $false
-    SkipEssentialApps    = $false
-    SkipWindowsUpdates   = $false
-    SkipTelemetryDisable = $false
-    SkipSystemRestore    = $false
-    CustomEssentialApps  = @()
-    CustomBloatwareList  = @()
-    EnableVerboseLogging = $false
-}
-
-if (Test-Path $configPath) {
-    try {
-        $config = Get-Content $configPath | ConvertFrom-Json
-        # Merge custom config with defaults
-        if ($config.SkipBloatwareRemoval) { $global:Config.SkipBloatwareRemoval = $config.SkipBloatwareRemoval }
-        if ($config.SkipEssentialApps) { $global:Config.SkipEssentialApps = $config.SkipEssentialApps }
-        if ($config.SkipWindowsUpdates) { $global:Config.SkipWindowsUpdates = $config.SkipWindowsUpdates }
-        if ($config.SkipTelemetryDisable) { $global:Config.SkipTelemetryDisable = $config.SkipTelemetryDisable }
-        if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
-        if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
-        if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
-        if ($config.EnableVerboseLogging) { $global:Config.EnableVerboseLogging = $config.EnableVerboseLogging }
-        
-        Write-Log "Loaded configuration from config.json" 'INFO'
-        Write-Log "Config: SkipBloatware=$($global:Config.SkipBloatwareRemoval), SkipEssential=$($global:Config.SkipEssentialApps), SkipUpdates=$($global:Config.SkipWindowsUpdates)" 'INFO'
-    }
-    catch {
-        Write-Log "Failed to load configuration: $_" 'WARN'
-    }
-}
-else {
-    Write-Log "No config.json found. Using defaults." 'INFO'
-}
+### Config is already loaded early in the script, add logging here
+Write-Log "Loaded configuration from config.json" 'INFO'
+Write-Log "Config: SkipBloatware=$($global:Config.SkipBloatwareRemoval), SkipEssential=$($global:Config.SkipEssentialApps), SkipUpdates=$($global:Config.SkipWindowsUpdates)" 'INFO'
 
 ### Check Windows version and compatibility
 $os = Get-CimInstance Win32_OperatingSystem
@@ -2094,6 +2092,8 @@ function Disable-Telemetry {
         if ($allowedBrowsers -notcontains $browser) {
             try {
                 $removed = $false
+                $appRemoved = $false
+                $removalMethods = @()
                 # Try winget removal first
                 if (Get-Command winget -ErrorAction SilentlyContinue) {
                     $wingetSearch = winget list --id $browser --exact --accept-source-agreements 2>$null
@@ -2225,15 +2225,15 @@ function Disable-Telemetry {
   }
 }
 "@
-            $policyPath = Join-Path $distPath 'policies.json'
-            $policyJson | Set-Content -Path $policyPath -Encoding UTF8
-            Write-Log "Firefox policies.json deployed from built-in policy." 'INFO'
+    $policyPath = Join-Path $distPath 'policies.json'
+    $policyJson | Set-Content -Path $policyPath -Encoding UTF8
+    Write-Log "Firefox policies.json deployed from built-in policy." 'INFO'
 }
-
+        
 else {
     Write-Log "Could not find Firefox installation path for policies.json deployment." 'WARN'
 }
-
+    
 catch {
     Write-Log "Failed to deploy Firefox policies.json: $_" 'WARN'
 }
@@ -2245,7 +2245,7 @@ try {
         'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'
     )
     $firefoxPath = $firefoxPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-        
+
     if ($firefoxPath) {
         # Try to set Firefox as default browser using registry (more reliable)
         try {
@@ -2253,22 +2253,41 @@ try {
             $httpsReg = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice'
             $htmlReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.html\UserChoice'
             $htmReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.htm\UserChoice'
-                
+
             # Check if Firefox is registered
             $firefoxProgId = 'FirefoxURL-308046B0AF4A39CB'
-                
+
+            # Ensure registry paths exist before setting properties
+            foreach ($regPath in @($httpReg, $httpsReg, $htmlReg, $htmReg)) {
+                if (-not (Test-Path $regPath)) {
+                    try {
+                        $parentPath = Split-Path $regPath
+                        if (-not (Test-Path $parentPath)) {
+                            New-Item -Path $parentPath -Force | Out-Null
+                        }
+                        New-Item -Path $regPath -Force | Out-Null
+                    }
+                    catch {}
+                }
+            }
+
             # Set Firefox as default for HTTP/HTTPS protocols
             if (Test-Path $httpReg) { Set-ItemProperty -Path $httpReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
             if (Test-Path $httpsReg) { Set-ItemProperty -Path $httpsReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
             if (Test-Path $htmlReg) { Set-ItemProperty -Path $htmlReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
             if (Test-Path $htmReg) { Set-ItemProperty -Path $htmReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-                
+
             Write-Log "Firefox set as default browser via registry." 'INFO'
         }
         catch {
             # Fallback to Firefox command line method
-            Start-Process -FilePath $firefoxPath -ArgumentList "-setDefaultBrowser" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
-            Write-Log "Attempted to set Firefox as default browser via command line." 'INFO'
+            try {
+                Start-Process -FilePath $firefoxPath -ArgumentList "-setDefaultBrowser" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+                Write-Log "Attempted to set Firefox as default browser via command line." 'INFO'
+            }
+            catch {
+                Write-Log "Failed to set Firefox as default browser via command line: $_" 'WARN'
+            }
         }
     }
     else {
@@ -2283,13 +2302,15 @@ catch {
 $services = @('DiagTrack', 'dmwappushservice', 'Connected User Experiences and Telemetry')
 foreach ($svc in $services) {
     try {
-        $serviceObj = Get-Service -Name $svc -ErrorAction Stop
-        if ($serviceObj.Status -ne 'Stopped') {
-            Stop-Service -Name $svc -Force -ErrorAction Stop
+        $serviceObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if ($serviceObj -and $serviceObj.Status -ne 'Stopped') {
+            Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
             Write-Log "Stopped service: $svc" 'INFO'
         }
-        Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
-        Write-Log "Disabled service: $svc" 'INFO'
+        if ($serviceObj) {
+            Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+            Write-Log "Disabled service: $svc" 'INFO'
+        }
     }
     catch {
         Write-Log "Service $svc not found or could not be disabled: $_" 'WARN'
