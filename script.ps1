@@ -21,226 +21,246 @@ $global:ScriptTasks = @(
     # Environment: Windows 10/11, Administrator required, C:\ drive focus
     # Logic: Config-driven skip, PowerShell native cmdlets, duplicate protection
     # Dependencies: SystemRestoreConfig, Checkpoint-Computer, registry fallbacks
-@{ Name = 'SystemRestoreProtection'; Function = { 
-    if (-not $global:Config.SkipSystemRestore) { 
-        Protect-SystemRestore
-        return $true
-    } else { 
-        Write-Log 'System Restore Protection skipped by config' 'INFO'
-        return $false
-    } 
-}; Description = 'AI_DESC: Enable System Restore and create pre-maintenance checkpoint' },
-
-# Task: SystemInventory
-# Purpose: Collects comprehensive system information for reporting and analysis.
-# Environment: Windows 10/11, any user context, outputs to inventory.txt
-# Logic: Get-ComputerInfo based, structured data collection, file output
-# Dependencies: WMI/CIM cmdlets, file system access
-@{ Name = 'SystemInventory'; Function = { 
-    Get-SystemInventory
-    return $true
-}; Description = 'AI_DESC: Collect and export comprehensive system inventory data' },
-
-# Task: RemoveBloatware
-# Purpose: Multi-method removal of unwanted applications and components.
-# Environment: Windows 10/11, Administrator required, AppX/DISM/Registry access
-# Logic: Parallel processing, inventory-based filtering, action-only logging
-# Dependencies: AppX cmdlets, DISM, Winget, Chocolatey, Windows Capabilities
-@{ Name = 'RemoveBloatware'; Function = { 
-    if (-not $global:Config.SkipBloatwareRemoval) { 
-        Remove-Bloatware
-        return $true
-    } else { 
-        Write-Log 'Bloatware removal skipped by config' 'INFO'
-        return $false
-    } 
-}; Description = 'AI_DESC: Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' },
-
-# Task: InstallEssentialApps
-# Purpose: Parallel installation of curated essential applications.
-# Environment: Windows 10/11, Administrator required, package manager access
-# Logic: HashSet optimization, parallel processing, smart filtering, custom app support
-# Dependencies: Winget, Chocolatey, inventory system, config.json integration
-@{ Name = 'InstallEssentialApps'; Function = { 
-    if (-not $global:Config.SkipEssentialApps) { 
-        Install-EssentialApps
-        return $true
-    } else { 
-        Write-Log 'Essential apps installation skipped by config' 'INFO'
-        return $false
-    } 
-}; Description = 'AI_DESC: Install curated essential applications with parallel processing' },
-
-# Task: UpdateAllPackages
-# Purpose: Ultra-parallel update of all installed packages.
-# Environment: Windows 10/11, Administrator required, enhanced performance focus
-# Logic: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
-# Dependencies: Winget, Chocolatey, parallel processing capabilities
-@{ Name = 'UpdateAllPackages'; Function = { 
-    Update-AllPackages
-    return $true
-}; Description = 'AI_DESC: Ultra-parallel package updates with performance optimization' },
-
-# Task: WindowsUpdateCheck
-# Purpose: Check and install Windows Updates via PSWindowsUpdate module.
-# Environment: Windows 10/11, Administrator required, PSWindowsUpdate module
-# Logic: Config-driven skip, module auto-install, comprehensive error handling
-# Dependencies: PSWindowsUpdate module, Windows Update service, PowerShell compatibility
-@{ Name = 'WindowsUpdateCheck'; Function = {
-        if (-not $global:Config.SkipWindowsUpdates) {
-            Write-Log 'AI_ACTION: Initiating Windows Updates check and installation' 'INFO'
-            $success = Install-WindowsUpdatesCompatible
-            if ($success) {
-                Write-Log 'AI_RESULT: Windows Updates completed successfully' 'INFO'
+    @{ Name = 'SystemRestoreProtection'; Function = { 
+            if (-not $global:Config.SkipSystemRestore) { 
+                Protect-SystemRestore
                 return $true
             }
+            else { 
+                Write-Log 'System Restore Protection skipped by config' 'INFO'
+                return $false
+            } 
+        }; Description = 'AI_DESC: Enable System Restore and create pre-maintenance checkpoint' 
+    },
+
+    # Task: SystemInventory
+    # Purpose: Collects comprehensive system information for reporting and analysis.
+    # Environment: Windows 10/11, any user context, outputs to inventory.txt
+    # Logic: Get-ComputerInfo based, structured data collection, file output
+    # Dependencies: WMI/CIM cmdlets, file system access
+    @{ Name = 'SystemInventory'; Function = { 
+            Get-SystemInventory
+            return $true
+        }; Description = 'AI_DESC: Collect and export comprehensive system inventory data' 
+    },
+
+    # Task: RemoveBloatware
+    # Purpose: Multi-method removal of unwanted applications and components.
+    # Environment: Windows 10/11, Administrator required, AppX/DISM/Registry access
+    # Logic: Parallel processing, inventory-based filtering, action-only logging
+    # Dependencies: AppX cmdlets, DISM, Winget, Chocolatey, Windows Capabilities
+    @{ Name = 'RemoveBloatware'; Function = { 
+            if (-not $global:Config.SkipBloatwareRemoval) { 
+                Remove-Bloatware
+                return $true
+            }
+            else { 
+                Write-Log 'Bloatware removal skipped by config' 'INFO'
+                return $false
+            } 
+        }; Description = 'AI_DESC: Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' 
+    },
+
+    # Task: InstallEssentialApps
+    # Purpose: Parallel installation of curated essential applications.
+    # Environment: Windows 10/11, Administrator required, package manager access
+    # Logic: HashSet optimization, parallel processing, smart filtering, custom app support
+    # Dependencies: Winget, Chocolatey, inventory system, config.json integration
+    @{ Name = 'InstallEssentialApps'; Function = { 
+            if (-not $global:Config.SkipEssentialApps) { 
+                Install-EssentialApps
+                return $true
+            }
+            else { 
+                Write-Log 'Essential apps installation skipped by config' 'INFO'
+                return $false
+            } 
+        }; Description = 'AI_DESC: Install curated essential applications with parallel processing' 
+    },
+
+    # Task: UpdateAllPackages
+    # Purpose: Ultra-parallel update of all installed packages.
+    # Environment: Windows 10/11, Administrator required, enhanced performance focus
+    # Logic: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
+    # Dependencies: Winget, Chocolatey, parallel processing capabilities
+    @{ Name = 'UpdateAllPackages'; Function = { 
+            Update-AllPackages
+            return $true
+        }; Description = 'AI_DESC: Ultra-parallel package updates with performance optimization' 
+    },
+
+    # Task: WindowsUpdateCheck
+    # Purpose: Check and install Windows Updates via PSWindowsUpdate module.
+    # Environment: Windows 10/11, Administrator required, PSWindowsUpdate module
+    # Logic: Config-driven skip, module auto-install, comprehensive error handling
+    # Dependencies: PSWindowsUpdate module, Windows Update service, PowerShell compatibility
+    @{ Name = 'WindowsUpdateCheck'; Function = {
+            if (-not $global:Config.SkipWindowsUpdates) {
+                Write-Log 'AI_ACTION: Initiating Windows Updates check and installation' 'INFO'
+                $success = Install-WindowsUpdatesCompatible
+                if ($success) {
+                    Write-Log 'AI_RESULT: Windows Updates completed successfully' 'INFO'
+                    return $true
+                }
+                else {
+                    Write-Log 'AI_RESULT: Windows Updates failed or no updates available' 'WARN'
+                    return $false
+                }
+            }
             else {
-                Write-Log 'AI_RESULT: Windows Updates failed or no updates available' 'WARN'
+                Write-Log 'AI_CONFIG: Windows Updates check skipped by configuration' 'INFO'
                 return $false
             }
-        }
-        else {
-            Write-Log 'AI_CONFIG: Windows Updates check skipped by configuration' 'INFO'
-            return $false
-        }
-    }; Description = 'AI_DESC: Check and install Windows Updates with PSWindowsUpdate module' 
-},
+        }; Description = 'AI_DESC: Check and install Windows Updates with PSWindowsUpdate module' 
+    },
 
-# Task: DisableTelemetry
-# Purpose: Disable Windows telemetry and privacy-invasive features.
-# Environment: Windows 10/11, Administrator required, registry/service modification
-# Logic: Parallel browser detection, batch registry operations, service management
-# Dependencies: Registry access, service control, browser configuration files
-@{ Name = 'DisableTelemetry'; Function = { 
-    if (-not $global:Config.SkipTelemetryDisable) { 
-        Disable-Telemetry
-        return $true
-    } else { 
-        Write-Log 'Telemetry disable skipped by config' 'INFO'
-        return $false
-    } 
-}; Description = 'AI_DESC: Disable telemetry, privacy features, and configure browser privacy' },
-
-# Task: CleanTempAndDisk
-# Purpose: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup).
-# Environment: Windows 10/11, Administrator preferred, disk cleanup utilities
-# Logic: Multi-folder temp cleanup, parallel deletion, cleanmgr.exe, Storage Sense, DISM, Delivery Optimization, action-only logging
-# Dependencies: File system access, cleanmgr.exe, temp folder permissions, DISM, Storage Sense
-@{ Name = 'CleanTempAndDisk'; Function = {
-        Write-Log '[AI_START] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
-        $cleanupStart = Get-Date
-        $deletedFiles = 0
-        $deletedFolders = 0
-        $errorCount = 0
-        $cleanupTargets = @(
-            $env:TEMP,
-            "$env:SystemRoot\Temp",
-            "$env:LOCALAPPDATA\Temp",
-            "$env:USERPROFILE\AppData\Local\Temp",
-            "$env:USERPROFILE\AppData\Roaming\Temp",
-            "$env:USERPROFILE\AppData\Local\Microsoft\Windows\INetCache",
-            "$env:USERPROFILE\AppData\Local\Microsoft\Windows\WebCache",
-            "$env:USERPROFILE\AppData\Local\Google\Chrome\User Data\Default\Cache",
-            "$env:USERPROFILE\AppData\Local\Mozilla\Firefox\Profiles",
-            "$env:USERPROFILE\AppData\Local\Microsoft\Edge\User Data\Default\Cache",
-            "$env:SystemRoot\SoftwareDistribution\Download",
-            "$env:SystemRoot\SoftwareDistribution\DataStore",
-            "$env:SystemRoot\Logs",
-            "$env:SystemRoot\Prefetch",
-            "$env:SystemRoot\WinSxS\Temp",
-            "$env:SystemRoot\Installer\PatchCache",
-            "$env:SystemRoot\System32\LogFiles",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Temp",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Windows\INetCache",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Windows\WebCache",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Google\Chrome\User Data\Default\Cache",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Mozilla\Firefox\Profiles",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Edge\User Data\Default\Cache",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalCache",
-            "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.CloudExperienceHost_cw5n1h2txyewy\LocalCache"
-        )
-        $cleanupTargets = $cleanupTargets | Sort-Object -Unique
-        $allItems = @()
-        foreach ($folder in $cleanupTargets) {
-            if (Test-Path $folder) {
-                try {
-                    $items = Get-ChildItem -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
-                    $allItems += $items
-                } catch {
-                    Write-Log "AI_ERROR: Failed to enumerate $folder`: $_" 'WARN'
-                    $errorCount++
-                }
+    # Task: DisableTelemetry
+    # Purpose: Disable Windows telemetry and privacy-invasive features.
+    # Environment: Windows 10/11, Administrator required, registry/service modification
+    # Logic: Parallel browser detection, batch registry operations, service management
+    # Dependencies: Registry access, service control, browser configuration files
+    @{ Name = 'DisableTelemetry'; Function = { 
+            if (-not $global:Config.SkipTelemetryDisable) { 
+                Disable-Telemetry
+                return $true
             }
-        }
-        if ($allItems.Count -gt 0) {
-            Write-Log "[AI_CLEANUP] Deleting $($allItems.Count) files/folders in parallel..." 'INFO'
-            $allItems | ForEach-Object -Parallel {
-                try {
-                    if ($_.PSIsContainer) {
-                        Remove-Item $_.FullName -Force -Recurse -ErrorAction Stop
-                        [System.Threading.Interlocked]::Increment([ref]$using:deletedFolders)
-                    } else {
-                        Remove-Item $_.FullName -Force -ErrorAction Stop
-                        [System.Threading.Interlocked]::Increment([ref]$using:deletedFiles)
+            else { 
+                Write-Log 'Telemetry disable skipped by config' 'INFO'
+                return $false
+            } 
+        }; Description = 'AI_DESC: Disable telemetry, privacy features, and configure browser privacy' 
+    },
+
+    # Task: CleanTempAndDisk
+    # Purpose: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup).
+    # Environment: Windows 10/11, Administrator preferred, disk cleanup utilities
+    # Logic: Multi-folder temp cleanup, parallel deletion, cleanmgr.exe, Storage Sense, DISM, Delivery Optimization, action-only logging
+    # Dependencies: File system access, cleanmgr.exe, temp folder permissions, DISM, Storage Sense
+    @{ Name = 'CleanTempAndDisk'; Function = {
+            Write-Log '[AI_START] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
+            $cleanupStart = Get-Date
+            $deletedFiles = 0
+            $deletedFolders = 0
+            $errorCount = 0
+            $cleanupTargets = @(
+                $env:TEMP,
+                "$env:SystemRoot\Temp",
+                "$env:LOCALAPPDATA\Temp",
+                "$env:USERPROFILE\AppData\Local\Temp",
+                "$env:USERPROFILE\AppData\Roaming\Temp",
+                "$env:USERPROFILE\AppData\Local\Microsoft\Windows\INetCache",
+                "$env:USERPROFILE\AppData\Local\Microsoft\Windows\WebCache",
+                "$env:USERPROFILE\AppData\Local\Google\Chrome\User Data\Default\Cache",
+                "$env:USERPROFILE\AppData\Local\Mozilla\Firefox\Profiles",
+                "$env:USERPROFILE\AppData\Local\Microsoft\Edge\User Data\Default\Cache",
+                "$env:SystemRoot\SoftwareDistribution\Download",
+                "$env:SystemRoot\SoftwareDistribution\DataStore",
+                "$env:SystemRoot\Logs",
+                "$env:SystemRoot\Prefetch",
+                "$env:SystemRoot\WinSxS\Temp",
+                "$env:SystemRoot\Installer\PatchCache",
+                "$env:SystemRoot\System32\LogFiles",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Temp",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Windows\INetCache",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Windows\WebCache",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Google\Chrome\User Data\Default\Cache",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Mozilla\Firefox\Profiles",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Microsoft\Edge\User Data\Default\Cache",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalCache",
+                "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.CloudExperienceHost_cw5n1h2txyewy\LocalCache"
+            )
+            $cleanupTargets = $cleanupTargets | Sort-Object -Unique
+            $allItems = @()
+            foreach ($folder in $cleanupTargets) {
+                if (Test-Path $folder) {
+                    try {
+                        $items = Get-ChildItem -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
+                        $allItems += $items
                     }
-                } catch {
-                    [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                    Write-Log "AI_ERROR: Failed to delete $($_.FullName): $_" 'WARN'
+                    catch {
+                        Write-Log "AI_ERROR: Failed to enumerate $folder`: $_" 'WARN'
+                        $errorCount++
+                    }
                 }
-            } -ThrottleLimit 8
-        }
-        Write-Log "[AI_RESULT] Deleted $deletedFiles files and $deletedFolders folders from all cleanup targets" 'INFO'
-        # Run Disk Cleanup (cleanmgr)
-        try {
-            $cleanmgrArgs = '/AUTOCLEAN'
-            $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -Wait -PassThru
-            if ($proc.ExitCode -eq 0) {
-                Write-Log '[AI_SUCCESS] Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN)' 'INFO'
-            } else {
-                Write-Log "AI_ERROR: Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
             }
-        } catch {
-            Write-Log "AI_ERROR: Disk cleanup operation failed: $_" 'WARN'
-        }
-        # Run Storage Sense (if available)
-        if (Get-Command Start-StorageSense -ErrorAction SilentlyContinue) {
+            if ($allItems.Count -gt 0) {
+                Write-Log "[AI_CLEANUP] Deleting $($allItems.Count) files/folders in parallel..." 'INFO'
+                $allItems | ForEach-Object -Parallel {
+                    try {
+                        if ($_.PSIsContainer) {
+                            Remove-Item $_.FullName -Force -Recurse -ErrorAction Stop
+                            [System.Threading.Interlocked]::Increment([ref]$using:deletedFolders)
+                        }
+                        else {
+                            Remove-Item $_.FullName -Force -ErrorAction Stop
+                            [System.Threading.Interlocked]::Increment([ref]$using:deletedFiles)
+                        }
+                    }
+                    catch {
+                        [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
+                        Write-Log "AI_ERROR: Failed to delete $($_.FullName): $_" 'WARN'
+                    }
+                } -ThrottleLimit 8
+            }
+            Write-Log "[AI_RESULT] Deleted $deletedFiles files and $deletedFolders folders from all cleanup targets" 'INFO'
+            # Run Disk Cleanup (cleanmgr)
             try {
-                Start-StorageSense -ErrorAction Stop
-                Write-Log '[AI_SUCCESS] Storage Sense cleanup completed' 'INFO'
-            } catch {
-                Write-Log "AI_ERROR: Storage Sense cleanup failed: $_" 'WARN'
+                $cleanmgrArgs = '/AUTOCLEAN'
+                $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -Wait -PassThru
+                if ($proc.ExitCode -eq 0) {
+                    Write-Log '[AI_SUCCESS] Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN)' 'INFO'
+                }
+                else {
+                    Write-Log "AI_ERROR: Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
+                }
             }
-        }
-        # Run WinSxS component cleanup
-        try {
-            $dismProc = Start-Process -FilePath 'dism.exe' -ArgumentList '/Online','/Cleanup-Image','/StartComponentCleanup','/Quiet' -WindowStyle Hidden -Wait -PassThru
-            if ($dismProc.ExitCode -eq 0) {
-                Write-Log '[AI_SUCCESS] WinSxS component cleanup completed' 'INFO'
-            } else {
-                Write-Log "AI_ERROR: WinSxS cleanup exited with code $($dismProc.ExitCode)" 'WARN'
+            catch {
+                Write-Log "AI_ERROR: Disk cleanup operation failed: $_" 'WARN'
             }
-        } catch {
-            Write-Log "AI_ERROR: WinSxS cleanup failed: $_" 'WARN'
-        }
-        # Run Delivery Optimization cache cleanup
-        try {
-            $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
-            if ($doProc.ExitCode -eq 0) {
-                Write-Log '[AI_SUCCESS] Delivery Optimization cache cleanup completed' 'INFO'
-            } else {
-                Write-Log "AI_ERROR: Delivery Optimization cleanup exited with code $($doProc.ExitCode)" 'WARN'
+            # Run Storage Sense (if available)
+            if (Get-Command Start-StorageSense -ErrorAction SilentlyContinue) {
+                try {
+                    Start-StorageSense -ErrorAction Stop
+                    Write-Log '[AI_SUCCESS] Storage Sense cleanup completed' 'INFO'
+                }
+                catch {
+                    Write-Log "AI_ERROR: Storage Sense cleanup failed: $_" 'WARN'
+                }
             }
-        } catch {
-            Write-Log "AI_ERROR: Delivery Optimization cleanup failed: $_" 'WARN'
-        }
-        $cleanupEnd = Get-Date
-        $duration = ($cleanupEnd - $cleanupStart).TotalSeconds
-        Write-Log "[AI_PERFORMANCE] Full system cleanup completed in $([math]::Round($duration,2)) seconds" 'INFO'
-        Write-Log '[AI_END] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
-        return $true
-    }; Description = 'AI_DESC: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup)' 
-}
+            # Run WinSxS component cleanup
+            try {
+                $dismProc = Start-Process -FilePath 'dism.exe' -ArgumentList '/Online', '/Cleanup-Image', '/StartComponentCleanup', '/Quiet' -WindowStyle Hidden -Wait -PassThru
+                if ($dismProc.ExitCode -eq 0) {
+                    Write-Log '[AI_SUCCESS] WinSxS component cleanup completed' 'INFO'
+                }
+                else {
+                    Write-Log "AI_ERROR: WinSxS cleanup exited with code $($dismProc.ExitCode)" 'WARN'
+                }
+            }
+            catch {
+                Write-Log "AI_ERROR: WinSxS cleanup failed: $_" 'WARN'
+            }
+            # Run Delivery Optimization cache cleanup
+            try {
+                $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
+                if ($doProc.ExitCode -eq 0) {
+                    Write-Log '[AI_SUCCESS] Delivery Optimization cache cleanup completed' 'INFO'
+                }
+                else {
+                    Write-Log "AI_ERROR: Delivery Optimization cleanup exited with code $($doProc.ExitCode)" 'WARN'
+                }
+            }
+            catch {
+                Write-Log "AI_ERROR: Delivery Optimization cleanup failed: $_" 'WARN'
+            }
+            $cleanupEnd = Get-Date
+            $duration = ($cleanupEnd - $cleanupStart).TotalSeconds
+            Write-Log "[AI_PERFORMANCE] Full system cleanup completed in $([math]::Round($duration,2)) seconds" 'INFO'
+            Write-Log '[AI_END] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
+            return $true
+        }; Description = 'AI_DESC: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup)' 
+    }
 )
 
 ### AI_CONFIG: Load configuration from config.json (if exists) - MUST BE EARLY
@@ -750,7 +770,8 @@ function Install-WindowsUpdatesCompatible {
                 Write-Log "[AI_FALLBACK] Attempting individual update installation..." 'INFO'
                 
                 $individualSuccessCount = 0
-                foreach ($update in $availableUpdates | Select-Object -First 5) {  # Limit to first 5 for safety
+                foreach ($update in $availableUpdates | Select-Object -First 5) {
+                    # Limit to first 5 for safety
                     try {
                         Write-Log "[AI_INDIVIDUAL] Installing: $($update.Title)" 'INFO'
                         $individualResult = Install-WindowsUpdate -KBArticleID $update.KBArticleIDs -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction Stop
@@ -947,30 +968,30 @@ function Get-ExtensiveSystemInventory {
                             if ($wingetData.Sources -and $wingetData.Sources.Count -gt 0) {
                                 # Format 1: Sources -> Packages structure
                                 $inventory.winget = @($wingetData.Sources | ForEach-Object { 
-                                    if ($_.Packages) {
-                                        $_.Packages | ForEach-Object {
-                                            [PSCustomObject]@{
-                                                Name    = $_.Name
-                                                Id      = $_.Id
-                                                Version = if ($_.InstalledVersion) { $_.InstalledVersion } else { $_.Version }
-                                                Source  = if ($_.Source) { $_.Source } else { 'winget' }
+                                        if ($_.Packages) {
+                                            $_.Packages | ForEach-Object {
+                                                [PSCustomObject]@{
+                                                    Name    = $_.Name
+                                                    Id      = $_.Id
+                                                    Version = if ($_.InstalledVersion) { $_.InstalledVersion } else { $_.Version }
+                                                    Source  = if ($_.Source) { $_.Source } else { 'winget' }
+                                                }
                                             }
                                         }
-                                    }
-                                })
+                                    })
                                 $wingetSuccess = $true
                                 Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON (Sources format)." 'INFO'
                             }
                             elseif ($wingetData.Count -gt 0 -or ($wingetData -is [array] -and $wingetData.Length -gt 0)) {
                                 # Format 2: Direct array of packages
                                 $inventory.winget = @($wingetData | ForEach-Object {
-                                    [PSCustomObject]@{
-                                        Name    = $_.Name
-                                        Id      = $_.Id
-                                        Version = if ($_.InstalledVersion) { $_.InstalledVersion } else { $_.Version }
-                                        Source  = if ($_.Source) { $_.Source } else { 'winget' }
-                                    }
-                                })
+                                        [PSCustomObject]@{
+                                            Name    = $_.Name
+                                            Id      = $_.Id
+                                            Version = if ($_.InstalledVersion) { $_.InstalledVersion } else { $_.Version }
+                                            Source  = if ($_.Source) { $_.Source } else { 'winget' }
+                                        }
+                                    })
                                 $wingetSuccess = $true
                                 Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON (Direct array format)." 'INFO'
                             }
@@ -1086,13 +1107,13 @@ function Get-ExtensiveSystemInventory {
                     
                     if ($basicOutput) {
                         $inventory.winget = @($basicOutput | ForEach-Object {
-                            [PSCustomObject]@{
-                                Name    = $_.Trim()
-                                Id      = $_.Trim()
-                                Version = 'Unknown'
-                                Source  = 'basic-fallback'
-                            }
-                        })
+                                [PSCustomObject]@{
+                                    Name    = $_.Trim()
+                                    Id      = $_.Trim()
+                                    Version = 'Unknown'
+                                    Source  = 'basic-fallback'
+                                }
+                            })
                         Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via basic fallback." 'INFO'
                     }
                     else {
@@ -1713,11 +1734,11 @@ function Install-EssentialApps {
             param($app, $wingetAvailable, $chocoAvailable)
             
             $result = @{
-                AppName = $app.Name
-                Success = $false
-                Method = ""
-                Error = ""
-                Skipped = $false
+                AppName    = $app.Name
+                Success    = $false
+                Method     = ""
+                Error      = ""
+                Skipped    = $false
                 SkipReason = ""
             }
             
@@ -1806,8 +1827,6 @@ function Install-EssentialApps {
 
     # Enhanced Office detection with parallel checking
     $officeDetectionJob = Start-Job -ScriptBlock {
-        $officeInstalled = $false
-        
         # Check registry keys in parallel
         $registryJob = Start-Job -ScriptBlock {
             $officeKeys = @(
@@ -1865,8 +1884,8 @@ function Install-EssentialApps {
             
             $result = @{
                 Success = $false
-                Method = ""
-                Error = ""
+                Method  = ""
+                Error   = ""
             }
             
             try {
@@ -1914,17 +1933,17 @@ function Install-EssentialApps {
         
         if ($libreResult.Success) {
             [void]$successfulInstalls.Add([PSCustomObject]@{
-                AppName = "LibreOffice"
-                Method = $libreResult.Method
-                Success = $true
-            })
+                    AppName = "LibreOffice"
+                    Method  = $libreResult.Method
+                    Success = $true
+                })
         }
         else {
             [void]$failedInstalls.Add([PSCustomObject]@{
-                AppName = "LibreOffice"
-                Error = $libreResult.Error
-                Success = $false
-            })
+                    AppName = "LibreOffice"
+                    Error   = $libreResult.Error
+                    Success = $false
+                })
         }
     }
 
@@ -2036,12 +2055,12 @@ function Update-AllPackages {
     if ($wingetAvailable) {
         $wingetJob = Start-Job -ScriptBlock {
             $result = @{
-                Source = "Winget"
-                Success = $false
+                Source          = "Winget"
+                Success         = $false
                 UpdatedPackages = @()
-                Error = ""
-                NoUpdatesFound = $false
-                ProcessingTime = 0
+                Error           = ""
+                NoUpdatesFound  = $false
+                ProcessingTime  = 0
             }
             
             $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -2142,12 +2161,12 @@ function Update-AllPackages {
     if ($chocoAvailable) {
         $chocoJob = Start-Job -ScriptBlock {
             $result = @{
-                Source = "Chocolatey"
-                Success = $false
+                Source          = "Chocolatey"
+                Success         = $false
                 UpdatedPackages = @()
-                Error = ""
-                NoUpdatesFound = $false
-                ProcessingTime = 0
+                Error           = ""
+                NoUpdatesFound  = $false
+                ProcessingTime  = 0
             }
             
             $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -2272,35 +2291,35 @@ function Update-AllPackages {
             if ($jobResult.Success) {
                 if ($jobResult.NoUpdatesFound) {
                     [void]$noUpdatesAvailable.Add([PSCustomObject]@{
-                        Source = $jobResult.Source
-                        Message = "No updates available"
-                        ProcessingTime = $jobResult.ProcessingTime
-                    })
+                            Source         = $jobResult.Source
+                            Message        = "No updates available"
+                            ProcessingTime = $jobResult.ProcessingTime
+                        })
                 }
                 else {
                     [void]$successfulUpdates.Add([PSCustomObject]@{
-                        Source = $jobResult.Source
-                        UpdatedPackages = $jobResult.UpdatedPackages
-                        Count = if ($jobResult.UpdatedPackages) { $jobResult.UpdatedPackages.Count } else { 0 }
-                        ProcessingTime = $jobResult.ProcessingTime
-                    })
+                            Source          = $jobResult.Source
+                            UpdatedPackages = $jobResult.UpdatedPackages
+                            Count           = if ($jobResult.UpdatedPackages) { $jobResult.UpdatedPackages.Count } else { 0 }
+                            ProcessingTime  = $jobResult.ProcessingTime
+                        })
                 }
             }
             else {
                 [void]$failedUpdates.Add([PSCustomObject]@{
-                    Source = $jobResult.Source
-                    Error = $jobResult.Error
-                    ProcessingTime = $jobResult.ProcessingTime
-                })
+                        Source         = $jobResult.Source
+                        Error          = $jobResult.Error
+                        ProcessingTime = $jobResult.ProcessingTime
+                    })
             }
         }
         catch {
             Write-Log "[UpdatePackages] Error processing job result: $_" 'WARN'
             [void]$failedUpdates.Add([PSCustomObject]@{
-                Source = "Unknown"
-                Error = "Job result processing failed: $_"
-                ProcessingTime = 0
-            })
+                    Source         = "Unknown"
+                    Error          = "Job result processing failed: $_"
+                    ProcessingTime = 0
+                })
         }
     }
     
@@ -2308,10 +2327,10 @@ function Update-AllPackages {
     foreach ($job in $timeoutJobs) {
         Remove-Job -Job $job -Force
         [void]$failedUpdates.Add([PSCustomObject]@{
-            Source = "Timeout"
-            Error = "Package update timed out after $jobTimeout seconds"
-            ProcessingTime = $jobTimeout
-        })
+                Source         = "Timeout"
+                Error          = "Package update timed out after $jobTimeout seconds"
+                ProcessingTime = $jobTimeout
+            })
     }
 
     # Convert concurrent collections to arrays for enhanced reporting
@@ -2369,7 +2388,8 @@ function Update-AllPackages {
     }
 
     # Performance analysis and recommendations
-    if ($totalProcessingTime -gt 300) { # 5 minutes
+    if ($totalProcessingTime -gt 300) {
+        # 5 minutes
         Write-Log "[UpdatePackages] PERFORMANCE: Update took ${totalProcessingTime}s. Consider running updates during off-peak hours." 'INFO'
     }
     elseif ($totalProcessingTime -lt 30) {
@@ -2409,11 +2429,7 @@ function Remove-Bloatware {
     $installedApps = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new([System.StringComparer]::OrdinalIgnoreCase)
     
     # AI_OPTIMIZATION: Pre-compile common app name patterns for faster matching performance
-    $commonPatterns = @(
-        [regex]::new('microsoft\.', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled),
-        [regex]::new('\.exe$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled),
-        [regex]::new('^[A-Z]+\.[A-Z]', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Compiled)
-    )
+    # (Removed unused variable assignment to 'commonPatterns')
     
     # Ultra-parallel inventory processing with optimized data structures
     $inventoryJobs = @(
@@ -2431,10 +2447,10 @@ function Remove-Bloatware {
             foreach ($prop in $properties) {
                 if ($item.$prop -and $item.$prop.ToString().Trim()) {
                     $results.Add(@{
-                        Key = $item.$prop.ToString().Trim()
-                        Type = $type
-                        Data = $item
-                    })
+                            Key  = $item.$prop.ToString().Trim()
+                            Type = $type
+                            Data = $item
+                        })
                 }
             }
         }
@@ -2464,10 +2480,10 @@ function Remove-Bloatware {
     foreach ($installedKey in $installedApps.Keys) {
         if ($bloatwareHashSet.Contains($installedKey)) {
             $bloatwareMatches.Add([PSCustomObject]@{
-                BloatwareName = $installedKey
-                InstalledApp = $installedApps[$installedKey]
-                MatchType = 'Direct'
-            })
+                    BloatwareName = $installedKey
+                    InstalledApp  = $installedApps[$installedKey]
+                    MatchType     = 'Direct'
+                })
         }
     }
     
@@ -2475,18 +2491,15 @@ function Remove-Bloatware {
     if ($bloatwareMatches.Count -eq 0) {
         foreach ($bloatApp in $global:BloatwareList) {
             $trimmedBloat = $bloatApp.Trim()
-            $found = $false
-            
             foreach ($installedKey in $installedApps.Keys) {
                 if ($installedKey.Contains($trimmedBloat, [System.StringComparison]::OrdinalIgnoreCase) -or 
                     $trimmedBloat.Contains($installedKey, [System.StringComparison]::OrdinalIgnoreCase)) {
                     
                     $bloatwareMatches.Add([PSCustomObject]@{
-                        BloatwareName = $trimmedBloat
-                        InstalledApp = $installedApps[$installedKey]
-                        MatchType = 'Pattern'
-                    })
-                    $found = $true
+                            BloatwareName = $trimmedBloat
+                            InstalledApp  = $installedApps[$installedKey]
+                            MatchType     = 'Pattern'
+                        })
                     break
                 }
             }
@@ -2501,8 +2514,8 @@ function Remove-Bloatware {
     
     # Cached tool availability detection
     $toolCapabilities = @{
-        AppX = $false
-        Winget = $false
+        AppX       = $false
+        Winget     = $false
         Chocolatey = $false
     }
     
@@ -2537,10 +2550,10 @@ function Remove-Bloatware {
         $psVersion = $using:PSVersionTable
         
         $result = @{
-            Success = $false
-            AppName = $match.BloatwareName
+            Success    = $false
+            AppName    = $match.BloatwareName
             ActualName = ""
-            Method = ""
+            Method     = ""
         }
         
         try {
@@ -2683,13 +2696,13 @@ function Remove-Bloatware {
             }
             
             $settings = @{
-                'SilentInstalledAppsEnabled' = 0
-                'ContentDeliveryAllowed' = 0
-                'OemPreInstalledAppsEnabled' = 0
-                'PreInstalledAppsEnabled' = 0
-                'SubscribedContentEnabled' = 0
+                'SilentInstalledAppsEnabled'   = 0
+                'ContentDeliveryAllowed'       = 0
+                'OemPreInstalledAppsEnabled'   = 0
+                'PreInstalledAppsEnabled'      = 0
+                'SubscribedContentEnabled'     = 0
                 'SystemPaneSuggestionsEnabled' = 0
-                'SoftLandingEnabled' = 0
+                'SoftLandingEnabled'           = 0
             }
             
             foreach ($setting in $settings.GetEnumerator()) {
@@ -2750,7 +2763,7 @@ function Disable-Telemetry {
         # AI_BATCH_OPERATIONS: Batch set notification settings for efficiency
         $notificationSettings = @{
             'NOC_GLOBAL_SETTING_TOASTS_ENABLED' = 0
-            'FocusAssist' = 2
+            'FocusAssist'                       = 2
         }
         
         $settingsApplied = 0
@@ -2813,7 +2826,7 @@ function Disable-Telemetry {
                 }
             }
             return @{ Method = 'Winget'; Browsers = $foundBrowsers }
-        } -ArgumentList @(,$browsersToRemove)
+        } -ArgumentList @(, $browsersToRemove)
     }
     
     # Chocolatey detection job  
@@ -2828,7 +2841,7 @@ function Disable-Telemetry {
                 }
             }
             return @{ Method = 'Chocolatey'; Browsers = $foundBrowsers }
-        } -ArgumentList @(,$browsersToRemove)
+        } -ArgumentList @(, $browsersToRemove)
     }
     
     # Registry detection job
@@ -2844,8 +2857,8 @@ function Disable-Telemetry {
         foreach ($key in $uninstallKeys) {
             if (Test-Path $key) {
                 $regApps = Get-ChildItem $key -ErrorAction SilentlyContinue | 
-                          ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
-                          Where-Object { $_.DisplayName }
+                ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
+                Where-Object { $_.DisplayName }
                 
                 foreach ($browser in $browsersToRemove) {
                     if ($regApps | Where-Object { $_.DisplayName -like "*$browser*" }) {
@@ -2855,7 +2868,7 @@ function Disable-Telemetry {
             }
         }
         return @{ Method = 'Registry'; Browsers = ($foundBrowsers | Select-Object -Unique) }
-    } -ArgumentList @(,$browsersToRemove)
+    } -ArgumentList @(, $browsersToRemove)
     
     # Collect results from detection jobs
     $detectionResults = $detectionJobs | Wait-Job | Receive-Job
@@ -2913,8 +2926,8 @@ function Disable-Telemetry {
                 foreach ($key in $uninstallKeys) {
                     if (Test-Path $key) {
                         $apps = Get-ChildItem $key -ErrorAction SilentlyContinue | 
-                               ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
-                               Where-Object { $_.DisplayName -like "*$browser*" -and $_.UninstallString }
+                        ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
+                        Where-Object { $_.DisplayName -like "*$browser*" -and $_.UninstallString }
                         
                         foreach ($app in $apps) {
                             try {
@@ -3122,18 +3135,18 @@ function Disable-Telemetry {
     # Optimized registry configuration for telemetry - parallel execution
     $telemetryRegistry = @{
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' = @{ 'AllowTelemetry' = 0 }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat' = @{ 
-            'AITEnable' = 0
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'                     = @{ 
+            'AITEnable'        = 0
             'DisableInventory' = 1 
         }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' = @{ 
-            'UploadUserActivities' = 0
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'                        = @{ 
+            'UploadUserActivities'  = 0
             'PublishUserActivities' = 0 
         }
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Privacy' = @{
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Privacy'                 = @{
             'TailoredExperiencesWithDiagnosticDataEnabled' = 0
         }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo' = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo'               = @{
             'DisabledByGroupPolicy' = 1
         }
     }
@@ -3310,12 +3323,12 @@ function Protect-SystemRestore {
                 # Method 3: Try VSSAdmin as final fallback
                 if (-not $enableSuccess) {
                     try {
-                        $vssResult = & vssadmin list writers 2>$null
+                        & vssadmin list writers 2>$null
                         if ($LASTEXITCODE -eq 0) {
                             # VSSAdmin is working, try to enable via WMI
                             $systemRestoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue
                             if ($systemRestoreConfig) {
-                                $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true} -ErrorAction Stop
+                                $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true } -ErrorAction Stop
                                 $enableSuccess = $true
                                 Write-Log "[SystemRestore] Enabled using WMI/CIM method" 'INFO'
                             }
@@ -3385,12 +3398,14 @@ function Protect-SystemRestore {
                     }
                     catch {
                         $errorCode = $_.Exception.HResult
-                        if ($errorCode -eq -2147023728) {  # 0x80042308 - Frequency limit
+                        if ($errorCode -eq -2147023728) {
+                            # 0x80042308 - Frequency limit
                             Write-Host "ℹ️ Restore point frequency limit reached (Windows limitation)" -ForegroundColor Cyan
                             Write-Log "Restore point frequency limit reached - skipping (Windows limitation)" 'INFO'
                             $createSuccess = $true  # Consider successful since protection exists
                         }
-                        elseif ($errorCode -eq -2147023742) {  # 0x80042302 - Service not responding
+                        elseif ($errorCode -eq -2147023742) {
+                            # 0x80042302 - Service not responding
                             Write-Log "System Restore service temporarily unavailable: $_" 'WARN'
                         }
                         else {
@@ -3404,9 +3419,9 @@ function Protect-SystemRestore {
                     try {
                         $systemRestore = Get-CimClass -Namespace root/default -ClassName SystemRestore -ErrorAction Stop
                         $result = Invoke-CimMethod -CimClass $systemRestore -MethodName "CreateRestorePoint" -Arguments @{
-                            Description = $restorePointDescription
+                            Description      = $restorePointDescription
                             RestorePointType = 12  # MODIFY_SETTINGS
-                            EventType = 100         # BEGIN_SYSTEM_CHANGE
+                            EventType        = 100         # BEGIN_SYSTEM_CHANGE
                         } -ErrorAction Stop
                         
                         if ($result.ReturnValue -eq 0) {
@@ -3474,227 +3489,227 @@ function Protect-SystemRestore {
     
     Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
 }
-    ### [MAIN TASK EXECUTION IN TIMELINE ORDER]
+### [MAIN TASK EXECUTION IN TIMELINE ORDER]
 
-    # Run all tasks using the coordinator
-    Use-AllScriptTasks
-
-
-
-
-    ### [POST-TASK 1] Script completion cleanup
+# Run all tasks using the coordinator
+Use-AllScriptTasks
 
 
 
 
-    ### [POST-TASK 2] Built-in Maintenance Tasks
+### [POST-TASK 1] Script completion cleanup
 
-    $successCount = ($global:TaskResults.Values | Where-Object { $_.Success }).Count
-    $failCount = ($global:TaskResults.Values | Where-Object { -not $_.Success }).Count
-    $totalCount = $global:TaskResults.Count
-    $taskDetails = @()
-    foreach ($key in $global:TaskResults.Keys) {
-        $result = $global:TaskResults[$key]
-        $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
-        $status = if ($result.Success) { 'SUCCESS' } else { 'FAIL' }
-        $duration = [math]::Round($result.Duration, 2)
-        $started = $result.Started.ToString('HH:mm:ss')
-        $ended = $result.Ended.ToString('HH:mm:ss')
-        $taskDetails += "- $key $status | $desc | Started: $started | Ended: $ended | Duration: ${duration}s"
-        if ($result.ContainsKey('Error') -and $result.Error) {
-            $taskDetails += "    Error: $($result.Error)"
-        }
+
+
+
+### [POST-TASK 2] Built-in Maintenance Tasks
+
+$successCount = ($global:TaskResults.Values | Where-Object { $_.Success }).Count
+$failCount = ($global:TaskResults.Values | Where-Object { -not $_.Success }).Count
+$totalCount = $global:TaskResults.Count
+$taskDetails = @()
+foreach ($key in $global:TaskResults.Keys) {
+    $result = $global:TaskResults[$key]
+    $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
+    $status = if ($result.Success) { 'SUCCESS' } else { 'FAIL' }
+    $duration = [math]::Round($result.Duration, 2)
+    $started = $result.Started.ToString('HH:mm:ss')
+    $ended = $result.Ended.ToString('HH:mm:ss')
+    $taskDetails += "- $key $status | $desc | Started: $started | Ended: $ended | Duration: ${duration}s"
+    if ($result.ContainsKey('Error') -and $result.Error) {
+        $taskDetails += "    Error: $($result.Error)"
     }
-    Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
-    foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
+}
+Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
+foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
 
-    ### [POST-TASK 4] Enhanced Reporting Section (JSON + Text)
+### [POST-TASK 4] Enhanced Reporting Section (JSON + Text)
 
-    # Save summary report in the same folder as script.bat (repo parent folder)
-    $batPath = Join-Path $PSScriptRoot "script.bat"
-    if (Test-Path $batPath) {
-        $batDir = Split-Path $batPath -Parent
-        $summaryPath = Join-Path $batDir "maintenance_report.txt"
-        $jsonSummaryPath = Join-Path $batDir "maintenance_report.json"
+# Save summary report in the same folder as script.bat (repo parent folder)
+$batPath = Join-Path $PSScriptRoot "script.bat"
+if (Test-Path $batPath) {
+    $batDir = Split-Path $batPath -Parent
+    $summaryPath = Join-Path $batDir "maintenance_report.txt"
+    $jsonSummaryPath = Join-Path $batDir "maintenance_report.json"
+}
+else {
+    $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
+    $jsonSummaryPath = Join-Path $PSScriptRoot "maintenance_report.json"
+}
+
+# Gather system info for report
+$osInfo = Get-CimInstance Win32_OperatingSystem
+$osVersion = $osInfo.Version
+$osCaption = $osInfo.Caption
+$psVer = $PSVersionTable.PSVersion.ToString()
+$scriptVer = '1.0.0'
+
+# Build structured report object
+$reportData = [ordered]@{
+    metadata = [ordered]@{
+        generatedOn       = (Get-Date).ToString('o')
+        date              = Get-Date -Format 'dd-MM-yyyy HH:mm:ss'
+        user              = $env:USERNAME
+        computer          = $env:COMPUTERNAME
+        scriptVersion     = $scriptVer
+        os                = $osCaption
+        osVersion         = $osVersion
+        powershellVersion = $psVer
     }
-    else {
-        $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
-        $jsonSummaryPath = Join-Path $PSScriptRoot "maintenance_report.json"
+    summary  = [ordered]@{
+        totalTasks      = $totalCount
+        successfulTasks = $successCount
+        failedTasks     = $failCount
+        successRate     = if ($totalCount -gt 0) { [math]::Round(($successCount / $totalCount) * 100, 2) } else { 0 }
     }
-
-    # Gather system info for report
-    $osInfo = Get-CimInstance Win32_OperatingSystem
-    $osVersion = $osInfo.Version
-    $osCaption = $osInfo.Caption
-    $psVer = $PSVersionTable.PSVersion.ToString()
-    $scriptVer = '1.0.0'
-
-    # Build structured report object
-    $reportData = [ordered]@{
-        metadata = [ordered]@{
-            generatedOn       = (Get-Date).ToString('o')
-            date              = Get-Date -Format 'dd-MM-yyyy HH:mm:ss'
-            user              = $env:USERNAME
-            computer          = $env:COMPUTERNAME
-            scriptVersion     = $scriptVer
-            os                = $osCaption
-            osVersion         = $osVersion
-            powershellVersion = $psVer
-        }
-        summary  = [ordered]@{
-            totalTasks      = $totalCount
-            successfulTasks = $successCount
-            failedTasks     = $failCount
-            successRate     = if ($totalCount -gt 0) { [math]::Round(($successCount / $totalCount) * 100, 2) } else { 0 }
-        }
-        tasks    = @()
-        files    = [ordered]@{
-            inventoryFiles = @()
-            listFiles      = @()
-            logFiles       = @()
-        }
-        actions  = @()
+    tasks    = @()
+    files    = [ordered]@{
+        inventoryFiles = @()
+        listFiles      = @()
+        logFiles       = @()
     }
+    actions  = @()
+}
 
-    # Add task details
-    foreach ($key in $global:TaskResults.Keys) {
-        $result = $global:TaskResults[$key]
-        $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
-        $taskObj = [ordered]@{
-            name        = $key
-            description = $desc
-            success     = $result.Success
-            duration    = [math]::Round($result.Duration, 2)
-            started     = $result.Started.ToString('o')
-            ended       = $result.Ended.ToString('o')
-        }
-        if ($result.ContainsKey('Error') -and $result.Error) {
-            $taskObj.error = $result.Error
-        }
-        $reportData.tasks += $taskObj
+# Add task details
+foreach ($key in $global:TaskResults.Keys) {
+    $result = $global:TaskResults[$key]
+    $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
+    $taskObj = [ordered]@{
+        name        = $key
+        description = $desc
+        success     = $result.Success
+        duration    = [math]::Round($result.Duration, 2)
+        started     = $result.Started.ToString('o')
+        ended       = $result.Ended.ToString('o')
     }
-
-    # Reference files created
-    $inventoryFiles = @('inventory.json', 'bloatware.json', 'essential_apps.json')
-    $legacyFiles = @('inventory.txt')  # Keep legacy reference
-    $logFiles = @('maintenance.log')
-
-    foreach ($file in $inventoryFiles) {
-        $path = Join-Path $PSScriptRoot $file
-        if (Test-Path $path) {
-            $reportData.files.inventoryFiles += $file
-        }
+    if ($result.ContainsKey('Error') -and $result.Error) {
+        $taskObj.error = $result.Error
     }
+    $reportData.tasks += $taskObj
+}
 
-    foreach ($file in $legacyFiles) {
-        $path = Join-Path $PSScriptRoot $file
-        if (Test-Path $path) {
-            $reportData.files.inventoryFiles += $file
-        }
-    }
+# Reference files created
+$inventoryFiles = @('inventory.json', 'bloatware.json', 'essential_apps.json')
+$legacyFiles = @('inventory.txt')  # Keep legacy reference
+$logFiles = @('maintenance.log')
 
-    foreach ($file in $logFiles) {
-        $path = Join-Path $PSScriptRoot $file
-        if (Test-Path $path) {
-            $reportData.files.logFiles += $file
-        }
+foreach ($file in $inventoryFiles) {
+    $path = Join-Path $PSScriptRoot $file
+    if (Test-Path $path) {
+        $reportData.files.inventoryFiles += $file
     }
+}
 
-    # Extract detailed actions from maintenance.log
-    $logActions = @('Installed', 'Uninstalled', 'Updated', 'Removed', 'Deleted', 'Upgraded', 'Cleaned')
-    $logPath = Join-Path $PSScriptRoot "maintenance.log"
-    if (Test-Path $logPath) {
-        $logContent = Get-Content $logPath
-        $actionLines = $logContent | Where-Object {
-            $line = $_
-            $logActions | Where-Object { $line -match $_ }
-        }
-        $reportData.actions = @($actionLines)
+foreach ($file in $legacyFiles) {
+    $path = Join-Path $PSScriptRoot $file
+    if (Test-Path $path) {
+        $reportData.files.inventoryFiles += $file
     }
+}
 
-    # Write structured JSON report
-    try {
-        $reportData | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonSummaryPath -Encoding UTF8
-        Write-Log "Structured report saved to $jsonSummaryPath" 'INFO'
+foreach ($file in $logFiles) {
+    $path = Join-Path $PSScriptRoot $file
+    if (Test-Path $path) {
+        $reportData.files.logFiles += $file
     }
-    catch {
-        Write-Log "Failed to write JSON report: $_" 'WARN'
-    }
+}
 
-    # Build human-readable text report
-    $summaryLines = @()
-    $summaryLines += "==== Maintenance Report ===="
-    $summaryLines += "Date: $($reportData.metadata.date)"
-    $summaryLines += "User: $($reportData.metadata.user)"
-    $summaryLines += "Computer: $($reportData.metadata.computer)"
-    $summaryLines += "Script Version: $($reportData.metadata.scriptVersion)"
-    $summaryLines += "OS: $($reportData.metadata.os) ($($reportData.metadata.osVersion))"
-    $summaryLines += "PowerShell Version: $($reportData.metadata.powershellVersion)"
+# Extract detailed actions from maintenance.log
+$logActions = @('Installed', 'Uninstalled', 'Updated', 'Removed', 'Deleted', 'Upgraded', 'Cleaned')
+$logPath = Join-Path $PSScriptRoot "maintenance.log"
+if (Test-Path $logPath) {
+    $logContent = Get-Content $logPath
+    $actionLines = $logContent | Where-Object {
+        $line = $_
+        $logActions | Where-Object { $line -match $_ }
+    }
+    $reportData.actions = @($actionLines)
+}
+
+# Write structured JSON report
+try {
+    $reportData | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonSummaryPath -Encoding UTF8
+    Write-Log "Structured report saved to $jsonSummaryPath" 'INFO'
+}
+catch {
+    Write-Log "Failed to write JSON report: $_" 'WARN'
+}
+
+# Build human-readable text report
+$summaryLines = @()
+$summaryLines += "==== Maintenance Report ===="
+$summaryLines += "Date: $($reportData.metadata.date)"
+$summaryLines += "User: $($reportData.metadata.user)"
+$summaryLines += "Computer: $($reportData.metadata.computer)"
+$summaryLines += "Script Version: $($reportData.metadata.scriptVersion)"
+$summaryLines += "OS: $($reportData.metadata.os) ($($reportData.metadata.osVersion))"
+$summaryLines += "PowerShell Version: $($reportData.metadata.powershellVersion)"
+$summaryLines += "---"
+$summaryLines += "Total tasks: $($reportData.summary.totalTasks) | Success: $($reportData.summary.successfulTasks) | Failed: $($reportData.summary.failedTasks) | Success Rate: $($reportData.summary.successRate)%"
+$summaryLines += "---"
+$summaryLines += "Task Breakdown:"
+foreach ($task in $reportData.tasks) {
+    $status = if ($task.success) { 'SUCCESS' } else { 'FAIL' }
+    $summaryLines += "- $($task.name) $status | $($task.description) | Duration: $($task.duration)s"
+    if ($task.error) {
+        $summaryLines += "    Error: $($task.error)"
+    }
+}
+$summaryLines += "---"
+
+$summaryLines += "Files generated:"
+if ($reportData.files.inventoryFiles.Count -gt 0) {
+    $summaryLines += "Inventory files:"
+    $reportData.files.inventoryFiles | ForEach-Object { $summaryLines += "- $_" }
+}
+if ($reportData.files.logFiles.Count -gt 0) {
+    $summaryLines += "Log files:"
+    $reportData.files.logFiles | ForEach-Object { $summaryLines += "- $_" }
+}
+$summaryLines += "---"
+
+if ($reportData.actions.Count -gt 0) {
+    $summaryLines += "Detailed actions performed during maintenance:"
+    $summaryLines += $reportData.actions
     $summaryLines += "---"
-    $summaryLines += "Total tasks: $($reportData.summary.totalTasks) | Success: $($reportData.summary.successfulTasks) | Failed: $($reportData.summary.failedTasks) | Success Rate: $($reportData.summary.successRate)%"
+}
+else {
+    $summaryLines += "No detailed action logs found in maintenance.log."
     $summaryLines += "---"
-    $summaryLines += "Task Breakdown:"
-    foreach ($task in $reportData.tasks) {
-        $status = if ($task.success) { 'SUCCESS' } else { 'FAIL' }
-        $summaryLines += "- $($task.name) $status | $($task.description) | Duration: $($task.duration)s"
-        if ($task.error) {
-            $summaryLines += "    Error: $($task.error)"
-        }
-    }
-    $summaryLines += "---"
+}
 
-    $summaryLines += "Files generated:"
-    if ($reportData.files.inventoryFiles.Count -gt 0) {
-        $summaryLines += "Inventory files:"
-        $reportData.files.inventoryFiles | ForEach-Object { $summaryLines += "- $_" }
-    }
-    if ($reportData.files.logFiles.Count -gt 0) {
-        $summaryLines += "Log files:"
-        $reportData.files.logFiles | ForEach-Object { $summaryLines += "- $_" }
-    }
-    $summaryLines += "---"
+$summaryLines | Out-File -FilePath $summaryPath -Append
+Write-Log "Summary report written to $summaryPath" 'INFO'
 
-    if ($reportData.actions.Count -gt 0) {
-        $summaryLines += "Detailed actions performed during maintenance:"
-        $summaryLines += $reportData.actions
-        $summaryLines += "---"
+# Ensure repo folder is deleted only after report creation
+try {
+    $repoFolder = $PSScriptRoot
+    $parentFolder = Split-Path $repoFolder -Parent
+    $repoName = Split-Path $repoFolder -Leaf
+    if ($repoName -eq 'script_mentenanta') {
+        Write-Log "Attempting to remove repo folder: $repoFolder" 'INFO'
+        Set-Location $parentFolder
+        Remove-Item -Path $repoFolder -Recurse -Force
+        Write-Log "Repo folder $repoFolder removed." 'INFO'
     }
-    else {
-        $summaryLines += "No detailed action logs found in maintenance.log."
-        $summaryLines += "---"
-    }
+}
+catch {
+    Write-Log "Failed to remove repo folder: $_" 'WARN'
+}
 
-    $summaryLines | Out-File -FilePath $summaryPath -Append
-    Write-Log "Summary report written to $summaryPath" 'INFO'
+### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
+### ...
 
-    # Ensure repo folder is deleted only after report creation
-    try {
-        $repoFolder = $PSScriptRoot
-        $parentFolder = Split-Path $repoFolder -Parent
-        $repoName = Split-Path $repoFolder -Leaf
-        if ($repoName -eq 'script_mentenanta') {
-            Write-Log "Attempting to remove repo folder: $repoFolder" 'INFO'
-            Set-Location $parentFolder
-            Remove-Item -Path $repoFolder -Recurse -Force
-            Write-Log "Repo folder $repoFolder removed." 'INFO'
-        }
-    }
-    catch {
-        Write-Log "Failed to remove repo folder: $_" 'WARN'
-    }
+Write-Log "AI_SCRIPT_COMPLETION: Windows maintenance script execution completed successfully" 'INFO'
 
-    ### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
-    ### ...
-
-    Write-Log "AI_SCRIPT_COMPLETION: Windows maintenance script execution completed successfully" 'INFO'
-
-    ### AI_POST_TASK: Interactive closure prompt for console environments
-    # AI_PURPOSE: Provides user interaction for console-based script execution
-    # AI_LOGIC: Detects console environment and prompts for user acknowledgment before closure
-    if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
-        Write-Host
-        Read-Host -Prompt 'Press Enter to close this window...'
-    }
+### AI_POST_TASK: Interactive closure prompt for console environments
+# AI_PURPOSE: Provides user interaction for console-based script execution
+# AI_LOGIC: Detects console environment and prompts for user acknowledgment before closure
+if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
+    Write-Host
+    Read-Host -Prompt 'Press Enter to close this window...'
+}
 
 # =============================================
 # AI_SCRIPT_METADATA: Windows Maintenance Script Architecture Guide
