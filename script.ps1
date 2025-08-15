@@ -439,16 +439,17 @@ function Checkpoint-ComputerCompatible {
 function Install-WindowsUpdatesCompatible {
     param()
     
-    # Dependency installation is handled by script.bat. If PSWindowsUpdate is missing, log and exit.
-    if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
-        Write-Log 'PSWindowsUpdate module missing. Please run the script via script.bat to ensure all dependencies are installed.' 'ERROR'
-        exit 1
-    }
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # Dependency installation is handled by script.bat. If PSWindowsUpdate is missing, log and exit.
+        if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
+            Write-Log 'PSWindowsUpdate module missing. Please run the script via script.bat to ensure all dependencies are installed.' 'ERROR'
+            exit 1
+        }
 
-    Import-Module PSWindowsUpdate -ErrorAction Stop
+        Import-Module PSWindowsUpdate -ErrorAction Stop
 
-    # Get and install updates
-    $command = @"
+        # Get and install updates
+        $command = @"
     try {
         \$updates = Get-WindowsUpdate -AcceptAll -Install -ErrorAction Stop
         if (\$updates) {
@@ -463,7 +464,7 @@ function Install-WindowsUpdatesCompatible {
         Write-Host "Failed to check or install Windows Updates: \$_"
         exit 1
     }
-    "@
+"@
     
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Install Windows Updates"
         return $null -ne $result
@@ -1784,262 +1785,262 @@ function Remove-Bloatware {
             catch {}
             
             # WMI Win32_Product removal (use sparingly as it's slow)
-    if (-not $appRemoved) {
-        try {
-            $wmiProducts = Get-WmiObject -Class Win32_Product -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-            foreach ($product in $wmiProducts) {
+            if (-not $appRemoved) {
                 try {
-                    Write-Log "Attempting WMI uninstall for: $($product.Name)" 'VERBOSE'
-                    $result = $product.Uninstall()
-                    if ($result.ReturnValue -eq 0) {
-                        Write-Log "WMI uninstalled: $($product.Name)" 'INFO'
-                        $appRemoved = $true
-                        $removalMethods += 'WMI'
-                        break
+                    $wmiProducts = Get-WmiObject -Class Win32_Product -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                    foreach ($product in $wmiProducts) {
+                        try {
+                            Write-Log "Attempting WMI uninstall for: $($product.Name)" 'VERBOSE'
+                            $result = $product.Uninstall()
+                            if ($result.ReturnValue -eq 0) {
+                                Write-Log "WMI uninstalled: $($product.Name)" 'INFO'
+                                $appRemoved = $true
+                                $removalMethods += 'WMI'
+                                break
+                            }
+                        }
+                        catch {}
                     }
                 }
                 catch {}
             }
-        }
-        catch {}
-    }
             
-    # Windows Package Manager (legacy) removal
-    try {
-        if (Get-Command pkgmgr -ErrorAction SilentlyContinue) {
-            # This is for older Windows versions or specific package types
-            $packageName = $app.Replace('Microsoft.', '')
-            pkgmgr /up:$packageName /quiet /norestart 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Log "Package Manager removed: $packageName" 'INFO'
-                $appRemoved = $true
-                $removalMethods += 'PkgMgr'
-            }
-        }
-    }
-    catch {}
-            
-    # Remove Start Menu shortcuts and program folders
-    try {
-        $shortcutPaths = @(
-            "$env:ALLUSERSPROFILE\Microsoft\Windows\Start Menu\Programs",
-            "$env:USERPROFILE\AppData\Roaming\Microsoft\Windows\Start Menu\Programs"
-        )
-        foreach ($shortcutPath in $shortcutPaths) {
-            if (Test-Path $shortcutPath) {
-                $shortcuts = Get-ChildItem -Path $shortcutPath -Recurse -Include "*.lnk" -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-                foreach ($shortcut in $shortcuts) {
-                    try {
-                        Remove-Item $shortcut.FullName -Force -ErrorAction Stop
-                        Write-Log "Removed shortcut: $($shortcut.Name)" 'VERBOSE'
+            # Windows Package Manager (legacy) removal
+            try {
+                if (Get-Command pkgmgr -ErrorAction SilentlyContinue) {
+                    # This is for older Windows versions or specific package types
+                    $packageName = $app.Replace('Microsoft.', '')
+                    pkgmgr /up:$packageName /quiet /norestart 2>$null
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Log "Package Manager removed: $packageName" 'INFO'
+                        $appRemoved = $true
+                        $removalMethods += 'PkgMgr'
                     }
-                    catch {}
                 }
+            }
+            catch {}
+            
+            # Remove Start Menu shortcuts and program folders
+            try {
+                $shortcutPaths = @(
+                    "$env:ALLUSERSPROFILE\Microsoft\Windows\Start Menu\Programs",
+                    "$env:USERPROFILE\AppData\Roaming\Microsoft\Windows\Start Menu\Programs"
+                )
+                foreach ($shortcutPath in $shortcutPaths) {
+                    if (Test-Path $shortcutPath) {
+                        $shortcuts = Get-ChildItem -Path $shortcutPath -Recurse -Include "*.lnk" -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                        foreach ($shortcut in $shortcuts) {
+                            try {
+                                Remove-Item $shortcut.FullName -Force -ErrorAction Stop
+                                Write-Log "Removed shortcut: $($shortcut.Name)" 'VERBOSE'
+                            }
+                            catch {}
+                        }
                         
-                # Remove empty folders related to the app
-                $folders = Get-ChildItem -Path $shortcutPath -Directory -Recurse -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-                foreach ($folder in $folders) {
-                    try {
-                        if ((Get-ChildItem $folder.FullName -ErrorAction SilentlyContinue).Count -eq 0) {
-                            Remove-Item $folder.FullName -Force -ErrorAction Stop
-                            Write-Log "Removed empty program folder: $($folder.Name)" 'VERBOSE'
+                        # Remove empty folders related to the app
+                        $folders = Get-ChildItem -Path $shortcutPath -Directory -Recurse -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                        foreach ($folder in $folders) {
+                            try {
+                                if ((Get-ChildItem $folder.FullName -ErrorAction SilentlyContinue).Count -eq 0) {
+                                    Remove-Item $folder.FullName -Force -ErrorAction Stop
+                                    Write-Log "Removed empty program folder: $($folder.Name)" 'VERBOSE'
+                                }
+                            }
+                            catch {}
                         }
                     }
-                    catch {}
                 }
             }
-        }
-    }
-    catch {}
+            catch {}
             
-    # Remove registry entries and leftover keys
-    try {
-        $cleanupKeys = @(
-            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
-            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
-            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
-            "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Families",
-            "HKLM:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Families"
-        )
-        foreach ($regKey in $cleanupKeys) {
-            if (Test-Path $regKey) {
-                $entries = Get-ItemProperty $regKey -ErrorAction SilentlyContinue
-                $entries.PSObject.Properties | ForEach-Object {
-                    if ($_.Name -like "*$app*" -or $_.Value -like "*$app*") {
+            # Remove registry entries and leftover keys
+            try {
+                $cleanupKeys = @(
+                    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
+                    "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Families",
+                    "HKLM:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Families"
+                )
+                foreach ($regKey in $cleanupKeys) {
+                    if (Test-Path $regKey) {
+                        $entries = Get-ItemProperty $regKey -ErrorAction SilentlyContinue
+                        $entries.PSObject.Properties | ForEach-Object {
+                            if ($_.Name -like "*$app*" -or $_.Value -like "*$app*") {
+                                try {
+                                    Remove-ItemProperty -Path $regKey -Name $_.Name -ErrorAction Stop
+                                    Write-Log "Removed registry startup entry: $($_.Name)" 'VERBOSE'
+                                }
+                                catch {}
+                            }
+                        }
+                    }
+                }
+                
+                # Remove app-specific registry trees
+                $appRegPaths = @(
+                    "HKCU:\SOFTWARE\$app",
+                    "HKLM:\SOFTWARE\$app",
+                    "HKLM:\SOFTWARE\WOW6432Node\$app",
+                    "HKCU:\SOFTWARE\$($app.Replace('Microsoft.', ''))",
+                    "HKLM:\SOFTWARE\$($app.Replace('Microsoft.', ''))",
+                    "HKLM:\SOFTWARE\WOW6432Node\$($app.Replace('Microsoft.', ''))"
+                )
+                foreach ($regPath in $appRegPaths) {
+                    if (Test-Path $regPath) {
                         try {
-                            Remove-ItemProperty -Path $regKey -Name $_.Name -ErrorAction Stop
-                            Write-Log "Removed registry startup entry: $($_.Name)" 'VERBOSE'
+                            Remove-Item $regPath -Recurse -Force -ErrorAction Stop
+                            Write-Log "Removed registry tree: $regPath" 'VERBOSE'
                         }
                         catch {}
                     }
                 }
             }
-        }
-                
-        # Remove app-specific registry trees
-        $appRegPaths = @(
-            "HKCU:\SOFTWARE\$app",
-            "HKLM:\SOFTWARE\$app",
-            "HKLM:\SOFTWARE\WOW6432Node\$app",
-            "HKCU:\SOFTWARE\$($app.Replace('Microsoft.', ''))",
-            "HKLM:\SOFTWARE\$($app.Replace('Microsoft.', ''))",
-            "HKLM:\SOFTWARE\WOW6432Node\$($app.Replace('Microsoft.', ''))"
-        )
-        foreach ($regPath in $appRegPaths) {
-            if (Test-Path $regPath) {
-                try {
-                    Remove-Item $regPath -Recurse -Force -ErrorAction Stop
-                    Write-Log "Removed registry tree: $regPath" 'VERBOSE'
-                }
-                catch {}
-            }
-        }
-    }
-    catch {}
+            catch {}
             
-    # File system cleanup - remove program files and app data
-    try {
-        $cleanupPaths = @(
-            "$env:ProgramFiles\$app",
-            "$env:ProgramFiles\$($app.Replace('Microsoft.', ''))",
-            "${env:ProgramFiles(x86)}\$app",
-            "${env:ProgramFiles(x86)}\$($app.Replace('Microsoft.', ''))",
-            "$env:LOCALAPPDATA\$app",
-            "$env:LOCALAPPDATA\$($app.Replace('Microsoft.', ''))",
-            "$env:APPDATA\$app",
-            "$env:APPDATA\$($app.Replace('Microsoft.', ''))",
-            "$env:LOCALAPPDATA\Packages\$app*",
-            "$env:USERPROFILE\AppData\Local\Packages\$app*"
-        )
-                
-        foreach ($cleanupPath in $cleanupPaths) {
-            $expandedPaths = if ($cleanupPath -like "*`**") {
-                Get-ChildItem (Split-Path $cleanupPath) -Directory -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -like (Split-Path $cleanupPath -Leaf) }
-            }
-            else {
-                if (Test-Path $cleanupPath) { Get-Item $cleanupPath }
-            }
-                    
-            foreach ($path in $expandedPaths) {
-                try {
-                    if (Test-Path $path.FullName) {
-                        Remove-Item $path.FullName -Recurse -Force -ErrorAction Stop
-                        Write-Log "Removed app folder: $($path.FullName)" 'VERBOSE'
-                    }
-                }
-                catch {}
-            }
-        }
-    }
-    catch {}
-            
-    # CIM Win32_InstalledWin32Program removal (Windows 10+)
-    try {
-        $cimPrograms = Get-CimInstance -ClassName Win32_InstalledWin32Program -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
-        foreach ($program in $cimPrograms) {
+            # File system cleanup - remove program files and app data
             try {
-                # Try to find and execute uninstall command
-                if ($program.UninstallString) {
-                    Write-Log "CIM found uninstaller for: $($program.Name)" 'VERBOSE'
-                    # This would need careful parsing similar to registry method
-                    # Implemented as a reference - actual execution would need the same logic as registry method
+                $cleanupPaths = @(
+                    "$env:ProgramFiles\$app",
+                    "$env:ProgramFiles\$($app.Replace('Microsoft.', ''))",
+                    "${env:ProgramFiles(x86)}\$app",
+                    "${env:ProgramFiles(x86)}\$($app.Replace('Microsoft.', ''))",
+                    "$env:LOCALAPPDATA\$app",
+                    "$env:LOCALAPPDATA\$($app.Replace('Microsoft.', ''))",
+                    "$env:APPDATA\$app",
+                    "$env:APPDATA\$($app.Replace('Microsoft.', ''))",
+                    "$env:LOCALAPPDATA\Packages\$app*",
+                    "$env:USERPROFILE\AppData\Local\Packages\$app*"
+                )
+                
+                foreach ($cleanupPath in $cleanupPaths) {
+                    $expandedPaths = if ($cleanupPath -like "*`**") {
+                        Get-ChildItem (Split-Path $cleanupPath) -Directory -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -like (Split-Path $cleanupPath -Leaf) }
+                    }
+                    else {
+                        if (Test-Path $cleanupPath) { Get-Item $cleanupPath }
+                    }
+                    
+                    foreach ($path in $expandedPaths) {
+                        try {
+                            if (Test-Path $path.FullName) {
+                                Remove-Item $path.FullName -Recurse -Force -ErrorAction Stop
+                                Write-Log "Removed app folder: $($path.FullName)" 'VERBOSE'
+                            }
+                        }
+                        catch {}
+                    }
                 }
             }
             catch {}
-        }
-    }
-    catch {}
             
-    # Scoop removal (if Scoop is available)
-    try {
-        if (Get-Command scoop -ErrorAction SilentlyContinue) {
-            $scoopApps = scoop list 2>$null | Where-Object { $_ -like "*$app*" }
-            foreach ($scoopApp in $scoopApps) {
-                if ($scoopApp -match '^(\S+)') {
-                    $appName = $matches[1]
+            # CIM Win32_InstalledWin32Program removal (Windows 10+)
+            try {
+                $cimPrograms = Get-CimInstance -ClassName Win32_InstalledWin32Program -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like "*$app*" -or $_.Name -like "*$($app.Replace('Microsoft.', ''))*" }
+                foreach ($program in $cimPrograms) {
                     try {
-                        scoop uninstall $appName 2>$null
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Log "Scoop removed: $appName" 'INFO'
-                            $appRemoved = $true
-                            $removalMethods += 'Scoop'
+                        # Try to find and execute uninstall command
+                        if ($program.UninstallString) {
+                            Write-Log "CIM found uninstaller for: $($program.Name)" 'VERBOSE'
+                            # This would need careful parsing similar to registry method
+                            # Implemented as a reference - actual execution would need the same logic as registry method
                         }
                     }
                     catch {}
                 }
             }
-        }
-    }
-    catch {}
+            catch {}
             
-    # Windows Store removal via PowerShell (modern method)
-    if ($app -like "Microsoft.*" -or $app -like "*Store*") {
-        try {
-            $storeApps = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | 
-            Where-Object { $_.Name -like "*$app*" -and $_.SignatureKind -eq 'Store' }
-            foreach ($storeApp in $storeApps) {
+            # Scoop removal (if Scoop is available)
+            try {
+                if (Get-Command scoop -ErrorAction SilentlyContinue) {
+                    $scoopApps = scoop list 2>$null | Where-Object { $_ -like "*$app*" }
+                    foreach ($scoopApp in $scoopApps) {
+                        if ($scoopApp -match '^(\S+)') {
+                            $appName = $matches[1]
+                            try {
+                                scoop uninstall $appName 2>$null
+                                if ($LASTEXITCODE -eq 0) {
+                                    Write-Log "Scoop removed: $appName" 'INFO'
+                                    $appRemoved = $true
+                                    $removalMethods += 'Scoop'
+                                }
+                            }
+                            catch {}
+                        }
+                    }
+                }
+            }
+            catch {}
+            
+            # Windows Store removal via PowerShell (modern method)
+            if ($app -like "Microsoft.*" -or $app -like "*Store*") {
                 try {
-                    Remove-AppxPackage -Package $storeApp.PackageFullName -AllUsers -ErrorAction Stop
-                    Write-Log "Store app removed: $($storeApp.Name)" 'INFO'
-                    $appRemoved = $true
-                    $removalMethods += 'StoreApp'
+                    $storeApps = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | 
+                    Where-Object { $_.Name -like "*$app*" -and $_.SignatureKind -eq 'Store' }
+                    foreach ($storeApp in $storeApps) {
+                        try {
+                            Remove-AppxPackage -Package $storeApp.PackageFullName -AllUsers -ErrorAction Stop
+                            Write-Log "Store app removed: $($storeApp.Name)" 'INFO'
+                            $appRemoved = $true
+                            $removalMethods += 'StoreApp'
+                        }
+                        catch {}
+                    }
                 }
                 catch {}
             }
-        }
-        catch {}
-    }
             
-    # Update counters and log results
-    if ($appRemoved) {
-        $removed++
-        $methodStr = ($removalMethods | Sort-Object -Unique) -join ', '
-        Write-Log "Successfully removed bloatware: $app via [$methodStr]" 'INFO'
-    }
-    else {
-        Write-Log "Bloatware removal failed or not found: $app" 'WARN'
-        $failed++
-    }
-}
-catch {
-    Write-Log "Exception during removal of $app`: $_" 'ERROR'
-    $failed++
-}
-        
-Start-Sleep -Milliseconds 100
-}
-
-# Final cleanup: Disable app reinstallation
-$bloatwareRegKeys = @(
-    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
-    'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
-)
-foreach ($regKey in $bloatwareRegKeys) {
-    if (Test-Path $regKey) {
-        try {
-            Set-ItemProperty -Path $regKey -Name 'SilentInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
-            Set-ItemProperty -Path $regKey -Name 'ContentDeliveryAllowed' -Value 0 -ErrorAction SilentlyContinue
-            Set-ItemProperty -Path $regKey -Name 'OemPreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
-            Set-ItemProperty -Path $regKey -Name 'PreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
-            Set-ItemProperty -Path $regKey -Name 'SubscribedContentEnabled' -Value 0 -ErrorAction SilentlyContinue
-            Write-Log "Disabled app reinstallation via Content Delivery Manager" 'INFO'
+            # Update counters and log results
+            if ($appRemoved) {
+                $removed++
+                $methodStr = ($removalMethods | Sort-Object -Unique) -join ', '
+                Write-Log "Successfully removed bloatware: $app via [$methodStr]" 'INFO'
+            }
+            else {
+                Write-Log "Bloatware removal failed or not found: $app" 'WARN'
+                $failed++
+            }
         }
-        catch {}
+        catch {
+            Write-Log "Exception during removal of $app`: $_" 'ERROR'
+            $failed++
+        }
+        
+        Start-Sleep -Milliseconds 100
     }
-}
 
-Write-Log "Enhanced bloatware removal completed (diff-based approach):" 'INFO'
-Write-Log "  - Processed from diff list: $totalApps apps" 'INFO'
-Write-Log "  - Successfully removed: $removed apps" 'INFO'
-Write-Log "  - Failed to remove: $failed apps" 'INFO'
-Write-Log "  - Total in bloatware list: $($global:BloatwareList.Count) apps" 'INFO'
-Write-Log "  - Only apps from diff list were processed for removal" 'INFO'
-Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
+    # Final cleanup: Disable app reinstallation
+    $bloatwareRegKeys = @(
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
+    )
+    foreach ($regKey in $bloatwareRegKeys) {
+        if (Test-Path $regKey) {
+            try {
+                Set-ItemProperty -Path $regKey -Name 'SilentInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $regKey -Name 'ContentDeliveryAllowed' -Value 0 -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $regKey -Name 'OemPreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $regKey -Name 'PreInstalledAppsEnabled' -Value 0 -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $regKey -Name 'SubscribedContentEnabled' -Value 0 -ErrorAction SilentlyContinue
+                Write-Log "Disabled app reinstallation via Content Delivery Manager" 'INFO'
+            }
+            catch {}
+        }
+    }
+
+    Write-Log "Enhanced bloatware removal completed (diff-based approach):" 'INFO'
+    Write-Log "  - Processed from diff list: $totalApps apps" 'INFO'
+    Write-Log "  - Successfully removed: $removed apps" 'INFO'
+    Write-Log "  - Failed to remove: $failed apps" 'INFO'
+    Write-Log "  - Total in bloatware list: $($global:BloatwareList.Count) apps" 'INFO'
+    Write-Log "  - Only apps from diff list were processed for removal" 'INFO'
+    Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
 }
 
 ### [TASK 4] System Inventory (Legacy)
@@ -2092,9 +2093,8 @@ function Disable-Telemetry {
     foreach ($browser in $knownBrowsers) {
         if ($allowedBrowsers -notcontains $browser) {
             try {
-                $removed = $false
-                $appRemoved = $false
                 $removalMethods = @()
+                # Try winget removal first
                 # Try winget removal first
                 if (Get-Command winget -ErrorAction SilentlyContinue) {
                     $wingetSearch = winget list --id $browser --exact --accept-source-agreements 2>$null
@@ -2239,137 +2239,137 @@ function Disable-Telemetry {
         Write-Log "Failed to deploy Firefox policies.json: $_" 'WARN'
     }
 
-# Attempt to set Firefox as default browser (Windows 10 only, Windows 11 requires user interaction)
-try {
-    $firefoxPaths = @(
-        'C:\Program Files\Mozilla Firefox\firefox.exe',
-        'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'
-    )
-    $firefoxPath = $firefoxPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    # Attempt to set Firefox as default browser (Windows 10 only, Windows 11 requires user interaction)
+    try {
+        $firefoxPaths = @(
+            'C:\Program Files\Mozilla Firefox\firefox.exe',
+            'C:\Program Files (x86)\Mozilla Firefox\firefox.exe'
+        )
+        $firefoxPath = $firefoxPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-    if ($firefoxPath) {
-        # Try to set Firefox as default browser using registry (more reliable)
-        try {
-            $httpReg = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice'
-            $httpsReg = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice'
-            $htmlReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.html\UserChoice'
-            $htmReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.htm\UserChoice'
-
-            # Check if Firefox is registered
-            $firefoxProgId = 'FirefoxURL-308046B0AF4A39CB'
-
-            # Ensure registry paths exist before setting properties
-            foreach ($regPath in @($httpReg, $httpsReg, $htmlReg, $htmReg)) {
-                if (-not (Test-Path $regPath)) {
-                    try {
-                        $parentPath = Split-Path $regPath
-                        if (-not (Test-Path $parentPath)) {
-                            New-Item -Path $parentPath -Force | Out-Null
-                        }
-                        New-Item -Path $regPath -Force | Out-Null
-                    }
-                    catch {}
-                }
-            }
-
-            # Set Firefox as default for HTTP/HTTPS protocols
-            if (Test-Path $httpReg) { Set-ItemProperty -Path $httpReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-            if (Test-Path $httpsReg) { Set-ItemProperty -Path $httpsReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-            if (Test-Path $htmlReg) { Set-ItemProperty -Path $htmlReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-            if (Test-Path $htmReg) { Set-ItemProperty -Path $htmReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
-
-            Write-Log "Firefox set as default browser via registry." 'INFO'
-        }
-        catch {
-            # Fallback to Firefox command line method
+        if ($firefoxPath) {
+            # Try to set Firefox as default browser using registry (more reliable)
             try {
-                Start-Process -FilePath $firefoxPath -ArgumentList "-setDefaultBrowser" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
-                Write-Log "Attempted to set Firefox as default browser via command line." 'INFO'
+                $httpReg = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice'
+                $httpsReg = 'HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice'
+                $htmlReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.html\UserChoice'
+                $htmReg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.htm\UserChoice'
+
+                # Check if Firefox is registered
+                $firefoxProgId = 'FirefoxURL-308046B0AF4A39CB'
+
+                # Ensure registry paths exist before setting properties
+                foreach ($regPath in @($httpReg, $httpsReg, $htmlReg, $htmReg)) {
+                    if (-not (Test-Path $regPath)) {
+                        try {
+                            $parentPath = Split-Path $regPath
+                            if (-not (Test-Path $parentPath)) {
+                                New-Item -Path $parentPath -Force | Out-Null
+                            }
+                            New-Item -Path $regPath -Force | Out-Null
+                        }
+                        catch {}
+                    }
+                }
+
+                # Set Firefox as default for HTTP/HTTPS protocols
+                if (Test-Path $httpReg) { Set-ItemProperty -Path $httpReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
+                if (Test-Path $httpsReg) { Set-ItemProperty -Path $httpsReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
+                if (Test-Path $htmlReg) { Set-ItemProperty -Path $htmlReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
+                if (Test-Path $htmReg) { Set-ItemProperty -Path $htmReg -Name 'ProgId' -Value $firefoxProgId -Force -ErrorAction SilentlyContinue }
+
+                Write-Log "Firefox set as default browser via registry." 'INFO'
             }
             catch {
-                Write-Log "Failed to set Firefox as default browser via command line: $_" 'WARN'
+                # Fallback to Firefox command line method
+                try {
+                    Start-Process -FilePath $firefoxPath -ArgumentList "-setDefaultBrowser" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+                    Write-Log "Attempted to set Firefox as default browser via command line." 'INFO'
+                }
+                catch {
+                    Write-Log "Failed to set Firefox as default browser via command line: $_" 'WARN'
+                }
             }
         }
-    }
-    else {
-        Write-Log "Firefox not found for default browser setting." 'WARN'
-    }
-}
-catch {
-    Write-Log "Failed to set Firefox as default browser: $_" 'WARN'
-}
-
-# Disable telemetry-related services
-$services = @('DiagTrack', 'dmwappushservice', 'Connected User Experiences and Telemetry')
-foreach ($svc in $services) {
-    try {
-        $serviceObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
-        if ($serviceObj -and $serviceObj.Status -ne 'Stopped') {
-            Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-            Write-Log "Stopped service: $svc" 'INFO'
-        }
-        if ($serviceObj) {
-            Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-            Write-Log "Disabled service: $svc" 'INFO'
-        }
-    }
-    catch {
-        Write-Log "Service $svc not found or could not be disabled: $_" 'WARN'
-    }
-}
-
-# Disable telemetry-related scheduled tasks
-$scheduledTasks = @(
-    '\Microsoft\Windows\Application Experience\ProgramDataUpdater',
-    '\Microsoft\Windows\Autochk\Proxy',
-    '\Microsoft\Windows\Customer Experience Improvement Program\Consolidator',
-    '\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask',
-    '\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip',
-    '\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector',
-    '\Microsoft\Windows\Feedback\Siuf\DmClient',
-    '\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload',
-    '\Microsoft\Windows\Windows Error Reporting\QueueReporting'
-)
-foreach ($task in $scheduledTasks) {
-    try {
-        $taskPath = $task.Substring(0, $task.LastIndexOf('\') + 1)
-        $taskName = $task.Split('\')[-1]
-        $scheduledTaskObj = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
-        if ($scheduledTaskObj) {
-            Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
-            Write-Log "Disabled scheduled task: $task" 'INFO'
-        }
         else {
-            Write-Log "Scheduled task not found: $task" 'WARN'
+            Write-Log "Firefox not found for default browser setting." 'WARN'
         }
     }
     catch {
-        Write-Log ("Failed to disable scheduled task {0}: {1}" -f $task, $_) 'WARN'
+        Write-Log "Failed to set Firefox as default browser: $_" 'WARN'
     }
+
+    # Disable telemetry-related services
+    $services = @('DiagTrack', 'dmwappushservice', 'Connected User Experiences and Telemetry')
+    foreach ($svc in $services) {
+        try {
+            $serviceObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
+            if ($serviceObj -and $serviceObj.Status -ne 'Stopped') {
+                Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                Write-Log "Stopped service: $svc" 'INFO'
+            }
+            if ($serviceObj) {
+                Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+                Write-Log "Disabled service: $svc" 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Service $svc not found or could not be disabled: $_" 'WARN'
+        }
+    }
+
+    # Disable telemetry-related scheduled tasks
+    $scheduledTasks = @(
+        '\Microsoft\Windows\Application Experience\ProgramDataUpdater',
+        '\Microsoft\Windows\Autochk\Proxy',
+        '\Microsoft\Windows\Customer Experience Improvement Program\Consolidator',
+        '\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask',
+        '\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip',
+        '\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector',
+        '\Microsoft\Windows\Feedback\Siuf\DmClient',
+        '\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload',
+        '\Microsoft\Windows\Windows Error Reporting\QueueReporting'
+    )
+    foreach ($task in $scheduledTasks) {
+        try {
+            $taskPath = $task.Substring(0, $task.LastIndexOf('\') + 1)
+            $taskName = $task.Split('\')[-1]
+            $scheduledTaskObj = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($scheduledTaskObj) {
+                Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
+                Write-Log "Disabled scheduled task: $task" 'INFO'
+            }
+            else {
+                Write-Log "Scheduled task not found: $task" 'WARN'
+            }
+        }
+        catch {
+            Write-Log ("Failed to disable scheduled task {0}: {1}" -f $task, $_) 'WARN'
+        }
+    }
+
+    # Additional registry tweaks for telemetry (as per best practices)
+    $extraReg = @(
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection'; Name = 'AllowTelemetry'; Value = 0 },
+        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'AITEnable'; Value = 0 },
+        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'DisableInventory'; Value = 1 },
+        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'UploadUserActivities'; Value = 0 },
+        @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'PublishUserActivities'; Value = 0 }
+    )
+    foreach ($item in $extraReg) {
+        try {
+            if (-not (Test-Path $item.Path)) { New-Item -Path $item.Path -Force | Out-Null }
+            Set-ItemProperty -Path $item.Path -Name $item.Name -Value $item.Value -Force
+            Write-Log "Set $($item.Name)=$($item.Value) in $($item.Path)" 'INFO'
+        }
+        catch {
+            Write-Log "Failed to set $($item.Name) in $($item.Path): $_" 'WARN'
+        }
+    }
+
+    Write-Log "[END] Disable Telemetry" 'INFO'
+
 }
-
-# Additional registry tweaks for telemetry (as per best practices)
-$extraReg = @(
-    @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection'; Name = 'AllowTelemetry'; Value = 0 },
-    @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'AITEnable'; Value = 0 },
-    @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'DisableInventory'; Value = 1 },
-    @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'UploadUserActivities'; Value = 0 },
-    @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'PublishUserActivities'; Value = 0 }
-)
-foreach ($item in $extraReg) {
-    try {
-        if (-not (Test-Path $item.Path)) { New-Item -Path $item.Path -Force | Out-Null }
-        Set-ItemProperty -Path $item.Path -Name $item.Name -Value $item.Value -Force
-        Write-Log "Set $($item.Name)=$($item.Value) in $($item.Path)" 'INFO'
-    }
-    catch {
-        Write-Log "Failed to set $($item.Name) in $($item.Path): $_" 'WARN'
-    }
-}
-
-Write-Log "[END] Disable Telemetry" 'INFO'
-
-
 
 ### [TASK 6] System Restore Protection
 function Protect-SystemRestore {
