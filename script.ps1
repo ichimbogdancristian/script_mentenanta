@@ -44,6 +44,23 @@ $global:ScriptTasks = @(
         }; Description = 'AI_DESC: Collect and export comprehensive system inventory data' 
     },
 
+    # Task: EventLogAnalysis
+    # Purpose: Surveys Event Viewer and CBS logs for errors from the last 96 hours.
+    # Environment: Windows 10/11, any user context, Event Log and CBS log access
+    # Logic: Get-EventLog/Get-WinEvent for Event Viewer, file parsing for CBS logs
+    # Dependencies: Event Log service, CBS log file access, file system permissions
+    @{ Name = 'EventLogAnalysis'; Function = { 
+            if (-not $global:Config.SkipEventLogAnalysis) { 
+                Get-EventLogAnalysis
+                return $true
+            }
+            else { 
+                Write-Log 'Event Log Analysis skipped by config' 'INFO'
+                return $false
+            } 
+        }; Description = 'AI_DESC: Survey Event Viewer and CBS logs for errors from last 96 hours' 
+    },
+
     # Task: RemoveBloatware
     # Purpose: Multi-method removal of unwanted applications and components.
     # Environment: Windows 10/11, Administrator required, AppX/DISM/Registry access
@@ -129,6 +146,23 @@ $global:ScriptTasks = @(
                 return $false
             } 
         }; Description = 'AI_DESC: Disable telemetry, privacy features, and configure browser privacy' 
+    },
+
+    # Task: SecurityHardening
+    # Purpose: Enable essential Windows security features while preserving SMB and authentication.
+    # Environment: Windows 10/11, Administrator required, security configuration access
+    # Logic: Windows Defender, Firewall, UAC, SmartScreen, secure services configuration
+    # Dependencies: Windows Defender, Firewall service, registry access, service control
+    @{ Name = 'SecurityHardening'; Function = { 
+            if (-not $global:Config.SkipSecurityHardening) { 
+                Enable-SecurityHardening
+                return $true
+            }
+            else { 
+                Write-Log 'Security Hardening skipped by config' 'INFO'
+                return $false
+            } 
+        }; Description = 'AI_DESC: Enable Windows security features while preserving SMB and authentication' 
     },
 
     # Task: CleanTempAndDisk
@@ -273,6 +307,8 @@ $global:Config = @{
     SkipWindowsUpdates   = $false
     SkipTelemetryDisable = $false
     SkipSystemRestore    = $false
+    SkipEventLogAnalysis = $false
+    SkipSecurityHardening = $false
     CustomEssentialApps  = @()
     CustomBloatwareList  = @()
     EnableVerboseLogging = $false
@@ -287,6 +323,8 @@ if (Test-Path $configPath) {
         if ($config.SkipWindowsUpdates) { $global:Config.SkipWindowsUpdates = $config.SkipWindowsUpdates }
         if ($config.SkipTelemetryDisable) { $global:Config.SkipTelemetryDisable = $config.SkipTelemetryDisable }
         if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
+        if ($config.SkipEventLogAnalysis) { $global:Config.SkipEventLogAnalysis = $config.SkipEventLogAnalysis }
+        if ($config.SkipSecurityHardening) { $global:Config.SkipSecurityHardening = $config.SkipSecurityHardening }
         if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
         if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
         if ($config.EnableVerboseLogging) { $global:Config.EnableVerboseLogging = $config.EnableVerboseLogging }
@@ -2399,6 +2437,162 @@ function Update-AllPackages {
     Write-Log "[END] Update All Packages" 'INFO'
 }
 
+### AI_MAINTENANCE_TASK: Event Log and CBS Log Analysis
+# AI_TASK_ID: Survey-EventLogsAndCBS
+# AI_PURPOSE: Surveys Event Viewer and CBS logs for errors from the last 96 hours
+# AI_ENVIRONMENT: Windows 10/11, any user context, Event Log and CBS log access
+# AI_LOGIC: Get-WinEvent for Event Viewer, file parsing for CBS logs, 96-hour time window
+# AI_DEPENDENCIES: Event Log service, CBS log file access, file system permissions
+function Get-EventLogAnalysis {
+    # ===============================
+    # AI_TASK_HEADER: EventLogAnalysis (Event Viewer and CBS Log Survey)
+    # ===============================
+    # AI_PURPOSE: Comprehensive error analysis from Event Viewer and CBS logs (last 96 hours)
+    # AI_ENVIRONMENT: Windows 10/11, any user context, system log file access required
+    # AI_LOGIC: Event log querying, CBS file parsing, time-based filtering, detailed error reporting
+    # AI_PERFORMANCE: Optimized queries with time filters, selective log parsing, efficient processing
+    # ===============================
+    Write-Log "[AI_START] Event Log and CBS Log Analysis - Last 96 Hours" 'INFO'
+    
+    $startTime = (Get-Date).AddHours(-96)
+    $errorCount = 0
+    $warningCount = 0
+    
+    try {
+        # === Event Viewer Analysis ===
+        Write-Log "[EventLogAnalysis] Analyzing Event Viewer logs for errors since $startTime" 'INFO'
+        
+        # Define critical event logs to check
+        $eventLogs = @('System', 'Application', 'Security')
+        
+        foreach ($logName in $eventLogs) {
+            try {
+                Write-Log "[EventLogAnalysis] Checking $logName event log..." 'VERBOSE'
+                
+                # Get error and warning events from the last 96 hours
+                $events = Get-WinEvent -FilterHashtable @{
+                    LogName = $logName
+                    Level = @(1,2,3)  # Critical, Error, Warning
+                    StartTime = $startTime
+                } -ErrorAction SilentlyContinue | Sort-Object TimeCreated -Descending
+                
+                if ($events) {
+                    foreach ($evt in $events) {
+                        $levelText = switch ($evt.Level) {
+                            1 { 'CRITICAL'; $errorCount++ }
+                            2 { 'ERROR'; $errorCount++ }
+                            3 { 'WARNING'; $warningCount++ }
+                            default { 'INFO' }
+                        }
+                        $eventDetails = "[$logName] $levelText - ID:$($evt.Id) - $($evt.TimeCreated) - Source:$($evt.ProviderName) - Message:$($evt.Message -replace '[\r\n]+', ' ' | Out-String -Stream | Select-Object -First 200)"
+                        Write-Log $eventDetails 'WARN'
+                    }
+                    Write-Log "[EventLogAnalysis] Found $($events.Count) error/warning events in $logName log" 'INFO'
+                } else {
+                    Write-Log "[EventLogAnalysis] No error/warning events found in $logName log since $startTime" 'INFO'
+                }
+            }
+            catch {
+                Write-Log "[EventLogAnalysis] Failed to access $logName log: $_" 'ERROR'
+            }
+        }
+        
+        # === CBS Log Analysis ===
+        Write-Log "[EventLogAnalysis] Analyzing CBS logs for errors since $startTime" 'INFO'
+        
+        $cbsLogPath = "$env:SystemRoot\Logs\CBS\CBS.log"
+        if (Test-Path $cbsLogPath) {
+            try {
+                $cbsContent = Get-Content $cbsLogPath -ErrorAction Stop
+                $cbsErrors = $cbsContent | Where-Object { 
+                    $_ -match '\[SR\]|\[FATAL\]|\[ERROR\]|\[WARN\]' -and
+                    $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}' 
+                }
+                
+                foreach ($cbsLine in $cbsErrors) {
+                    # Extract timestamp from CBS log line
+                    if ($cbsLine -match '(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})') {
+                        try {
+                            $cbsTimestamp = [DateTime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
+                            if ($cbsTimestamp -ge $startTime) {
+                                $cbsLogType = if ($cbsLine -match '\[FATAL\]|\[ERROR\]') { 'ERROR'; $errorCount++ } 
+                                            elseif ($cbsLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
+                                            else { 'INFO' }
+                                Write-Log "[CBS] $cbsLogType - $cbsTimestamp - $($cbsLine.Trim())" 'WARN'
+                            }
+                        }
+                        catch {
+                            # Skip lines with unparseable timestamps
+                            continue
+                        }
+                    }
+                }
+                Write-Log "[EventLogAnalysis] CBS log analysis completed" 'INFO'
+            }
+            catch {
+                Write-Log "[EventLogAnalysis] Failed to read CBS log file: $_" 'ERROR'
+            }
+        } else {
+            Write-Log "[EventLogAnalysis] CBS log file not found at $cbsLogPath" 'WARN'
+        }
+        
+        # === DISM Log Analysis ===
+        Write-Log "[EventLogAnalysis] Analyzing DISM logs for errors since $startTime" 'INFO'
+        
+        $dismLogPath = "$env:SystemRoot\Logs\DISM\dism.log"
+        if (Test-Path $dismLogPath) {
+            try {
+                $dismContent = Get-Content $dismLogPath -ErrorAction Stop | Select-Object -Last 1000  # Last 1000 lines for performance
+                $dismErrors = $dismContent | Where-Object { 
+                    $_ -match '\[ERROR\]|\[FATAL\]|\[WARN\]' -and
+                    $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
+                }
+                
+                foreach ($dismLine in $dismErrors) {
+                    if ($dismLine -match '(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})') {
+                        try {
+                            $dismTimestamp = [DateTime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
+                            if ($dismTimestamp -ge $startTime) {
+                                $dismLogType = if ($dismLine -match '\[FATAL\]|\[ERROR\]') { 'ERROR'; $errorCount++ } 
+                                              elseif ($dismLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
+                                              else { 'INFO' }
+                                Write-Log "[DISM] $dismLogType - $dismTimestamp - $($dismLine.Trim())" 'WARN'
+                            }
+                        }
+                        catch {
+                            continue
+                        }
+                    }
+                }
+                Write-Log "[EventLogAnalysis] DISM log analysis completed" 'INFO'
+            }
+            catch {
+                Write-Log "[EventLogAnalysis] Failed to read DISM log file: $_" 'ERROR'
+            }
+        } else {
+            Write-Log "[EventLogAnalysis] DISM log file not found at $dismLogPath" 'WARN'
+        }
+        
+        # === Summary ===
+        Write-Log "[EventLogAnalysis] SUMMARY: Found $errorCount errors and $warningCount warnings in the last 96 hours" 'INFO'
+        
+        if ($errorCount -eq 0 -and $warningCount -eq 0) {
+            Write-Host "✅ Event Log Analysis: No critical errors found in the last 96 hours" -ForegroundColor Green
+        } elseif ($errorCount -eq 0) {
+            Write-Host "⚠️ Event Log Analysis: $warningCount warnings found, no critical errors" -ForegroundColor Yellow  
+        } else {
+            Write-Host "⚠️ Event Log Analysis: $errorCount errors and $warningCount warnings found" -ForegroundColor Red
+        }
+        
+    }
+    catch {
+        Write-Log "[EventLogAnalysis] Critical error during log analysis: $_" 'ERROR'
+        Write-Host "✗ Event Log Analysis failed: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    
+    Write-Log "[END] Event Log and CBS Log Analysis" 'INFO'
+}
+
 ### AI_MAINTENANCE_TASK: Ultra-Enhanced Bloatware Removal - Action-Only Logging & Maximum Performance
 # AI_TASK_ID: RemoveBloatware  
 # AI_PURPOSE: High-speed bloatware removal with PowerShell 7.5 native capabilities - action-only logging
@@ -3188,6 +3382,332 @@ function Disable-Telemetry {
     Write-Log "[END] Disable Telemetry" 'INFO'
 }
 
+### AI_MAINTENANCE_TASK: Windows Security Hardening
+# AI_TASK_ID: Enable-SecurityHardening
+# AI_PURPOSE: Enable essential Windows security features while preserving SMB shares and user authentication
+# AI_ENVIRONMENT: Windows 10/11, Administrator required, security configuration access
+# AI_LOGIC: Windows Defender configuration, Firewall enablement, UAC, SmartScreen, service hardening
+# AI_DEPENDENCIES: Windows Defender, Windows Firewall, registry access, service control, security policies
+function Enable-SecurityHardening {
+    # ===============================
+    # AI_TASK_HEADER: SecurityHardening (Windows Security Features)
+    # ===============================
+    # AI_PURPOSE: Comprehensive Windows security hardening while preserving functionality
+    # AI_ENVIRONMENT: Windows 10/11, Administrator required, system-wide security configuration
+    # AI_LOGIC: Security feature enablement, service hardening, policy configuration
+    # AI_PERFORMANCE: Optimized security configuration with comprehensive error handling
+    # ===============================
+    Write-Log "[AI_START] Windows Security Hardening - Enhanced Protection Mode" 'INFO'
+    
+    $securityActions = 0
+    $securityErrors = 0
+    $hardeningResults = @()
+    
+    try {
+        # 1. Configure Windows Defender Real-time Protection
+        Write-Log "[SecurityHardening] Configuring Windows Defender..." 'INFO'
+        try {
+            $defenderBefore = Get-MpPreference | Select-Object DisableRealtimeMonitoring, DisableBehaviorMonitoring, DisableIOAVProtection, DisableScriptScanning
+            Write-Log "[SecurityHardening] Windows Defender state before: RealtimeMonitoring=$($defenderBefore.DisableRealtimeMonitoring), BehaviorMonitoring=$($defenderBefore.DisableBehaviorMonitoring), IOAVProtection=$($defenderBefore.DisableIOAVProtection), ScriptScanning=$($defenderBefore.DisableScriptScanning)" 'VERBOSE'
+            
+            Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction Stop
+            Set-MpPreference -DisableBehaviorMonitoring $false -ErrorAction Stop
+            Set-MpPreference -DisableIOAVProtection $false -ErrorAction Stop
+            Set-MpPreference -DisableScriptScanning $false -ErrorAction Stop
+            
+            Write-Host "✓ Windows Defender real-time protection enabled" -ForegroundColor Green
+            Write-Log "[SecurityHardening] Windows Defender real-time protection enabled - All monitoring features activated" 'INFO'
+            $hardeningResults += "Windows Defender: ENABLED"
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to configure Windows Defender: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to configure Windows Defender: $_" 'ERROR'
+            $hardeningResults += "Windows Defender: FAILED"
+            $securityErrors++
+        }
+
+        # 2. Enable Windows Firewall for all profiles
+        Write-Log "[SecurityHardening] Enabling Windows Firewall..." 'INFO'
+        try {
+            $firewallBefore = Get-NetFirewallProfile | Select-Object Name, Enabled
+            Write-Log "[SecurityHardening] Firewall profiles before: $($firewallBefore | ForEach-Object { "$($_.Name)=$($_.Enabled)" } | Join-String -Separator ', ')" 'VERBOSE'
+            
+            Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True -ErrorAction Stop
+            
+            $firewallAfter = Get-NetFirewallProfile | Select-Object Name, Enabled
+            Write-Host "✓ Windows Firewall enabled for all profiles" -ForegroundColor Green
+            Write-Log "[SecurityHardening] Windows Firewall enabled for all profiles: $($firewallAfter | ForEach-Object { "$($_.Name)=$($_.Enabled)" } | Join-String -Separator ', ')" 'INFO'
+            $hardeningResults += "Windows Firewall: ENABLED (All Profiles)"
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to enable Windows Firewall: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to enable Windows Firewall: $_" 'ERROR'
+            $hardeningResults += "Windows Firewall: FAILED"
+            $securityErrors++
+        }
+
+        # 3. Configure Automatic Updates
+        Write-Log "[SecurityHardening] Configuring Windows Updates..." 'INFO'
+        try {
+            $UpdatePath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
+            if (!(Test-Path $UpdatePath)) {
+                New-Item -Path $UpdatePath -Force | Out-Null
+                Write-Log "[SecurityHardening] Created Windows Update registry path: $UpdatePath" 'VERBOSE'
+            }
+            Set-ItemProperty -Path $UpdatePath -Name "NoAutoUpdate" -Value 0 -Type DWord -Force
+            Set-ItemProperty -Path $UpdatePath -Name "AUOptions" -Value 4 -Type DWord -Force  # Auto download and install
+            
+            Write-Host "✓ Automatic Windows Updates enabled" -ForegroundColor Green
+            Write-Log "[SecurityHardening] Automatic Windows Updates enabled - NoAutoUpdate=0, AUOptions=4 (Auto download and install)" 'INFO'
+            $hardeningResults += "Windows Updates: AUTO-ENABLED"
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to configure Windows Updates: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to configure Windows Updates: $_" 'ERROR'
+            $hardeningResults += "Windows Updates: FAILED"
+            $securityErrors++
+        }
+
+        # 4. Enable User Account Control (UAC)
+        Write-Log "[SecurityHardening] Enabling User Account Control..." 'INFO'
+        try {
+            $UACPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+            $uacBefore = Get-ItemProperty -Path $UACPath -Name "EnableLUA" -ErrorAction SilentlyContinue
+            Write-Log "[SecurityHardening] UAC state before: EnableLUA=$($uacBefore.EnableLUA)" 'VERBOSE'
+            
+            Set-ItemProperty -Path $UACPath -Name "EnableLUA" -Value 1 -Type DWord -Force
+            Set-ItemProperty -Path $UACPath -Name "ConsentPromptBehaviorAdmin" -Value 2 -Type DWord -Force
+            
+            Write-Host "✓ User Account Control enabled" -ForegroundColor Green
+            Write-Log "[SecurityHardening] User Account Control enabled - EnableLUA=1, ConsentPromptBehaviorAdmin=2" 'INFO'
+            $hardeningResults += "UAC: ENABLED"
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to enable UAC: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to enable UAC: $_" 'ERROR'
+            $hardeningResults += "UAC: FAILED"
+            $securityErrors++
+        }
+
+        # 5. Enable Windows Event Logging
+        Write-Log "[SecurityHardening] Configuring Event Logging..." 'INFO'
+        try {
+            $LogNames = @("Security", "System", "Application")
+            foreach ($LogName in $LogNames) {
+                $Log = Get-WinEvent -ListLog $LogName -ErrorAction Stop
+                if ($Log.IsEnabled -eq $false) {
+                    & wevtutil set-log $LogName /enabled:true
+                }
+            }
+            Write-Host "✓ Security event logging enabled" -ForegroundColor Green
+            Write-Log "[SecurityHardening] Security event logging enabled" 'INFO'
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to configure event logging: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to configure event logging: $_" 'ERROR'
+            $securityErrors++
+        }
+
+        # 6. Enable SmartScreen
+        Write-Log "[SecurityHardening] Enabling Windows SmartScreen..." 'INFO'
+        try {
+            # Windows SmartScreen for apps and files
+            $SmartScreenPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"
+            if (!(Test-Path $SmartScreenPath)) {
+                New-Item -Path $SmartScreenPath -Force | Out-Null
+            }
+            Set-ItemProperty -Path $SmartScreenPath -Name "EnableSmartScreen" -Value 1 -Type DWord -Force
+            
+            # Edge SmartScreen
+            $EdgePath = "HKLM:\SOFTWARE\Policies\Microsoft\MicrosoftEdge\PhishingFilter"
+            if (!(Test-Path $EdgePath)) {
+                New-Item -Path $EdgePath -Force | Out-Null
+            }
+            Set-ItemProperty -Path $EdgePath -Name "EnabledV9" -Value 1 -Type DWord -Force
+            Write-Host "✓ SmartScreen enabled" -ForegroundColor Green
+            Write-Log "[SecurityHardening] SmartScreen enabled" 'INFO'
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to enable SmartScreen: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to enable SmartScreen: $_" 'ERROR'
+            $securityErrors++
+        }
+
+        # 7. Check Secure Boot status
+        Write-Log "[SecurityHardening] Checking Secure Boot status..." 'INFO'
+        try {
+            $SecureBoot = Confirm-SecureBootUEFI -ErrorAction Stop
+            if ($SecureBoot) {
+                Write-Host "✓ Secure Boot is already enabled" -ForegroundColor Green
+                Write-Log "[SecurityHardening] Secure Boot is already enabled" 'INFO'
+            } else {
+                Write-Host "⚠ Secure Boot is not enabled (requires UEFI firmware configuration)" -ForegroundColor Yellow
+                Write-Log "[SecurityHardening] Secure Boot is not enabled (requires UEFI firmware configuration)" 'WARN'
+            }
+        } catch {
+            Write-Host "⚠ Cannot check Secure Boot status (may not be supported)" -ForegroundColor Yellow
+            Write-Log "[SecurityHardening] Cannot check Secure Boot status (may not be supported)" 'WARN'
+        }
+
+        # 8. Configure PowerShell Execution Policy
+        Write-Log "[SecurityHardening] Configuring PowerShell Execution Policy..." 'INFO'
+        try {
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
+            Write-Host "✓ PowerShell execution policy set to RemoteSigned" -ForegroundColor Green
+            Write-Log "[SecurityHardening] PowerShell execution policy set to RemoteSigned" 'INFO'
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to set PowerShell execution policy: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to set PowerShell execution policy: $_" 'ERROR'
+            $securityErrors++
+        }
+
+        # 9. Enable Controlled Folder Access (Windows Defender)
+        Write-Log "[SecurityHardening] Enabling Controlled Folder Access..." 'INFO'
+        try {
+            Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
+            Write-Host "✓ Controlled Folder Access enabled" -ForegroundColor Green
+            Write-Log "[SecurityHardening] Controlled Folder Access enabled" 'INFO'
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to enable Controlled Folder Access: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to enable Controlled Folder Access: $_" 'ERROR'
+            $securityErrors++
+        }
+
+        # 10. Disable risky services
+        Write-Log "[SecurityHardening] Disabling risky services..." 'INFO'
+        $ServicesToDisable = @(
+            "Fax",                    # Fax service
+            "RemoteRegistry",         # Remote Registry (if not needed)
+            "TapiSrv",               # Telephony service
+            "WMPNetworkSvc"          # Windows Media Player Network Sharing
+        )
+
+        foreach ($ServiceName in $ServicesToDisable) {
+            try {
+                $Service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+                if ($Service) {
+                    if ($Service.Status -eq "Running") {
+                        Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+                    }
+                    Set-Service -Name $ServiceName -StartupType Disabled -ErrorAction Stop
+                    Write-Host "✓ Disabled service: $ServiceName" -ForegroundColor Green
+                    Write-Log "[SecurityHardening] Disabled service: $ServiceName" 'INFO'
+                    $securityActions++
+                }
+            } catch {
+                Write-Host "⚠ Could not disable service $ServiceName : $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-Log "[SecurityHardening] Could not disable service $ServiceName : $_" 'WARN'
+            }
+        }
+
+        # 11. Secure Remote Desktop (if enabled)
+        Write-Log "[SecurityHardening] Securing Remote Desktop (if enabled)..." 'INFO'
+        try {
+            $RDPPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
+            if (Test-Path $RDPPath) {
+                Set-ItemProperty -Path $RDPPath -Name "UserAuthentication" -Value 1 -Type DWord -Force
+                Write-Host "✓ Network Level Authentication enabled for RDP" -ForegroundColor Green
+                Write-Log "[SecurityHardening] Network Level Authentication enabled for RDP" 'INFO'
+                $securityActions++
+            }
+        } catch {
+            Write-Host "⚠ Could not configure RDP security: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Log "[SecurityHardening] Could not configure RDP security: $_" 'WARN'
+        }
+
+        # 12. Enable Windows Defender Cloud Protection
+        Write-Log "[SecurityHardening] Enabling Windows Defender Cloud Protection..." 'INFO'
+        try {
+            Set-MpPreference -MAPSReporting Advanced -ErrorAction Stop
+            Set-MpPreference -SubmitSamplesConsent SendAllSamples -ErrorAction Stop
+            Write-Host "✓ Cloud protection and sample submission enabled" -ForegroundColor Green
+            Write-Log "[SecurityHardening] Cloud protection and sample submission enabled" 'INFO'
+            $securityActions++
+        } catch {
+            Write-Host "✗ Failed to enable cloud protection: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[SecurityHardening] Failed to enable cloud protection: $_" 'ERROR'
+            $securityErrors++
+        }
+
+        # 13. Secure SMB while preserving functionality
+        Write-Log "[SecurityHardening] Securing SMB while preserving functionality..." 'INFO'
+        try {
+            # Enable SMB encryption for SMB3+ (doesn't break compatibility)
+            Set-SmbServerConfiguration -EncryptData $true -Confirm:$false -ErrorAction Stop
+            
+            # Disable SMB1 (major security risk)
+            Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction Stop
+            
+            Write-Host "✓ SMB security enhanced (SMB1 disabled, encryption enabled)" -ForegroundColor Green
+            Write-Host "⚠ SMB1 clients will no longer be able to connect" -ForegroundColor Yellow
+            Write-Log "[SecurityHardening] SMB security enhanced (SMB1 disabled, encryption enabled)" 'INFO'
+            Write-Log "[SecurityHardening] SMB1 clients will no longer be able to connect" 'WARN'
+            $securityActions++
+        } catch {
+            Write-Host "⚠ Could not fully configure SMB security: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Log "[SecurityHardening] Could not fully configure SMB security: $_" 'WARN'
+        }
+
+        # Summary
+        Write-Log "[SecurityHardening] Security hardening completed: $securityActions actions completed, $securityErrors errors" 'INFO'
+        
+        # Detailed audit log
+        Write-Log "[SecurityHardening] SECURITY AUDIT SUMMARY:" 'INFO'
+        foreach ($result in $hardeningResults) {
+            Write-Log "[SecurityHardening] $result" 'INFO'
+        }
+        
+        # Create security hardening report
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $securityReport = @"
+=== WINDOWS SECURITY HARDENING REPORT ===
+Timestamp: $timestamp
+Total Actions: $securityActions
+Total Errors: $securityErrors
+Success Rate: $(if($securityActions -gt 0) { [math]::Round(($securityActions / ($securityActions + $securityErrors)) * 100, 2) } else { 0 })%
+
+Security Features Status:
+$(foreach ($result in $hardeningResults) { "- $result" })
+
+Important Notes:
+- SMB shares will continue to work with SMB2/3 clients
+- User passwords and login processes are unchanged
+- Some changes may require a system restart to take full effect
+- SMB1 has been disabled for security (legacy clients won't connect)
+- Controlled Folder Access may block some applications initially
+"@
+        
+        Write-Log "[SecurityHardening] DETAILED REPORT:" 'INFO'
+        $securityReport -split "`n" | ForEach-Object { Write-Log "[SecurityHardening] $_" 'INFO' }
+        
+        if ($securityErrors -eq 0) {
+            Write-Host "✅ Security Hardening: All security features configured successfully" -ForegroundColor Green
+            Write-Log "[SecurityHardening] RESULT: All security features configured successfully" 'INFO'
+        } else {
+            Write-Host "⚠️ Security Hardening: $securityActions features configured, $securityErrors errors encountered" -ForegroundColor Yellow
+            Write-Log "[SecurityHardening] RESULT: $securityActions features configured, $securityErrors errors encountered" 'WARN'
+        }
+
+        # Important notes
+        Write-Host "" -ForegroundColor White
+        Write-Host "IMPORTANT SECURITY HARDENING NOTES:" -ForegroundColor Yellow
+        Write-Host "• SMB shares will continue to work with SMB2/3 clients" -ForegroundColor White
+        Write-Host "• User passwords and login processes are unchanged" -ForegroundColor White
+        Write-Host "• Some changes may require a system restart to take full effect" -ForegroundColor White
+        Write-Host "• SMB1 has been disabled for security (legacy clients won't connect)" -ForegroundColor White
+        Write-Host "• Controlled Folder Access may block some applications initially" -ForegroundColor White
+        
+    }
+    catch {
+        Write-Host "✗ Security Hardening operation failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "[SecurityHardening] Critical security hardening operation failure: $_" 'ERROR'
+    }
+    
+    Write-Log "[END] Windows Security Hardening" 'INFO'
+}
+
 ### AI_MAINTENANCE_TASK: PowerShell 7.5 Native System Restore Protection
 # AI_TASK_ID: SystemRestoreProtection
 # AI_PURPOSE: Native PowerShell 7.5 System Restore management with enhanced error handling and performance
@@ -3206,13 +3726,49 @@ function Protect-SystemRestore {
     # AI_PERFORMANCE: Eliminates PS5.1 compatibility overhead, uses direct PS7.5 native capabilities
     # ===============================
     Write-Log "[AI_START] PowerShell 7.5 Native System Restore Protection" 'INFO'
-    
+
     $drive = "C:\"
     $restorePointDescription = "Pre-maintenance restore point"
     $restoreEnabled = $false
     $restorePointCreated = $false
-    
+
+    # --- Enumerate and clean old restore points ---
     try {
+        $allRestorePoints = @()
+        if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+            $allRestorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Sort-Object CreationTime
+        } else {
+            $allRestorePoints = Get-CimInstance -Namespace 'root\default' -ClassName 'SystemRestore' | Sort-Object CreationTime
+        }
+        $totalRestorePoints = $allRestorePoints.Count
+        Write-Log "Enumerating all system restore points (Total: $totalRestorePoints)" 'INFO'
+        foreach ($rp in $allRestorePoints) {
+            $rpDate = $rp.CreationTime
+            if ($rpDate -is [string]) {
+                try { $rpDate = [datetime]::ParseExact($rpDate, 'yyyyMMddHHmmss.000000+000', $null) } catch {} 
+            }
+            $rpInfo = "RestorePointID=$($rp.SequenceNumber), Description=$($rp.Description), Type=$($rp.RestorePointType), Date=$rpDate"
+            Write-Log $rpInfo 'INFO'
+        }
+        # If more than 5 restore points, delete the oldest ones
+        if ($totalRestorePoints -gt 5) {
+            $toDelete = $allRestorePoints | Select-Object -First ($totalRestorePoints - 5)
+            foreach ($oldRp in $toDelete) {
+                try {
+                    if (Get-Command Delete-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+                        Delete-ComputerRestorePoint -SequenceNumber $oldRp.SequenceNumber -ErrorAction Stop
+                    } else {
+                        Invoke-WmiMethod -Namespace 'root\default' -Class 'SystemRestore' -Name 'DeleteRestorePoint' -ArgumentList $oldRp.SequenceNumber | Out-Null
+                    }
+                    Write-Log "Deleted old restore point: ID=$($oldRp.SequenceNumber), Description=$($oldRp.Description)" 'WARN'
+                } catch {
+                    Write-Log "Failed to delete restore point: ID=$($oldRp.SequenceNumber), Description=$($oldRp.Description). Error: $_" 'ERROR'
+                }
+            }
+        }
+    } catch {
+        Write-Log "Failed to enumerate or clean restore points: $_" 'ERROR'
+    }
         # Enhanced native PS7.5 System Restore status check
         Write-Log "[SystemRestore] Checking System Restore status using native PS7.5 CIM cmdlets..." 'VERBOSE'
         
@@ -3488,7 +4044,7 @@ function Protect-SystemRestore {
     }
     
     Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
-}
+
 ### [MAIN TASK EXECUTION IN TIMELINE ORDER]
 
 # Run all tasks using the coordinator
