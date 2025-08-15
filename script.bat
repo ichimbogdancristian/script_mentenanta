@@ -436,17 +436,27 @@ ECHO [%TIME%] [INFO] Launching PowerShell maintenance script...
 IF "!PS7_AVAILABLE!"=="YES" (
     ECHO [%TIME%] [INFO] Using PowerShell 7 environment...
     START "Maintenance Script - PowerShell 7" pwsh.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
+    IF %ERRORLEVEL% NEQ 0 (
+        ECHO [%TIME%] [ERROR] PowerShell script failed with error code %ERRORLEVEL%
+        pause
+        exit /b %ERRORLEVEL%
+    )
 ) ELSE (
     ECHO [%TIME%] [INFO] Using Windows PowerShell environment...
     START "Maintenance Script - Windows PowerShell" powershell.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
+    IF %ERRORLEVEL% NEQ 0 (
+        ECHO [%TIME%] [ERROR] PowerShell script failed with error code %ERRORLEVEL%
+        pause
+        exit /b %ERRORLEVEL%
+    )
 )
 
 IF !ERRORLEVEL! EQU 0 (
     ECHO [%TIME%] [INFO] PowerShell script launched successfully in new window.
     ECHO [%TIME%] [INFO] Maintenance operations are now running in the background.
     ECHO.
-    ECHO [%TIME%] [INFO] This launcher will close automatically in 10 seconds...
-    FOR /L %%i IN (10,-1,1) DO (
+    ECHO [%TIME%] [INFO] This launcher will close automatically in 30 seconds...
+    FOR /L %%i IN (30,-1,1) DO (
         ECHO [%TIME%] [INFO] Closing in %%i seconds...
         timeout /t 1 /nobreak >nul
     )
