@@ -2226,18 +2226,18 @@ function Disable-Telemetry {
   }
 }
 "@
-    $policyPath = Join-Path $distPath 'policies.json'
-    $policyJson | Set-Content -Path $policyPath -Encoding UTF8
-    Write-Log "Firefox policies.json deployed from built-in policy." 'INFO'
-}
-
-else {
-    Write-Log "Could not find Firefox installation path for policies.json deployment." 'WARN'
-}
-
-catch {
-    Write-Log "Failed to deploy Firefox policies.json: $_" 'WARN'
-}
+                $policyPath = Join-Path $distPath 'policies.json'
+                $policyJson | Set-Content -Path $policyPath -Encoding UTF8
+                Write-Log "Firefox policies.json deployed from built-in policy." 'INFO'
+            }
+        }
+        else {
+            Write-Log "Could not find Firefox installation path for policies.json deployment." 'WARN'
+        }
+    }
+    catch {
+        Write-Log "Failed to deploy Firefox policies.json: $_" 'WARN'
+    }
 
 # Attempt to set Firefox as default browser (Windows 10 only, Windows 11 requires user interaction)
 try {
