@@ -359,6 +359,135 @@ $global:ScriptTasks = @(
             Write-Host 'Completed Full System Cleanup task.' -ForegroundColor Green
             return $true
         }; Description = 'Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup)' 
+    },
+
+    # Task: PendingRestartCheck
+    # Purpose: Check for pending system restarts and offer 120-second countdown with abort option.
+    # Environment: Windows 10/11, any user context, registry access for restart detection
+    # Logic: Comprehensive restart detection, 120-second countdown, user abort option
+    # Dependencies: Registry access, restart detection methods, user interaction
+    @{ Name = 'PendingRestartCheck'; Function = { 
+            Write-Log 'Starting Pending Restart Check task.' 'INFO'
+            Write-Host 'Starting Pending Restart Check task.' -ForegroundColor Cyan
+            
+            if ($global:Config.SkipPendingRestartCheck) {
+                Write-Log 'Pending Restart Check skipped by configuration.' 'INFO'
+                Write-Host 'Pending Restart Check skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            }
+            
+            # Comprehensive restart detection
+            $restartRequired = $false
+            $restartReasons = @()
+            
+            Write-Log 'Checking for pending system restarts...' 'INFO'
+            
+            # Check Windows Update reboot flag
+            try {
+                if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") {
+                    $restartRequired = $true
+                    $restartReasons += "Windows Update"
+                    Write-Log 'Windows Update restart flag detected' 'INFO'
+                }
+            } catch { Write-Log "Failed to check Windows Update restart flag: $_" 'VERBOSE' }
+            
+            # Check Component Based Servicing reboot flag
+            try {
+                if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") {
+                    $restartRequired = $true
+                    $restartReasons += "Component Based Servicing"
+                    Write-Log 'Component Based Servicing restart detected' 'INFO'
+                }
+            } catch { Write-Log "Failed to check CBS restart flag: $_" 'VERBOSE' }
+            
+            # Check pending file operations
+            try {
+                $pendingFileOps = Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name "PendingFileRenameOperations" -ErrorAction SilentlyContinue
+                if ($pendingFileOps) {
+                    $restartRequired = $true
+                    $restartReasons += "Pending File Operations"
+                    Write-Log 'Pending file rename operations detected' 'INFO'
+                }
+            } catch { Write-Log "Failed to check pending file operations: $_" 'VERBOSE' }
+            
+            # Check Windows Feature installation requiring restart
+            try {
+                if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending") {
+                    $restartRequired = $true
+                    $restartReasons += "Windows Features"
+                    Write-Log 'Windows Features pending restart detected' 'INFO'
+                }
+            } catch { Write-Log "Failed to check Windows Features restart flag: $_" 'VERBOSE' }
+            
+            # Check for computer name change
+            try {
+                $currentName = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name ComputerName).ComputerName
+                $pendingName = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name ComputerName).ComputerName
+                if ($currentName -ne $pendingName) {
+                    $restartRequired = $true
+                    $restartReasons += "Computer Name Change"
+                    Write-Log 'Computer name change pending restart detected' 'INFO'
+                }
+            } catch { Write-Log "Failed to check computer name change: $_" 'VERBOSE' }
+            
+            if (-not $restartRequired) {
+                Write-Log 'No pending restart detected. System is up to date.' 'INFO'
+                Write-Host '✅ No pending restart detected. System is up to date.' -ForegroundColor Green
+                return $true
+            }
+            
+            # Restart required - show countdown
+            $reasonsList = $restartReasons -join ", "
+            Write-Log "Restart required due to: $reasonsList" 'WARN'
+            Write-Host "" 
+            Write-Host "⚠️  SYSTEM RESTART REQUIRED" -ForegroundColor Yellow -BackgroundColor DarkRed
+            Write-Host "Restart required due to: $reasonsList" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "The system will automatically restart in 120 seconds." -ForegroundColor White
+            Write-Host "Press Ctrl+C to abort the restart countdown." -ForegroundColor Cyan
+            Write-Host ""
+            
+            # 120-second countdown with abort option
+            for ($i = 120; $i -gt 0; $i--) {
+                $minutes = [math]::Floor($i / 60)
+                $seconds = $i % 60
+                if ($minutes -gt 0) {
+                    $timeDisplay = "{0}:{1:D2}" -f $minutes, $seconds
+                } else {
+                    $timeDisplay = "0:{0:D2}" -f $seconds
+                }
+                
+                Write-Host "`rRestarting in $timeDisplay... (Press Ctrl+C to abort)" -NoNewline -ForegroundColor Yellow
+                
+                try {
+                    Start-Sleep -Seconds 1
+                } catch [System.Management.Automation.PipelineStoppedException] {
+                    Write-Host ""
+                    Write-Host ""
+                    Write-Log 'Restart countdown aborted by user.' 'INFO'
+                    Write-Host '❌ Restart countdown aborted by user.' -ForegroundColor Red
+                    Write-Host 'Please restart your system manually when convenient to complete the maintenance.' -ForegroundColor Yellow
+                    return $false
+                }
+            }
+            
+            Write-Host ""
+            Write-Host ""
+            Write-Log 'Initiating system restart...' 'INFO'
+            Write-Host '🔄 Initiating system restart...' -ForegroundColor Green
+            
+            # Initiate restart
+            try {
+                Start-Process -FilePath "shutdown.exe" -ArgumentList "/r", "/t", "10", "/c", "System restart required to complete maintenance operations" -NoNewWindow
+                Write-Log 'System restart initiated successfully.' 'INFO'
+                return $true
+            } catch {
+                Write-Log "Failed to initiate system restart: $_" 'ERROR'
+                Write-Host "❌ Failed to initiate restart: $_" -ForegroundColor Red
+                Write-Host 'Please restart your system manually.' -ForegroundColor Yellow
+                return $false
+            }
+        }; Description = 'Check for pending restarts with 120-second countdown and abort option' 
     }
 )
 
@@ -374,6 +503,7 @@ $global:Config = @{
     SkipSystemRestore     = $false
     SkipEventLogAnalysis  = $false
     SkipSecurityHardening = $false
+    SkipPendingRestartCheck = $false
     CustomEssentialApps   = @()
     CustomBloatwareList   = @()
     EnableVerboseLogging  = $false
@@ -390,6 +520,7 @@ if (Test-Path $configPath) {
         if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
         if ($config.SkipEventLogAnalysis) { $global:Config.SkipEventLogAnalysis = $config.SkipEventLogAnalysis }
         if ($config.SkipSecurityHardening) { $global:Config.SkipSecurityHardening = $config.SkipSecurityHardening }
+        if ($config.SkipPendingRestartCheck) { $global:Config.SkipPendingRestartCheck = $config.SkipPendingRestartCheck }
         if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
         if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
         if ($config.EnableVerboseLogging) { $global:Config.EnableVerboseLogging = $config.EnableVerboseLogging }
@@ -745,8 +876,8 @@ function Install-WindowsUpdatesCompatible {
                 # Use TLS 1.2 for secure downloads
                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                 
-                # Install with enhanced parameters for reliability
-                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -AllowClobber -ErrorAction SilentlyContinue
+                # Install with enhanced parameters for reliability - FULLY SILENT
+                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -AllowClobber -SkipPublisherCheck -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                 
                 # Verify installation
                 if (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue) {
@@ -830,8 +961,8 @@ function Install-WindowsUpdatesCompatible {
             $failedUpdates = @()
             
             try {
-                # Batch install: Install all updates with comprehensive error handling
-                $installResults = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction SilentlyContinue
+                # Batch install: Install all updates with comprehensive error handling - FULLY UNATTENDED
+                $installResults = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                 
                 if ($installResults) {
                     foreach ($result in $installResults) {
@@ -869,15 +1000,16 @@ function Install-WindowsUpdatesCompatible {
                     }
                 }
                 
-                # Reboot check: Check if restart is required
+                # Reboot check: Check if restart is required (informational only - no interruption)
                 try {
                     $rebootRequired = Get-WURebootStatus -Silent -ErrorAction SilentlyContinue
                     if ($rebootRequired) {
-                        Write-Log 'System restart required to complete Windows Updates.' 'INFO'
-                        Write-Host "⚠️ System restart required to complete Windows Updates" -ForegroundColor Yellow
+                        Write-Log 'System restart required to complete Windows Updates (will be handled at end of script).' 'INFO'
+                        Write-Host "ℹ️ System restart required to complete Windows Updates (will be checked at end of script)" -ForegroundColor Cyan
                     }
                     else {
                         Write-Log 'No restart required for installed updates.' 'INFO'
+                        Write-Host "✅ No restart required for installed updates" -ForegroundColor Green
                     }
                 }
                 catch {
@@ -886,6 +1018,7 @@ function Install-WindowsUpdatesCompatible {
                 
                 $totalDuration = ((Get-Date) - $startTime).TotalSeconds
                 Write-Log "Complete Windows Update process finished in $([math]::Round($totalDuration, 2)) seconds." 'INFO'
+                Write-Host "✅ Windows Updates completed - continuing to next task" -ForegroundColor Green
                 
                 return $successCount -gt 0 -or $failureCount -eq 0
             }
