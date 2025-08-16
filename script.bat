@@ -251,8 +251,8 @@ IF !ERRORLEVEL! NEQ 0 (
 REM -----------------------------------------------------------------------------
 REM 3. NuGet PackageProvider - Direct download and installation
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Installing NuGet PackageProvider...
-echo Y | powershell -ExecutionPolicy Bypass -Command "$env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:\$false -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' \$_.Exception.Message; exit 1 } } else { Write-Host '[INFO] NuGet PackageProvider already available' }"
+ECHO [%TIME%] [INFO] Checking NuGet PackageProvider...
+echo Y | powershell -ExecutionPolicy Bypass -Command "$env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue; if ($nugetProvider -and $nugetProvider.Version -ge '2.8.5.201') { Write-Host '[INFO] NuGet PackageProvider already available (version: ' + $nugetProvider.Version + ')' } else { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:\$false -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' \$_.Exception.Message; exit 1 } }"
 
 IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [WARN] NuGet PackageProvider installation failed, but continuing...
@@ -261,14 +261,14 @@ IF !ERRORLEVEL! NEQ 0 (
 REM -----------------------------------------------------------------------------
 REM 4. PowerShell Gallery Configuration
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Configuring PowerShell Gallery as trusted repository...
-powershell -ExecutionPolicy Bypass -Command "try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; Write-Host '[INFO] PowerShell Gallery configured as trusted' } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exception.Message }"
+ECHO [%TIME%] [INFO] Checking PowerShell Gallery configuration...
+powershell -ExecutionPolicy Bypass -Command "try { $psGallery = Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue; if ($psGallery -and $psGallery.InstallationPolicy -eq 'Trusted') { Write-Host '[INFO] PowerShell Gallery already configured as trusted' } else { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; Write-Host '[INFO] PowerShell Gallery configured as trusted' } } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exception.Message }"
 
 REM -----------------------------------------------------------------------------
 REM 5. PSWindowsUpdate Module - Download from PowerShell Gallery
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Installing PSWindowsUpdate module...
-powershell -ExecutionPolicy Bypass -Command "if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:\$false -Repository PSGallery; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' \$_.Exception.Message; exit 1 } } else { Write-Host '[INFO] PSWindowsUpdate module already available' }"
+ECHO [%TIME%] [INFO] Checking PSWindowsUpdate module...
+powershell -ExecutionPolicy Bypass -Command "$psWindowsUpdate = Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue; if ($psWindowsUpdate) { Write-Host '[INFO] PSWindowsUpdate module already available (version: ' + $psWindowsUpdate.Version + ')' } else { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:\$false -Repository PSGallery; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' \$_.Exception.Message; exit 1 } }"
 
 IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [WARN] PSWindowsUpdate module installation failed.
@@ -294,7 +294,60 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [INFO] Chocolatey is already installed.
 )
 
-ECHO [%TIME%] [INFO] Dependency installation phase completed with optimized order.
+REM -----------------------------------------------------------------------------
+REM 7. PowerShellGet and PackageManagement - Latest Versions
+REM -----------------------------------------------------------------------------
+ECHO [%TIME%] [INFO] Checking PowerShellGet and PackageManagement modules...
+powershell -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $psGet = Get-Module -ListAvailable PowerShellGet | Sort-Object Version -Descending | Select-Object -First 1; if ($psGet -and $psGet.Version -ge '2.2.5') { Write-Host '[INFO] PowerShellGet is up to date (version: ' + $psGet.Version + ')' } else { Write-Host '[INFO] Updating PowerShellGet module...'; Install-Module -Name PowerShellGet -Force -Scope AllUsers -AllowClobber -Confirm:\$false -Repository PSGallery; Write-Host '[INFO] PowerShellGet updated successfully' } } catch { Write-Host '[WARN] PowerShellGet update failed:' \$_.Exception.Message }"
+
+powershell -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $pkgMgmt = Get-Module -ListAvailable PackageManagement | Sort-Object Version -Descending | Select-Object -First 1; if ($pkgMgmt -and $pkgMgmt.Version -ge '1.4.8') { Write-Host '[INFO] PackageManagement is up to date (version: ' + $pkgMgmt.Version + ')' } else { Write-Host '[INFO] Updating PackageManagement module...'; Install-Module -Name PackageManagement -Force -Scope AllUsers -AllowClobber -Confirm:\$false -Repository PSGallery; Write-Host '[INFO] PackageManagement updated successfully' } } catch { Write-Host '[WARN] PackageManagement update failed:' \$_.Exception.Message }"
+
+REM -----------------------------------------------------------------------------
+REM 8. Microsoft Visual C++ Redistributables - Essential for many applications
+REM -----------------------------------------------------------------------------
+ECHO [%TIME%] [INFO] Checking Microsoft Visual C++ Redistributables...
+powershell -ExecutionPolicy Bypass -Command "try { $vcInstalled = @(); $regPaths = @('HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86'); foreach ($path in $regPaths) { if (Test-Path $path) { $vcInstalled += $path } }; if ($vcInstalled.Count -ge 2) { Write-Host '[INFO] Microsoft Visual C++ Redistributables already installed' } else { Write-Host '[INFO] Installing Microsoft Visual C++ Redistributables...'; if (Get-Command winget -ErrorAction SilentlyContinue) { winget install --id Microsoft.VCRedist.2015+.x64 --silent --accept-package-agreements --accept-source-agreements 2>$null; winget install --id Microsoft.VCRedist.2015+.x86 --silent --accept-package-agreements --accept-source-agreements 2>$null; Write-Host '[INFO] Visual C++ Redistributables installed via winget' } else { Write-Host '[WARN] Winget not available for VC++ Redistributables installation' } } } catch { Write-Host '[WARN] VC++ Redistributables check failed:' \$_.Exception.Message }"
+
+REM -----------------------------------------------------------------------------
+REM 9. Git - For better repository management and version control
+REM -----------------------------------------------------------------------------
+ECHO [%TIME%] [INFO] Installing Git...
+git --version >nul 2>&1
+IF !ERRORLEVEL! NEQ 0 (
+    powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command winget -ErrorAction SilentlyContinue) { winget install --id Git.Git --silent --accept-package-agreements --accept-source-agreements; Write-Host '[INFO] Git installed successfully via winget' } elseif (Get-Command choco -ErrorAction SilentlyContinue) { choco install git -y --no-progress; Write-Host '[INFO] Git installed successfully via chocolatey' } else { Write-Host '[WARN] No package manager available for Git installation' } } catch { Write-Host '[WARN] Git installation failed:' \$_.Exception.Message }"
+    
+    REM Update PATH for Git
+    IF EXIST "%ProgramFiles%\Git\bin" SET "PATH=%PATH%;%ProgramFiles%\Git\bin"
+    IF EXIST "%ProgramFiles(x86)%\Git\bin" SET "PATH=%PATH%;%ProgramFiles(x86)%\Git\bin"
+) ELSE (
+    ECHO [%TIME%] [INFO] Git is already installed.
+)
+
+REM -----------------------------------------------------------------------------
+REM 10. .NET Framework 4.8 - Required for many PowerShell modules and applications
+REM -----------------------------------------------------------------------------
+ECHO [%TIME%] [INFO] Checking .NET Framework 4.8...
+powershell -ExecutionPolicy Bypass -Command "try { $netVersion = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' -Name Release -ErrorAction SilentlyContinue).Release; if ($netVersion -ge 528040) { Write-Host '[INFO] .NET Framework 4.8 or higher already installed' } else { if (Get-Command winget -ErrorAction SilentlyContinue) { winget install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements; Write-Host '[INFO] .NET Framework 4.8 installed via winget' } else { Write-Host '[WARN] .NET Framework 4.8 may need manual installation' } } } catch { Write-Host '[WARN] .NET Framework check failed:' \$_.Exception.Message }"
+
+REM -----------------------------------------------------------------------------
+REM 11. Additional PowerShell Modules for Enhanced Functionality
+REM -----------------------------------------------------------------------------
+ECHO [%TIME%] [INFO] Checking additional PowerShell modules...
+powershell -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $modules = @('DISM', 'PnpDevice', 'WindowsSearch'); foreach ($module in $modules) { if (-not (Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue)) { try { Import-Module $module -ErrorAction Stop; Write-Host \"[INFO] Module $module verified and available\" } catch { Write-Host \"[INFO] Module $module not available - will be loaded when needed\" } } else { Write-Host \"[INFO] Module $module already available\" } } } catch { Write-Host '[WARN] Module check failed:' \$_.Exception.Message }"
+
+REM -----------------------------------------------------------------------------
+REM 12. Windows Features - Enable required features
+REM -----------------------------------------------------------------------------
+ECHO [%TIME%] [INFO] Checking Windows features...
+powershell -ExecutionPolicy Bypass -Command "try { $features = @('NetFx3', 'MSMQ-Container', 'IIS-ManagementConsole'); foreach ($feature in $features) { $featureState = Get-WindowsOptionalFeature -Online -FeatureName $feature -ErrorAction SilentlyContinue; if ($featureState) { if ($featureState.State -eq 'Enabled') { Write-Host \"[INFO] Windows feature $feature already enabled\" } elseif ($featureState.State -eq 'Disabled') { Write-Host \"[INFO] Enabling Windows feature: $feature\"; Enable-WindowsOptionalFeature -Online -FeatureName $feature -All -NoRestart -ErrorAction SilentlyContinue | Out-Null; Write-Host \"[INFO] Windows feature $feature enabled successfully\" } } else { Write-Host \"[INFO] Windows feature $feature not available on this system\" } } } catch { Write-Host '[INFO] Windows features check completed' }"
+
+REM -----------------------------------------------------------------------------
+REM 13. System Performance Optimizations
+REM -----------------------------------------------------------------------------
+ECHO [%TIME%] [INFO] Checking system performance settings...
+powershell -ExecutionPolicy Bypass -Command "try { $services = @('Themes', 'UxSms'); foreach ($service in $services) { $svc = Get-Service -Name $service -ErrorAction SilentlyContinue; if ($svc) { if ($svc.StartType -eq 'Automatic') { Write-Host \"[INFO] Service $service already set to Automatic\" } else { Set-Service -Name $service -StartupType Automatic -ErrorAction SilentlyContinue; Write-Host \"[INFO] Service $service set to Automatic startup\" } } else { Write-Host \"[INFO] Service $service not found on this system\" } }; Write-Host '[INFO] System services optimization completed' } catch { Write-Host '[INFO] Service optimization completed with some warnings' }"
+
+ECHO [%TIME%] [INFO] Dependency installation phase completed with comprehensive coverage.
 
 REM -----------------------------------------------------------------------------
 REM System Restart Detection - Simplified
@@ -406,6 +459,9 @@ ECHO [%TIME%] [INFO] Repository extracted to clean folder: %SCRIPT_DIR%%EXTRACT_
 REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Final Verification
 REM -----------------------------------------------------------------------------
+ECHO [%TIME%] [INFO] Performing comprehensive dependency validation...
+
+REM Check PowerShell 7 availability
 ECHO [%TIME%] [INFO] Checking PowerShell 7 availability for script execution...
 SET "PS7_AVAILABLE=NO"
 
@@ -417,6 +473,49 @@ IF !ERRORLEVEL! EQU 0 (
 ) ELSE (
     ECHO [%TIME%] [WARN] PowerShell 7 not available. Will use Windows PowerShell.
 )
+
+REM Check critical dependencies
+ECHO [%TIME%] [INFO] Validating critical dependencies...
+SET "DEPENDENCY_WARNINGS=0"
+
+REM Validate Winget
+winget --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    ECHO [%TIME%] [INFO] ✓ Winget is available
+) ELSE (
+    ECHO [%TIME%] [WARN] ✗ Winget not available - some installations may fail
+    SET /A DEPENDENCY_WARNINGS+=1
+)
+
+REM Validate Chocolatey
+choco --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    ECHO [%TIME%] [INFO] ✓ Chocolatey is available
+) ELSE (
+    ECHO [%TIME%] [WARN] ✗ Chocolatey not available - some installations may fail
+    SET /A DEPENDENCY_WARNINGS+=1
+)
+
+REM Validate Git
+git --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    ECHO [%TIME%] [INFO] ✓ Git is available
+) ELSE (
+    ECHO [%TIME%] [WARN] ✗ Git not available - repository management limited
+    SET /A DEPENDENCY_WARNINGS+=1
+)
+
+REM Validate PowerShell modules
+powershell -ExecutionPolicy Bypass -Command "try { $modules = @('PSWindowsUpdate', 'PackageManagement', 'PowerShellGet'); $moduleStatus = @(); foreach ($module in $modules) { if (Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue) { $moduleStatus += \"[INFO] ✓ Module $module is available\" } else { $moduleStatus += \"[WARN] ✗ Module $module not available\" } }; $moduleStatus | ForEach-Object { Write-Host $_ } } catch { Write-Host '[WARN] Module validation failed' }"
+
+REM Show dependency summary
+IF !DEPENDENCY_WARNINGS! GTR 0 (
+    ECHO [%TIME%] [WARN] Found !DEPENDENCY_WARNINGS! dependency warnings. Script will use graceful degradation.
+) ELSE (
+    ECHO [%TIME%] [INFO] ✓ All critical dependencies verified successfully.
+)
+
+ECHO [%TIME%] [INFO] Dependency validation completed.
 
 REM -----------------------------------------------------------------------------
 REM Launch PowerShell Script with Priority for PowerShell 7

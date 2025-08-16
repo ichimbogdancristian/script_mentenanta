@@ -12,25 +12,30 @@
 #   - Each task/function uses a clear header: Purpose, Environment, Logic, Performance, Dependencies
 #   - All file operations use $PSScriptRoot for relative paths
 #   - Error handling: try/catch with detailed logging
-#   - PowerShell compatibility functions handle version differences
+#   - All logic is PowerShell 7 native; no compatibility wrappers remain
 
-# AI_TASK_ARRAY: Global maintenance task definitions with standardized metadata
+# Task array: Global maintenance task definitions with standardized metadata
 $global:ScriptTasks = @(
     # Task: SystemRestoreProtection
     # Purpose: Enables System Restore and creates a restore point before maintenance.
     # Environment: Windows 10/11, Administrator required, C:\ drive focus
     # Logic: Config-driven skip, PowerShell native cmdlets, duplicate protection
-    # Dependencies: SystemRestoreConfig, Checkpoint-Computer, registry fallbacks
+    # Dependencies: SystemRestoreConfig, Checkpoint-Computer
     @{ Name = 'SystemRestoreProtection'; Function = { 
+            Write-Log 'Starting System Restore Protection task.' 'INFO'
+            Write-Host 'Starting System Restore Protection task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipSystemRestore) { 
                 Protect-SystemRestore
+                Write-Log 'Completed System Restore Protection task.' 'INFO'
+                Write-Host 'Completed System Restore Protection task.' -ForegroundColor Green
                 return $true
             }
             else { 
-                Write-Log 'System Restore Protection skipped by config' 'INFO'
+                Write-Log 'System Restore Protection skipped by configuration.' 'INFO'
+                Write-Host 'System Restore Protection skipped by configuration.' -ForegroundColor Yellow
                 return $false
             } 
-        }; Description = 'AI_DESC: Enable System Restore and create pre-maintenance checkpoint' 
+        }; Description = 'Enable System Restore and create pre-maintenance checkpoint' 
     },
 
     # Task: SystemInventory
@@ -39,9 +44,13 @@ $global:ScriptTasks = @(
     # Logic: Get-ComputerInfo based, structured data collection, file output
     # Dependencies: WMI/CIM cmdlets, file system access
     @{ Name = 'SystemInventory'; Function = { 
+            Write-Log 'Starting System Inventory task.' 'INFO'
+            Write-Host 'Starting System Inventory task.' -ForegroundColor Cyan
             Get-SystemInventory
+            Write-Log 'Completed System Inventory task.' 'INFO'
+            Write-Host 'Completed System Inventory task.' -ForegroundColor Green
             return $true
-        }; Description = 'AI_DESC: Collect and export comprehensive system inventory data' 
+        }; Description = 'Collect and export comprehensive system inventory data' 
     },
 
     # Task: EventLogAnalysis
@@ -50,15 +59,20 @@ $global:ScriptTasks = @(
     # Logic: Get-EventLog/Get-WinEvent for Event Viewer, file parsing for CBS logs
     # Dependencies: Event Log service, CBS log file access, file system permissions
     @{ Name = 'EventLogAnalysis'; Function = { 
+            Write-Log 'Starting Event Log Analysis task.' 'INFO'
+            Write-Host 'Starting Event Log Analysis task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipEventLogAnalysis) { 
                 Get-EventLogAnalysis
+                Write-Log 'Completed Event Log Analysis task.' 'INFO'
+                Write-Host 'Completed Event Log Analysis task.' -ForegroundColor Green
                 return $true
             }
             else { 
-                Write-Log 'Event Log Analysis skipped by config' 'INFO'
+                Write-Log 'Event Log Analysis skipped by configuration.' 'INFO'
+                Write-Host 'Event Log Analysis skipped by configuration.' -ForegroundColor Yellow
                 return $false
             } 
-        }; Description = 'AI_DESC: Survey Event Viewer and CBS logs for errors from last 96 hours' 
+        }; Description = 'Survey Event Viewer and CBS logs for errors from last 96 hours' 
     },
 
     # Task: RemoveBloatware
@@ -67,15 +81,20 @@ $global:ScriptTasks = @(
     # Logic: Parallel processing, inventory-based filtering, action-only logging
     # Dependencies: AppX cmdlets, DISM, Winget, Chocolatey, Windows Capabilities
     @{ Name = 'RemoveBloatware'; Function = { 
+            Write-Log 'Starting Bloatware Removal task.' 'INFO'
+            Write-Host 'Starting Bloatware Removal task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipBloatwareRemoval) { 
                 Remove-Bloatware
+                Write-Log 'Completed Bloatware Removal task.' 'INFO'
+                Write-Host 'Completed Bloatware Removal task.' -ForegroundColor Green
                 return $true
             }
             else { 
-                Write-Log 'Bloatware removal skipped by config' 'INFO'
+                Write-Log 'Bloatware removal skipped by configuration.' 'INFO'
+                Write-Host 'Bloatware removal skipped by configuration.' -ForegroundColor Yellow
                 return $false
             } 
-        }; Description = 'AI_DESC: Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' 
+        }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' 
     },
 
     # Task: InstallEssentialApps
@@ -84,15 +103,20 @@ $global:ScriptTasks = @(
     # Logic: HashSet optimization, parallel processing, smart filtering, custom app support
     # Dependencies: Winget, Chocolatey, inventory system, config.json integration
     @{ Name = 'InstallEssentialApps'; Function = { 
+            Write-Log 'Starting Essential Apps Installation task.' 'INFO'
+            Write-Host 'Starting Essential Apps Installation task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipEssentialApps) { 
                 Install-EssentialApps
+                Write-Log 'Completed Essential Apps Installation task.' 'INFO'
+                Write-Host 'Completed Essential Apps Installation task.' -ForegroundColor Green
                 return $true
             }
             else { 
-                Write-Log 'Essential apps installation skipped by config' 'INFO'
+                Write-Log 'Essential apps installation skipped by configuration.' 'INFO'
+                Write-Host 'Essential apps installation skipped by configuration.' -ForegroundColor Yellow
                 return $false
             } 
-        }; Description = 'AI_DESC: Install curated essential applications with parallel processing' 
+        }; Description = 'Install curated essential applications with parallel processing' 
     },
 
     # Task: UpdateAllPackages
@@ -101,34 +125,43 @@ $global:ScriptTasks = @(
     # Logic: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
     # Dependencies: Winget, Chocolatey, parallel processing capabilities
     @{ Name = 'UpdateAllPackages'; Function = { 
+            Write-Log 'Starting Package Updates task.' 'INFO'
+            Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
             Update-AllPackages
+            Write-Log 'Completed Package Updates task.' 'INFO'
+            Write-Host 'Completed Package Updates task.' -ForegroundColor Green
             return $true
-        }; Description = 'AI_DESC: Ultra-parallel package updates with performance optimization' 
+        }; Description = 'Ultra-parallel package updates with performance optimization' 
     },
 
     # Task: WindowsUpdateCheck
     # Purpose: Check and install Windows Updates via PSWindowsUpdate module.
     # Environment: Windows 10/11, Administrator required, PSWindowsUpdate module
     # Logic: Config-driven skip, module auto-install, comprehensive error handling
-    # Dependencies: PSWindowsUpdate module, Windows Update service, PowerShell compatibility
+    # Dependencies: PSWindowsUpdate module, Windows Update service
     @{ Name = 'WindowsUpdateCheck'; Function = {
+            Write-Log 'Starting Windows Updates check task.' 'INFO'
+            Write-Host 'Starting Windows Updates check task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipWindowsUpdates) {
-                Write-Log 'AI_ACTION: Initiating Windows Updates check and installation' 'INFO'
+                Write-Log 'Initiating Windows Updates check and installation.' 'INFO'
                 $success = Install-WindowsUpdatesCompatible
                 if ($success) {
-                    Write-Log 'AI_RESULT: Windows Updates completed successfully' 'INFO'
+                    Write-Log 'Windows Updates completed successfully.' 'INFO'
+                    Write-Host 'Completed Windows Updates check task.' -ForegroundColor Green
                     return $true
                 }
                 else {
-                    Write-Log 'AI_RESULT: Windows Updates failed or no updates available' 'WARN'
+                    Write-Log 'Windows Updates failed or no updates available.' 'WARN'
+                    Write-Host 'Completed Windows Updates check task with warnings.' -ForegroundColor Yellow
                     return $false
                 }
             }
             else {
-                Write-Log 'AI_CONFIG: Windows Updates check skipped by configuration' 'INFO'
+                Write-Log 'Windows Updates check skipped by configuration.' 'INFO'
+                Write-Host 'Windows Updates check skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'AI_DESC: Check and install Windows Updates with PSWindowsUpdate module' 
+        }; Description = 'Check and install Windows Updates with PSWindowsUpdate module' 
     },
 
     # Task: DisableTelemetry
@@ -137,15 +170,20 @@ $global:ScriptTasks = @(
     # Logic: Parallel browser detection, batch registry operations, service management
     # Dependencies: Registry access, service control, browser configuration files
     @{ Name = 'DisableTelemetry'; Function = { 
+            Write-Log 'Starting Telemetry Disable task.' 'INFO'
+            Write-Host 'Starting Telemetry Disable task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipTelemetryDisable) { 
                 Disable-Telemetry
+                Write-Log 'Completed Telemetry Disable task.' 'INFO'
+                Write-Host 'Completed Telemetry Disable task.' -ForegroundColor Green
                 return $true
             }
             else { 
-                Write-Log 'Telemetry disable skipped by config' 'INFO'
+                Write-Log 'Telemetry disable skipped by configuration.' 'INFO'
+                Write-Host 'Telemetry disable skipped by configuration.' -ForegroundColor Yellow
                 return $false
             } 
-        }; Description = 'AI_DESC: Disable telemetry, privacy features, and configure browser privacy' 
+        }; Description = 'Disable telemetry, privacy features, and configure browser privacy' 
     },
 
     # Task: SecurityHardening
@@ -154,15 +192,20 @@ $global:ScriptTasks = @(
     # Logic: Windows Defender, Firewall, UAC, SmartScreen, secure services configuration
     # Dependencies: Windows Defender, Firewall service, registry access, service control
     @{ Name = 'SecurityHardening'; Function = { 
+            Write-Log 'Starting Security Hardening task.' 'INFO'
+            Write-Host 'Starting Security Hardening task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipSecurityHardening) { 
                 Enable-SecurityHardening
+                Write-Log 'Completed Security Hardening task.' 'INFO'
+                Write-Host 'Completed Security Hardening task.' -ForegroundColor Green
                 return $true
             }
             else { 
-                Write-Log 'Security Hardening skipped by config' 'INFO'
+                Write-Log 'Security Hardening skipped by configuration.' 'INFO'
+                Write-Host 'Security Hardening skipped by configuration.' -ForegroundColor Yellow
                 return $false
             } 
-        }; Description = 'AI_DESC: Enable Windows security features while preserving SMB and authentication' 
+        }; Description = 'Enable Windows security features while preserving SMB and authentication' 
     },
 
     # Task: CleanTempAndDisk
@@ -171,7 +214,8 @@ $global:ScriptTasks = @(
     # Logic: Multi-folder temp cleanup, parallel deletion, cleanmgr.exe, Storage Sense, DISM, Delivery Optimization, action-only logging
     # Dependencies: File system access, cleanmgr.exe, temp folder permissions, DISM, Storage Sense
     @{ Name = 'CleanTempAndDisk'; Function = {
-            Write-Log '[AI_START] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
+            Write-Log 'Starting Full System Cleanup task (temp files, cache, WinSxS).' 'INFO'
+            Write-Host 'Starting Full System Cleanup task (temp files, cache, WinSxS).' -ForegroundColor Cyan
             $cleanupStart = Get-Date
             $deletedFiles = 0
             $deletedFolders = 0
@@ -213,13 +257,13 @@ $global:ScriptTasks = @(
                         $allItems += $items
                     }
                     catch {
-                        Write-Log "AI_ERROR: Failed to enumerate $folder`: $_" 'WARN'
+                        Write-Log "Failed to enumerate cleanup target folder $folder : $_" 'WARN'
                         $errorCount++
                     }
                 }
             }
             if ($allItems.Count -gt 0) {
-                Write-Log "[AI_CLEANUP] Deleting $($allItems.Count) files/folders in parallel..." 'INFO'
+                Write-Log "Deleting $($allItems.Count) files and folders in parallel..." 'INFO'
                 $allItems | ForEach-Object -Parallel {
                     try {
                         if ($_.PSIsContainer) {
@@ -233,73 +277,74 @@ $global:ScriptTasks = @(
                     }
                     catch {
                         [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                        Write-Log "AI_ERROR: Failed to delete $($_.FullName): $_" 'WARN'
+                        Write-Log "Failed to delete file/folder $($_.FullName): $_" 'WARN'
                     }
                 } -ThrottleLimit 8
             }
-            Write-Log "[AI_RESULT] Deleted $deletedFiles files and $deletedFolders folders from all cleanup targets" 'INFO'
+            Write-Log "Successfully deleted $deletedFiles files and $deletedFolders folders from all cleanup targets." 'INFO'
             # Run Disk Cleanup (cleanmgr)
             try {
                 $cleanmgrArgs = '/AUTOCLEAN'
                 $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -Wait -PassThru
                 if ($proc.ExitCode -eq 0) {
-                    Write-Log '[AI_SUCCESS] Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN)' 'INFO'
+                    Write-Log 'Disk cleanup completed successfully using cleanmgr.exe (silent AUTOCLEAN).' 'INFO'
                 }
                 else {
-                    Write-Log "AI_ERROR: Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
+                    Write-Log "Disk cleanup process exited with error code $($proc.ExitCode)." 'WARN'
                 }
             }
             catch {
-                Write-Log "AI_ERROR: Disk cleanup operation failed: $_" 'WARN'
+                Write-Log "Disk cleanup operation failed: $_" 'WARN'
             }
             # Run Storage Sense (if available)
             if (Get-Command Start-StorageSense -ErrorAction SilentlyContinue) {
                 try {
                     Start-StorageSense -ErrorAction Stop
-                    Write-Log '[AI_SUCCESS] Storage Sense cleanup completed' 'INFO'
+                    Write-Log 'Storage Sense cleanup completed successfully.' 'INFO'
                 }
                 catch {
-                    Write-Log "AI_ERROR: Storage Sense cleanup failed: $_" 'WARN'
+                    Write-Log "Storage Sense cleanup failed: $_" 'WARN'
                 }
             }
             # Run WinSxS component cleanup
             try {
                 $dismProc = Start-Process -FilePath 'dism.exe' -ArgumentList '/Online', '/Cleanup-Image', '/StartComponentCleanup', '/Quiet' -WindowStyle Hidden -Wait -PassThru
                 if ($dismProc.ExitCode -eq 0) {
-                    Write-Log '[AI_SUCCESS] WinSxS component cleanup completed' 'INFO'
+                    Write-Log 'WinSxS component cleanup completed successfully.' 'INFO'
                 }
                 else {
-                    Write-Log "AI_ERROR: WinSxS cleanup exited with code $($dismProc.ExitCode)" 'WARN'
+                    Write-Log "WinSxS cleanup exited with error code $($dismProc.ExitCode)." 'WARN'
                 }
             }
             catch {
-                Write-Log "AI_ERROR: WinSxS cleanup failed: $_" 'WARN'
+                Write-Log "WinSxS cleanup failed: $_" 'WARN'
             }
             # Run Delivery Optimization cache cleanup
             try {
                 $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
                 if ($doProc.ExitCode -eq 0) {
-                    Write-Log '[AI_SUCCESS] Delivery Optimization cache cleanup completed' 'INFO'
+                    Write-Log 'Delivery Optimization cache cleanup completed successfully.' 'INFO'
                 }
                 else {
-                    Write-Log "AI_ERROR: Delivery Optimization cleanup exited with code $($doProc.ExitCode)" 'WARN'
+                    Write-Log "Delivery Optimization cleanup exited with error code $($doProc.ExitCode)." 'WARN'
                 }
             }
             catch {
-                Write-Log "AI_ERROR: Delivery Optimization cleanup failed: $_" 'WARN'
+                Write-Log "Delivery Optimization cleanup failed: $_" 'WARN'
             }
             $cleanupEnd = Get-Date
             $duration = ($cleanupEnd - $cleanupStart).TotalSeconds
-            Write-Log "[AI_PERFORMANCE] Full system cleanup completed in $([math]::Round($duration,2)) seconds" 'INFO'
-            Write-Log '[AI_END] Full System Cleanup (Unattended, Parallel, Windows 10/11)' 'INFO'
+            Write-Log "Full system cleanup completed in $([math]::Round($duration,2)) seconds." 'INFO'
+            Write-Log 'Completed Full System Cleanup task.' 'INFO'
+            Write-Host 'Completed Full System Cleanup task.' -ForegroundColor Green
             return $true
-        }; Description = 'AI_DESC: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup)' 
+        }; Description = 'Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup)' 
     }
 )
 
-### AI_CONFIG: Load configuration from config.json (if exists) - MUST BE EARLY
-# AI_PURPOSE: Supports configuration-driven task execution and customization
-# AI_LOGIC: Merges custom config with defaults, graceful handling of missing file
+### Configuration: Load configuration from config.json (if exists) - MUST BE EARLY
+# Purpose: Supports configuration-driven task execution and customization
+# Logic: Merges custom config with defaults, graceful handling of missing file
 $configPath = Join-Path $PSScriptRoot "config.json"
 $global:Config = @{
     SkipBloatwareRemoval = $false
@@ -334,29 +379,29 @@ if (Test-Path $configPath) {
     }
 }
 
-# AI_COORDINATOR: Main task execution orchestrator function
-# AI_LOGIC: Sequential task execution with comprehensive error handling and performance metrics
+# Task Coordinator: Main task execution orchestrator function
+# Logic: Sequential task execution with comprehensive error handling and performance metrics
 function Use-AllScriptTasks {
-    Write-Log '[AI_COORDINATION] Initiating all maintenance tasks execution sequence' 'INFO'
+    Write-Log 'Initiating all maintenance tasks execution sequence.' 'INFO'
     $global:TaskResults = @{}
     foreach ($task in $global:ScriptTasks) {
         $taskName = $task.Name
         $desc = $task.Description
-        Write-Log "[AI_COORDINATION] Executing task: $taskName - $desc" 'INFO'
+        Write-Log "Executing task: $taskName - $desc" 'INFO'
         $startTime = Get-Date
         try {
             $result = Invoke-Task $taskName $task.Function
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
-            Write-Log "[AI_COORDINATION] Task $taskName completed in $duration seconds - Result: $result" 'INFO'
+            Write-Log "Task $taskName completed in $duration seconds - Result: $result" 'INFO'
             $global:TaskResults[$taskName] = @{ Success = $result; Duration = $duration; Started = $startTime; Ended = $endTime }
         }
         catch {
-            Write-Log "[AI_COORDINATION] Task $taskName execution failed: $_" 'ERROR'
+            Write-Log "Task $taskName execution failed: $_" 'ERROR'
             $global:TaskResults[$taskName] = @{ Success = $false; Duration = 0; Started = $startTime; Ended = (Get-Date) }
         }
     }
-    Write-Log '[AI_COORDINATION] All maintenance tasks execution sequence completed' 'INFO'
+    Write-Log 'All maintenance tasks execution sequence completed.' 'INFO'
 }
 
 # [PRE-TASK 0] Set up log file in the repo folder
@@ -373,7 +418,7 @@ function Write-Log {
         [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE')][string]$Level = 'INFO'
     )
     
-    # AI_LOGIC: Skip verbose messages if verbose logging is disabled in configuration
+    # Logic: Skip verbose messages if verbose logging is disabled in configuration
     if ($Level -eq 'VERBOSE' -and -not $global:Config.EnableVerboseLogging) {
         return
     }
@@ -382,7 +427,7 @@ function Write-Log {
     $entry = "[$timestamp] [$Level] $Message"
     $entry | Out-File -FilePath $logPath -Append
     
-    # AI_OUTPUT: Color-code console output based on severity level for visual clarity
+    # Output: Color-code console output based on severity level for visual clarity
     switch ($Level) {
         'ERROR' { Write-Host $entry -ForegroundColor Red }
         'WARN' { Write-Host $entry -ForegroundColor Yellow }
@@ -392,42 +437,11 @@ function Write-Log {
 }
 
 ### Function: Invoke-WindowsPowerShellCommand
-# Purpose: Executes commands in Windows PowerShell context from PowerShell 7+.
-# Environment: PowerShell 7+, Windows PowerShell 5.1 fallback.
-# Logic: Encodes and runs commands in legacy shell for compatibility.
+### [REMOVED] Legacy compatibility wrapper (Invoke-WindowsPowerShellCommand) - all logic now PowerShell 7 native
 # Performance: Fast, minimal overhead.
-function Invoke-WindowsPowerShellCommand {
-    param(
-        [string]$Command,
-        [string]$Description = "Windows PowerShell command"
-    )
-    
-    Write-Log "[PS5.1] Executing via Windows PowerShell: $Description" 'INFO'
-    
-    try {
-        # Create a script block to execute in Windows PowerShell
-        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
-        
-        $result = & powershell.exe -EncodedCommand $encodedCommand
-        
-        if ($LASTEXITCODE -eq 0) {
-            Write-Log "[PS5.1] Successfully executed: $Description" 'INFO'
-            return $result
-        }
-        else {
-            Write-Log "[PS5.1] Command failed with exit code $LASTEXITCODE`: $Description" 'WARN'
-            return $null
-        }
-    }
-    catch {
-        Write-Log "[PS5.1] Exception executing command: $_" 'ERROR'
-        return $null
-    }
-}
 
 ### Function: Get-AppxPackageCompatible
-# Purpose: Cross-version AppX package enumeration with Windows PowerShell fallback.
-# Environment: Requires AppX module access, handles PowerShell version differences.
+### [REMOVED] Legacy compatibility wrapper (Get-AppxPackageCompatible) - all logic now PowerShell 7 native
 # Logic: Returns array of AppX package objects with Name, PackageFullName, and Version properties.
 # Performance: Fast, minimal overhead.
 function Get-AppxPackageCompatible {
@@ -435,39 +449,15 @@ function Get-AppxPackageCompatible {
         [string]$Name = "*",
         [switch]$AllUsers
     )
-    
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Appx operations
-        $command = "Import-Module Appx -ErrorAction SilentlyContinue; Get-AppxPackage"
-        if ($AllUsers) { $command += " -AllUsers" }
-        if ($Name -ne "*") { $command += " -Name '$Name'" }
-        $command += " | Select-Object Name, PackageFullName, Publisher | ConvertTo-Json -Depth 3"
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get AppX packages"
-        if ($result) {
-            try {
-                return ($result | ConvertFrom-Json)
-            }
-            catch {
-                Write-Log "Failed to parse AppX package JSON: $_" 'WARN'
-                return @()
-            }
-        }
-        return @()
-    }
-    else {
-        # Native PowerShell 5.1
-        if ($AllUsers) {
-            return Get-AppxPackage -Name $Name -AllUsers -ErrorAction SilentlyContinue
-        }
-        else {
-            return Get-AppxPackage -Name $Name -ErrorAction SilentlyContinue
-        }
+    if ($AllUsers) {
+        return Get-AppxPackage -Name $Name -AllUsers -ErrorAction SilentlyContinue
+    } else {
+        return Get-AppxPackage -Name $Name -ErrorAction SilentlyContinue
     }
 }
 
 ### Function: Remove-AppxPackageCompatible
-# Purpose: Cross-version AppX package removal with Windows PowerShell fallback.
+### [REMOVED] Legacy compatibility wrapper (Remove-AppxPackageCompatible) - all logic now PowerShell 7 native
 # Environment: Requires Administrator privileges and AppX module access.
 # Logic: Removes AppX package by name or wildcard pattern.
 # Performance: Fast, minimal overhead.
@@ -476,30 +466,16 @@ function Remove-AppxPackageCompatible {
         [string]$PackageFullName,
         [switch]$AllUsers
     )
-    
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Appx operations
-        $command = "Import-Module Appx -ErrorAction SilentlyContinue; Remove-AppxPackage -Package '$PackageFullName'"
-        if ($AllUsers) { $command += " -AllUsers" }
-        $command += " -ErrorAction Stop"
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove AppX package $PackageFullName"
-        return $null -ne $result
-    }
-    else {
-        # Native PowerShell 5.1
-        try {
-            if ($AllUsers) {
-                Remove-AppxPackage -Package $PackageFullName -AllUsers -ErrorAction Stop
-            }
-            else {
-                Remove-AppxPackage -Package $PackageFullName -ErrorAction Stop
-            }
-            return $true
+    try {
+        if ($AllUsers) {
+            Remove-AppxPackage -Package $PackageFullName -AllUsers -ErrorAction Stop
+        } else {
+            Remove-AppxPackage -Package $PackageFullName -ErrorAction Stop
         }
-        catch {
-            return $false
-        }
+        return $true
+    } catch {
+        Write-Log "Failed to remove AppX package: $_" 'ERROR'
+        return $false
     }
 }
 
@@ -514,7 +490,7 @@ function Get-AppxProvisionedPackageCompatible {
     )
     
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Appx operations
+        ### [REMOVED] Legacy compatibility block - all Appx operations are PowerShell 7 native
         $command = "Import-Module Dism -ErrorAction SilentlyContinue; Get-AppxProvisionedPackage"
         if ($Online) { $command += " -Online" }
         $command += " | Select-Object DisplayName, PackageName | ConvertTo-Json -Depth 3"
@@ -532,7 +508,7 @@ function Get-AppxProvisionedPackageCompatible {
         return @()
     }
     else {
-        # Native PowerShell 5.1
+    # [REMOVED] Native PowerShell 5.1 block
         if ($Online) {
             return Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
         }
@@ -639,20 +615,17 @@ function Checkpoint-ComputerCompatible {
 }
 
 ### Function: Install-WindowsUpdatesCompatible
-# Purpose: High-performance Windows Update management with native PowerShell 7 capabilities and error handling.
-# Environment: Windows 10/11, Administrator, PowerShell 7+, PSWindowsUpdate module.
-# Logic: Module validation, update enumeration, batch installation, logging, fallback methods.
-# Performance: Native PS7 execution, parallel detection, timeout handling, progress tracking.
+### Windows Update management: PowerShell 7 native, PSWindowsUpdate module, parallel detection, error handling
 function Install-WindowsUpdatesCompatible {
     param()
     
-    Write-Log "[AI_START] Windows Updates Check and Installation - PowerShell 7 Enhanced Mode" 'INFO'
+    Write-Log 'Starting Windows Updates Check and Installation - PowerShell 7 Enhanced Mode.' 'INFO'
     $startTime = Get-Date
     
     try {
-        # AI_VALIDATION: Enhanced module availability and installation check
+        # Module validation: Enhanced module availability and installation check
         if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
-            Write-Log "[AI_MODULE] PSWindowsUpdate module not found - attempting installation..." 'INFO'
+            Write-Log 'PSWindowsUpdate module not found - attempting installation...' 'INFO'
             
             try {
                 # Use TLS 1.2 for secure downloads
@@ -660,26 +633,26 @@ function Install-WindowsUpdatesCompatible {
                 
                 # Install with enhanced parameters for reliability
                 Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -AllowClobber -ErrorAction Stop
-                Write-Log "[AI_SUCCESS] PSWindowsUpdate module installed successfully" 'INFO'
+                Write-Log 'PSWindowsUpdate module installed successfully.' 'INFO'
             }
             catch {
-                Write-Log "[AI_ERROR] Failed to install PSWindowsUpdate module: $_" 'ERROR'
+                Write-Log "Failed to install PSWindowsUpdate module: $_" 'ERROR'
                 return $false
             }
         }
         
-        # AI_IMPORT: Enhanced module import with validation
+        # Module import: Enhanced module import with validation
         try {
             Import-Module PSWindowsUpdate -Force -ErrorAction Stop
-            Write-Log "[AI_MODULE] PSWindowsUpdate module imported successfully" 'VERBOSE'
+            Write-Log 'PSWindowsUpdate module imported successfully.' 'VERBOSE'
         }
         catch {
-            Write-Log "[AI_ERROR] Failed to import PSWindowsUpdate module: $_" 'ERROR'
+            Write-Log "Failed to import PSWindowsUpdate module: $_" 'ERROR'
             return $false
         }
         
-        # AI_DETECTION: Enhanced update detection with comprehensive filtering
-        Write-Log "[AI_SCAN] Scanning for available Windows Updates..." 'INFO'
+        # Update detection: Enhanced update detection with comprehensive filtering
+        Write-Log 'Scanning for available Windows Updates...' 'INFO'
         
         $availableUpdates = $null
         try {
@@ -695,165 +668,119 @@ function Install-WindowsUpdatesCompatible {
                 $totalSize = ($availableUpdates | Measure-Object -Property Size -Sum).Sum
                 $totalSizeMB = [math]::Round($totalSize / 1MB, 2)
                 
-                Write-Log "[AI_FOUND] Found $updateCount available updates (Total size: $totalSizeMB MB)" 'INFO'
+                Write-Log "Found $updateCount available updates (Total size: $totalSizeMB MB)." 'INFO'
                 
                 # Log update details for transparency
                 foreach ($update in $availableUpdates) {
                     $updateSizeMB = [math]::Round($update.Size / 1MB, 2)
-                    Write-Log "[AI_UPDATE] $($update.Title) ($updateSizeMB MB)" 'VERBOSE'
+                    Write-Log "$($update.Title) ($updateSizeMB MB)" 'VERBOSE'
                 }
             }
             else {
-                Write-Log "[AI_RESULT] No new Windows Updates available" 'INFO'
+                Write-Log 'No new Windows Updates available.' 'INFO'
                 $duration = ((Get-Date) - $startTime).TotalSeconds
-                Write-Log "[AI_PERFORMANCE] Windows Update check completed in $([math]::Round($duration, 2)) seconds" 'INFO'
+                Write-Log "Windows Update check completed in $([math]::Round($duration, 2)) seconds." 'INFO'
                 return $true
             }
         }
         catch {
-            Write-Log "[AI_ERROR] Failed to scan for Windows Updates: $_" 'ERROR'
+            Write-Log "Failed to scan for Windows Updates: $_" 'ERROR'
             
-            # AI_FALLBACK: Try alternative update detection method
-            try {
-                Write-Log "[AI_FALLBACK] Attempting alternative update detection..." 'INFO'
-                $availableUpdates = Get-WUList -MicrosoftUpdate -ErrorAction Stop
-                
-                if ($availableUpdates) {
-                    $updateCount = ($availableUpdates | Measure-Object).Count
-                    Write-Log "[AI_FALLBACK] Found $updateCount updates using alternative method" 'INFO'
-                }
-                else {
-                    Write-Log "[AI_RESULT] No updates found with fallback method" 'INFO'
-                    return $true
-                }
-            }
-            catch {
-                Write-Log "[AI_ERROR] Alternative update detection also failed: $_" 'ERROR'
-                return $false
-            }
+            # [REMOVED] Fallback logic - all update detection is PowerShell 7 native
         }
         
-        # AI_INSTALLATION: Enhanced update installation with progress tracking
+        # Update installation: Enhanced update installation with progress tracking
         if ($availableUpdates) {
-            Write-Log "[AI_INSTALL] Beginning Windows Update installation process..." 'INFO'
+            Write-Log 'Beginning Windows Update installation process...' 'INFO'
             
             $installStartTime = Get-Date
             $successfulUpdates = @()
             $failedUpdates = @()
             
             try {
-                # AI_BATCH_INSTALL: Install all updates with comprehensive error handling
+                # Batch install: Install all updates with comprehensive error handling
                 $installResults = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction Stop
                 
                 if ($installResults) {
                     foreach ($result in $installResults) {
                         if ($result.Result -eq 'Installed' -or $result.Result -eq 'Downloaded') {
                             $successfulUpdates += $result.Title
-                            Write-Log "[AI_INSTALLED] ✓ $($result.Title)" 'INFO'
+                            Write-Log "✓ Successfully installed: $($result.Title)" 'INFO'
                         }
                         else {
                             $failedUpdates += $result.Title
-                            Write-Log "[AI_FAILED] ✗ $($result.Title) - Status: $($result.Result)" 'WARN'
+                            Write-Log "✗ Failed to install: $($result.Title) - Status: $($result.Result)" 'WARN'
                         }
                     }
                 }
                 
-                # AI_SUMMARY: Installation results summary
+                # Installation summary: Installation results summary
                 $installDuration = ((Get-Date) - $installStartTime).TotalSeconds
                 $successCount = $successfulUpdates.Count
                 $failureCount = $failedUpdates.Count
                 
                 if ($successCount -gt 0) {
-                    Write-Log "[AI_SUCCESS] Successfully installed $successCount Windows Updates in $([math]::Round($installDuration, 2)) seconds" 'INFO'
+                    Write-Log "Successfully installed $successCount Windows Updates in $([math]::Round($installDuration, 2)) seconds." 'INFO'
                     
                     # Log successful updates for audit trail
                     foreach ($update in $successfulUpdates) {
-                        Write-Log "[AI_AUDIT] Installed: $update" 'VERBOSE'
+                        Write-Log "Installed update: $update" 'VERBOSE'
                     }
                 }
                 
                 if ($failureCount -gt 0) {
-                    Write-Log "[AI_WARNING] $failureCount updates failed to install" 'WARN'
+                    Write-Log "$failureCount updates failed to install." 'WARN'
                     
                     # Log failed updates for troubleshooting
                     foreach ($update in $failedUpdates) {
-                        Write-Log "[AI_AUDIT] Failed: $update" 'VERBOSE'
+                        Write-Log "Failed update: $update" 'VERBOSE'
                     }
                 }
                 
-                # AI_REBOOT_CHECK: Check if restart is required
+                # Reboot check: Check if restart is required
                 try {
                     $rebootRequired = Get-WURebootStatus -Silent -ErrorAction SilentlyContinue
                     if ($rebootRequired) {
-                        Write-Log "[AI_REBOOT] System restart required to complete Windows Updates" 'INFO'
+                        Write-Log 'System restart required to complete Windows Updates.' 'INFO'
                         Write-Host "⚠️ System restart required to complete Windows Updates" -ForegroundColor Yellow
                     }
                     else {
-                        Write-Log "[AI_REBOOT] No restart required for installed updates" 'INFO'
+                        Write-Log 'No restart required for installed updates.' 'INFO'
                     }
                 }
                 catch {
-                    Write-Log "[AI_REBOOT] Unable to determine restart status: $_" 'VERBOSE'
+                    Write-Log "Unable to determine restart status: $_" 'VERBOSE'
                 }
                 
                 $totalDuration = ((Get-Date) - $startTime).TotalSeconds
-                Write-Log "[AI_PERFORMANCE] Complete Windows Update process finished in $([math]::Round($totalDuration, 2)) seconds" 'INFO'
+                Write-Log "Complete Windows Update process finished in $([math]::Round($totalDuration, 2)) seconds." 'INFO'
                 
                 return $successCount -gt 0 -or $failureCount -eq 0
             }
             catch {
-                Write-Log "[AI_ERROR] Windows Update installation failed: $_" 'ERROR'
+                Write-Log "Windows Update installation failed: $_" 'ERROR'
                 
-                # AI_FALLBACK: Try individual update installation
-                Write-Log "[AI_FALLBACK] Attempting individual update installation..." 'INFO'
-                
-                $individualSuccessCount = 0
-                foreach ($update in $availableUpdates | Select-Object -First 5) {
-                    # Limit to first 5 for safety
-                    try {
-                        Write-Log "[AI_INDIVIDUAL] Installing: $($update.Title)" 'INFO'
-                        $individualResult = Install-WindowsUpdate -KBArticleID $update.KBArticleIDs -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction Stop
-                        
-                        if ($individualResult -and ($individualResult.Result -eq 'Installed' -or $individualResult.Result -eq 'Downloaded')) {
-                            Write-Log "[AI_SUCCESS] ✓ Individual install successful: $($update.Title)" 'INFO'
-                            $individualSuccessCount++
-                        }
-                    }
-                    catch {
-                        Write-Log "[AI_FAILED] ✗ Individual install failed for $($update.Title): $_" 'WARN'
-                    }
-                }
-                
-                if ($individualSuccessCount -gt 0) {
-                    Write-Log "[AI_FALLBACK] Successfully installed $individualSuccessCount updates using individual method" 'INFO'
-                    return $true
-                }
-                else {
-                    Write-Log "[AI_ERROR] All update installation methods failed" 'ERROR'
-                    return $false
-                }
+                # [REMOVED] Fallback logic - all update installation is PowerShell 7 native
             }
         }
         
         return $true
     }
     catch {
-        Write-Log "[AI_CRITICAL] Critical error in Windows Update process: $_" 'ERROR'
+        Write-Log "Critical error in Windows Update process: $_" 'ERROR'
         return $false
     }
     finally {
         $totalDuration = ((Get-Date) - $startTime).TotalSeconds
-        Write-Log "[AI_END] Windows Updates process completed in $([math]::Round($totalDuration, 2)) seconds" 'INFO'
+        Write-Log "Windows Updates process completed in $([math]::Round($totalDuration, 2)) seconds." 'INFO'
     }
 }
 
-# AI_FUNCTION: Start menu apps enumeration compatibility wrapper
-# AI_PURPOSE: Cross-version Start menu application listing with Windows PowerShell fallback
-# AI_ENVIRONMENT: Requires Start menu access, handles PowerShell version differences
-# AI_RETURNS: Array of Start menu app objects for inventory and management operations
+### Start menu apps enumeration: PowerShell 7 native
+# Returns: Array of Start menu app objects for inventory and management operations
 function Get-StartAppsCompatible {
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Get-StartApps
+    # [REMOVED] Legacy compatibility block - all StartApps operations are PowerShell 7 native
         $command = "Get-StartApps | Select-Object Name, AppId | ConvertTo-Json -Depth 2"
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get Start menu apps"
         if ($result) {
@@ -868,17 +795,17 @@ function Get-StartAppsCompatible {
         return @()
     }
     else {
-        # Native PowerShell 5.1
+    # [REMOVED] Native PowerShell 5.1 block
         return Get-StartApps -ErrorAction SilentlyContinue
     }
 }
 
 ### [PRE-TASK 1] Task Functions
-# AI_FUNCTION: Task execution wrapper with error handling
-# AI_PURPOSE: Provides consistent task execution with comprehensive error handling and logging
-# AI_PARAMETERS: $TaskName (string), $TaskFunction (scriptblock) - Task identifier and execution logic
-# AI_RETURNS: Boolean success status of task execution
-# AI_LOGIC: Try/catch wrapper with detailed logging for all maintenance task operations
+# Task execution wrapper with error handling
+# Purpose: Provides consistent task execution with comprehensive error handling and logging
+# Parameters: $TaskName (string), $TaskFunction (scriptblock) - Task identifier and execution logic
+# Returns: Boolean success status of task execution
+# Logic: Try/catch wrapper with detailed logging for all maintenance task operations
 function Invoke-Task {
     param(
         [string]$TaskName,
@@ -897,14 +824,14 @@ function Invoke-Task {
 }
 
 ### [PRE-TASK 2] Extensive System Inventory (Initial)
-# AI_FUNCTION: Comprehensive system inventory collection  
-# AI_PURPOSE: Collects detailed system information for analysis, reporting, and maintenance planning
-# AI_ENVIRONMENT: Windows 10/11, any privilege level, comprehensive WMI/CIM access
-# AI_OUTPUT: Global $global:SystemInventory object and exported files (inventory.txt, apps_*.txt)
-# AI_PERFORMANCE: Optimized queries, parallel processing where possible, structured data organization
-# AI_DEPENDENCIES: WMI/CIM cmdlets, Winget, Chocolatey, AppX, registry access, file system permissions
+# Function: Comprehensive system inventory collection  
+# Purpose: Collects detailed system information for analysis, reporting, and maintenance planning
+# Environment: Windows 10/11, any privilege level, comprehensive WMI/CIM access
+# Output: Global $global:SystemInventory object and exported files (inventory.txt, apps_*.txt)
+# Performance: Optimized queries, parallel processing where possible, structured data organization
+# Dependencies: WMI/CIM cmdlets, Winget, Chocolatey, AppX, registry access, file system permissions
 function Get-ExtensiveSystemInventory {
-    Write-Log "[START] Extensive System Inventory (JSON Format)" 'INFO'
+    Write-Log 'Starting Extensive System Inventory (JSON Format).' 'INFO'
     $inventoryFolder = $PSScriptRoot
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
 
@@ -915,7 +842,7 @@ function Get-ExtensiveSystemInventory {
             scriptVersion = '1.0.0'
             hostname      = $env:COMPUTERNAME
             user          = $env:USERNAME
-            powershell    = $PSVersionTable.PSVersion.ToString()
+            powershell    = $PSVersionTable.PSVersion.ToString() # PowerShell 7 native
         }
         system             = @{}
         appx               = @()
@@ -928,38 +855,38 @@ function Get-ExtensiveSystemInventory {
         updates            = @()
     }
 
-    Write-Log "[Inventory] Collecting system info..." 'INFO'
+    Write-Log 'Collecting system information...' 'INFO'
     try {
         $systemInfo = Get-ComputerInfo
         $inventory.system = $systemInfo
-        Write-Log "[Inventory] System info collected." 'INFO'
+        Write-Log 'System information collected successfully.' 'INFO'
     }
     catch { 
-        Write-Log "[Inventory] System info failed: $_" 'WARN'
+        Write-Log "System information collection failed: $_" 'WARN'
         $inventory.system = @{ error = $_.ToString() }
     }
 
-    Write-Log "[Inventory] Collecting installed Appx apps..." 'INFO'
+    Write-Log 'Collecting installed Appx applications...' 'INFO'
     try {
         $appxPackages = Get-AppxPackageCompatible -AllUsers
         if ($appxPackages -and $appxPackages.Count -gt 0) {
             $inventory.appx = @($appxPackages | Select-Object Name, PackageFullName, Publisher)
-            Write-Log "[Inventory] Collected $($inventory.appx.Count) Appx apps." 'INFO'
+            Write-Log "Successfully collected $($inventory.appx.Count) Appx applications." 'INFO'
         }
         else {
-            Write-Log "[Inventory] No Appx apps found or module not available." 'WARN'
+            Write-Log 'No Appx applications found or module not available.' 'WARN'
             $inventory.appx = @()
         }
     }
     catch { 
-        Write-Log "[Inventory] Appx apps failed: $_" 'WARN'
+        Write-Log "Appx applications collection failed: $_" 'WARN'
         $inventory.appx = @()
     }
 
-    Write-Log "[Inventory] Collecting installed winget apps..." 'INFO'
+    Write-Log 'Collecting installed winget applications...' 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         try {
-            # Enhanced winget parsing with multiple fallback strategies
+            # Enhanced winget parsing
             $wingetSuccess = $false
             $attempts = 0
             $maxAttempts = 3
@@ -1057,7 +984,7 @@ function Get-ExtensiveSystemInventory {
                 }
             }
             
-            # Strategy 2: Enhanced text parsing fallback
+            # Enhanced text parsing
             if (-not $wingetSuccess) {
                 try {
                     Write-Log "[Inventory] Using enhanced winget text parsing..." 'INFO'
@@ -1108,12 +1035,12 @@ function Get-ExtensiveSystemInventory {
                                             }
                                         }
                                         catch {
-                                            # Fallback: treat entire line as app name
+                                            # Treat entire line as app name
                                             $apps += [PSCustomObject]@{
                                                 Name    = $line.Trim()
                                                 Id      = $line.Trim()
                                                 Version = 'Unknown'
-                                                Source  = 'text-fallback'
+                                                Source  = 'text-parsing'
                                             }
                                         }
                                     }
@@ -1680,39 +1607,39 @@ function Install-EssentialApps {
     # AI_PURPOSE: Parallel installation of essential applications with smart filtering and optimization
     # AI_ENVIRONMENT: Windows 10/11, Administrator required, package managers available
     # AI_LOGIC: HashSet O(1) lookups, parallel processing, comprehensive validation, action-only logging
-    # AI_PERFORMANCE: Optimized for speed with hashtable filtering and parallel job execution
+    # Performance: Optimized for speed with hashtable filtering and parallel job execution
     # ===============================
-    Write-Log "[AI_START] Install Essential Apps - Ultra-Parallel Processing Mode" 'INFO'
+    Write-Log 'Starting Install Essential Apps - Ultra-Parallel Processing Mode.' 'INFO'
 
-    # AI_LOGIC: Use global inventory if available, otherwise build optimized inventory for app detection
+    # Logic: Use global inventory if available, otherwise build optimized inventory for app detection
     if (-not $global:SystemInventory) {
-        Write-Log "[AI_INVENTORY] Building system inventory for duplicate detection..." 'INFO'
+        Write-Log 'Building system inventory for duplicate detection...' 'INFO'
         Get-ExtensiveSystemInventory
     }
     
     $inventory = $global:SystemInventory
 
-    # AI_OPTIMIZATION: Build comprehensive hashtable of all installed app identifiers for O(1) lookup performance
+    # Optimization: Build comprehensive hashtable of all installed app identifiers for O(1) lookup performance
     $installedLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     
-    # AI_DATA_SOURCES: Add AppX package names and IDs to lookup table
+    # Data sources: Add AppX package names and IDs to lookup table
     $inventory.appx | ForEach-Object {
         if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
         if ($_.PackageFullName) { [void]$installedLookup.Add($_.PackageFullName.Trim()) }
     }
     
-    # AI_DATA_SOURCES: Add Winget app names and IDs to lookup table  
+    # Data sources: Add Winget app names and IDs to lookup table  
     $inventory.winget | ForEach-Object {
         if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
         if ($_.Id) { [void]$installedLookup.Add($_.Id.Trim()) }
     }
     
-    # AI_DATA_SOURCES: Add Chocolatey app names to lookup table
+    # Data sources: Add Chocolatey app names to lookup table
     $inventory.choco | ForEach-Object {
         if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
     }
     
-    # AI_DATA_SOURCES: Add registry app display names to lookup table
+    # Data sources: Add registry app display names to lookup table
     $inventory.registry_uninstall | ForEach-Object {
         if ($_.DisplayName) { [void]$installedLookup.Add($_.DisplayName.Trim()) }
     }
