@@ -181,10 +181,9 @@ IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_ENTRY "INFO" "Windows Features pending restart detected"
 )
 
-REM Check for computer name change
-FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName" /v ComputerName 2^>nul ^| FINDSTR ComputerName') DO SET "CURRENT_NAME=%%A"
-FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName" /v ComputerName 2^>nul ^| FINDSTR ComputerName') DO SET "ACTIVE_NAME=%%A"
-IF NOT "%CURRENT_NAME%"=="%ACTIVE_NAME%" (
+REM Check for computer name change - simplified approach
+powershell -Command "try { $current = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name ComputerName -ErrorAction SilentlyContinue).ComputerName; $active = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name ComputerName -ErrorAction SilentlyContinue).ComputerName; if ($current -ne $active) { exit 1 } else { exit 0 } } catch { exit 0 }"
+IF !ERRORLEVEL! NEQ 0 (
     SET "RESTART_NEEDED=YES"
     SET "RESTART_REASONS=%RESTART_REASONS% ComputerNameChange"
     CALL :LOG_ENTRY "INFO" "Computer name change pending restart detected"
