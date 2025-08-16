@@ -122,92 +122,99 @@ REM ----------------------------------------------------------------------------
 REM Startup Task Management - Check and Remove if Exists
 REM This task should only exist temporarily after a system restart.
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking startup task '%STARTUP_TASK_NAME%'...
+CALL :LOG_ENTRY "INFO" "Checking startup task '%STARTUP_TASK_NAME%'..."
 schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Existing startup task found. Removing...
+    CALL :LOG_ENTRY "INFO" "Existing startup task found. Removing..."
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Startup task removed successfully.
+        CALL :LOG_ENTRY "INFO" "Startup task removed successfully."
     ) ELSE (
-        ECHO [%TIME%] [WARN] Failed to remove startup task, but continuing...
+        CALL :LOG_ENTRY "WARN" "Failed to remove startup task, but continuing..."
     )
 ) ELSE (
-    ECHO [%TIME%] [INFO] No existing startup task found.
+    CALL :LOG_ENTRY "INFO" "No existing startup task found."
 )
 
 REM -----------------------------------------------------------------------------
 REM System Restart Detection and Handling
 REM Check if Windows requires a restart, create startup task if needed, restart immediately
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking for pending system restarts...
+CALL :LOG_ENTRY "INFO" "Checking for pending system restarts..."
 SET "RESTART_NEEDED=NO"
 
 REM Check Windows Update reboot flag
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Windows Update restart required.
+    CALL :LOG_ENTRY "INFO" "Windows Update restart required."
     SET "RESTART_NEEDED=YES"
 )
 
 REM Check Component Based Servicing reboot flag
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Component Based Servicing restart pending.
+    CALL :LOG_ENTRY "INFO" "Component Based Servicing restart pending."
     SET "RESTART_NEEDED=YES"
 )
 
 REM Check pending file operations
 REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Pending file rename operations detected.
+    CALL :LOG_ENTRY "INFO" "Pending file rename operations detected."
     SET "RESTART_NEEDED=YES"
 )
 
 IF "%RESTART_NEEDED%"=="YES" (
-    ECHO [%TIME%] [WARN] System restart is required. Creating startup task and restarting...
+    CALL :LOG_ENTRY "WARN" "System restart is required. Creating startup task and restarting..."
     REM Delete any existing startup task first
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
     REM Create startup task to run 1 minute after user login with admin rights
     schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
     IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Startup task created successfully. Will run 1 minute after user login.
-        ECHO [%TIME%] [INFO] Restarting system immediately...
+        CALL :LOG_ENTRY "INFO" "Startup task created successfully. Will run 1 minute after user login."
+        CALL :LOG_ENTRY "INFO" "Restarting system immediately..."
         shutdown /r /t 5 /c "System restart required for maintenance continuation"
-        ECHO [%TIME%] [INFO] System will restart in 5 seconds...
+        CALL :LOG_ENTRY "INFO" "System will restart in 5 seconds..."
         timeout /t 10 /nobreak >nul
         EXIT /B 0
     ) ELSE (
-        ECHO [%TIME%] [ERROR] Failed to create startup task. Continuing without restart...
-        ECHO [%TIME%] [DEBUG] Task name: %STARTUP_TASK_NAME%
-        ECHO [%TIME%] [DEBUG] Script path: %SCRIPT_PATH%
-        ECHO [%TIME%] [DEBUG] Username: %USERNAME%
-        ECHO [%TIME%] [DEBUG] Error level: !ERRORLEVEL!
+        CALL :LOG_ENTRY "ERROR" "Failed to create startup task. Continuing without restart..."
+        CALL :LOG_ENTRY "DEBUG" "Task name: %STARTUP_TASK_NAME%"
+        CALL :LOG_ENTRY "DEBUG" "Script path: %SCRIPT_PATH%"
+        CALL :LOG_ENTRY "DEBUG" "Username: %USERNAME%"
+        CALL :LOG_ENTRY "DEBUG" "Error level: !ERRORLEVEL!"
     )
 ) ELSE (
-    ECHO [%TIME%] [INFO] No pending restart detected. No startup task needed. Continuing with script...
+    CALL :LOG_ENTRY "INFO" "No pending restart detected. No startup task needed. Continuing with script..."
 )
 
 REM -----------------------------------------------------------------------------
-REM Dependency Management - Direct Downloads from Official Sources
-REM Installation Order: Winget -> PowerShell 7 -> NuGet -> PSGallery -> PSWindowsUpdate -> Chocolatey
+REM Dependency Management - Hierarchical Installation Order
+REM PHASE 1: Core System Dependencies (required for package managers)
+REM PHASE 2: Package Managers (Winget)  
+REM PHASE 3: Development Tools (using package managers)
+REM PHASE 4: PowerShell Environment (modules and package managers)
 REM -----------------------------------------------------------------------------
 ECHO.
 ECHO ========================================
 ECHO     Installing Required Dependencies
+ECHO     (Hierarchical Dependency Order)
 ECHO ========================================
 ECHO.
-CALL :LOG_ENTRY "INFO" "Starting dependency installation with optimized order..."
+CALL :LOG_ENTRY "INFO" "Starting dependency installation with proper hierarchical order..."
+
+REM =============================================================================
+REM PHASE 1: CORE SYSTEM DEPENDENCIES (Required for Winget and other tools)
+REM =============================================================================
+ECHO.
+ECHO ----------------------------------------
+ECHO   PHASE 1: Core System Dependencies
+ECHO ----------------------------------------
 
 REM -----------------------------------------------------------------------------
-REM 1. Windows Package Manager (Winget) - Foundation package manager
+REM 1A. Visual C++ Redistributables - Required for Winget and many applications
 REM -----------------------------------------------------------------------------
-CALL :LOG_ENTRY "INFO" "Installing Windows Package Manager (winget) with dependencies..."
-winget --version >nul 2>&1
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_ENTRY "INFO" "Winget not found, installing dependencies and Winget..."
-    
-    REM Step 1: Check and install Visual C++ Redistributables (required for Winget)
+CALL :LOG_ENTRY "INFO" "PHASE 1A: Installing Visual C++ Redistributables (Winget dependency)..."
     CALL :LOG_ENTRY "INFO" "Checking Visual C++ Redistributable 2015-2022 x64..."
     
     REM Create temp script for VC++ check to avoid CMD variable expansion issues
@@ -226,8 +233,8 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO } >> "%TEMP_PS1%"
     
     powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%"
-SET "VC_CHECK_EXIT=!ERRORLEVEL!"
-DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    SET "VC_CHECK_EXIT=!ERRORLEVEL!"
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     IF !VC_CHECK_EXIT! NEQ 0 (
         SET "VCREDIST_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
         SET "VCREDIST_FILE=%TEMP%\vc_redist_x64.exe"
@@ -270,8 +277,11 @@ DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     ) ELSE (
         CALL :LOG_ENTRY "INFO" "Visual C++ Redistributable is already installed."
     )
-    
-    REM Step 2: Check and install Microsoft.UI.Xaml.2.8 framework (required for Winget)
+
+REM -----------------------------------------------------------------------------
+REM 1B. Microsoft.UI.Xaml Framework - Required for Winget UI components
+REM -----------------------------------------------------------------------------
+CALL :LOG_ENTRY "INFO" "PHASE 1B: Installing Microsoft.UI.Xaml Framework (Winget dependency)..."
     CALL :LOG_ENTRY "INFO" "Checking Microsoft.UI.Xaml.2.8 framework..."
     
     REM Create temp script for XAML check
@@ -358,8 +368,22 @@ DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     ) ELSE (
         CALL :LOG_ENTRY "INFO" "Microsoft.UI.Xaml framework is already installed."
     )
-    
-    REM Step 3: Install Winget (App Installer)
+
+REM =============================================================================
+REM PHASE 2: PACKAGE MANAGERS (Now that core dependencies are installed)
+REM =============================================================================
+ECHO.
+ECHO ----------------------------------------
+ECHO   PHASE 2: Package Managers
+ECHO ----------------------------------------
+
+REM -----------------------------------------------------------------------------
+REM 2A. Windows Package Manager (Winget) - Primary package manager
+REM -----------------------------------------------------------------------------
+CALL :LOG_ENTRY "INFO" "PHASE 2A: Installing Windows Package Manager (Winget)..."
+winget --version >nul 2>&1
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_ENTRY "INFO" "Winget not found, installing now that dependencies are ready..."
     CALL :LOG_ENTRY "INFO" "Installing Winget (Desktop App Installer)..."
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=%TEMP%\Microsoft.DesktopAppInstaller.msixbundle"
@@ -416,7 +440,29 @@ DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     
     REM Refresh PATH and verify Winget installation
     CALL :LOG_ENTRY "INFO" "Refreshing PATH environment and verifying Winget installation..."
-    SET "PATH=%PATH%;%ProgramFiles%\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe"
+    
+    REM Create temp script to properly add winget to PATH
+    SET "TEMP_PS1=%TEMP%\refresh_winget_path.ps1"
+    ECHO try { > "%TEMP_PS1%"
+    ECHO     $wingetPath = Get-ChildItem -Path $env:ProgramFiles\WindowsApps -Filter "Microsoft.DesktopAppInstaller*" -Directory ^| Sort-Object Name -Descending ^| Select-Object -First 1 >> "%TEMP_PS1%"
+    ECHO     if ($wingetPath) { >> "%TEMP_PS1%"
+    ECHO         $wingetExe = Join-Path $wingetPath.FullName "winget.exe" >> "%TEMP_PS1%"
+    ECHO         if (Test-Path $wingetExe) { >> "%TEMP_PS1%"
+    ECHO             $env:PATH = $env:PATH + ";" + $wingetPath.FullName >> "%TEMP_PS1%"
+    ECHO             Write-Host '[INFO] Winget path added to environment' >> "%TEMP_PS1%"
+    ECHO             exit 0 >> "%TEMP_PS1%"
+    ECHO         } >> "%TEMP_PS1%"
+    ECHO     } >> "%TEMP_PS1%"
+    ECHO     Write-Host '[WARN] Winget executable not found in expected location' >> "%TEMP_PS1%"
+    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO } catch { >> "%TEMP_PS1%"
+    ECHO     Write-Host '[WARN] Error setting winget PATH:' $_.Exception.Message >> "%TEMP_PS1%"
+    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO } >> "%TEMP_PS1%"
+    
+    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    
     timeout /t 3 /nobreak >nul
     winget --version >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
@@ -429,66 +475,119 @@ DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 )
 
 REM -----------------------------------------------------------------------------
-REM 2. PowerShell 7 - Modern PowerShell environment
+REM Winget Final Validation and Source Configuration
 REM -----------------------------------------------------------------------------
-CALL :LOG_ENTRY "INFO" "Installing PowerShell 7..."
+CALL :LOG_ENTRY "INFO" "Performing comprehensive winget validation and source configuration..."
+
+REM Create temp script for winget validation
+SET "TEMP_PS1=%TEMP%\validate_winget.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     REM Test basic winget functionality >> "%TEMP_PS1%"
+ECHO     $wingetTest = Start-Process winget -ArgumentList '--version' -WindowStyle Hidden -Wait -PassThru -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO     if ($wingetTest -and $wingetTest.ExitCode -eq 0) { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] Winget is functional and responding' >> "%TEMP_PS1%"
+ECHO         REM Configure winget sources to prevent source errors >> "%TEMP_PS1%"
+ECHO         try { >> "%TEMP_PS1%"
+ECHO             $sourceCheck = Start-Process winget -ArgumentList 'source list' -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $env:TEMP\winget_sources.txt >> "%TEMP_PS1%"
+ECHO             if ($sourceCheck.ExitCode -eq 0) { >> "%TEMP_PS1%"
+ECHO                 Write-Host '[INFO] Winget sources are accessible' >> "%TEMP_PS1%"
+ECHO             } else { >> "%TEMP_PS1%"
+ECHO                 Write-Host '[WARN] Winget sources need reset, attempting repair...' >> "%TEMP_PS1%"
+ECHO                 Start-Process winget -ArgumentList 'source reset' -WindowStyle Hidden -Wait >> "%TEMP_PS1%"
+ECHO                 Write-Host '[INFO] Winget sources reset completed' >> "%TEMP_PS1%"
+ECHO             } >> "%TEMP_PS1%"
+ECHO         } catch { >> "%TEMP_PS1%"
+ECHO             Write-Host '[WARN] Winget source configuration issue:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO         } >> "%TEMP_PS1%"
+ECHO         exit 0 >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Write-Host '[WARN] Winget validation failed - may need system restart' >> "%TEMP_PS1%"
+ECHO         exit 1 >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] Winget validation error:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO     exit 1 >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+SET "WINGET_VALIDATION_EXIT=!ERRORLEVEL!"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+
+IF !WINGET_VALIDATION_EXIT! EQU 0 (
+    CALL :LOG_ENTRY "INFO" "Winget validation passed - ready for package installations."
+    SET "WINGET_AVAILABLE=YES"
+) ELSE (
+    CALL :LOG_ENTRY "WARN" "Winget validation failed - will use alternative installation methods."
+    SET "WINGET_AVAILABLE=NO"
+)
+
+REM =============================================================================
+REM PHASE 3: DEVELOPMENT TOOLS (Using validated package managers)
+REM =============================================================================
+ECHO.
+ECHO ----------------------------------------
+ECHO   PHASE 3: Development Tools
+ECHO ----------------------------------------
+
+REM -----------------------------------------------------------------------------
+REM 3A. PowerShell 7 - Modern PowerShell environment
+REM -----------------------------------------------------------------------------
+CALL :LOG_ENTRY "INFO" "PHASE 3A: Installing PowerShell 7 (using Winget if available)..."
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_ENTRY "INFO" "PowerShell 7 not found, downloading from official Microsoft source..."
+    CALL :LOG_ENTRY "INFO" "PowerShell 7 not found, installing using best available method..."
     
-    REM Set download URL for PowerShell 7.5.2 with safer architecture detection
-    SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2.msi"
-    
-    REM Detect architecture more safely
-    SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
-    
-    REM Check if we're on 32-bit system
+    REM Create temp script for PowerShell 7 installation with Winget priority
+    SET "TEMP_PS1=%TEMP%\install_powershell7.ps1"
+    ECHO try { > "%TEMP_PS1%"
+    ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+    ECHO     $ps7Installed = $false >> "%TEMP_PS1%"
+    ECHO     REM Try Winget first if available and validated >> "%TEMP_PS1%"
+    IF "%WINGET_AVAILABLE%"=="YES" (
+        ECHO     if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+        ECHO         try { >> "%TEMP_PS1%"
+        ECHO             Write-Host '[INFO] Attempting PowerShell 7 installation via Winget...' >> "%TEMP_PS1%"
+        ECHO             $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+        ECHO             if ($wingetResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
+        ECHO                 Write-Host '[INFO] PowerShell 7 installed successfully via Winget' >> "%TEMP_PS1%"
+        ECHO                 $ps7Installed = $true >> "%TEMP_PS1%"
+        ECHO             } else { >> "%TEMP_PS1%"
+        ECHO                 Write-Host '[WARN] Winget PowerShell 7 installation failed, trying direct download...' >> "%TEMP_PS1%"
+        ECHO             } >> "%TEMP_PS1%"
+        ECHO         } catch { >> "%TEMP_PS1%"
+        ECHO             Write-Host '[WARN] Winget PowerShell 7 installation error, trying direct download...' >> "%TEMP_PS1%"
+        ECHO         } >> "%TEMP_PS1%"
+        ECHO     } >> "%TEMP_PS1%"
+    )
+    ECHO     REM Fallback to direct download if Winget failed or not available >> "%TEMP_PS1%"
+    ECHO     if (-not $ps7Installed) { >> "%TEMP_PS1%"
+    ECHO         Write-Host '[INFO] Using direct download for PowerShell 7...' >> "%TEMP_PS1%"
+    ECHO         try { >> "%TEMP_PS1%"
+    ECHO             $ps7Url = 'https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi' >> "%TEMP_PS1%"
+    REM Check for 32-bit system
     IF "%PROCESSOR_ARCHITECTURE%"=="x86" (
         IF NOT DEFINED PROCESSOR_ARCHITEW6432 (
-            SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x86.msi"
-            CALL :LOG_ENTRY "INFO" "Detected 32-bit system, using x86 installer."
-        ) ELSE (
-            CALL :LOG_ENTRY "INFO" "Detected 64-bit system, using x64 installer."
+            ECHO             $ps7Url = 'https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x86.msi' >> "%TEMP_PS1%"
         )
-    ) ELSE (
-        CALL :LOG_ENTRY "INFO" "Detected 64-bit system, using x64 installer."
     )
-    
-    REM Download PowerShell 7.5.2
-    CALL :LOG_ENTRY "INFO" "Downloading PowerShell 7.5.2..."
-    
-    REM Use simpler approach - create temp PS1 file for complex operations
-    SET "TEMP_PS1=%TEMP%\download_ps7.ps1"
-    
-    REM Create PowerShell download script
-    ECHO $ProgressPreference = 'SilentlyContinue' > "%TEMP_PS1%"
-    ECHO [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
-    ECHO try { >> "%TEMP_PS1%"
-    ECHO     Invoke-WebRequest -Uri '%PS7_URL%' -OutFile '%PS7_INSTALLER%' -UseBasicParsing -TimeoutSec 120 >> "%TEMP_PS1%"
-    ECHO     Write-Host '[INFO] PowerShell 7.5.2 downloaded successfully' >> "%TEMP_PS1%"
-    ECHO     exit 0 >> "%TEMP_PS1%"
+    ECHO             $ps7File = $env:TEMP + '\PowerShell-7.5.2.msi' >> "%TEMP_PS1%"
+    ECHO             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+    ECHO             Invoke-WebRequest -Uri $ps7Url -OutFile $ps7File -UseBasicParsing -TimeoutSec 120 >> "%TEMP_PS1%"
+    ECHO             Write-Host '[INFO] PowerShell 7 downloaded, installing...' >> "%TEMP_PS1%"
+    ECHO             Start-Process msiexec -ArgumentList "/i `"$ps7File`" /quiet /norestart" -Wait >> "%TEMP_PS1%"
+    ECHO             Remove-Item $ps7File -Force -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+    ECHO             Write-Host '[INFO] PowerShell 7 installed via direct download' >> "%TEMP_PS1%"
+    ECHO         } catch { >> "%TEMP_PS1%"
+    ECHO             Write-Host '[ERROR] PowerShell 7 installation failed:' $_.Exception.Message >> "%TEMP_PS1%"
+    ECHO         } >> "%TEMP_PS1%"
+    ECHO     } >> "%TEMP_PS1%"
     ECHO } catch { >> "%TEMP_PS1%"
-    ECHO     Write-Host '[ERROR] PowerShell 7.5.2 download failed:' $_.Exception.Message >> "%TEMP_PS1%"
-    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO     Write-Host '[WARN] PowerShell 7 installation process failed:' $_.Exception.Message >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    REM Execute the download script
     powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
-    SET "DOWNLOAD_EXIT=!ERRORLEVEL!"
-    
-    REM Clean up temp script
     DEL /F /Q "%TEMP_PS1%" >nul 2>&1
-    
-    REM Clean up temp script
-    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
-    
-    IF !DOWNLOAD_EXIT! EQU 0 (
-        IF EXIST "%PS7_INSTALLER%" (
-            CALL :LOG_ENTRY "INFO" "Installing PowerShell 7 silently..."
-            
-            REM Use quoted paths and simplified MSIEXEC command
-            START /WAIT "" msiexec.exe /i "%PS7_INSTALLER%" /quiet /norestart
-            SET "PS7_EXIT=!ERRORLEVEL!"
             
             IF !PS7_EXIT! EQU 0 (
                 CALL :LOG_ENTRY "INFO" "PowerShell 7 installed successfully."
@@ -498,36 +597,167 @@ IF !ERRORLEVEL! NEQ 0 (
                 SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
                 IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
                 
-                REM Test if PowerShell 7 is now available
-                pwsh.exe -Version >nul 2>&1
-                IF !ERRORLEVEL! EQU 0 (
-                    CALL :LOG_ENTRY "INFO" "PowerShell 7 is now functional. Continuing with current session..."
-                ) ELSE (
-                    CALL :LOG_ENTRY "WARN" "PowerShell 7 installed but may require restart to be fully functional."
-                )
-            ) ELSE (
-                CALL :LOG_ENTRY "WARN" "PowerShell 7 installation failed with exit code !PS7_EXIT!, but continuing..."
-            )
-            
-            REM Clean up installer
-            DEL /F /Q "%PS7_INSTALLER%" >nul 2>&1
-        ) ELSE (
-            CALL :LOG_ENTRY "ERROR" "PowerShell 7 installer file not found after download."
-        )
+    
+    REM Test PowerShell 7 availability after installation
+    timeout /t 3 /nobreak >nul
+    pwsh.exe -Version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+        CALL :LOG_ENTRY "INFO" "PowerShell 7 is now functional: !PS7_VERSION!"
+        SET "PS7_AVAILABLE=YES"
     ) ELSE (
-        CALL :LOG_ENTRY "WARN" "PowerShell 7 download failed, but continuing with Windows PowerShell..."
+        CALL :LOG_ENTRY "WARN" "PowerShell 7 installation completed but may require restart to be fully functional."
+        SET "PS7_AVAILABLE=NO"
     )
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
     CALL :LOG_ENTRY "INFO" "PowerShell 7 already available: !PS7_VERSION!"
+    SET "PS7_AVAILABLE=YES"
 )
 
 :SKIP_PS7_INSTALL
 
 REM -----------------------------------------------------------------------------
-REM 3. NuGet PackageProvider - Direct download and installation
+REM 3B. Git - Version control system (Can use Winget)
 REM -----------------------------------------------------------------------------
-CALL :LOG_ENTRY "INFO" "Checking NuGet PackageProvider..."
+CALL :LOG_ENTRY "INFO" "PHASE 3B: Installing Git (using Winget if available)..."
+git --version >nul 2>&1
+IF !ERRORLEVEL! NEQ 0 (
+    REM Create temp script for Git installation
+    SET "TEMP_PS1=%TEMP%\install_git.ps1"
+    ECHO try { > "%TEMP_PS1%"
+    ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+    ECHO     $gitInstalled = $false >> "%TEMP_PS1%"
+    ECHO     REM Try winget first if available and validated >> "%TEMP_PS1%"
+    IF "%WINGET_AVAILABLE%"=="YES" (
+        ECHO     if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+        ECHO         try { >> "%TEMP_PS1%"
+        ECHO             $wingetResult = Start-Process winget -ArgumentList 'install --id Git.Git --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+        ECHO             if ($wingetResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
+        ECHO                 Write-Host '[INFO] Git installed successfully via winget' >> "%TEMP_PS1%"
+        ECHO                 $gitInstalled = $true >> "%TEMP_PS1%"
+        ECHO             } else { >> "%TEMP_PS1%"
+        ECHO                 Write-Host '[WARN] Winget Git installation failed, trying chocolatey...' >> "%TEMP_PS1%"
+        ECHO             } >> "%TEMP_PS1%"
+        ECHO         } catch { >> "%TEMP_PS1%"
+        ECHO             Write-Host '[WARN] Winget Git installation error, trying chocolatey...' >> "%TEMP_PS1%"
+        ECHO         } >> "%TEMP_PS1%"
+        ECHO     } >> "%TEMP_PS1%"
+    )
+    ECHO     REM Try chocolatey if winget failed or not available >> "%TEMP_PS1%"
+    ECHO     if (-not $gitInstalled -and (Get-Command choco -ErrorAction SilentlyContinue)) { >> "%TEMP_PS1%"
+    ECHO         try { >> "%TEMP_PS1%"
+    ECHO             $chocoResult = Start-Process choco -ArgumentList 'install git -y --no-progress' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+    ECHO             if ($chocoResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
+    ECHO                 Write-Host '[INFO] Git installed successfully via chocolatey' >> "%TEMP_PS1%"
+    ECHO                 $gitInstalled = $true >> "%TEMP_PS1%"
+    ECHO             } else { >> "%TEMP_PS1%"
+    ECHO                 Write-Host '[WARN] Chocolatey Git installation failed' >> "%TEMP_PS1%"
+    ECHO             } >> "%TEMP_PS1%"
+    ECHO         } catch { >> "%TEMP_PS1%"
+    ECHO             Write-Host '[WARN] Chocolatey Git installation error' >> "%TEMP_PS1%"
+    ECHO         } >> "%TEMP_PS1%"
+    ECHO     } >> "%TEMP_PS1%"
+    ECHO     REM Final fallback - direct download >> "%TEMP_PS1%"
+    ECHO     if (-not $gitInstalled) { >> "%TEMP_PS1%"
+    ECHO         Write-Host '[INFO] Attempting direct Git download installation...' >> "%TEMP_PS1%"
+    ECHO         try { >> "%TEMP_PS1%"
+    ECHO             $gitUrl = 'https://github.com/git-for-windows/git/releases/latest/download/Git-2.45.2-64-bit.exe' >> "%TEMP_PS1%"
+    ECHO             $gitFile = $env:TEMP + '\Git-installer.exe' >> "%TEMP_PS1%"
+    ECHO             Invoke-WebRequest -Uri $gitUrl -OutFile $gitFile -UseBasicParsing -TimeoutSec 120 >> "%TEMP_PS1%"
+    ECHO             Start-Process $gitFile -ArgumentList '/VERYSILENT /NORESTART' -Wait >> "%TEMP_PS1%"
+    ECHO             Remove-Item $gitFile -Force -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+    ECHO             Write-Host '[INFO] Git installed via direct download' >> "%TEMP_PS1%"
+    ECHO         } catch { >> "%TEMP_PS1%"
+    ECHO             Write-Host '[ERROR] All Git installation methods failed:' $_.Exception.Message >> "%TEMP_PS1%"
+    ECHO         } >> "%TEMP_PS1%"
+    ECHO     } >> "%TEMP_PS1%"
+    ECHO } catch { >> "%TEMP_PS1%"
+    ECHO     Write-Host '[WARN] Git installation process failed:' $_.Exception.Message >> "%TEMP_PS1%"
+    ECHO } >> "%TEMP_PS1%"
+    
+    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    
+    REM Update PATH for Git
+    IF EXIST "%ProgramFiles%\Git\bin" SET "PATH=%PATH%;%ProgramFiles%\Git\bin"
+    IF EXIST "%ProgramFiles(x86)%\Git\bin" SET "PATH=%PATH%;%ProgramFiles(x86)%\Git\bin"
+) ELSE (
+    CALL :LOG_ENTRY "INFO" "Git is already installed."
+)
+
+REM -----------------------------------------------------------------------------
+REM 3C. .NET Framework 4.8 - Required for many applications (Can use Winget)
+REM -----------------------------------------------------------------------------
+CALL :LOG_ENTRY "INFO" "PHASE 3C: Installing .NET Framework 4.8 (using Winget if available)..."
+
+REM Create temp script for .NET Framework check
+SET "TEMP_PS1=%TEMP%\check_dotnet.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     $netVersion = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' -Name Release -ErrorAction SilentlyContinue).Release >> "%TEMP_PS1%"
+ECHO     if ($netVersion -ge 528040) { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] .NET Framework 4.8 or higher already installed' >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] Installing .NET Framework 4.8...' >> "%TEMP_PS1%"
+IF "%WINGET_AVAILABLE%"=="YES" (
+    ECHO         if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+    ECHO             try { >> "%TEMP_PS1%"
+    ECHO                 $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+    ECHO                 if ($wingetResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
+    ECHO                     Write-Host '[INFO] .NET Framework 4.8 installed via winget' >> "%TEMP_PS1%"
+    ECHO                 } else { >> "%TEMP_PS1%"
+    ECHO                     Write-Host '[WARN] Winget .NET installation failed, using direct method' >> "%TEMP_PS1%"
+    ECHO                     $dotnetUrl = 'https://download.microsoft.com/download/7/4/0/74078208-1d9b-4b0b-bc1d-0c0b9dcf09e8/ndp48-web.exe' >> "%TEMP_PS1%"
+    ECHO                     $dotnetFile = $env:TEMP + '\ndp48-web.exe' >> "%TEMP_PS1%"
+    ECHO                     Invoke-WebRequest -Uri $dotnetUrl -OutFile $dotnetFile -UseBasicParsing >> "%TEMP_PS1%"
+    ECHO                     Start-Process $dotnetFile -ArgumentList '/quiet /norestart' -Wait >> "%TEMP_PS1%"
+    ECHO                     Remove-Item $dotnetFile -Force -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+    ECHO                     Write-Host '[INFO] .NET Framework 4.8 installed via direct download' >> "%TEMP_PS1%"
+    ECHO                 } >> "%TEMP_PS1%"
+    ECHO             } catch { >> "%TEMP_PS1%"
+    ECHO                 Write-Host '[WARN] Winget method failed, using direct download' >> "%TEMP_PS1%"
+    ECHO                 $dotnetUrl = 'https://download.microsoft.com/download/7/4/0/74078208-1d9b-4b0b-bc1d-0c0b9dcf09e8/ndp48-web.exe' >> "%TEMP_PS1%"
+    ECHO                 $dotnetFile = $env:TEMP + '\ndp48-web.exe' >> "%TEMP_PS1%"
+    ECHO                 Invoke-WebRequest -Uri $dotnetUrl -OutFile $dotnetFile -UseBasicParsing >> "%TEMP_PS1%"
+    ECHO                 Start-Process $dotnetFile -ArgumentList '/quiet /norestart' -Wait >> "%TEMP_PS1%"
+    ECHO                 Remove-Item $dotnetFile -Force -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+    ECHO                 Write-Host '[INFO] .NET Framework 4.8 installed via direct download' >> "%TEMP_PS1%"
+    ECHO             } >> "%TEMP_PS1%"
+    ECHO         } else { >> "%TEMP_PS1%"
+) ELSE (
+    ECHO         REM Winget not available, use direct download method >> "%TEMP_PS1%"
+)
+ECHO             Write-Host '[INFO] Using direct download for .NET Framework 4.8...' >> "%TEMP_PS1%"
+ECHO             $dotnetUrl = 'https://download.microsoft.com/download/7/4/0/74078208-1d9b-4b0b-bc1d-0c0b9dcf09e8/ndp48-web.exe' >> "%TEMP_PS1%"
+ECHO             $dotnetFile = $env:TEMP + '\ndp48-web.exe' >> "%TEMP_PS1%"
+ECHO             Invoke-WebRequest -Uri $dotnetUrl -OutFile $dotnetFile -UseBasicParsing >> "%TEMP_PS1%"
+ECHO             Start-Process $dotnetFile -ArgumentList '/quiet /norestart' -Wait >> "%TEMP_PS1%"
+ECHO             Remove-Item $dotnetFile -Force -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO             Write-Host '[INFO] .NET Framework 4.8 installation completed' >> "%TEMP_PS1%"
+IF "%WINGET_AVAILABLE%"=="YES" (
+    ECHO         } >> "%TEMP_PS1%"
+)
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] .NET Framework check failed:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+
+REM =============================================================================
+REM PHASE 4: POWERSHELL ENVIRONMENT (Dependencies for PowerShell modules)
+REM =============================================================================
+ECHO.
+ECHO ----------------------------------------
+ECHO   PHASE 4: PowerShell Environment
+ECHO ----------------------------------------
+
+REM -----------------------------------------------------------------------------
+REM 4A. NuGet PackageProvider - Required for PowerShell modules
+REM -----------------------------------------------------------------------------
+CALL :LOG_ENTRY "INFO" "PHASE 4A: Installing NuGet PackageProvider..."
 
 REM Create temp script for NuGet check and install
 SET "TEMP_PS1=%TEMP%\install_nuget.ps1"
@@ -560,40 +790,100 @@ IF !ERRORLEVEL! NEQ 0 (
 )
 
 REM -----------------------------------------------------------------------------
-REM 4. PowerShell Gallery Configuration
+REM 4B. PowerShell Gallery Configuration - Required for module downloads
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking PowerShell Gallery configuration..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; $psGallery = Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue; if ($psGallery -and $psGallery.InstallationPolicy -eq 'Trusted') { Write-Host '[INFO] PowerShell Gallery already configured as trusted'; exit 0 } else { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; Write-Host '[INFO] PowerShell Gallery configured as trusted'; exit 0 } } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exception.Message; exit 1 }"
-IF !ERRORLEVEL! NEQ 0 (
+
+REM Create temp script for PSGallery configuration
+SET "TEMP_PS1=%TEMP%\config_psgallery.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     $psGallery = Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO     if ($psGallery -and $psGallery.InstallationPolicy -eq 'Trusted') { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] PowerShell Gallery already configured as trusted' >> "%TEMP_PS1%"
+ECHO         exit 0 >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] PowerShell Gallery configured as trusted' >> "%TEMP_PS1%"
+ECHO         exit 0 >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO     exit 1 >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+SET "PSGALLERY_EXIT=!ERRORLEVEL!"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+
+IF !PSGALLERY_EXIT! NEQ 0 (
     CALL :LOG_ENTRY "WARN" "PowerShell Gallery configuration failed, but continuing..."
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "PowerShell Gallery is ready."
 )
 
 REM -----------------------------------------------------------------------------
-REM 5. PSWindowsUpdate Module - Download from PowerShell Gallery
+REM 4C. PSWindowsUpdate Module - PowerShell module for Windows Updates
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking PSWindowsUpdate module..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$ProgressPreference = 'SilentlyContinue'; $psWindowsUpdate = Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue; if ($psWindowsUpdate) { Write-Host '[INFO] PSWindowsUpdate module already available (version: ' + $psWindowsUpdate.Version + ')'; exit 0 } else { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:\$false -Repository PSGallery | Out-Null; Write-Host '[INFO] PSWindowsUpdate module installed successfully'; exit 0 } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' \$_.Exception.Message; exit 1 } }"
 
-IF !ERRORLEVEL! NEQ 0 (
+REM Create temp script for PSWindowsUpdate module
+SET "TEMP_PS1=%TEMP%\install_pswindowsupdate.ps1"
+ECHO $ProgressPreference = 'SilentlyContinue' > "%TEMP_PS1%"
+ECHO try { >> "%TEMP_PS1%"
+ECHO     $psWindowsUpdate = Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO     if ($psWindowsUpdate) { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] PSWindowsUpdate module already available (version: ' + $psWindowsUpdate.Version + ')' >> "%TEMP_PS1%"
+ECHO         exit 0 >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+ECHO         Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:$false -Repository PSGallery ^| Out-Null >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] PSWindowsUpdate module installed successfully' >> "%TEMP_PS1%"
+ECHO         exit 0 >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] Failed to install PSWindowsUpdate module:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO     exit 1 >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+SET "PSWINDOWSUPDATE_EXIT=!ERRORLEVEL!"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+
+IF !PSWINDOWSUPDATE_EXIT! NEQ 0 (
     CALL :LOG_ENTRY "WARN" "PSWindowsUpdate module installation failed, but continuing..."
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "PSWindowsUpdate module is ready."
 )
 
 REM -----------------------------------------------------------------------------
-REM 6. Chocolatey Package Manager - Direct download from official source
+REM 4D. Chocolatey Package Manager - Alternative package manager
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Installing Chocolatey package manager..."
 choco --version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_ENTRY "INFO" "Chocolatey not found, downloading from official source..."
     
-    REM Download and install Chocolatey from official source (completely silent)
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-ExecutionPolicy Bypass -Scope Process -Force; $env:ChocolateyInstall = '$env:ProgramData\chocolatey'; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host '[INFO] Chocolatey installed successfully'; exit 0 } catch { Write-Host '[WARN] Chocolatey installation failed:' \$_.Exception.Message; exit 1 }"
+    REM Create temp script for Chocolatey installation
+    SET "TEMP_PS1=%TEMP%\install_chocolatey.ps1"
+    ECHO try { > "%TEMP_PS1%"
+    ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+    ECHO     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+    ECHO     Set-ExecutionPolicy Bypass -Scope Process -Force >> "%TEMP_PS1%"
+    ECHO     $env:ChocolateyInstall = '$env:ProgramData\chocolatey' >> "%TEMP_PS1%"
+    ECHO     iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) >> "%TEMP_PS1%"
+    ECHO     Write-Host '[INFO] Chocolatey installed successfully' >> "%TEMP_PS1%"
+    ECHO     exit 0 >> "%TEMP_PS1%"
+    ECHO } catch { >> "%TEMP_PS1%"
+    ECHO     Write-Host '[WARN] Chocolatey installation failed:' $_.Exception.Message >> "%TEMP_PS1%"
+    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO } >> "%TEMP_PS1%"
     
-    IF !ERRORLEVEL! EQU 0 (
+    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    SET "CHOCO_EXIT=!ERRORLEVEL!"
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    
+    IF !CHOCO_EXIT! EQU 0 (
         REM Refresh PATH to include Chocolatey
         IF EXIST "%ProgramData%\chocolatey\bin" (
             SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
@@ -607,33 +897,59 @@ IF !ERRORLEVEL! NEQ 0 (
 )
 
 REM -----------------------------------------------------------------------------
-REM 7. PowerShellGet and PackageManagement - Latest Versions
+REM 4E. PowerShellGet and PackageManagement - Latest Versions
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking PowerShellGet and PackageManagement modules..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $psGet = Get-Module -ListAvailable PowerShellGet | Sort-Object Version -Descending | Select-Object -First 1; if ($psGet -and $psGet.Version -ge '2.2.5') { Write-Host '[INFO] PowerShellGet is up to date (version: ' + $psGet.Version + ')' } else { Write-Host '[INFO] Updating PowerShellGet module...'; Install-Module -Name PowerShellGet -Force -Scope AllUsers -AllowClobber -Confirm:\$false -Repository PSGallery | Out-Null; Write-Host '[INFO] PowerShellGet updated successfully' } } catch { Write-Host '[WARN] PowerShellGet update failed:' \$_.Exception.Message }"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $pkgMgmt = Get-Module -ListAvailable PackageManagement | Sort-Object Version -Descending | Select-Object -First 1; if ($pkgMgmt -and $pkgMgmt.Version -ge '1.4.8') { Write-Host '[INFO] PackageManagement is up to date (version: ' + $pkgMgmt.Version + ')' } else { Write-Host '[INFO] Updating PackageManagement module...'; Install-Module -Name PackageManagement -Force -Scope AllUsers -AllowClobber -Confirm:\$false -Repository PSGallery | Out-Null; Write-Host '[INFO] PackageManagement updated successfully' } } catch { Write-Host '[WARN] PackageManagement update failed:' \$_.Exception.Message }"
+REM Create temp script for PowerShellGet check
+SET "TEMP_PS1=%TEMP%\check_powershellget.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+ECHO     $psGet = Get-Module -ListAvailable PowerShellGet ^| Sort-Object Version -Descending ^| Select-Object -First 1 >> "%TEMP_PS1%"
+ECHO     if ($psGet -and $psGet.Version -ge '2.2.5') { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] PowerShellGet is up to date (version:' $psGet.Version ')' >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] Updating PowerShellGet module...' >> "%TEMP_PS1%"
+ECHO         Install-Module -Name PowerShellGet -Force -Scope AllUsers -AllowClobber -Confirm:$false -Repository PSGallery ^| Out-Null >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] PowerShellGet updated successfully' >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] PowerShellGet update failed:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
 
-REM -----------------------------------------------------------------------------
-REM 8. Microsoft Visual C++ Redistributables - Essential for many applications
-REM -----------------------------------------------------------------------------
-CALL :LOG_ENTRY "INFO" "Checking Microsoft Visual C++ Redistributables..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; $vcInstalled = @(); $regPaths = @('HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86'); foreach ($path in $regPaths) { if (Test-Path $path) { $vcInstalled += $path } }; if ($vcInstalled.Count -ge 2) { Write-Host '[INFO] Microsoft Visual C++ Redistributables already installed' } else { Write-Host '[INFO] Installing Microsoft Visual C++ Redistributables...'; if (Get-Command winget -ErrorAction SilentlyContinue) { Start-Process winget -ArgumentList 'install --id Microsoft.VCRedist.2015+.x64 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait 2>$null; Start-Process winget -ArgumentList 'install --id Microsoft.VCRedist.2015+.x86 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait 2>$null; Write-Host '[INFO] Visual C++ Redistributables installed via winget' } else { Write-Host '[WARN] Winget not available for VC++ Redistributables installation' } } } catch { Write-Host '[WARN] VC++ Redistributables check failed:' \$_.Exception.Message }"
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
-REM -----------------------------------------------------------------------------
-REM 9. Git - For better repository management and version control
-REM -----------------------------------------------------------------------------
-CALL :LOG_ENTRY "INFO" "Installing Git..."
-git --version >nul 2>&1
-IF !ERRORLEVEL! NEQ 0 (
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; if (Get-Command winget -ErrorAction SilentlyContinue) { Start-Process winget -ArgumentList 'install --id Git.Git --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait; Write-Host '[INFO] Git installed successfully via winget' } elseif (Get-Command choco -ErrorAction SilentlyContinue) { Start-Process choco -ArgumentList 'install git -y --no-progress' -WindowStyle Hidden -Wait; Write-Host '[INFO] Git installed successfully via chocolatey' } else { Write-Host '[WARN] No package manager available for Git installation' } } catch { Write-Host '[WARN] Git installation failed:' \$_.Exception.Message }"
-    
-    REM Update PATH for Git
-    IF EXIST "%ProgramFiles%\Git\bin" SET "PATH=%PATH%;%ProgramFiles%\Git\bin"
-    IF EXIST "%ProgramFiles(x86)%\Git\bin" SET "PATH=%PATH%;%ProgramFiles(x86)%\Git\bin"
-) ELSE (
-    CALL :LOG_ENTRY "INFO" "Git is already installed."
-)
+REM Create temp script for PackageManagement check
+SET "TEMP_PS1=%TEMP%\check_packagemgmt.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+ECHO     $pkgMgmt = Get-Module -ListAvailable PackageManagement ^| Sort-Object Version -Descending ^| Select-Object -First 1 >> "%TEMP_PS1%"
+ECHO     if ($pkgMgmt -and $pkgMgmt.Version -ge '1.4.8') { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] PackageManagement is up to date (version:' $pkgMgmt.Version ')' >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] Updating PackageManagement module...' >> "%TEMP_PS1%"
+ECHO         Install-Module -Name PackageManagement -Force -Scope AllUsers -AllowClobber -Confirm:$false -Repository PSGallery ^| Out-Null >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] PackageManagement updated successfully' >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] PackageManagement update failed:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+
+REM =============================================================================
+REM FINAL VALIDATION AND CLEANUP
+REM =============================================================================
+ECHO.
+ECHO ----------------------------------------
+ECHO   Final Validation & Cleanup
+ECHO ----------------------------------------
+
+REM Additional PowerShell Modules and Windows Features sections follow below...
 
 REM -----------------------------------------------------------------------------
 REM 10. .NET Framework 4.8 - Required for many PowerShell modules and applications
@@ -648,12 +964,45 @@ ECHO     $netVersion = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework
 ECHO     if ($netVersion -ge 528040) { >> "%TEMP_PS1%"
 ECHO         Write-Host '[INFO] .NET Framework 4.8 or higher already installed' >> "%TEMP_PS1%"
 ECHO     } else { >> "%TEMP_PS1%"
-ECHO         if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
-ECHO             Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait >> "%TEMP_PS1%"
-ECHO             Write-Host '[INFO] .NET Framework 4.8 installed via winget' >> "%TEMP_PS1%"
-ECHO         } else { >> "%TEMP_PS1%"
-ECHO             Write-Host '[WARN] .NET Framework 4.8 may need manual installation' >> "%TEMP_PS1%"
-ECHO         } >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] Installing .NET Framework 4.8...' >> "%TEMP_PS1%"
+IF "%WINGET_AVAILABLE%"=="YES" (
+    ECHO         if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+    ECHO             try { >> "%TEMP_PS1%"
+    ECHO                 $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+    ECHO                 if ($wingetResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
+    ECHO                     Write-Host '[INFO] .NET Framework 4.8 installed via winget' >> "%TEMP_PS1%"
+    ECHO                 } else { >> "%TEMP_PS1%"
+    ECHO                     Write-Host '[WARN] Winget .NET installation failed, using direct method' >> "%TEMP_PS1%"
+    ECHO                     $dotnetUrl = 'https://download.microsoft.com/download/7/4/0/74078208-1d9b-4b0b-bc1d-0c0b9dcf09e8/ndp48-web.exe' >> "%TEMP_PS1%"
+    ECHO                     $dotnetFile = $env:TEMP + '\ndp48-web.exe' >> "%TEMP_PS1%"
+    ECHO                     Invoke-WebRequest -Uri $dotnetUrl -OutFile $dotnetFile -UseBasicParsing >> "%TEMP_PS1%"
+    ECHO                     Start-Process $dotnetFile -ArgumentList '/quiet /norestart' -Wait >> "%TEMP_PS1%"
+    ECHO                     Remove-Item $dotnetFile -Force -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+    ECHO                     Write-Host '[INFO] .NET Framework 4.8 installed via direct download' >> "%TEMP_PS1%"
+    ECHO                 } >> "%TEMP_PS1%"
+    ECHO             } catch { >> "%TEMP_PS1%"
+    ECHO                 Write-Host '[WARN] Winget method failed, using direct download' >> "%TEMP_PS1%"
+    ECHO                 $dotnetUrl = 'https://download.microsoft.com/download/7/4/0/74078208-1d9b-4b0b-bc1d-0c0b9dcf09e8/ndp48-web.exe' >> "%TEMP_PS1%"
+    ECHO                 $dotnetFile = $env:TEMP + '\ndp48-web.exe' >> "%TEMP_PS1%"
+    ECHO                 Invoke-WebRequest -Uri $dotnetUrl -OutFile $dotnetFile -UseBasicParsing >> "%TEMP_PS1%"
+    ECHO                 Start-Process $dotnetFile -ArgumentList '/quiet /norestart' -Wait >> "%TEMP_PS1%"
+    ECHO                 Remove-Item $dotnetFile -Force -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+    ECHO                 Write-Host '[INFO] .NET Framework 4.8 installed via direct download' >> "%TEMP_PS1%"
+    ECHO             } >> "%TEMP_PS1%"
+    ECHO         } else { >> "%TEMP_PS1%"
+) ELSE (
+    ECHO         REM Winget not available, use direct download method >> "%TEMP_PS1%"
+)
+ECHO             Write-Host '[INFO] Using direct download for .NET Framework 4.8...' >> "%TEMP_PS1%"
+ECHO             $dotnetUrl = 'https://download.microsoft.com/download/7/4/0/74078208-1d9b-4b0b-bc1d-0c0b9dcf09e8/ndp48-web.exe' >> "%TEMP_PS1%"
+ECHO             $dotnetFile = $env:TEMP + '\ndp48-web.exe' >> "%TEMP_PS1%"
+ECHO             Invoke-WebRequest -Uri $dotnetUrl -OutFile $dotnetFile -UseBasicParsing >> "%TEMP_PS1%"
+ECHO             Start-Process $dotnetFile -ArgumentList '/quiet /norestart' -Wait >> "%TEMP_PS1%"
+ECHO             Remove-Item $dotnetFile -Force -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO             Write-Host '[INFO] .NET Framework 4.8 installation completed' >> "%TEMP_PS1%"
+IF "%WINGET_AVAILABLE%"=="YES" (
+    ECHO         } >> "%TEMP_PS1%"
+)
 ECHO     } >> "%TEMP_PS1%"
 ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[WARN] .NET Framework check failed:' $_.Exception.Message >> "%TEMP_PS1%"
@@ -727,7 +1076,32 @@ REM ----------------------------------------------------------------------------
 REM 13. System Performance Optimizations
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking system performance settings..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; $services = @('Themes', 'UxSms'); foreach ($service in $services) { $svc = Get-Service -Name $service -ErrorAction SilentlyContinue; if ($svc) { if ($svc.StartType -eq 'Automatic') { Write-Host \"[INFO] Service $service already set to Automatic\" } else { Set-Service -Name $service -StartupType Automatic -ErrorAction SilentlyContinue | Out-Null; Write-Host \"[INFO] Service $service set to Automatic startup\" } } else { Write-Host \"[INFO] Service $service not found on this system\" } }; Write-Host '[INFO] System services optimization completed' } catch { Write-Host '[INFO] Service optimization completed with some warnings' }"
+
+REM Create temp script for service optimization
+SET "TEMP_PS1=%TEMP%\optimize_services.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     $services = @('Themes', 'UxSms') >> "%TEMP_PS1%"
+ECHO     foreach ($service in $services) { >> "%TEMP_PS1%"
+ECHO         $svc = Get-Service -Name $service -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO         if ($svc) { >> "%TEMP_PS1%"
+ECHO             if ($svc.StartType -eq 'Automatic') { >> "%TEMP_PS1%"
+ECHO                 Write-Host "[INFO] Service $service already set to Automatic" >> "%TEMP_PS1%"
+ECHO             } else { >> "%TEMP_PS1%"
+ECHO                 Set-Service -Name $service -StartupType Automatic -ErrorAction SilentlyContinue ^| Out-Null >> "%TEMP_PS1%"
+ECHO                 Write-Host "[INFO] Service $service set to Automatic startup" >> "%TEMP_PS1%"
+ECHO             } >> "%TEMP_PS1%"
+ECHO         } else { >> "%TEMP_PS1%"
+ECHO             Write-Host "[INFO] Service $service not found on this system" >> "%TEMP_PS1%"
+ECHO         } >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO     Write-Host '[INFO] System services optimization completed' >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[INFO] Service optimization completed with some warnings' >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 CALL :LOG_ENTRY "INFO" "Dependency installation phase completed with comprehensive coverage."
 
@@ -950,14 +1324,89 @@ IF !ERRORLEVEL! EQU 0 (
 )
 
 REM Validate PowerShell modules
-powershell -ExecutionPolicy Bypass -Command "try { $modules = @('PSWindowsUpdate', 'PackageManagement', 'PowerShellGet'); $moduleStatus = @(); foreach ($module in $modules) { if (Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue) { $moduleStatus += \"[INFO] ✓ Module $module is available\" } else { $moduleStatus += \"[WARN] ✗ Module $module not available\" } }; $moduleStatus | ForEach-Object { Write-Host $_ } } catch { Write-Host '[WARN] Module validation failed' }"
+REM Create temp script for module validation
+SET "TEMP_PS1=%TEMP%\validate_modules.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $modules = @('PSWindowsUpdate', 'PackageManagement', 'PowerShellGet') >> "%TEMP_PS1%"
+ECHO     $moduleStatus = @() >> "%TEMP_PS1%"
+ECHO     foreach ($module in $modules) { >> "%TEMP_PS1%"
+ECHO         if (Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+ECHO             $moduleStatus += "[INFO] ✓ Module $module is available" >> "%TEMP_PS1%"
+ECHO         } else { >> "%TEMP_PS1%"
+ECHO             $moduleStatus += "[WARN] ✗ Module $module not available" >> "%TEMP_PS1%"
+ECHO         } >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO     $moduleStatus ^| ForEach-Object { Write-Host $_ } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] Module validation failed' >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM Show dependency summary
+ECHO.
+ECHO ========================================
+ECHO    DEPENDENCY VALIDATION SUMMARY
+ECHO ========================================
+
+REM Create temp script for comprehensive dependency check
+SET "TEMP_PS1=%TEMP%\final_dependency_check.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     Write-Host ' ' >> "%TEMP_PS1%"
+ECHO     Write-Host '[INFO] === CRITICAL DEPENDENCIES STATUS ===' >> "%TEMP_PS1%"
+ECHO     REM Check Winget >> "%TEMP_PS1%"
+ECHO     if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+ECHO         try { >> "%TEMP_PS1%"
+ECHO             $wingetVer = ^& winget --version 2^>$null >> "%TEMP_PS1%"
+ECHO             if ($wingetVer) { >> "%TEMP_PS1%"
+ECHO                 Write-Host '[INFO] ✓ Winget: Available (version:' $wingetVer.Trim() ')' >> "%TEMP_PS1%"
+ECHO             } else { >> "%TEMP_PS1%"
+ECHO                 Write-Host '[WARN] ✗ Winget: Not responding properly' >> "%TEMP_PS1%"
+ECHO             } >> "%TEMP_PS1%"
+ECHO         } catch { >> "%TEMP_PS1%"
+ECHO             Write-Host '[WARN] ✗ Winget: Available but not functional' >> "%TEMP_PS1%"
+ECHO         } >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Write-Host '[WARN] ✗ Winget: Not available' >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO     REM Check PowerShell 7 >> "%TEMP_PS1%"
+ECHO     if (Get-Command pwsh -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+ECHO         $ps7Ver = ^& pwsh --version 2^>$null >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] ✓ PowerShell 7:' $ps7Ver >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Write-Host '[WARN] ✗ PowerShell 7: Not available' >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO     REM Check Git >> "%TEMP_PS1%"
+ECHO     if (Get-Command git -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+ECHO         $gitVer = ^& git --version 2^>$null >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] ✓ Git:' $gitVer >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Write-Host '[WARN] ✗ Git: Not available' >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO     REM Check Chocolatey >> "%TEMP_PS1%"
+ECHO     if (Get-Command choco -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+ECHO         $chocoVer = ^& choco --version 2^>$null >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] ✓ Chocolatey:' $chocoVer >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] ○ Chocolatey: Not available (optional)' >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO     Write-Host '[INFO] === DEPENDENCY CHECK COMPLETE ===' >> "%TEMP_PS1%"
+ECHO     Write-Host ' ' >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] Dependency summary check failed' >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+
 IF !DEPENDENCY_WARNINGS! GTR 0 (
     ECHO [%TIME%] [WARN] Found !DEPENDENCY_WARNINGS! dependency warnings. Script will use graceful degradation.
 ) ELSE (
     ECHO [%TIME%] [INFO] ✓ All critical dependencies verified successfully.
 )
+
+ECHO ========================================
 
 CALL :LOG_ENTRY "INFO" "Dependency validation completed."
 
