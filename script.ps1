@@ -423,9 +423,9 @@ function Write-Log {
         return
     }
     
-    $timestamp = Get-Date -Format 'HH:mm:ss'
+    $timestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
     $entry = "[$timestamp] [$Level] $Message"
-    $entry | Out-File -FilePath $logPath -Append
+    $entry | Out-File -FilePath $logPath -Append -Encoding UTF8
     
     # Output: Color-code console output based on severity level for visual clarity
     switch ($Level) {
@@ -3973,6 +3973,13 @@ function Protect-SystemRestore {
     Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
 
 ### [MAIN TASK EXECUTION IN TIMELINE ORDER]
+
+# PowerShell script startup logging
+Write-Log "============================================================" 'INFO'
+Write-Log "PowerShell Maintenance Script Starting" 'INFO'
+Write-Log "Script Path: $PSCommandPath" 'INFO'
+Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
+Write-Log "============================================================" 'INFO'
 
 # Run all tasks using the coordinator
 Use-AllScriptTasks
