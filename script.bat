@@ -221,8 +221,10 @@ CALL :LOG_ENTRY "INFO" "PHASE 1A: Installing Visual C++ Redistributables (Winget
     SET "TEMP_PS1=%TEMP%\check_vcredist.ps1"
     ECHO try { > "%TEMP_PS1%"
     ECHO     $vcInstalled = $false >> "%TEMP_PS1%"
-    ECHO     $items = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\Installer\Dependencies\{*}' -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
-    ECHO     foreach ($item in $items) { >> "%TEMP_PS1%"
+    ECHO     $regPath = 'HKLM:\SOFTWARE\Classes\Installer\Dependencies\' >> "%TEMP_PS1%"
+    ECHO     $dependencies = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+    ECHO     foreach ($dep in $dependencies) { >> "%TEMP_PS1%"
+    ECHO         $item = Get-ItemProperty -Path $dep.PSPath -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
     ECHO         if ($item.DisplayName -like '*Microsoft Visual C++ 2015-2022 Redistributable*x64*') { >> "%TEMP_PS1%"
     ECHO             $vcInstalled = $true >> "%TEMP_PS1%"
     ECHO             break >> "%TEMP_PS1%"
@@ -240,9 +242,12 @@ CALL :LOG_ENTRY "INFO" "PHASE 1A: Installing Visual C++ Redistributables (Winget
     ECHO     exit 1 >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%"
+    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
     SET "VC_CHECK_EXIT=!ERRORLEVEL!"
     DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    
+    CALL :LOG_ENTRY "INFO" "Visual C++ check completed with exit code: !VC_CHECK_EXIT!"
+    
     IF !VC_CHECK_EXIT! NEQ 0 (
         SET "VCREDIST_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
         SET "VCREDIST_FILE=%TEMP%\vc_redist_x64.exe"
@@ -262,7 +267,7 @@ CALL :LOG_ENTRY "INFO" "PHASE 1A: Installing Visual C++ Redistributables (Winget
         ECHO     exit 1 >> "%TEMP_PS1%"
         ECHO } >> "%TEMP_PS1%"
         
-        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+        powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
         SET "DOWNLOAD_EXIT=!ERRORLEVEL!"
         DEL /F /Q "%TEMP_PS1%" >nul 2>&1
         IF !DOWNLOAD_EXIT! EQU 0 (
@@ -283,7 +288,7 @@ CALL :LOG_ENTRY "INFO" "PHASE 1A: Installing Visual C++ Redistributables (Winget
             CALL :LOG_ENTRY "WARN" "Visual C++ Redistributable download failed, but continuing..."
         )
     ) ELSE (
-        CALL :LOG_ENTRY "INFO" "Visual C++ Redistributable is already installed."
+        CALL :LOG_ENTRY "INFO" "Visual C++ Redistributable is already installed, skipping installation."
     )
 
 REM -----------------------------------------------------------------------------
@@ -298,7 +303,9 @@ CALL :LOG_ENTRY "INFO" "PHASE 1B: Installing Microsoft.UI.Xaml Framework (Winget
     ECHO     $packages = Get-AppxPackage -Name '*Microsoft.UI.Xaml*' -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
     ECHO     $found = $false >> "%TEMP_PS1%"
     ECHO     foreach ($pkg in $packages) { >> "%TEMP_PS1%"
-    ECHO         if ([version]$pkg.Version -ge [version]'2.8.0.0') { >> "%TEMP_PS1%"
+    ECHO         $pkgVersion = [version]$pkg.Version >> "%TEMP_PS1%"
+    ECHO         $minVersion = [version]'2.8.0.0' >> "%TEMP_PS1%"
+    ECHO         if ($pkgVersion -ge $minVersion) { >> "%TEMP_PS1%"
     ECHO             $found = $true >> "%TEMP_PS1%"
     ECHO             break >> "%TEMP_PS1%"
     ECHO         } >> "%TEMP_PS1%"
@@ -315,11 +322,14 @@ CALL :LOG_ENTRY "INFO" "PHASE 1B: Installing Microsoft.UI.Xaml Framework (Winget
     ECHO     exit 1 >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
     SET "XAML_CHECK_EXIT=!ERRORLEVEL!"
     DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    
+    CALL :LOG_ENTRY "INFO" "XAML check completed with exit code: !XAML_CHECK_EXIT!"
+    
     IF !XAML_CHECK_EXIT! NEQ 0 (
-        SET "XAML_URL=https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.7"
+        SET "XAML_URL=https://api.nuget.org/v3-flatcontainer/microsoft.ui.xaml/2.8.7/microsoft.ui.xaml.2.8.7.nupkg"
         SET "XAML_FILE=%TEMP%\Microsoft.UI.Xaml.2.8.nupkg"
         
         CALL :LOG_ENTRY "INFO" "Downloading Microsoft.UI.Xaml framework..."
@@ -337,7 +347,7 @@ CALL :LOG_ENTRY "INFO" "PHASE 1B: Installing Microsoft.UI.Xaml Framework (Winget
         ECHO     exit 1 >> "%TEMP_PS1%"
         ECHO } >> "%TEMP_PS1%"
         
-        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+        powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
         SET "XAML_DOWNLOAD_EXIT=!ERRORLEVEL!"
         DEL /F /Q "%TEMP_PS1%" >nul 2>&1
         
@@ -373,7 +383,7 @@ CALL :LOG_ENTRY "INFO" "PHASE 1B: Installing Microsoft.UI.Xaml Framework (Winget
                 ECHO     exit 1 >> "%TEMP_PS1%"
                 ECHO } >> "%TEMP_PS1%"
                 
-                powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+                powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
                 SET "XAML_EXIT=!ERRORLEVEL!"
                 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
                 IF !XAML_EXIT! EQU 0 (
@@ -389,7 +399,7 @@ CALL :LOG_ENTRY "INFO" "PHASE 1B: Installing Microsoft.UI.Xaml Framework (Winget
             CALL :LOG_ENTRY "WARN" "Microsoft.UI.Xaml framework download failed, but continuing..."
         )
     ) ELSE (
-        CALL :LOG_ENTRY "INFO" "Microsoft.UI.Xaml framework is already installed."
+        CALL :LOG_ENTRY "INFO" "Microsoft.UI.Xaml framework is already installed, skipping installation."
     )
 
 REM =============================================================================
@@ -426,7 +436,7 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO     exit 1 >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
     SET "WINGET_DOWNLOAD_EXIT=!ERRORLEVEL!"
     DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     
@@ -445,7 +455,7 @@ IF !ERRORLEVEL! NEQ 0 (
             ECHO     exit 1 >> "%TEMP_PS1%"
             ECHO } >> "%TEMP_PS1%"
             
-            powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+            powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
             SET "WINGET_EXIT=!ERRORLEVEL!"
             DEL /F /Q "%TEMP_PS1%" >nul 2>&1
             IF !WINGET_EXIT! EQU 0 (
@@ -488,7 +498,7 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO     exit 1 >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
     DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     
     timeout /t 3 /nobreak >nul
@@ -512,17 +522,17 @@ SET "TEMP_PS1=%TEMP%\validate_winget.ps1"
 ECHO try { > "%TEMP_PS1%"
 ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
 ECHO     REM Test basic winget functionality >> "%TEMP_PS1%"
-ECHO     $wingetTest = Start-Process winget -ArgumentList '--version' -WindowStyle Hidden -Wait -PassThru -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO     $wingetTest = Start-Process winget -ArgumentList '--version'  -Wait -PassThru -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
 ECHO     if ($wingetTest -and $wingetTest.ExitCode -eq 0) { >> "%TEMP_PS1%"
 ECHO         Write-Host '[INFO] Winget is functional and responding' >> "%TEMP_PS1%"
 ECHO         REM Configure winget sources to prevent source errors >> "%TEMP_PS1%"
 ECHO         try { >> "%TEMP_PS1%"
-ECHO             $sourceCheck = Start-Process winget -ArgumentList 'source list' -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $env:TEMP\winget_sources.txt >> "%TEMP_PS1%"
+ECHO             $sourceCheck = Start-Process winget -ArgumentList 'source list'  -Wait -PassThru -RedirectStandardOutput $env:TEMP\winget_sources.txt >> "%TEMP_PS1%"
 ECHO             if ($sourceCheck.ExitCode -eq 0) { >> "%TEMP_PS1%"
 ECHO                 Write-Host '[INFO] Winget sources are accessible' >> "%TEMP_PS1%"
 ECHO             } else { >> "%TEMP_PS1%"
 ECHO                 Write-Host '[WARN] Winget sources need reset, attempting repair...' >> "%TEMP_PS1%"
-ECHO                 Start-Process winget -ArgumentList 'source reset' -WindowStyle Hidden -Wait >> "%TEMP_PS1%"
+ECHO                 Start-Process winget -ArgumentList 'source reset'  -Wait >> "%TEMP_PS1%"
 ECHO                 Write-Host '[INFO] Winget sources reset completed' >> "%TEMP_PS1%"
 ECHO             } >> "%TEMP_PS1%"
 ECHO         } catch { >> "%TEMP_PS1%"
@@ -538,7 +548,7 @@ ECHO     Write-Host '[WARN] Winget validation error:' $_.Exception.Message >> "%
 ECHO     exit 1 >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 SET "WINGET_VALIDATION_EXIT=!ERRORLEVEL!"
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
@@ -576,7 +586,7 @@ IF !ERRORLEVEL! NEQ 0 (
         ECHO     if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
         ECHO         try { >> "%TEMP_PS1%"
         ECHO             Write-Host '[INFO] Attempting PowerShell 7 installation via Winget...' >> "%TEMP_PS1%"
-        ECHO             $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+        ECHO             $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements'  -Wait -PassThru >> "%TEMP_PS1%"
         ECHO             if ($wingetResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
         ECHO                 Write-Host '[INFO] PowerShell 7 installed successfully via Winget' >> "%TEMP_PS1%"
         ECHO                 $ps7Installed = $true >> "%TEMP_PS1%"
@@ -614,7 +624,7 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO     Write-Host '[WARN] PowerShell 7 installation process failed:' $_.Exception.Message >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
     SET "PS7_INSTALL_EXIT=!ERRORLEVEL!"
     DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     
@@ -657,7 +667,7 @@ IF !ERRORLEVEL! NEQ 0 (
     IF "%WINGET_AVAILABLE%"=="YES" (
         ECHO     if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
         ECHO         try { >> "%TEMP_PS1%"
-        ECHO             $wingetResult = Start-Process winget -ArgumentList 'install --id Git.Git --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+        ECHO             $wingetResult = Start-Process winget -ArgumentList 'install --id Git.Git --silent --accept-package-agreements --accept-source-agreements'  -Wait -PassThru >> "%TEMP_PS1%"
         ECHO             if ($wingetResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
         ECHO                 Write-Host '[INFO] Git installed successfully via winget' >> "%TEMP_PS1%"
         ECHO                 $gitInstalled = $true >> "%TEMP_PS1%"
@@ -672,7 +682,7 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO     REM Try chocolatey if winget failed or not available >> "%TEMP_PS1%"
     ECHO     if (-not $gitInstalled -and (Get-Command choco -ErrorAction SilentlyContinue)) { >> "%TEMP_PS1%"
     ECHO         try { >> "%TEMP_PS1%"
-    ECHO             $chocoResult = Start-Process choco -ArgumentList 'install git -y --no-progress' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+    ECHO             $chocoResult = Start-Process choco -ArgumentList 'install git -y --no-progress'  -Wait -PassThru >> "%TEMP_PS1%"
     ECHO             if ($chocoResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
     ECHO                 Write-Host '[INFO] Git installed successfully via chocolatey' >> "%TEMP_PS1%"
     ECHO                 $gitInstalled = $true >> "%TEMP_PS1%"
@@ -701,7 +711,7 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO     Write-Host '[WARN] Git installation process failed:' $_.Exception.Message >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
     DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     
     REM Update PATH for Git
@@ -728,7 +738,7 @@ ECHO         Write-Host '[INFO] Installing .NET Framework 4.8.1...' >> "%TEMP_PS
 IF "%WINGET_AVAILABLE%"=="YES" (
     ECHO         if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
     ECHO             try { >> "%TEMP_PS1%"
-    ECHO                 $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+    ECHO                 $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements'  -Wait -PassThru >> "%TEMP_PS1%"
     ECHO                 if ($wingetResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
     ECHO                     Write-Host '[INFO] .NET Framework 4.8.1 installed via winget' >> "%TEMP_PS1%"
     ECHO                 } else { >> "%TEMP_PS1%"
@@ -768,7 +778,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[WARN] .NET Framework check failed:' $_.Exception.Message >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM =============================================================================
@@ -805,7 +815,7 @@ ECHO     exit 1 >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
 ECHO [INFO] Running NuGet PackageProvider check/install...
-powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 IF !ERRORLEVEL! NEQ 0 (
@@ -837,7 +847,7 @@ ECHO     Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exceptio
 ECHO     exit 1 >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 SET "PSGALLERY_EXIT=!ERRORLEVEL!"
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
@@ -871,7 +881,7 @@ ECHO     Write-Host '[WARN] Failed to install PSWindowsUpdate module:' $_.Except
 ECHO     exit 1 >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 SET "PSWINDOWSUPDATE_EXIT=!ERRORLEVEL!"
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
@@ -904,7 +914,7 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO     exit 1 >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
     SET "CHOCO_EXIT=!ERRORLEVEL!"
     DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     
@@ -944,7 +954,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[WARN] PowerShellGet update failed:' $_.Exception.Message >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM Create temp script for PackageManagement check
@@ -965,7 +975,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[WARN] PackageManagement update failed:' $_.Exception.Message >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM =============================================================================
@@ -995,7 +1005,7 @@ ECHO         Write-Host '[INFO] Installing .NET Framework 4.8.1...' >> "%TEMP_PS
 IF "%WINGET_AVAILABLE%"=="YES" (
     ECHO         if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
     ECHO             try { >> "%TEMP_PS1%"
-    ECHO                 $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait -PassThru >> "%TEMP_PS1%"
+    ECHO                 $wingetResult = Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements'  -Wait -PassThru >> "%TEMP_PS1%"
     ECHO                 if ($wingetResult.ExitCode -eq 0) { >> "%TEMP_PS1%"
     ECHO                     Write-Host '[INFO] .NET Framework 4.8.1 installed via winget' >> "%TEMP_PS1%"
     ECHO                 } else { >> "%TEMP_PS1%"
@@ -1035,7 +1045,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[WARN] .NET Framework check failed:' $_.Exception.Message >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
@@ -1065,7 +1075,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[WARN] Module check failed:' $_.Exception.Message >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
@@ -1096,7 +1106,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[INFO] Windows features check completed' >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
@@ -1127,7 +1137,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[INFO] Service optimization completed with some warnings' >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 CALL :LOG_ENTRY "INFO" "Dependency installation phase completed with comprehensive coverage."
@@ -1214,7 +1224,7 @@ ECHO     Write-Host '[ERROR] Download failed:' $_.Exception.Message >> "%TEMP_PS
 ECHO     exit 1 >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 SET "REPO_DOWNLOAD_EXIT=!ERRORLEVEL!"
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
@@ -1251,7 +1261,7 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
         ECHO     exit 1 >> "%TEMP_PS1%"
         ECHO } >> "%TEMP_PS1%"
         
-        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+        powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
         DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     ) ELSE (
         CALL :LOG_ENTRY "INFO" "Existing repository folder removed successfully."
@@ -1277,7 +1287,7 @@ ECHO     Write-Host '[ERROR] Extraction failed:' $_.Exception.Message >> "%TEMP_
 ECHO     exit 1 >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 SET "EXTRACT_EXIT=!ERRORLEVEL!"
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
@@ -1368,7 +1378,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[WARN] Module validation failed' >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM Show dependency summary
@@ -1424,7 +1434,7 @@ ECHO } catch { >> "%TEMP_PS1%"
 ECHO     Write-Host '[WARN] Dependency summary check failed' >> "%TEMP_PS1%"
 ECHO } >> "%TEMP_PS1%"
 
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%" 2>&1
 DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 IF !DEPENDENCY_WARNINGS! GTR 0 (
