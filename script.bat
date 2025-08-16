@@ -122,10 +122,15 @@ IF %ERRORLEVEL% EQU 0 (
 )
 
 REM -----------------------------------------------------------------------------
-REM Startup Task Management - Check and Remove if Exists
-REM This task should only exist temporarily after a system restart.
+REM Startup Task Management and Restart Detection Logic
+REM Step 1: Check if startup task exists - if yes, delete it
+REM Step 2: Check for pending restarts using comprehensive detection
+REM Step 3: If pending restarts found, create startup task with 1-minute delay
+REM Step 4: Restart the system
 REM -----------------------------------------------------------------------------
-CALL :LOG_ENTRY "INFO" "Checking startup task '%STARTUP_TASK_NAME%'..."
+
+REM Step 1: Check and remove existing startup task if it exists
+CALL :LOG_ENTRY "INFO" "Step 1: Checking startup task '%STARTUP_TASK_NAME%'..."
 schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_ENTRY "INFO" "Existing startup task found. Removing..."
@@ -137,6 +142,84 @@ IF !ERRORLEVEL! EQU 0 (
     )
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "No existing startup task found."
+)
+
+REM Step 2: Comprehensive restart detection (Windows 10/11 enhanced)
+CALL :LOG_ENTRY "INFO" "Step 2: Checking for pending system restarts..."
+SET "RESTART_NEEDED=NO"
+SET "RESTART_REASONS="
+
+REM Check Windows Update reboot flag
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    SET "RESTART_REASONS=%RESTART_REASONS% WindowsUpdate"
+    CALL :LOG_ENTRY "INFO" "Windows Update reboot flag detected"
+)
+
+REM Check Component Based Servicing reboot flag
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    SET "RESTART_REASONS=%RESTART_REASONS% ComponentBasedServicing"
+    CALL :LOG_ENTRY "INFO" "Component Based Servicing reboot detected"
+)
+
+REM Check pending file operations
+REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    SET "RESTART_REASONS=%RESTART_REASONS% PendingFileOperations"
+    CALL :LOG_ENTRY "INFO" "Pending file operations detected"
+)
+
+REM Check Windows Feature installation requiring restart
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    SET "RESTART_REASONS=%RESTART_REASONS% WindowsFeatures"
+    CALL :LOG_ENTRY "INFO" "Windows Features pending restart detected"
+)
+
+REM Check for computer name change
+FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName" /v ComputerName 2^>nul ^| FINDSTR ComputerName') DO SET "CURRENT_NAME=%%A"
+FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName" /v ComputerName 2^>nul ^| FINDSTR ComputerName') DO SET "ACTIVE_NAME=%%A"
+IF NOT "%CURRENT_NAME%"=="%ACTIVE_NAME%" (
+    SET "RESTART_NEEDED=YES"
+    SET "RESTART_REASONS=%RESTART_REASONS% ComputerNameChange"
+    CALL :LOG_ENTRY "INFO" "Computer name change pending restart detected"
+)
+
+REM Step 3 & 4: Handle restart if needed
+IF "%RESTART_NEEDED%"=="YES" (
+    CALL :LOG_ENTRY "WARN" "System restart required due to:%RESTART_REASONS%"
+    CALL :LOG_ENTRY "INFO" "Step 3: Creating startup task for post-restart continuation..."
+    
+    REM Create startup task with 1-minute delay at user login
+    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_ENTRY "INFO" "Startup task created successfully with 1-minute delay at user login."
+        CALL :LOG_ENTRY "INFO" "Step 4: Initiating system restart..."
+        ECHO.
+        ECHO ======================================================
+        ECHO   SYSTEM RESTART REQUIRED
+        ECHO   Reason(s):%RESTART_REASONS%
+        ECHO   Restarting in 20 seconds...
+        ECHO   Press Ctrl+C to abort restart
+        ECHO ======================================================
+        ECHO.
+        timeout /t 20
+        shutdown /r /t 5 /c "System restart required for maintenance continuation"
+        EXIT /B 0
+    ) ELSE (
+        CALL :LOG_ENTRY "ERROR" "Failed to create startup task. Continuing without restart..."
+        CALL :LOG_ENTRY "DEBUG" "Task name: %STARTUP_TASK_NAME%"
+        CALL :LOG_ENTRY "DEBUG" "Script path: %SCRIPT_PATH%"
+        CALL :LOG_ENTRY "DEBUG" "Username: %USERNAME%"
+        CALL :LOG_ENTRY "DEBUG" "Error level: !ERRORLEVEL!"
+    )
+) ELSE (
+    CALL :LOG_ENTRY "INFO" "No pending restart detected. Continuing with maintenance..."
 )
 
 REM -----------------------------------------------------------------------------
@@ -406,104 +489,10 @@ powershell -Command "$ProgressPreference='SilentlyContinue'; try { $services = @
 CALL :LOG_ENTRY "INFO" "Dependency installation phase completed with comprehensive coverage."
 
 REM -----------------------------------------------------------------------------
-REM System Restart Detection - Enhanced for Windows 10/11
+REM Note: System restart detection and startup task management is handled 
+REM in the "Startup Task Management and Restart Detection Logic" section
+REM after monthly task creation (lines ~124-220)
 REM -----------------------------------------------------------------------------
-CALL :LOG_ENTRY "INFO" "Checking for pending system restarts (Windows 10/11 enhanced detection)..."
-SET "RESTART_NEEDED=NO"
-
-REM Check Windows Update reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Windows Update reboot flag detected"
-)
-
-REM Check Component Based Servicing reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Component Based Servicing reboot detected"
-)
-
-REM Check pending file operations
-REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Pending file rename operations detected"
-)
-
-REM Check Windows 10/11 specific restart flags
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Services\Pending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Windows Update services pending restart detected"
-)
-
-REM Check for Windows Feature installation requiring restart
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Component packages pending restart detected"
-)
-
-REM Check SCCM/ConfigMgr client restart flags
-REG QUERY "HKLM\SOFTWARE\Microsoft\SMS\Mobile Client\Reboot Management\RebootData" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "SCCM client restart flag detected"
-)
-
-REM Check Windows Installer restart requirement
-REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations2 >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Windows Installer pending operations detected"
-)
-
-REM Check for pending computer rename (requires restart)
-powershell -Command "try { $current = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name ComputerName).ComputerName; $pending = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name ComputerName).ComputerName; if ($current -ne $pending) { Write-Host '[INFO] Computer name change pending restart'; exit 1 } else { exit 0 } } catch { exit 0 }"
-IF !ERRORLEVEL! NEQ 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Computer name change pending restart detected"
-)
-
-REM Check Windows 10/11 Feature Update restart requirement
-powershell -Command "try { $wu = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update' -ErrorAction SilentlyContinue; if ($wu.PSObject.Properties.Name -contains 'PostRebootReporting') { Write-Host '[INFO] Feature update restart pending'; exit 1 } else { exit 0 } } catch { exit 0 }"
-IF !ERRORLEVEL! NEQ 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Windows Feature Update restart detected"
-)
-
-REM Check for pending driver installations
-powershell -Command "try { $pending = Get-WmiObject -Class Win32_SystemDriver | Where-Object {$_.State -eq 'Stopped' -and $_.StartMode -ne 'Disabled'}; if ($pending) { Write-Host '[INFO] Pending driver installations detected'; exit 1 } else { exit 0 } } catch { exit 0 }"
-IF !ERRORLEVEL! NEQ 0 (
-    SET "RESTART_NEEDED=YES"
-    CALL :LOG_ENTRY "INFO" "Pending driver installations detected"
-)
-
-IF "%RESTART_NEEDED%"=="YES" (
-    CALL :LOG_ENTRY "WARN" "System restart is pending. Creating startup task..."
-    schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-    )
-    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_ENTRY "INFO" "Startup task created. Restarting system in 15 seconds..."
-        CALL :LOG_ENTRY "INFO" "Press Ctrl+C to cancel restart."
-        timeout /t 15
-        shutdown /r /t 5 /c "System restart required for maintenance continuation"
-        EXIT /B 0
-    ) ELSE (
-        CALL :LOG_ENTRY "WARN" "Failed to create startup task. Continuing without restart..."
-        CALL :LOG_ENTRY "DEBUG" "Task name: %STARTUP_TASK_NAME%"
-        CALL :LOG_ENTRY "DEBUG" "Script path: %SCRIPT_PATH%"
-        CALL :LOG_ENTRY "DEBUG" "Username: %USERNAME%"
-        CALL :LOG_ENTRY "DEBUG" "Error level: !ERRORLEVEL!"
-    )
-) ELSE (
-    CALL :LOG_ENTRY "INFO" "No pending restart detected. Continuing..."
-)
 
 REM -----------------------------------------------------------------------------
 REM Repository Download - Simplified
