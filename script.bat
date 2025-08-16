@@ -144,16 +144,16 @@ IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "No existing startup task found."
 )
 
-REM Step 2: Comprehensive restart detection (Windows 10/11 enhanced)
+REM Step 2: Comprehensive restart detection - Using individual checks
 CALL :LOG_ENTRY "INFO" "Step 2: Checking for pending system restarts..."
 SET "RESTART_NEEDED=NO"
-SET "RESTART_REASONS="
+SET "RESTART_COUNT=0"
 
 REM Check Windows Update reboot flag
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=!RESTART_REASONS! WindowsUpdate"
+    SET /A RESTART_COUNT+=1
     CALL :LOG_ENTRY "INFO" "Windows Update reboot flag detected"
 )
 
@@ -161,7 +161,7 @@ REM Check Component Based Servicing reboot flag
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=!RESTART_REASONS! ComponentBasedServicing"
+    SET /A RESTART_COUNT+=1
     CALL :LOG_ENTRY "INFO" "Component Based Servicing reboot detected"
 )
 
@@ -169,7 +169,7 @@ REM Check pending file operations
 REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=!RESTART_REASONS! PendingFileOperations"
+    SET /A RESTART_COUNT+=1
     CALL :LOG_ENTRY "INFO" "Pending file operations detected"
 )
 
@@ -177,47 +177,55 @@ REM Check Windows Feature installation requiring restart
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=!RESTART_REASONS! WindowsFeatures"
+    SET /A RESTART_COUNT+=1
     CALL :LOG_ENTRY "INFO" "Windows Features pending restart detected"
 )
 
-REM Check for computer name change - simplified approach
-powershell -Command "try { $current = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name ComputerName -ErrorAction SilentlyContinue).ComputerName; $active = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name ComputerName -ErrorAction SilentlyContinue).ComputerName; if ($current -ne $active) { exit 1 } else { exit 0 } } catch { exit 0 }"
-IF %ERRORLEVEL% NEQ 0 (
+REM Check for computer name change using simple approach
+FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName" /v ComputerName 2^>nul') DO SET "CURRENT_NAME=%%A"
+FOR /F "tokens=3" %%B IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName" /v ComputerName 2^>nul') DO SET "ACTIVE_NAME=%%B"
+IF NOT "%CURRENT_NAME%"=="%ACTIVE_NAME%" (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=!RESTART_REASONS! ComputerNameChange"
+    SET /A RESTART_COUNT+=1
     CALL :LOG_ENTRY "INFO" "Computer name change pending restart detected"
 )
 
-REM Step 3 & 4: Handle restart if needed
+REM Debug and proceed with restart logic
+CALL :LOG_ENTRY "DEBUG" "RESTART_NEEDED=%RESTART_NEEDED%, RESTART_COUNT=%RESTART_COUNT%"
+
+REM Step 3 & 4: Handle restart using simple conditional logic
 IF "%RESTART_NEEDED%"=="YES" (
-    CALL :LOG_ENTRY "WARN" "System restart required due to:!RESTART_REASONS!"
+    CALL :LOG_ENTRY "WARN" "System restart required - %RESTART_COUNT% conditions detected"
     CALL :LOG_ENTRY "INFO" "Step 3: Creating startup task for post-restart continuation..."
     
-    REM Create startup task with 1-minute delay at user login
-    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F >nul 2>&1
+    REM Show task creation parameters
+    CALL :LOG_ENTRY "DEBUG" "Task name: %STARTUP_TASK_NAME%"
+    CALL :LOG_ENTRY "DEBUG" "Script path: %SCRIPT_PATH%"
+    CALL :LOG_ENTRY "DEBUG" "User: %USERNAME%"
+    
+    REM Create startup task - simplified command
+    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
     IF %ERRORLEVEL% EQU 0 (
-        CALL :LOG_ENTRY "INFO" "Startup task created successfully with 1-minute delay at user login."
-        CALL :LOG_ENTRY "INFO" "Step 4: Initiating system restart..."
+        CALL :LOG_ENTRY "INFO" "Startup task created successfully"
+        CALL :LOG_ENTRY "INFO" "Step 4: Initiating system restart in 20 seconds..."
         ECHO.
-        ECHO ======================================================
+        ECHO =====================================================
         ECHO   SYSTEM RESTART REQUIRED
-        ECHO   Reason(s):!RESTART_REASONS!
+        ECHO   %RESTART_COUNT% restart conditions detected
         ECHO   Restarting in 20 seconds...
         ECHO   Press Ctrl+C to abort restart
-        ECHO ======================================================
+        ECHO =====================================================
         ECHO.
         timeout /t 20
-        shutdown /r /t 5 /c "System restart required for maintenance continuation"
+        shutdown /r /t 5 /c "System restart required for maintenance"
         EXIT /B 0
     ) ELSE (
-        CALL :LOG_ENTRY "ERROR" "Failed to create startup task. Continuing without restart..."
-        CALL :LOG_ENTRY "DEBUG" "Task name: %STARTUP_TASK_NAME%"
-        CALL :LOG_ENTRY "DEBUG" "Script path: %SCRIPT_PATH%"
-        CALL :LOG_ENTRY "DEBUG" "Username: %USERNAME%"
-        CALL :LOG_ENTRY "DEBUG" "Error level: %ERRORLEVEL%"
+        CALL :LOG_ENTRY "ERROR" "Failed to create startup task (Error: %ERRORLEVEL%)"
+        CALL :LOG_ENTRY "INFO" "Continuing without restart..."
     )
 ) ELSE (
+    CALL :LOG_ENTRY "INFO" "No pending restart detected. Continuing with maintenance..."
+)
     CALL :LOG_ENTRY "INFO" "No pending restart detected. Continuing with maintenance..."
 )
 
@@ -385,7 +393,7 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "PHASE 4A: Installing NuGet PackageProvider..."
 
 REM Simple NuGet PackageProvider check and install - Fully unattended
-powershell -Command "try { if (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue) { Write-Host '[INFO] NuGet PackageProvider already available' } else { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $env:PackageManagementProvider_ConfirmInstall = 'Y'; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:$false -SkipPublisherCheck -AllowClobber; Write-Host '[INFO] NuGet PackageProvider installed successfully' } } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' $_.Exception.Message }"
+powershell -Command "try { if (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue) { Write-Host '[INFO] NuGet PackageProvider already available' } else { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $env:PackageManagementProvider_ConfirmInstall = 'Y'; $env:NUGET_XMLDOC_MODE = 'skip'; [System.Environment]::SetEnvironmentVariable('NUGET_XMLDOC_MODE', 'skip', 'Process'); Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -SkipPublisherCheck -AllowClobber -ForceBootstrap; Write-Host '[INFO] NuGet PackageProvider installed successfully' } } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' `$_.Exception.Message }"
 
 CALL :LOG_ENTRY "INFO" "NuGet PackageProvider setup completed."
 
@@ -395,7 +403,7 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "PHASE 4B: Configuring PowerShell Gallery..."
 
 REM Simple PowerShell Gallery configuration
-powershell -Command "try { if ((Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue).InstallationPolicy -eq 'Trusted') { Write-Host '[INFO] PowerShell Gallery already configured as trusted' } else { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted; Write-Host '[INFO] PowerShell Gallery configured as trusted' } } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exception.Message }"
+powershell -Command "try { if ((Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue).InstallationPolicy -eq 'Trusted') { Write-Host '[INFO] PowerShell Gallery already configured as trusted' } else { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -Force; Write-Host '[INFO] PowerShell Gallery configured as trusted' } } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' `$_.Exception.Message }"
 
 CALL :LOG_ENTRY "INFO" "PowerShell Gallery configuration completed."
 
@@ -404,8 +412,8 @@ REM 4C. PSWindowsUpdate Module - PowerShell module for Windows Updates
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "PHASE 4C: Installing PSWindowsUpdate module..."
 
-REM Simple PSWindowsUpdate module check and install
-powershell -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue) { Write-Host '[INFO] PSWindowsUpdate module already available' } else { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:$false -Repository PSGallery; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' $_.Exception.Message }"
+REM Simple PSWindowsUpdate module check and install - Fully unattended
+powershell -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue) { Write-Host '[INFO] PSWindowsUpdate module already available' } else { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `$ProgressPreference = 'SilentlyContinue'; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:`$false -Repository PSGallery -SkipPublisherCheck -AcceptLicense; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' `$_.Exception.Message }"
 
 CALL :LOG_ENTRY "INFO" "PSWindowsUpdate module setup completed."
 
