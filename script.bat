@@ -105,10 +105,10 @@ IF %ERRORLEVEL% EQU 0 (
         /RU SYSTEM ^
         /IT ^
         /F
-    IF !ERRORLEVEL! EQU 0 (
+    IF %ERRORLEVEL% EQU 0 (
         CALL :LOG_ENTRY "INFO" "Monthly scheduled task created successfully."
         schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
+        IF %ERRORLEVEL% EQU 0 (
             CALL :LOG_ENTRY "INFO" "Task verification successful."
             FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
                 CALL :LOG_ENTRY "INFO" "Next scheduled run: %%i"
@@ -117,7 +117,7 @@ IF %ERRORLEVEL% EQU 0 (
             CALL :LOG_ENTRY "WARN" "Task created but verification failed."
         )
     ) ELSE (
-        CALL :LOG_ENTRY "ERROR" "Failed to create monthly scheduled task. Error code: !ERRORLEVEL!"
+        CALL :LOG_ENTRY "ERROR" "Failed to create monthly scheduled task. Error code: %ERRORLEVEL%"
     )
 )
 
@@ -132,10 +132,10 @@ REM ----------------------------------------------------------------------------
 REM Step 1: Check and remove existing startup task if it exists
 CALL :LOG_ENTRY "INFO" "Step 1: Checking startup task '%STARTUP_TASK_NAME%'..."
 schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Existing startup task found. Removing..."
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
+    IF %ERRORLEVEL% EQU 0 (
         CALL :LOG_ENTRY "INFO" "Startup task removed successfully."
     ) ELSE (
         CALL :LOG_ENTRY "WARN" "Failed to remove startup task, but continuing..."
@@ -151,58 +151,58 @@ SET "RESTART_REASONS="
 
 REM Check Windows Update reboot flag
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=%RESTART_REASONS% WindowsUpdate"
+    SET "RESTART_REASONS=!RESTART_REASONS! WindowsUpdate"
     CALL :LOG_ENTRY "INFO" "Windows Update reboot flag detected"
 )
 
 REM Check Component Based Servicing reboot flag
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=%RESTART_REASONS% ComponentBasedServicing"
+    SET "RESTART_REASONS=!RESTART_REASONS! ComponentBasedServicing"
     CALL :LOG_ENTRY "INFO" "Component Based Servicing reboot detected"
 )
 
 REM Check pending file operations
 REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=%RESTART_REASONS% PendingFileOperations"
+    SET "RESTART_REASONS=!RESTART_REASONS! PendingFileOperations"
     CALL :LOG_ENTRY "INFO" "Pending file operations detected"
 )
 
 REM Check Windows Feature installation requiring restart
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=%RESTART_REASONS% WindowsFeatures"
+    SET "RESTART_REASONS=!RESTART_REASONS! WindowsFeatures"
     CALL :LOG_ENTRY "INFO" "Windows Features pending restart detected"
 )
 
 REM Check for computer name change - simplified approach
 powershell -Command "try { $current = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name ComputerName -ErrorAction SilentlyContinue).ComputerName; $active = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name ComputerName -ErrorAction SilentlyContinue).ComputerName; if ($current -ne $active) { exit 1 } else { exit 0 } } catch { exit 0 }"
-IF !ERRORLEVEL! NEQ 0 (
+IF %ERRORLEVEL% NEQ 0 (
     SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASONS=%RESTART_REASONS% ComputerNameChange"
+    SET "RESTART_REASONS=!RESTART_REASONS! ComputerNameChange"
     CALL :LOG_ENTRY "INFO" "Computer name change pending restart detected"
 )
 
 REM Step 3 & 4: Handle restart if needed
 IF "%RESTART_NEEDED%"=="YES" (
-    CALL :LOG_ENTRY "WARN" "System restart required due to:%RESTART_REASONS%"
+    CALL :LOG_ENTRY "WARN" "System restart required due to:!RESTART_REASONS!"
     CALL :LOG_ENTRY "INFO" "Step 3: Creating startup task for post-restart continuation..."
     
     REM Create startup task with 1-minute delay at user login
     schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
+    IF %ERRORLEVEL% EQU 0 (
         CALL :LOG_ENTRY "INFO" "Startup task created successfully with 1-minute delay at user login."
         CALL :LOG_ENTRY "INFO" "Step 4: Initiating system restart..."
         ECHO.
         ECHO ======================================================
         ECHO   SYSTEM RESTART REQUIRED
-        ECHO   Reason(s):%RESTART_REASONS%
+        ECHO   Reason(s):!RESTART_REASONS!
         ECHO   Restarting in 20 seconds...
         ECHO   Press Ctrl+C to abort restart
         ECHO ======================================================
@@ -215,7 +215,7 @@ IF "%RESTART_NEEDED%"=="YES" (
         CALL :LOG_ENTRY "DEBUG" "Task name: %STARTUP_TASK_NAME%"
         CALL :LOG_ENTRY "DEBUG" "Script path: %SCRIPT_PATH%"
         CALL :LOG_ENTRY "DEBUG" "Username: %USERNAME%"
-        CALL :LOG_ENTRY "DEBUG" "Error level: !ERRORLEVEL!"
+        CALL :LOG_ENTRY "DEBUG" "Error level: %ERRORLEVEL%"
     )
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "No pending restart detected. Continuing with maintenance..."
@@ -252,7 +252,7 @@ CALL :LOG_ENTRY "INFO" "Checking Visual C++ Redistributable 2015-2022 x64..."
 
 REM Simple check using registry
 REG QUERY "HKLM\SOFTWARE\Classes\Installer\Dependencies" /s | FIND "Microsoft Visual C++ 2015-2022 Redistributable" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Visual C++ Redistributable is already installed, skipping installation."
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "Installing Visual C++ Redistributable..."
@@ -282,7 +282,7 @@ CALL :LOG_ENTRY "INFO" "PHASE 2A: Installing Windows Package Manager (Winget)...
 
 REM Simple Winget check and install
 winget --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Winget is already installed and functional."
     SET "WINGET_AVAILABLE=YES"
 ) ELSE (
@@ -294,7 +294,7 @@ IF !ERRORLEVEL! EQU 0 (
     REM Check if Winget is now available
     timeout /t 3 /nobreak >nul
     winget --version >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
+    IF %ERRORLEVEL% EQU 0 (
         CALL :LOG_ENTRY "INFO" "Winget is now available and functional."
         SET "WINGET_AVAILABLE=YES"
     ) ELSE (
@@ -310,7 +310,7 @@ CALL :LOG_ENTRY "INFO" "Validating Winget functionality..."
 
 REM Simple validation
 winget source list >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Winget validation passed - ready for package installations."
     SET "WINGET_AVAILABLE=YES"
 ) ELSE (
@@ -333,7 +333,7 @@ CALL :LOG_ENTRY "INFO" "PHASE 3A: Installing PowerShell 7..."
 
 REM Simple PowerShell 7 check and install
 pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
     CALL :LOG_ENTRY "INFO" "PowerShell 7 already available: !PS7_VERSION!"
     SET "PS7_AVAILABLE=YES"
@@ -344,7 +344,7 @@ IF !ERRORLEVEL! EQU 0 (
     IF "%WINGET_AVAILABLE%"=="YES" (
         CALL :LOG_ENTRY "INFO" "Attempting PowerShell 7 installation via Winget..."
         winget install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
+        IF %ERRORLEVEL% EQU 0 (
             CALL :LOG_ENTRY "INFO" "PowerShell 7 installed successfully via Winget."
         ) ELSE (
             CALL :LOG_ENTRY "WARN" "Winget install failed, trying direct download..."
@@ -359,7 +359,7 @@ IF !ERRORLEVEL! EQU 0 (
     SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
     timeout /t 3 /nobreak >nul
     pwsh.exe -Version >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
+    IF %ERRORLEVEL% EQU 0 (
         FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
         CALL :LOG_ENTRY "INFO" "PowerShell 7 is now functional: !PS7_VERSION!"
         SET "PS7_AVAILABLE=YES"
@@ -416,7 +416,7 @@ CALL :LOG_ENTRY "INFO" "Installing Chocolatey package manager..."
 
 REM Simple Chocolatey check and install
 choco --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Chocolatey is already installed."
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "Installing Chocolatey..."
@@ -427,7 +427,7 @@ IF !ERRORLEVEL! EQU 0 (
     REM Update PATH and verify
     SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
     choco --version >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
+    IF %ERRORLEVEL% EQU 0 (
         CALL :LOG_ENTRY "INFO" "Chocolatey installation completed successfully."
     ) ELSE (
         CALL :LOG_ENTRY "WARN" "Chocolatey installation failed, but continuing..."
@@ -504,9 +504,9 @@ CALL :LOG_ENTRY "INFO" "Downloading latest repository..."
 
 REM Simple repository download
 powershell -Command "$ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing -TimeoutSec 60; Write-Host '[INFO] Repository downloaded successfully'; exit 0 } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
-SET "REPO_DOWNLOAD_EXIT=!ERRORLEVEL!"
+SET "REPO_DOWNLOAD_EXIT=%ERRORLEVEL%"
 
-IF !REPO_DOWNLOAD_EXIT! NEQ 0 (
+IF %REPO_DOWNLOAD_EXIT% NEQ 0 (
     CALL :LOG_ENTRY "ERROR" "Failed to download repository. Check internet connection."
     pause
     EXIT /B 2
@@ -544,9 +544,9 @@ CALL :LOG_ENTRY "INFO" "Extracting repository to clean folder..."
 
 REM Simple repository extraction
 powershell -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%SCRIPT_DIR%'); Write-Host '[INFO] Repository extracted successfully'; exit 0 } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
-SET "EXTRACT_EXIT=!ERRORLEVEL!"
+SET "EXTRACT_EXIT=%ERRORLEVEL%"
 
-IF !EXTRACT_EXIT! NEQ 0 (
+IF %EXTRACT_EXIT% NEQ 0 (
     CALL :LOG_ENTRY "ERROR" "Failed to extract repository."
     pause
     EXIT /B 3
@@ -576,7 +576,7 @@ CALL :LOG_ENTRY "INFO" "Checking PowerShell 7 availability for script execution.
 SET "PS7_AVAILABLE=NO"
 
 pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     SET "PS7_AVAILABLE=YES"
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
     CALL :LOG_ENTRY "INFO" "PowerShell 7 found: !PS7_VERSION!"
@@ -590,7 +590,7 @@ SET "DEPENDENCY_WARNINGS=0"
 
 REM Validate Winget
 winget --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "✓ Winget is available"
 ) ELSE (
     CALL :LOG_ENTRY "WARN" "✗ Winget not available - some installations may fail"
@@ -599,7 +599,7 @@ IF !ERRORLEVEL! EQU 0 (
 
 REM Validate Chocolatey
 choco --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "✓ Chocolatey is available"
 ) ELSE (
     CALL :LOG_ENTRY "WARN" "✗ Chocolatey not available - some installations may fail"
@@ -618,8 +618,8 @@ ECHO ========================================
 REM Create temp script for comprehensive dependency check
 powershell -Command "try { Write-Host ' '; Write-Host '[INFO] === CRITICAL DEPENDENCIES STATUS ==='; if (Get-Command winget -ErrorAction SilentlyContinue) { try { $wingetVer = winget --version 2>$null; if ($wingetVer) { Write-Host '[INFO] ✓ Winget: Available (version:' $wingetVer.Trim() ')' } else { Write-Host '[WARN] ✗ Winget: Not responding properly' } } catch { Write-Host '[WARN] ✗ Winget: Available but not functional' } } else { Write-Host '[WARN] ✗ Winget: Not available' }; if (Get-Command pwsh -ErrorAction SilentlyContinue) { $ps7Ver = pwsh --version 2>$null; Write-Host '[INFO] ✓ PowerShell 7:' $ps7Ver } else { Write-Host '[WARN] ✗ PowerShell 7: Not available' }; if (Get-Command choco -ErrorAction SilentlyContinue) { $chocoVer = choco --version 2>$null; Write-Host '[INFO] ✓ Chocolatey:' $chocoVer } else { Write-Host '[INFO] ○ Chocolatey: Not available (optional)' }; Write-Host '[INFO] === DEPENDENCY CHECK COMPLETE ==='; Write-Host ' ' } catch { Write-Host '[WARN] Dependency summary check failed' }"
 
-IF !DEPENDENCY_WARNINGS! GTR 0 (
-    ECHO [%TIME%] [WARN] Found !DEPENDENCY_WARNINGS! dependency warnings. Script will use graceful degradation.
+IF %DEPENDENCY_WARNINGS% GTR 0 (
+    ECHO [%TIME%] [WARN] Found %DEPENDENCY_WARNINGS% dependency warnings. Script will use graceful degradation.
 ) ELSE (
     ECHO [%TIME%] [INFO] ✓ All critical dependencies verified successfully.
 )
@@ -664,13 +664,13 @@ IF "%PS7_AVAILABLE%"=="YES" (
     ECHO.
     REM Launch with visible window and wait for completion
     START /WAIT "Maintenance Script - PowerShell 7" pwsh.exe -ExecutionPolicy Bypass -NoExit -File "%PS1_PATH%"
-    SET "LAUNCH_EXIT=!ERRORLEVEL!"
-    IF !LAUNCH_EXIT! NEQ 0 (
-        CALL :LOG_ENTRY "ERROR" "PowerShell script failed with error code !LAUNCH_EXIT!"
+    SET "LAUNCH_EXIT=%ERRORLEVEL%"
+    IF %LAUNCH_EXIT% NEQ 0 (
+        CALL :LOG_ENTRY "ERROR" "PowerShell script failed with error code %LAUNCH_EXIT%"
         ECHO.
         ECHO Press any key to exit...
         pause >nul
-        exit /b !LAUNCH_EXIT!
+        exit /b %LAUNCH_EXIT%
     )
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "Using Windows PowerShell environment..."
@@ -681,13 +681,13 @@ IF "%PS7_AVAILABLE%"=="YES" (
     ECHO.
     REM Launch with visible window and wait for completion
     START /WAIT "Maintenance Script - Windows PowerShell" powershell.exe -ExecutionPolicy Bypass -NoExit -File "%PS1_PATH%"
-    SET "LAUNCH_EXIT=!ERRORLEVEL!"
-    IF !LAUNCH_EXIT! NEQ 0 (
-        CALL :LOG_ENTRY "ERROR" "PowerShell script failed with error code !LAUNCH_EXIT!"
+    SET "LAUNCH_EXIT=%ERRORLEVEL%"
+    IF %LAUNCH_EXIT% NEQ 0 (
+        CALL :LOG_ENTRY "ERROR" "PowerShell script failed with error code %LAUNCH_EXIT%"
         ECHO.
         ECHO Press any key to exit...
         pause >nul
-        exit /b !LAUNCH_EXIT!
+        exit /b %LAUNCH_EXIT%
     )
 )
 
@@ -716,15 +716,15 @@ ECHO.
 REM Countdown loop with abort detection
 FOR /L %%i IN (20,-1,1) DO (
     SET "COUNTDOWN=%%i"
-    IF !COUNTDOWN! LSS 10 (
-        ECHO Closing in 0!COUNTDOWN! seconds... ^(Press any key to abort^)
+    IF %COUNTDOWN% LSS 10 (
+        ECHO Closing in 0%COUNTDOWN% seconds... ^(Press any key to abort^)
     ) ELSE (
-        ECHO Closing in !COUNTDOWN! seconds... ^(Press any key to abort^)
+        ECHO Closing in %COUNTDOWN% seconds... ^(Press any key to abort^)
     )
     
     REM Check for key press with 1 second timeout
     timeout /t 1 /nobreak >nul 2>&1
-    IF !ERRORLEVEL! NEQ 0 (
+    IF %ERRORLEVEL% NEQ 0 (
         ECHO.
         ECHO [INFO] Countdown aborted by user.
         ECHO [INFO] Window will remain open for manual review.
