@@ -186,6 +186,28 @@ $global:ScriptTasks = @(
         }; Description = 'Disable telemetry, privacy features, and configure browser privacy' 
     },
 
+    # Task: TaskbarOptimization
+    # Purpose: Optimize Windows interface by hiding taskbar elements and disabling web search in Start menu.
+    # Environment: Windows 10/11, any user context, registry modification access
+    # Logic: Registry-based taskbar and search control, Windows version detection, user experience optimization
+    # Dependencies: Registry access, Windows Explorer restart capability
+    @{ Name = 'TaskbarOptimization'; Function = { 
+            Write-Log 'Starting Taskbar and Start Menu Optimization task.' 'INFO'
+            Write-Host 'Starting Taskbar and Start Menu Optimization task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipTaskbarOptimization) { 
+                Optimize-Taskbar
+                Write-Log 'Completed Taskbar and Start Menu Optimization task.' 'INFO'
+                Write-Host 'Completed Taskbar and Start Menu Optimization task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'Taskbar and Start Menu Optimization skipped by configuration.' 'INFO'
+                Write-Host 'Taskbar and Start Menu Optimization skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
+        }; Description = 'Hide taskbar elements and disable web search for local-only Start menu search' 
+    },
+
     # Task: SecurityHardening
     # Purpose: Enable essential Windows security features while preserving SMB and authentication.
     # Environment: Windows 10/11, Administrator required, security configuration access
@@ -503,6 +525,7 @@ $global:Config = @{
     SkipSystemRestore     = $false
     SkipEventLogAnalysis  = $false
     SkipSecurityHardening = $false
+    SkipTaskbarOptimization = $false
     SkipPendingRestartCheck = $false
     CustomEssentialApps   = @()
     CustomBloatwareList   = @()
@@ -520,6 +543,7 @@ if (Test-Path $configPath) {
         if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
         if ($config.SkipEventLogAnalysis) { $global:Config.SkipEventLogAnalysis = $config.SkipEventLogAnalysis }
         if ($config.SkipSecurityHardening) { $global:Config.SkipSecurityHardening = $config.SkipSecurityHardening }
+        if ($config.SkipTaskbarOptimization) { $global:Config.SkipTaskbarOptimization = $config.SkipTaskbarOptimization }
         if ($config.SkipPendingRestartCheck) { $global:Config.SkipPendingRestartCheck = $config.SkipPendingRestartCheck }
         if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
         if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
@@ -3618,6 +3642,224 @@ function Disable-Telemetry {
 }
 
 ### AI_MAINTENANCE_TASK: Windows Security Hardening
+# AI_TASK_ID: Optimize-Taskbar
+# AI_PURPOSE: Optimize Windows interface by hiding taskbar elements and disabling web search in Start menu
+# AI_ENVIRONMENT: Windows 10/11, any user context, registry modification access
+# AI_LOGIC: Registry-based taskbar and search control, Windows version detection, Explorer restart
+# AI_DEPENDENCIES: Registry access, Windows Explorer restart capability
+function Optimize-Taskbar {
+    # ===============================
+    # AI_TASK_HEADER: TaskbarOptimization (Interface Cleanup)
+    # ===============================
+    # AI_PURPOSE: Hide taskbar elements and disable web search for cleaner, privacy-focused interface
+    # AI_ENVIRONMENT: Windows 10/11, any user context, registry-based configuration
+    # AI_LOGIC: Registry modifications for taskbar elements, Start menu search, Windows version detection
+    # AI_PERFORMANCE: Fast registry operations, single Explorer restart
+    # ===============================
+    Write-Log "Starting Taskbar and Start Menu Optimization - Enhanced Interface Cleanup" 'INFO'
+    
+    $taskbarActions = 0
+    $taskbarErrors = 0
+    $taskbarResults = @()
+    
+    # Detect Windows version for version-specific optimizations
+    $osVersion = [Environment]::OSVersion.Version
+    $isWindows11 = $osVersion.Build -ge 22000
+    $isWindows10 = $osVersion.Major -eq 10 -and $osVersion.Build -lt 22000
+    
+    Write-Log "Detected Windows version: $($osVersion.ToString()) (Windows 11: $isWindows11, Windows 10: $isWindows10)" 'INFO'
+    
+    # 1. Hide Taskbar Search Bar (Works on both Windows 10 and 11)
+    Write-Log "Hiding taskbar search bar..." 'INFO'
+    try {
+        $searchRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search"
+        if (-not (Test-Path $searchRegPath)) {
+            New-Item -Path $searchRegPath -Force | Out-Null
+        }
+        
+        # Set SearchboxTaskbarMode to 0 (hidden)
+        Set-ItemProperty -Path $searchRegPath -Name "SearchboxTaskbarMode" -Value 0 -Type DWord -Force
+        
+        Write-Host "✓ Taskbar search bar hidden" -ForegroundColor Green
+        Write-Log "Taskbar search bar hidden successfully" 'INFO'
+        $taskbarResults += "Search Bar: HIDDEN"
+        $taskbarActions++
+    }
+    catch {
+        Write-Host "✗ Failed to hide taskbar search bar: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to hide taskbar search bar: $_" 'ERROR'
+        $taskbarResults += "Search Bar: FAILED"
+        $taskbarErrors++
+    }
+    
+    # 2. Hide Task View Button (Works on both Windows 10 and 11)
+    Write-Log "Hiding task view button..." 'INFO'
+    try {
+        $taskViewRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+        if (-not (Test-Path $taskViewRegPath)) {
+            New-Item -Path $taskViewRegPath -Force | Out-Null
+        }
+        
+        # Set ShowTaskViewButton to 0 (hidden)
+        Set-ItemProperty -Path $taskViewRegPath -Name "ShowTaskViewButton" -Value 0 -Type DWord -Force
+        
+        Write-Host "✓ Task view button hidden" -ForegroundColor Green
+        Write-Log "Task view button hidden successfully" 'INFO'
+        $taskbarResults += "Task View: HIDDEN"
+        $taskbarActions++
+    }
+    catch {
+        Write-Host "✗ Failed to hide task view button: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to hide task view button: $_" 'ERROR'
+        $taskbarResults += "Task View: FAILED"
+        $taskbarErrors++
+    }
+    
+    # 3. Hide Widgets (Windows 11 specific)
+    if ($isWindows11) {
+        Write-Log "Hiding widgets button (Windows 11)..." 'INFO'
+        try {
+            $widgetsRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+            if (-not (Test-Path $widgetsRegPath)) {
+                New-Item -Path $widgetsRegPath -Force | Out-Null
+            }
+            
+            # Set TaskbarDa to 0 (widgets hidden)
+            Set-ItemProperty -Path $widgetsRegPath -Name "TaskbarDa" -Value 0 -Type DWord -Force
+            
+            Write-Host "✓ Widgets button hidden (Windows 11)" -ForegroundColor Green
+            Write-Log "Widgets button hidden successfully (Windows 11)" 'INFO'
+            $taskbarResults += "Widgets: HIDDEN"
+            $taskbarActions++
+        }
+        catch {
+            Write-Host "✗ Failed to hide widgets button: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "Failed to hide widgets button: $_" 'ERROR'
+            $taskbarResults += "Widgets: FAILED"
+            $taskbarErrors++
+        }
+    }
+    else {
+        Write-Log "Widgets not applicable for Windows 10" 'INFO'
+        $taskbarResults += "Widgets: NOT APPLICABLE (Windows 10)"
+    }
+    
+    # 4. Additional Windows 11 Taskbar Optimizations
+    if ($isWindows11) {
+        # Hide Chat/Meet Now button
+        Write-Log "Hiding chat button (Windows 11)..." 'INFO'
+        try {
+            $chatRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+            Set-ItemProperty -Path $chatRegPath -Name "TaskbarMn" -Value 0 -Type DWord -Force
+            
+            Write-Host "✓ Chat button hidden (Windows 11)" -ForegroundColor Green
+            Write-Log "Chat button hidden successfully (Windows 11)" 'INFO'
+            $taskbarResults += "Chat Button: HIDDEN"
+            $taskbarActions++
+        }
+        catch {
+            Write-Host "✗ Failed to hide chat button: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "Failed to hide chat button: $_" 'ERROR'
+            $taskbarResults += "Chat Button: FAILED"
+            $taskbarErrors++
+        }
+    }
+    
+    # 5. Disable Web Search in Start Menu (Local Search Only)
+    Write-Log "Disabling web search in Start menu (local search only)..." 'INFO'
+    try {
+        $webSearchRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search"
+        if (-not (Test-Path $webSearchRegPath)) {
+            New-Item -Path $webSearchRegPath -Force | Out-Null
+        }
+        
+        # Disable Bing search and web search in Start menu
+        Set-ItemProperty -Path $webSearchRegPath -Name "BingSearchEnabled" -Value 0 -Type DWord -Force
+        Set-ItemProperty -Path $webSearchRegPath -Name "CortanaConsent" -Value 0 -Type DWord -Force
+        
+        # Additional registry path for comprehensive web search disabling
+        $policyRegPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search"
+        if (-not (Test-Path $policyRegPath)) {
+            New-Item -Path $policyRegPath -Force | Out-Null
+        }
+        Set-ItemProperty -Path $policyRegPath -Name "DisableWebSearch" -Value 1 -Type DWord -Force
+        
+        # User-specific web search disable
+        $userSearchRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\SearchSettings"
+        if (-not (Test-Path $userSearchRegPath)) {
+            New-Item -Path $userSearchRegPath -Force | Out-Null
+        }
+        Set-ItemProperty -Path $userSearchRegPath -Name "IsAADCloudSearchEnabled" -Value 0 -Type DWord -Force
+        Set-ItemProperty -Path $userSearchRegPath -Name "IsDeviceSearchHistoryEnabled" -Value 0 -Type DWord -Force
+        Set-ItemProperty -Path $userSearchRegPath -Name "IsMSACloudSearchEnabled" -Value 0 -Type DWord -Force
+        
+        Write-Host "✓ Start menu web search disabled (local search only)" -ForegroundColor Green
+        Write-Log "Start menu web search disabled successfully" 'INFO'
+        $taskbarResults += "Start Menu Web Search: DISABLED"
+        $taskbarActions++
+    }
+    catch {
+        Write-Host "✗ Failed to disable Start menu web search: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to disable Start menu web search: $_" 'ERROR'
+        $taskbarResults += "Start Menu Web Search: FAILED"
+        $taskbarErrors++
+    }
+
+    # 6. Restart Windows Explorer to apply changes
+    Write-Log "Restarting Windows Explorer to apply taskbar and search changes..." 'INFO'
+    try {
+        $explorerProcesses = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
+        if ($explorerProcesses) {
+            Write-Log "Stopping $($explorerProcesses.Count) Explorer processes..." 'VERBOSE'
+            Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+        
+        # Start Explorer if it's not running
+        $explorerRunning = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
+        if (-not $explorerRunning) {
+            Write-Log "Starting Windows Explorer..." 'VERBOSE'
+            Start-Process "explorer.exe"
+            Start-Sleep -Seconds 3
+        }
+        
+        Write-Host "✓ Windows Explorer restarted to apply all changes" -ForegroundColor Green
+        Write-Log "Windows Explorer restarted successfully" 'INFO'
+        $taskbarResults += "Explorer Restart: SUCCESS"
+        $taskbarActions++
+    }
+    catch {
+        Write-Host "✗ Failed to restart Windows Explorer: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to restart Windows Explorer: $_" 'ERROR'
+        $taskbarResults += "Explorer Restart: FAILED"
+        $taskbarErrors++
+    }
+    
+    # Results Summary
+    Write-Log "Interface optimization completed: $taskbarActions actions, $taskbarErrors errors" 'INFO'
+    Write-Host "📊 Interface Optimization Summary:" -ForegroundColor Cyan
+    foreach ($result in $taskbarResults) {
+        if ($result -match "FAILED") {
+            Write-Host "  ✗ $result" -ForegroundColor Red
+        }
+        elseif ($result -match "NOT APPLICABLE") {
+            Write-Host "  ○ $result" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "  ✓ $result" -ForegroundColor Green
+        }
+    }
+    
+    if ($taskbarActions -gt 0) {
+        Write-Log "Interface optimization completed successfully with $taskbarActions optimizations applied" 'INFO'
+        Write-Host "✅ Windows interface optimized: cleaner taskbar and local-only Start menu search" -ForegroundColor Green
+    }
+    else {
+        Write-Log "Interface optimization completed with no changes applied" 'WARN'
+        Write-Host "⚠️ No interface optimizations were applied" -ForegroundColor Yellow
+    }
+}
+
 # AI_TASK_ID: Enable-SecurityHardening
 # AI_PURPOSE: Enable essential Windows security features while preserving SMB shares and user authentication
 # AI_ENVIRONMENT: Windows 10/11, Administrator required, security configuration access
