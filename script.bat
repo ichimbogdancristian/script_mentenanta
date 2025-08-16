@@ -2,7 +2,27 @@
 REM ============================================================================
 REM  script_mentenanta - Windows Maintenance Automation Launcher (Refactored)
 REM  Purpose: Entry point for all maintenance operations. Handles dependency
-REM           installation, scheduled task setup, repo download/update, and
+REM    REM Step 2: Check and install Microsoft.UI.Xaml framework (required for Winget)
+    CALL :LOG_ENTRY "INFO" "Checking Microsoft.UI.Xaml.2.8 framework..."
+    
+    REM Create temp script for XAML check
+    SET "TEMP_PS1=%TEMP%\check_xaml.ps1"
+    ECHO try { > "%TEMP_PS1%"
+    ECHO     if (Get-AppxPackage -Name '*Microsoft.UI.Xaml*' -ErrorAction SilentlyContinue ^| Where-Object { $_.Version -ge '2.8' }) { >> "%TEMP_PS1%"
+    ECHO         Write-Host '[INFO] Microsoft.UI.Xaml framework is already installed' >> "%TEMP_PS1%"
+    ECHO         exit 0 >> "%TEMP_PS1%"
+    ECHO     } else { >> "%TEMP_PS1%"
+    ECHO         Write-Host '[INFO] Microsoft.UI.Xaml framework not found, installing...' >> "%TEMP_PS1%"
+    ECHO         exit 1 >> "%TEMP_PS1%"
+    ECHO     } >> "%TEMP_PS1%"
+    ECHO } catch { >> "%TEMP_PS1%"
+    ECHO     Write-Host '[WARN] AppxPackage check failed' >> "%TEMP_PS1%"
+    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO } >> "%TEMP_PS1%"
+    
+    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    SET "XAML_CHECK_EXIT=!ERRORLEVEL!"
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1        installation, scheduled task setup, repo download/update, and
 REM           launches PowerShell orchestrator (script.ps1).
 REM  Environment: Requires Administrator, Windows 10/11, PowerShell 5.1+.
 REM  All actions are logged to console and maintenance.log file.
@@ -189,15 +209,48 @@ IF !ERRORLEVEL! NEQ 0 (
     
     REM Step 1: Check and install Visual C++ Redistributables (required for Winget)
     CALL :LOG_ENTRY "INFO" "Checking Visual C++ Redistributable 2015-2022 x64..."
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { if (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\Installer\Dependencies\{*}' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like '*Microsoft Visual C++ 2015-2022 Redistributable*x64*' }) { Write-Host '[INFO] Visual C++ Redistributable x64 is already installed'; exit 0 } else { Write-Host '[INFO] Visual C++ Redistributable x64 not found, installing...'; exit 1 } } catch { Write-Host '[WARN] Registry check failed'; exit 1 }"
-    IF !ERRORLEVEL! NEQ 0 (
+    
+    REM Create temp script for VC++ check to avoid CMD variable expansion issues
+    SET "TEMP_PS1=%TEMP%\check_vcredist.ps1"
+    ECHO try { > "%TEMP_PS1%"
+    ECHO     if (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\Installer\Dependencies\{*}' -ErrorAction SilentlyContinue ^| Where-Object { $_.DisplayName -like '*Microsoft Visual C++ 2015-2022 Redistributable*x64*' }) { >> "%TEMP_PS1%"
+    ECHO         Write-Host '[INFO] Visual C++ Redistributable x64 is already installed' >> "%TEMP_PS1%"
+    ECHO         exit 0 >> "%TEMP_PS1%"
+    ECHO     } else { >> "%TEMP_PS1%"
+    ECHO         Write-Host '[INFO] Visual C++ Redistributable x64 not found, installing...' >> "%TEMP_PS1%"
+    ECHO         exit 1 >> "%TEMP_PS1%"
+    ECHO     } >> "%TEMP_PS1%"
+    ECHO } catch { >> "%TEMP_PS1%"
+    ECHO     Write-Host '[WARN] Registry check failed' >> "%TEMP_PS1%"
+    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO } >> "%TEMP_PS1%"
+    
+    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    SET "VC_CHECK_EXIT=!ERRORLEVEL!"
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    IF !VC_CHECK_EXIT! NEQ 0 (
         SET "VCREDIST_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
         SET "VCREDIST_FILE=%TEMP%\vc_redist_x64.exe"
         
         CALL :LOG_ENTRY "INFO" "Downloading Visual C++ Redistributable..."
-        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%VCREDIST_URL%' -OutFile '%VCREDIST_FILE%' -UseBasicParsing -TimeoutSec 60; Write-Host '[INFO] VC++ Redistributable downloaded successfully'; exit 0 } catch { Write-Host '[ERROR] VC++ download failed:' $_.Exception.Message; exit 1 }"
         
-        IF !ERRORLEVEL! EQU 0 (
+        REM Create temp script for VC++ download
+        SET "TEMP_PS1=%TEMP%\download_vcredist.ps1"
+        ECHO $ProgressPreference = 'SilentlyContinue' > "%TEMP_PS1%"
+        ECHO [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+        ECHO try { >> "%TEMP_PS1%"
+        ECHO     Invoke-WebRequest -Uri '%VCREDIST_URL%' -OutFile '%VCREDIST_FILE%' -UseBasicParsing -TimeoutSec 60 >> "%TEMP_PS1%"
+        ECHO     Write-Host '[INFO] VC++ Redistributable downloaded successfully' >> "%TEMP_PS1%"
+        ECHO     exit 0 >> "%TEMP_PS1%"
+        ECHO } catch { >> "%TEMP_PS1%"
+        ECHO     Write-Host '[ERROR] VC++ download failed:' $_.Exception.Message >> "%TEMP_PS1%"
+        ECHO     exit 1 >> "%TEMP_PS1%"
+        ECHO } >> "%TEMP_PS1%"
+        
+        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+        SET "DOWNLOAD_EXIT=!ERRORLEVEL!"
+        DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+        IF !DOWNLOAD_EXIT! EQU 0 (
             IF EXIST "%VCREDIST_FILE%" (
                 CALL :LOG_ENTRY "INFO" "Installing Visual C++ Redistributable silently..."
                 START /WAIT "" "%VCREDIST_FILE%" /quiet /norestart
@@ -214,23 +267,64 @@ IF !ERRORLEVEL! NEQ 0 (
         ) ELSE (
             CALL :LOG_ENTRY "WARN" "Visual C++ Redistributable download failed, but continuing..."
         )
+    ) ELSE (
+        CALL :LOG_ENTRY "INFO" "Visual C++ Redistributable is already installed."
     )
     
     REM Step 2: Check and install Microsoft.UI.Xaml.2.8 framework (required for Winget)
     CALL :LOG_ENTRY "INFO" "Checking Microsoft.UI.Xaml.2.8 framework..."
     powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { if (Get-AppxPackage -Name '*Microsoft.UI.Xaml*' -ErrorAction SilentlyContinue | Where-Object { $_.Version -ge '2.8' }) { Write-Host '[INFO] Microsoft.UI.Xaml framework is already installed'; exit 0 } else { Write-Host '[INFO] Microsoft.UI.Xaml framework not found, installing...'; exit 1 } } catch { Write-Host '[WARN] AppxPackage check failed'; exit 1 }"
-    IF !ERRORLEVEL! NEQ 0 (
+    IF !XAML_CHECK_EXIT! NEQ 0 (
         SET "XAML_URL=https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6"
         SET "XAML_FILE=%TEMP%\Microsoft.UI.Xaml.2.8.nupkg"
         
         CALL :LOG_ENTRY "INFO" "Downloading Microsoft.UI.Xaml framework..."
-        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%XAML_URL%' -OutFile '%XAML_FILE%' -UseBasicParsing -TimeoutSec 60; Write-Host '[INFO] Microsoft.UI.Xaml framework downloaded successfully'; exit 0 } catch { Write-Host '[ERROR] Microsoft.UI.Xaml download failed:' $_.Exception.Message; exit 1 }"
         
-        IF !ERRORLEVEL! EQU 0 (
+        REM Create temp script for XAML download
+        SET "TEMP_PS1=%TEMP%\download_xaml.ps1"
+        ECHO $ProgressPreference = 'SilentlyContinue' > "%TEMP_PS1%"
+        ECHO [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+        ECHO try { >> "%TEMP_PS1%"
+        ECHO     Invoke-WebRequest -Uri '%XAML_URL%' -OutFile '%XAML_FILE%' -UseBasicParsing -TimeoutSec 60 >> "%TEMP_PS1%"
+        ECHO     Write-Host '[INFO] Microsoft.UI.Xaml framework downloaded successfully' >> "%TEMP_PS1%"
+        ECHO     exit 0 >> "%TEMP_PS1%"
+        ECHO } catch { >> "%TEMP_PS1%"
+        ECHO     Write-Host '[ERROR] Microsoft.UI.Xaml download failed:' $_.Exception.Message >> "%TEMP_PS1%"
+        ECHO     exit 1 >> "%TEMP_PS1%"
+        ECHO } >> "%TEMP_PS1%"
+        
+        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+        SET "XAML_DOWNLOAD_EXIT=!ERRORLEVEL!"
+        DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+        
+        IF !XAML_DOWNLOAD_EXIT! EQU 0 (
             IF EXIST "%XAML_FILE%" (
                 CALL :LOG_ENTRY "INFO" "Installing Microsoft.UI.Xaml framework..."
-                powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $tempDir = '%TEMP%\xaml_extract'; if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }; New-Item -ItemType Directory -Path $tempDir -Force | Out-Null; Expand-Archive -Path '%XAML_FILE%' -DestinationPath $tempDir -Force; $appxPath = Get-ChildItem -Path $tempDir -Recurse -Filter '*.appx' | Where-Object { $_.Name -like '*x64*' } | Select-Object -First 1; if ($appxPath) { Add-AppxPackage -Path $appxPath.FullName -ErrorAction Stop; Write-Host '[INFO] Microsoft.UI.Xaml framework installed successfully'; exit 0 } else { Write-Host '[WARN] Could not find x64 appx package in framework'; exit 1 } } catch { Write-Host '[WARN] Microsoft.UI.Xaml installation failed:' $_.Exception.Message; exit 1 }"
+                
+                REM Create temp script for XAML installation
+                SET "TEMP_PS1=%TEMP%\install_xaml.ps1"
+                ECHO try { > "%TEMP_PS1%"
+                ECHO     $tempDir = '%TEMP%\xaml_extract' >> "%TEMP_PS1%"
+                ECHO     if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force } >> "%TEMP_PS1%"
+                ECHO     New-Item -ItemType Directory -Path $tempDir -Force ^| Out-Null >> "%TEMP_PS1%"
+                ECHO     Expand-Archive -Path '%XAML_FILE%' -DestinationPath $tempDir -Force >> "%TEMP_PS1%"
+                ECHO     $appxPath = Get-ChildItem -Path $tempDir -Recurse -Filter '*.appx' ^| Where-Object { $_.Name -like '*x64*' } ^| Select-Object -First 1 >> "%TEMP_PS1%"
+                ECHO     if ($appxPath) { >> "%TEMP_PS1%"
+                ECHO         Add-AppxPackage -Path $appxPath.FullName -ErrorAction Stop >> "%TEMP_PS1%"
+                ECHO         Write-Host '[INFO] Microsoft.UI.Xaml framework installed successfully' >> "%TEMP_PS1%"
+                ECHO         exit 0 >> "%TEMP_PS1%"
+                ECHO     } else { >> "%TEMP_PS1%"
+                ECHO         Write-Host '[WARN] Could not find x64 appx package in framework' >> "%TEMP_PS1%"
+                ECHO         exit 1 >> "%TEMP_PS1%"
+                ECHO     } >> "%TEMP_PS1%"
+                ECHO } catch { >> "%TEMP_PS1%"
+                ECHO     Write-Host '[WARN] Microsoft.UI.Xaml installation failed:' $_.Exception.Message >> "%TEMP_PS1%"
+                ECHO     exit 1 >> "%TEMP_PS1%"
+                ECHO } >> "%TEMP_PS1%"
+                
+                powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
                 SET "XAML_EXIT=!ERRORLEVEL!"
+                DEL /F /Q "%TEMP_PS1%" >nul 2>&1
                 IF !XAML_EXIT! EQU 0 (
                     CALL :LOG_ENTRY "INFO" "Microsoft.UI.Xaml framework installed successfully."
                 ) ELSE (
@@ -243,6 +337,8 @@ IF !ERRORLEVEL! NEQ 0 (
         ) ELSE (
             CALL :LOG_ENTRY "WARN" "Microsoft.UI.Xaml framework download failed, but continuing..."
         )
+    ) ELSE (
+        CALL :LOG_ENTRY "INFO" "Microsoft.UI.Xaml framework is already installed."
     )
     
     REM Step 3: Install Winget (App Installer)
@@ -251,13 +347,42 @@ IF !ERRORLEVEL! NEQ 0 (
     SET "WINGET_FILE=%TEMP%\Microsoft.DesktopAppInstaller.msixbundle"
     
     CALL :LOG_ENTRY "INFO" "Downloading Winget installer..."
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%WINGET_URL%' -OutFile '%WINGET_FILE%' -UseBasicParsing -TimeoutSec 60; Write-Host '[INFO] Winget downloaded successfully'; exit 0 } catch { Write-Host '[ERROR] Winget download failed:' $_.Exception.Message; exit 1 }"
     
-    IF !ERRORLEVEL! EQU 0 (
+    REM Create temp script for Winget download
+    SET "TEMP_PS1=%TEMP%\download_winget.ps1"
+    ECHO $ProgressPreference = 'SilentlyContinue' > "%TEMP_PS1%"
+    ECHO [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+    ECHO try { >> "%TEMP_PS1%"
+    ECHO     Invoke-WebRequest -Uri '%WINGET_URL%' -OutFile '%WINGET_FILE%' -UseBasicParsing -TimeoutSec 60 >> "%TEMP_PS1%"
+    ECHO     Write-Host '[INFO] Winget downloaded successfully' >> "%TEMP_PS1%"
+    ECHO     exit 0 >> "%TEMP_PS1%"
+    ECHO } catch { >> "%TEMP_PS1%"
+    ECHO     Write-Host '[ERROR] Winget download failed:' $_.Exception.Message >> "%TEMP_PS1%"
+    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO } >> "%TEMP_PS1%"
+    
+    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    SET "WINGET_DOWNLOAD_EXIT=!ERRORLEVEL!"
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    
+    IF !WINGET_DOWNLOAD_EXIT! EQU 0 (
         IF EXIST "%WINGET_FILE%" (
             CALL :LOG_ENTRY "INFO" "Installing Winget package..."
-            powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { Add-AppxPackage -Path '%WINGET_FILE%' -ErrorAction Stop; Write-Host '[INFO] Winget installation completed successfully'; exit 0 } catch { Write-Host '[ERROR] Winget installation failed:' $_.Exception.Message; exit 1 }"
+            
+            REM Create temp script for Winget installation
+            SET "TEMP_PS1=%TEMP%\install_winget.ps1"
+            ECHO try { > "%TEMP_PS1%"
+            ECHO     Add-AppxPackage -Path '%WINGET_FILE%' -ErrorAction Stop >> "%TEMP_PS1%"
+            ECHO     Write-Host '[INFO] Winget installation completed successfully' >> "%TEMP_PS1%"
+            ECHO     exit 0 >> "%TEMP_PS1%"
+            ECHO } catch { >> "%TEMP_PS1%"
+            ECHO     Write-Host '[ERROR] Winget installation failed:' $_.Exception.Message >> "%TEMP_PS1%"
+            ECHO     exit 1 >> "%TEMP_PS1%"
+            ECHO } >> "%TEMP_PS1%"
+            
+            powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
             SET "WINGET_EXIT=!ERRORLEVEL!"
+            DEL /F /Q "%TEMP_PS1%" >nul 2>&1
             IF !WINGET_EXIT! EQU 0 (
                 CALL :LOG_ENTRY "INFO" "Winget installation completed successfully."
             ) ELSE (
@@ -293,45 +418,86 @@ pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_ENTRY "INFO" "PowerShell 7 not found, downloading from official Microsoft source..."
     
-    REM Set download URL for PowerShell 7.5.2 (no fallback)
+    REM Set download URL for PowerShell 7.5.2 with safer architecture detection
     SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2.msi"
     
-    REM Detect architecture and set appropriate download URL
-    IF "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
-        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
+    REM Detect architecture more safely
+    SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
+    
+    REM Check if we're on 32-bit system
+    IF "%PROCESSOR_ARCHITECTURE%"=="x86" (
+        IF NOT DEFINED PROCESSOR_ARCHITEW6432 (
+            SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x86.msi"
+            CALL :LOG_ENTRY "INFO" "Detected 32-bit system, using x86 installer."
+        ) ELSE (
+            CALL :LOG_ENTRY "INFO" "Detected 64-bit system, using x64 installer."
+        )
     ) ELSE (
-        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x86.msi"
+        CALL :LOG_ENTRY "INFO" "Detected 64-bit system, using x64 installer."
     )
     
     REM Download PowerShell 7.5.2
     CALL :LOG_ENTRY "INFO" "Downloading PowerShell 7.5.2..."
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PS7_URL%' -OutFile '%PS7_INSTALLER%' -UseBasicParsing -TimeoutSec 120; Write-Host '[INFO] PowerShell 7.5.2 downloaded successfully'; exit 0 } catch { Write-Host '[ERROR] PowerShell 7.5.2 download failed:' $_.Exception.Message; exit 1 }"
     
-    IF !ERRORLEVEL! EQU 0 (
+    REM Use simpler approach - create temp PS1 file for complex operations
+    SET "TEMP_PS1=%TEMP%\download_ps7.ps1"
+    
+    REM Create PowerShell download script
+    ECHO $ProgressPreference = 'SilentlyContinue' > "%TEMP_PS1%"
+    ECHO [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+    ECHO try { >> "%TEMP_PS1%"
+    ECHO     Invoke-WebRequest -Uri '%PS7_URL%' -OutFile '%PS7_INSTALLER%' -UseBasicParsing -TimeoutSec 120 >> "%TEMP_PS1%"
+    ECHO     Write-Host '[INFO] PowerShell 7.5.2 downloaded successfully' >> "%TEMP_PS1%"
+    ECHO     exit 0 >> "%TEMP_PS1%"
+    ECHO } catch { >> "%TEMP_PS1%"
+    ECHO     Write-Host '[ERROR] PowerShell 7.5.2 download failed:' $_.Exception.Message >> "%TEMP_PS1%"
+    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO } >> "%TEMP_PS1%"
+    
+    REM Execute the download script
+    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    SET "DOWNLOAD_EXIT=!ERRORLEVEL!"
+    
+    REM Clean up temp script
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    
+    REM Clean up temp script
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    
+    IF !DOWNLOAD_EXIT! EQU 0 (
         IF EXIST "%PS7_INSTALLER%" (
             CALL :LOG_ENTRY "INFO" "Installing PowerShell 7 silently..."
-            START /WAIT "" msiexec /i "%PS7_INSTALLER%" /quiet /norestart /l*v "%TEMP%\ps7_install.log"
+            
+            REM Use quoted paths and simplified MSIEXEC command
+            START /WAIT "" msiexec.exe /i "%PS7_INSTALLER%" /quiet /norestart
             SET "PS7_EXIT=!ERRORLEVEL!"
+            
             IF !PS7_EXIT! EQU 0 (
                 CALL :LOG_ENTRY "INFO" "PowerShell 7 installed successfully."
-                REM Refresh PATH environment variable for current session
-                FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "PATH=%%B"
-                REM Add common PowerShell 7 installation paths to current session
-                IF EXIST "%ProgramFiles%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
+                
+                REM Safely refresh PATH - use simple approach
+                CALL :LOG_ENTRY "INFO" "Refreshing PATH environment..."
+                SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
                 IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
-                CALL :LOG_ENTRY "INFO" "PowerShell 7 installation completed. Restarting script to use new PowerShell..."
-                REM Restart the script to use newly installed PowerShell 7
-                START "" "%~f0" PS7_RESTART
-                EXIT /B 0
+                
+                REM Test if PowerShell 7 is now available
+                pwsh.exe -Version >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    CALL :LOG_ENTRY "INFO" "PowerShell 7 is now functional. Continuing with current session..."
+                ) ELSE (
+                    CALL :LOG_ENTRY "WARN" "PowerShell 7 installed but may require restart to be fully functional."
+                )
             ) ELSE (
-                CALL :LOG_ENTRY "WARN" "PowerShell 7 installation failed with exit code !PS7_EXIT!."
+                CALL :LOG_ENTRY "WARN" "PowerShell 7 installation failed with exit code !PS7_EXIT!, but continuing..."
             )
+            
+            REM Clean up installer
             DEL /F /Q "%PS7_INSTALLER%" >nul 2>&1
         ) ELSE (
             CALL :LOG_ENTRY "ERROR" "PowerShell 7 installer file not found after download."
         )
     ) ELSE (
-        CALL :LOG_ENTRY "WARN" "PowerShell 7 download failed, but continuing..."
+        CALL :LOG_ENTRY "WARN" "PowerShell 7 download failed, but continuing with Windows PowerShell..."
     )
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
@@ -523,9 +689,24 @@ SET "ZIP_FILE=%TEMP%\script_mentenanta.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 
 CALL :LOG_ENTRY "INFO" "Downloading latest repository..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing -TimeoutSec 60; Write-Host '[INFO] Repository downloaded successfully'; exit 0 } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
 
-IF !ERRORLEVEL! NEQ 0 (
+REM Create temp script for repository download
+SET "TEMP_PS1=%TEMP%\download_repo.ps1"
+ECHO $ProgressPreference = 'SilentlyContinue' > "%TEMP_PS1%"
+ECHO try { >> "%TEMP_PS1%"
+ECHO     Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing -TimeoutSec 60 >> "%TEMP_PS1%"
+ECHO     Write-Host '[INFO] Repository downloaded successfully' >> "%TEMP_PS1%"
+ECHO     exit 0 >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[ERROR] Download failed:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO     exit 1 >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+SET "REPO_DOWNLOAD_EXIT=!ERRORLEVEL!"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+
+IF !REPO_DOWNLOAD_EXIT! NEQ 0 (
     CALL :LOG_ENTRY "ERROR" "Failed to download repository. Check internet connection."
     pause
     EXIT /B 2
@@ -546,7 +727,20 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
     RMDIR /S /Q "%SCRIPT_DIR%%EXTRACT_FOLDER%" >nul 2>&1
     IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
         CALL :LOG_ENTRY "WARN" "Could not remove existing folder completely. Attempting forced removal..."
-        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { Remove-Item -Path '%SCRIPT_DIR%%EXTRACT_FOLDER%' -Recurse -Force -ErrorAction Stop; Write-Host '[INFO] Existing folder removed successfully'; exit 0 } catch { Write-Host '[WARN] Failed to remove existing folder:' $_.Exception.Message; exit 1 }"
+        
+        REM Create temp script for folder removal
+        SET "TEMP_PS1=%TEMP%\remove_folder.ps1"
+        ECHO try { > "%TEMP_PS1%"
+        ECHO     Remove-Item -Path '%SCRIPT_DIR%%EXTRACT_FOLDER%' -Recurse -Force -ErrorAction Stop >> "%TEMP_PS1%"
+        ECHO     Write-Host '[INFO] Existing folder removed successfully' >> "%TEMP_PS1%"
+        ECHO     exit 0 >> "%TEMP_PS1%"
+        ECHO } catch { >> "%TEMP_PS1%"
+        ECHO     Write-Host '[WARN] Failed to remove existing folder:' $_.Exception.Message >> "%TEMP_PS1%"
+        ECHO     exit 1 >> "%TEMP_PS1%"
+        ECHO } >> "%TEMP_PS1%"
+        
+        powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+        DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     ) ELSE (
         CALL :LOG_ENTRY "INFO" "Existing repository folder removed successfully."
     )
@@ -558,9 +752,24 @@ REM ----------------------------------------------------------------------------
 REM Repository Extraction - Using PowerShell (More Reliable)
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Extracting repository to clean folder..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%SCRIPT_DIR%'); Write-Host '[INFO] Repository extracted successfully'; exit 0 } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
 
-IF !ERRORLEVEL! NEQ 0 (
+REM Create temp script for repository extraction
+SET "TEMP_PS1=%TEMP%\extract_repo.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     Add-Type -AssemblyName System.IO.Compression.FileSystem >> "%TEMP_PS1%"
+ECHO     [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%SCRIPT_DIR%') >> "%TEMP_PS1%"
+ECHO     Write-Host '[INFO] Repository extracted successfully' >> "%TEMP_PS1%"
+ECHO     exit 0 >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[ERROR] Extraction failed:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO     exit 1 >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+SET "EXTRACT_EXIT=!ERRORLEVEL!"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+
+IF !EXTRACT_EXIT! NEQ 0 (
     CALL :LOG_ENTRY "ERROR" "Failed to extract repository."
     pause
     EXIT /B 3

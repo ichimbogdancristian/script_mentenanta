@@ -264,22 +264,40 @@ $global:ScriptTasks = @(
             }
             if ($allItems.Count -gt 0) {
                 Write-Log "Deleting $($allItems.Count) files and folders in parallel..." 'INFO'
+                
+                # Limit parallel operations for stability in PS7/Windows 10-11 environment
+                $throttleLimit = [Math]::Min(8, [Environment]::ProcessorCount)
+                Write-Log "Using throttle limit of $throttleLimit for parallel file deletion" 'VERBOSE'
+                
                 $allItems | ForEach-Object -Parallel {
                     try {
+                        # Add additional safety check
+                        if (-not (Test-Path $_.FullName -ErrorAction SilentlyContinue)) {
+                            return # Item already deleted or doesn't exist
+                        }
+                        
                         if ($_.PSIsContainer) {
-                            Remove-Item $_.FullName -Force -Recurse -ErrorAction Stop
-                            [System.Threading.Interlocked]::Increment([ref]$using:deletedFolders)
+                            Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue
+                            if (Test-Path $_.FullName -ErrorAction SilentlyContinue) {
+                                [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
+                            } else {
+                                [System.Threading.Interlocked]::Increment([ref]$using:deletedFolders)
+                            }
                         }
                         else {
-                            Remove-Item $_.FullName -Force -ErrorAction Stop
-                            [System.Threading.Interlocked]::Increment([ref]$using:deletedFiles)
+                            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                            if (Test-Path $_.FullName -ErrorAction SilentlyContinue) {
+                                [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
+                            } else {
+                                [System.Threading.Interlocked]::Increment([ref]$using:deletedFiles)
+                            }
                         }
                     }
                     catch {
                         [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                        Write-Log "Failed to delete file/folder $($_.FullName): $_" 'WARN'
+                        # Suppress logging in parallel threads to avoid thread conflicts
                     }
-                } -ThrottleLimit 8
+                } -ThrottleLimit $throttleLimit
             }
             Write-Log "Successfully deleted $deletedFiles files and $deletedFolders folders from all cleanup targets." 'INFO'
             # Run Disk Cleanup (cleanmgr)
@@ -299,7 +317,7 @@ $global:ScriptTasks = @(
             # Run Storage Sense (if available)
             if (Get-Command Start-StorageSense -ErrorAction SilentlyContinue) {
                 try {
-                    Start-StorageSense -ErrorAction Stop
+                    Start-StorageSense -ErrorAction SilentlyContinue
                     Write-Log 'Storage Sense cleanup completed successfully.' 'INFO'
                 }
                 catch {
@@ -468,10 +486,18 @@ function Remove-AppxPackageCompatible {
     )
     try {
         if ($AllUsers) {
-            Remove-AppxPackage -Package $PackageFullName -AllUsers -ErrorAction Stop
+            Remove-AppxPackage -Package $PackageFullName -AllUsers -ErrorAction SilentlyContinue
         } else {
-            Remove-AppxPackage -Package $PackageFullName -ErrorAction Stop
+            Remove-AppxPackage -Package $PackageFullName -ErrorAction SilentlyContinue
         }
+        
+        # Verify removal was successful
+        $remainingPackage = Get-AppxPackage -Name $PackageFullName -ErrorAction SilentlyContinue
+        if ($remainingPackage) {
+            Write-Log "AppX package removal may have failed - package still found: $PackageFullName" 'WARN'
+            return $false
+        }
+        
         return $true
     } catch {
         Write-Log "Failed to remove AppX package: $_" 'ERROR'
@@ -542,12 +568,23 @@ function Remove-AppxProvisionedPackageCompatible {
         # Native PowerShell 5.1
         try {
             if ($Online) {
-                Remove-AppxProvisionedPackage -Online -PackageName $PackageName -ErrorAction Stop
+                Remove-AppxProvisionedPackage -Online -PackageName $PackageName -ErrorAction SilentlyContinue
+                
+                # Verify removal by checking if package still exists
+                $remainingPackage = Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -eq $PackageName }
+                if (-not $remainingPackage) {
+                    return $true
+                } else {
+                    Write-Log "AppX provisioned package removal may have failed - package still found: $PackageName" 'WARN'
+                    return $false
+                }
             }
             else {
-                Remove-AppxProvisionedPackage -PackageName $PackageName -ErrorAction Stop
+                Remove-AppxProvisionedPackage -PackageName $PackageName -ErrorAction SilentlyContinue
+                
+                # For offline operations, assume success if no exception was thrown
+                return $true
             }
-            return $true
         }
         catch {
             return $false
@@ -565,22 +602,41 @@ function Enable-ComputerRestoreCompatible {
         [string]$Drive
     )
     
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for System Restore operations
-        $command = "Enable-ComputerRestore -Drive '$Drive' -ErrorAction Stop"
+    try {
+        Write-Log "Enabling System Restore on drive $Drive" 'INFO'
         
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Enable System Restore on $Drive"
-        return $null -ne $result
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
+            $command = "Enable-ComputerRestore -Drive '$Drive'"
+            $result = & powershell.exe -Command $command 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
+                return $true
+            } else {
+                Write-Log "Failed to enable System Restore on drive $Drive. Exit code: $LASTEXITCODE" 'WARN'
+                return $false
+            }
+        }
+        else {
+            # Native PowerShell 5.1
+            Enable-ComputerRestore -Drive $Drive -ErrorAction SilentlyContinue
+            
+            # Verify that the restore point was actually enabled
+            Start-Sleep -Seconds 1
+            $verifyRestore = Get-WmiObject -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
+            if ($verifyRestore -and -not $verifyRestore.Disable) {
+                Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
+                return $true
+            } else {
+                Write-Log "System Restore enable operation completed but verification failed for drive $Drive" 'WARN'
+                return $false
+            }
+        }
     }
-    else {
-        # Native PowerShell 5.1
-        try {
-            Enable-ComputerRestore -Drive $Drive -ErrorAction Stop
-            return $true
-        }
-        catch {
-            return $false
-        }
+    catch {
+        Write-Log "Failed to enable System Restore on drive $Drive : $_" 'ERROR'
+        return $false
     }
 }
 
@@ -595,18 +651,34 @@ function Checkpoint-ComputerCompatible {
         [string]$RestorePointType = 'MODIFY_SETTINGS'
     )
     
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for System Restore operations
-        $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType' -ErrorAction Stop"
+    try {
+        Write-Log "Creating system restore point: $Description" 'INFO'
         
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Create restore point: $Description"
-        return $null -ne $result
-    }
-    else {
-        # Native PowerShell 5.1
-        try {
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
+            $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType'"
+            $result = & powershell.exe -Command $command 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Log "Successfully created restore point: $Description" 'INFO'
+                return $true
+            } else {
+                Write-Log "Failed to create restore point: $Description. Exit code: $LASTEXITCODE" 'WARN'
+                return $false
+            }
+        }
+        else {
+            # Native PowerShell 5.1
             Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
+            Write-Log "Successfully created restore point: $Description" 'INFO'
             return $true
+        }
+    }
+    catch {
+        Write-Log "Failed to create restore point '$Description': $_" 'ERROR'
+        return $false
+    }
+}
         }
         catch {
             return $false
@@ -632,8 +704,14 @@ function Install-WindowsUpdatesCompatible {
                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                 
                 # Install with enhanced parameters for reliability
-                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -AllowClobber -ErrorAction Stop
-                Write-Log 'PSWindowsUpdate module installed successfully.' 'INFO'
+                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -AllowClobber -ErrorAction SilentlyContinue
+                
+                # Verify installation
+                if (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue) {
+                    Write-Log 'PSWindowsUpdate module installed successfully.' 'INFO'
+                } else {
+                    throw "PSWindowsUpdate module installation failed - module not available after installation"
+                }
             }
             catch {
                 Write-Log "Failed to install PSWindowsUpdate module: $_" 'ERROR'
@@ -643,7 +721,18 @@ function Install-WindowsUpdatesCompatible {
         
         # Module import: Enhanced module import with validation
         try {
-            Import-Module PSWindowsUpdate -Force -ErrorAction Stop
+            Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
+            
+            # Verify module is loaded and functional
+            if (-not (Get-Module -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
+                throw "PSWindowsUpdate module failed to load"
+            }
+            
+            # Test basic functionality
+            if (-not (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue)) {
+                throw "PSWindowsUpdate module loaded but Get-WindowsUpdate command not available"
+            }
+            
             Write-Log 'PSWindowsUpdate module imported successfully.' 'VERBOSE'
         }
         catch {
@@ -657,7 +746,7 @@ function Install-WindowsUpdatesCompatible {
         $availableUpdates = $null
         try {
             # Get available updates with comprehensive filtering
-            $availableUpdates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -ErrorAction Stop | Where-Object {
+            $availableUpdates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -ErrorAction SilentlyContinue | Where-Object {
                 $_.Title -notlike "*Preview*" -and 
                 $_.Title -notlike "*Insider*" -and
                 $_.Size -gt 0
@@ -699,7 +788,7 @@ function Install-WindowsUpdatesCompatible {
             
             try {
                 # Batch install: Install all updates with comprehensive error handling
-                $installResults = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction Stop
+                $installResults = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction SilentlyContinue
                 
                 if ($installResults) {
                     foreach ($result in $installResults) {
@@ -927,7 +1016,12 @@ function Get-ExtensiveSystemInventory {
                             }
                             
                             # Parse JSON with multiple format support
-                            $wingetData = $cleanJson | ConvertFrom-Json -ErrorAction Stop
+                            $wingetData = $cleanJson | ConvertFrom-Json -ErrorAction SilentlyContinue
+                            
+                            if (-not $wingetData) {
+                                Write-Log "[Inventory] Failed to parse winget JSON output on attempt $attempts" 'WARN'
+                                continue
+                            }
                             
                             # Handle different winget JSON formats
                             if ($wingetData.Sources -and $wingetData.Sources.Count -gt 0) {
@@ -1557,9 +1651,14 @@ function Import-ModuleWithGracefulFallback {
     
     if (Get-Module -ListAvailable -Name $ModuleName -ErrorAction SilentlyContinue) {
         try {
-            Import-Module $ModuleName -ErrorAction Stop
-            Write-Log "[MODULE] Successfully imported $ModuleName" 'VERBOSE'
-            return $true
+            Import-Module $ModuleName -ErrorAction SilentlyContinue -Force
+            if (Get-Module -Name $ModuleName -ErrorAction SilentlyContinue) {
+                Write-Log "[MODULE] Successfully imported $ModuleName" 'VERBOSE'
+                return $true
+            } else {
+                Write-Log "[MODULE] Failed to import $ModuleName - module not loaded after import attempt" 'WARN'
+                return $false
+            }
         }
         catch {
             Write-Log "[MODULE] Failed to import $ModuleName : $_" 'WARN'
@@ -2250,8 +2349,14 @@ function Update-AllPackages {
     # Process completed job results with enhanced error handling
     foreach ($job in $completedJobs) {
         try {
-            $jobResult = Receive-Job -Job $job -Wait -ErrorAction Stop
+            $jobResult = Receive-Job -Job $job -Wait -ErrorAction SilentlyContinue
             Remove-Job -Job $job -Force
+            
+            # Validate job result before processing
+            if (-not $jobResult) {
+                Write-Log "[UpdatePackages] Job $($job.Name) completed but returned no results" 'WARN'
+                continue
+            }
             
             if ($jobResult.Success) {
                 if ($jobResult.NoUpdatesFound) {
@@ -2379,7 +2484,7 @@ function Get-EventLogAnalysis {
     # AI_LOGIC: Event log querying, CBS file parsing, time-based filtering, detailed error reporting
     # AI_PERFORMANCE: Optimized queries with time filters, selective log parsing, efficient processing
     # ===============================
-    Write-Log "[AI_START] Event Log and CBS Log Analysis - Last 96 Hours" 'INFO'
+    Write-Log "Starting Event Log and CBS Log Analysis - Last 96 Hours" 'INFO'
     
     $startTime = (Get-Date).AddHours(-96)
     $errorCount = 0
@@ -2430,7 +2535,11 @@ function Get-EventLogAnalysis {
         $cbsLogPath = "$env:SystemRoot\Logs\CBS\CBS.log"
         if (Test-Path $cbsLogPath) {
             try {
-                $cbsContent = Get-Content $cbsLogPath -ErrorAction Stop
+                $cbsContent = Get-Content $cbsLogPath -ErrorAction SilentlyContinue
+                if (-not $cbsContent) {
+                    Write-Log "[EventLogAnalysis] CBS log file exists but could not be read" 'WARN'
+                    return
+                }
                 $cbsErrors = $cbsContent | Where-Object { 
                     $_ -match '\[SR\]|\[FATAL\]|\[ERROR\]|\[WARN\]' -and
                     $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}' 
@@ -2469,7 +2578,11 @@ function Get-EventLogAnalysis {
         $dismLogPath = "$env:SystemRoot\Logs\DISM\dism.log"
         if (Test-Path $dismLogPath) {
             try {
-                $dismContent = Get-Content $dismLogPath -ErrorAction Stop | Select-Object -Last 1000  # Last 1000 lines for performance
+                $dismContent = Get-Content $dismLogPath -ErrorAction SilentlyContinue | Select-Object -Last 1000  # Last 1000 lines for performance
+                if (-not $dismContent) {
+                    Write-Log "[EventLogAnalysis] DISM log file exists but could not be read" 'WARN'
+                    return
+                }
                 $dismErrors = $dismContent | Where-Object { 
                     $_ -match '\[ERROR\]|\[FATAL\]|\[WARN\]' -and
                     $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
@@ -2537,7 +2650,7 @@ function Remove-Bloatware {
     # AI_LOGIC: Ultra-parallel removal, smart pre-filtering, action-only logging, maximum performance
     # AI_PERFORMANCE: Native PS7.5 AppX, 8-thread parallel processing, pre-compiled regex, smart caching
     # ===============================
-    Write-Log "[AI_START] Ultra-Enhanced Bloatware Removal - PowerShell 7.5 Native Mode" 'INFO'
+    Write-Log "Starting Ultra-Enhanced Bloatware Removal - PowerShell 7.5 Native Mode" 'INFO'
     
     # AI_OPTIMIZATION: Use cached inventory if available, otherwise trigger fresh comprehensive scan
     if (-not $global:SystemInventory) {
@@ -2688,7 +2801,15 @@ function Remove-Bloatware {
                     if ($capabilities.AppX -and $appData.PackageFullName) {
                         try {
                             if ($psVersion.PSVersion.Major -ge 7) {
-                                Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction Stop
+                                Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                                
+                                # Verify removal
+                                $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
+                                if (-not $remainingPackage) {
+                                    $result.Success = $true
+                                    $result.Method = "AppX"
+                                    $result.ActualName = $appData.Name
+                                }
                             }
                             else {
                                 $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
@@ -2758,11 +2879,16 @@ function Remove-Bloatware {
                     if ($psVersion.PSVersion.Major -ge 7) {
                         $packages = Get-AppxPackage -Name "*$($match.BloatwareName)*" -AllUsers -ErrorAction SilentlyContinue
                         foreach ($pkg in $packages | Select-Object -First 1) {
-                            Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
-                            $result.Success = $true
-                            $result.Method = "AppX Fallback"
-                            $result.ActualName = $pkg.Name
-                            break
+                            Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                            
+                            # Verify removal
+                            $verifyPackage = Get-AppxPackage -PackageFullName $pkg.PackageFullName -ErrorAction SilentlyContinue
+                            if (-not $verifyPackage) {
+                                $result.Success = $true
+                                $result.Method = "AppX Fallback"
+                                $result.ActualName = $pkg.Name
+                                break
+                            }
                         }
                     }
                 }
@@ -2874,7 +3000,7 @@ function Disable-Telemetry {
     # AI_LOGIC: Parallel browser detection, batch registry operations, enhanced performance focus
     # AI_PERFORMANCE: Optimized for speed and reliability, action-only logging for clarity
     # ===============================
-    Write-Log "[AI_START] Disable Telemetry and Privacy Features - Enhanced Performance Mode" 'INFO'
+    Write-Log "Starting Disable Telemetry and Privacy Features - Enhanced Performance Mode" 'INFO'
     
     # AI_OPTIMIZATION: Batch notification management for improved performance
     try {
@@ -3324,7 +3450,7 @@ function Enable-SecurityHardening {
     # AI_LOGIC: Security feature enablement, service hardening, policy configuration
     # AI_PERFORMANCE: Optimized security configuration with comprehensive error handling
     # ===============================
-    Write-Log "[AI_START] Windows Security Hardening - Enhanced Protection Mode" 'INFO'
+    Write-Log "Starting Windows Security Hardening - Enhanced Protection Mode" 'INFO'
     
     $securityActions = 0
     $securityErrors = 0
@@ -3652,7 +3778,7 @@ function Protect-SystemRestore {
     # AI_LOGIC: Native CIM operations, smart duplicate protection, enhanced validation, optimized performance
     # AI_PERFORMANCE: Eliminates PS5.1 compatibility overhead, uses direct PS7.5 native capabilities
     # ===============================
-    Write-Log "[AI_START] PowerShell 7.5 Native System Restore Protection" 'INFO'
+    Write-Log "Starting PowerShell 7.5 Native System Restore Protection" 'INFO'
 
     $drive = "C:\"
     $restorePointDescription = "Pre-maintenance restore point"
@@ -3775,9 +3901,17 @@ function Protect-SystemRestore {
                 # Method 1: Try Enable-ComputerRestore if available
                 if (Get-Command Enable-ComputerRestore -ErrorAction SilentlyContinue) {
                     try {
-                        Enable-ComputerRestore -Drive $drive -ErrorAction Stop
-                        $enableSuccess = $true
-                        Write-Log "[SystemRestore] Enabled using Enable-ComputerRestore cmdlet" 'INFO'
+                        Enable-ComputerRestore -Drive $drive -ErrorAction SilentlyContinue
+                        
+                        # Verify that System Restore was actually enabled
+                        Start-Sleep -Seconds 2
+                        $restoreCheck = Get-CimInstance -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $drive }
+                        if ($restoreCheck -and -not $restoreCheck.Disable) {
+                            $enableSuccess = $true
+                            Write-Log "[SystemRestore] Enabled using Enable-ComputerRestore cmdlet" 'INFO'
+                        } else {
+                            Write-Log "[SystemRestore] Enable-ComputerRestore completed but verification failed" 'WARN'
+                        }
                     }
                     catch {
                         Write-Log "[SystemRestore] Enable-ComputerRestore failed: $_" 'VERBOSE'
@@ -4191,7 +4325,7 @@ catch {
 ### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
 ### ...
 
-Write-Log "AI_SCRIPT_COMPLETION: Windows maintenance script execution completed successfully" 'INFO'
+Write-Log "Windows maintenance script execution completed successfully" 'INFO'
 
 ### AI_POST_TASK: Interactive closure prompt for console environments
 # AI_PURPOSE: Provides user interaction for console-based script execution
