@@ -424,8 +424,47 @@ function Use-AllScriptTasks {
     Write-Log 'All maintenance tasks execution sequence completed.' 'INFO'
 }
 
-# [PRE-TASK 0] Set up log file in the repo folder
-$logPath = Join-Path $PSScriptRoot "maintenance.log"
+# [PRE-TASK 0] Set up log file - ensure consistency with batch script
+# script.ps1 is inside extracted repo folder, maintenance.log is in parent directory (where script.bat is)
+$scriptDirectory = Split-Path $PSCommandPath -Parent
+$batchScriptDirectory = Split-Path $scriptDirectory -Parent
+$defaultLogPath = Join-Path $batchScriptDirectory "maintenance.log"
+
+# Check if batch script has set the log file path, otherwise use default (parent directory)
+if ($env:SCRIPT_LOG_FILE) {
+    $logPath = $env:SCRIPT_LOG_FILE
+    Write-Host "[INFO] Using batch script log file: $logPath" -ForegroundColor Green
+} else {
+    $logPath = $defaultLogPath
+    Write-Host "[INFO] Using default PowerShell log file (parent directory): $logPath" -ForegroundColor Yellow
+}
+
+# Ensure log file directory exists
+$logDir = Split-Path $logPath -Parent
+if (-not (Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+}
+
+# Log PowerShell script startup
+$timestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
+$startupEntry = "[$timestamp] [INFO] ============================================================"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
+$startupEntry = "[$timestamp] [INFO] PowerShell Maintenance Script Started"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
+$startupEntry = "[$timestamp] [INFO] PowerShell Version: $($PSVersionTable.PSVersion)"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
+$startupEntry = "[$timestamp] [INFO] PowerShell Script: $PSCommandPath"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
+$startupEntry = "[$timestamp] [INFO] PowerShell Script Directory (repo): $scriptDirectory"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
+$startupEntry = "[$timestamp] [INFO] Batch Script Directory (main): $batchScriptDirectory"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
+$startupEntry = "[$timestamp] [INFO] Log File: $logPath"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
+$startupEntry = "[$timestamp] [INFO] Current Working Directory: $(Get-Location)"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
+$startupEntry = "[$timestamp] [INFO] ============================================================"
+$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
 
 ### Function: Write-Log
 # Purpose: Provides consistent logging across all maintenance operations.
@@ -608,7 +647,7 @@ function Remove-AppxProvisionedPackageCompatible {
                     if ($PSVersionTable.PSVersion.Major -ge 7) {
                         # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
                         $command = "Enable-ComputerRestore -Drive '$Drive'"
-                        $result = & powershell.exe -Command $command 2>&1
+                        & powershell.exe -Command $command 2>&1 | Out-Null
             
                         if ($LASTEXITCODE -eq 0) {
                             Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
@@ -659,7 +698,7 @@ function Remove-AppxProvisionedPackageCompatible {
                     if ($PSVersionTable.PSVersion.Major -ge 7) {
                         # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
                         $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType'"
-                        $result = & powershell.exe -Command $command 2>&1
+                        & powershell.exe -Command $command 2>&1 | Out-Null
             
                         if ($LASTEXITCODE -eq 0) {
                             Write-Log "Successfully created restore point: $Description" 'INFO'
@@ -4271,7 +4310,7 @@ foreach ($file in $logFiles) {
 
 # Extract detailed actions from maintenance.log
 $logActions = @('Installed', 'Uninstalled', 'Updated', 'Removed', 'Deleted', 'Upgraded', 'Cleaned')
-$logPath = Join-Path $PSScriptRoot "maintenance.log"
+# Use the same log path that was set at the beginning of the script
 if (Test-Path $logPath) {
     $logContent = Get-Content $logPath
     $actionLines = $logContent | Where-Object {
