@@ -1,6 +1,98 @@
-# =============================================
-# Windows Maintenance Script - Task Coordinator
-# =============================================
+# ================================================================
+# WINDOWS MAINTENANCE SCRIPT - COPILOT DEVELOPMENT INDEX
+# ================================================================
+#
+# SCRIPT INDEX FOR AI DEVELOPMENT:
+# ================================
+# 
+# [A] GLOBAL STRUCTURE (Lines 1-558)
+#     A.1 Script Header & Metadata (Lines 1-15)
+#     A.2 Task Array Definition (Lines 17-508)
+#         - A.2.1 SystemRestoreProtection Task (Lines 19-35)
+#         - A.2.2 SystemInventory Task (Lines 37-47)
+#         - A.2.3 EventLogAnalysis Task (Lines 49-66)
+#         - A.2.4 RemoveBloatware Task (Lines 68-84)
+#         - A.2.5 InstallEssentialApps Task (Lines 86-102)
+#         - A.2.6 UpdateAllPackages Task (Lines 104-115)
+#         - A.2.7 WindowsUpdateCheck Task (Lines 117-140)
+#         - A.2.8 DisableTelemetry Task (Lines 142-158)
+#         - A.2.9 TaskbarOptimization Task (Lines 160-176)
+#         - A.2.10 SecurityHardening Task (Lines 178-194)
+#         - A.2.11 CleanTempAndDisk Task (Lines 196-324)
+#         - A.2.12 PendingRestartCheck Task (Lines 326-507)
+#     A.3 Configuration Management (Lines 509-558)
+#
+# [B] CORE INFRASTRUCTURE (Lines 559-1895)
+#     B.1 Task Orchestration (Lines 559-627)
+#         - Use-AllScriptTasks() (Lines 559-627)
+#     B.2 Logging System (Lines 629-659)
+#         - Write-Log() (Lines 629-659)
+#     B.3 AppX Compatibility Layer (Lines 661-887)
+#         - Get-AppxPackageCompatible() (Lines 661-677)
+#         - Remove-AppxPackageCompatible() (Lines 679-710)
+#         - Get-AppxProvisionedPackageCompatible() (Lines 712-749)
+#         - Remove-AppxProvisionedPackageCompatible() (Lines 751-887)
+#     B.4 Windows Update Compatibility (Lines 888-1068)
+#         - Install-WindowsUpdatesCompatible() (Lines 888-1068)
+#     B.5 Start Apps Compatibility (Lines 1070-1096)
+#         - Get-StartAppsCompatible() (Lines 1070-1096)
+#     B.6 Task Management (Lines 1098-1120)
+#         - Invoke-Task() (Lines 1098-1120)
+#     B.7 Extended Inventory System (Lines 1122-1725)
+#         - Get-ExtensiveSystemInventory() (Lines 1122-1725)
+#     B.8 Dependency Management (Lines 1727-1895)
+#         - Test-PowerShellDependencies() (Lines 1727-1844)
+#         - Import-ModuleWithGracefulFallback() (Lines 1846-1895)
+#
+# [C] MAINTENANCE TASKS (Lines 1896-4803)
+#     C.1 Essential Apps Installation (Lines 1896-2249)
+#         - Install-EssentialApps() [COPILOT_TASK_ID: InstallEssentialApps] (Lines 1903-2249)
+#     C.2 Package Updates (Lines 2251-2672)
+#         - Update-AllPackages() [COPILOT_TASK_ID: UpdateAllPackages] (Lines 2258-2672)
+#     C.3 Event Log Analysis (Lines 2674-2841)
+#         - Get-EventLogAnalysis() [COPILOT_TASK_ID: Survey-EventLogsAndCBS] (Lines 2679-2841)
+#     C.4 Bloatware Removal (Lines 2843-3175)
+#         - Remove-Bloatware() [COPILOT_TASK_ID: RemoveBloatware] (Lines 2850-3175)
+#     C.5 System Inventory (Lines 3177-3191)
+#         - Get-SystemInventory() (Lines 3177-3191)
+#     C.6 Telemetry Disable (Lines 3193-3643)
+#         - Disable-Telemetry() [COPILOT_TASK_ID: DisableTelemetry] (Lines 3200-3643)
+#     C.7 Interface Optimization (Lines 3645-3861)
+#         - Optimize-Taskbar() [COPILOT_TASK_ID: Optimize-Taskbar] (Lines 3650-3861)
+#     C.8 Security Hardening (Lines 3863-4202)
+#         - Enable-SecurityHardening() [COPILOT_TASK_ID: Enable-SecurityHardening] (Lines 3868-4202)
+#     C.9 System Restore (Lines 4204-4325)
+#         - Protect-SystemRestore() [COPILOT_TASK_ID: SystemRestoreProtection] (Lines 4211-4325)
+#     C.10 Script Execution (Lines 4327-4803)
+#         - Main Execution Block (Lines 4327-4803)
+#
+# COPILOT EDITING CONVENTIONS:
+# ===========================
+# - Each function uses COPILOT_TASK_ID for unique identification
+# - All maintenance tasks follow the pattern: [COPILOT_TASK_ID: TaskName]
+# - Infrastructure functions use descriptive headers without AI_TASK_ID
+# - Line references are approximate and may shift during editing
+# - Use section identifiers (A.1, B.2, C.3, etc.) for navigation
+# - Each task includes: Purpose, Environment, Logic, Performance, Dependencies
+#
+# PERFORMANCE CHARACTERISTICS:
+# ===========================
+# - Total Functions: 21 (9 maintenance tasks + 12 infrastructure)
+# - Parallel Processing: Enabled for apps, updates, cleanup, bloatware
+# - Error Handling: Comprehensive try/catch with detailed logging
+# - Config System: JSON-based with graceful fallbacks
+# - Restart Management: 120-second countdown with user abort
+# - Logging: Unified system with color-coded console output
+#
+# DEPENDENCIES HIERARCHY:
+# ======================
+# 1. Core Infrastructure (B.1-B.8) - Required by all tasks
+# 2. Configuration System (A.3) - Drives task execution
+# 3. Maintenance Tasks (C.1-C.9) - Modular, config-driven execution
+# 4. Task Array (A.2) - Orchestrates execution order
+#
+# ================================================================
+
 # Purpose: Orchestrates modular Windows maintenance tasks with robust logging and error handling.
 # Environment: Windows 10/11, PowerShell 7+ preferred, Administrator required.
 # Dependencies: Winget, Chocolatey, AppX, DISM, Registry, Windows Capabilities.
@@ -14,13 +106,26 @@
 #   - Error handling: try/catch with detailed logging
 #   - All logic is PowerShell 7 native; no compatibility wrappers remain
 
-# Task array: Global maintenance task definitions with standardized metadata
+# ================================================================
+# [A.2] GLOBAL TASK ARRAY - MAINTENANCE TASK DEFINITIONS
+# ================================================================
+# COPILOT_SECTION: TaskArrayDefinition
+# Purpose: Centralized task coordination with standardized metadata and execution control
+# Structure: Hash table array with Name, Function, Description for each maintenance task
+# Execution: Sequential processing via Use-AllScriptTasks(), config-driven skip logic
+# Dependencies: Global config system, Write-Log function, individual task functions
+# ================================================================
 $global:ScriptTasks = @(
-    # Task: SystemRestoreProtection
+    # ================================================================
+    # [A.2.1] COPILOT_TASK: SystemRestoreProtection
+    # ================================================================
+    # COPILOT_TASK_ID: SystemRestoreProtection
     # Purpose: Enables System Restore and creates a restore point before maintenance.
     # Environment: Windows 10/11, Administrator required, C:\ drive focus
     # Logic: Config-driven skip, PowerShell native cmdlets, duplicate protection
     # Dependencies: SystemRestoreConfig, Checkpoint-Computer
+    # Function Location: [C.9] Lines 4211-4325
+    # ================================================================
     @{ Name = 'SystemRestoreProtection'; Function = { 
             Write-Log 'Starting System Restore Protection task.' 'INFO'
             Write-Host 'Starting System Restore Protection task.' -ForegroundColor Cyan
@@ -38,11 +143,16 @@ $global:ScriptTasks = @(
         }; Description = 'Enable System Restore and create pre-maintenance checkpoint' 
     },
 
-    # Task: SystemInventory
+    # ================================================================
+    # [A.2.2] COPILOT_TASK: SystemInventory
+    # ================================================================
+    # COPILOT_TASK_ID: SystemInventory
     # Purpose: Collects comprehensive system information for reporting and analysis.
     # Environment: Windows 10/11, any user context, outputs to inventory.txt
     # Logic: Get-ComputerInfo based, structured data collection, file output
     # Dependencies: WMI/CIM cmdlets, file system access
+    # Function Location: [C.5] Lines 3177-3191
+    # ================================================================
     @{ Name = 'SystemInventory'; Function = { 
             Write-Log 'Starting System Inventory task.' 'INFO'
             Write-Host 'Starting System Inventory task.' -ForegroundColor Cyan
@@ -53,11 +163,16 @@ $global:ScriptTasks = @(
         }; Description = 'Collect and export comprehensive system inventory data' 
     },
 
-    # Task: EventLogAnalysis
+    # ================================================================
+    # [A.2.3] COPILOT_TASK: EventLogAnalysis
+    # ================================================================
+    # COPILOT_TASK_ID: EventLogAnalysis
     # Purpose: Surveys Event Viewer and CBS logs for errors from the last 96 hours.
     # Environment: Windows 10/11, any user context, Event Log and CBS log access
     # Logic: Get-EventLog/Get-WinEvent for Event Viewer, file parsing for CBS logs
     # Dependencies: Event Log service, CBS log file access, file system permissions
+    # Function Location: [C.3] Lines 2679-2841
+    # ================================================================
     @{ Name = 'EventLogAnalysis'; Function = { 
             Write-Log 'Starting Event Log Analysis task.' 'INFO'
             Write-Host 'Starting Event Log Analysis task.' -ForegroundColor Cyan
@@ -75,11 +190,16 @@ $global:ScriptTasks = @(
         }; Description = 'Survey Event Viewer and CBS logs for errors from last 96 hours' 
     },
 
-    # Task: RemoveBloatware
+    # ================================================================
+    # [A.2.4] COPILOT_TASK: RemoveBloatware
+    # ================================================================
+    # COPILOT_TASK_ID: RemoveBloatware
     # Purpose: Multi-method removal of unwanted applications and components.
     # Environment: Windows 10/11, Administrator required, AppX/DISM/Registry access
     # Logic: Parallel processing, inventory-based filtering, action-only logging
     # Dependencies: AppX cmdlets, DISM, Winget, Chocolatey, Windows Capabilities
+    # Function Location: [C.4] Lines 2850-3175
+    # ================================================================
     @{ Name = 'RemoveBloatware'; Function = { 
             Write-Log 'Starting Bloatware Removal task.' 'INFO'
             Write-Host 'Starting Bloatware Removal task.' -ForegroundColor Cyan
@@ -97,11 +217,16 @@ $global:ScriptTasks = @(
         }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' 
     },
 
-    # Task: InstallEssentialApps
+    # ================================================================
+    # [A.2.5] COPILOT_TASK: InstallEssentialApps
+    # ================================================================
+    # COPILOT_TASK_ID: InstallEssentialApps
     # Purpose: Parallel installation of curated essential applications.
     # Environment: Windows 10/11, Administrator required, package manager access
     # Logic: HashSet optimization, parallel processing, smart filtering, custom app support
     # Dependencies: Winget, Chocolatey, inventory system, config.json integration
+    # Function Location: [C.1] Lines 1903-2249
+    # ================================================================
     @{ Name = 'InstallEssentialApps'; Function = { 
             Write-Log 'Starting Essential Apps Installation task.' 'INFO'
             Write-Host 'Starting Essential Apps Installation task.' -ForegroundColor Cyan
@@ -119,11 +244,16 @@ $global:ScriptTasks = @(
         }; Description = 'Install curated essential applications with parallel processing' 
     },
 
-    # Task: UpdateAllPackages
+    # ================================================================
+    # [A.2.6] COPILOT_TASK: UpdateAllPackages
+    # ================================================================
+    # COPILOT_TASK_ID: UpdateAllPackages
     # Purpose: Ultra-parallel update of all installed packages.
     # Environment: Windows 10/11, Administrator required, enhanced performance focus
     # Logic: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
     # Dependencies: Winget, Chocolatey, parallel processing capabilities
+    # Function Location: [C.2] Lines 2258-2672
+    # ================================================================
     @{ Name = 'UpdateAllPackages'; Function = { 
             Write-Log 'Starting Package Updates task.' 'INFO'
             Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
@@ -134,11 +264,16 @@ $global:ScriptTasks = @(
         }; Description = 'Ultra-parallel package updates with performance optimization' 
     },
 
-    # Task: WindowsUpdateCheck
+    # ================================================================
+    # [A.2.7] COPILOT_TASK: WindowsUpdateCheck
+    # ================================================================
+    # COPILOT_TASK_ID: WindowsUpdateCheck
     # Purpose: Check and install Windows Updates via PSWindowsUpdate module.
     # Environment: Windows 10/11, Administrator required, PSWindowsUpdate module
     # Logic: Config-driven skip, module auto-install, comprehensive error handling
     # Dependencies: PSWindowsUpdate module, Windows Update service
+    # Function Location: [B.4] Lines 888-1068
+    # ================================================================
     @{ Name = 'WindowsUpdateCheck'; Function = {
             Write-Log 'Starting Windows Updates check task.' 'INFO'
             Write-Host 'Starting Windows Updates check task.' -ForegroundColor Cyan
@@ -164,11 +299,16 @@ $global:ScriptTasks = @(
         }; Description = 'Check and install Windows Updates with PSWindowsUpdate module' 
     },
 
-    # Task: DisableTelemetry
+    # ================================================================
+    # [A.2.8] COPILOT_TASK: DisableTelemetry
+    # ================================================================
+    # COPILOT_TASK_ID: DisableTelemetry
     # Purpose: Disable Windows telemetry and privacy-invasive features.
     # Environment: Windows 10/11, Administrator required, registry/service modification
     # Logic: Parallel browser detection, batch registry operations, service management
     # Dependencies: Registry access, service control, browser configuration files
+    # Function Location: [C.6] Lines 3200-3643
+    # ================================================================
     @{ Name = 'DisableTelemetry'; Function = { 
             Write-Log 'Starting Telemetry Disable task.' 'INFO'
             Write-Host 'Starting Telemetry Disable task.' -ForegroundColor Cyan
@@ -186,11 +326,16 @@ $global:ScriptTasks = @(
         }; Description = 'Disable telemetry, privacy features, and configure browser privacy' 
     },
 
-    # Task: TaskbarOptimization
+    # ================================================================
+    # [A.2.9] COPILOT_TASK: TaskbarOptimization
+    # ================================================================
+    # COPILOT_TASK_ID: TaskbarOptimization
     # Purpose: Optimize Windows interface by hiding taskbar elements and disabling web search in Start menu.
     # Environment: Windows 10/11, any user context, registry modification access
     # Logic: Registry-based taskbar and search control, Windows version detection, user experience optimization
     # Dependencies: Registry access, Windows Explorer restart capability
+    # Function Location: [C.7] Lines 3650-3861
+    # ================================================================
     @{ Name = 'TaskbarOptimization'; Function = { 
             Write-Log 'Starting Taskbar and Start Menu Optimization task.' 'INFO'
             Write-Host 'Starting Taskbar and Start Menu Optimization task.' -ForegroundColor Cyan
@@ -208,11 +353,16 @@ $global:ScriptTasks = @(
         }; Description = 'Hide taskbar elements and disable web search for local-only Start menu search' 
     },
 
-    # Task: SecurityHardening
+    # ================================================================
+    # [A.2.10] COPILOT_TASK: SecurityHardening
+    # ================================================================
+    # COPILOT_TASK_ID: SecurityHardening
     # Purpose: Enable essential Windows security features while preserving SMB and authentication.
     # Environment: Windows 10/11, Administrator required, security configuration access
     # Logic: Windows Defender, Firewall, UAC, SmartScreen, secure services configuration
     # Dependencies: Windows Defender, Firewall service, registry access, service control
+    # Function Location: [C.8] Lines 3868-4202
+    # ================================================================
     @{ Name = 'SecurityHardening'; Function = { 
             Write-Log 'Starting Security Hardening task.' 'INFO'
             Write-Host 'Starting Security Hardening task.' -ForegroundColor Cyan
@@ -230,11 +380,16 @@ $global:ScriptTasks = @(
         }; Description = 'Enable Windows security features while preserving SMB and authentication' 
     },
 
-    # Task: CleanTempAndDisk
+    # ================================================================
+    # [A.2.11] COPILOT_TASK: CleanTempAndDisk
+    # ================================================================
+    # COPILOT_TASK_ID: CleanTempAndDisk
     # Purpose: Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup).
     # Environment: Windows 10/11, Administrator preferred, disk cleanup utilities
     # Logic: Multi-folder temp cleanup, parallel deletion, cleanmgr.exe, Storage Sense, DISM, Delivery Optimization, action-only logging
     # Dependencies: File system access, cleanmgr.exe, temp folder permissions, DISM, Storage Sense
+    # Function Location: [A.2.11] Inline implementation (Lines 388-573)
+    # ================================================================
     @{ Name = 'CleanTempAndDisk'; Function = {
             Write-Log 'Starting Full System Cleanup task (temp files, cache, WinSxS).' 'INFO'
             Write-Host 'Starting Full System Cleanup task (temp files, cache, WinSxS).' -ForegroundColor Cyan
@@ -383,11 +538,16 @@ $global:ScriptTasks = @(
         }; Description = 'Full unattended system cleanup (temp, cache, WinSxS, Delivery Optimization, disk cleanup)' 
     },
 
-    # Task: PendingRestartCheck
+    # ================================================================
+    # [A.2.12] COPILOT_TASK: PendingRestartCheck
+    # ================================================================
+    # COPILOT_TASK_ID: PendingRestartCheck
     # Purpose: Check for pending system restarts and offer 120-second countdown with abort option.
     # Environment: Windows 10/11, any user context, registry access for restart detection
     # Logic: Comprehensive restart detection, 120-second countdown, user abort option
     # Dependencies: Registry access, restart detection methods, user interaction
+    # Function Location: [A.2.12] Inline implementation (Lines 546-694)
+    # ================================================================
     @{ Name = 'PendingRestartCheck'; Function = { 
             Write-Log 'Starting Pending Restart Check task.' 'INFO'
             Write-Host 'Starting Pending Restart Check task.' -ForegroundColor Cyan
@@ -513,9 +673,15 @@ $global:ScriptTasks = @(
     }
 )
 
-### Configuration: Load configuration from config.json (if exists) - MUST BE EARLY
+# ================================================================
+# [A.3] CONFIGURATION MANAGEMENT - COPILOT SECTION
+# ================================================================
+# COPILOT_SECTION: ConfigurationSystem
 # Purpose: Supports configuration-driven task execution and customization
 # Logic: Merges custom config with defaults, graceful handling of missing file
+# Dependencies: File system access, JSON parsing capabilities
+# Config File: config.json (optional) - JSON format with task skip flags and custom arrays
+# ================================================================
 $configPath = Join-Path $PSScriptRoot "config.json"
 $global:Config = @{
     SkipBloatwareRemoval  = $false
@@ -554,8 +720,20 @@ if (Test-Path $configPath) {
     }
 }
 
-# Task Coordinator: Main task execution orchestrator function
-# Logic: Sequential task execution with comprehensive error handling and performance metrics
+# ================================================================
+# [B] CORE INFRASTRUCTURE - COPILOT SECTION
+# ================================================================
+
+# ================================================================
+# [B.1] TASK ORCHESTRATION - COPILOT FUNCTION
+# ================================================================
+# COPILOT_FUNCTION_ID: Use-AllScriptTasks
+# Purpose: Main task execution orchestrator with comprehensive error handling and performance metrics
+# Environment: Windows 10/11, PowerShell 7+, Administrator context
+# Logic: Sequential task execution, detailed logging, performance tracking, graceful error handling
+# Dependencies: Global task array, Write-Log function, global config system
+# Performance: Tracks execution time, success/failure rates, provides detailed console output
+# ================================================================
 function Use-AllScriptTasks {
     Write-Log 'Initiating all maintenance tasks execution sequence.' 'INFO'
     $global:TaskResults = @{}
@@ -621,11 +799,17 @@ $startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
 $startupEntry = "[$timestamp] [INFO] ============================================================"
 $startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
 
-### Function: Write-Log
+# ================================================================
+# [B.2] LOGGING SYSTEM - COPILOT FUNCTION
+# ================================================================
+# COPILOT_FUNCTION_ID: Write-Log
 # Purpose: Provides consistent logging across all maintenance operations.
 # Environment: Any PowerShell version, writes to file and color-coded console.
 # Logic: Timestamped entries, level-based filtering, file and console output.
-# Performance: Fast, minimal overhead.
+# Performance: Fast, minimal overhead, unified logging to parent directory.
+# Dependencies: File system access, global config for verbose logging control
+# Output: maintenance.log in parent directory, color-coded console messages
+# ================================================================
 function Write-Log {
     param(
         [string]$Message,
@@ -654,10 +838,19 @@ function Write-Log {
 ### [REMOVED] Legacy compatibility wrapper (Invoke-WindowsPowerShellCommand) - all logic now PowerShell 7 native
 # Performance: Fast, minimal overhead.
 
-### Function: Get-AppxPackageCompatible
-### [REMOVED] Legacy compatibility wrapper (Get-AppxPackageCompatible) - all logic now PowerShell 7 native
-# Logic: Returns array of AppX package objects with Name, PackageFullName, and Version properties.
-# Performance: Fast, minimal overhead.
+# ================================================================
+# [B.3] APPX COMPATIBILITY LAYER - COPILOT FUNCTIONS
+# ================================================================
+
+# ================================================================
+# [B.3.1] COPILOT_FUNCTION_ID: Get-AppxPackageCompatible
+# ================================================================
+# Purpose: PowerShell 7 native AppX package enumeration wrapper
+# Environment: Windows 10/11, PowerShell 7+, AppX subsystem access
+# Logic: Returns array of AppX package objects with Name, PackageFullName, and Version properties
+# Performance: Fast, minimal overhead, direct PowerShell 7 cmdlet usage
+# Dependencies: Get-AppxPackage cmdlet, AppX subsystem
+# ================================================================
 function Get-AppxPackageCompatible {
     param(
         [string]$Name = "*",
@@ -1892,16 +2085,28 @@ else {
 
 
 
-### AI_MAINTENANCE_TASK: Install Essential Apps - Ultra-Parallel Processing
-# AI_TASK_ID: InstallEssentialApps  
-# AI_PURPOSE: High-performance installation of curated essential applications using parallel processing
-# AI_ENVIRONMENT: Windows 10/11, Administrator required, Winget/Chocolatey package manager access
-# AI_PERFORMANCE: O(1) HashSet lookups, parallel job execution, smart pre-filtering, action-only logging
-# AI_DEPENDENCIES: Winget, Chocolatey, system inventory, config.json custom app support
-# AI_LOGIC: Inventory-based duplicate detection, parallel installation batches, comprehensive error handling
-# AI_CUSTOMIZATION: Supports custom app lists via $global:Config.CustomEssentialApps array
+# ================================================================
+# [C.1] ESSENTIAL APPS INSTALLATION - COPILOT MAINTENANCE TASK
+# ================================================================
+# COPILOT_TASK_ID: InstallEssentialApps  
+# Purpose: High-performance installation of curated essential applications using parallel processing
+# Environment: Windows 10/11, Administrator required, Winget/Chocolatey access
+# Logic: HashSet optimization, parallel processing, smart filtering, custom app support
+# Performance: Ultra-parallel execution, timeout handling, detailed progress tracking
+# Dependencies: Winget, Chocolatey, inventory system, config.json integration
+# Function Location: [C.1] Lines 2095-2439 (approximate)
+# ================================================================
 function Install-EssentialApps {
-    # ===============================
+    # ================================================================
+    # COPILOT_TASK_HEADER: InstallEssentialApps (Application Management)
+    # ================================================================
+    # Purpose: High-performance installation of curated essential applications using parallel processing
+    # Environment: Windows 10/11, Administrator required, Winget/Chocolatey package manager access
+    # Performance: O(1) HashSet lookups, parallel job execution, smart pre-filtering, action-only logging
+    # Dependencies: Winget, Chocolatey, system inventory, config.json custom app support
+    # Logic: Inventory-based duplicate detection, parallel installation batches, comprehensive error handling
+    # Customization: Supports custom app lists via $global:Config.CustomEssentialApps array
+    # ================================================================
     # AI_TASK_HEADER: InstallEssentialApps (Ultra-Performance Edition)
     # ===============================
     # AI_PURPOSE: Parallel installation of essential applications with smart filtering and optimization
@@ -2247,22 +2452,27 @@ function Install-EssentialApps {
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
 
-### AI_MAINTENANCE_TASK: Update All Packages - Ultra-Optimized Parallel Processing  
-# AI_TASK_ID: UpdateAllPackages
-# AI_PURPOSE: Ultra-high-performance parallel updating of all installed packages via multiple package managers
-# AI_ENVIRONMENT: Windows 10/11, Administrator required, Winget/Chocolatey access, enhanced performance focus  
-# AI_PERFORMANCE: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
-# AI_DEPENDENCIES: Winget, Chocolatey, parallel processing capabilities, comprehensive error handling
-# AI_LOGIC: Parallel execution streams, smart filtering, update validation, performance optimization
-# AI_FEATURES: Timeout protection, concurrent processing, detailed timing metrics, action-focused logging
+# ================================================================
+# [C.2] PACKAGE UPDATES - COPILOT MAINTENANCE TASK
+# ================================================================
+# COPILOT_TASK_ID: UpdateAllPackages
+# Purpose: Ultra-high-performance parallel updating of all installed packages via multiple package managers
+# Environment: Windows 10/11, Administrator required, Winget/Chocolatey access, enhanced performance focus  
+# Performance: Multi-threaded execution, timeout handling, detailed metrics, action-only logging
+# Dependencies: Winget, Chocolatey, parallel processing capabilities, comprehensive error handling
+# Logic: Parallel execution streams, smart filtering, update validation, performance optimization
+# Features: Timeout protection, concurrent processing, detailed timing metrics, action-focused logging
+# Function Location: [C.2] Lines 2463-2884 (approximate)
+# ================================================================
 function Update-AllPackages {
-    # ===============================
-    # Task: UpdateAllPackages (Ultra-Enhanced Performance & Reliability)
-    # ===============================
-    # Purpose: Updates all installed packages using advanced parallel processing and smart caching.
-    # Environment: Windows 10/11, must run as Administrator, supports Winget and Chocolatey.
-    # Logic: Parallel execution, smart caching, detailed update tracking, comprehensive validation, action-only logging.
-    # Performance: Uses parallel jobs, smart pre-filtering, package-specific update tracking, optimized command args.
+    # ================================================================
+    # COPILOT_TASK_HEADER: UpdateAllPackages (Package Management)
+    # ================================================================
+    # Purpose: Updates all installed packages using advanced parallel processing and smart caching
+    # Environment: Windows 10/11, must run as Administrator, supports Winget and Chocolatey
+    # Logic: Parallel execution, smart caching, detailed update tracking, comprehensive validation, action-only logging
+    # Performance: Uses parallel jobs, smart pre-filtering, package-specific update tracking, optimized command args
+    # ================================================================
     Write-Log "[START] Update All Packages (Ultra-Optimized Parallel Approach)" 'INFO'
 
     # Pre-check package manager availability with version detection
