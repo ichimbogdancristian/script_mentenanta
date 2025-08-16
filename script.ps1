@@ -280,7 +280,8 @@ $global:ScriptTasks = @(
                             Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue
                             if (Test-Path $_.FullName -ErrorAction SilentlyContinue) {
                                 [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                            } else {
+                            }
+                            else {
                                 [System.Threading.Interlocked]::Increment([ref]$using:deletedFolders)
                             }
                         }
@@ -288,7 +289,8 @@ $global:ScriptTasks = @(
                             Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
                             if (Test-Path $_.FullName -ErrorAction SilentlyContinue) {
                                 [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                            } else {
+                            }
+                            else {
                                 [System.Threading.Interlocked]::Increment([ref]$using:deletedFiles)
                             }
                         }
@@ -365,16 +367,16 @@ $global:ScriptTasks = @(
 # Logic: Merges custom config with defaults, graceful handling of missing file
 $configPath = Join-Path $PSScriptRoot "config.json"
 $global:Config = @{
-    SkipBloatwareRemoval = $false
-    SkipEssentialApps    = $false
-    SkipWindowsUpdates   = $false
-    SkipTelemetryDisable = $false
-    SkipSystemRestore    = $false
-    SkipEventLogAnalysis = $false
+    SkipBloatwareRemoval  = $false
+    SkipEssentialApps     = $false
+    SkipWindowsUpdates    = $false
+    SkipTelemetryDisable  = $false
+    SkipSystemRestore     = $false
+    SkipEventLogAnalysis  = $false
     SkipSecurityHardening = $false
-    CustomEssentialApps  = @()
-    CustomBloatwareList  = @()
-    EnableVerboseLogging = $false
+    CustomEssentialApps   = @()
+    CustomBloatwareList   = @()
+    EnableVerboseLogging  = $false
 }
 
 if (Test-Path $configPath) {
@@ -469,7 +471,8 @@ function Get-AppxPackageCompatible {
     )
     if ($AllUsers) {
         return Get-AppxPackage -Name $Name -AllUsers -ErrorAction SilentlyContinue
-    } else {
+    }
+    else {
         return Get-AppxPackage -Name $Name -ErrorAction SilentlyContinue
     }
 }
@@ -487,7 +490,8 @@ function Remove-AppxPackageCompatible {
     try {
         if ($AllUsers) {
             Remove-AppxPackage -Package $PackageFullName -AllUsers -ErrorAction SilentlyContinue
-        } else {
+        }
+        else {
             Remove-AppxPackage -Package $PackageFullName -ErrorAction SilentlyContinue
         }
         
@@ -499,7 +503,8 @@ function Remove-AppxPackageCompatible {
         }
         
         return $true
-    } catch {
+    }
+    catch {
         Write-Log "Failed to remove AppX package: $_" 'ERROR'
         return $false
     }
@@ -534,7 +539,7 @@ function Get-AppxProvisionedPackageCompatible {
         return @()
     }
     else {
-    # [REMOVED] Native PowerShell 5.1 block
+        # [REMOVED] Native PowerShell 5.1 block
         if ($Online) {
             return Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
         }
@@ -574,7 +579,8 @@ function Remove-AppxProvisionedPackageCompatible {
                 $remainingPackage = Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -eq $PackageName }
                 if (-not $remainingPackage) {
                     return $true
-                } else {
+                }
+                else {
                     Write-Log "AppX provisioned package removal may have failed - package still found: $PackageName" 'WARN'
                     return $false
                 }
@@ -585,100 +591,97 @@ function Remove-AppxProvisionedPackageCompatible {
                 # For offline operations, assume success if no exception was thrown
                 return $true
             }
-        }
-        catch {
-            return $false
-        }
-    }
-}
 
-### Function: Enable-ComputerRestoreCompatible
-# Purpose: Enables System Restore protection (cross-version).
-# Environment: Administrator, System Restore service access.
-# Logic: Enables protection for specified drive.
-# Performance: Fast, minimal overhead.
-function Enable-ComputerRestoreCompatible {
-    param(
-        [string]$Drive
-    )
+            ### Function: Enable-ComputerRestoreCompatible
+            # Purpose: Enables System Restore protection (cross-version).
+            # Environment: Administrator, System Restore service access.
+            # Logic: Enables protection for specified drive.
+            # Performance: Fast, minimal overhead.
+            function Enable-ComputerRestoreCompatible {
+                param(
+                    [string]$Drive
+                )
     
-    try {
-        Write-Log "Enabling System Restore on drive $Drive" 'INFO'
+                try {
+                    Write-Log "Enabling System Restore on drive $Drive" 'INFO'
         
-        if ($PSVersionTable.PSVersion.Major -ge 7) {
-            # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
-            $command = "Enable-ComputerRestore -Drive '$Drive'"
-            $result = & powershell.exe -Command $command 2>&1
+                    if ($PSVersionTable.PSVersion.Major -ge 7) {
+                        # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
+                        $command = "Enable-ComputerRestore -Drive '$Drive'"
+                        $result = & powershell.exe -Command $command 2>&1
             
-            if ($LASTEXITCODE -eq 0) {
-                Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
-                return $true
-            } else {
-                Write-Log "Failed to enable System Restore on drive $Drive. Exit code: $LASTEXITCODE" 'WARN'
-                return $false
-            }
-        }
-        else {
-            # Native PowerShell 5.1
-            Enable-ComputerRestore -Drive $Drive -ErrorAction SilentlyContinue
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
+                            return $true
+                        }
+                        else {
+                            & powershell.exe -Command $command 2>&1
+                            return $false
+                        }
+                    }
+                    else {
+                        # Native PowerShell 5.1
+                        Enable-ComputerRestore -Drive $Drive -ErrorAction SilentlyContinue
             
-            # Verify that the restore point was actually enabled
-            Start-Sleep -Seconds 1
-            $verifyRestore = Get-WmiObject -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
-            if ($verifyRestore -and -not $verifyRestore.Disable) {
-                Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
-                return $true
-            } else {
-                Write-Log "System Restore enable operation completed but verification failed for drive $Drive" 'WARN'
-                return $false
+                        # Verify that the restore point was actually enabled
+                        Start-Sleep -Seconds 1
+                        $verifyRestore = Get-WmiObject -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
+                        if ($verifyRestore -and -not $verifyRestore.Disable) {
+                            Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
+                            return $true
+                        }
+                        else {
+                            Write-Log "System Restore enable operation completed but verification failed for drive $Drive" 'WARN'
+                            return $false
+                        }
+                    }
+                }
+                catch {
+                    Write-Log "Failed to enable System Restore on drive $Drive : $_" 'ERROR'
+                    return $false
+                }
             }
-        }
-    }
-    catch {
-        Write-Log "Failed to enable System Restore on drive $Drive : $_" 'ERROR'
-        return $false
-    }
-}
 
-### Function: Checkpoint-ComputerCompatible
-# Purpose: Creates restore point (cross-version).
-# Environment: Administrator, System Restore enabled.
-# Logic: Creates restore point with description and type.
-# Performance: Fast, minimal overhead.
-function Checkpoint-ComputerCompatible {
-    param(
-        [string]$Description,
-        [string]$RestorePointType = 'MODIFY_SETTINGS'
-    )
+            ### Function: Checkpoint-ComputerCompatible
+            # Purpose: Creates restore point (cross-version).
+            # Environment: Administrator, System Restore enabled.
+            # Logic: Creates restore point with description and type.
+            # Performance: Fast, minimal overhead.
+            function Checkpoint-ComputerCompatible {
+                param(
+                    [string]$Description,
+                    [string]$RestorePointType = 'MODIFY_SETTINGS'
+                )
     
-    try {
-        Write-Log "Creating system restore point: $Description" 'INFO'
+                try {
+                    Write-Log "Creating system restore point: $Description" 'INFO'
         
-        if ($PSVersionTable.PSVersion.Major -ge 7) {
-            # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
-            $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType'"
-            $result = & powershell.exe -Command $command 2>&1
+                    if ($PSVersionTable.PSVersion.Major -ge 7) {
+                        # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
+                        $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType'"
+                        $result = & powershell.exe -Command $command 2>&1
             
-            if ($LASTEXITCODE -eq 0) {
-                Write-Log "Successfully created restore point: $Description" 'INFO'
-                return $true
-            } else {
-                Write-Log "Failed to create restore point: $Description. Exit code: $LASTEXITCODE" 'WARN'
-                return $false
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Log "Successfully created restore point: $Description" 'INFO'
+                            return $true
+                        }
+                        else {
+                            Write-Log "Failed to create restore point: $Description. Exit code: $LASTEXITCODE" 'WARN'
+                            return $false
+                        }
+                    }
+                    else {
+                        # Native PowerShell 5.1
+                        Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
+                        Write-Log "Successfully created restore point: $Description" 'INFO'
+                        return $true
+                    }
+                }
+                catch {
+                    Write-Log "Failed to create restore point '$Description': $_" 'ERROR'
+                    return $false
+                }
             }
-        }
-        else {
-            # Native PowerShell 5.1
-            Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
-            Write-Log "Successfully created restore point: $Description" 'INFO'
-            return $true
-        }
-    }
-    catch {
-        Write-Log "Failed to create restore point '$Description': $_" 'ERROR'
-        return $false
-    }
-}
         }
         catch {
             return $false
@@ -709,7 +712,8 @@ function Install-WindowsUpdatesCompatible {
                 # Verify installation
                 if (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue) {
                     Write-Log 'PSWindowsUpdate module installed successfully.' 'INFO'
-                } else {
+                }
+                else {
                     throw "PSWindowsUpdate module installation failed - module not available after installation"
                 }
             }
@@ -869,7 +873,7 @@ function Install-WindowsUpdatesCompatible {
 # Returns: Array of Start menu app objects for inventory and management operations
 function Get-StartAppsCompatible {
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-    # [REMOVED] Legacy compatibility block - all StartApps operations are PowerShell 7 native
+        # [REMOVED] Legacy compatibility block - all StartApps operations are PowerShell 7 native
         $command = "Get-StartApps | Select-Object Name, AppId | ConvertTo-Json -Depth 2"
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get Start menu apps"
         if ($result) {
@@ -884,7 +888,7 @@ function Get-StartAppsCompatible {
         return @()
     }
     else {
-    # [REMOVED] Native PowerShell 5.1 block
+        # [REMOVED] Native PowerShell 5.1 block
         return Get-StartApps -ErrorAction SilentlyContinue
     }
 }
@@ -1655,7 +1659,8 @@ function Import-ModuleWithGracefulFallback {
             if (Get-Module -Name $ModuleName -ErrorAction SilentlyContinue) {
                 Write-Log "[MODULE] Successfully imported $ModuleName" 'VERBOSE'
                 return $true
-            } else {
+            }
+            else {
                 Write-Log "[MODULE] Failed to import $ModuleName - module not loaded after import attempt" 'WARN'
                 return $false
             }
@@ -2503,8 +2508,8 @@ function Get-EventLogAnalysis {
                 
                 # Get error and warning events from the last 96 hours
                 $events = Get-WinEvent -FilterHashtable @{
-                    LogName = $logName
-                    Level = @(1,2,3)  # Critical, Error, Warning
+                    LogName   = $logName
+                    Level     = @(1, 2, 3)  # Critical, Error, Warning
                     StartTime = $startTime
                 } -ErrorAction SilentlyContinue | Sort-Object TimeCreated -Descending
                 
@@ -2520,7 +2525,8 @@ function Get-EventLogAnalysis {
                         Write-Log $eventDetails 'WARN'
                     }
                     Write-Log "[EventLogAnalysis] Found $($events.Count) error/warning events in $logName log" 'INFO'
-                } else {
+                }
+                else {
                     Write-Log "[EventLogAnalysis] No error/warning events found in $logName log since $startTime" 'INFO'
                 }
             }
@@ -2552,8 +2558,8 @@ function Get-EventLogAnalysis {
                             $cbsTimestamp = [DateTime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
                             if ($cbsTimestamp -ge $startTime) {
                                 $cbsLogType = if ($cbsLine -match '\[FATAL\]|\[ERROR\]') { 'ERROR'; $errorCount++ } 
-                                            elseif ($cbsLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
-                                            else { 'INFO' }
+                                elseif ($cbsLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
+                                else { 'INFO' }
                                 Write-Log "[CBS] $cbsLogType - $cbsTimestamp - $($cbsLine.Trim())" 'WARN'
                             }
                         }
@@ -2568,7 +2574,8 @@ function Get-EventLogAnalysis {
             catch {
                 Write-Log "[EventLogAnalysis] Failed to read CBS log file: $_" 'ERROR'
             }
-        } else {
+        }
+        else {
             Write-Log "[EventLogAnalysis] CBS log file not found at $cbsLogPath" 'WARN'
         }
         
@@ -2594,8 +2601,8 @@ function Get-EventLogAnalysis {
                             $dismTimestamp = [DateTime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
                             if ($dismTimestamp -ge $startTime) {
                                 $dismLogType = if ($dismLine -match '\[FATAL\]|\[ERROR\]') { 'ERROR'; $errorCount++ } 
-                                              elseif ($dismLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
-                                              else { 'INFO' }
+                                elseif ($dismLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
+                                else { 'INFO' }
                                 Write-Log "[DISM] $dismLogType - $dismTimestamp - $($dismLine.Trim())" 'WARN'
                             }
                         }
@@ -2609,7 +2616,8 @@ function Get-EventLogAnalysis {
             catch {
                 Write-Log "[EventLogAnalysis] Failed to read DISM log file: $_" 'ERROR'
             }
-        } else {
+        }
+        else {
             Write-Log "[EventLogAnalysis] DISM log file not found at $dismLogPath" 'WARN'
         }
         
@@ -2618,9 +2626,11 @@ function Get-EventLogAnalysis {
         
         if ($errorCount -eq 0 -and $warningCount -eq 0) {
             Write-Host "✅ Event Log Analysis: No critical errors found in the last 96 hours" -ForegroundColor Green
-        } elseif ($errorCount -eq 0) {
+        }
+        elseif ($errorCount -eq 0) {
             Write-Host "⚠️ Event Log Analysis: $warningCount warnings found, no critical errors" -ForegroundColor Yellow  
-        } else {
+        }
+        else {
             Write-Host "⚠️ Event Log Analysis: $errorCount errors and $warningCount warnings found" -ForegroundColor Red
         }
         
@@ -3472,7 +3482,8 @@ function Enable-SecurityHardening {
             Write-Log "[SecurityHardening] Windows Defender real-time protection enabled - All monitoring features activated" 'INFO'
             $hardeningResults += "Windows Defender: ENABLED"
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to configure Windows Defender: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to configure Windows Defender: $_" 'ERROR'
             $hardeningResults += "Windows Defender: FAILED"
@@ -3485,14 +3496,15 @@ function Enable-SecurityHardening {
             $firewallBefore = Get-NetFirewallProfile | Select-Object Name, Enabled
             Write-Log "[SecurityHardening] Firewall profiles before: $($firewallBefore | ForEach-Object { "$($_.Name)=$($_.Enabled)" } | Join-String -Separator ', ')" 'VERBOSE'
             
-            Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True -ErrorAction Stop
+            Set-NetFirewallProfile -Profile Domain, Public, Private -Enabled True -ErrorAction Stop
             
             $firewallAfter = Get-NetFirewallProfile | Select-Object Name, Enabled
             Write-Host "✓ Windows Firewall enabled for all profiles" -ForegroundColor Green
             Write-Log "[SecurityHardening] Windows Firewall enabled for all profiles: $($firewallAfter | ForEach-Object { "$($_.Name)=$($_.Enabled)" } | Join-String -Separator ', ')" 'INFO'
             $hardeningResults += "Windows Firewall: ENABLED (All Profiles)"
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to enable Windows Firewall: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to enable Windows Firewall: $_" 'ERROR'
             $hardeningResults += "Windows Firewall: FAILED"
@@ -3514,7 +3526,8 @@ function Enable-SecurityHardening {
             Write-Log "[SecurityHardening] Automatic Windows Updates enabled - NoAutoUpdate=0, AUOptions=4 (Auto download and install)" 'INFO'
             $hardeningResults += "Windows Updates: AUTO-ENABLED"
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to configure Windows Updates: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to configure Windows Updates: $_" 'ERROR'
             $hardeningResults += "Windows Updates: FAILED"
@@ -3535,7 +3548,8 @@ function Enable-SecurityHardening {
             Write-Log "[SecurityHardening] User Account Control enabled - EnableLUA=1, ConsentPromptBehaviorAdmin=2" 'INFO'
             $hardeningResults += "UAC: ENABLED"
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to enable UAC: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to enable UAC: $_" 'ERROR'
             $hardeningResults += "UAC: FAILED"
@@ -3555,7 +3569,8 @@ function Enable-SecurityHardening {
             Write-Host "✓ Security event logging enabled" -ForegroundColor Green
             Write-Log "[SecurityHardening] Security event logging enabled" 'INFO'
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to configure event logging: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to configure event logging: $_" 'ERROR'
             $securityErrors++
@@ -3580,7 +3595,8 @@ function Enable-SecurityHardening {
             Write-Host "✓ SmartScreen enabled" -ForegroundColor Green
             Write-Log "[SecurityHardening] SmartScreen enabled" 'INFO'
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to enable SmartScreen: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to enable SmartScreen: $_" 'ERROR'
             $securityErrors++
@@ -3593,11 +3609,13 @@ function Enable-SecurityHardening {
             if ($SecureBoot) {
                 Write-Host "✓ Secure Boot is already enabled" -ForegroundColor Green
                 Write-Log "[SecurityHardening] Secure Boot is already enabled" 'INFO'
-            } else {
+            }
+            else {
                 Write-Host "⚠ Secure Boot is not enabled (requires UEFI firmware configuration)" -ForegroundColor Yellow
                 Write-Log "[SecurityHardening] Secure Boot is not enabled (requires UEFI firmware configuration)" 'WARN'
             }
-        } catch {
+        }
+        catch {
             Write-Host "⚠ Cannot check Secure Boot status (may not be supported)" -ForegroundColor Yellow
             Write-Log "[SecurityHardening] Cannot check Secure Boot status (may not be supported)" 'WARN'
         }
@@ -3609,7 +3627,8 @@ function Enable-SecurityHardening {
             Write-Host "✓ PowerShell execution policy set to RemoteSigned" -ForegroundColor Green
             Write-Log "[SecurityHardening] PowerShell execution policy set to RemoteSigned" 'INFO'
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to set PowerShell execution policy: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to set PowerShell execution policy: $_" 'ERROR'
             $securityErrors++
@@ -3622,7 +3641,8 @@ function Enable-SecurityHardening {
             Write-Host "✓ Controlled Folder Access enabled" -ForegroundColor Green
             Write-Log "[SecurityHardening] Controlled Folder Access enabled" 'INFO'
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to enable Controlled Folder Access: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to enable Controlled Folder Access: $_" 'ERROR'
             $securityErrors++
@@ -3649,7 +3669,8 @@ function Enable-SecurityHardening {
                     Write-Log "[SecurityHardening] Disabled service: $ServiceName" 'INFO'
                     $securityActions++
                 }
-            } catch {
+            }
+            catch {
                 Write-Host "⚠ Could not disable service $ServiceName : $($_.Exception.Message)" -ForegroundColor Yellow
                 Write-Log "[SecurityHardening] Could not disable service $ServiceName : $_" 'WARN'
             }
@@ -3665,7 +3686,8 @@ function Enable-SecurityHardening {
                 Write-Log "[SecurityHardening] Network Level Authentication enabled for RDP" 'INFO'
                 $securityActions++
             }
-        } catch {
+        }
+        catch {
             Write-Host "⚠ Could not configure RDP security: $($_.Exception.Message)" -ForegroundColor Yellow
             Write-Log "[SecurityHardening] Could not configure RDP security: $_" 'WARN'
         }
@@ -3678,7 +3700,8 @@ function Enable-SecurityHardening {
             Write-Host "✓ Cloud protection and sample submission enabled" -ForegroundColor Green
             Write-Log "[SecurityHardening] Cloud protection and sample submission enabled" 'INFO'
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "✗ Failed to enable cloud protection: $($_.Exception.Message)" -ForegroundColor Red
             Write-Log "[SecurityHardening] Failed to enable cloud protection: $_" 'ERROR'
             $securityErrors++
@@ -3698,7 +3721,8 @@ function Enable-SecurityHardening {
             Write-Log "[SecurityHardening] SMB security enhanced (SMB1 disabled, encryption enabled)" 'INFO'
             Write-Log "[SecurityHardening] SMB1 clients will no longer be able to connect" 'WARN'
             $securityActions++
-        } catch {
+        }
+        catch {
             Write-Host "⚠ Could not fully configure SMB security: $($_.Exception.Message)" -ForegroundColor Yellow
             Write-Log "[SecurityHardening] Could not fully configure SMB security: $_" 'WARN'
         }
@@ -3738,7 +3762,8 @@ Important Notes:
         if ($securityErrors -eq 0) {
             Write-Host "✅ Security Hardening: All security features configured successfully" -ForegroundColor Green
             Write-Log "[SecurityHardening] RESULT: All security features configured successfully" 'INFO'
-        } else {
+        }
+        else {
             Write-Host "⚠️ Security Hardening: $securityActions features configured, $securityErrors errors encountered" -ForegroundColor Yellow
             Write-Log "[SecurityHardening] RESULT: $securityActions features configured, $securityErrors errors encountered" 'WARN'
         }
@@ -3790,7 +3815,8 @@ function Protect-SystemRestore {
         $allRestorePoints = @()
         if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
             $allRestorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Sort-Object CreationTime
-        } else {
+        }
+        else {
             $allRestorePoints = Get-CimInstance -Namespace 'root\default' -ClassName 'SystemRestore' | Sort-Object CreationTime
         }
         $totalRestorePoints = $allRestorePoints.Count
@@ -3810,301 +3836,305 @@ function Protect-SystemRestore {
                 try {
                     if (Get-Command Delete-ComputerRestorePoint -ErrorAction SilentlyContinue) {
                         Delete-ComputerRestorePoint -SequenceNumber $oldRp.SequenceNumber -ErrorAction Stop
-                    } else {
+                    }
+                    else {
                         Invoke-WmiMethod -Namespace 'root\default' -Class 'SystemRestore' -Name 'DeleteRestorePoint' -ArgumentList $oldRp.SequenceNumber | Out-Null
                     }
                     Write-Log "Deleted old restore point: ID=$($oldRp.SequenceNumber), Description=$($oldRp.Description)" 'WARN'
-                } catch {
+                }
+                catch {
                     Write-Log "Failed to delete restore point: ID=$($oldRp.SequenceNumber), Description=$($oldRp.Description). Error: $_" 'ERROR'
                 }
             }
         }
-    } catch {
+    }
+    catch {
         Write-Log "Failed to enumerate or clean restore points: $_" 'ERROR'
     }
-        # Enhanced native PS7.5 System Restore status check
-        Write-Log "[SystemRestore] Checking System Restore status using native PS7.5 CIM cmdlets..." 'VERBOSE'
+    # Enhanced native PS7.5 System Restore status check
+    Write-Log "[SystemRestore] Checking System Restore status using native PS7.5 CIM cmdlets..." 'VERBOSE'
         
-        # Get System Restore configuration using native CIM
-        $restoreConfig = $null
+    # Get System Restore configuration using native CIM
+    $restoreConfig = $null
+    try {
+        $restoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
+        Write-Log "[SystemRestore] System Restore status: $($restoreConfig.Enable)" 'VERBOSE'
+    }
+    catch {
+        Write-Log "[SystemRestore] Failed to query SystemRestoreConfig: $_" 'WARN'
+        # Try alternative method
         try {
-            $restoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction Stop
-            Write-Log "[SystemRestore] System Restore status: $($restoreConfig.Enable)" 'VERBOSE'
+            $restoreStatus = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "DisableSR" -ErrorAction SilentlyContinue
+            $restoreConfig = [PSCustomObject]@{ Enable = $restoreStatus.DisableSR -ne 1 }
+            Write-Log "[SystemRestore] Using registry fallback - System Restore enabled: $($restoreConfig.Enable)" 'VERBOSE'
         }
         catch {
-            Write-Log "[SystemRestore] Failed to query SystemRestoreConfig: $_" 'WARN'
-            # Try alternative method
-            try {
-                $restoreStatus = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "DisableSR" -ErrorAction SilentlyContinue
-                $restoreConfig = [PSCustomObject]@{ Enable = $restoreStatus.DisableSR -ne 1 }
-                Write-Log "[SystemRestore] Using registry fallback - System Restore enabled: $($restoreConfig.Enable)" 'VERBOSE'
-            }
-            catch {
-                Write-Log "[SystemRestore] Both CIM and registry methods failed - assuming disabled" 'WARN'
-                $restoreConfig = [PSCustomObject]@{ Enable = $false }
-            }
+            Write-Log "[SystemRestore] Both CIM and registry methods failed - assuming disabled" 'WARN'
+            $restoreConfig = [PSCustomObject]@{ Enable = $false }
         }
+    }
         
-        # Get disk space using native PS7.5 cmdlets
-        $freeSpaceGB = 0
+    # Get disk space using native PS7.5 cmdlets
+    $freeSpaceGB = 0
+    try {
+        $diskInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+        $freeSpaceGB = [math]::Round($diskInfo.FreeSpace / 1GB, 2)
+        Write-Log "[SystemRestore] Free disk space: $($freeSpaceGB)GB" 'VERBOSE'
+    }
+    catch {
+        Write-Log "[SystemRestore] Failed to get disk space info: $_" 'WARN'
+        # Try Get-Volume as fallback
         try {
-            $diskInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
-            $freeSpaceGB = [math]::Round($diskInfo.FreeSpace / 1GB, 2)
-            Write-Log "[SystemRestore] Free disk space: $($freeSpaceGB)GB" 'VERBOSE'
+            $volume = Get-Volume -DriveLetter C -ErrorAction Stop
+            $freeSpaceGB = [math]::Round($volume.SizeRemaining / 1GB, 2)
+            Write-Log "[SystemRestore] Using Get-Volume fallback - Free space: $($freeSpaceGB)GB" 'VERBOSE'
         }
         catch {
-            Write-Log "[SystemRestore] Failed to get disk space info: $_" 'WARN'
-            # Try Get-Volume as fallback
-            try {
-                $volume = Get-Volume -DriveLetter C -ErrorAction Stop
-                $freeSpaceGB = [math]::Round($volume.SizeRemaining / 1GB, 2)
-                Write-Log "[SystemRestore] Using Get-Volume fallback - Free space: $($freeSpaceGB)GB" 'VERBOSE'
-            }
-            catch {
-                Write-Log "[SystemRestore] Unable to determine free disk space" 'WARN'
-                $freeSpaceGB = 10  # Assume sufficient space to continue
-            }
+            Write-Log "[SystemRestore] Unable to determine free disk space" 'WARN'
+            $freeSpaceGB = 10  # Assume sufficient space to continue
         }
+    }
         
-        # Check for recent restore points using native cmdlets
-        $recentPointsCount = 0
-        $lastPointTime = $null
-        try {
-            # In PowerShell 7.5, we can use Get-ComputerRestorePoint if available
-            if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
-                $recentPoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Where-Object { 
-                    $_.CreationTime -gt (Get-Date).AddHours(-2) 
-                }
-                $recentPointsCount = ($recentPoints | Measure-Object).Count
-                if ($recentPoints) {
-                    $lastPointTime = ($recentPoints | Sort-Object CreationTime -Descending | Select-Object -First 1).CreationTime
-                }
-                Write-Log "[SystemRestore] Recent restore points (last 2 hours): $recentPointsCount" 'VERBOSE'
+    # Check for recent restore points using native cmdlets
+    $recentPointsCount = 0
+    $lastPointTime = $null
+    try {
+        # In PowerShell 7.5, we can use Get-ComputerRestorePoint if available
+        if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+            $recentPoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Where-Object { 
+                $_.CreationTime -gt (Get-Date).AddHours(-2) 
             }
-            else {
-                Write-Log "[SystemRestore] Get-ComputerRestorePoint not available - continuing without recent point check" 'VERBOSE'
+            $recentPointsCount = ($recentPoints | Measure-Object).Count
+            if ($recentPoints) {
+                $lastPointTime = ($recentPoints | Sort-Object CreationTime -Descending | Select-Object -First 1).CreationTime
             }
-        }
-        catch {
-            Write-Log "[SystemRestore] Failed to check recent restore points: $_" 'VERBOSE'
-        }
-        
-        # Enhanced System Restore enablement
-        $restoreEnabled = $restoreConfig.Enable
-        if (-not $restoreEnabled) {
-            Write-Host "⚠️ System Restore disabled - enabling..." -ForegroundColor Yellow
-            
-            try {
-                # Use native PS7.5 approach with multiple methods
-                $enableSuccess = $false
-                
-                # Method 1: Try Enable-ComputerRestore if available
-                if (Get-Command Enable-ComputerRestore -ErrorAction SilentlyContinue) {
-                    try {
-                        Enable-ComputerRestore -Drive $drive -ErrorAction SilentlyContinue
-                        
-                        # Verify that System Restore was actually enabled
-                        Start-Sleep -Seconds 2
-                        $restoreCheck = Get-CimInstance -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $drive }
-                        if ($restoreCheck -and -not $restoreCheck.Disable) {
-                            $enableSuccess = $true
-                            Write-Log "[SystemRestore] Enabled using Enable-ComputerRestore cmdlet" 'INFO'
-                        } else {
-                            Write-Log "[SystemRestore] Enable-ComputerRestore completed but verification failed" 'WARN'
-                        }
-                    }
-                    catch {
-                        Write-Log "[SystemRestore] Enable-ComputerRestore failed: $_" 'VERBOSE'
-                    }
-                }
-                
-                # Method 2: Try registry method if cmdlet failed
-                if (-not $enableSuccess) {
-                    try {
-                        $null = Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "DisableSR" -Value 0 -Force -ErrorAction Stop
-                        
-                        # Also enable for the specific drive
-                        $driveKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore\Cfg"
-                        if (Test-Path $driveKey) {
-                            $null = Set-ItemProperty -Path $driveKey -Name "DisableSR" -Value 0 -Force -ErrorAction SilentlyContinue
-                        }
-                        
-                        $enableSuccess = $true
-                        Write-Log "[SystemRestore] Enabled using registry method" 'INFO'
-                    }
-                    catch {
-                        Write-Log "[SystemRestore] Registry enable method failed: $_" 'VERBOSE'
-                    }
-                }
-                
-                # Method 3: Try VSSAdmin as final fallback
-                if (-not $enableSuccess) {
-                    try {
-                        & vssadmin list writers 2>$null
-                        if ($LASTEXITCODE -eq 0) {
-                            # VSSAdmin is working, try to enable via WMI
-                            $systemRestoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue
-                            if ($systemRestoreConfig) {
-                                $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true } -ErrorAction Stop
-                                $enableSuccess = $true
-                                Write-Log "[SystemRestore] Enabled using WMI/CIM method" 'INFO'
-                            }
-                        }
-                    }
-                    catch {
-                        Write-Log "[SystemRestore] WMI/CIM enable method failed: $_" 'VERBOSE'
-                    }
-                }
-                
-                if ($enableSuccess) {
-                    $restoreEnabled = $true
-                    Write-Host "✓ System Restore enabled successfully" -ForegroundColor Green
-                    Write-Log "System Restore enabled on $drive" 'INFO'
-                    
-                    # Brief wait for the service to initialize
-                    Start-Sleep -Seconds 2
-                }
-                else {
-                    Write-Host "✗ Failed to enable System Restore" -ForegroundColor Red
-                    Write-Log "All methods to enable System Restore failed" 'ERROR'
-                    return
-                }
-            }
-            catch {
-                Write-Host "✗ System Restore enable error: $($_.Exception.Message)" -ForegroundColor Red
-                Write-Log "Critical error enabling System Restore: $_" 'ERROR'
-                return
-            }
+            Write-Log "[SystemRestore] Recent restore points (last 2 hours): $recentPointsCount" 'VERBOSE'
         }
         else {
-            Write-Host "✓ System Restore already enabled" -ForegroundColor Green
-            Write-Log "System Restore is already enabled" 'INFO'
-        }
-        
-        # Enhanced disk space validation
-        if ($freeSpaceGB -lt 2) {
-            Write-Host "⚠️ Insufficient disk space ($($freeSpaceGB)GB) for restore point" -ForegroundColor Yellow
-            Write-Log "Insufficient disk space ($($freeSpaceGB)GB) to create restore point safely" 'WARN'
-            return
-        }
-        
-        # Smart duplicate restore point protection
-        if ($recentPointsCount -gt 0 -and $lastPointTime) {
-            $timeSinceLastPoint = (Get-Date) - $lastPointTime
-            if ($timeSinceLastPoint.TotalMinutes -lt 120) {
-                Write-Host "✓ Recent restore point exists ($([math]::Round($timeSinceLastPoint.TotalMinutes))min ago) - skipping" -ForegroundColor Cyan
-                Write-Log "Recent restore point exists (created $([math]::Round($timeSinceLastPoint.TotalMinutes)) minutes ago) - skipping creation" 'INFO'
-                $restorePointCreated = $true
-                return
-            }
-        }
-        
-        # Enhanced native restore point creation
-        if ($restoreEnabled) {
-            Write-Host "🔄 Creating restore point..." -ForegroundColor Cyan
-            
-            try {
-                $createSuccess = $false
-                
-                # Method 1: Try Checkpoint-Computer if available
-                if (Get-Command Checkpoint-Computer -ErrorAction SilentlyContinue) {
-                    try {
-                        Checkpoint-Computer -Description $restorePointDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
-                        $createSuccess = $true
-                        Write-Log "[SystemRestore] Restore point created using Checkpoint-Computer cmdlet" 'INFO'
-                    }
-                    catch {
-                        $errorCode = $_.Exception.HResult
-                        if ($errorCode -eq -2147023728) {
-                            # 0x80042308 - Frequency limit
-                            Write-Host "ℹ️ Restore point frequency limit reached (Windows limitation)" -ForegroundColor Cyan
-                            Write-Log "Restore point frequency limit reached - skipping (Windows limitation)" 'INFO'
-                            $createSuccess = $true  # Consider successful since protection exists
-                        }
-                        elseif ($errorCode -eq -2147023742) {
-                            # 0x80042302 - Service not responding
-                            Write-Log "System Restore service temporarily unavailable: $_" 'WARN'
-                        }
-                        else {
-                            Write-Log "[SystemRestore] Checkpoint-Computer failed: $_" 'VERBOSE'
-                        }
-                    }
-                }
-                
-                # Method 2: Try WMI method if cmdlet failed
-                if (-not $createSuccess) {
-                    try {
-                        $systemRestore = Get-CimClass -Namespace root/default -ClassName SystemRestore -ErrorAction Stop
-                        $result = Invoke-CimMethod -CimClass $systemRestore -MethodName "CreateRestorePoint" -Arguments @{
-                            Description      = $restorePointDescription
-                            RestorePointType = 12  # MODIFY_SETTINGS
-                            EventType        = 100         # BEGIN_SYSTEM_CHANGE
-                        } -ErrorAction Stop
-                        
-                        if ($result.ReturnValue -eq 0) {
-                            $createSuccess = $true
-                            Write-Log "[SystemRestore] Restore point created using WMI/CIM method" 'INFO'
-                        }
-                        else {
-                            Write-Log "[SystemRestore] WMI restore point creation returned code: $($result.ReturnValue)" 'VERBOSE'
-                        }
-                    }
-                    catch {
-                        Write-Log "[SystemRestore] WMI restore point creation failed: $_" 'VERBOSE'
-                    }
-                }
-                
-                if ($createSuccess) {
-                    $restorePointCreated = $true
-                    Write-Host "✓ Restore point created successfully" -ForegroundColor Green
-                    Write-Log "System restore point '$restorePointDescription' created successfully" 'INFO'
-                    
-                    # Optional: Check total restore point count for informational purposes
-                    try {
-                        if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
-                            $allPoints = (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
-                            if ($allPoints -gt 0) {
-                                Write-Log "[SystemRestore] Total restore points: $allPoints" 'VERBOSE'
-                            }
-                        }
-                    }
-                    catch {
-                        # Ignore count check errors
-                    }
-                }
-                else {
-                    Write-Host "⚠️ Could not create restore point - protection still enabled" -ForegroundColor Yellow
-                    Write-Log "Failed to create restore point but System Restore remains enabled" 'WARN'
-                }
-            }
-            catch {
-                $errorMessage = $_.Exception.Message
-                Write-Host "⚠️ Restore point creation failed: $errorMessage" -ForegroundColor Yellow
-                Write-Log "Restore point creation failed: $errorMessage" 'WARN'
-            }
-        }
-        
-        # Enhanced summary with performance metrics
-        $successSummary = @()
-        if ($restoreEnabled) { $successSummary += "System Restore Enabled" }
-        if ($restorePointCreated) { $successSummary += "Restore Point Created" }
-        elseif ($restoreEnabled) { $successSummary += "Protection Active" }
-        
-        if ($successSummary.Count -gt 0) {
-            Write-Host "✅ System Restore: $($successSummary -join ', ')" -ForegroundColor Green
-            Write-Log "System Restore protection completed successfully: $($successSummary -join ', ')" 'INFO'
-        }
-        else {
-            Write-Host "⚠️ System Restore protection incomplete" -ForegroundColor Yellow
-            Write-Log "System Restore protection completed with limitations" 'WARN'
+            Write-Log "[SystemRestore] Get-ComputerRestorePoint not available - continuing without recent point check" 'VERBOSE'
         }
     }
     catch {
-        Write-Host "✗ System Restore operation failed: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "Critical System Restore operation failure: $_" 'ERROR'
+        Write-Log "[SystemRestore] Failed to check recent restore points: $_" 'VERBOSE'
     }
+        
+    # Enhanced System Restore enablement
+    $restoreEnabled = $restoreConfig.Enable
+    if (-not $restoreEnabled) {
+        Write-Host "⚠️ System Restore disabled - enabling..." -ForegroundColor Yellow
+            
+        try {
+            # Use native PS7.5 approach with multiple methods
+            $enableSuccess = $false
+                
+            # Method 1: Try Enable-ComputerRestore if available
+            if (Get-Command Enable-ComputerRestore -ErrorAction SilentlyContinue) {
+                try {
+                    Enable-ComputerRestore -Drive $drive -ErrorAction SilentlyContinue
+                        
+                    # Verify that System Restore was actually enabled
+                    Start-Sleep -Seconds 2
+                    $restoreCheck = Get-CimInstance -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $drive }
+                    if ($restoreCheck -and -not $restoreCheck.Disable) {
+                        $enableSuccess = $true
+                        Write-Log "[SystemRestore] Enabled using Enable-ComputerRestore cmdlet" 'INFO'
+                    }
+                    else {
+                        Write-Log "[SystemRestore] Enable-ComputerRestore completed but verification failed" 'WARN'
+                    }
+                }
+                catch {
+                    Write-Log "[SystemRestore] Enable-ComputerRestore failed: $_" 'VERBOSE'
+                }
+            }
+                
+            # Method 2: Try registry method if cmdlet failed
+            if (-not $enableSuccess) {
+                try {
+                    $null = Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "DisableSR" -Value 0 -Force -ErrorAction Stop
+                        
+                    # Also enable for the specific drive
+                    $driveKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore\Cfg"
+                    if (Test-Path $driveKey) {
+                        $null = Set-ItemProperty -Path $driveKey -Name "DisableSR" -Value 0 -Force -ErrorAction SilentlyContinue
+                    }
+                        
+                    $enableSuccess = $true
+                    Write-Log "[SystemRestore] Enabled using registry method" 'INFO'
+                }
+                catch {
+                    Write-Log "[SystemRestore] Registry enable method failed: $_" 'VERBOSE'
+                }
+            }
+                
+            # Method 3: Try VSSAdmin as final fallback
+            if (-not $enableSuccess) {
+                try {
+                    & vssadmin list writers 2>$null
+                    if ($LASTEXITCODE -eq 0) {
+                        # VSSAdmin is working, try to enable via WMI
+                        $systemRestoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue
+                        if ($systemRestoreConfig) {
+                            $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true } -ErrorAction Stop
+                            $enableSuccess = $true
+                            Write-Log "[SystemRestore] Enabled using WMI/CIM method" 'INFO'
+                        }
+                    }
+                }
+                catch {
+                    Write-Log "[SystemRestore] WMI/CIM enable method failed: $_" 'VERBOSE'
+                }
+            }
+                
+            if ($enableSuccess) {
+                $restoreEnabled = $true
+                Write-Host "✓ System Restore enabled successfully" -ForegroundColor Green
+                Write-Log "System Restore enabled on $drive" 'INFO'
+                    
+                # Brief wait for the service to initialize
+                Start-Sleep -Seconds 2
+            }
+            else {
+                Write-Host "✗ Failed to enable System Restore" -ForegroundColor Red
+                Write-Log "All methods to enable System Restore failed" 'ERROR'
+                return
+            }
+        }
+        catch {
+            Write-Host "✗ System Restore enable error: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "Critical error enabling System Restore: $_" 'ERROR'
+            return
+        }
+    }
+    else {
+        Write-Host "✓ System Restore already enabled" -ForegroundColor Green
+        Write-Log "System Restore is already enabled" 'INFO'
+    }
+        
+    # Enhanced disk space validation
+    if ($freeSpaceGB -lt 2) {
+        Write-Host "⚠️ Insufficient disk space ($($freeSpaceGB)GB) for restore point" -ForegroundColor Yellow
+        Write-Log "Insufficient disk space ($($freeSpaceGB)GB) to create restore point safely" 'WARN'
+        return
+    }
+        
+    # Smart duplicate restore point protection
+    if ($recentPointsCount -gt 0 -and $lastPointTime) {
+        $timeSinceLastPoint = (Get-Date) - $lastPointTime
+        if ($timeSinceLastPoint.TotalMinutes -lt 120) {
+            Write-Host "✓ Recent restore point exists ($([math]::Round($timeSinceLastPoint.TotalMinutes))min ago) - skipping" -ForegroundColor Cyan
+            Write-Log "Recent restore point exists (created $([math]::Round($timeSinceLastPoint.TotalMinutes)) minutes ago) - skipping creation" 'INFO'
+            $restorePointCreated = $true
+            return
+        }
+    }
+        
+    # Enhanced native restore point creation
+    if ($restoreEnabled) {
+        Write-Host "🔄 Creating restore point..." -ForegroundColor Cyan
+            
+        try {
+            $createSuccess = $false
+                
+            # Method 1: Try Checkpoint-Computer if available
+            if (Get-Command Checkpoint-Computer -ErrorAction SilentlyContinue) {
+                try {
+                    Checkpoint-Computer -Description $restorePointDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+                    $createSuccess = $true
+                    Write-Log "[SystemRestore] Restore point created using Checkpoint-Computer cmdlet" 'INFO'
+                }
+                catch {
+                    $errorCode = $_.Exception.HResult
+                    if ($errorCode -eq -2147023728) {
+                        # 0x80042308 - Frequency limit
+                        Write-Host "ℹ️ Restore point frequency limit reached (Windows limitation)" -ForegroundColor Cyan
+                        Write-Log "Restore point frequency limit reached - skipping (Windows limitation)" 'INFO'
+                        $createSuccess = $true  # Consider successful since protection exists
+                    }
+                    elseif ($errorCode -eq -2147023742) {
+                        # 0x80042302 - Service not responding
+                        Write-Log "System Restore service temporarily unavailable: $_" 'WARN'
+                    }
+                    else {
+                        Write-Log "[SystemRestore] Checkpoint-Computer failed: $_" 'VERBOSE'
+                    }
+                }
+            }
+                
+            # Method 2: Try WMI method if cmdlet failed
+            if (-not $createSuccess) {
+                try {
+                    $systemRestore = Get-CimClass -Namespace root/default -ClassName SystemRestore -ErrorAction Stop
+                    $result = Invoke-CimMethod -CimClass $systemRestore -MethodName "CreateRestorePoint" -Arguments @{
+                        Description      = $restorePointDescription
+                        RestorePointType = 12  # MODIFY_SETTINGS
+                        EventType        = 100         # BEGIN_SYSTEM_CHANGE
+                    } -ErrorAction Stop
+                        
+                    if ($result.ReturnValue -eq 0) {
+                        $createSuccess = $true
+                        Write-Log "[SystemRestore] Restore point created using WMI/CIM method" 'INFO'
+                    }
+                    else {
+                        Write-Log "[SystemRestore] WMI restore point creation returned code: $($result.ReturnValue)" 'VERBOSE'
+                    }
+                }
+                catch {
+                    Write-Log "[SystemRestore] WMI restore point creation failed: $_" 'VERBOSE'
+                }
+            }
+                
+            if ($createSuccess) {
+                $restorePointCreated = $true
+                Write-Host "✓ Restore point created successfully" -ForegroundColor Green
+                Write-Log "System restore point '$restorePointDescription' created successfully" 'INFO'
+                    
+                # Optional: Check total restore point count for informational purposes
+                try {
+                    if (Get-Command Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+                        $allPoints = (Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Measure-Object).Count
+                        if ($allPoints -gt 0) {
+                            Write-Log "[SystemRestore] Total restore points: $allPoints" 'VERBOSE'
+                        }
+                    }
+                }
+                catch {
+                    # Ignore count check errors
+                }
+            }
+            else {
+                Write-Host "⚠️ Could not create restore point - protection still enabled" -ForegroundColor Yellow
+                Write-Log "Failed to create restore point but System Restore remains enabled" 'WARN'
+            }
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            Write-Host "⚠️ Restore point creation failed: $errorMessage" -ForegroundColor Yellow
+            Write-Log "Restore point creation failed: $errorMessage" 'WARN'
+        }
+    }
+        
+    # Enhanced summary with performance metrics
+    $successSummary = @()
+    if ($restoreEnabled) { $successSummary += "System Restore Enabled" }
+    if ($restorePointCreated) { $successSummary += "Restore Point Created" }
+    elseif ($restoreEnabled) { $successSummary += "Protection Active" }
+        
+    if ($successSummary.Count -gt 0) {
+        Write-Host "✅ System Restore: $($successSummary -join ', ')" -ForegroundColor Green
+        Write-Log "System Restore protection completed successfully: $($successSummary -join ', ')" 'INFO'
+    }
+    else {
+        Write-Host "⚠️ System Restore protection incomplete" -ForegroundColor Yellow
+        Write-Log "System Restore protection completed with limitations" 'WARN'
+    }
+}
+catch {
+    Write-Host "✗ System Restore operation failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Log "Critical System Restore operation failure: $_" 'ERROR'
+}
     
-    Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
+Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
 
 ### [MAIN TASK EXECUTION IN TIMELINE ORDER]
 
