@@ -2,27 +2,7 @@
 REM ============================================================================
 REM  script_mentenanta - Windows Maintenance Automation Launcher (Refactored)
 REM  Purpose: Entry point for all maintenance operations. Handles dependency
-REM    REM Step 2: Check and install Microsoft.UI.Xaml framework (required for Winget)
-    CALL :LOG_ENTRY "INFO" "Checking Microsoft.UI.Xaml.2.8 framework..."
-    
-    REM Create temp script for XAML check
-    SET "TEMP_PS1=%TEMP%\check_xaml.ps1"
-    ECHO try { > "%TEMP_PS1%"
-    ECHO     if (Get-AppxPackage -Name '*Microsoft.UI.Xaml*' -ErrorAction SilentlyContinue ^| Where-Object { $_.Version -ge '2.8' }) { >> "%TEMP_PS1%"
-    ECHO         Write-Host '[INFO] Microsoft.UI.Xaml framework is already installed' >> "%TEMP_PS1%"
-    ECHO         exit 0 >> "%TEMP_PS1%"
-    ECHO     } else { >> "%TEMP_PS1%"
-    ECHO         Write-Host '[INFO] Microsoft.UI.Xaml framework not found, installing...' >> "%TEMP_PS1%"
-    ECHO         exit 1 >> "%TEMP_PS1%"
-    ECHO     } >> "%TEMP_PS1%"
-    ECHO } catch { >> "%TEMP_PS1%"
-    ECHO     Write-Host '[WARN] AppxPackage check failed' >> "%TEMP_PS1%"
-    ECHO     exit 1 >> "%TEMP_PS1%"
-    ECHO } >> "%TEMP_PS1%"
-    
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
-    SET "XAML_CHECK_EXIT=!ERRORLEVEL!"
-    DEL /F /Q "%TEMP_PS1%" >nul 2>&1        installation, scheduled task setup, repo download/update, and
+REM           installation, scheduled task setup, repo download/update, and
 REM           launches PowerShell orchestrator (script.ps1).
 REM  Environment: Requires Administrator, Windows 10/11, PowerShell 5.1+.
 REM  All actions are logged to console and maintenance.log file.
@@ -46,6 +26,11 @@ ECHO [%DATE% %TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME% >> "%LOG_
 ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "%LOG_FILE%"
 
 REM Function to log both to console and file
+ECHO.
+ECHO ============================================================
+ECHO    Windows Maintenance Automation Script - STARTING
+ECHO ============================================================
+ECHO.
 CALL :LOG_ENTRY "INFO" "Starting maintenance script..."
 CALL :LOG_ENTRY "INFO" "User: %USERNAME%, Computer: %COMPUTERNAME%"
 
@@ -59,11 +44,20 @@ REM ----------------------------------------------------------------------------
 REM Admin Privilege Check
 REM Relaunches itself with admin rights if not already running as Administrator.
 REM -----------------------------------------------------------------------------
+ECHO.
+ECHO [INFO] Checking Administrator privileges...
 NET SESSION >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
     CALL :LOG_ENTRY "WARN" "Not running as Administrator. Relaunching with admin rights..."
+    ECHO.
+    ECHO ========================================
+    ECHO    Admin Rights Required - Relaunching
+    ECHO ========================================
+    ECHO.
     powershell -Command "Start-Process '%~f0' -Verb RunAs"
     EXIT /B 0
+) ELSE (
+    CALL :LOG_ENTRY "INFO" "Running with Administrator privileges."
 )
 
 REM -----------------------------------------------------------------------------
@@ -102,24 +96,25 @@ IF %ERRORLEVEL% EQU 0 (
         /MO 1 ^
         /D 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "cmd.exe /c \"\"%SCRIPT_DIR%script.bat\"\"" ^
+        /TR "cmd.exe /c \"\"%SCRIPT_PATH%\"\"" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
         /IT ^
-        /Z ^
-        /F >nul 2>&1
+        /F
     IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Monthly scheduled task created successfully.
+        CALL :LOG_ENTRY "INFO" "Monthly scheduled task created successfully."
         schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            ECHO [%TIME%] [INFO] Task verification successful.
+            CALL :LOG_ENTRY "INFO" "Task verification successful."
             FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
-                ECHO [%TIME%] [INFO] Next scheduled run: %%i
+                CALL :LOG_ENTRY "INFO" "Next scheduled run: %%i"
             )
+        ) ELSE (
+            CALL :LOG_ENTRY "WARN" "Task created but verification failed."
         )
     ) ELSE (
-        ECHO [%TIME%] [ERROR] Failed to create monthly scheduled task.
+        CALL :LOG_ENTRY "ERROR" "Failed to create monthly scheduled task. Error code: !ERRORLEVEL!"
     )
 )
 
@@ -197,6 +192,11 @@ REM ----------------------------------------------------------------------------
 REM Dependency Management - Direct Downloads from Official Sources
 REM Installation Order: Winget -> PowerShell 7 -> NuGet -> PSGallery -> PSWindowsUpdate -> Chocolatey
 REM -----------------------------------------------------------------------------
+ECHO.
+ECHO ========================================
+ECHO     Installing Required Dependencies
+ECHO ========================================
+ECHO.
 CALL :LOG_ENTRY "INFO" "Starting dependency installation with optimized order..."
 
 REM -----------------------------------------------------------------------------
@@ -225,9 +225,9 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO     exit 1 >> "%TEMP_PS1%"
     ECHO } >> "%TEMP_PS1%"
     
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
-    SET "VC_CHECK_EXIT=!ERRORLEVEL!"
-    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
+    powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%"
+SET "VC_CHECK_EXIT=!ERRORLEVEL!"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     IF !VC_CHECK_EXIT! NEQ 0 (
         SET "VCREDIST_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
         SET "VCREDIST_FILE=%TEMP%\vc_redist_x64.exe"
@@ -273,7 +273,25 @@ IF !ERRORLEVEL! NEQ 0 (
     
     REM Step 2: Check and install Microsoft.UI.Xaml.2.8 framework (required for Winget)
     CALL :LOG_ENTRY "INFO" "Checking Microsoft.UI.Xaml.2.8 framework..."
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { if (Get-AppxPackage -Name '*Microsoft.UI.Xaml*' -ErrorAction SilentlyContinue | Where-Object { $_.Version -ge '2.8' }) { Write-Host '[INFO] Microsoft.UI.Xaml framework is already installed'; exit 0 } else { Write-Host '[INFO] Microsoft.UI.Xaml framework not found, installing...'; exit 1 } } catch { Write-Host '[WARN] AppxPackage check failed'; exit 1 }"
+    
+    REM Create temp script for XAML check
+    SET "TEMP_PS1=%TEMP%\check_xaml.ps1"
+    ECHO try { > "%TEMP_PS1%"
+    ECHO     if (Get-AppxPackage -Name '*Microsoft.UI.Xaml*' -ErrorAction SilentlyContinue ^| Where-Object { $_.Version -ge '2.8' }) { >> "%TEMP_PS1%"
+    ECHO         Write-Host '[INFO] Microsoft.UI.Xaml framework is already installed' >> "%TEMP_PS1%"
+    ECHO         exit 0 >> "%TEMP_PS1%"
+    ECHO     } else { >> "%TEMP_PS1%"
+    ECHO         Write-Host '[INFO] Microsoft.UI.Xaml framework not found, installing...' >> "%TEMP_PS1%"
+    ECHO         exit 1 >> "%TEMP_PS1%"
+    ECHO     } >> "%TEMP_PS1%"
+    ECHO } catch { >> "%TEMP_PS1%"
+    ECHO     Write-Host '[WARN] AppxPackage check failed' >> "%TEMP_PS1%"
+    ECHO     exit 1 >> "%TEMP_PS1%"
+    ECHO } >> "%TEMP_PS1%"
+    
+    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+    SET "XAML_CHECK_EXIT=!ERRORLEVEL!"
+    DEL /F /Q "%TEMP_PS1%" >nul 2>&1
     IF !XAML_CHECK_EXIT! NEQ 0 (
         SET "XAML_URL=https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6"
         SET "XAML_FILE=%TEMP%\Microsoft.UI.Xaml.2.8.nupkg"
@@ -510,7 +528,30 @@ REM ----------------------------------------------------------------------------
 REM 3. NuGet PackageProvider - Direct download and installation
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking NuGet PackageProvider..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; $ProgressPreference = 'SilentlyContinue'; $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue; if ($nugetProvider -and $nugetProvider.Version -ge '2.8.5.201') { Write-Host '[INFO] NuGet PackageProvider already available (version: ' + $nugetProvider.Version + ')'; exit 0 } else { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:\$false -ErrorAction Stop | Out-Null; Write-Host '[INFO] NuGet PackageProvider installed successfully'; exit 0 } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' \$_.Exception.Message; exit 1 } }"
+
+REM Create temp script for NuGet check and install
+SET "TEMP_PS1=%TEMP%\install_nuget.ps1"
+ECHO $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL = 'None' > "%TEMP_PS1%"
+ECHO $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO try { >> "%TEMP_PS1%"
+ECHO     $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO     if ($nugetProvider -and $nugetProvider.Version -ge '2.8.5.201') { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] NuGet PackageProvider already available (version: ' + $nugetProvider.Version + ')' >> "%TEMP_PS1%"
+ECHO         exit 0 >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+ECHO         Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:$false -ErrorAction Stop ^| Out-Null >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] NuGet PackageProvider installed successfully' >> "%TEMP_PS1%"
+ECHO         exit 0 >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] Failed to install NuGet PackageProvider:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO     exit 1 >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+ECHO [INFO] Running NuGet PackageProvider check/install...
+powershell -ExecutionPolicy Bypass -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_ENTRY "WARN" "NuGet PackageProvider installation failed, but continuing..."
@@ -598,19 +639,89 @@ REM ----------------------------------------------------------------------------
 REM 10. .NET Framework 4.8 - Required for many PowerShell modules and applications
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking .NET Framework 4.8..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; $netVersion = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' -Name Release -ErrorAction SilentlyContinue).Release; if ($netVersion -ge 528040) { Write-Host '[INFO] .NET Framework 4.8 or higher already installed' } else { if (Get-Command winget -ErrorAction SilentlyContinue) { Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait; Write-Host '[INFO] .NET Framework 4.8 installed via winget' } else { Write-Host '[WARN] .NET Framework 4.8 may need manual installation' } } } catch { Write-Host '[WARN] .NET Framework check failed:' \$_.Exception.Message }"
+
+REM Create temp script for .NET Framework check
+SET "TEMP_PS1=%TEMP%\check_dotnet.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     $netVersion = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' -Name Release -ErrorAction SilentlyContinue).Release >> "%TEMP_PS1%"
+ECHO     if ($netVersion -ge 528040) { >> "%TEMP_PS1%"
+ECHO         Write-Host '[INFO] .NET Framework 4.8 or higher already installed' >> "%TEMP_PS1%"
+ECHO     } else { >> "%TEMP_PS1%"
+ECHO         if (Get-Command winget -ErrorAction SilentlyContinue) { >> "%TEMP_PS1%"
+ECHO             Start-Process winget -ArgumentList 'install --id Microsoft.DotNet.Framework.DeveloperPack_4 --silent --accept-package-agreements --accept-source-agreements' -WindowStyle Hidden -Wait >> "%TEMP_PS1%"
+ECHO             Write-Host '[INFO] .NET Framework 4.8 installed via winget' >> "%TEMP_PS1%"
+ECHO         } else { >> "%TEMP_PS1%"
+ECHO             Write-Host '[WARN] .NET Framework 4.8 may need manual installation' >> "%TEMP_PS1%"
+ECHO         } >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] .NET Framework check failed:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
 REM 11. Additional PowerShell Modules for Enhanced Functionality
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking additional PowerShell modules..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $modules = @('DISM', 'PnpDevice', 'WindowsSearch'); foreach ($module in $modules) { if (-not (Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue)) { try { Import-Module $module -ErrorAction Stop | Out-Null; Write-Host \"[INFO] Module $module verified and available\" } catch { Write-Host \"[INFO] Module $module not available - will be loaded when needed\" } } else { Write-Host \"[INFO] Module $module already available\" } } } catch { Write-Host '[WARN] Module check failed:' \$_.Exception.Message }"
+
+REM Create temp script for module check
+SET "TEMP_PS1=%TEMP%\check_modules.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 >> "%TEMP_PS1%"
+ECHO     $modules = @('DISM', 'PnpDevice', 'WindowsSearch') >> "%TEMP_PS1%"
+ECHO     foreach ($module in $modules) { >> "%TEMP_PS1%"
+ECHO         if (-not (Get-Module -ListAvailable -Name $module -ErrorAction SilentlyContinue)) { >> "%TEMP_PS1%"
+ECHO             try { >> "%TEMP_PS1%"
+ECHO                 Import-Module $module -ErrorAction Stop ^| Out-Null >> "%TEMP_PS1%"
+ECHO                 Write-Host "[INFO] Module $module verified and available" >> "%TEMP_PS1%"
+ECHO             } catch { >> "%TEMP_PS1%"
+ECHO                 Write-Host "[INFO] Module $module not available - will be loaded when needed" >> "%TEMP_PS1%"
+ECHO             } >> "%TEMP_PS1%"
+ECHO         } else { >> "%TEMP_PS1%"
+ECHO             Write-Host "[INFO] Module $module already available" >> "%TEMP_PS1%"
+ECHO         } >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[WARN] Module check failed:' $_.Exception.Message >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
 REM 12. Windows Features - Enable required features
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking Windows features..."
-powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $ProgressPreference = 'SilentlyContinue'; $features = @('NetFx3', 'MSMQ-Container', 'IIS-ManagementConsole'); foreach ($feature in $features) { $featureState = Get-WindowsOptionalFeature -Online -FeatureName $feature -ErrorAction SilentlyContinue; if ($featureState) { if ($featureState.State -eq 'Enabled') { Write-Host \"[INFO] Windows feature $feature already enabled\" } elseif ($featureState.State -eq 'Disabled') { Write-Host \"[INFO] Enabling Windows feature: $feature\"; Enable-WindowsOptionalFeature -Online -FeatureName $feature -All -NoRestart -ErrorAction SilentlyContinue | Out-Null; Write-Host \"[INFO] Windows feature $feature enabled successfully\" } } else { Write-Host \"[INFO] Windows feature $feature not available on this system\" } } } catch { Write-Host '[INFO] Windows features check completed' }"
+
+REM Create temp script for Windows features check
+SET "TEMP_PS1=%TEMP%\check_features.ps1"
+ECHO try { > "%TEMP_PS1%"
+ECHO     $ProgressPreference = 'SilentlyContinue' >> "%TEMP_PS1%"
+ECHO     $features = @('NetFx3', 'MSMQ-Container', 'IIS-ManagementConsole') >> "%TEMP_PS1%"
+ECHO     foreach ($feature in $features) { >> "%TEMP_PS1%"
+ECHO         $featureState = Get-WindowsOptionalFeature -Online -FeatureName $feature -ErrorAction SilentlyContinue >> "%TEMP_PS1%"
+ECHO         if ($featureState) { >> "%TEMP_PS1%"
+ECHO             if ($featureState.State -eq 'Enabled') { >> "%TEMP_PS1%"
+ECHO                 Write-Host "[INFO] Windows feature $feature already enabled" >> "%TEMP_PS1%"
+ECHO             } elseif ($featureState.State -eq 'Disabled') { >> "%TEMP_PS1%"
+ECHO                 Write-Host "[INFO] Enabling Windows feature: $feature" >> "%TEMP_PS1%"
+ECHO                 Enable-WindowsOptionalFeature -Online -FeatureName $feature -All -NoRestart -ErrorAction SilentlyContinue ^| Out-Null >> "%TEMP_PS1%"
+ECHO                 Write-Host "[INFO] Windows feature $feature enabled successfully" >> "%TEMP_PS1%"
+ECHO             } >> "%TEMP_PS1%"
+ECHO         } else { >> "%TEMP_PS1%"
+ECHO             Write-Host "[INFO] Windows feature $feature not available on this system" >> "%TEMP_PS1%"
+ECHO         } >> "%TEMP_PS1%"
+ECHO     } >> "%TEMP_PS1%"
+ECHO } catch { >> "%TEMP_PS1%"
+ECHO     Write-Host '[INFO] Windows features check completed' >> "%TEMP_PS1%"
+ECHO } >> "%TEMP_PS1%"
+
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP_PS1%"
+DEL /F /Q "%TEMP_PS1%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
 REM 13. System Performance Optimizations
@@ -853,45 +964,72 @@ CALL :LOG_ENTRY "INFO" "Dependency validation completed."
 REM -----------------------------------------------------------------------------
 REM Launch PowerShell Script with Priority for PowerShell 7
 REM -----------------------------------------------------------------------------
-SET "PS1_PATH=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
+REM Check if we have a local script.ps1 file (direct execution) or extracted folder
+SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
+IF NOT EXIST "%PS1_PATH%" (
+    SET "PS1_PATH=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
+)
 
 IF NOT EXIST "%PS1_PATH%" (
-    CALL :LOG_ENTRY "ERROR" "PowerShell script not found: %PS1_PATH%"
-    CALL :LOG_ENTRY "INFO" "Contents of extracted folder:"
-    DIR "%SCRIPT_DIR%%EXTRACT_FOLDER%" /B
+    CALL :LOG_ENTRY "ERROR" "PowerShell script not found at either location:"
+    CALL :LOG_ENTRY "ERROR" "  Local: %SCRIPT_DIR%script.ps1"
+    CALL :LOG_ENTRY "ERROR" "  Extracted: %SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
+    IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
+        CALL :LOG_ENTRY "INFO" "Contents of extracted folder:"
+        DIR "%SCRIPT_DIR%%EXTRACT_FOLDER%" /B
+    )
     pause
     EXIT /B 4
 )
 
 CALL :LOG_ENTRY "INFO" "Launching PowerShell maintenance script..."
+CALL :LOG_ENTRY "INFO" "Script path: %PS1_PATH%"
 
 IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_ENTRY "INFO" "Using PowerShell 7 environment..."
-    START "Maintenance Script - PowerShell 7" pwsh.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
+    ECHO.
+    ECHO ========================================
+    ECHO    Launching PowerShell 7 Script
+    ECHO ========================================
+    ECHO.
+    REM Launch with visible window and wait for completion
+    START /WAIT "Maintenance Script - PowerShell 7" pwsh.exe -ExecutionPolicy Bypass -NoExit -File "%PS1_PATH%"
     SET "LAUNCH_EXIT=!ERRORLEVEL!"
     IF !LAUNCH_EXIT! NEQ 0 (
         CALL :LOG_ENTRY "ERROR" "PowerShell script failed with error code !LAUNCH_EXIT!"
-        pause
+        ECHO.
+        ECHO Press any key to exit...
+        pause >nul
         exit /b !LAUNCH_EXIT!
     )
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "Using Windows PowerShell environment..."
-    START "Maintenance Script - Windows PowerShell" powershell.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
+    ECHO.
+    ECHO ================================================
+    ECHO    Launching Windows PowerShell Script
+    ECHO ================================================
+    ECHO.
+    REM Launch with visible window and wait for completion
+    START /WAIT "Maintenance Script - Windows PowerShell" powershell.exe -ExecutionPolicy Bypass -NoExit -File "%PS1_PATH%"
     SET "LAUNCH_EXIT=!ERRORLEVEL!"
     IF !LAUNCH_EXIT! NEQ 0 (
         CALL :LOG_ENTRY "ERROR" "PowerShell script failed with error code !LAUNCH_EXIT!"
-        pause
+        ECHO.
+        ECHO Press any key to exit...
+        pause >nul
         exit /b !LAUNCH_EXIT!
     )
 )
 
-CALL :LOG_ENTRY "INFO" "PowerShell script launched successfully in new window."
-CALL :LOG_ENTRY "INFO" "Maintenance operations are now running in the background."
-CALL :LOG_ENTRY "INFO" "This launcher will close automatically in 30 seconds..."
-FOR /L %%i IN (30,-1,1) DO (
-    CALL :LOG_ENTRY "INFO" "Closing in %%i seconds..."
-    timeout /t 1 /nobreak >nul
-)
+CALL :LOG_ENTRY "INFO" "PowerShell script launched successfully."
+CALL :LOG_ENTRY "INFO" "Maintenance operations completed."
+ECHO.
+ECHO ========================================
+ECHO        Script Execution Complete
+ECHO ========================================
+ECHO.
+ECHO Press any key to close this window...
+pause >nul
 CALL :LOG_ENTRY "INFO" "Batch launcher completed successfully. Window will now close."
 EXIT /B 0
 
@@ -904,6 +1042,3 @@ SET "MESSAGE=%~2"
 ECHO [%TIME%] [%LEVEL%] %MESSAGE%
 ECHO [%DATE% %TIME%] [%LEVEL%] %MESSAGE% >> "%LOG_FILE%"
 GOTO :EOF
-
-ENDLOCAL
-EXIT /B 0
