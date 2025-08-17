@@ -4,30 +4,119 @@
 # ================================================================
 # Purpose: Ensure script is aware of its environment, path, and permissions before any operations
 # ------------------------------------------------
+param(
+    [string]$LogFilePath
+)
+
+# Enhanced environment detection for consistency with batch script
 $ScriptFullPath = $MyInvocation.MyCommand.Path
 $ScriptDir      = Split-Path -Parent $ScriptFullPath
 $ScriptName     = Split-Path -Leaf $ScriptFullPath
 $CurrentUser    = $env:USERNAME
+$ComputerName   = $env:COMPUTERNAME
 $IsAdmin        = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-$LogFile        = Join-Path $ScriptDir 'maintenance.log'
 
-# Log environment info
+# Detect drive information for path independence
+$ScriptDrive = if ($ScriptFullPath.StartsWith("\\")) { 
+    "UNC Path" 
+} else { 
+    (Get-Item $ScriptFullPath).PSDrive.Name + ":" 
+}
+
+$IsNetworkPath = $false
+$IsUNCPath = $ScriptFullPath.StartsWith("\\")
+
+$DriveType = if ($IsUNCPath) {
+    $IsNetworkPath = $true
+    "Network (UNC)"
+} elseif ($ScriptDrive -ne "UNC Path") {
+    $DriveInfo = Get-WmiObject -Class Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $ScriptDrive }
+    if ($DriveInfo) { 
+        $DriveTypeNum = $DriveInfo.DriveType
+        if ($DriveTypeNum -eq 4) { $IsNetworkPath = $true }
+        switch ($DriveTypeNum) {
+            2 { "Removable" }
+            3 { "Fixed" }
+            4 { "Network" }
+            5 { "CD-ROM" }
+            default { "Unknown" }
+        }
+    } else { "Unknown" }
+} else { "Unknown" }
+
+# Detect OS information for consistency
+$OSVersion = (Get-WmiObject -Class Win32_OperatingSystem).Caption
+$OSArchitecture = $env:PROCESSOR_ARCHITECTURE
+if ($OSArchitecture -eq "AMD64") { $OSArch = "x64" }
+elseif ($OSArchitecture -eq "x86") { $OSArch = "x86" }
+elseif ($OSArchitecture -eq "ARM64") { $OSArch = "ARM64" }
+else { $OSArch = $OSArchitecture }
+
+$PSVersion = $PSVersionTable.PSVersion.ToString()
+$WorkingDirectory = Get-Location
+
+# Set up shared log file - prioritize parameter, then environment variable, then default
+if ($LogFilePath) {
+    $LogFile = $LogFilePath
+    Write-Host "[INFO] Using log file from parameter: $LogFile" -ForegroundColor Green
+} elseif ($env:SCRIPT_LOG_FILE) {
+    $LogFile = $env:SCRIPT_LOG_FILE
+    Write-Host "[INFO] Using batch script log file from environment: $LogFile" -ForegroundColor Green
+} else {
+    # Fallback: script.ps1 might be inside extracted repo folder, maintenance.log should be in parent directory (where script.bat is)
+    $batchScriptDirectory = Split-Path $ScriptDir -Parent
+    $LogFile = Join-Path $batchScriptDirectory 'maintenance.log'
+    Write-Host "[INFO] Using default PowerShell log file (parent directory): $LogFile" -ForegroundColor Yellow
+}
+
+# Ensure log file directory exists
+$logDir = Split-Path $LogFile -Parent
+if (-not (Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+}
+
+# Log environment info with enhanced details matching batch script
 Write-Host "[INFO] Script Full Path: $ScriptFullPath"
 Write-Host "[INFO] Script Directory: $ScriptDir"
 Write-Host "[INFO] Script Name: $ScriptName"
-Write-Host "[INFO] Current User: $CurrentUser"
+Write-Host "[INFO] Script Drive: $ScriptDrive (Type: $DriveType)"
+Write-Host "[INFO] Network Path: $IsNetworkPath, UNC Path: $IsUNCPath"
+Write-Host "[INFO] Computer Name: $ComputerName"
+Write-Host "[INFO] User Name: $CurrentUser"
+Write-Host "[INFO] OS Version: $OSVersion"
+Write-Host "[INFO] OS Architecture: $OSArch"
+Write-Host "[INFO] PowerShell Version: $PSVersion"
 Write-Host "[INFO] Admin Privileges: $IsAdmin"
-Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Script Full Path: $ScriptFullPath"
-Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Script Directory: $ScriptDir"
-Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Script Name: $ScriptName"
-Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Current User: $CurrentUser"
-Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Admin Privileges: $IsAdmin"
+Write-Host "[INFO] Working Directory: $WorkingDirectory"
+
+# Log PowerShell script startup with detailed information matching batch script format
+$timestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] ============================================================"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] PowerShell Maintenance Script Started"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Script Full Path: $ScriptFullPath"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Script Directory: $ScriptDir"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Script Name: $ScriptName"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Script Drive: $ScriptDrive (Type: $DriveType)"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Network Path: $IsNetworkPath, UNC Path: $IsUNCPath"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Computer Name: $ComputerName"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] User Name: $CurrentUser"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] OS Version: $OSVersion"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] OS Architecture: $OSArch"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] PowerShell Version: $PSVersion"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Admin Privileges: $IsAdmin"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Working Directory: $WorkingDirectory"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Log File: $LogFile"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] ============================================================"
 
 # Relaunch as admin if needed
 if (-not $IsAdmin) {
     Write-Host "[WARN] Script not running as administrator. Relaunching..."
-    Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [WARN] Script not running as administrator. Relaunching..."
-    Start-Process -FilePath pwsh -ArgumentList "-File", $ScriptFullPath -Verb RunAs
+    Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'MM/dd/yyyy HH:mm:ss')] [WARN] Script not running as administrator. Relaunching..."
+    if ($LogFilePath) {
+        Start-Process -FilePath pwsh -ArgumentList "-File", $ScriptFullPath, "-LogFilePath", $LogFile -Verb RunAs
+    } else {
+        Start-Process -FilePath pwsh -ArgumentList "-File", $ScriptFullPath -Verb RunAs
+    }
     exit
 }
 # ================================================================
@@ -472,43 +561,41 @@ $global:ScriptTasks = @(
                 }
             }
             if ($allItems.Count -gt 0) {
-                Write-Log "Deleting $($allItems.Count) files and folders in parallel..." 'INFO'
+                Write-Log "Deleting $($allItems.Count) files and folders..." 'INFO'
                 
-                # Limit parallel operations for stability in PS7/Windows 10-11 environment
-                $throttleLimit = [Math]::Min(8, [Environment]::ProcessorCount)
-                Write-Log "Using throttle limit of $throttleLimit for parallel file deletion" 'VERBOSE'
-                
-                $allItems | ForEach-Object -Parallel {
+                # Use simple sequential deletion for better stability
+                foreach ($item in $allItems) {
                     try {
-                        # Add additional safety check
-                        if (-not (Test-Path $_.FullName -ErrorAction SilentlyContinue)) {
-                            return # Item already deleted or doesn't exist
+                        if (-not (Test-Path $item.FullName -ErrorAction SilentlyContinue)) {
+                            continue # Item already deleted or doesn't exist
                         }
                         
-                        if ($_.PSIsContainer) {
-                            Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue
-                            if (Test-Path $_.FullName -ErrorAction SilentlyContinue) {
-                                [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                            }
-                            else {
-                                [System.Threading.Interlocked]::Increment([ref]$using:deletedFolders)
+                        if ($item.PSIsContainer) {
+                            Remove-Item $item.FullName -Force -Recurse -ErrorAction SilentlyContinue
+                            if (-not (Test-Path $item.FullName -ErrorAction SilentlyContinue)) {
+                                $deletedFolders++
+                            } else {
+                                $errorCount++
                             }
                         }
                         else {
-                            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
-                            if (Test-Path $_.FullName -ErrorAction SilentlyContinue) {
-                                [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                            }
-                            else {
-                                [System.Threading.Interlocked]::Increment([ref]$using:deletedFiles)
+                            Remove-Item $item.FullName -Force -ErrorAction SilentlyContinue
+                            if (-not (Test-Path $item.FullName -ErrorAction SilentlyContinue)) {
+                                $deletedFiles++
+                            } else {
+                                $errorCount++
                             }
                         }
                     }
                     catch {
-                        [System.Threading.Interlocked]::Increment([ref]$using:errorCount)
-                        # Suppress logging in parallel threads to avoid thread conflicts
+                        $errorCount++
                     }
-                } -ThrottleLimit $throttleLimit
+                    
+                    # Progress update every 1000 items
+                    if (($deletedFiles + $deletedFolders) % 1000 -eq 0) {
+                        Write-Log "Progress: Deleted $deletedFiles files and $deletedFolders folders..." 'VERBOSE'
+                    }
+                }
             }
             Write-Log "Successfully deleted $deletedFiles files and $deletedFolders folders from all cleanup targets." 'INFO'
             # Run Disk Cleanup (cleanmgr)
@@ -789,48 +876,6 @@ function Use-AllScriptTasks {
     Write-Log 'All maintenance tasks execution sequence completed.' 'INFO'
 }
 
-# [PRE-TASK 0] Set up log file - ensure consistency with batch script
-# script.ps1 is inside extracted repo folder, maintenance.log is in parent directory (where script.bat is)
-$scriptDirectory = Split-Path $PSCommandPath -Parent
-$batchScriptDirectory = Split-Path $scriptDirectory -Parent
-$defaultLogPath = Join-Path $batchScriptDirectory "maintenance.log"
-
-# Check if batch script has set the log file path, otherwise use default (parent directory)
-if ($env:SCRIPT_LOG_FILE) {
-    $logPath = $env:SCRIPT_LOG_FILE
-    Write-Host "[INFO] Using batch script log file: $logPath" -ForegroundColor Green
-} else {
-    $logPath = $defaultLogPath
-    Write-Host "[INFO] Using default PowerShell log file (parent directory): $logPath" -ForegroundColor Yellow
-}
-
-# Ensure log file directory exists
-$logDir = Split-Path $logPath -Parent
-if (-not (Test-Path $logDir)) {
-    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
-}
-
-# Log PowerShell script startup
-$timestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
-$startupEntry = "[$timestamp] [INFO] ============================================================"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-$startupEntry = "[$timestamp] [INFO] PowerShell Maintenance Script Started"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-$startupEntry = "[$timestamp] [INFO] PowerShell Version: $($PSVersionTable.PSVersion)"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-$startupEntry = "[$timestamp] [INFO] PowerShell Script: $PSCommandPath"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-$startupEntry = "[$timestamp] [INFO] PowerShell Script Directory (repo): $scriptDirectory"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-$startupEntry = "[$timestamp] [INFO] Batch Script Directory (main): $batchScriptDirectory"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-$startupEntry = "[$timestamp] [INFO] Log File: $logPath"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-$startupEntry = "[$timestamp] [INFO] Current Working Directory: $(Get-Location)"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-$startupEntry = "[$timestamp] [INFO] ============================================================"
-$startupEntry | Out-File -FilePath $logPath -Append -Encoding UTF8
-
 # ================================================================
 # [B.2] LOGGING SYSTEM - COPILOT FUNCTION
 # ================================================================
@@ -855,7 +900,7 @@ function Write-Log {
     
     $timestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
     $entry = "[$timestamp] [$Level] $Message"
-    $entry | Out-File -FilePath $logPath -Append -Encoding UTF8
+    $entry | Out-File -FilePath $LogFile -Append -Encoding UTF8
     
     # Output: Color-code console output based on severity level for visual clarity
     switch ($Level) {
@@ -1273,9 +1318,12 @@ function Install-WindowsUpdatesCompatible {
             }
             catch {
                 Write-Log "Windows Update installation failed: $_" 'ERROR'
-                
+                return $false
                 # [REMOVED] Fallback logic - all update installation is PowerShell 7 native
             }
+        }
+        else {
+            Write-Log 'No updates available for installation.' 'INFO'
         }
         
         return $true
@@ -2857,10 +2905,10 @@ function Update-AllPackages {
         $totalTime = ($successArray | ForEach-Object { $_.ProcessingTime } | Measure-Object -Sum).Sum
         $avgTimePerSource = if ($successArray.Count -gt 0) { [math]::Round($totalTime / $successArray.Count, 2) } else { 0 }
         
-        Write-Log "[UpdatePackages] Successfully updated $totalUpdated packages across $($successArray.Count) package managers (avg time: ${avgTimePerSource}s per source):" 'INFO'
+        Write-Log "[UpdatePackages] Successfully updated $totalUpdated packages across $($successArray.Count) package managers (avg time: $($avgTimePerSource)s per source):" 'INFO'
         
         foreach ($success in $successArray) {
-            $timeInfo = if ($success.ProcessingTime -gt 0) { " (${success.ProcessingTime}s)" } else { "" }
+            $timeInfo = if ($success.ProcessingTime -gt 0) { " ($($success.ProcessingTime)s)" } else { "" }
             Write-Log "Updated via $($success.Source): $($success.Count) packages$timeInfo" 'INFO'
             Write-Host "✓ Updated via $($success.Source): $($success.Count) packages$timeInfo" -ForegroundColor Green
             
@@ -4675,13 +4723,26 @@ function Protect-SystemRestore {
     }
         
     # Smart duplicate restore point protection
-    if ($recentPointsCount -gt 0 -and $lastPointTime) {
-        $timeSinceLastPoint = (Get-Date) - $lastPointTime
-        if ($timeSinceLastPoint.TotalMinutes -lt 120) {
-            Write-Host "✓ Recent restore point exists ($([math]::Round($timeSinceLastPoint.TotalMinutes))min ago) - skipping" -ForegroundColor Cyan
-            Write-Log "Recent restore point exists (created $([math]::Round($timeSinceLastPoint.TotalMinutes)) minutes ago) - skipping creation" 'INFO'
-            $restorePointCreated = $true
-            return
+    if ($recentPointsCount -gt 0 -and $null -ne $lastPointTime) {
+        try {
+            # Ensure $lastPointTime is a proper DateTime object
+            $lastPointDateTime = $lastPointTime
+            if ($lastPointTime -is [string]) {
+                $lastPointDateTime = [datetime]::Parse($lastPointTime)
+            }
+            
+            $timeSinceLastPoint = (Get-Date) - $lastPointDateTime
+            if ($timeSinceLastPoint.TotalMinutes -lt 120) {
+                $minutesAgo = [math]::Round($timeSinceLastPoint.TotalMinutes)
+                Write-Host "✓ Recent restore point exists ($minutesAgo min ago) - skipping" -ForegroundColor Cyan
+                Write-Log "Recent restore point exists (created $minutesAgo minutes ago) - skipping creation" 'INFO'
+                $restorePointCreated = $true
+                return
+            }
+        }
+        catch {
+            Write-Log "[SystemRestore] Date comparison failed: $_" 'VERBOSE'
+            # Continue with restore point creation if date comparison fails
         }
     }
         
@@ -4784,10 +4845,6 @@ function Protect-SystemRestore {
         Write-Host "⚠️ System Restore protection incomplete" -ForegroundColor Yellow
         Write-Log "System Restore protection completed with limitations" 'WARN'
     }
-}
-catch {
-    Write-Host "✗ System Restore operation failed: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Log "Critical System Restore operation failure: $_" 'ERROR'
 }
     
 Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
@@ -4927,9 +4984,9 @@ foreach ($file in $logFiles) {
 
 # Extract detailed actions from maintenance.log
 $logActions = @('Installed', 'Uninstalled', 'Updated', 'Removed', 'Deleted', 'Upgraded', 'Cleaned')
-# Use the same log path that was set at the beginning of the script
-if (Test-Path $logPath) {
-    $logContent = Get-Content $logPath
+# Use the same log file that was set at the beginning of the script
+if (Test-Path $LogFile) {
+    $logContent = Get-Content $LogFile
     $actionLines = $logContent | Where-Object {
         $line = $_
         $logActions | Where-Object { $line -match $_ }

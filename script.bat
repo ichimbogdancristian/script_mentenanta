@@ -17,9 +17,56 @@ SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "CURRENT_DIR=%CD%"
+SET "SCRIPT_DRIVE=%~d0"
 
 REM Remove trailing backslash from script directory if present
 IF "!SCRIPT_DIR:~-1!"=="\" SET "SCRIPT_DIR=!SCRIPT_DIR:~0,-1!"
+
+REM Detect drive type for path independence
+SET "DRIVE_TYPE=Unknown"
+SET "IS_NETWORK_PATH=NO"
+SET "IS_UNC_PATH=NO"
+
+REM Check if this is a UNC path (starts with \\)
+ECHO !SCRIPT_PATH! | findstr "^\\\\.*" >nul
+IF %ERRORLEVEL% EQU 0 (
+    SET "IS_UNC_PATH=YES"
+    SET "DRIVE_TYPE=Network"
+    SET "IS_NETWORK_PATH=YES"
+) ELSE (
+    REM For drive letters, detect the drive type
+    FOR /F "tokens=2" %%A IN ('fsutil fsinfo drivetype "!SCRIPT_DRIVE!\" 2^>nul') DO SET "DRIVE_TYPE=%%A"
+    IF "!DRIVE_TYPE!"=="Network" SET "IS_NETWORK_PATH=YES"
+)
+
+REM Detect system environment information
+SET "COMPUTER_NAME=%COMPUTERNAME%"
+SET "USER_NAME=%USERNAME%"
+SET "OS_VERSION="
+SET "OS_ARCH="
+SET "PS_VERSION="
+
+REM Get OS version and architecture
+FOR /F "tokens=2 delims=[]" %%A IN ('ver') DO SET "OS_VERSION=%%A"
+IF "%PROCESSOR_ARCHITECTURE%"=="AMD64" SET "OS_ARCH=x64"
+IF "%PROCESSOR_ARCHITECTURE%"=="x86" SET "OS_ARCH=x86"
+IF "%PROCESSOR_ARCHITECTURE%"=="ARM64" SET "OS_ARCH=ARM64"
+
+REM Get PowerShell version early for environment detection
+REM Detect PowerShell executable path first
+IF EXIST "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" (
+    SET "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+) ELSE IF EXIST "%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" (
+    SET "POWERSHELL_EXE=%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+) ELSE (
+    SET "POWERSHELL_EXE=powershell.exe"
+)
+
+REM Get full PowerShell version string for environment detection
+FOR /F "tokens=*" %%i IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { $PSVersionTable.PSVersion.ToString() } catch { '5.1.0.0' }" 2^>nul') DO SET PS_VERSION=%%i
+IF "%PS_VERSION%"=="" SET "PS_VERSION=5.1.0.0"
+
+SET "WORKING_DIRECTORY=%CD%"
 
 REM Validate critical paths exist BEFORE any operations
 IF NOT EXIST "!SCRIPT_PATH!" (
@@ -35,11 +82,15 @@ IF NOT EXIST "!SCRIPT_DIR!" (
 )
 
 REM Ensure we're working from the script's directory
+CALL :LOG_ENTRY "INFO" "Attempting to change to script directory: !SCRIPT_DIR!"
 CD /D "!SCRIPT_DIR!" >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
+    CALL :LOG_ENTRY "ERROR" "Cannot change to script directory: !SCRIPT_DIR!"
     ECHO ERROR: Cannot change to script directory: !SCRIPT_DIR!
     PAUSE
     EXIT /B 1
+) ELSE (
+    CALL :LOG_ENTRY "INFO" "Successfully changed to script directory"
 )
 
 REM Initialize LOG_FILE early for logging functions
@@ -48,15 +99,20 @@ SET "LOG_FILE=!SCRIPT_DIR!\maintenance.log"
 REM Enhanced path detection and validation (now with early logging)
 CALL :LOG_ENTRY "INFO" "Script Full Path: !SCRIPT_PATH!"
 CALL :LOG_ENTRY "INFO" "Script Directory: !SCRIPT_DIR!"
-CALL :LOG_ENTRY "INFO" "Script Name: !SCRIPT_NAME!"
-CALL :LOG_ENTRY "INFO" "Original Working Directory: !CURRENT_DIR!"
-CALL :LOG_ENTRY "INFO" "Current Working Directory: %CD%"
+CALL :LOG_ENTRY "INFO" "Script Drive: !SCRIPT_DRIVE! (Type: !DRIVE_TYPE!)"
+CALL :LOG_ENTRY "INFO" "Network Path: !IS_NETWORK_PATH!, UNC Path: !IS_UNC_PATH!"
+CALL :LOG_ENTRY "INFO" "Computer Name: !COMPUTER_NAME!"
+CALL :LOG_ENTRY "INFO" "User Name: !USER_NAME!"
+CALL :LOG_ENTRY "INFO" "OS Version: !OS_VERSION!"
+CALL :LOG_ENTRY "INFO" "OS Architecture: !OS_ARCH!"
+CALL :LOG_ENTRY "INFO" "PowerShell Version: !PS_VERSION!"
+CALL :LOG_ENTRY "INFO" "Working Directory: !WORKING_DIRECTORY!"
 
 REM EARLY Admin privilege detection (before any operations)
 CALL :DETECT_ADMIN_PRIVILEGES
+
 IF "!IS_ADMIN!"=="NO" (
     CALL :LOG_ENTRY "WARN" "Script not running with administrator privileges"
-    CALL :LOG_ENTRY "INFO" "Attempting to relaunch with administrator privileges..."
     REM Capture all arguments properly
     SET "ALL_ARGS=%*"
     IF DEFINED ALL_ARGS (
@@ -69,7 +125,13 @@ IF "!IS_ADMIN!"=="NO" (
     timeout /t 2 /nobreak >nul
     EXIT /B 0
 ) ELSE (
-    CALL :LOG_ENTRY "INFO" "✓ Running with administrator privileges"
+    CALL :LOG_ENTRY "INFO" "Running with administrator privileges - continuing with script"
+    ECHO.
+    ECHO ========================================
+    ECHO    RUNNING WITH ADMIN PRIVILEGES
+    ECHO    Main Script Execution Starting...
+    ECHO ========================================
+    ECHO.
 )
 
 REM -----------------------------------------------------------------------------
@@ -79,13 +141,22 @@ SET "TASK_NAME=ScriptMentenantaMonthly"
 SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
 REM Note: SCRIPT_PATH and LOG_FILE already set in path management section above
 
-REM Create or append to maintenance.log
+REM Create or append to maintenance.log with enhanced environment information
 ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] Starting Windows Maintenance Automation Script >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] Batch Script: !SCRIPT_PATH! >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] Batch Script Directory: !SCRIPT_DIR! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Script Name: !SCRIPT_NAME! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Script Drive: !SCRIPT_DRIVE! (Type: !DRIVE_TYPE!) >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Network Path: !IS_NETWORK_PATH!, UNC Path: !IS_UNC_PATH! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Computer Name: !COMPUTER_NAME! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] User Name: !USER_NAME! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] OS Version: !OS_VERSION! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] OS Architecture: !OS_ARCH! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] PowerShell Version: !PS_VERSION! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Working Directory: !WORKING_DIRECTORY! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Admin Privileges: !IS_ADMIN! >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] Log File: !LOG_FILE! >> "!LOG_FILE!"
-ECHO [%DATE% %TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME% >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "!LOG_FILE!"
 
 REM Function to log both to console and file
@@ -95,7 +166,6 @@ ECHO    Windows Maintenance Automation Script - STARTING
 ECHO ============================================================
 ECHO.
 CALL :LOG_ENTRY "INFO" "Starting maintenance script..."
-CALL :LOG_ENTRY "INFO" "User: %USERNAME%, Computer: %COMPUTERNAME%"
 
 REM Check if this is a restart after PowerShell 7 installation
 IF "%1"=="PS7_RESTART" (
@@ -108,16 +178,18 @@ REM Admin Privilege Verification (Enhanced detection already performed)
 REM -----------------------------------------------------------------------------
 ECHO.
 ECHO [INFO] Verifying Administrator privileges...
-REM Admin privileges already verified during startup - this is just a confirmation
-IF "!IS_ADMIN!"=="YES" (
-    CALL :LOG_ENTRY "INFO" "✓ Administrator privileges confirmed"
+REM Re-verify admin privileges to ensure they're still valid
+CALL :DETECT_ADMIN_PRIVILEGES
+IF "%IS_ADMIN%"=="YES" (
+    CALL :LOG_ENTRY "INFO" "Administrator privileges confirmed"
 ) ELSE (
     CALL :LOG_ENTRY "ERROR" "Administrator privileges verification failed"
     ECHO.
     ECHO ERROR: This script requires administrator privileges to function properly.
     ECHO Please restart the script as an administrator.
     ECHO.
-    PAUSE
+    ECHO Press any key to exit...
+    PAUSE >nul
     EXIT /B 1
 )
 
@@ -166,17 +238,17 @@ ECHO.
 ECHO ERROR: PowerShell is required for this script to function.
 ECHO Please install Windows PowerShell 5.1 or newer and try again.
 ECHO.
-PAUSE
+ECHO Press any key to exit...
+PAUSE >nul
 EXIT /B 3
 :found_ps
-
-CALL :LOG_ENTRY "INFO" "Using PowerShell: %POWERSHELL_EXE%"
 
 REM Test PowerShell functionality first
 "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Write-Host 'PowerShell is functional'" >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
     CALL :LOG_ENTRY "ERROR" "PowerShell executable found but not functional."
-    pause
+    ECHO Press any key to exit...
+    pause >nul
     EXIT /B 3
 )
 
@@ -204,7 +276,6 @@ CALL :LOG_ENTRY "INFO" "PowerShell version: %PS_VERSION%"
 REM -----------------------------------------------------------------------------
 REM Windows Version Detection - Simplified for CMD Environment
 REM -----------------------------------------------------------------------------
-REM Simple Windows Version Detection (avoid complex PowerShell early)
 SET "WINVER=Unknown"
 SET "WINVER_MAJOR="
 SET "WINVER_MINOR="
@@ -257,7 +328,6 @@ CALL :LOG_ENTRY "INFO" "Detected Windows version: %WINVER_MAJOR%.%WINVER_MINOR%.
 
 REM -----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup
-REM Ensures a monthly scheduled task is created to run this script as admin.
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "Checking for monthly scheduled task '%TASK_NAME%'..."
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
@@ -322,14 +392,9 @@ IF %ERRORLEVEL% EQU 0 (
 
 REM -----------------------------------------------------------------------------
 REM Startup Task Management and Restart Detection Logic
-REM Step 1: Check if startup task exists - if yes, delete it
-REM Step 2: Check for pending restarts using comprehensive detection
-REM Step 3: If pending restarts found, create startup task with 1-minute delay
-REM Step 4: Restart the system
 REM -----------------------------------------------------------------------------
 
 REM Step 1: Check and remove existing startup task if it exists
-CALL :LOG_ENTRY "INFO" "Step 1: Checking startup task '%STARTUP_TASK_NAME%'..."
 schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Existing startup task found. Removing..."
@@ -344,7 +409,7 @@ IF %ERRORLEVEL% EQU 0 (
 )
 
 REM Step 2: Comprehensive restart detection - Using individual checks
-CALL :LOG_ENTRY "INFO" "Step 2: Checking for pending system restarts..."
+CALL :LOG_ENTRY "INFO" "Checking for pending system restarts..."
 SET "RESTART_NEEDED=NO"
 SET "RESTART_COUNT=0"
 
@@ -353,7 +418,6 @@ REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Upd
 IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
     SET /A RESTART_COUNT+=1
-    CALL :LOG_ENTRY "INFO" "Windows Update reboot flag detected"
 )
 
 REM Check Component Based Servicing reboot flag
@@ -361,7 +425,6 @@ REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servic
 IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
     SET /A RESTART_COUNT+=1
-    CALL :LOG_ENTRY "INFO" "Component Based Servicing reboot detected"
 )
 
 REM Check pending file operations
@@ -369,7 +432,6 @@ REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFile
 IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
     SET /A RESTART_COUNT+=1
-    CALL :LOG_ENTRY "INFO" "Pending file operations detected"
 )
 
 REM Check Windows Feature installation requiring restart
@@ -377,7 +439,6 @@ REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servic
 IF %ERRORLEVEL% EQU 0 (
     SET "RESTART_NEEDED=YES"
     SET /A RESTART_COUNT+=1
-    CALL :LOG_ENTRY "INFO" "Windows Features pending restart detected"
 )
 
 REM Check for computer name change using simple approach
@@ -386,21 +447,12 @@ FOR /F "tokens=3" %%B IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Comp
 IF NOT "%CURRENT_NAME%"=="%ACTIVE_NAME%" (
     SET "RESTART_NEEDED=YES"
     SET /A RESTART_COUNT+=1
-    CALL :LOG_ENTRY "INFO" "Computer name change pending restart detected"
 )
-
-REM Debug and proceed with restart logic
-CALL :LOG_ENTRY "DEBUG" "RESTART_NEEDED=%RESTART_NEEDED%, RESTART_COUNT=%RESTART_COUNT%"
 
 REM Step 3 & 4: Handle restart using simple conditional logic
 IF "%RESTART_NEEDED%"=="YES" (
     CALL :LOG_ENTRY "WARN" "System restart required - %RESTART_COUNT% conditions detected"
-    CALL :LOG_ENTRY "INFO" "Step 3: Creating startup task for post-restart continuation..."
-    
-    REM Show task creation parameters
-    CALL :LOG_ENTRY "DEBUG" "Task name: %STARTUP_TASK_NAME%"
-    CALL :LOG_ENTRY "DEBUG" "Script path: !SCRIPT_PATH!"
-    CALL :LOG_ENTRY "DEBUG" "User: %USERNAME%"
+    CALL :LOG_ENTRY "INFO" "Creating startup task for post-restart continuation..."
     
     REM Create startup task with multiple methods
     REM METHOD 1: Try with current user
@@ -427,11 +479,10 @@ IF "%RESTART_NEEDED%"=="YES" (
         )
     )
     
-    REM Verify startup task creation
     schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
         CALL :LOG_ENTRY "INFO" "Startup task verification successful"
-        CALL :LOG_ENTRY "INFO" "Step 4: Initiating system restart in 20 seconds..."
+        CALL :LOG_ENTRY "INFO" "Initiating system restart in 20 seconds..."
         ECHO.
         ECHO =====================================================
         ECHO   SYSTEM RESTART REQUIRED
@@ -444,32 +495,24 @@ IF "%RESTART_NEEDED%"=="YES" (
         shutdown /r /t 5 /c "System restart required for maintenance"
         EXIT /B 0
     ) ELSE (
-        CALL :LOG_ENTRY "ERROR" "All startup task creation methods failed. Continuing without restart..."
-        CALL :LOG_ENTRY "INFO" "Continuing without restart..."
+        CALL :LOG_ENTRY "ERROR" "Startup task creation failed. Continuing without restart..."
     )
 ) ELSE (
-    CALL :LOG_ENTRY "INFO" "No pending restart detected. Continuing with maintenance..."
-)
     CALL :LOG_ENTRY "INFO" "No pending restart detected. Continuing with maintenance..."
 )
 
 REM -----------------------------------------------------------------------------
 REM Dependency Management - Hierarchical Installation Order
-REM PHASE 1: Core System Dependencies (required for package managers)
-REM PHASE 2: Package Managers (Winget)  
-REM PHASE 3: Development Tools (using package managers)
-REM PHASE 4: PowerShell Environment (modules and package managers)
 REM -----------------------------------------------------------------------------
 ECHO.
 ECHO ========================================
 ECHO     Installing Required Dependencies
-ECHO     (Hierarchical Dependency Order)
 ECHO ========================================
 ECHO.
-CALL :LOG_ENTRY "INFO" "Starting dependency installation with proper hierarchical order..."
+CALL :LOG_ENTRY "INFO" "Starting dependency installation..."
 
 REM =============================================================================
-REM PHASE 1: CORE SYSTEM DEPENDENCIES (Required for Winget and other tools)
+REM PHASE 1: CORE SYSTEM DEPENDENCIES
 REM =============================================================================
 ECHO.
 ECHO ----------------------------------------
@@ -1108,8 +1151,8 @@ IF "%PS7_AVAILABLE%"=="YES" (
     ECHO    Launching PowerShell 7 Script
     ECHO ========================================
     ECHO.
-    REM Launch PowerShell 7 asynchronously with admin rights
-    START "" pwsh.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Normal -File "%PS1_PATH%"
+    REM Launch PowerShell 7 asynchronously with admin rights, passing log file path as parameter
+    START "" pwsh.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Normal -File "%PS1_PATH%" -LogFilePath "%LOG_FILE%"
     CALL :LOG_ENTRY "INFO" "PowerShell 7 script launched asynchronously with admin rights"
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "Using Windows PowerShell environment..."
@@ -1118,8 +1161,8 @@ IF "%PS7_AVAILABLE%"=="YES" (
     ECHO    Launching Windows PowerShell Script
     ECHO ================================================
     ECHO.
-    REM Launch Windows PowerShell asynchronously with admin rights
-    START "" "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -NoProfile -WindowStyle Normal -File "%PS1_PATH%"
+    REM Launch Windows PowerShell asynchronously with admin rights, passing log file path as parameter
+    START "" "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -NoProfile -WindowStyle Normal -File "%PS1_PATH%" -LogFilePath "%LOG_FILE%"
     CALL :LOG_ENTRY "INFO" "Windows PowerShell script launched asynchronously with admin rights"
 )
 
@@ -1369,7 +1412,6 @@ REM Method 1: NET SESSION command (most reliable in CMD)
 NET SESSION >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     SET "IS_ADMIN=YES"
-    CALL :LOG_ENTRY "INFO" "Admin detection Method 1 (NET SESSION): SUCCESS"
     GOTO :EOF
 )
 
@@ -1377,7 +1419,6 @@ REM Method 2: WHOAMI /PRIV command check
 whoami /priv 2>nul | find "SeDebugPrivilege" >nul
 IF %ERRORLEVEL% EQU 0 (
     SET "IS_ADMIN=YES"
-    CALL :LOG_ENTRY "INFO" "Admin detection Method 2 (WHOAMI): SUCCESS"
     GOTO :EOF
 )
 
@@ -1386,12 +1427,9 @@ REG ADD "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v Test
 IF %ERRORLEVEL% EQU 0 (
     REG DELETE "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v TestAdminAccess /f >nul 2>&1
     SET "IS_ADMIN=YES"
-    CALL :LOG_ENTRY "INFO" "Admin detection Method 3 (Registry): SUCCESS"
     GOTO :EOF
 )
 
-CALL :LOG_ENTRY "INFO" "No admin privileges detected via CMD methods"
-GOTO :EOF
 GOTO :EOF
 
 REM -----------------------------------------------------------------------------
@@ -1400,8 +1438,6 @@ REM ----------------------------------------------------------------------------
 :REQUEST_ADMIN_PRIVILEGES
 SET "SCRIPT_TO_RUN=%~1"
 SET "SCRIPT_ARGS=%~2"
-CALL :LOG_ENTRY "INFO" "Requesting administrator privileges for: !SCRIPT_TO_RUN!"
-CALL :LOG_ENTRY "INFO" "Arguments to pass: !SCRIPT_ARGS!"
 
 ECHO.
 ECHO =========================================================
@@ -1425,16 +1461,12 @@ ECHO Attempting to relaunch with administrator privileges...
 ECHO.
 
 REM Method 1: PowerShell Start-Process with Verb RunAs (without -Wait)
-CALL :LOG_ENTRY "INFO" "Admin request Method 1: PowerShell Start-Process..."
 IF DEFINED SCRIPT_ARGS (
-    CALL :LOG_ENTRY "INFO" "Using PowerShell with arguments: !SCRIPT_ARGS!"
     powershell.exe -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '!SCRIPT_TO_RUN!' -Verb RunAs -ArgumentList '!SCRIPT_ARGS!'; Write-Host 'Elevation request sent with arguments'; exit 0 } catch { Write-Host 'Error:' $_.Exception.Message; exit 1 }"
 ) ELSE (
-    CALL :LOG_ENTRY "INFO" "Using PowerShell without arguments"
     powershell.exe -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '!SCRIPT_TO_RUN!' -Verb RunAs; Write-Host 'Elevation request sent without arguments'; exit 0 } catch { Write-Host 'Error:' $_.Exception.Message; exit 1 }"
 )
 IF %ERRORLEVEL% EQU 0 (
-    CALL :LOG_ENTRY "INFO" "Admin request Method 1: SUCCESS - Elevated process launched"
     ECHO [INFO] Elevated process launched successfully.
     ECHO [INFO] Please check for the elevated window that should appear.
     ECHO [INFO] This window will close now.
@@ -1443,7 +1475,6 @@ IF %ERRORLEVEL% EQU 0 (
 )
 
 REM Method 2: Windows Shell RunAs with VBScript (enhanced)
-CALL :LOG_ENTRY "INFO" "Admin request Method 2: VBScript ShellExecute..."
 SET "VBS_TEMP=%TEMP%\RunAsAdmin_%RANDOM%.vbs"
 (
     ECHO Set objShell = CreateObject^("Shell.Application"^)
