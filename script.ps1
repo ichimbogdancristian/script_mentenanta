@@ -12,23 +12,19 @@ param(
 $ScriptFullPath = $MyInvocation.MyCommand.Path
 $ScriptDir      = Split-Path -Parent $ScriptFullPath
 $ScriptName     = Split-Path -Leaf $ScriptFullPath
-$CurrentUser    = $env:USERNAME
-$ComputerName   = $env:COMPUTERNAME
-$IsAdmin        = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-# Detect drive information for path independence
 $ScriptDrive = if ($ScriptFullPath.StartsWith("\\")) { 
     "UNC Path" 
 } else { 
     (Get-Item $ScriptFullPath).PSDrive.Name + ":" 
 }
 
+# Detect drive type for path independence (matching batch script logic)
 $IsNetworkPath = $false
 $IsUNCPath = $ScriptFullPath.StartsWith("\\")
 
 $DriveType = if ($IsUNCPath) {
     $IsNetworkPath = $true
-    "Network (UNC)"
+    "Network"
 } elseif ($ScriptDrive -ne "UNC Path") {
     $DriveInfo = Get-WmiObject -Class Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $ScriptDrive }
     if ($DriveInfo) { 
@@ -44,7 +40,12 @@ $DriveType = if ($IsUNCPath) {
     } else { "Unknown" }
 } else { "Unknown" }
 
-# Detect OS information for consistency
+# System environment information (matching batch script variables)
+$ComputerName   = $env:COMPUTERNAME
+$CurrentUser    = $env:USERNAME
+$IsAdmin        = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+# OS information (matching batch script format)
 $OSVersion = (Get-WmiObject -Class Win32_OperatingSystem).Caption
 $OSArchitecture = $env:PROCESSOR_ARCHITECTURE
 if ($OSArchitecture -eq "AMD64") { $OSArch = "x64" }
@@ -90,9 +91,11 @@ Write-Host "[INFO] Admin Privileges: $IsAdmin"
 Write-Host "[INFO] Working Directory: $WorkingDirectory"
 
 # Log PowerShell script startup with detailed information matching batch script format
+$startTime = Get-Date
 $timestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
 Add-Content -Path $LogFile -Value "[$timestamp] [INFO] ============================================================"
-Add-Content -Path $LogFile -Value "[$timestamp] [INFO] PowerShell Maintenance Script Started"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] PowerShell Maintenance Script Started (Launched by script.bat)"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] ============================================================"
 Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Script Full Path: $ScriptFullPath"
 Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Script Directory: $ScriptDir"
 Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Script Name: $ScriptName"
@@ -5068,7 +5071,19 @@ catch {
 ### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
 ### ...
 
-Write-Log "Windows maintenance script execution completed successfully" 'INFO'
+# Final completion logging with detailed information
+$completionTimestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
+Write-Log "============================================================" 'INFO'
+Write-Log "PowerShell Maintenance Script execution completed successfully" 'INFO'
+Write-Log "Total execution time: $((Get-Date) - $startTime)" 'INFO' 
+Write-Log "Log file location: $LogFile" 'INFO'
+Write-Log "============================================================" 'INFO'
+
+# Add completion marker to log file for script.bat to detect if needed
+Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] ============================================================"
+Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] PowerShell Maintenance Script Completed Successfully"
+Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] Returning control to script.bat (if applicable)"
+Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] ============================================================"
 
 ### AI_POST_TASK: Interactive closure prompt for console environments
 # AI_PURPOSE: Provides user interaction for console-based script execution

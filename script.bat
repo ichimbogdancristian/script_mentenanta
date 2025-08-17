@@ -1144,6 +1144,11 @@ CALL :LOG_ENTRY "INFO" "Script path: %PS1_PATH%"
 REM Set environment variable for PowerShell script to use same log file
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
+CALL :LOG_ENTRY "INFO" "============================================================"
+CALL :LOG_ENTRY "INFO" "Transferring control to PowerShell script (script.ps1)"
+CALL :LOG_ENTRY "INFO" "Log file will continue in: %LOG_FILE%"
+CALL :LOG_ENTRY "INFO" "============================================================"
+
 IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_ENTRY "INFO" "Using PowerShell 7 environment..."
     ECHO.
