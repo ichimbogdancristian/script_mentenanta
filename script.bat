@@ -36,7 +36,7 @@ IF NOT EXIST "!SCRIPT_DIR!" (
 
 REM Ensure we're working from the script's directory
 CD /D "!SCRIPT_DIR!" >nul 2>&1
-IF !ERRORLEVEL! NEQ 0 (
+IF %ERRORLEVEL% NEQ 0 (
     ECHO ERROR: Cannot change to script directory: !SCRIPT_DIR!
     PAUSE
     EXIT /B 1
@@ -145,7 +145,7 @@ IF EXIST "%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" (
 
 REM Method 3: Use WHERE command to find in PATH
 WHERE powershell.exe >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     FOR /F "tokens=*" %%i IN ('WHERE powershell.exe 2^>nul') DO (
         SET "POWERSHELL_EXE=%%i"
         CALL :LOG_ENTRY "INFO" "Found PowerShell via PATH: %%i"
@@ -180,13 +180,18 @@ IF %ERRORLEVEL% NEQ 0 (
     EXIT /B 3
 )
 
-REM Get PowerShell version with execution policy bypass
-FOR /F "tokens=*" %%i IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_VERSION=%%i
+REM Get PowerShell version with execution policy bypass and error handling
+SET "PS_VERSION="
+FOR /F "tokens=*" %%i IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { $PSVersionTable.PSVersion.Major } catch { 5 }" 2^>nul') DO SET PS_VERSION=%%i
 IF "%PS_VERSION%"=="" (
-    CALL :LOG_ENTRY "WARN" "Could not determine PowerShell version via PSVersionTable, trying alternative method..."
-    REM Try alternative version detection
-    FOR /F "tokens=*" %%i IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "if($PSVersionTable.PSVersion.Major){$PSVersionTable.PSVersion.Major}else{'5'}" 2^>nul') DO SET PS_VERSION=%%i
-    IF "%PS_VERSION%"=="" SET PS_VERSION=5
+    CALL :LOG_ENTRY "WARN" "Could not determine PowerShell version, assuming version 5"
+    SET PS_VERSION=5
+)
+REM Validate PS_VERSION is numeric
+ECHO %PS_VERSION%| findstr /r "^[0-9][0-9]*$" >nul
+IF %ERRORLEVEL% NEQ 0 (
+    CALL :LOG_ENTRY "WARN" "Invalid PowerShell version detected, defaulting to 5"
+    SET PS_VERSION=5
 )
 IF %PS_VERSION% LSS 5 (
     CALL :LOG_ENTRY "ERROR" "PowerShell 5.1 or higher is required. Current version: %PS_VERSION%"
@@ -197,27 +202,30 @@ IF %PS_VERSION% LSS 5 (
 CALL :LOG_ENTRY "INFO" "PowerShell version: %PS_VERSION%"
 
 REM -----------------------------------------------------------------------------
-REM Windows Version Detection with Multiple Methods
+REM Windows Version Detection - Simplified for CMD Environment
 REM -----------------------------------------------------------------------------
-REM Robust Windows Version Detection (multi-method, normalized)
+REM Simple Windows Version Detection (avoid complex PowerShell early)
 SET "WINVER=Unknown"
 SET "WINVER_MAJOR="
 SET "WINVER_MINOR="
 SET "WINVER_BUILD="
 SET "WINVER_NAME=Unknown"
 
-REM Method 1: PowerShell CIM/WMI
-FOR /F "tokens=*" %%v IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }" 2^>nul') DO SET WINVER=%%v
+REM Method 1: Registry (most reliable in CMD)
+FOR /F "tokens=3" %%v IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentVersion 2^>nul') DO SET WINVER=%%v
 IF NOT "%WINVER%"=="" IF NOT "%WINVER%"=="Unknown" (
-    FOR /F "tokens=1-3 delims=." %%a IN ("%WINVER%") DO (
+    FOR /F "tokens=1,2 delims=." %%a IN ("%WINVER%") DO (
         SET WINVER_MAJOR=%%a
         SET WINVER_MINOR=%%b
-        SET WINVER_BUILD=%%c
     )
+    REM Get build number from registry
+    FOR /F "tokens=3" %%v IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber 2^>nul') DO SET WINVER_BUILD=%%v
 ) ELSE (
-    REM Method 2: Registry
-    FOR /F "tokens=3" %%v IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentVersion 2^>nul') DO SET WINVER=%%v
-    IF NOT "%WINVER%"=="" IF NOT "%WINVER%"=="Unknown" (
+    REM Method 2: VER command fallback
+    FOR /F "tokens=2 delims=[]" %%v IN ('VER') DO (
+        FOR /F "tokens=2 delims= " %%w IN ("%%v") DO SET WINVER=%%w
+    )
+)
         FOR /F "tokens=1-3 delims=." %%a IN ("%WINVER%") DO (
             SET WINVER_MAJOR=%%a
             SET WINVER_MINOR=%%b
@@ -292,8 +300,8 @@ IF %ERRORLEVEL% EQU 0 (
         ) ELSE (
             CALL :LOG_ENTRY "WARN" "User account method failed (Error: %ERRORLEVEL%). Trying PowerShell method..."
             
-            REM METHOD 3: Try with PowerShell
-            "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c \"!SCRIPT_PATH!\"'; $trigger = New-ScheduledTaskTrigger -Monthly -At '01:00' -DaysOfMonth 1; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest; Register-ScheduledTask -TaskName '%TASK_NAME%' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force; Write-Host '[INFO] Task created via PowerShell' } catch { Write-Host '[WARN] PowerShell task creation failed:' $_.Exception.Message; exit 1 }"
+            REM METHOD 3: Try with simple PowerShell command
+            "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Register-ScheduledTask -TaskName '%TASK_NAME%' -Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c \"!SCRIPT_PATH!\"') -Trigger (New-ScheduledTaskTrigger -Monthly -At '01:00' -DaysOfMonth 1) -RunLevel Highest -Force" >nul 2>&1
             
             REM Verify any method worked
             schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
@@ -409,8 +417,8 @@ IF "%RESTART_NEEDED%"=="YES" (
         ) ELSE (
             CALL :LOG_ENTRY "WARN" "SYSTEM account startup task failed (Error: %ERRORLEVEL%). Trying PowerShell method..."
             
-            REM METHOD 3: Try with PowerShell
-            "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c \"!SCRIPT_PATH!\"'; $trigger = New-ScheduledTaskTrigger -AtLogOn -User '%USERNAME%' -Delay (New-TimeSpan -Minutes 1); $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; $principal = New-ScheduledTaskPrincipal -UserId '%USERNAME%' -LogonType Interactive -RunLevel Highest; Register-ScheduledTask -TaskName '%STARTUP_TASK_NAME%' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force; Write-Host '[INFO] Startup task created via PowerShell' } catch { Write-Host '[WARN] PowerShell startup task creation failed:' $_.Exception.Message; exit 1 }" 2>&1 | findstr /C:"[INFO]" /C:"[WARN]"
+            REM METHOD 3: Try with simple PowerShell command
+            "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Register-ScheduledTask -TaskName '%STARTUP_TASK_NAME%' -Action (New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c \"!SCRIPT_PATH!\"') -Trigger (New-ScheduledTaskTrigger -AtLogOn) -RunLevel Highest -Force" >nul 2>&1
             IF %ERRORLEVEL% EQU 0 (
                 CALL :LOG_ENTRY "INFO" "Startup task created successfully with PowerShell method"
             ) ELSE (
@@ -481,10 +489,20 @@ IF %ERRORLEVEL% EQU 0 (
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "Installing Visual C++ Redistributable..."
     
-    REM Download and install in one command
-    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $file = '$env:TEMP\vc_redist.exe'; Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $file -UseBasicParsing; Start-Process $file -ArgumentList '/quiet /norestart' -Wait; Remove-Item $file -Force; Write-Host '[INFO] Visual C++ installed successfully' } catch { Write-Host '[ERROR] Visual C++ install failed:' $_.Exception.Message }"
+    REM Simple download and install approach
+    SET "VC_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    SET "VC_FILE=%TEMP%\vc_redist.exe"
     
-    CALL :LOG_ENTRY "INFO" "Visual C++ Redistributable installation completed."
+    REM Download using PowerShell (simple command)
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%VC_URL%' -OutFile '%VC_FILE%'" >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        REM Install silently
+        "%VC_FILE%" /quiet /norestart
+        DEL "%VC_FILE%" >nul 2>&1
+        CALL :LOG_ENTRY "INFO" "Visual C++ Redistributable installation completed."
+    ) ELSE (
+        CALL :LOG_ENTRY "WARN" "Visual C++ download failed, skipping installation."
+    )
 )
 
 REM -----------------------------------------------------------------------------
@@ -521,13 +539,13 @@ IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Method 1: Attempting to register existing Winget..."
     
     REM Try standard registration first
-    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe; Write-Host '[INFO] Winget registered successfully via family name' } catch { Write-Host '[WARN] Family name registration failed:' $_.Exception.Message }"
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe" >nul 2>&1
     
     REM Try alternative registration methods
-    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { $packages = Get-AppxPackage -AllUsers | Where-Object {$_.Name -like '*DesktopAppInstaller*'}; if ($packages) { foreach ($package in $packages) { try { Add-AppxPackage -Register ($package.InstallLocation + '\AppxManifest.xml') -DisableDevelopmentMode; Write-Host '[INFO] Winget registered via manifest:' $package.InstallLocation; break } catch { Write-Host '[WARN] Manifest registration failed for:' $package.InstallLocation } } } else { Write-Host '[WARN] No DesktopAppInstaller packages found' } } catch { Write-Host '[WARN] Alternative registration failed:' $_.Exception.Message }"
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Get-AppxPackage -AllUsers | Where-Object {$_.Name -like '*DesktopAppInstaller*'} | ForEach-Object { Add-AppxPackage -Register ($_.InstallLocation + '\AppxManifest.xml') -DisableDevelopmentMode }" >nul 2>&1
     
     REM Try reset/repair method
-    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { Get-AppxPackage Microsoft.DesktopAppInstaller -AllUsers | Reset-AppxPackage; Write-Host '[INFO] Winget reset completed' } catch { Write-Host '[WARN] Reset method failed:' $_.Exception.Message }"
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Get-AppxPackage Microsoft.DesktopAppInstaller -AllUsers | Reset-AppxPackage" >nul 2>&1
     
     REM Check if Method 1 worked
     timeout /t 2 /nobreak >nul
@@ -539,8 +557,18 @@ IF %ERRORLEVEL% EQU 0 (
     )
     
     REM METHOD 2: Download latest MSIX bundle from GitHub (with mirror URLs)
-    CALL :LOG_ENTRY "INFO" "Method 2: Downloading latest Winget from GitHub releases..."
-    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $urls = @('https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle', 'https://api.github.com/repos/microsoft/winget-cli/releases/latest'); foreach ($url in $urls) { try { $file = '$env:TEMP\winget_latest.msixbundle'; if ($url -like '*api.github*') { Write-Host '[INFO] Using GitHub API to find latest release...'; $release = Invoke-RestMethod -Uri $url -UseBasicParsing; $downloadUrl = ($release.assets | Where-Object { $_.name -like '*msixbundle' } | Select-Object -First 1).browser_download_url; if ($downloadUrl) { $url = $downloadUrl } else { throw 'No MSIX bundle found in API response' } }; Write-Host ('[INFO] Downloading from: ' + $url); Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing -TimeoutSec 60; if (Test-Path $file) { $size = (Get-Item $file).Length; Write-Host ('[INFO] Downloaded ' + [math]::Round($size/1MB, 2) + ' MB successfully'); Add-AppxPackage -Path $file -ForceApplicationShutdown; Remove-Item $file -Force; Write-Host '[INFO] Winget installed successfully via GitHub download'; break } } catch { Write-Host ('[WARN] GitHub URL failed: ' + $_.Exception.Message) } }; if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'All GitHub download methods failed' } } catch { Write-Host '[WARN] GitHub download method failed:' $_.Exception.Message; exit 1 }"
+    REM METHOD 2: Simple GitHub download approach
+    CALL :LOG_ENTRY "INFO" "Method 2: Downloading Winget from GitHub..."
+    SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+    SET "WINGET_FILE=%TEMP%\winget_latest.msixbundle"
+    
+    REM Download using simple PowerShell command
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%WINGET_URL%' -OutFile '%WINGET_FILE%'" >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        REM Install the package
+        "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Add-AppxPackage -Path '%WINGET_FILE%'" >nul 2>&1
+        DEL "%WINGET_FILE%" >nul 2>&1
+    )
     
     REM Check if Method 2 worked
     timeout /t 3 /nobreak >nul
@@ -551,22 +579,28 @@ IF %ERRORLEVEL% EQU 0 (
         GOTO :WINGET_VALIDATION
     )
     
-    REM METHOD 3: Download from Microsoft Store REST API (multiple endpoints)
-    CALL :LOG_ENTRY "INFO" "Method 3: Attempting Microsoft Store API download..."
-    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $progressPreference = 'SilentlyContinue'; $storeId = '9NBLGGH4NNS1'; $tempPath = '$env:TEMP\winget_store.msixbundle'; $endpoints = @('https://store.rg-adguard.net/api/GetFiles', 'https://api.msstore.workers.dev/getFiles'); foreach ($endpoint in $endpoints) { try { Write-Host ('[INFO] Trying Store API endpoint: ' + $endpoint); if ($endpoint -like '*workers.dev*') { $response = Invoke-RestMethod -Uri ($endpoint + '?productId=' + $storeId + '&cat=0') -Method Get -UseBasicParsing; $downloadUrl = ($response | Where-Object { $_.filename -like '*msixbundle' } | Select-Object -First 1).url } else { $body = 'type=ProductId&url=' + $storeId + '&ring=Retail&lang=en-US'; $webRequest = Invoke-WebRequest -Uri $endpoint -Method Post -ContentType 'application/x-www-form-urlencoded' -Body $body -UseBasicParsing; $webRequest.Content -match 'https://tlu\.dl\.delivery\.mp\.microsoft\.com[^\"]*msixbundle[^\"]*' | Out-Null; $downloadUrl = $matches[0] }; if ($downloadUrl) { Write-Host '[INFO] Found Store download URL, downloading...'; Invoke-WebRequest -Uri $downloadUrl -OutFile $tempPath -UseBasicParsing -TimeoutSec 120; if (Test-Path $tempPath) { Add-AppxPackage -Path $tempPath -ForceApplicationShutdown; Remove-Item $tempPath -Force; Write-Host '[INFO] Winget installed successfully via Microsoft Store API'; break } } } catch { Write-Host ('[WARN] Store API endpoint failed: ' + $_.Exception.Message) } }; if (-not (Test-Path $tempPath)) { throw 'All Store API endpoints failed' } } catch { Write-Host '[WARN] Microsoft Store API method failed:' $_.Exception.Message; exit 1 }"
-    
-    REM Check if Method 3 worked
-    timeout /t 3 /nobreak >nul
-    winget --version >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        CALL :LOG_ENTRY "INFO" "Method 3 SUCCESS: Winget is now functional via Store API."
+    REM METHOD 3: Skip Store API (too complex for CMD environment)
+    CALL :LOG_ENTRY "INFO" "Method 3: Skipping Store API method (complex operation deferred to script.ps1)"
         SET "WINGET_AVAILABLE=YES"
         GOTO :WINGET_VALIDATION
     )
     
     REM METHOD 4: Chocolatey bootstrap (if all else fails, we can use choco to install winget)
     CALL :LOG_ENTRY "INFO" "Method 4: Emergency Chocolatey bootstrap for Winget..."
-    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')); if (Get-Command choco -ErrorAction SilentlyContinue) { choco install microsoft-windows-terminal --yes --no-progress --limit-output; refreshenv; choco install winget --yes --no-progress --limit-output; Write-Host '[INFO] Winget installed via Chocolatey emergency method' } else { throw 'Chocolatey installation failed' } } catch { Write-Host '[WARN] Chocolatey emergency method failed:' $_.Exception.Message; exit 1 }"
+    REM METHOD 4: Simple Chocolatey approach
+    CALL :LOG_ENTRY "INFO" "Method 4: Attempting Chocolatey installation..."
+    
+    REM Install Chocolatey first (simple approach)
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))" >nul 2>&1
+    
+    REM Check if choco is available and install winget
+    WHERE choco >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        choco install winget --yes --no-progress --limit-output >nul 2>&1
+        CALL :LOG_ENTRY "INFO" "Winget installation via Chocolatey attempted"
+    ) ELSE (
+        CALL :LOG_ENTRY "WARN" "Chocolatey installation failed"
+    )
     
     REM Check if Method 4 worked
     timeout /t 5 /nobreak >nul
@@ -673,7 +707,7 @@ IF "!PS7_AVAILABLE!"=="NO" (
     IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
         SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
         "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
+        IF %ERRORLEVEL% EQU 0 (
             FOR /F "tokens=*" %%i IN ('"%ProgramFiles%\PowerShell\7\pwsh.exe" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
             IF NOT "!PS7_VERSION!"=="" (
                 CALL :LOG_ENTRY "INFO" "PowerShell 7 detected via Program Files: !PS7_VERSION!"
@@ -688,7 +722,7 @@ IF "!PS7_AVAILABLE!"=="NO" (
     FOR /D %%d IN ("%LocalAppData%\Microsoft\WindowsApps\Microsoft.PowerShell*") DO (
         IF EXIST "%%d\pwsh.exe" (
             "%%d\pwsh.exe" -Version >nul 2>&1
-            IF !ERRORLEVEL! EQU 0 (
+            IF %ERRORLEVEL% EQU 0 (
                 FOR /F "tokens=*" %%i IN ('"%%d\pwsh.exe" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
                 IF NOT "!PS7_VERSION!"=="" (
                     CALL :LOG_ENTRY "INFO" "PowerShell 7 detected via Windows Apps: !PS7_VERSION!"
@@ -1326,14 +1360,14 @@ IF EXIST "!PS7_TEMP_DIR!" rmdir /s /q "!PS7_TEMP_DIR!" >nul 2>&1
 GOTO :EOF
 
 REM -----------------------------------------------------------------------------
-REM Enhanced Admin Privilege Detection Function
+REM Enhanced Admin Privilege Detection Function - CMD Environment Only
 REM -----------------------------------------------------------------------------
 :DETECT_ADMIN_PRIVILEGES
 SET "IS_ADMIN=NO"
 
-REM Method 1: NET SESSION command (most reliable)
+REM Method 1: NET SESSION command (most reliable in CMD)
 NET SESSION >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     SET "IS_ADMIN=YES"
     CALL :LOG_ENTRY "INFO" "Admin detection Method 1 (NET SESSION): SUCCESS"
     GOTO :EOF
@@ -1341,30 +1375,23 @@ IF !ERRORLEVEL! EQU 0 (
 
 REM Method 2: WHOAMI /PRIV command check
 whoami /priv 2>nul | find "SeDebugPrivilege" >nul
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     SET "IS_ADMIN=YES"
     CALL :LOG_ENTRY "INFO" "Admin detection Method 2 (WHOAMI): SUCCESS"
     GOTO :EOF
 )
 
-REM Method 3: Registry write test
+REM Method 3: Registry write test (safe for CMD)
 REG ADD "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v TestAdminAccess /t REG_DWORD /d 1 /f >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     REG DELETE "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v TestAdminAccess /f >nul 2>&1
     SET "IS_ADMIN=YES"
     CALL :LOG_ENTRY "INFO" "Admin detection Method 3 (Registry): SUCCESS"
     GOTO :EOF
 )
 
-REM Method 4: PowerShell elevation check
-powershell.exe -ExecutionPolicy Bypass -Command "try { $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent()); if($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "IS_ADMIN=YES"
-    CALL :LOG_ENTRY "INFO" "Admin detection Method 4 (PowerShell): SUCCESS"
-    GOTO :EOF
-)
-
-CALL :LOG_ENTRY "WARN" "All admin detection methods failed - assuming no admin privileges"
+CALL :LOG_ENTRY "INFO" "No admin privileges detected via CMD methods"
+GOTO :EOF
 GOTO :EOF
 
 REM -----------------------------------------------------------------------------
@@ -1406,7 +1433,7 @@ IF DEFINED SCRIPT_ARGS (
     CALL :LOG_ENTRY "INFO" "Using PowerShell without arguments"
     powershell.exe -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '!SCRIPT_TO_RUN!' -Verb RunAs; Write-Host 'Elevation request sent without arguments'; exit 0 } catch { Write-Host 'Error:' $_.Exception.Message; exit 1 }"
 )
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Admin request Method 1: SUCCESS - Elevated process launched"
     ECHO [INFO] Elevated process launched successfully.
     ECHO [INFO] Please check for the elevated window that should appear.
@@ -1429,10 +1456,10 @@ SET "VBS_TEMP=%TEMP%\RunAsAdmin_%RANDOM%.vbs"
 ) > "!VBS_TEMP!"
 
 cscript //NoLogo "!VBS_TEMP!" 2>nul
-SET "VBS_RESULT=!ERRORLEVEL!"
+SET "VBS_RESULT=%ERRORLEVEL%"
 DEL "!VBS_TEMP!" >nul 2>&1
 
-IF !VBS_RESULT! EQU 0 (
+IF %VBS_RESULT% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Admin request Method 2: SUCCESS - VBScript elevation completed"
     ECHO [INFO] VBScript elevation completed successfully.
     ECHO [INFO] Please check for the elevated window that should appear.
@@ -1444,7 +1471,7 @@ IF !VBS_RESULT! EQU 0 (
 REM Method 3: Alternative PowerShell method with different syntax
 CALL :LOG_ENTRY "INFO" "Admin request Method 3: Alternative PowerShell method..."
 powershell.exe -ExecutionPolicy Bypass -Command "& { $proc = New-Object System.Diagnostics.ProcessStartInfo; $proc.FileName = '!SCRIPT_TO_RUN!'; $proc.Arguments = '!SCRIPT_ARGS!'; $proc.UseShellExecute = $true; $proc.Verb = 'runas'; $proc.WorkingDirectory = Split-Path '!SCRIPT_TO_RUN!' -Parent; try { [System.Diagnostics.Process]::Start($proc); exit 0 } catch { exit 1 } }"
-IF !ERRORLEVEL! EQU 0 (
+IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Admin request Method 3: SUCCESS - Alternative PowerShell method completed"
     ECHO [INFO] Alternative PowerShell elevation completed successfully.
     ECHO [INFO] Please check for the elevated window that should appear.

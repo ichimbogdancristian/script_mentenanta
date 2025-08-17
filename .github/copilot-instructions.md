@@ -1,5 +1,26 @@
 # Copilot Instructions for script_mentenanta
 
+## ⚠️ CRITICAL ENVIRONMENT AWARENESS ⚠️
+**NEVER FORGET**: 
+- **`script.bat` = COMMAND PROMPT (CMD) ENVIRONMENT ONLY**
+- **`script.ps1` = POWERSHELL 7 (PS7) ENVIRONMENT ONLY**
+
+### 🚫 FORBIDDEN in script.bat (CMD Environment):
+- Complex PowerShell commands with multiple cmdlets
+- PowerShell object manipulation ($_.Property syntax)
+- PowerShell try-catch blocks
+- PowerShell pipeline operations beyond simple commands
+- PowerShell-specific operators like -eq, -ne, -match
+- Delayed expansion `!ERRORLEVEL!` for immediate error checks (use `%ERRORLEVEL%`)
+
+### ✅ ALLOWED in script.bat (CMD Environment):
+- Simple PowerShell one-liners with `-Command` for basic tasks
+- CMD native commands: IF, FOR, SET, CALL, ECHO, etc.
+- Registry operations: REG QUERY, REG ADD, REG DELETE
+- Basic system commands: NET SESSION, WHOAMI, WHERE
+- File operations: COPY, DEL, MKDIR, RMDIR
+- Immediate expansion `%ERRORLEVEL%` for error checking
+
 ## Project Overview
 This project automates the setup and execution of a Windows maintenance script designed for seamless deployment across multiple PCs. It uses a batch file (`script.bat`) as the entry point to:
 - Check for and install dependencies: WinGet, PowerShell 7, Microsoft.VCLibs, and Microsoft.UI.Xaml
@@ -18,24 +39,46 @@ This project automates the setup and execution of a Windows maintenance script d
 - **Multi-PC Compatibility**: Script must work flawlessly across multiple PCs with different configurations, hardware, and Windows versions.
 - **Dynamic Path Detection**: All scheduled tasks and operations must use dynamically detected script paths, never hardcoded locations.
 - **Environment Isolation**: Be aware that batch files run in CMD environment while PowerShell scripts run in PS7 environment - handle path variables and execution contexts accordingly.
-- **Dependency Checks**: Uses PowerShell and batch logic to verify/install WinGet, PowerShell 7, and required AppX packages. Installs missing components automatically.
+- **Dependency Checks**: Uses CMD-native commands and simple PowerShell calls only. Complex operations go in script.ps1.
 - **Repository Handling**: Always downloads and extracts the latest repo version to a clean directory before running scripts.
 - **Script Execution**: Prefers PowerShell 7 (`pwsh`), falls back to Windows PowerShell if needed.
 - **Cleanup**: Temporary files and directories are removed at the end of execution.
 
 ## Developer Workflows
 - **Run the project**: Right-click `script.bat` and select "Run as administrator".
-- **Debugging**: Use `echo` statements in the batch file and `Write-Host` in PowerShell for step tracing. Check `%errorLevel%` after each critical step.
+- **Debugging**: Use `echo` statements in the batch file and `Write-Host` in PowerShell for step tracing. Check `%ERRORLEVEL%` after each critical step.
 - **Update maintenance logic**: Edit `script.ps1` in the repo. The batch script will always fetch the latest version.
+
+## 🎯 CMD vs PowerShell Environment Rules
+### script.bat (CMD Environment) - KEEP IT SIMPLE:
+- Use only CMD-native commands and simple PowerShell one-liners
+- For complex operations, defer to script.ps1
+- Use `%ERRORLEVEL%` for immediate error checking
+- Use `!variable!` only when inside loops or conditionals with delayed expansion
+- Prefer registry operations over WMI/CIM queries
+- Use WHERE, NET, REG, WHOAMI for system detection
+
+### script.ps1 (PowerShell Environment) - FULL POWER:
+- Use full PowerShell capabilities
+- Complex object manipulation, pipelines, try-catch blocks
+- CIM/WMI operations, advanced cmdlets
+- Module imports and package management
 
 ## Project-Specific Guidelines
 - Follow PowerShell style and safety rules from `instructions.md` (e.g., use approved verbs, robust parameter validation, modular functions, secure credential handling).
-- Keep all logic for dependency installation and repo management in `script.bat`.
+- Keep all logic for dependency installation and repo management in `script.bat` using CMD-appropriate methods.
 - Do not hardcode paths; use environment variables and relative paths as in the batch script.
 - Ensure all scripts are idempotent and safe to re-run.
 - Always use `%~f0` for current script path detection in batch files.
 - Use delayed expansion `!SCRIPT_PATH!` when referencing paths inside conditional blocks.
 - Test script operation from multiple locations (Desktop, Downloads, USB drives, network paths).
+
+## 🚨 Common Mistakes to Avoid:
+1. **Complex PowerShell in script.bat** - Move complex logic to script.ps1
+2. **Wrong variable expansion** - Use `%VAR%` for immediate, `!VAR!` for delayed
+3. **PowerShell syntax in CMD** - No $variables, no -operators in CMD environment
+4. **Hardcoded paths** - Always use dynamic path detection
+5. **Missing admin checks** - Always verify privileges before system operations
 
 ## Multi-PC Deployment Considerations
 - Script location independence: Must work from Desktop, Downloads, USB drives, network locations
@@ -45,9 +88,18 @@ This project automates the setup and execution of a Windows maintenance script d
 - User account compatibility: Works with standard users (with UAC), administrators, and domain accounts
 - Scheduled task reliability: Tasks must point to correct script location regardless of where script is stored
 
+## 💡 When Modifying script.bat - Remember:
+1. **Environment Check**: Am I in CMD or PowerShell environment? (script.bat = CMD!)
+2. **Simplicity First**: Can this be done with CMD commands instead of PowerShell?
+3. **Defer Complexity**: Should this complex logic go in script.ps1 instead?
+4. **Variable Expansion**: Do I need immediate (`%VAR%`) or delayed (`!VAR!`) expansion?
+5. **Error Handling**: Am I using `%ERRORLEVEL%` correctly for immediate checks?
+
 ## Example: Adding a New Dependency
 To add a new tool to the setup:
-1. Add a check and install logic in `script.bat` (following the VCLibs/XAML/WinGet pattern).
+1. Add a check and install logic in `script.bat` using CMD-appropriate methods (REG, WHERE, simple PowerShell calls)
+2. For complex operations, add the logic to `script.ps1` and call it from `script.bat`
+3. Document the change in `instructions.md` if it affects PowerShell code style or workflow.
 2. Document the change in `instructions.md` if it affects PowerShell code style or workflow.
 
 ## External Integrations
