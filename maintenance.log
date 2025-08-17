@@ -1,0 +1,10 @@
+[17-Aug-25 15:12:22.36] [INFO] ============================================================ 
+[17-Aug-25 15:12:22.36] [INFO] Starting Windows Maintenance Automation Script 
+[17-Aug-25 15:12:22.37] [INFO] Batch Script: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\script.bat 
+[17-Aug-25 15:12:22.38] [INFO] Batch Script Directory: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\ 
+[17-Aug-25 15:12:22.39] [INFO] Log File: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\maintenance.log 
+[17-Aug-25 15:12:22.40] [INFO] User: Bogdan, Computer: LAPTOP-BOGDAN 
+[17-Aug-25 15:12:22.41] [INFO] ============================================================ 
+[17-Aug-25 15:12:22.44] [INFO] Starting maintenance script... 
+[17-Aug-25 15:12:22.45] [INFO] User: Bogdan, Computer: LAPTOP-BOGDAN 
+[17-Aug-25 15:12:22.49] [WARN] Not running as Administrator. Relaunching with admin rights... 
