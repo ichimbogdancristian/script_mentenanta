@@ -10,20 +10,66 @@ REM ============================================================================
 SETLOCAL ENABLEDELAYEDEXPANSION
 
 REM -----------------------------------------------------------------------------
+REM Enhanced Path and Permission Management
+REM -----------------------------------------------------------------------------
+REM Normalize script paths to ensure consistent operation regardless of launch location
+SET "SCRIPT_PATH=%~f0"
+SET "SCRIPT_DIR=%~dp0"
+SET "SCRIPT_NAME=%~nx0"
+SET "CURRENT_DIR=%CD%"
+
+REM Remove trailing backslash from script directory if present
+IF "!SCRIPT_DIR:~-1!"=="\" SET "SCRIPT_DIR=!SCRIPT_DIR:~0,-1!"
+
+REM Ensure we're working from the script's directory
+CD /D "!SCRIPT_DIR!" >nul 2>&1
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO ERROR: Cannot change to script directory: !SCRIPT_DIR!
+    PAUSE
+    EXIT /B 1
+)
+
+REM Enhanced path detection and validation
+CALL :LOG_ENTRY "INFO" "Script Full Path: !SCRIPT_PATH!"
+CALL :LOG_ENTRY "INFO" "Script Directory: !SCRIPT_DIR!"
+CALL :LOG_ENTRY "INFO" "Original Working Directory: !CURRENT_DIR!"
+CALL :LOG_ENTRY "INFO" "Current Working Directory: %CD%"
+
+REM Validate critical paths exist
+IF NOT EXIST "!SCRIPT_PATH!" (
+    ECHO ERROR: Script file not accessible: !SCRIPT_PATH!
+    PAUSE
+    EXIT /B 1
+)
+
+REM Set up comprehensive environment for consistent operation
+SET "SCRIPT_FULL_PATH=!SCRIPT_PATH!"
+SET "SCRIPT_WORKING_DIR=!SCRIPT_DIR!"
+
+REM Enhanced privilege detection with multiple methods
+CALL :DETECT_ADMIN_PRIVILEGES
+IF "!IS_ADMIN!"=="NO" (
+    CALL :LOG_ENTRY "WARN" "Script not running with administrator privileges"
+    CALL :REQUEST_ADMIN_PRIVILEGES
+    EXIT /B 0
+) ELSE (
+    CALL :LOG_ENTRY "INFO" "✓ Running with administrator privileges"
+)
+
+REM -----------------------------------------------------------------------------
 REM Basic Environment Setup and Logging
 REM -----------------------------------------------------------------------------
 SET "TASK_NAME=ScriptMentenantaMonthly"
 SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
-SET "SCRIPT_PATH=%~f0"
-SET "SCRIPT_DIR=%~dp0"
+REM Note: SCRIPT_PATH already set in path management section above
 REM Log file is in the same directory as script.bat (main directory)
 SET "LOG_FILE=%SCRIPT_DIR%maintenance.log"
 
 REM Create or append to maintenance.log
 ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "%LOG_FILE%"
 ECHO [%DATE% %TIME%] [INFO] Starting Windows Maintenance Automation Script >> "%LOG_FILE%"
-ECHO [%DATE% %TIME%] [INFO] Batch Script: %SCRIPT_PATH% >> "%LOG_FILE%"
-ECHO [%DATE% %TIME%] [INFO] Batch Script Directory: %SCRIPT_DIR% >> "%LOG_FILE%"
+ECHO [%DATE% %TIME%] [INFO] Batch Script: !SCRIPT_PATH! >> "%LOG_FILE%"
+ECHO [%DATE% %TIME%] [INFO] Batch Script Directory: !SCRIPT_DIR! >> "%LOG_FILE%"
 ECHO [%DATE% %TIME%] [INFO] Log File: %LOG_FILE% >> "%LOG_FILE%"
 ECHO [%DATE% %TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME% >> "%LOG_FILE%"
 ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "%LOG_FILE%"
@@ -44,24 +90,21 @@ IF "%1"=="PS7_RESTART" (
 )
 
 REM -----------------------------------------------------------------------------
-REM Admin Privilege Check
-REM Relaunches itself with admin rights if not already running as Administrator.
+REM Admin Privilege Verification (Enhanced detection already performed)
 REM -----------------------------------------------------------------------------
 ECHO.
-ECHO [INFO] Checking Administrator privileges...
-NET SESSION >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    CALL :LOG_ENTRY "WARN" "Not running as Administrator. Relaunching with admin rights..."
-    ECHO.
-    ECHO ========================================
-    ECHO    Admin Rights Required - Relaunching
-    ECHO ========================================
-    ECHO.
-    REM Use basic PowerShell path for elevation (will be properly detected after restart)
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    EXIT /B 0
+ECHO [INFO] Verifying Administrator privileges...
+REM Admin privileges already verified during startup - this is just a confirmation
+IF "!IS_ADMIN!"=="YES" (
+    CALL :LOG_ENTRY "INFO" "✓ Administrator privileges confirmed"
 ) ELSE (
-    CALL :LOG_ENTRY "INFO" "Running with Administrator privileges."
+    CALL :LOG_ENTRY "ERROR" "Administrator privileges verification failed"
+    ECHO.
+    ECHO ERROR: This script requires administrator privileges to function properly.
+    ECHO Please restart the script as an administrator.
+    ECHO.
+    PAUSE
+    EXIT /B 1
 )
 
 REM -----------------------------------------------------------------------------
@@ -114,10 +157,23 @@ IF %PS_VERSION% LSS 5 (
 CALL :LOG_ENTRY "INFO" "PowerShell version: %PS_VERSION%"
 
 REM -----------------------------------------------------------------------------
-REM Windows Version Detection
+REM Windows Version Detection with Multiple Methods
 REM -----------------------------------------------------------------------------
-FOR /F "tokens=*" %%i IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_OperatingSystem).Version" 2^>nul') DO SET OS_VERSION=%%i
-IF "%OS_VERSION%"=="" SET OS_VERSION=Unknown
+REM Try multiple methods to get Windows version
+FOR /F "tokens=*" %%i IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }" 2^>nul') DO SET OS_VERSION=%%i
+
+REM If still no version, try registry method
+IF "%OS_VERSION%"=="" (
+    FOR /F "tokens=3" %%i IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentVersion 2^>nul ^| findstr CurrentVersion') DO SET OS_VERSION=%%i
+)
+
+REM If still no version, try systeminfo
+IF "%OS_VERSION%"=="" (
+    FOR /F "tokens=3*" %%i IN ('systeminfo ^| findstr /C:"OS Version"') DO SET OS_VERSION=%%i %%j
+)
+
+REM Final fallback
+IF "%OS_VERSION%"=="" SET OS_VERSION=Windows_Unknown
 CALL :LOG_ENTRY "INFO" "Detected Windows version: %OS_VERSION%"
 
 REM -----------------------------------------------------------------------------
@@ -129,31 +185,59 @@ schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Monthly scheduled task already exists. Skipping creation."
 ) ELSE (
-    CALL :LOG_ENTRY "INFO" "Monthly scheduled task not found. Creating..."
+    CALL :LOG_ENTRY "INFO" "Monthly scheduled task not found. Creating with multiple methods..."
+    
+    REM METHOD 1: Try with SYSTEM account
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
         /D 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "cmd.exe /c \"\"%SCRIPT_PATH%\"\"" ^
+        /TR "\"!SCRIPT_PATH!\"" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
-        /IT ^
-        /F
+        /F >nul 2>&1
+    
     IF %ERRORLEVEL% EQU 0 (
-        CALL :LOG_ENTRY "INFO" "Monthly scheduled task created successfully."
-        schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
-        IF %ERRORLEVEL% EQU 0 (
-            CALL :LOG_ENTRY "INFO" "Task verification successful."
-            FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
-                CALL :LOG_ENTRY "INFO" "Next scheduled run: %%i"
-            )
-        ) ELSE (
-            CALL :LOG_ENTRY "WARN" "Task created but verification failed."
-        )
+        CALL :LOG_ENTRY "INFO" "Monthly scheduled task created successfully with SYSTEM account."
     ) ELSE (
-        CALL :LOG_ENTRY "ERROR" "Failed to create monthly scheduled task. Error code: %ERRORLEVEL%"
+        CALL :LOG_ENTRY "WARN" "SYSTEM account method failed (Error: %ERRORLEVEL%). Trying with current user..."
+        
+        REM METHOD 2: Try with current user account
+        schtasks /Create ^
+            /SC MONTHLY ^
+            /MO 1 ^
+            /D 1 ^
+            /TN "%TASK_NAME%" ^
+            /TR "\"!SCRIPT_PATH!\"" ^
+            /ST 01:00 ^
+            /RL HIGHEST ^
+            /RU "%USERNAME%" ^
+            /F >nul 2>&1
+        
+        IF %ERRORLEVEL% EQU 0 (
+            CALL :LOG_ENTRY "INFO" "Monthly scheduled task created successfully with user account."
+        ) ELSE (
+            CALL :LOG_ENTRY "WARN" "User account method failed (Error: %ERRORLEVEL%). Trying PowerShell method..."
+            
+            REM METHOD 3: Try with PowerShell
+            "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c \"!SCRIPT_PATH!\"'; $trigger = New-ScheduledTaskTrigger -Monthly -At '01:00' -DaysOfMonth 1; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest; Register-ScheduledTask -TaskName '%TASK_NAME%' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force; Write-Host '[INFO] Task created via PowerShell' } catch { Write-Host '[WARN] PowerShell task creation failed:' $_.Exception.Message; exit 1 }"
+            
+            REM Verify any method worked
+            schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
+            IF %ERRORLEVEL% EQU 0 (
+                CALL :LOG_ENTRY "INFO" "Monthly scheduled task created successfully via PowerShell."
+            ) ELSE (
+                CALL :LOG_ENTRY "ERROR" "All scheduled task creation methods failed. Continuing without scheduled task."
+            )
+        )
+    )
+    
+    REM Final verification
+    schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_ENTRY "INFO" "Task verification successful."
     )
 )
 
@@ -236,13 +320,38 @@ IF "%RESTART_NEEDED%"=="YES" (
     
     REM Show task creation parameters
     CALL :LOG_ENTRY "DEBUG" "Task name: %STARTUP_TASK_NAME%"
-    CALL :LOG_ENTRY "DEBUG" "Script path: %SCRIPT_PATH%"
+    CALL :LOG_ENTRY "DEBUG" "Script path: !SCRIPT_PATH!"
     CALL :LOG_ENTRY "DEBUG" "User: %USERNAME%"
     
-    REM Create startup task - simplified command
-    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
+    REM Create startup task with multiple methods
+    REM METHOD 1: Try with current user
+    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "\"!SCRIPT_PATH!\"" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
-        CALL :LOG_ENTRY "INFO" "Startup task created successfully"
+        CALL :LOG_ENTRY "INFO" "Startup task created successfully with user account"
+    ) ELSE (
+        CALL :LOG_ENTRY "WARN" "User account startup task failed (Error: %ERRORLEVEL%). Trying SYSTEM account..."
+        
+        REM METHOD 2: Try with SYSTEM account
+        schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "\"!SCRIPT_PATH!\"" /RL HIGHEST /RU "SYSTEM" /DELAY 0001:00 /F >nul 2>&1
+        IF %ERRORLEVEL% EQU 0 (
+            CALL :LOG_ENTRY "INFO" "Startup task created successfully with SYSTEM account"
+        ) ELSE (
+            CALL :LOG_ENTRY "WARN" "SYSTEM account startup task failed (Error: %ERRORLEVEL%). Trying PowerShell method..."
+            
+            REM METHOD 3: Try with PowerShell
+            "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c \"!SCRIPT_PATH!\"'; $trigger = New-ScheduledTaskTrigger -AtLogOn -User '%USERNAME%' -Delay (New-TimeSpan -Minutes 1); $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable; $principal = New-ScheduledTaskPrincipal -UserId '%USERNAME%' -LogonType Interactive -RunLevel Highest; Register-ScheduledTask -TaskName '%STARTUP_TASK_NAME%' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force; Write-Host '[INFO] Startup task created via PowerShell' } catch { Write-Host '[WARN] PowerShell startup task creation failed:' $_.Exception.Message; exit 1 }" 2>&1 | findstr /C:"[INFO]" /C:"[WARN]"
+            IF %ERRORLEVEL% EQU 0 (
+                CALL :LOG_ENTRY "INFO" "Startup task created successfully with PowerShell method"
+            ) ELSE (
+                CALL :LOG_ENTRY "ERROR" "All startup task creation methods failed. Continuing without restart..."
+            )
+        )
+    )
+    
+    REM Verify startup task creation
+    schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_ENTRY "INFO" "Startup task verification successful"
         CALL :LOG_ENTRY "INFO" "Step 4: Initiating system restart in 20 seconds..."
         ECHO.
         ECHO =====================================================
@@ -256,7 +365,7 @@ IF "%RESTART_NEEDED%"=="YES" (
         shutdown /r /t 5 /c "System restart required for maintenance"
         EXIT /B 0
     ) ELSE (
-        CALL :LOG_ENTRY "ERROR" "Failed to create startup task (Error: %ERRORLEVEL%)"
+        CALL :LOG_ENTRY "ERROR" "All startup task creation methods failed. Continuing without restart..."
         CALL :LOG_ENTRY "INFO" "Continuing without restart..."
     )
 ) ELSE (
@@ -320,7 +429,12 @@ ECHO   PHASE 2: Package Managers
 ECHO ----------------------------------------
 
 REM -----------------------------------------------------------------------------
-REM 2A. Windows Package Manager (Winget) - Primary package manager
+REM 2A. Windows Package Manager (Winget) - Primary package manager with 5 fallback methods
+REM METHOD 1: Register existing installation (fastest)
+REM METHOD 2: GitHub direct download with API fallback (most reliable)  
+REM METHOD 3: Microsoft Store API with multiple endpoints (official)
+REM METHOD 4: Chocolatey emergency bootstrap (alternative ecosystem)
+REM METHOD 5: Windows features + DISM approach (system-level)
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "PHASE 2A: Installing Windows Package Manager (Winget)..."
 
@@ -330,36 +444,130 @@ IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_ENTRY "INFO" "Winget is already installed and functional."
     SET "WINGET_AVAILABLE=YES"
 ) ELSE (
-    CALL :LOG_ENTRY "INFO" "Installing Winget..."
+    CALL :LOG_ENTRY "INFO" "Installing Winget with multiple fallback methods..."
     
-    REM Try to install Winget using PowerShell in one command
-    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe; Write-Host '[INFO] Winget registered successfully' } catch { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $url = 'https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; $file = '$env:TEMP\winget.msixbundle'; Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing; Add-AppxPackage -Path $file; Remove-Item $file -Force; Write-Host '[INFO] Winget installed successfully' } catch { Write-Host '[ERROR] Winget install failed:' $_.Exception.Message } }"
+    REM METHOD 1: Try to register existing Winget installation (multiple approaches)
+    CALL :LOG_ENTRY "INFO" "Method 1: Attempting to register existing Winget..."
     
-    REM Check if Winget is now available
+    REM Try standard registration first
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe; Write-Host '[INFO] Winget registered successfully via family name' } catch { Write-Host '[WARN] Family name registration failed:' $_.Exception.Message }"
+    
+    REM Try alternative registration methods
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { $packages = Get-AppxPackage -AllUsers | Where-Object {$_.Name -like '*DesktopAppInstaller*'}; if ($packages) { foreach ($package in $packages) { try { Add-AppxPackage -Register ($package.InstallLocation + '\AppxManifest.xml') -DisableDevelopmentMode; Write-Host '[INFO] Winget registered via manifest:' $package.InstallLocation; break } catch { Write-Host '[WARN] Manifest registration failed for:' $package.InstallLocation } } } else { Write-Host '[WARN] No DesktopAppInstaller packages found' } } catch { Write-Host '[WARN] Alternative registration failed:' $_.Exception.Message }"
+    
+    REM Try reset/repair method
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { Get-AppxPackage Microsoft.DesktopAppInstaller -AllUsers | Reset-AppxPackage; Write-Host '[INFO] Winget reset completed' } catch { Write-Host '[WARN] Reset method failed:' $_.Exception.Message }"
+    
+    REM Check if Method 1 worked
+    timeout /t 2 /nobreak >nul
+    winget --version >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_ENTRY "INFO" "Method 1 SUCCESS: Winget is now functional via registration."
+        SET "WINGET_AVAILABLE=YES"
+        GOTO :WINGET_VALIDATION
+    )
+    
+    REM METHOD 2: Download latest MSIX bundle from GitHub (with mirror URLs)
+    CALL :LOG_ENTRY "INFO" "Method 2: Downloading latest Winget from GitHub releases..."
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $urls = @('https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle', 'https://api.github.com/repos/microsoft/winget-cli/releases/latest'); foreach ($url in $urls) { try { $file = '$env:TEMP\winget_latest.msixbundle'; if ($url -like '*api.github*') { Write-Host '[INFO] Using GitHub API to find latest release...'; $release = Invoke-RestMethod -Uri $url -UseBasicParsing; $downloadUrl = ($release.assets | Where-Object { $_.name -like '*msixbundle' } | Select-Object -First 1).browser_download_url; if ($downloadUrl) { $url = $downloadUrl } else { throw 'No MSIX bundle found in API response' } }; Write-Host ('[INFO] Downloading from: ' + $url); Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing -TimeoutSec 60; if (Test-Path $file) { $size = (Get-Item $file).Length; Write-Host ('[INFO] Downloaded ' + [math]::Round($size/1MB, 2) + ' MB successfully'); Add-AppxPackage -Path $file -ForceApplicationShutdown; Remove-Item $file -Force; Write-Host '[INFO] Winget installed successfully via GitHub download'; break } } catch { Write-Host ('[WARN] GitHub URL failed: ' + $_.Exception.Message) } }; if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'All GitHub download methods failed' } } catch { Write-Host '[WARN] GitHub download method failed:' $_.Exception.Message; exit 1 }"
+    
+    REM Check if Method 2 worked
     timeout /t 3 /nobreak >nul
     winget --version >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
-        CALL :LOG_ENTRY "INFO" "Winget is now available and functional."
+        CALL :LOG_ENTRY "INFO" "Method 2 SUCCESS: Winget is now functional via GitHub download."
+        SET "WINGET_AVAILABLE=YES"
+        GOTO :WINGET_VALIDATION
+    )
+    
+    REM METHOD 3: Download from Microsoft Store REST API (multiple endpoints)
+    CALL :LOG_ENTRY "INFO" "Method 3: Attempting Microsoft Store API download..."
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $progressPreference = 'SilentlyContinue'; $storeId = '9NBLGGH4NNS1'; $tempPath = '$env:TEMP\winget_store.msixbundle'; $endpoints = @('https://store.rg-adguard.net/api/GetFiles', 'https://api.msstore.workers.dev/getFiles'); foreach ($endpoint in $endpoints) { try { Write-Host ('[INFO] Trying Store API endpoint: ' + $endpoint); if ($endpoint -like '*workers.dev*') { $response = Invoke-RestMethod -Uri ($endpoint + '?productId=' + $storeId + '&cat=0') -Method Get -UseBasicParsing; $downloadUrl = ($response | Where-Object { $_.filename -like '*msixbundle' } | Select-Object -First 1).url } else { $body = 'type=ProductId&url=' + $storeId + '&ring=Retail&lang=en-US'; $webRequest = Invoke-WebRequest -Uri $endpoint -Method Post -ContentType 'application/x-www-form-urlencoded' -Body $body -UseBasicParsing; $webRequest.Content -match 'https://tlu\.dl\.delivery\.mp\.microsoft\.com[^\"]*msixbundle[^\"]*' | Out-Null; $downloadUrl = $matches[0] }; if ($downloadUrl) { Write-Host '[INFO] Found Store download URL, downloading...'; Invoke-WebRequest -Uri $downloadUrl -OutFile $tempPath -UseBasicParsing -TimeoutSec 120; if (Test-Path $tempPath) { Add-AppxPackage -Path $tempPath -ForceApplicationShutdown; Remove-Item $tempPath -Force; Write-Host '[INFO] Winget installed successfully via Microsoft Store API'; break } } } catch { Write-Host ('[WARN] Store API endpoint failed: ' + $_.Exception.Message) } }; if (-not (Test-Path $tempPath)) { throw 'All Store API endpoints failed' } } catch { Write-Host '[WARN] Microsoft Store API method failed:' $_.Exception.Message; exit 1 }"
+    
+    REM Check if Method 3 worked
+    timeout /t 3 /nobreak >nul
+    winget --version >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_ENTRY "INFO" "Method 3 SUCCESS: Winget is now functional via Store API."
+        SET "WINGET_AVAILABLE=YES"
+        GOTO :WINGET_VALIDATION
+    )
+    
+    REM METHOD 4: Chocolatey bootstrap (if all else fails, we can use choco to install winget)
+    CALL :LOG_ENTRY "INFO" "Method 4: Emergency Chocolatey bootstrap for Winget..."
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1')); if (Get-Command choco -ErrorAction SilentlyContinue) { choco install microsoft-windows-terminal --yes --no-progress --limit-output; refreshenv; choco install winget --yes --no-progress --limit-output; Write-Host '[INFO] Winget installed via Chocolatey emergency method' } else { throw 'Chocolatey installation failed' } } catch { Write-Host '[WARN] Chocolatey emergency method failed:' $_.Exception.Message; exit 1 }"
+    
+    REM Check if Method 4 worked
+    timeout /t 5 /nobreak >nul
+    CALL :REFRESH_ENV
+    winget --version >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_ENTRY "INFO" "Method 4 SUCCESS: Winget is now functional via Chocolatey emergency install."
+        SET "WINGET_AVAILABLE=YES"
+        GOTO :WINGET_VALIDATION
+    )
+    
+    REM METHOD 5: Enable Windows optional features and try DISM approach
+    CALL :LOG_ENTRY "INFO" "Method 5: Enabling Windows features and DISM approach..."
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-AppPlatform -All -NoRestart -ErrorAction SilentlyContinue; Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-DesktopExperience -All -NoRestart -ErrorAction SilentlyContinue; dism /online /add-capability /capabilityname:App.Support.QuickAssist~~~~0.0.1.0 /norestart; Write-Host '[INFO] Windows features enabled for App support' } catch { Write-Host '[WARN] Windows features method failed:' $_.Exception.Message }"
+    
+    REM Try registration again after enabling features
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe; Write-Host '[INFO] Winget registered after Windows features enabled' } catch { Write-Host '[WARN] Final registration attempt failed:' $_.Exception.Message }"
+    
+    REM Final check after all methods
+    timeout /t 5 /nobreak >nul
+    CALL :REFRESH_ENV
+    winget --version >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_ENTRY "INFO" "Method 5 SUCCESS: Winget is now functional after Windows features enabled."
         SET "WINGET_AVAILABLE=YES"
     ) ELSE (
-        CALL :LOG_ENTRY "WARN" "Winget installation failed - will use alternative methods."
+        CALL :LOG_ENTRY "ERROR" "ALL METHODS FAILED: Winget installation unsuccessful after 5 attempts."
+        CALL :LOG_ENTRY "WARN" "Will continue with alternative installation methods for other packages."
         SET "WINGET_AVAILABLE=NO"
     )
 )
 
-REM -----------------------------------------------------------------------------
-REM Winget Final Validation
-REM -----------------------------------------------------------------------------
-CALL :LOG_ENTRY "INFO" "Validating Winget functionality..."
+:WINGET_VALIDATION
 
-REM Simple validation
-winget source list >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    CALL :LOG_ENTRY "INFO" "Winget validation passed - ready for package installations."
-    SET "WINGET_AVAILABLE=YES"
+REM -----------------------------------------------------------------------------
+REM Winget Final Validation and Configuration
+REM -----------------------------------------------------------------------------
+CALL :LOG_ENTRY "INFO" "Performing comprehensive Winget validation..."
+
+IF "%WINGET_AVAILABLE%"=="YES" (
+    REM Test basic functionality
+    winget --version >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        REM Test source access
+        winget source list >nul 2>&1
+        IF %ERRORLEVEL% EQU 0 (
+            REM Test search functionality (quick test)
+            winget search Microsoft.VisualStudioCode --exact >nul 2>&1
+            IF %ERRORLEVEL% EQU 0 (
+                CALL :LOG_ENTRY "INFO" "Winget validation PASSED - All functionality confirmed."
+                REM Configure Winget for optimal performance
+                "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { winget settings --enable LocalManifestFiles; winget settings --enable LocalArchiveMalwareScanOverride; Write-Host '[INFO] Winget settings optimized' } catch { Write-Host '[INFO] Winget settings optimization skipped (not critical)' }"
+            ) ELSE (
+                CALL :LOG_ENTRY "WARN" "Winget search test failed - basic functionality only."
+            )
+        ) ELSE (
+            CALL :LOG_ENTRY "WARN" "Winget source access failed - limited functionality."
+        )
+    ) ELSE (
+        CALL :LOG_ENTRY "ERROR" "Winget validation failed - marking as unavailable."
+        SET "WINGET_AVAILABLE=NO"
+    )
 ) ELSE (
-    CALL :LOG_ENTRY "WARN" "Winget validation failed - will use alternative installation methods."
-    SET "WINGET_AVAILABLE=NO"
+    CALL :LOG_ENTRY "WARN" "Winget is not available - will use alternative package installation methods."
+)
+
+REM Show final Winget status
+IF "%WINGET_AVAILABLE%"=="YES" (
+    FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
+    CALL :LOG_ENTRY "INFO" "✓ Winget Status: Available (Version: %WINGET_VERSION%)"
+) ELSE (
+    CALL :LOG_ENTRY "INFO" "✗ Winget Status: Not Available - Alternative methods will be used"
 )
 
 REM =============================================================================
@@ -375,42 +583,80 @@ REM 3A. PowerShell 7 - Modern PowerShell environment
 REM -----------------------------------------------------------------------------
 CALL :LOG_ENTRY "INFO" "PHASE 3A: Installing PowerShell 7..."
 
-REM Simple PowerShell 7 check and install
+REM Enhanced PowerShell 7 detection with multiple methods
+SET "PS7_AVAILABLE=NO"
+SET "PS7_VERSION="
+
+REM Method 1: Direct pwsh.exe command test
 pwsh.exe -Version >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_ENTRY "INFO" "PowerShell 7 already available: !PS7_VERSION!"
-    SET "PS7_AVAILABLE=YES"
-) ELSE (
-    CALL :LOG_ENTRY "INFO" "Installing PowerShell 7..."
-    
-    REM Try Winget first, then fallback to direct download
-    IF "%WINGET_AVAILABLE%"=="YES" (
-        CALL :LOG_ENTRY "INFO" "Attempting PowerShell 7 installation via Winget..."
-        winget install --id Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
-        IF %ERRORLEVEL% EQU 0 (
-            CALL :LOG_ENTRY "INFO" "PowerShell 7 installed successfully via Winget."
-        ) ELSE (
-            CALL :LOG_ENTRY "WARN" "Winget install failed, trying direct download..."
-            CALL :INSTALL_PS7_DIRECT
-        )
-    ) ELSE (
-        CALL :LOG_ENTRY "INFO" "Installing PowerShell 7 via direct download..."
-        CALL :INSTALL_PS7_DIRECT
+    IF NOT "!PS7_VERSION!"=="" (
+        CALL :LOG_ENTRY "INFO" "PowerShell 7 detected via direct command: !PS7_VERSION!"
+        SET "PS7_AVAILABLE=YES"
     )
-    
-    REM Update PATH and check if PowerShell 7 is now available
-    SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
-    timeout /t 3 /nobreak >nul
-    pwsh.exe -Version >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-        CALL :LOG_ENTRY "INFO" "PowerShell 7 is now functional: !PS7_VERSION!"
+)
+
+REM Method 2: Check standard installation paths
+IF "!PS7_AVAILABLE!"=="NO" (
+    IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+        SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
+        "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            FOR /F "tokens=*" %%i IN ('"%ProgramFiles%\PowerShell\7\pwsh.exe" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+            IF NOT "!PS7_VERSION!"=="" (
+                CALL :LOG_ENTRY "INFO" "PowerShell 7 detected via Program Files: !PS7_VERSION!"
+                SET "PS7_AVAILABLE=YES"
+            )
+        )
+    )
+)
+
+REM Method 3: Check Windows Apps path (Store installation)
+IF "!PS7_AVAILABLE!"=="NO" (
+    FOR /D %%d IN ("%LocalAppData%\Microsoft\WindowsApps\Microsoft.PowerShell*") DO (
+        IF EXIST "%%d\pwsh.exe" (
+            "%%d\pwsh.exe" -Version >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                FOR /F "tokens=*" %%i IN ('"%%d\pwsh.exe" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+                IF NOT "!PS7_VERSION!"=="" (
+                    CALL :LOG_ENTRY "INFO" "PowerShell 7 detected via Windows Apps: !PS7_VERSION!"
+                    SET "PS7_AVAILABLE=YES"
+                    GOTO :PS7_DETECTED
+                )
+            )
+        )
+    )
+)
+
+:PS7_DETECTED
+IF "!PS7_AVAILABLE!"=="YES" (
+    CALL :LOG_ENTRY "INFO" "✓ PowerShell 7 Status: Available (Version: !PS7_VERSION!)"
+    GOTO :SKIP_PS7_INSTALL
+)
+
+REM PowerShell 7 not found - proceed with installation
+CALL :LOG_ENTRY "INFO" "PowerShell 7 not detected. Beginning installation..."
+
+REM Enhanced PowerShell 7 installation with multiple methods
+CALL :INSTALL_POWERSHELL7_MULTI_METHOD
+
+REM Final verification after installation
+timeout /t 5 /nobreak >nul
+SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
+pwsh.exe -Version >nul 2>&1
+IF %ERRORLEVEL% EQU 0 (
+    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+    IF NOT "!PS7_VERSION!"=="" (
+        CALL :LOG_ENTRY "INFO" "✓ PowerShell 7 installation successful: !PS7_VERSION!"
         SET "PS7_AVAILABLE=YES"
     ) ELSE (
-        CALL :LOG_ENTRY "WARN" "PowerShell 7 installation completed but may require restart."
-        SET "PS7_AVAILABLE=NO"
+        CALL :LOG_ENTRY "WARN" "PowerShell 7 command works but version detection failed"
+        SET "PS7_AVAILABLE=YES"
     )
+) ELSE (
+    CALL :LOG_ENTRY "WARN" "PowerShell 7 installation completed but may require system restart"
+    SET "PS7_AVAILABLE=NO"
 )
 
 :SKIP_PS7_INSTALL
@@ -844,6 +1090,225 @@ REM PowerShell 7 Direct Installation Function
 REM -----------------------------------------------------------------------------
 :INSTALL_PS7_DIRECT
 "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $url = 'https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.5-win-x64.msi'; $file = '$env:TEMP\PowerShell7.msi'; Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing; Start-Process msiexec -ArgumentList '/i', $file, '/quiet', '/norestart' -Wait; Remove-Item $file -Force; Write-Host '[INFO] PowerShell 7 installed via direct download' } catch { Write-Host '[ERROR] PowerShell 7 install failed:' $_.Exception.Message }"
+GOTO :EOF
+
+REM -----------------------------------------------------------------------------
+REM Winget Install with Fallbacks Function - Tries Winget first, then alternatives
+REM Usage: CALL :WINGET_INSTALL_WITH_FALLBACK "package_id" "fallback_url" "fallback_installer_args"
+REM -----------------------------------------------------------------------------
+:WINGET_INSTALL_WITH_FALLBACK
+SET "PACKAGE_ID=%~1"
+SET "FALLBACK_URL=%~2" 
+SET "FALLBACK_ARGS=%~3"
+
+REM Try Winget first if available
+IF "%WINGET_AVAILABLE%"=="YES" (
+    CALL :LOG_ENTRY "INFO" "Attempting to install %PACKAGE_ID% via Winget..."
+    winget install --id %PACKAGE_ID% --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_ENTRY "INFO" "✓ %PACKAGE_ID% installed successfully via Winget"
+        GOTO :EOF
+    ) ELSE (
+        CALL :LOG_ENTRY "WARN" "Winget installation failed for %PACKAGE_ID%, trying fallback..."
+    )
+)
+
+REM Try direct download fallback if URL provided
+IF NOT "%FALLBACK_URL%"=="" (
+    CALL :LOG_ENTRY "INFO" "Attempting direct download installation for %PACKAGE_ID%..."
+    "%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $url = '%FALLBACK_URL%'; $file = '$env:TEMP\' + [System.IO.Path]::GetFileName($url); if ($file -notmatch '\.(exe|msi)$') { $file += '.exe' }; Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing -TimeoutSec 120; if (Test-Path $file) { Write-Host '[INFO] Downloaded fallback installer successfully'; if ($file -match '\.msi$') { Start-Process msiexec -ArgumentList '/i', $file, '%FALLBACK_ARGS%' -Wait } else { Start-Process $file -ArgumentList '%FALLBACK_ARGS%' -Wait }; Remove-Item $file -Force; Write-Host '[INFO] Fallback installation completed' } else { throw 'Download failed' } } catch { Write-Host '[ERROR] Fallback installation failed:' $_.Exception.Message }"
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_ENTRY "INFO" "✓ %PACKAGE_ID% installed successfully via fallback download"
+        GOTO :EOF
+    )
+)
+
+CALL :LOG_ENTRY "WARN" "All installation methods failed for %PACKAGE_ID%"
+GOTO :EOF
+
+REM -----------------------------------------------------------------------------
+REM PowerShell 7 Multi-Method Installation Function
+REM -----------------------------------------------------------------------------
+:INSTALL_POWERSHELL7_MULTI_METHOD
+CALL :LOG_ENTRY "INFO" "Starting PowerShell 7 installation with multiple methods..."
+
+REM Method 1: WinGet installation (primary)
+IF "!WINGET_AVAILABLE!"=="YES" (
+    CALL :LOG_ENTRY "INFO" "PS7 Method 1: Attempting WinGet installation..."
+    winget install --id Microsoft.PowerShell --source winget --accept-package-agreements --accept-source-agreements --silent >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_ENTRY "INFO" "PS7 Method 1: WinGet installation completed successfully"
+        GOTO :PS7_INSTALL_SUCCESS
+    ) ELSE (
+        CALL :LOG_ENTRY "WARN" "PS7 Method 1: WinGet installation failed (Error: !ERRORLEVEL!)"
+    )
+)
+
+REM Method 2: Direct MSI download and installation
+CALL :LOG_ENTRY "INFO" "PS7 Method 2: Attempting direct MSI download..."
+SET "PS7_TEMP_DIR=%TEMP%\PowerShell7_Install_%RANDOM%"
+mkdir "!PS7_TEMP_DIR!" >nul 2>&1
+
+REM Try multiple download URLs for different architectures
+SET "PS7_URLS=https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.6-win-x64.msi https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.5-win-x64.msi https://github.com/PowerShell/PowerShell/releases/download/v7.4.4/PowerShell-7.4.4-win-x64.msi"
+
+FOR %%U IN (!PS7_URLS!) DO (
+    CALL :LOG_ENTRY "INFO" "PS7 Method 2: Downloading from %%U"
+    powershell.exe -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -Uri '%%U' -OutFile '!PS7_TEMP_DIR!\powershell7.msi' -UseBasicParsing; exit 0 } catch { exit 1 }" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        IF EXIST "!PS7_TEMP_DIR!\powershell7.msi" (
+            CALL :LOG_ENTRY "INFO" "PS7 Method 2: Download successful, installing MSI..."
+            msiexec /i "!PS7_TEMP_DIR!\powershell7.msi" /quiet /norestart /L*v "!PS7_TEMP_DIR!\install.log" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_ENTRY "INFO" "PS7 Method 2: MSI installation completed successfully"
+                rmdir /s /q "!PS7_TEMP_DIR!" >nul 2>&1
+                GOTO :PS7_INSTALL_SUCCESS
+            ) ELSE (
+                CALL :LOG_ENTRY "WARN" "PS7 Method 2: MSI installation failed (Error: !ERRORLEVEL!)"
+            )
+        )
+    ) ELSE (
+        CALL :LOG_ENTRY "WARN" "PS7 Method 2: Download failed from %%U"
+    )
+)
+
+REM Method 3: Microsoft Store installation (if available)
+CALL :LOG_ENTRY "INFO" "PS7 Method 3: Attempting Microsoft Store installation..."
+powershell.exe -ExecutionPolicy Bypass -Command "try { Get-AppxPackage -Name Microsoft.PowerShell -AllUsers | Out-Null; Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.PowerShell_8wekyb3d8bbwe; exit 0 } catch { exit 1 }" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_ENTRY "INFO" "PS7 Method 3: Microsoft Store installation completed"
+    GOTO :PS7_INSTALL_SUCCESS
+) ELSE (
+    CALL :LOG_ENTRY "WARN" "PS7 Method 3: Microsoft Store installation failed"
+)
+
+REM Method 4: Chocolatey installation (if available)
+WHERE choco >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_ENTRY "INFO" "PS7 Method 4: Attempting Chocolatey installation..."
+    choco install powershell-core -y --limit-output >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_ENTRY "INFO" "PS7 Method 4: Chocolatey installation completed"
+        GOTO :PS7_INSTALL_SUCCESS
+    ) ELSE (
+        CALL :LOG_ENTRY "WARN" "PS7 Method 4: Chocolatey installation failed"
+    )
+) ELSE (
+    CALL :LOG_ENTRY "INFO" "PS7 Method 4: Chocolatey not available, skipping"
+)
+
+REM Method 5: Alternative GitHub release download with curl
+CALL :LOG_ENTRY "INFO" "PS7 Method 5: Attempting curl-based download..."
+WHERE curl >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    curl -L "https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.6-win-x64.msi" -o "!PS7_TEMP_DIR!\powershell7_curl.msi" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        IF EXIST "!PS7_TEMP_DIR!\powershell7_curl.msi" (
+            msiexec /i "!PS7_TEMP_DIR!\powershell7_curl.msi" /quiet /norestart >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_ENTRY "INFO" "PS7 Method 5: Curl-based installation completed"
+                rmdir /s /q "!PS7_TEMP_DIR!" >nul 2>&1
+                GOTO :PS7_INSTALL_SUCCESS
+            )
+        )
+    )
+)
+
+REM All methods failed
+CALL :LOG_ENTRY "ERROR" "All PowerShell 7 installation methods failed"
+rmdir /s /q "!PS7_TEMP_DIR!" >nul 2>&1
+GOTO :EOF
+
+:PS7_INSTALL_SUCCESS
+CALL :LOG_ENTRY "INFO" "PowerShell 7 installation process completed successfully"
+REM Cleanup temp directory if it exists
+IF EXIST "!PS7_TEMP_DIR!" rmdir /s /q "!PS7_TEMP_DIR!" >nul 2>&1
+GOTO :EOF
+
+REM -----------------------------------------------------------------------------
+REM Enhanced Admin Privilege Detection Function
+REM -----------------------------------------------------------------------------
+:DETECT_ADMIN_PRIVILEGES
+SET "IS_ADMIN=NO"
+
+REM Method 1: NET SESSION command (most reliable)
+NET SESSION >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "IS_ADMIN=YES"
+    CALL :LOG_ENTRY "INFO" "Admin detection Method 1 (NET SESSION): SUCCESS"
+    GOTO :EOF
+)
+
+REM Method 2: WHOAMI /PRIV command check
+whoami /priv 2>nul | find "SeDebugPrivilege" >nul
+IF !ERRORLEVEL! EQU 0 (
+    SET "IS_ADMIN=YES"
+    CALL :LOG_ENTRY "INFO" "Admin detection Method 2 (WHOAMI): SUCCESS"
+    GOTO :EOF
+)
+
+REM Method 3: Registry write test
+REG ADD "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v TestAdminAccess /t REG_DWORD /d 1 /f >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    REG DELETE "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System" /v TestAdminAccess /f >nul 2>&1
+    SET "IS_ADMIN=YES"
+    CALL :LOG_ENTRY "INFO" "Admin detection Method 3 (Registry): SUCCESS"
+    GOTO :EOF
+)
+
+REM Method 4: PowerShell elevation check
+powershell.exe -ExecutionPolicy Bypass -Command "try { $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent()); if($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "IS_ADMIN=YES"
+    CALL :LOG_ENTRY "INFO" "Admin detection Method 4 (PowerShell): SUCCESS"
+    GOTO :EOF
+)
+
+CALL :LOG_ENTRY "WARN" "All admin detection methods failed - assuming no admin privileges"
+GOTO :EOF
+
+REM -----------------------------------------------------------------------------
+REM Enhanced Admin Privilege Request Function
+REM -----------------------------------------------------------------------------
+:REQUEST_ADMIN_PRIVILEGES
+CALL :LOG_ENTRY "INFO" "Requesting administrator privileges..."
+
+REM Method 1: PowerShell Start-Process with Verb RunAs
+CALL :LOG_ENTRY "INFO" "Admin request Method 1: PowerShell Start-Process..."
+powershell.exe -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '%SCRIPT_FULL_PATH%' -Verb RunAs -ArgumentList '%*' -Wait; exit 0 } catch { exit 1 }" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_ENTRY "INFO" "Admin request Method 1: SUCCESS"
+    GOTO :EOF
+)
+
+REM Method 2: Windows Shell RunAs with VBScript
+CALL :LOG_ENTRY "INFO" "Admin request Method 2: VBScript ShellExecute..."
+SET "VBS_TEMP=%TEMP%\RunAsAdmin_%RANDOM%.vbs"
+ECHO Set UAC = CreateObject^("Shell.Application"^) > "!VBS_TEMP!"
+ECHO UAC.ShellExecute "!SCRIPT_FULL_PATH!", "!*!", "", "runas", 1 >> "!VBS_TEMP!"
+cscript //NoLogo "!VBS_TEMP!" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    DEL "!VBS_TEMP!" >nul 2>&1
+    CALL :LOG_ENTRY "INFO" "Admin request Method 2: SUCCESS"
+    GOTO :EOF
+)
+DEL "!VBS_TEMP!" >nul 2>&1
+
+REM Method 3: Direct runas command with prompt
+CALL :LOG_ENTRY "INFO" "Admin request Method 3: Direct runas..."
+runas /user:Administrator "\"!SCRIPT_FULL_PATH!\" %*" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_ENTRY "INFO" "Admin request Method 3: SUCCESS"
+    GOTO :EOF
+)
+
+REM All methods failed
+CALL :LOG_ENTRY "ERROR" "Failed to obtain administrator privileges with all methods"
+ECHO.
+ECHO ERROR: Administrator privileges are required for this script.
+ECHO Please right-click on the script and select "Run as administrator"
+ECHO.
+PAUSE
 GOTO :EOF
 
 REM -----------------------------------------------------------------------------

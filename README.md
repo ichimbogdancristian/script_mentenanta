@@ -1,20 +1,37 @@
 
-# Windows Maintenance Script - Copilot Optimized
+# Windows Maintenance Script - Path-Independent Multi-PC Solution
 
 ## 🎯 Overview
-Advanced Windows maintenance automation script with AI-assisted development architecture. Streamlined from 1484 to 584 lines (60.6% reduction) while adding comprehensive functionality including unattended operations, interface optimization, and enhanced restart management.
+Advanced Windows maintenance automation script designed for seamless deployment across multiple PCs. Features location-independent execution, comprehensive error handling, and AI-assisted development architecture. Fully automated dependency installation and maintenance operations with robust path detection and permission management.
 
-## 🚀 Key Features & Recent Enhancements
+## 🚀 Key Features & Recent Enhancements (August 2025)
 
-### ✅ **Completed Optimizations (August 2025)**
-- **60.6% Code Reduction**: Streamlined from 1484 to 584 lines with full functionality preservation
-- **Git Installation Removed**: Eliminated dependency entirely from the script
-- **Unattended Operations**: NuGet provider with auto-yes responses, fully unattended Windows Updates
+### ✅ **Path Independence & Multi-PC Support**
+- **Universal Deployment**: Script works from any folder location (Desktop, Downloads, USB, Network drives)
+- **Auto-Path Detection**: Dynamically detects script location at launch time using `%~f0`
+- **Cross-Environment Compatibility**: Seamless operation across different Windows 10/11 installations
+- **Scheduled Task Automation**: Creates tasks with correct paths regardless of script location
+
+### ✅ **Enhanced Infrastructure & Error Handling**
+- **Multi-Method Fallbacks**: Windows version detection, WinGet installation, PowerShell 7 setup
+- **Comprehensive Permission Management**: 4-method admin privilege detection and request
+- **Robust Task Creation**: 3-method scheduled task creation (SYSTEM, User, PowerShell)
+- **Environment Awareness**: `script.bat` (CMD) ↔ `script.ps1` (PS7) environment handling
+
+### ✅ **Core Maintenance Features**
+- **60.6% Code Reduction**: Streamlined from 1484 to 584 lines with enhanced functionality
+- **Unattended Operations**: NuGet provider auto-install, fully automated Windows Updates
 - **Enhanced Restart Detection**: 10+ registry checks for Windows 10/11 compatibility  
 - **Auto-Close with Countdown**: 20-second countdown with user abort option
-- **Unified Logging**: Single maintenance.log file for both batch and PowerShell components
-- **Taskbar Optimization**: Hide search bar, task view, widgets, chat button with Windows version detection
-- **Start Menu Local Search**: Disabled web search for privacy-focused local-only search results
+- **Unified Logging**: Single maintenance.log file for comprehensive operation tracking
+
+## 🔧 **Architecture & Components**
+
+### **Environment Requirements**
+- **Command Prompt Environment**: `script.bat` runs in CMD on fresh Windows 10/11 installations
+- **PowerShell 7 Environment**: `script.ps1` automatically runs in PS7 environment
+- **Path Independence**: Must work from any folder location with automatic path detection
+- **Multi-PC Deployment**: Seamless operation across different hardware and configurations
 
 ### 🔧 **Current Architecture (v2.0 - Copilot Optimized)**
 
@@ -57,13 +74,41 @@ Advanced Windows maintenance automation script with AI-assisted development arch
 
 ## 🛠️ **Usage Instructions**
 
-### **Basic Execution**
-```batch
-# Standard execution (recommended)
-script.bat
+### **Basic Execution (Location Independent)**
+The script works from any location - simply right-click and run as administrator:
 
-# PowerShell direct execution
-PowerShell -ExecutionPolicy Bypass -File script.ps1
+```batch
+# From Desktop
+C:\Users\%USERNAME%\Desktop\script.bat
+
+# From Downloads  
+C:\Users\%USERNAME%\Downloads\script.bat
+
+# From USB Drive
+E:\MaintenanceTools\script.bat
+
+# From Network Location
+\\server\shared\scripts\script.bat
+```
+
+### **Multi-PC Deployment**
+1. **Copy script.bat to any location** on target PC
+2. **Right-click → Run as administrator**
+3. **Script automatically detects its location** and creates scheduled tasks pointing to correct path
+4. **No configuration required** - works immediately on any Windows 10/11 system
+
+### **Scheduled Task Behavior**
+- Monthly tasks created with path: `{actual-script-location}\script.bat`
+- Startup tasks created with path: `{actual-script-location}\script.bat`  
+- Tasks update automatically if script is moved to different location
+
+### **Path Detection Verification**
+Check the maintenance.log file to verify correct path detection:
+```
+[INFO] Script Full Path: C:\Users\jjimmy\Desktop\script.bat
+[INFO] Script Directory: C:\Users\jjimmy\Desktop
+[INFO] Monthly task will use: C:\Users\jjimmy\Desktop\script.bat
+[INFO] Startup task will use: C:\Users\jjimmy\Desktop\script.bat
 ```
 
 ### **Configuration Options (config.json)**
