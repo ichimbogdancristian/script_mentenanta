@@ -159,22 +159,53 @@ CALL :LOG_ENTRY "INFO" "PowerShell version: %PS_VERSION%"
 REM -----------------------------------------------------------------------------
 REM Windows Version Detection with Multiple Methods
 REM -----------------------------------------------------------------------------
-REM Try multiple methods to get Windows version
-FOR /F "tokens=*" %%i IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }" 2^>nul') DO SET OS_VERSION=%%i
+REM Robust Windows Version Detection (multi-method, normalized)
+SET "WINVER=Unknown"
+SET "WINVER_MAJOR="
+SET "WINVER_MINOR="
+SET "WINVER_BUILD="
+SET "WINVER_NAME=Unknown"
 
-REM If still no version, try registry method
-IF "%OS_VERSION%"=="" (
-    FOR /F "tokens=3" %%i IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentVersion 2^>nul ^| findstr CurrentVersion') DO SET OS_VERSION=%%i
+REM Method 1: PowerShell CIM/WMI
+FOR /F "tokens=*" %%v IN ('"%POWERSHELL_EXE%" -ExecutionPolicy Bypass -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }" 2^>nul') DO SET WINVER=%%v
+IF NOT "%WINVER%"=="" IF NOT "%WINVER%"=="Unknown" (
+    FOR /F "tokens=1-3 delims=." %%a IN ("%WINVER%") DO (
+        SET WINVER_MAJOR=%%a
+        SET WINVER_MINOR=%%b
+        SET WINVER_BUILD=%%c
+    )
+) ELSE (
+    REM Method 2: Registry
+    FOR /F "tokens=3" %%v IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentVersion 2^>nul') DO SET WINVER=%%v
+    IF NOT "%WINVER%"=="" IF NOT "%WINVER%"=="Unknown" (
+        FOR /F "tokens=1-3 delims=." %%a IN ("%WINVER%") DO (
+            SET WINVER_MAJOR=%%a
+            SET WINVER_MINOR=%%b
+            SET WINVER_BUILD=%%c
+        )
+    ) ELSE (
+        REM Method 3: systeminfo
+        FOR /F "tokens=2 delims=: " %%v IN ('systeminfo | findstr /C:"OS Version"') DO SET WINVER=%%v
+        IF NOT "%WINVER%"=="" IF NOT "%WINVER%"=="Unknown" (
+            FOR /F "tokens=1-3 delims=." %%a IN ("%WINVER%") DO (
+                SET WINVER_MAJOR=%%a
+                SET WINVER_MINOR=%%b
+                SET WINVER_BUILD=%%c
+            )
+        )
+    )
 )
 
-REM If still no version, try systeminfo
-IF "%OS_VERSION%"=="" (
-    FOR /F "tokens=3*" %%i IN ('systeminfo ^| findstr /C:"OS Version"') DO SET OS_VERSION=%%i %%j
-)
-
-REM Final fallback
-IF "%OS_VERSION%"=="" SET OS_VERSION=Windows_Unknown
-CALL :LOG_ENTRY "INFO" "Detected Windows version: %OS_VERSION%"
+REM Improved normalization for Windows 10/11
+IF "%WINVER_MAJOR%"=="10" SET WINVER_NAME=Windows 10
+IF "%WINVER_MAJOR%"=="11" SET WINVER_NAME=Windows 11
+REM If build number is 22000 or higher, it's Windows 11
+IF NOT "%WINVER_BUILD%"=="" IF %WINVER_BUILD% GEQ 22000 SET WINVER_NAME=Windows 11
+REM If build number is 10240 or higher, it's Windows 10+
+IF NOT "%WINVER_BUILD%"=="" IF %WINVER_BUILD% GEQ 10240 IF %WINVER_BUILD% LSS 22000 SET WINVER_NAME=Windows 10
+REM If still unknown, fallback to version string
+IF "%WINVER_NAME%"=="Unknown" IF "%WINVER_MAJOR%"=="6" IF "%WINVER_MINOR%"=="3" SET WINVER_NAME=Windows 8.1
+CALL :LOG_ENTRY "INFO" "Detected Windows version: %WINVER_MAJOR%.%WINVER_MINOR%.%WINVER_BUILD% (%WINVER_NAME%)"
 
 REM -----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup

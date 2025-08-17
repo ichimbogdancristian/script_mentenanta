@@ -1,4 +1,36 @@
 # ================================================================
+# ================================================================
+# [ENVIRONMENT AWARENESS & PATH/PERMISSION SETUP]
+# ================================================================
+# Purpose: Ensure script is aware of its environment, path, and permissions before any operations
+# ------------------------------------------------
+$ScriptFullPath = $MyInvocation.MyCommand.Path
+$ScriptDir      = Split-Path -Parent $ScriptFullPath
+$ScriptName     = Split-Path -Leaf $ScriptFullPath
+$CurrentUser    = $env:USERNAME
+$IsAdmin        = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$LogFile        = Join-Path $ScriptDir 'maintenance.log'
+
+# Log environment info
+Write-Host "[INFO] Script Full Path: $ScriptFullPath"
+Write-Host "[INFO] Script Directory: $ScriptDir"
+Write-Host "[INFO] Script Name: $ScriptName"
+Write-Host "[INFO] Current User: $CurrentUser"
+Write-Host "[INFO] Admin Privileges: $IsAdmin"
+Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Script Full Path: $ScriptFullPath"
+Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Script Directory: $ScriptDir"
+Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Script Name: $ScriptName"
+Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Current User: $CurrentUser"
+Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [INFO] Admin Privileges: $IsAdmin"
+
+# Relaunch as admin if needed
+if (-not $IsAdmin) {
+    Write-Host "[WARN] Script not running as administrator. Relaunching..."
+    Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'HH:mm:ss')] [WARN] Script not running as administrator. Relaunching..."
+    Start-Process -FilePath pwsh -ArgumentList "-File", $ScriptFullPath -Verb RunAs
+    exit
+}
+# ================================================================
 # WINDOWS MAINTENANCE SCRIPT - COPILOT DEVELOPMENT INDEX
 # ================================================================
 #
