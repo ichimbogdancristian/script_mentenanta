@@ -1,0 +1,19 @@
+[17-Aug-25 17:48:04] [INFO] Script Full Path: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\script.bat 
+[17-Aug-25 17:48:04] [INFO] Script Directory: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta 
+[17-Aug-25 17:48:04] [INFO] Script Name: script.bat 
+[17-Aug-25 17:48:04] [INFO] Original Working Directory: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta 
+[17-Aug-25 17:48:04] [INFO] Current Working Directory: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta 
+[17-Aug-25 17:48:06] [WARN] All admin detection methods failed - assuming no admin privileges 
+[17-Aug-25 17:48:06] [WARN] Script not running with administrator privileges 
+[17-Aug-25 17:48:06] [INFO] Attempting to relaunch with administrator privileges... 
+[17-Aug-25 17:48:06] [INFO] Requesting administrator privileges for: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\script.bat 
+[17-Aug-25 17:48:06] [INFO] Arguments to pass:  
+[17-Aug-25 17:48:06] [INFO] Admin request Method 1: PowerShell Start-Process... 
+[17-Aug-25 17:48:06] [INFO] Using PowerShell without arguments 
+[17-Aug-25 17:48:11] [INFO] Admin request Method 1: SUCCESS - Elevated process launched 
+[17-Aug-25 17:48:11] [INFO] Script Full Path: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\script.bat 
+[17-Aug-25 17:48:11] [INFO] Script Directory: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta 
+[17-Aug-25 17:48:11] [INFO] Script Name: script.bat 
+[17-Aug-25 17:48:11] [INFO] Original Working Directory: C:\Windows\System32 
+[17-Aug-25 17:48:11] [INFO] Current Working Directory: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta 
+[17-Aug-25 17:48:14] [INFO] Elevation attempt completed. Current window will exit. 

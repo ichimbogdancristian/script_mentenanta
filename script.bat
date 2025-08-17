@@ -21,6 +21,19 @@ SET "CURRENT_DIR=%CD%"
 REM Remove trailing backslash from script directory if present
 IF "!SCRIPT_DIR:~-1!"=="\" SET "SCRIPT_DIR=!SCRIPT_DIR:~0,-1!"
 
+REM Validate critical paths exist BEFORE any operations
+IF NOT EXIST "!SCRIPT_PATH!" (
+    ECHO ERROR: Script file not accessible: !SCRIPT_PATH!
+    PAUSE
+    EXIT /B 1
+)
+
+IF NOT EXIST "!SCRIPT_DIR!" (
+    ECHO ERROR: Script directory not accessible: !SCRIPT_DIR!
+    PAUSE
+    EXIT /B 1
+)
+
 REM Ensure we're working from the script's directory
 CD /D "!SCRIPT_DIR!" >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
@@ -29,28 +42,31 @@ IF !ERRORLEVEL! NEQ 0 (
     EXIT /B 1
 )
 
-REM Enhanced path detection and validation
+REM Initialize LOG_FILE early for logging functions
+SET "LOG_FILE=!SCRIPT_DIR!\maintenance.log"
+
+REM Enhanced path detection and validation (now with early logging)
 CALL :LOG_ENTRY "INFO" "Script Full Path: !SCRIPT_PATH!"
 CALL :LOG_ENTRY "INFO" "Script Directory: !SCRIPT_DIR!"
+CALL :LOG_ENTRY "INFO" "Script Name: !SCRIPT_NAME!"
 CALL :LOG_ENTRY "INFO" "Original Working Directory: !CURRENT_DIR!"
 CALL :LOG_ENTRY "INFO" "Current Working Directory: %CD%"
 
-REM Validate critical paths exist
-IF NOT EXIST "!SCRIPT_PATH!" (
-    ECHO ERROR: Script file not accessible: !SCRIPT_PATH!
-    PAUSE
-    EXIT /B 1
-)
-
-REM Set up comprehensive environment for consistent operation
-SET "SCRIPT_FULL_PATH=!SCRIPT_PATH!"
-SET "SCRIPT_WORKING_DIR=!SCRIPT_DIR!"
-
-REM Enhanced privilege detection with multiple methods
+REM EARLY Admin privilege detection (before any operations)
 CALL :DETECT_ADMIN_PRIVILEGES
 IF "!IS_ADMIN!"=="NO" (
     CALL :LOG_ENTRY "WARN" "Script not running with administrator privileges"
-    CALL :REQUEST_ADMIN_PRIVILEGES
+    CALL :LOG_ENTRY "INFO" "Attempting to relaunch with administrator privileges..."
+    REM Capture all arguments properly
+    SET "ALL_ARGS=%*"
+    IF DEFINED ALL_ARGS (
+        CALL :REQUEST_ADMIN_PRIVILEGES "!SCRIPT_PATH!" "!ALL_ARGS!"
+    ) ELSE (
+        CALL :REQUEST_ADMIN_PRIVILEGES "!SCRIPT_PATH!" ""
+    )
+    REM If we reach here, elevation attempt was made but may have failed
+    CALL :LOG_ENTRY "INFO" "Elevation attempt completed. Current window will exit."
+    timeout /t 2 /nobreak >nul
     EXIT /B 0
 ) ELSE (
     CALL :LOG_ENTRY "INFO" "✓ Running with administrator privileges"
@@ -61,18 +77,16 @@ REM Basic Environment Setup and Logging
 REM -----------------------------------------------------------------------------
 SET "TASK_NAME=ScriptMentenantaMonthly"
 SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
-REM Note: SCRIPT_PATH already set in path management section above
-REM Log file is in the same directory as script.bat (main directory)
-SET "LOG_FILE=%SCRIPT_DIR%maintenance.log"
+REM Note: SCRIPT_PATH and LOG_FILE already set in path management section above
 
 REM Create or append to maintenance.log
-ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "%LOG_FILE%"
-ECHO [%DATE% %TIME%] [INFO] Starting Windows Maintenance Automation Script >> "%LOG_FILE%"
-ECHO [%DATE% %TIME%] [INFO] Batch Script: !SCRIPT_PATH! >> "%LOG_FILE%"
-ECHO [%DATE% %TIME%] [INFO] Batch Script Directory: !SCRIPT_DIR! >> "%LOG_FILE%"
-ECHO [%DATE% %TIME%] [INFO] Log File: %LOG_FILE% >> "%LOG_FILE%"
-ECHO [%DATE% %TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME% >> "%LOG_FILE%"
-ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "%LOG_FILE%"
+ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Starting Windows Maintenance Automation Script >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Batch Script: !SCRIPT_PATH! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Batch Script Directory: !SCRIPT_DIR! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Log File: !LOG_FILE! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME% >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] ============================================================ >> "!LOG_FILE!"
 
 REM Function to log both to console and file
 ECHO.
@@ -112,22 +126,48 @@ REM PowerShell Path Detection and Version Check
 REM Ensures PowerShell 5.1+ is available and sets proper paths.
 REM -----------------------------------------------------------------------------
 
-REM Detect PowerShell executable path
+REM Detect PowerShell executable path with multiple fallbacks
 SET "POWERSHELL_EXE="
+
+REM Method 1: Check standard 64-bit location
 IF EXIST "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" (
     SET "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
-) ELSE IF EXIST "%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" (
-    SET "POWERSHELL_EXE=%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
-) ELSE (
-    REM Try to find powershell in PATH
-    WHERE powershell.exe >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        FOR /F "tokens=*" %%i IN ('WHERE powershell.exe 2^>nul') DO SET "POWERSHELL_EXE=%%i" & GOTO :found_ps
-    )
-    CALL :LOG_ENTRY "ERROR" "PowerShell executable not found. Please install Windows PowerShell."
-    pause
-    EXIT /B 3
+    CALL :LOG_ENTRY "INFO" "Found PowerShell at standard 64-bit location"
+    GOTO :found_ps
 )
+
+REM Method 2: Check 32-bit location
+IF EXIST "%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" (
+    SET "POWERSHELL_EXE=%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+    CALL :LOG_ENTRY "INFO" "Found PowerShell at 32-bit location"
+    GOTO :found_ps
+)
+
+REM Method 3: Use WHERE command to find in PATH
+WHERE powershell.exe >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    FOR /F "tokens=*" %%i IN ('WHERE powershell.exe 2^>nul') DO (
+        SET "POWERSHELL_EXE=%%i"
+        CALL :LOG_ENTRY "INFO" "Found PowerShell via PATH: %%i"
+        GOTO :found_ps
+    )
+)
+
+REM Method 4: Check Program Files locations
+IF EXIST "%ProgramFiles%\PowerShell\pwsh.exe" (
+    SET "POWERSHELL_EXE=%ProgramFiles%\PowerShell\pwsh.exe"
+    CALL :LOG_ENTRY "INFO" "Found PowerShell 7 at Program Files"
+    GOTO :found_ps
+)
+
+REM All methods failed
+CALL :LOG_ENTRY "ERROR" "PowerShell executable not found. Please install Windows PowerShell."
+ECHO.
+ECHO ERROR: PowerShell is required for this script to function.
+ECHO Please install Windows PowerShell 5.1 or newer and try again.
+ECHO.
+PAUSE
+EXIT /B 3
 :found_ps
 
 CALL :LOG_ENTRY "INFO" "Using PowerShell: %POWERSHELL_EXE%"
@@ -1089,6 +1129,7 @@ FOR /L %%i IN (20,-1,1) DO (
         ECHO.
         ECHO Press any key to close this window...
         pause >nul
+        CALL :CLEANUP_TEMP_FILES
         CALL :LOG_ENTRY "INFO" "Batch launcher completed - countdown aborted by user."
         EXIT /B 0
     )
@@ -1096,22 +1137,50 @@ FOR /L %%i IN (20,-1,1) DO (
 
 ECHO.
 ECHO [INFO] Auto-close timer expired. Closing window...
+CALL :CLEANUP_TEMP_FILES
 CALL :LOG_ENTRY "INFO" "Batch launcher completed successfully - auto-closed after countdown."
 EXIT /B 0
 
 REM -----------------------------------------------------------------------------
 REM Environment Refresh Function - Updates PATH and environment variables
 REM -----------------------------------------------------------------------------
+REM -----------------------------------------------------------------------------
+REM Enhanced Environment Refresh Function
+REM -----------------------------------------------------------------------------
 :REFRESH_ENV
-REM Update PATH to include Chocolatey
-SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
-REM Refresh environment variables from registry
-FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul`) DO SET "SYSTEM_PATH=%%B"
-FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKCU\Environment" /v PATH 2^>nul`) DO SET "USER_PATH=%%B"
+CALL :LOG_ENTRY "INFO" "Refreshing environment variables..."
+
+REM Method 1: Use PowerShell to refresh environment (most reliable)
+IF DEFINED POWERSHELL_EXE (
+    "!POWERSHELL_EXE!" -ExecutionPolicy Bypass -Command "try { $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User'); Write-Host '[INFO] Environment refreshed via PowerShell' } catch { Write-Host '[WARN] PowerShell refresh failed' }" 2>nul
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_ENTRY "INFO" "Environment refresh successful (PowerShell method)"
+        GOTO :EOF
+    )
+)
+
+REM Method 2: Manual registry query fallback
+CALL :LOG_ENTRY "INFO" "Using registry fallback for environment refresh..."
+FOR /F "usebackq skip=2 tokens=1,2*" %%A IN (`REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul`) DO (
+    IF "%%A"=="PATH" SET "SYSTEM_PATH=%%C"
+)
+FOR /F "usebackq skip=2 tokens=1,2*" %%A IN (`REG QUERY "HKCU\Environment" /v PATH 2^>nul`) DO (
+    IF "%%A"=="PATH" SET "USER_PATH=%%C"
+)
+
+REM Combine system and user paths
 IF DEFINED USER_PATH (
     SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
+    CALL :LOG_ENTRY "INFO" "Environment refresh successful (Registry method)"
 ) ELSE (
     SET "PATH=%SYSTEM_PATH%"
+    CALL :LOG_ENTRY "INFO" "Environment refresh partial (System PATH only)"
+)
+
+REM Ensure Chocolatey is in PATH if installed
+IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" (
+    SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
+    CALL :LOG_ENTRY "INFO" "Added Chocolatey to PATH"
 )
 GOTO :EOF
 
@@ -1302,52 +1371,206 @@ REM ----------------------------------------------------------------------------
 REM Enhanced Admin Privilege Request Function
 REM -----------------------------------------------------------------------------
 :REQUEST_ADMIN_PRIVILEGES
-CALL :LOG_ENTRY "INFO" "Requesting administrator privileges..."
+SET "SCRIPT_TO_RUN=%~1"
+SET "SCRIPT_ARGS=%~2"
+CALL :LOG_ENTRY "INFO" "Requesting administrator privileges for: !SCRIPT_TO_RUN!"
+CALL :LOG_ENTRY "INFO" "Arguments to pass: !SCRIPT_ARGS!"
 
-REM Method 1: PowerShell Start-Process with Verb RunAs
+ECHO.
+ECHO =========================================================
+ECHO   ADMINISTRATOR PRIVILEGES REQUIRED
+ECHO =========================================================
+ECHO.
+ECHO This script requires administrator privileges to:
+ECHO   • Install system dependencies
+ECHO   • Create scheduled tasks
+ECHO   • Manage system services
+ECHO   • Write to system directories
+ECHO.
+ECHO Script to elevate: !SCRIPT_TO_RUN!
+IF DEFINED SCRIPT_ARGS (
+    ECHO Arguments: !SCRIPT_ARGS!
+) ELSE (
+    ECHO Arguments: [None]
+)
+ECHO.
+ECHO Attempting to relaunch with administrator privileges...
+ECHO.
+
+REM Method 1: PowerShell Start-Process with Verb RunAs (without -Wait)
 CALL :LOG_ENTRY "INFO" "Admin request Method 1: PowerShell Start-Process..."
-powershell.exe -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '%SCRIPT_FULL_PATH%' -Verb RunAs -ArgumentList '%*' -Wait; exit 0 } catch { exit 1 }" >nul 2>&1
+IF DEFINED SCRIPT_ARGS (
+    CALL :LOG_ENTRY "INFO" "Using PowerShell with arguments: !SCRIPT_ARGS!"
+    powershell.exe -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '!SCRIPT_TO_RUN!' -Verb RunAs -ArgumentList '!SCRIPT_ARGS!'; Write-Host 'Elevation request sent with arguments'; exit 0 } catch { Write-Host 'Error:' $_.Exception.Message; exit 1 }"
+) ELSE (
+    CALL :LOG_ENTRY "INFO" "Using PowerShell without arguments"
+    powershell.exe -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath '!SCRIPT_TO_RUN!' -Verb RunAs; Write-Host 'Elevation request sent without arguments'; exit 0 } catch { Write-Host 'Error:' $_.Exception.Message; exit 1 }"
+)
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_ENTRY "INFO" "Admin request Method 1: SUCCESS"
+    CALL :LOG_ENTRY "INFO" "Admin request Method 1: SUCCESS - Elevated process launched"
+    ECHO [INFO] Elevated process launched successfully.
+    ECHO [INFO] Please check for the elevated window that should appear.
+    ECHO [INFO] This window will close now.
+    timeout /t 3 /nobreak >nul
     GOTO :EOF
 )
 
-REM Method 2: Windows Shell RunAs with VBScript
+REM Method 2: Windows Shell RunAs with VBScript (enhanced)
 CALL :LOG_ENTRY "INFO" "Admin request Method 2: VBScript ShellExecute..."
 SET "VBS_TEMP=%TEMP%\RunAsAdmin_%RANDOM%.vbs"
-ECHO Set UAC = CreateObject^("Shell.Application"^) > "!VBS_TEMP!"
-ECHO UAC.ShellExecute "!SCRIPT_FULL_PATH!", "!*!", "", "runas", 1 >> "!VBS_TEMP!"
-cscript //NoLogo "!VBS_TEMP!" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    DEL "!VBS_TEMP!" >nul 2>&1
-    CALL :LOG_ENTRY "INFO" "Admin request Method 2: SUCCESS"
-    GOTO :EOF
-)
+(
+    ECHO Set objShell = CreateObject^("Shell.Application"^)
+    ECHO Set objFSO = CreateObject^("Scripting.FileSystemObject"^)
+    ECHO strScript = "!SCRIPT_TO_RUN!"
+    ECHO strArgs = "!SCRIPT_ARGS!"
+    ECHO strWorkDir = objFSO.GetParentFolderName^(strScript^)
+    ECHO objShell.ShellExecute strScript, strArgs, strWorkDir, "runas", 1
+    ECHO WScript.Sleep 1000
+) > "!VBS_TEMP!"
+
+cscript //NoLogo "!VBS_TEMP!" 2>nul
+SET "VBS_RESULT=!ERRORLEVEL!"
 DEL "!VBS_TEMP!" >nul 2>&1
 
-REM Method 3: Direct runas command with prompt
-CALL :LOG_ENTRY "INFO" "Admin request Method 3: Direct runas..."
-runas /user:Administrator "\"!SCRIPT_FULL_PATH!\" %*" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_ENTRY "INFO" "Admin request Method 3: SUCCESS"
+IF !VBS_RESULT! EQU 0 (
+    CALL :LOG_ENTRY "INFO" "Admin request Method 2: SUCCESS - VBScript elevation completed"
+    ECHO [INFO] VBScript elevation completed successfully.
+    ECHO [INFO] Please check for the elevated window that should appear.
+    ECHO [INFO] This window will close now.
+    timeout /t 3 /nobreak >nul
     GOTO :EOF
 )
 
-REM All methods failed
-CALL :LOG_ENTRY "ERROR" "Failed to obtain administrator privileges with all methods"
+REM Method 3: Alternative PowerShell method with different syntax
+CALL :LOG_ENTRY "INFO" "Admin request Method 3: Alternative PowerShell method..."
+powershell.exe -ExecutionPolicy Bypass -Command "& { $proc = New-Object System.Diagnostics.ProcessStartInfo; $proc.FileName = '!SCRIPT_TO_RUN!'; $proc.Arguments = '!SCRIPT_ARGS!'; $proc.UseShellExecute = $true; $proc.Verb = 'runas'; $proc.WorkingDirectory = Split-Path '!SCRIPT_TO_RUN!' -Parent; try { [System.Diagnostics.Process]::Start($proc); exit 0 } catch { exit 1 } }"
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_ENTRY "INFO" "Admin request Method 3: SUCCESS - Alternative PowerShell method completed"
+    ECHO [INFO] Alternative PowerShell elevation completed successfully.
+    ECHO [INFO] Please check for the elevated window that should appear.
+    ECHO [INFO] This window will close now.
+    timeout /t 3 /nobreak >nul
+    GOTO :EOF
+)
+
+REM All methods failed - provide user guidance
+CALL :LOG_ENTRY "ERROR" "Failed to obtain administrator privileges with all automatic methods"
 ECHO.
-ECHO ERROR: Administrator privileges are required for this script.
-ECHO Please right-click on the script and select "Run as administrator"
+ECHO =========================================================
+ECHO   AUTOMATIC ELEVATION FAILED
+ECHO =========================================================
+ECHO.
+ECHO All automatic elevation methods failed.
+ECHO This may be due to:
+ECHO   • Group Policy restrictions
+ECHO   • Antivirus interference
+ECHO   • UAC being disabled
+ECHO   • System security policies
+ECHO.
+ECHO MANUAL SOLUTION:
+ECHO   1. Close this window
+ECHO   2. Right-click on the script file: !SCRIPT_TO_RUN!
+ECHO   3. Select "Run as administrator"
+ECHO   4. Accept the UAC prompt when it appears
+ECHO.
+ECHO =========================================================
 ECHO.
 PAUSE
 GOTO :EOF
 
 REM -----------------------------------------------------------------------------
-REM Logging Function - Logs to both console and maintenance.log file
+REM Enhanced Cleanup Function - Removes temporary files and directories
+REM -----------------------------------------------------------------------------
+:CLEANUP_TEMP_FILES
+CALL :LOG_ENTRY "INFO" "Starting cleanup of temporary files and directories..."
+
+REM Cleanup PowerShell 7 installation files
+IF EXIST "%TEMP%\PS7" (
+    CALL :LOG_ENTRY "INFO" "Removing PowerShell 7 temp directory..."
+    RMDIR /S /Q "%TEMP%\PS7" >nul 2>&1
+    IF EXIST "%TEMP%\PS7" (
+        CALL :LOG_ENTRY "WARN" "Failed to remove PowerShell 7 temp directory"
+    ) ELSE (
+        CALL :LOG_ENTRY "INFO" "PowerShell 7 temp directory removed successfully"
+    )
+)
+
+REM Cleanup WinGet installation files
+IF EXIST "%TEMP%\winget" (
+    CALL :LOG_ENTRY "INFO" "Removing WinGet temp directory..."
+    RMDIR /S /Q "%TEMP%\winget" >nul 2>&1
+    IF EXIST "%TEMP%\winget" (
+        CALL :LOG_ENTRY "WARN" "Failed to remove WinGet temp directory"
+    ) ELSE (
+        CALL :LOG_ENTRY "INFO" "WinGet temp directory removed successfully"
+    )
+)
+
+REM Cleanup VC++ Redistributable files
+FOR %%F IN ("%TEMP%\VC_redist.x64.exe" "%TEMP%\vc_redist.x64.exe" "%TEMP%\vcredist_x64.exe") DO (
+    IF EXIST "%%F" (
+        CALL :LOG_ENTRY "INFO" "Removing VC++ installer: %%F"
+        DEL /F /Q "%%F" >nul 2>&1
+    )
+)
+
+REM Cleanup .NET Framework installers
+FOR %%F IN ("%TEMP%\ndp481-web.exe" "%TEMP%\dotnet-installer.exe") DO (
+    IF EXIST "%%F" (
+        CALL :LOG_ENTRY "INFO" "Removing .NET installer: %%F"
+        DEL /F /Q "%%F" >nul 2>&1
+    )
+)
+
+REM Cleanup script repository if variable is defined
+IF DEFINED REPO_DIR (
+    IF EXIST "!REPO_DIR!" (
+        CALL :LOG_ENTRY "INFO" "Removing script repository directory: !REPO_DIR!"
+        RMDIR /S /Q "!REPO_DIR!" >nul 2>&1
+        IF EXIST "!REPO_DIR!" (
+            CALL :LOG_ENTRY "WARN" "Failed to remove repository directory: !REPO_DIR!"
+        ) ELSE (
+            CALL :LOG_ENTRY "INFO" "Repository directory removed successfully"
+        )
+    )
+)
+
+REM Cleanup any leftover zip files from repository download
+FOR %%F IN ("%TEMP%\*mentenanta*.zip" "%TEMP%\script_mentenanta*.zip") DO (
+    IF EXIST "%%F" (
+        CALL :LOG_ENTRY "INFO" "Removing repository zip: %%F"
+        DEL /F /Q "%%F" >nul 2>&1
+    )
+)
+
+CALL :LOG_ENTRY "INFO" "Temporary file cleanup completed"
+GOTO :EOF
+
+REM -----------------------------------------------------------------------------
+REM Enhanced Logging Function - Logs to both console and maintenance.log file
 REM -----------------------------------------------------------------------------
 :LOG_ENTRY
 SET "LEVEL=%~1"
 SET "MESSAGE=%~2"
-ECHO [%TIME%] [%LEVEL%] %MESSAGE%
-ECHO [%DATE% %TIME%] [%LEVEL%] %MESSAGE% >> "%LOG_FILE%"
+
+REM Get consistent timestamp format
+FOR /F "tokens=1-3 delims=:" %%a IN ("%TIME%") DO (
+    SET "HOUR=%%a"
+    SET "MINUTE=%%b"
+    SET "SECOND=%%c"
+)
+REM Remove leading spaces from hour
+SET "HOUR=%HOUR: =0%"
+SET "TIMESTAMP=%HOUR%:%MINUTE%:%SECOND:~0,2%"
+
+REM Console output
+ECHO [%TIMESTAMP%] [%LEVEL%] %MESSAGE%
+
+REM File output with error handling
+IF DEFINED LOG_FILE (
+    ECHO [%DATE% %TIMESTAMP%] [%LEVEL%] %MESSAGE% >> "%LOG_FILE%" 2>nul
+) ELSE (
+    REM Fallback if LOG_FILE not defined
+    ECHO [%DATE% %TIMESTAMP%] [%LEVEL%] %MESSAGE% >> "maintenance.log" 2>nul
+)
 GOTO :EOF
