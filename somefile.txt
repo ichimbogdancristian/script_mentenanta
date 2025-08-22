@@ -1,0 +1,28 @@
+script.bat launch
+the script should become aware of his environment username path 
+on the same path the script should create maintenance.log and log everything
+should check if it has admin rights if not relaunch with admin rights
+the script should check if system restore is enabled on drive C, if not enable it and create a restore point
+the script should check if there is a scheduled task to launch himself on the first day of every month at 1am
+if not create it
+next step: check if there is a startup task to launch the script at user login with 1 minute delay , if there is remove it
+check if the system has any pendding restarts
+if there are pending restarts the script should create a startup task to launch the script at user login with 1 minute delay
+after it should restart the system so that the pendding chenges take effect
+
+
+the script should check if winget Microsoft.AppInstaller is available
+if not it should download it from the internet an install it
+once winget is available it should be used to install powershell 7 Microsoft.PowerShell
+next step is to check one by one if every single one of the fallowing dependencies are available
+VBScript (cscript.exe)
+Windows Task Scheduler (schtasks.exe)
+DISM
+PSWindowsUpdate
+Appx
+NuGet CLI (nuget.exe) NuGet Provider 
+if there are not available it should install them should install unattended
+next step is to download the repo on the same path the script.bat is and extract it
+from the repo folder it should execute script.ps1 ina powershell 7 environment with admin rights
+after Launching script.ps1 in a new ps7 window it should post a 20s countdown and close that window with the option to abort that countdown and  closing the window
+Every operation on this script should flow unattended

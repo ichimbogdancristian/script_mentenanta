@@ -550,57 +550,66 @@ $global:ScriptTasks = @(
                 "$env:SystemRoot\System32\config\systemprofile\AppData\Local\Packages\Microsoft.Windows.CloudExperienceHost_cw5n1h2txyewy\LocalCache"
             )
             $cleanupTargets = $cleanupTargets | Sort-Object -Unique
-            $allItems = @()
+            
+            # OPTIMIZED: Process folders directly instead of collecting all items first
+            Write-Log "Processing $($cleanupTargets.Count) cleanup target folders..." 'INFO'
+            
             foreach ($folder in $cleanupTargets) {
-                if (Test-Path $folder) {
+                if (Test-Path $folder -ErrorAction SilentlyContinue) {
                     try {
-                        $items = Get-ChildItem -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
-                        $allItems += $items
-                    }
-                    catch {
-                        Write-Log "Failed to enumerate cleanup target folder $folder : $_" 'WARN'
-                        $errorCount++
-                    }
-                }
-            }
-            if ($allItems.Count -gt 0) {
-                Write-Log "Deleting $($allItems.Count) files and folders..." 'INFO'
-                
-                # Use simple sequential deletion for better stability
-                foreach ($item in $allItems) {
-                    try {
-                        if (-not (Test-Path $item.FullName -ErrorAction SilentlyContinue)) {
-                            continue # Item already deleted or doesn't exist
+                        Write-Log "Cleaning folder: $folder" 'VERBOSE'
+                        
+                        # Count items first for progress reporting (faster than collecting all items)
+                        $itemCount = 0
+                        try {
+                            $itemCount = (Get-ChildItem -Path $folder -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object).Count
+                        }
+                        catch {
+                            $itemCount = 0
                         }
                         
-                        if ($item.PSIsContainer) {
-                            Remove-Item $item.FullName -Force -Recurse -ErrorAction SilentlyContinue
-                            if (-not (Test-Path $item.FullName -ErrorAction SilentlyContinue)) {
-                                $deletedFolders++
-                            } else {
+                        if ($itemCount -gt 0) {
+                            Write-Log "Processing $itemCount items in $folder..." 'INFO'
+                            
+                            # OPTIMIZED: Delete entire folder contents with single Remove-Item -Recurse
+                            # This is much faster than processing individual files
+                            try {
+                                $folderItems = Get-ChildItem -Path $folder -Force -ErrorAction SilentlyContinue
+                                foreach ($item in $folderItems) {
+                                    try {
+                                        Remove-Item $item.FullName -Force -Recurse -ErrorAction SilentlyContinue
+                                        if ($item.PSIsContainer) {
+                                            $deletedFolders++
+                                        } else {
+                                            $deletedFiles++
+                                        }
+                                    }
+                                    catch {
+                                        $errorCount++
+                                    }
+                                }
+                                Write-Log "Completed cleanup of $folder" 'VERBOSE'
+                            }
+                            catch {
+                                Write-Log "Failed to clean folder $folder : $_" 'WARN'
                                 $errorCount++
                             }
                         }
                         else {
-                            Remove-Item $item.FullName -Force -ErrorAction SilentlyContinue
-                            if (-not (Test-Path $item.FullName -ErrorAction SilentlyContinue)) {
-                                $deletedFiles++
-                            } else {
-                                $errorCount++
-                            }
+                            Write-Log "Folder $folder is already empty" 'VERBOSE'
                         }
                     }
                     catch {
+                        Write-Log "Failed to process cleanup target folder $folder : $_" 'WARN'
                         $errorCount++
                     }
-                    
-                    # Progress update every 1000 items
-                    if (($deletedFiles + $deletedFolders) % 1000 -eq 0) {
-                        Write-Log "Progress: Deleted $deletedFiles files and $deletedFolders folders..." 'VERBOSE'
-                    }
+                }
+                else {
+                    Write-Log "Cleanup target folder does not exist: $folder" 'VERBOSE'
                 }
             }
-            Write-Log "Successfully deleted $deletedFiles files and $deletedFolders folders from all cleanup targets." 'INFO'
+            
+            Write-Log "Cleanup completed. Estimated $deletedFiles files and $deletedFolders folders processed." 'INFO'
             # Run Disk Cleanup (cleanmgr)
             try {
                 $cleanmgrArgs = '/AUTOCLEAN'
@@ -915,7 +924,38 @@ function Write-Log {
 }
 
 ### Function: Invoke-WindowsPowerShellCommand
-### [REMOVED] Legacy compatibility wrapper (Invoke-WindowsPowerShellCommand) - all logic now PowerShell 7 native
+### [RESTORED] Compatibility wrapper for accessing Windows PowerShell modules from PowerShell 7
+# Performance: Moderate overhead due to cross-PowerShell invocation, but necessary for Appx/PSWindowsUpdate
+
+function Invoke-WindowsPowerShellCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Command,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Description = "Windows PowerShell command"
+    )
+    
+    try {
+        Write-Log "[COMPAT] Executing Windows PowerShell command: $Description" 'VERBOSE'
+        
+        # Use powershell.exe to run the command in Windows PowerShell context
+        $result = & powershell.exe -ExecutionPolicy Bypass -Command $Command 2>$null
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "[COMPAT] Windows PowerShell command completed successfully" 'VERBOSE'
+            return $result
+        }
+        else {
+            Write-Log "[COMPAT] Windows PowerShell command failed with exit code: $LASTEXITCODE" 'WARN'
+            return $null
+        }
+    }
+    catch {
+        Write-Log "[COMPAT] Error executing Windows PowerShell command: $($_.Exception.Message)" 'ERROR'
+        return $null
+    }
+}
 # Performance: Fast, minimal overhead.
 
 # ================================================================
@@ -2104,6 +2144,34 @@ function Test-PowerShellDependencies {
     if ($missing -gt 0) {
         $missingList = ($dependencyStatus.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object { $_.Key }) -join ', '
         Write-Log "[DEPENDENCIES] Missing: $missingList" 'WARN'
+        
+        # Attempt to install missing non-critical modules
+        if (-not $dependencyStatus['PSWindowsUpdate']) {
+            Write-Log "[DEPENDENCIES] Attempting to install PSWindowsUpdate module..." 'INFO'
+            try {
+                if ($PSVersionTable.PSVersion.Major -ge 7) {
+                    # Install in Windows PowerShell for PowerShell 7 compatibility
+                    $installCmd = "Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Confirm:`$false -AllowClobber -SkipPublisherCheck -ErrorAction Stop"
+                    $result = Invoke-WindowsPowerShellCommand -Command $installCmd -Description "Install PSWindowsUpdate"
+                    if ($result -ne $null) {
+                        Write-Log "[DEPENDENCIES] PSWindowsUpdate module installed successfully in Windows PowerShell" 'INFO'
+                        $dependencyStatus['PSWindowsUpdate'] = $true
+                        $global:HasPSWindowsUpdate = $true
+                    }
+                }
+                else {
+                    # Direct installation in Windows PowerShell
+                    Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Confirm:$false -AllowClobber -SkipPublisherCheck -ErrorAction Stop
+                    Write-Log "[DEPENDENCIES] PSWindowsUpdate module installed successfully" 'INFO'
+                    $dependencyStatus['PSWindowsUpdate'] = $true
+                    $global:HasPSWindowsUpdate = $true
+                }
+            }
+            catch {
+                Write-Log "[DEPENDENCIES] Failed to install PSWindowsUpdate: $($_.Exception.Message)" 'WARN'
+            }
+        }
+        
         Write-Log "[DEPENDENCIES] Some features will use graceful degradation" 'INFO'
     }
     else {
