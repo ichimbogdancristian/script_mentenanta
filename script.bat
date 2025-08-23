@@ -9,19 +9,29 @@ SETLOCAL ENABLEDELAYEDEXPANSION
 REM ============================================================================
 REM [STEP 1] ENVIRONMENT AWARENESS AND LOGGING SETUP
 REM ============================================================================
+REM Get the absolute path of this batch file and its directory
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 IF "!SCRIPT_DIR:~-1!"=="\" SET "SCRIPT_DIR=!SCRIPT_DIR:~0,-1!"
 SET "LOG_FILE=!SCRIPT_DIR!\maintenance.log"
 SET "USERNAME_VAR=%USERNAME%"
 SET "COMPUTER_VAR=%COMPUTERNAME%"
+SET "WINVER=%OS%"
+
+REM Enhanced environment detection
+FOR /F "tokens=*" %%A IN ('whoami') DO SET "FULL_USERNAME=%%A"
+FOR /F "tokens=2 delims==" %%a IN ('wmic os get Caption /value') DO SET "OS_CAPTION=%%a"
 
 REM Initialize comprehensive logging
 ECHO [%DATE% %TIME%] [INFO] ============================================================================ >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] script_mentenanta - Windows Maintenance Automation Launcher >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] Script Path: !SCRIPT_PATH! >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] Script Directory: !SCRIPT_DIR! >> "!LOG_FILE!"
-ECHO [%DATE% %TIME%] [INFO] Username: !USERNAME_VAR! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Username: !USERNAME_VAR! ^(!FULL_USERNAME!^) >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Computer: !COMPUTER_VAR! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] OS Version: !OS_CAPTION! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Log File Location: !LOG_FILE! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] Current Directory: %CD% >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] Computer: !COMPUTER_VAR! >> "!LOG_FILE!"
 ECHO [%DATE% %TIME%] [INFO] ============================================================================ >> "!LOG_FILE!"
 
@@ -316,7 +326,7 @@ ECHO [%TIME%] [INFO] Installing NuGet Provider and PowerShellGet...
 ECHO [%DATE% %TIME%] [INFO] Installing NuGet Provider... >> "!LOG_FILE!"
 
 REM Install NuGet Provider using Windows PowerShell (more reliable for Windows 10/11)
-powershell -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (!(Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:$false | Out-Null; Write-Host 'NuGet Provider installed successfully' } else { Write-Host 'NuGet Provider already available' } } catch { Write-Host 'NuGet Provider installation failed:' $_.Exception.Message }"
+powershell -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -Confirm:$false; Write-Host 'NuGet Provider installed successfully' } else { Write-Host 'NuGet Provider already available' } } catch { Write-Host ('NuGet Provider installation failed: ' + $_.Exception.Message) }"
 ECHO [%DATE% %TIME%] [INFO] NuGet Provider installation completed. >> "!LOG_FILE!"
 
 REM Ensure PowerShellGet is up to date
@@ -327,7 +337,7 @@ powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -Name PowerShe
 REM Install PSWindowsUpdate module in Windows PowerShell
 ECHO [%TIME%] [INFO] Installing PSWindowsUpdate module...
 ECHO [%DATE% %TIME%] [INFO] Installing PSWindowsUpdate module... >> "!LOG_FILE!"
-powershell -ExecutionPolicy Bypass -Command "try { if (!(Get-Module -Name PSWindowsUpdate -ListAvailable -ErrorAction SilentlyContinue)) { Install-Module -Name PSWindowsUpdate -Force -AllowClobber -Scope AllUsers -Confirm:$false | Out-Null; Write-Host 'PSWindowsUpdate module installed successfully' } else { Write-Host 'PSWindowsUpdate module already available' } } catch { Write-Host 'PSWindowsUpdate installation failed:' $_.Exception.Message }"
+powershell -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; try { if (-not (Get-Module -Name PSWindowsUpdate -ListAvailable -ErrorAction SilentlyContinue)) { Install-Module -Name PSWindowsUpdate -Force -AllowClobber -Scope CurrentUser -Confirm:$false; Write-Host 'PSWindowsUpdate module installed successfully' } else { Write-Host 'PSWindowsUpdate module already available' } } catch { Write-Host ('PSWindowsUpdate installation failed: ' + $_.Exception.Message) }"
 
 REM Note: Appx module is built into Windows PowerShell but not PowerShell 7
 REM The PowerShell script will handle this by importing it from Windows PowerShell when needed
@@ -343,10 +353,19 @@ REM ============================================================================
 ECHO [%TIME%] [INFO] Checking for local or downloading repository...
 ECHO [%DATE% %TIME%] [INFO] Checking for script.ps1... >> "!LOG_FILE!"
 
+REM Ensure all paths are relative to script.bat location regardless of where it's launched from
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 SET "REPO_ZIP=!SCRIPT_DIR!\repo.zip"
 SET "REPO_FOLDER=!SCRIPT_DIR!\script_mentenanta-main"
 SET "LOCAL_PS1=!SCRIPT_DIR!\script.ps1"
+SET "REPO_PS1=!REPO_FOLDER!\script.ps1"
+
+REM Log path information for environmental awareness
+ECHO [%DATE% %TIME%] [INFO] Repository paths set: >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] - Zip file: !REPO_ZIP! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] - Repo folder: !REPO_FOLDER! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] - Local PS1: !LOCAL_PS1! >> "!LOG_FILE!"
+ECHO [%DATE% %TIME%] [INFO] - Repo PS1: !REPO_PS1! >> "!LOG_FILE!"
 
 REM Check if script.ps1 exists locally first
 IF EXIST "!LOCAL_PS1!" (
@@ -390,17 +409,53 @@ IF EXIST "!REPO_ZIP!" (
 :SKIP_DOWNLOAD
 
 :LOCAL_SCRIPT
-REM If we get here, we need to use the local script
+REM Try to locate script.ps1 in various locations
+SET "SCRIPT_FOUND=0"
+
+REM Check original location first
 IF EXIST "!LOCAL_PS1!" (
     ECHO [%TIME%] [INFO] Using local script.ps1
     ECHO [%DATE% %TIME%] [INFO] Using local script: !LOCAL_PS1! >> "!LOG_FILE!"
     SET "PS1_SCRIPT=!LOCAL_PS1!"
-) ELSE (
-    ECHO [%TIME%] [ERROR] Local script.ps1 not found. Cannot continue.
-    ECHO [%DATE% %TIME%] [ERROR] Local script.ps1 not found at: !LOCAL_PS1! >> "!LOG_FILE!"
+    SET "SCRIPT_FOUND=1"
+    GOTO SCRIPT_FOUND
+)
+
+REM Check if script exists in the current directory (regardless of how we got here)
+IF EXIST "script.ps1" (
+    SET "PS1_SCRIPT=%CD%\script.ps1"
+    ECHO [%TIME%] [INFO] Found script.ps1 in current directory: !PS1_SCRIPT!
+    ECHO [%DATE% %TIME%] [INFO] Found script.ps1 in current directory: !PS1_SCRIPT! >> "!LOG_FILE!"
+    SET "SCRIPT_FOUND=1"
+    GOTO SCRIPT_FOUND
+)
+
+REM Check if the repository extraction succeeded but we didn't find script.ps1 in expected location
+IF EXIST "!REPO_FOLDER!" (
+    REM Check if script.ps1 exists somewhere in the repository folder
+    FOR /R "!REPO_FOLDER!" %%F IN (script.ps1) DO (
+        IF EXIST "%%F" (
+            SET "PS1_SCRIPT=%%F"
+            ECHO [%TIME%] [INFO] Found script.ps1 in repository subdirectory: !PS1_SCRIPT!
+            ECHO [%DATE% %TIME%] [INFO] Found script.ps1 in repository subdirectory: !PS1_SCRIPT! >> "!LOG_FILE!"
+            SET "SCRIPT_FOUND=1"
+            GOTO SCRIPT_FOUND
+        )
+    )
+)
+
+IF !SCRIPT_FOUND! EQU 0 (
+    ECHO [%TIME%] [ERROR] script.ps1 not found in any location. Cannot continue.
+    ECHO [%DATE% %TIME%] [ERROR] script.ps1 not found in any location. Cannot continue. >> "!LOG_FILE!"
+    ECHO Locations checked:
+    ECHO   - !LOCAL_PS1!
+    ECHO   - %CD%\script.ps1
+    ECHO   - !REPO_FOLDER!\script.ps1 (and subdirectories)
     pause
     EXIT /B 1
 )
+
+:SCRIPT_FOUND
 
 REM ============================================================================
 REM [STEP 11] EXECUTE SCRIPT.PS1 IN POWERSHELL 7 ENVIRONMENT
@@ -444,11 +499,22 @@ ECHO [%DATE% %TIME%] [INFO] Using !PS_VERSION!: !PS_EXECUTABLE! >> "!LOG_FILE!"
 REM Launch PowerShell script in new window with admin rights
 REM Pass repo folder information for cleanup purposes
 IF "!PS1_SCRIPT!"=="!LOCAL_PS1!" (
-    REM Using local script - no repo folder to clean
-    START "PowerShell Maintenance Script" "!PS_EXECUTABLE!" -ExecutionPolicy Bypass -WindowStyle Normal -File "!PS1_SCRIPT!" -LogFilePath "!LOG_FILE!" -RepoFolderPath ""
+    REM Using local script - check if repo folder exists
+    IF EXIST "!REPO_FOLDER!" (
+        ECHO [%TIME%] [INFO] Using local script with repo folder: !REPO_FOLDER!
+        ECHO [%DATE% %TIME%] [INFO] Using local script with repo folder: !REPO_FOLDER! >> "!LOG_FILE!"
+        START "PowerShell Maintenance Script" "!PS_EXECUTABLE!" -ExecutionPolicy Bypass -WindowStyle Normal -File "!PS1_SCRIPT!" -LogFilePath "!LOG_FILE!" -RepoFolderPath "!REPO_FOLDER!" -ScriptDir "!SCRIPT_DIR!"
+    ) ELSE (
+        ECHO [%TIME%] [INFO] Using local script without repo folder
+        ECHO [%DATE% %TIME%] [INFO] Using local script without repo folder >> "!LOG_FILE!"
+        START "PowerShell Maintenance Script" "!PS_EXECUTABLE!" -ExecutionPolicy Bypass -WindowStyle Normal -File "!PS1_SCRIPT!" -LogFilePath "!LOG_FILE!" -RepoFolderPath "" -ScriptDir "!SCRIPT_DIR!"
+    )
 ) ELSE (
     REM Using downloaded script - pass repo folder for cleanup
-    START "PowerShell Maintenance Script" "!PS_EXECUTABLE!" -ExecutionPolicy Bypass -WindowStyle Normal -File "!PS1_SCRIPT!" -LogFilePath "!LOG_FILE!" -RepoFolderPath "!REPO_FOLDER!"
+    ECHO [%TIME%] [INFO] Using downloaded script with repo folder: !REPO_FOLDER!
+    ECHO [%DATE% %TIME%] [INFO] Using downloaded script with repo folder: !REPO_FOLDER! >> "!LOG_FILE!"
+    ECHO [92mScript launching successful! Running PowerShell maintenance script...[0m
+    START "PowerShell Maintenance Script" "!PS_EXECUTABLE!" -ExecutionPolicy Bypass -WindowStyle Normal -File "!PS1_SCRIPT!" -LogFilePath "!LOG_FILE!" -RepoFolderPath "!REPO_FOLDER!" -ScriptDir "!SCRIPT_DIR!"
 )
 
 REM ============================================================================

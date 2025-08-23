@@ -33,11 +33,17 @@ Advanced Windows maintenance automation script designed for seamless deployment 
 - **Path Independence**: Must work from any folder location with automatic path detection
 - **Multi-PC Deployment**: Seamless operation across different hardware and configurations
 
+### 🚨 **Critical Environment Awareness**
+- **script.bat**: Executes in CMD environment ONLY - avoid PowerShell-specific syntax
+- **script.ps1**: Executes in PowerShell 7 environment ONLY - full PowerShell capabilities available
+- **Syntax Separation**: Keep CMD and PowerShell syntax completely separate - never mix environments
+- **Error Handling**: CMD uses `%ERRORLEVEL%` while PowerShell uses `try/catch` blocks
+
 ### 🔧 **Current Architecture (v2.0 - Copilot Optimized)**
 
 #### **Script Components**
 - **`script.bat`** (584 lines): Optimized launcher with dependency management, enhanced restart detection, 20s auto-close
-- **`script.ps1`** (~5000 lines): Modular PowerShell maintenance orchestrator with comprehensive task system
+- **`script.ps1`** (~5400 lines): Modular PowerShell maintenance orchestrator with comprehensive task system
 - **`copilot-instructions.md`**: AI development guide with function indexing and editing conventions
 - **`config.json`**: Optional JSON configuration for task customization and feature toggles
 
@@ -144,6 +150,12 @@ Check the maintenance.log file to verify correct path detection:
 
 ## 🔄 **Version History & Changelog**
 
+### **v2.1 - Syntax & Environment Awareness (August 2025)**
+- Enhanced environment awareness documentation for CMD vs PowerShell execution
+- Fixed PowerShell null comparison issues ($null on left side of comparisons)
+- Improved try/catch structure in repo folder cleanup operations
+- Enhanced ScriptDir parameter handling for cross-environment consistency
+
 ### **v2.0 - Copilot Optimized (August 2025)**
 - Complete comment refactoring with COPILOT_TASK_ID indexing system
 - Enhanced function headers with Purpose, Environment, Logic, Performance, Dependencies
@@ -202,6 +214,23 @@ This script includes comprehensive AI development support:
 - **Section Navigation**: Clear [A.1], [B.2], [C.3] section identifiers for quick location
 - **Development Guide**: Detailed copilot-instructions.md with editing conventions and architectural overview
 
+### **Environment-Specific Syntax Rules**
+```
+# script.bat (CMD Environment)
+- Use %ERRORLEVEL% for immediate error checking (not !ERRORLEVEL!)
+- Use %variables% for variable access
+- Avoid PowerShell syntax like -eq, -ne, -match
+- Use simple IF statements with EQU, NEQ
+- Use FOR loops with tokens for iteration
+
+# script.ps1 (PowerShell Environment)
+- Place $null on LEFT side of comparisons ($null -eq $variable)
+- Always use try/catch blocks for error handling
+- Use [bool], [int], [string] type accelerators for clarity
+- Prefer foreach over For-Each-Object for better performance
+- Always include catch blocks with try statements
+```
+
 ### **Editing Conventions for AI**
 ```powershell
 # ================================================================
@@ -229,9 +258,9 @@ Check `maintenance.log` for detailed operation logs with timestamps and error de
 
 ---
 
-**Current Version**: v2.0 - Copilot Optimized  
-**Last Updated**: August 16, 2025  
-**Total Lines**: ~5000+ (varies with ongoing development)  
+**Current Version**: v2.1 - Syntax & Environment Awareness  
+**Last Updated**: August 23, 2025  
+**Total Lines**: ~5400+ (varies with ongoing development)  
 **Compatibility**: Windows 10/11, PowerShell 7+, x64/ARM64
 
 ## Example Execution Flow
@@ -253,6 +282,7 @@ Check `maintenance.log` for detailed operation logs with timestamps and error de
 - Check `maintenance.log` for errors and warnings.
 - Review `maintenance_report.txt` for summary and details.
 - Ensure all dependencies are installed and up to date.
+- Verify script.bat is using CMD syntax and script.ps1 is using PowerShell syntax.
 
 ## Contributing
 Pull requests and feedback are welcome! See `.github/copilot-instructions.md` for AI agent conventions and best practices.

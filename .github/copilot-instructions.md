@@ -4,6 +4,7 @@
 **NEVER FORGET**: 
 - **`script.bat` = COMMAND PROMPT (CMD) ENVIRONMENT ONLY**
 - **`script.ps1` = POWERSHELL 7 (PS7) ENVIRONMENT ONLY**
+- **Environment Separation Must Be Strictly Maintained**
 
 ### 🚫 FORBIDDEN in script.bat (CMD Environment):
 - Complex PowerShell commands with multiple cmdlets
@@ -63,6 +64,11 @@ This project automates the setup and execution of a Windows maintenance script d
 - Complex object manipulation, pipelines, try-catch blocks
 - CIM/WMI operations, advanced cmdlets
 - Module imports and package management
+- **CRITICAL SYNTAX REQUIREMENTS**:
+  - Always put $null on the LEFT side of equality comparisons: `$null -eq $variable` (NOT `$variable -eq $null`)
+  - Every try statement MUST have either a catch or finally block
+  - Use ScriptBlock approach for complex operations that need error handling
+  - Properly define paths with fallback mechanisms for cross-environment compatibility
 
 ## Project-Specific Guidelines
 - Follow PowerShell style and safety rules from `instructions.md` (e.g., use approved verbs, robust parameter validation, modular functions, secure credential handling).
@@ -79,6 +85,10 @@ This project automates the setup and execution of a Windows maintenance script d
 3. **PowerShell syntax in CMD** - No $variables, no -operators in CMD environment
 4. **Hardcoded paths** - Always use dynamic path detection
 5. **Missing admin checks** - Always verify privileges before system operations
+6. **PowerShell null comparisons on wrong side** - Always use `$null -eq $variable` (not `$variable -eq $null`)
+7. **Missing catch blocks in try statements** - Every try MUST have a catch or finally block
+8. **Improper repo folder path detection** - Use multiple fallback methods for reliability
+9. **Mixed environment variable access** - Use environment-appropriate syntax for each script
 
 ## Multi-PC Deployment Considerations
 - Script location independence: Must work from Desktop, Downloads, USB drives, network locations
@@ -95,6 +105,21 @@ This project automates the setup and execution of a Windows maintenance script d
 4. **Variable Expansion**: Do I need immediate (`%VAR%`) or delayed (`!VAR!`) expansion?
 5. **Error Handling**: Am I using `%ERRORLEVEL%` correctly for immediate checks?
 
+## 🛠️ Environment-Specific Debugging
+### CMD Environment (script.bat)
+- Use `echo DEBUG: Variable=%VARIABLE%` for tracing
+- Add `pause` statements to freeze execution for review
+- Check `if %ERRORLEVEL% NEQ 0` after critical operations
+- Enable delayed expansion with `setlocal EnableDelayedExpansion` when needed
+- Redirect output with `> debug_output.log 2>&1` for logging
+
+### PowerShell Environment (script.ps1)
+- Use `Write-Host "DEBUG: $variable" -ForegroundColor Cyan` for tracing
+- Add `$VerbosePreference = 'Continue'` and use `Write-Verbose` statements
+- Use `try/catch` blocks with specific error handling
+- Implement `Set-PSDebug -Trace 1` for line-by-line tracing
+- Use structured logging with `Write-Log` function instead of console output
+
 ## Example: Adding a New Dependency
 To add a new tool to the setup:
 1. Add a check and install logic in `script.bat` using CMD-appropriate methods (REG, WHERE, simple PowerShell calls)
@@ -110,6 +135,8 @@ To add a new tool to the setup:
 - Manual: Run `script.bat` as admin and verify all steps complete without errors.
 - Multi-location testing: Test from Desktop, Downloads, USB drive, and network locations.
 - Cross-PC validation: Verify operation on different Windows 10/11 systems.
+- Syntax validation: Run PSScriptAnalyzer to check PowerShell best practices.
+- Environment testing: Verify script.bat works in CMD and script.ps1 works in PowerShell 7.
 - Automated: (Not present, but recommended) Add sample test cases for PowerShell functions as described in `instructions.md`.
 
 ---
