@@ -369,17 +369,38 @@ IF EXIST "!REPO_ZIP!" (
     
     powershell -ExecutionPolicy Bypass -Command "try { Expand-Archive -Path '!REPO_ZIP!' -DestinationPath '!SCRIPT_DIR!' -Force; Write-Host 'Repository extracted successfully.' } catch { Write-Host 'Failed to extract repository:' $_.Exception.Message }"
     
+    ECHO [%DATE% %TIME%] [INFO] Repository extracted to: !REPO_FOLDER! >> "!LOG_FILE!"
+    
     REM Clean up zip file
     DEL /F /Q "!REPO_ZIP!" >nul 2>&1
     SET "PS1_SCRIPT=!REPO_FOLDER!\script.ps1"
+    
+    REM Verify extracted script exists
+    IF NOT EXIST "!PS1_SCRIPT!" (
+        ECHO [%TIME%] [ERROR] script.ps1 not found in extracted repository.
+        ECHO [%DATE% %TIME%] [ERROR] script.ps1 not found in repository at: !PS1_SCRIPT! >> "!LOG_FILE!"
+        GOTO LOCAL_SCRIPT
+    )
 ) ELSE (
-    ECHO [%TIME%] [ERROR] Repository download failed. Cannot continue.
-    ECHO [%DATE% %TIME%] [ERROR] Repository download failed. >> "!LOG_FILE!"
-    pause
-    EXIT /B 1
+    ECHO [%TIME%] [ERROR] Repository download failed. Attempting to use local script.
+    ECHO [%DATE% %TIME%] [ERROR] Repository download failed. Attempting to use local script. >> "!LOG_FILE!"
+    GOTO LOCAL_SCRIPT
 )
 
 :SKIP_DOWNLOAD
+
+:LOCAL_SCRIPT
+REM If we get here, we need to use the local script
+IF EXIST "!LOCAL_PS1!" (
+    ECHO [%TIME%] [INFO] Using local script.ps1
+    ECHO [%DATE% %TIME%] [INFO] Using local script: !LOCAL_PS1! >> "!LOG_FILE!"
+    SET "PS1_SCRIPT=!LOCAL_PS1!"
+) ELSE (
+    ECHO [%TIME%] [ERROR] Local script.ps1 not found. Cannot continue.
+    ECHO [%DATE% %TIME%] [ERROR] Local script.ps1 not found at: !LOCAL_PS1! >> "!LOG_FILE!"
+    pause
+    EXIT /B 1
+)
 
 REM ============================================================================
 REM [STEP 11] EXECUTE SCRIPT.PS1 IN POWERSHELL 7 ENVIRONMENT

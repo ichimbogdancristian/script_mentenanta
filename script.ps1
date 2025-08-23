@@ -110,6 +110,7 @@ Add-Content -Path $LogFile -Value "[$timestamp] [INFO] PowerShell Version: $PSVe
 Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Admin Privileges: $IsAdmin"
 Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Working Directory: $WorkingDirectory"
 Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Log File: $LogFile"
+Add-Content -Path $LogFile -Value "[$timestamp] [INFO] Repo Folder Path: $RepoFolderPath"
 Add-Content -Path $LogFile -Value "[$timestamp] [INFO] ============================================================"
 
 # Relaunch as admin if needed
@@ -4165,8 +4166,81 @@ function Optimize-Taskbar {
         $taskbarResults += "Start Menu Web Search: FAILED"
         $taskbarErrors++
     }
+    
+    # 6. Disable News and Interests (Weather on taskbar)
+    Write-Log "Disabling News and Interests (Weather on taskbar)..." 'INFO'
+    try {
+        $newsInterestsRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Feeds"
+        if (-not (Test-Path $newsInterestsRegPath)) {
+            New-Item -Path $newsInterestsRegPath -Force | Out-Null
+        }
+        
+        # Disable News and Interests
+        Set-ItemProperty -Path $newsInterestsRegPath -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+        
+        # Additional registry key for Windows 10
+        if ($isWindows10) {
+            $additionalW10Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+            if (-not (Test-Path $additionalW10Path)) {
+                New-Item -Path $additionalW10Path -Force | Out-Null
+            }
+            Set-ItemProperty -Path $additionalW10Path -Name "TaskbarDa" -Value 0 -Type DWord -Force
+        }
+        
+        # Try the policy-based approach as well
+        $policyFeeds = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
+        if (-not (Test-Path $policyFeeds)) {
+            New-Item -Path $policyFeeds -Force | Out-Null
+        }
+        Set-ItemProperty -Path $policyFeeds -Name "EnableFeeds" -Value 0 -Type DWord -Force
+        
+        Write-Host "✓ News and Interests (Weather on taskbar) disabled" -ForegroundColor Green
+        Write-Log "News and Interests disabled successfully" 'INFO'
+        $taskbarResults += "News and Interests: DISABLED"
+        $taskbarActions++
+    }
+    catch {
+        Write-Host "✗ Failed to disable News and Interests: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to disable News and Interests: $_" 'ERROR'
+        $taskbarResults += "News and Interests: FAILED"
+        $taskbarErrors++
+    }
+    
+    # 7. Disable "Learn about this picture" on Lock Screen and Desktop
+    Write-Log "Disabling 'Learn about this picture' on Lock Screen and Desktop..." 'INFO'
+    try {
+        # Lock screen spotlight settings
+        $spotlightRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+        if (-not (Test-Path $spotlightRegPath)) {
+            New-Item -Path $spotlightRegPath -Force | Out-Null
+        }
+        
+        # Disable various content delivery features
+        Set-ItemProperty -Path $spotlightRegPath -Name "RotatingLockScreenEnabled" -Value 0 -Type DWord -Force
+        Set-ItemProperty -Path $spotlightRegPath -Name "RotatingLockScreenOverlayEnabled" -Value 0 -Type DWord -Force
+        Set-ItemProperty -Path $spotlightRegPath -Name "SubscribedContent-338387Enabled" -Value 0 -Type DWord -Force
+        
+        # Disable content on lock screen
+        $lockScreenRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Lock Screen"
+        if (-not (Test-Path $lockScreenRegPath)) {
+            New-Item -Path $lockScreenRegPath -Force | Out-Null
+        }
+        # 'Creative' is the content type for Spotlight images with the "Learn about this picture" feature
+        Set-ItemProperty -Path $lockScreenRegPath -Name "Creative" -Value 0 -Type DWord -Force
+        
+        Write-Host "✓ 'Learn about this picture' feature disabled on Lock Screen and Desktop" -ForegroundColor Green
+        Write-Log "'Learn about this picture' feature disabled successfully" 'INFO'
+        $taskbarResults += "Learn about this picture: DISABLED"
+        $taskbarActions++
+    }
+    catch {
+        Write-Host "✗ Failed to disable 'Learn about this picture' feature: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to disable 'Learn about this picture' feature: $_" 'ERROR'
+        $taskbarResults += "Learn about this picture: FAILED"
+        $taskbarErrors++
+    }
 
-    # 6. Restart Windows Explorer to apply changes
+    # 8. Restart Windows Explorer to apply changes
     Write-Log "Restarting Windows Explorer to apply taskbar and search changes..." 'INFO'
     try {
         $explorerProcesses = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
@@ -5122,7 +5196,96 @@ Write-Log "Summary report written to $summaryPath" 'INFO'
 
 # Ensure repo folder is deleted only after report creation
 try {
+    # Check if RepoFolderPath was passed directly
+    $validRepoFolder = $false
+    
+    # Method 1: Use the parameter passed from script.bat
     if ($RepoFolderPath -and (Test-Path $RepoFolderPath) -and $RepoFolderPath -ne $ScriptDir) {
+        $validRepoFolder = $true
+        Write-Log "Using repo folder path from command parameter: $RepoFolderPath" 'INFO'
+    }
+    # Method 2: Try to detect the repo folder from the script directory
+    elseif (-not $RepoFolderPath -or $RepoFolderPath -eq "") {
+        # First try: Same level as script directory
+        $potentialRepoFolder = Join-Path $(Split-Path $ScriptDir -Parent) "script_mentenanta-main"
+        if (Test-Path $potentialRepoFolder) {
+            $RepoFolderPath = $potentialRepoFolder
+            $validRepoFolder = $true
+            Write-Log "Found repo folder at parent level: $RepoFolderPath" 'INFO'
+        }
+        # Second try: In the same directory as the script
+        elseif (Test-Path (Join-Path $ScriptDir "script_mentenanta-main")) {
+            $RepoFolderPath = Join-Path $ScriptDir "script_mentenanta-main"
+            $validRepoFolder = $true
+            Write-Log "Found repo folder in script directory: $RepoFolderPath" 'INFO'
+        }
+        # Third try: Try a couple directory levels up (in case script is in subfolders)
+        else {
+            $parentDir = Split-Path $ScriptDir -Parent
+            $grandParentDir = Split-Path $parentDir -Parent
+            
+            if (Test-Path (Join-Path $parentDir "script_mentenanta-main")) {
+                $RepoFolderPath = Join-Path $parentDir "script_mentenanta-main"
+                $validRepoFolder = $true
+                Write-Log "Found repo folder in parent directory: $RepoFolderPath" 'INFO'
+            }
+            elseif (Test-Path (Join-Path $grandParentDir "script_mentenanta-main")) {
+                $RepoFolderPath = Join-Path $grandParentDir "script_mentenanta-main"
+                $validRepoFolder = $true
+                Write-Log "Found repo folder in grandparent directory: $RepoFolderPath" 'INFO'
+            }
+        }
+    }
+    # Method 3: Look for repo path information in the log file
+    if (-not $validRepoFolder -and (Test-Path $LogFile)) {
+        Write-Log "Searching for repo folder path in log file..." 'INFO'
+        $logContent = Get-Content -Path $LogFile
+        
+        # Search patterns to find repository path in log
+        $searchPatterns = @(
+            '\[INFO\] Repository extracted to: (.+?)$',
+            'Repository extracted to: (.+?)$',
+            'REPO_FOLDER=(.+?)$'
+        )
+        
+        foreach ($pattern in $searchPatterns) {
+            $matchFound = $false
+            foreach ($line in $logContent) {
+                if ($line -match $pattern) {
+                    $extractedPath = $matches[1].Trim()
+                    # Clean the path if it contains quotes
+                    if ($extractedPath -match '^"(.*)"$') {
+                        $extractedPath = $matches[1]
+                    }
+                    if (Test-Path $extractedPath) {
+                        $RepoFolderPath = $extractedPath
+                        $validRepoFolder = $true
+                        Write-Log "Found repo folder path in log file using pattern '$pattern': $RepoFolderPath" 'INFO'
+                        $matchFound = $true
+                        break
+                    }
+                }
+            }
+            if ($matchFound) { break }
+        }
+        
+        # If still not found, look for script_mentenanta-main anywhere in the log
+        if (-not $validRepoFolder) {
+            foreach ($line in $logContent) {
+                if ($line -match '((?:[A-Za-z]:\\|\\\\)[^"]*script_mentenanta-main)') {
+                    $extractedPath = $matches[1].Trim()
+                    if (Test-Path $extractedPath) {
+                        $RepoFolderPath = $extractedPath
+                        $validRepoFolder = $true
+                        Write-Log "Found repo folder path through regex extraction: $RepoFolderPath" 'INFO'
+                        break
+                    }
+                }
+            }
+        }
+    }
+    
+    if ($validRepoFolder -and (Test-Path $RepoFolderPath) -and $RepoFolderPath -ne $ScriptDir) {
         Write-Log "Attempting to remove downloaded repo folder: $RepoFolderPath" 'INFO'
         $parentFolder = Split-Path $RepoFolderPath -Parent
         $repoName = Split-Path $RepoFolderPath -Leaf
@@ -5177,12 +5340,51 @@ try {
         }
     }
     else {
-        Write-Log "No repo folder to clean up (using local script.ps1)" 'INFO'
+        Write-Log "No repo folder to clean up (repo name doesn't match expected pattern or using local script.ps1)" 'INFO'
+        Write-Host "No repo folder cleanup needed - using local script.ps1 or folder name is not 'script_mentenanta-main'" -ForegroundColor Yellow
     }
+}
+else {
+    Write-Log "No valid repo folder found to clean up (paths checked: direct parameter, directory detection, log file)" 'INFO'
+    Write-Host "No repo folder cleanup needed - no valid repository folder was found" -ForegroundColor Yellow
+    
+    # Debug information for troubleshooting
+    Write-Log "DEBUG REPO PATH INFO - Original RepoFolderPath parameter: $($PSBoundParameters['RepoFolderPath'])" 'INFO'
+    Write-Log "DEBUG REPO PATH INFO - ScriptDir: $ScriptDir" 'INFO'
+    Write-Log "DEBUG REPO PATH INFO - Script Full Path: $ScriptFullPath" 'INFO'
+    Write-Log "DEBUG REPO PATH INFO - Current Working Directory: $(Get-Location)" 'INFO'
+    
+    # Check for any "script_mentenanta-main" folder in the vicinity
+    $debugPaths = @(
+        $ScriptDir,
+        (Split-Path $ScriptDir -Parent),
+        (Join-Path $ScriptDir "script_mentenanta-main"),
+        (Join-Path (Split-Path $ScriptDir -Parent) "script_mentenanta-main")
+    )
+    
+    foreach ($path in $debugPaths) {
+        if (Test-Path $path) {
+            Write-Log "DEBUG REPO PATH INFO - Path exists: $path" 'INFO'
+            try {
+                $childItems = Get-ChildItem -Path $path -Directory -ErrorAction Stop
+                foreach ($item in $childItems) {
+                    Write-Log "DEBUG REPO PATH INFO - Directory found: $($item.FullName)" 'INFO'
+                }
+            }
+            catch {
+                Write-Log "DEBUG REPO PATH INFO - Error checking path $path : $_" 'INFO'
+            }
+        }
+        else {
+            Write-Log "DEBUG REPO PATH INFO - Path does not exist: $path" 'INFO'
+        }
+    }
+}
 }
 catch {
     Write-Log "Failed to remove repo folder: $_" 'WARN'
     Write-Host "Error during repo folder cleanup: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Repo folder path attempted: $RepoFolderPath" -ForegroundColor Yellow
 }
 
 ### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
