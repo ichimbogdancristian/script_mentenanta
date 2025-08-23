@@ -421,7 +421,14 @@ ECHO [%TIME%] [INFO] Using !PS_VERSION! executable: !PS_EXECUTABLE!
 ECHO [%DATE% %TIME%] [INFO] Using !PS_VERSION!: !PS_EXECUTABLE! >> "!LOG_FILE!"
 
 REM Launch PowerShell script in new window with admin rights
-START "PowerShell Maintenance Script" "!PS_EXECUTABLE!" -ExecutionPolicy Bypass -WindowStyle Normal -File "!PS1_SCRIPT!" -LogFilePath "!LOG_FILE!"
+REM Pass repo folder information for cleanup purposes
+IF "!PS1_SCRIPT!"=="!LOCAL_PS1!" (
+    REM Using local script - no repo folder to clean
+    START "PowerShell Maintenance Script" "!PS_EXECUTABLE!" -ExecutionPolicy Bypass -WindowStyle Normal -File "!PS1_SCRIPT!" -LogFilePath "!LOG_FILE!" -RepoFolderPath ""
+) ELSE (
+    REM Using downloaded script - pass repo folder for cleanup
+    START "PowerShell Maintenance Script" "!PS_EXECUTABLE!" -ExecutionPolicy Bypass -WindowStyle Normal -File "!PS1_SCRIPT!" -LogFilePath "!LOG_FILE!" -RepoFolderPath "!REPO_FOLDER!"
+)
 
 REM ============================================================================
 REM [STEP 12] COUNTDOWN AND CLEANUP

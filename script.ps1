@@ -5,7 +5,8 @@
 # Purpose: Ensure script is aware of its environment, path, and permissions before any operations
 # ------------------------------------------------
 param(
-    [string]$LogFilePath
+    [string]$LogFilePath,
+    [string]$RepoFolderPath = ""
 )
 
 # Enhanced environment detection for consistency with batch script
@@ -291,7 +292,7 @@ $global:ScriptTasks = @(
     # [A.2.3] COPILOT_TASK: EventLogAnalysis
     # ================================================================
     # COPILOT_TASK_ID: EventLogAnalysis
-    # Purpose: Surveys Event Viewer and CBS logs for errors from the last 96 hours.
+    # Purpose: Surveys Event Viewer and CBS logs for errors only from the last 96 hours.
     # Environment: Windows 10/11, any user context, Event Log and CBS log access
     # Logic: Get-EventLog/Get-WinEvent for Event Viewer, file parsing for CBS logs
     # Dependencies: Event Log service, CBS log file access, file system permissions
@@ -311,7 +312,7 @@ $global:ScriptTasks = @(
                 Write-Host 'Event Log Analysis skipped by configuration.' -ForegroundColor Yellow
                 return $false
             } 
-        }; Description = 'Survey Event Viewer and CBS logs for errors from last 96 hours' 
+        }; Description = 'Survey Event Viewer and CBS logs for errors only from last 96 hours' 
     },
 
     # ================================================================
@@ -3046,15 +3047,14 @@ function Get-EventLogAnalysis {
     # AI_LOGIC: Event log querying, CBS file parsing, time-based filtering, detailed error reporting
     # AI_PERFORMANCE: Optimized queries with time filters, selective log parsing, efficient processing
     # ===============================
-    Write-Log "Starting Event Log and CBS Log Analysis - Last 96 Hours" 'INFO'
+    Write-Log "Starting Event Log and CBS Log Analysis - Last 96 Hours (Errors Only)" 'INFO'
     
     $startTime = (Get-Date).AddHours(-96)
     $errorCount = 0
-    $warningCount = 0
     
     try {
         # === Event Viewer Analysis ===
-        Write-Log "[EventLogAnalysis] Analyzing Event Viewer logs for errors since $startTime" 'INFO'
+        Write-Log "[EventLogAnalysis] Analyzing Event Viewer logs for errors only since $startTime" 'INFO'
         
         # Define critical event logs to check
         $eventLogs = @('System', 'Application', 'Security')
@@ -3063,10 +3063,10 @@ function Get-EventLogAnalysis {
             try {
                 Write-Log "[EventLogAnalysis] Checking $logName event log..." 'VERBOSE'
                 
-                # Get error and warning events from the last 96 hours
+                # Get only error and critical events from the last 96 hours (excluding warnings)
                 $events = Get-WinEvent -FilterHashtable @{
                     LogName   = $logName
-                    Level     = @(1, 2, 3)  # Critical, Error, Warning
+                    Level     = @(1, 2)  # Critical, Error only (excluding warnings)
                     StartTime = $startTime
                 } -ErrorAction SilentlyContinue | Sort-Object TimeCreated -Descending
                 
@@ -3075,16 +3075,15 @@ function Get-EventLogAnalysis {
                         $levelText = switch ($evt.Level) {
                             1 { 'CRITICAL'; $errorCount++ }
                             2 { 'ERROR'; $errorCount++ }
-                            3 { 'WARNING'; $warningCount++ }
-                            default { 'INFO' }
+                            default { 'ERROR' }  # Fallback
                         }
                         $eventDetails = "[$logName] $levelText - ID:$($evt.Id) - $($evt.TimeCreated) - Source:$($evt.ProviderName) - Message:$($evt.Message -replace '[\r\n]+', ' ' | Out-String -Stream | Select-Object -First 200)"
-                        Write-Log $eventDetails 'WARN'
+                        Write-Log $eventDetails 'ERROR'
                     }
-                    Write-Log "[EventLogAnalysis] Found $($events.Count) error/warning events in $logName log" 'INFO'
+                    Write-Log "[EventLogAnalysis] Found $($events.Count) critical/error events in $logName log" 'INFO'
                 }
                 else {
-                    Write-Log "[EventLogAnalysis] No error/warning events found in $logName log since $startTime" 'INFO'
+                    Write-Log "[EventLogAnalysis] No critical/error events found in $logName log since $startTime" 'INFO'
                 }
             }
             catch {
@@ -3093,7 +3092,7 @@ function Get-EventLogAnalysis {
         }
         
         # === CBS Log Analysis ===
-        Write-Log "[EventLogAnalysis] Analyzing CBS logs for errors since $startTime" 'INFO'
+        Write-Log "[EventLogAnalysis] Analyzing CBS logs for errors only since $startTime" 'INFO'
         
         $cbsLogPath = "$env:SystemRoot\Logs\CBS\CBS.log"
         if (Test-Path $cbsLogPath) {
@@ -3104,7 +3103,7 @@ function Get-EventLogAnalysis {
                     return
                 }
                 $cbsErrors = $cbsContent | Where-Object { 
-                    $_ -match '\[SR\]|\[FATAL\]|\[ERROR\]|\[WARN\]' -and
+                    $_ -match '\[SR\]|\[FATAL\]|\[ERROR\]' -and  # Only FATAL and ERROR, excluding WARN
                     $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}' 
                 }
                 
@@ -3114,10 +3113,12 @@ function Get-EventLogAnalysis {
                         try {
                             $cbsTimestamp = [DateTime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
                             if ($cbsTimestamp -ge $startTime) {
-                                $cbsLogType = if ($cbsLine -match '\[FATAL\]|\[ERROR\]') { 'ERROR'; $errorCount++ } 
-                                elseif ($cbsLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
-                                else { 'INFO' }
-                                Write-Log "[CBS] $cbsLogType - $cbsTimestamp - $($cbsLine.Trim())" 'WARN'
+                                # Only process FATAL and ERROR entries
+                                if ($cbsLine -match '\[FATAL\]|\[ERROR\]') {
+                                    $cbsLogType = 'ERROR'
+                                    $errorCount++
+                                    Write-Log "[CBS] $cbsLogType - $cbsTimestamp - $($cbsLine.Trim())" 'ERROR'
+                                }
                             }
                         }
                         catch {
@@ -3137,7 +3138,7 @@ function Get-EventLogAnalysis {
         }
         
         # === DISM Log Analysis ===
-        Write-Log "[EventLogAnalysis] Analyzing DISM logs for errors since $startTime" 'INFO'
+        Write-Log "[EventLogAnalysis] Analyzing DISM logs for errors only since $startTime" 'INFO'
         
         $dismLogPath = "$env:SystemRoot\Logs\DISM\dism.log"
         if (Test-Path $dismLogPath) {
@@ -3148,7 +3149,7 @@ function Get-EventLogAnalysis {
                     return
                 }
                 $dismErrors = $dismContent | Where-Object { 
-                    $_ -match '\[ERROR\]|\[FATAL\]|\[WARN\]' -and
+                    $_ -match '\[ERROR\]|\[FATAL\]' -and  # Only ERROR and FATAL, excluding WARN
                     $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
                 }
                 
@@ -3157,10 +3158,12 @@ function Get-EventLogAnalysis {
                         try {
                             $dismTimestamp = [DateTime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
                             if ($dismTimestamp -ge $startTime) {
-                                $dismLogType = if ($dismLine -match '\[FATAL\]|\[ERROR\]') { 'ERROR'; $errorCount++ } 
-                                elseif ($dismLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
-                                else { 'INFO' }
-                                Write-Log "[DISM] $dismLogType - $dismTimestamp - $($dismLine.Trim())" 'WARN'
+                                # Only process FATAL and ERROR entries
+                                if ($dismLine -match '\[FATAL\]|\[ERROR\]') {
+                                    $dismLogType = 'ERROR'
+                                    $errorCount++
+                                    Write-Log "[DISM] $dismLogType - $dismTimestamp - $($dismLine.Trim())" 'ERROR'
+                                }
                             }
                         }
                         catch {
@@ -3179,16 +3182,13 @@ function Get-EventLogAnalysis {
         }
         
         # === Summary ===
-        Write-Log "[EventLogAnalysis] SUMMARY: Found $errorCount errors and $warningCount warnings in the last 96 hours" 'INFO'
+        Write-Log "[EventLogAnalysis] SUMMARY: Found $errorCount critical/error events in the last 96 hours (warnings excluded)" 'INFO'
         
-        if ($errorCount -eq 0 -and $warningCount -eq 0) {
+        if ($errorCount -eq 0) {
             Write-Host "✅ Event Log Analysis: No critical errors found in the last 96 hours" -ForegroundColor Green
         }
-        elseif ($errorCount -eq 0) {
-            Write-Host "⚠️ Event Log Analysis: $warningCount warnings found, no critical errors" -ForegroundColor Yellow  
-        }
         else {
-            Write-Host "⚠️ Event Log Analysis: $errorCount errors and $warningCount warnings found" -ForegroundColor Red
+            Write-Host "⚠️ Event Log Analysis: $errorCount critical/error events found (warnings excluded)" -ForegroundColor Red
         }
         
     }
@@ -5122,18 +5122,67 @@ Write-Log "Summary report written to $summaryPath" 'INFO'
 
 # Ensure repo folder is deleted only after report creation
 try {
-    $repoFolder = $PSScriptRoot
-    $parentFolder = Split-Path $repoFolder -Parent
-    $repoName = Split-Path $repoFolder -Leaf
-    if ($repoName -eq 'script_mentenanta') {
-        Write-Log "Attempting to remove repo folder: $repoFolder" 'INFO'
-        Set-Location $parentFolder
-        Remove-Item -Path $repoFolder -Recurse -Force
-        Write-Log "Repo folder $repoFolder removed." 'INFO'
+    if ($RepoFolderPath -and (Test-Path $RepoFolderPath) -and $RepoFolderPath -ne $ScriptDir) {
+        Write-Log "Attempting to remove downloaded repo folder: $RepoFolderPath" 'INFO'
+        $parentFolder = Split-Path $RepoFolderPath -Parent
+        $repoName = Split-Path $RepoFolderPath -Leaf
+        
+        # Only remove if it's clearly a downloaded repo folder (contains 'script_mentenanta-main')
+        if ($repoName -eq 'script_mentenanta-main') {
+            Write-Host ""
+            Write-Host "========================================" -ForegroundColor Yellow
+            Write-Host "   REPO FOLDER CLEANUP WARNING" -ForegroundColor Yellow
+            Write-Host "========================================" -ForegroundColor Yellow
+            Write-Host "About to delete downloaded repository folder:" -ForegroundColor Cyan
+            Write-Host $RepoFolderPath -ForegroundColor White
+            Write-Host ""
+            Write-Host "30-second countdown starting..." -ForegroundColor Yellow
+            Write-Host "Press ANY KEY to abort deletion!" -ForegroundColor Red
+            Write-Host ""
+            
+            Write-Log "Starting 30-second countdown for repo folder deletion. Press any key to abort." 'INFO'
+            
+            # 30-second countdown with abort option
+            $countdownAborted = $false
+            for ($i = 30; $i -gt 0; $i--) {
+                Write-Host "Deleting in $i seconds... (Press ANY KEY to abort)" -ForegroundColor Yellow
+                
+                # Check for key press
+                if ([Console]::KeyAvailable) {
+                    $key = [Console]::ReadKey($true)
+                    $countdownAborted = $true
+                    Write-Host ""
+                    Write-Host "Deletion ABORTED by user!" -ForegroundColor Green
+                    Write-Log "Repo folder deletion aborted by user key press." 'INFO'
+                    break
+                }
+                
+                Start-Sleep -Seconds 1
+            }
+            
+            if (-not $countdownAborted) {
+                Write-Host ""
+                Write-Host "No abort signal received. Proceeding with deletion..." -ForegroundColor Red
+                Write-Log "30-second countdown completed. Proceeding with repo folder deletion." 'INFO'
+                
+                # Change to parent directory before deletion
+                Set-Location $parentFolder
+                Remove-Item -Path $RepoFolderPath -Recurse -Force
+                Write-Host "Downloaded repo folder deleted successfully." -ForegroundColor Green
+                Write-Log "Downloaded repo folder $RepoFolderPath removed successfully." 'INFO'
+            }
+        }
+        else {
+            Write-Log "Skipping repo folder removal - folder name doesn't match expected pattern: $repoName" 'INFO'
+        }
+    }
+    else {
+        Write-Log "No repo folder to clean up (using local script.ps1)" 'INFO'
     }
 }
 catch {
     Write-Log "Failed to remove repo folder: $_" 'WARN'
+    Write-Host "Error during repo folder cleanup: $($_.Exception.Message)" -ForegroundColor Red
 }
 
 ### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
