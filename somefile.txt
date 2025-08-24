@@ -1,28 +1,28 @@
+
 script.bat launch
-the script should become aware of his environment username path 
-on the same path the script should create maintenance.log and log everything
-should check if it has admin rights if not relaunch with admin rights
-the script should check if system restore is enabled on drive C, if not enable it and create a restore point
-the script should check if there is a scheduled task to launch himself on the first day of every month at 1am
-if not create it
-next step: check if there is a startup task to launch the script at user login with 1 minute delay , if there is remove it
-check if the system has any pendding restarts
-if there are pending restarts the script should create a startup task to launch the script at user login with 1 minute delay
-after it should restart the system so that the pendding chenges take effect
+The script should become aware of its environment, including the username and path.
+In the same directory, the script should create maintenance.log and log all actions.
+It should check if it has admin rights; if not, it should relaunch itself with admin rights.
+The script should check if System Restore is enabled on drive C. If not, it should enable it and create a restore point.
+The script should check if there is a scheduled task to launch itself on the first day of every month at 1am.
+If not, it should create this scheduled task.
+Next, check if there is a startup task to launch the script at user login with a 1-minute delay. If there is, remove it.
+Check if the system has any pending restarts.
+If there are pending restarts, the script should create a startup task to launch itself at user login with a 1-minute delay.
+Afterward, it should restart the system so that the pending changes take effect.
 
-
-the script should check if winget Microsoft.AppInstaller is available
-if not it should download it from the internet an install it
-once winget is available it should be used to install powershell 7 Microsoft.PowerShell
-next step is to check one by one if every single one of the fallowing dependencies are available
+The script should check if WinGet (Microsoft.AppInstaller) is available.
+If not, it should download and install it from the internet.
+Once WinGet is available, it should be used to install PowerShell 7 (Microsoft.PowerShell).
+Next, check one by one if each of the following dependencies is available:
 VBScript (cscript.exe)
 Windows Task Scheduler (schtasks.exe)
 DISM
 PSWindowsUpdate
 Appx
-NuGet CLI (nuget.exe) NuGet Provider 
-if there are not available it should install them should install unattended
-next step is to download the repo on the same path the script.bat is and extract it
-from the repo folder it should execute script.ps1 ina powershell 7 environment with admin rights
-after Launching script.ps1 in a new ps7 window it should post a 20s countdown and close that window with the option to abort that countdown and  closing the window
-Every operation on this script should flow unattended
+NuGet CLI (nuget.exe) and NuGet Provider
+If any are not available, the script should install them unattended.
+Next, download the repository to the same path as script.bat and extract it.
+From the repo folder, execute script.ps1 in a PowerShell 7 environment with admin rights.
+After launching script.ps1 in a new PowerShell 7 window, display a 20-second countdown and close the window, with the option to abort the countdown and prevent closing.
+Every operation in this script should proceed unattended.

@@ -1,8 +1,56 @@
 
-# Windows Maintenance Script - Path-Independent Multi-PC Solution
+# Windows Maintenance Script - Path-I## 🔄 Operational Workflow
+
+1. **Launch and Environment Awareness**
+   - Script detects its environment, username, and path
+   - Creates maintenance.log in the script's directory
+   - Verifies admin rights and re-elevates if needed
+
+2. **System Protection Setup**
+   - Checks if system restore is enabled on drive C
+   - Enables system restore if disabled and creates a restore point
+   - Configures protection settings for optimal recovery
+
+3. **Task Management**
+   - Creates/verifies monthly maintenance task (first day, 1am)
+   - Removes any existing login startup tasks if present
+   - Checks for pending system restarts
+   - Creates startup task for post-restart continuation if needed
+
+4. **Dependency Installation**
+   - Checks and installs Microsoft WinGet (AppInstaller)
+   - Installs PowerShell 7 (Microsoft.PowerShell)
+   - Verifies/installs: VBScript, Task Scheduler, DISM
+   - Configures PSWindowsUpdate, Appx modules
+   - Installs NuGet CLI and NuGet Provider unattended
+
+5. **Repository Management and Execution**
+   - Downloads latest repository to script location
+   - Extracts content and locates script.ps1
+   - Executes script.ps1 in PowerShell 7 with elevated rights
+   - Shows 20-second countdown with abort option before closing
+
+### 🔧 **Architecture & Components**
+
+### **Environment Requirements**
+- **Command Prompt Environment**: `script.bat` runs in CMD on fresh Windows 10/11 installations
+- **PowerShell 7 Environment**: `script.ps1` automatically runs in PS7 environment
+- **Path Independence**: Must work from any folder location with automatic path detection
+- **Multi-PC Deployment**: Seamless operation across different hardware and configurationsent Multi-PC Solution
 
 ## 🎯 Overview
 Advanced Windows maintenance automation script designed for seamless deployment across multiple PCs. Features location-independent execution, comprehensive error handling, and AI-assisted development architecture. Fully automated dependency installation and maintenance operations with robust path detection and permission management.
+
+### How It Works
+- **Environment Detection**: The script becomes aware of its environment, username, and path at launch
+- **Logging**: Creates maintenance.log in the same path and logs all operations
+- **Admin Rights**: Checks for admin privileges and relaunches with elevation if necessary
+- **System Protection**: Enables system restore if disabled and creates a restore point
+- **Task Management**: Creates a monthly maintenance scheduled task and manages restart tasks
+- **Dependencies**: Installs WinGet, PowerShell 7, and required modules completely unattended
+- **Self-updating**: Downloads the latest version of the maintenance repository
+- **PowerShell Execution**: Launches script.ps1 in PowerShell 7 with proper parameters
+- **User Experience**: Shows a 20-second countdown with abort option before closing
 
 ## 🚀 Key Features & Recent Enhancements (August 2025)
 
@@ -17,6 +65,7 @@ Advanced Windows maintenance automation script designed for seamless deployment 
 - **Comprehensive Permission Management**: 4-method admin privilege detection and request
 - **Robust Task Creation**: 3-method scheduled task creation (SYSTEM, User, PowerShell)
 - **Environment Awareness**: `script.bat` (CMD) ↔ `script.ps1` (PS7) environment handling
+- **Complete Dependency Management**: Installs and configures WinGet, PowerShell 7, VBScript, Task Scheduler, DISM, PSWindowsUpdate, Appx, NuGet CLI and NuGet Provider unattended
 
 ### ✅ **Core Maintenance Features**
 - **60.6% Code Reduction**: Streamlined from 1484 to 584 lines with enhanced functionality

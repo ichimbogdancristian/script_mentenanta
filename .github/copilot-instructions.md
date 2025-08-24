@@ -28,10 +28,39 @@ This project automates the setup and execution of a Windows maintenance script d
 - Download the latest maintenance script repository from GitHub
 - Run a PowerShell script (`script.ps1`) for actual maintenance tasks
 
+### Operational Flow
+1. **Environment Detection**: Becomes aware of environment username and path
+2. **Log Creation**: Creates maintenance.log in the script's directory
+3. **Admin Verification**: Checks admin rights and re-launches with elevation if needed
+4. **System Restore**: Checks/enables system restore on drive C and creates a restore point
+5. **Scheduled Task Management**:
+   - Creates a monthly maintenance task (first day of every month at 1am) if missing
+   - Checks for and removes any login startup tasks
+6. **Restart Management**:
+   - Checks for pending system restarts
+   - Creates a startup task to resume maintenance after restart if needed
+7. **Dependency Installation** (unattended):
+   - Microsoft WinGet (AppInstaller)
+   - PowerShell 7 (Microsoft.PowerShell)
+   - VBScript (cscript.exe)
+   - Windows Task Scheduler (schtasks.exe)
+   - DISM
+   - PSWindowsUpdate module
+   - Appx module
+   - NuGet CLI (nuget.exe) and NuGet Provider
+8. **Repository Management**:
+   - Downloads the latest repository to script.bat location
+   - Extracts repository contents
+9. **PowerShell Script Execution**:
+   - Launches script.ps1 in PowerShell 7 with admin rights
+   - Shows 20-second countdown before closing with abort option
+10. **Unattended Operation**: All actions proceed without requiring user interaction
+
 ## Key Files
 - `script.bat`: Main orchestrator. Handles admin checks, dependency installation, repo download, and script execution.
 - `script.ps1`: The PowerShell maintenance script (must be present in the downloaded repo).
-- `instructions.md`: Project-specific PowerShell and scripting guidelines.
+- `copilot-instructions.md`: Project-specific PowerShell and scripting guidelines.
+- `README.md`: General project overview and setup instructions.
 
 ## Essential Patterns & Conventions
 - **Admin Privileges**: All setup must run as administrator. The batch script checks and prompts if not.
@@ -44,6 +73,11 @@ This project automates the setup and execution of a Windows maintenance script d
 - **Repository Handling**: Always downloads and extracts the latest repo version to a clean directory before running scripts.
 - **Script Execution**: Prefers PowerShell 7 (`pwsh`), falls back to Windows PowerShell if needed.
 - **Cleanup**: Temporary files and directories are removed at the end of execution.
+- **System Restore Management**: Checks if system restore is enabled on drive C and enables it if not, creating a restore point.
+- **Scheduled Tasks Management**: Creates a monthly maintenance task (first day, 1am) and manages restart-related tasks.
+- **Unattended Installation**: All dependencies must install without user interaction, especially NuGet Provider.
+- **Restart Handling**: Detects pending restarts, creates startup task to resume after reboot if needed.
+- **User Experience**: Shows a 20-second countdown with abort option before closing the batch script window.
 
 ## Developer Workflows
 - **Run the project**: Right-click `script.bat` and select "Run as administrator".
