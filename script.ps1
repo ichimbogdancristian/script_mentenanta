@@ -295,7 +295,7 @@ function Invoke-WindowsPowerShellCommand {
         }
         
         $output = $outputTask.Result
-        $error = $errorTask.Result
+        $errorOutput = $errorTask.Result
         
         if ($process.ExitCode -eq 0) {
             Write-Log "[PS5.1] Successfully executed: $Description" 'INFO'
@@ -303,8 +303,8 @@ function Invoke-WindowsPowerShellCommand {
         }
         else {
             Write-Log "[PS5.1] Command failed with exit code $($process.ExitCode): $Description" 'WARN'
-            if ($error) {
-                Write-Log "[PS5.1] Error output: $error" 'VERBOSE'
+            if ($errorOutput) {
+                Write-Log "[PS5.1] Error output: $errorOutput" 'VERBOSE'
             }
             return $null
         }
@@ -1818,7 +1818,7 @@ function Invoke-ModernPackageManager {
             }
             
             $output = $outputTask.Result
-            $error = $errorTask.Result
+            $errorOutput = $errorTask.Result
             $exitCode = $process.ExitCode
             
             Write-Log "[$PackageManager] Completed with exit code: $exitCode" 'VERBOSE'
@@ -1827,11 +1827,11 @@ function Invoke-ModernPackageManager {
                 Success = ($exitCode -eq 0)
                 ExitCode = $exitCode
                 Output = if ($ReturnOutput) { $output } else { '' }
-                Error = $error
+                Error = $errorOutput
             }
             
             if ($exitCode -ne 0) {
-                Write-Log "[$PackageManager] Failed with exit code $exitCode. Error: $error" 'WARN'
+                Write-Log "[$PackageManager] Failed with exit code $exitCode. Error: $errorOutput" 'WARN'
             }
             
             return $result
@@ -1842,7 +1842,7 @@ function Invoke-ModernPackageManager {
             $process = Start-Process -FilePath $executable -ArgumentList $Arguments -NoNewWindow -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\pkg_out.txt" -RedirectStandardError "$env:TEMP\pkg_err.txt"
             
             $output = if (Test-Path "$env:TEMP\pkg_out.txt") { Get-Content "$env:TEMP\pkg_out.txt" -Raw } else { '' }
-            $error = if (Test-Path "$env:TEMP\pkg_err.txt") { Get-Content "$env:TEMP\pkg_err.txt" -Raw } else { '' }
+            $errorOutput = if (Test-Path "$env:TEMP\pkg_err.txt") { Get-Content "$env:TEMP\pkg_err.txt" -Raw } else { '' }
             
             # Cleanup temp files
             Remove-Item "$env:TEMP\pkg_out.txt", "$env:TEMP\pkg_err.txt" -ErrorAction SilentlyContinue
@@ -1851,7 +1851,7 @@ function Invoke-ModernPackageManager {
                 Success = ($process.ExitCode -eq 0)
                 ExitCode = $process.ExitCode
                 Output = if ($ReturnOutput) { $output } else { '' }
-                Error = $error
+                Error = $errorOutput
             }
         }
     }
