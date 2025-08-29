@@ -264,7 +264,9 @@ function Use-AllScriptTasks {
     Write-Log '[COORDINATION] All maintenance tasks completed.' 'INFO'
 }
 
-# [PRE-TASK 0] Set up log file in the repo folder
+# [PRE-TASK 0] Initialize script execution tracking
+$global:ScriptStartTime = Get-Date
+$global:PerformanceMetrics = @{}
 $global:logPath = Join-Path $PSScriptRoot "maintenance.log"
 
 ### Modern PowerShell 7.5.2 Compatibility and Performance Functions
@@ -1090,6 +1092,9 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory (JSON Format)" 'INFO'
     Write-TaskProgress -Activity "Building System Inventory" -Status "Initializing..." -PercentComplete 5
     
+    # Track inventory collection performance
+    $inventoryStartTime = Get-Date
+    
     # Ensure we have a valid path for inventory folder
     $inventoryFolder = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
@@ -1448,6 +1453,12 @@ function Get-ExtensiveSystemInventory {
         Write-LogFile "[Inventory] Failed to write inventory.json: $_" 'WARN'
     }
 
+    # Track inventory collection performance
+    $inventoryEndTime = Get-Date
+    $inventoryDuration = ($inventoryEndTime - $inventoryStartTime).TotalSeconds
+    $global:PerformanceMetrics['Inventory Collection Time'] = "$([math]::Round($inventoryDuration, 2)) seconds"
+    $global:PerformanceMetrics['Total Apps Collected'] = "$($inventory.appx.Count + $inventory.winget.Count + $inventory.choco.Count) apps"
+    
     Write-TaskProgress -Activity "Building System Inventory" -Status "Inventory completed" -PercentComplete 100 -Completed
     Write-Log "[END] Extensive System Inventory (JSON Format)" 'INFO'
 }
@@ -3592,164 +3603,251 @@ foreach ($key in $global:TaskResults.Keys) {
 Write-Log ("All tasks completed. Total: {0}, Success: {1}, Failed: {2}" -f $totalCount, $successCount, $failCount) 'INFO'
 foreach ($detail in $taskDetails) { Write-Log $detail 'INFO' }
 
-### [POST-TASK 4] Enhanced Reporting Section (JSON + Text)
+### [POST-TASK 4] Unified Enhanced Reporting System
 
-# Save summary report in the same folder as script.bat (repo parent folder)
+# Create unified enhanced maintenance report
+function Write-UnifiedMaintenanceReport {
+    param(
+        [string]$ReportPath
+    )
+    
+    # Gather comprehensive system info
+    $osInfo = Get-CimInstance Win32_OperatingSystem
+    $compInfo = Get-CimInstance Win32_ComputerSystem
+    $memInfo = Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum
+    $diskInfo = Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 }
+    
+    # Calculate execution metrics
+    $scriptStartTime = $global:ScriptStartTime
+    $scriptEndTime = Get-Date
+    $totalExecutionTime = ($scriptEndTime - $scriptStartTime).TotalMinutes
+    
+    # Build comprehensive report sections
+    $reportSections = @()
+    
+    # === HEADER SECTION ===
+    $reportSections += @"
+════════════════════════════════════════════════════════════════════════════════
+                            MAINTENANCE REPORT
+                         Windows System Maintenance
+════════════════════════════════════════════════════════════════════════════════
+
+EXECUTION SUMMARY
+─────────────────────────────────────────────────────────────────────────────────
+Date & Time        : $(Get-Date -Format 'dddd, MMMM dd, yyyy - HH:mm:ss')
+Execution Duration : $([math]::Round($totalExecutionTime, 2)) minutes
+Script Version     : 1.0.0
+PowerShell Version : $($PSVersionTable.PSVersion.ToString())
+Run Mode          : $(if ($Host.Name -eq 'ConsoleHost') { 'Interactive' } else { 'Automated' })
+
+SYSTEM INFORMATION
+─────────────────────────────────────────────────────────────────────────────────
+Computer Name     : $($env:COMPUTERNAME)
+User Account      : $($env:USERNAME)
+Operating System  : $($osInfo.Caption)
+OS Version        : $($osInfo.Version) (Build $($osInfo.BuildNumber))
+Architecture      : $($osInfo.OSArchitecture)
+Total RAM         : $([math]::Round($memInfo.Sum / 1GB, 2)) GB
+System Model      : $($compInfo.Manufacturer) $($compInfo.Model)
+Last Boot Time    : $($osInfo.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss'))
+System Uptime     : $([math]::Round((Get-Date - $osInfo.LastBootUpTime).TotalDays, 2)) days
+
+"@
+
+    # === DISK SPACE SECTION ===
+    $reportSections += "DISK SPACE STATUS"
+    $reportSections += "─────────────────────────────────────────────────────────────────────────────────"
+    foreach ($disk in $diskInfo) {
+        $freeGB = [math]::Round($disk.FreeSpace / 1GB, 2)
+        $totalGB = [math]::Round($disk.Size / 1GB, 2)
+        $usedGB = $totalGB - $freeGB
+        $freePercent = [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 1)
+        $reportSections += "Drive $($disk.DeviceID) - Total: ${totalGB}GB | Used: ${usedGB}GB | Free: ${freeGB}GB ($freePercent%)"
+    }
+    $reportSections += ""
+
+    # === TASK EXECUTION SECTION ===
+    $totalTasks = $global:TaskResults.Keys.Count
+    $successfulTasks = ($global:TaskResults.Values | Where-Object { $_.Success }).Count
+    $failedTasks = $totalTasks - $successfulTasks
+    $successRate = if ($totalTasks -gt 0) { [math]::Round(($successfulTasks / $totalTasks) * 100, 1) } else { 0 }
+
+    $reportSections += @"
+TASK EXECUTION SUMMARY
+─────────────────────────────────────────────────────────────────────────────────
+Total Tasks       : $totalTasks
+Successful        : $successfulTasks
+Failed           : $failedTasks
+Success Rate     : $successRate%
+Total Task Time  : $([math]::Round(($global:TaskResults.Values | Measure-Object Duration -Sum).Sum, 2)) seconds
+
+DETAILED TASK RESULTS
+─────────────────────────────────────────────────────────────────────────────────
+"@
+
+    # Add detailed task results
+    foreach ($taskName in $global:TaskResults.Keys | Sort-Object) {
+        $result = $global:TaskResults[$taskName]
+        $task = $global:ScriptTasks | Where-Object { $_.Name -eq $taskName }
+        $status = if ($result.Success) { '[SUCCESS]' } else { '[FAILED] ' }
+        $duration = [math]::Round($result.Duration, 2)
+        
+        $reportSections += "$status $taskName"
+        $reportSections += "  Description: $($task.Description)"
+        $reportSections += "  Duration: ${duration}s | Started: $($result.Started.ToString('HH:mm:ss')) | Ended: $($result.Ended.ToString('HH:mm:ss'))"
+        
+        if (-not $result.Success -and $result.ContainsKey('Error')) {
+            $reportSections += "  Error: $($result.Error)"
+        }
+        $reportSections += ""
+    }
+
+    # === ACTIONS PERFORMED SECTION ===
+    $reportSections += @"
+ACTIONS PERFORMED
+─────────────────────────────────────────────────────────────────────────────────
+"@
+
+    # Extract and categorize actions from log
+    $logPath = $global:logPath
+    if (Test-Path $logPath) {
+        $logContent = Get-Content $logPath
+        
+        # Categorize actions
+        $actions = @{
+            Installed = @()
+            Removed = @()
+            Updated = @()
+            Cleaned = @()
+            Configured = @()
+            Other = @()
+        }
+        
+        foreach ($line in $logContent) {
+            if ($line -match '\[(INFO|WARN|ERROR)\]') {
+                $logMessage = ($line -split '\[(?:INFO|WARN|ERROR)\]', 2)[1].Trim()
+                
+                switch -Regex ($logMessage) {
+                    'Installed|Installation|Install' { $actions.Installed += $logMessage }
+                    'Removed|Uninstalled|Delete' { $actions.Removed += $logMessage }
+                    'Updated|Upgrade' { $actions.Updated += $logMessage }
+                    'Cleaned|Cleanup|Clear' { $actions.Cleaned += $logMessage }
+                    'Configured|Setting|Registry|Policy' { $actions.Configured += $logMessage }
+                    default { 
+                        if ($logMessage -notmatch '(START|END|Duration|Script|Task|Building|Collecting)') {
+                            $actions.Other += $logMessage 
+                        }
+                    }
+                }
+            }
+        }
+        
+        foreach ($category in $actions.Keys) {
+            if ($actions[$category].Count -gt 0) {
+                $reportSections += "$category ($($actions[$category].Count) actions):"
+                $actions[$category] | ForEach-Object { $reportSections += "  • $_" }
+                $reportSections += ""
+            }
+        }
+    }
+    else {
+        $reportSections += "No detailed action log found."
+        $reportSections += ""
+    }
+
+    # === FILES GENERATED SECTION ===
+    $reportSections += @"
+FILES GENERATED
+─────────────────────────────────────────────────────────────────────────────────
+"@
+
+    $generatedFiles = @()
+    $filePatterns = @('*.json', '*.txt', '*.log', 'temp_*.json')
+    
+    foreach ($pattern in $filePatterns) {
+        $files = Get-ChildItem -Path $PSScriptRoot -Filter $pattern -ErrorAction SilentlyContinue
+        foreach ($file in $files) {
+            $sizeKB = [math]::Round($file.Length / 1KB, 2)
+            $generatedFiles += "$($file.Name) ($sizeKB KB)"
+        }
+    }
+    
+    if ($generatedFiles.Count -gt 0) {
+        $generatedFiles | Sort-Object | ForEach-Object { $reportSections += "  • $_" }
+    }
+    else {
+        $reportSections += "  No additional files generated."
+    }
+    
+    $reportSections += ""
+
+    # === PERFORMANCE METRICS SECTION ===
+    if ($global:PerformanceMetrics) {
+        $reportSections += @"
+PERFORMANCE METRICS
+─────────────────────────────────────────────────────────────────────────────────
+"@
+        foreach ($metric in $global:PerformanceMetrics.GetEnumerator()) {
+            $reportSections += "$($metric.Key): $($metric.Value)"
+        }
+        $reportSections += ""
+    }
+
+    # === FOOTER SECTION ===
+    $reportSections += @"
+────────────────────────────────────────────────────────────────────────────────
+Report Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+PowerShell Maintenance Script v1.0.0
+────────────────────────────────────────────────────────────────────────────────
+
+For detailed operation logs, review the maintenance.log file.
+For system inventory data, check the generated JSON files.
+
+════════════════════════════════════════════════════════════════════════════════
+"@
+
+    # Write the unified report
+    try {
+        $reportContent = $reportSections -join "`n"
+        $reportContent | Out-File -FilePath $ReportPath -Encoding UTF8
+        return $true
+    }
+    catch {
+        Write-Log "Failed to write unified report: $_" 'ERROR'
+        return $false
+    }
+}
+
+# Initialize performance metrics tracking
+if (-not $global:PerformanceMetrics) {
+    $global:PerformanceMetrics = @{}
+}
+
+# Track script start time if not already set
+if (-not $global:ScriptStartTime) {
+    $global:ScriptStartTime = Get-Date
+}
+
+# Determine report path
 $batPath = Join-Path $PSScriptRoot "script.bat"
 if (Test-Path $batPath) {
     $batDir = Split-Path $batPath -Parent
-    $summaryPath = Join-Path $batDir "maintenance_report.txt"
-    $jsonSummaryPath = Join-Path $batDir "maintenance_report.json"
+    $unifiedReportPath = Join-Path $batDir "maintenance_report.txt"
 }
 else {
-    $summaryPath = Join-Path $PSScriptRoot "maintenance_report.txt"
-    $jsonSummaryPath = Join-Path $PSScriptRoot "maintenance_report.json"
+    $unifiedReportPath = Join-Path $PSScriptRoot "maintenance_report.txt"
 }
 
-# Gather system info for report
-$osInfo = Get-CimInstance Win32_OperatingSystem
-$osVersion = $osInfo.Version
-$osCaption = $osInfo.Caption
-$psVer = $PSVersionTable.PSVersion.ToString()
-$scriptVer = '1.0.0'
-
-# Build structured report object
-$reportData = [ordered]@{
-    metadata = [ordered]@{
-        generatedOn       = (Get-Date).ToString('o')
-        date              = Get-Date -Format 'dd-MM-yyyy HH:mm:ss'
-        user              = $env:USERNAME
-        computer          = $env:COMPUTERNAME
-        scriptVersion     = $scriptVer
-        os                = $osCaption
-        osVersion         = $osVersion
-        powershellVersion = $psVer
-    }
-    summary  = [ordered]@{
-        totalTasks      = $totalCount
-        successfulTasks = $successCount
-        failedTasks     = $failCount
-        successRate     = if ($totalCount -gt 0) { [math]::Round(($successCount / $totalCount) * 100, 2) } else { 0 }
-    }
-    tasks    = @()
-    files    = [ordered]@{
-        inventoryFiles = @()
-        listFiles      = @()
-        logFiles       = @()
-    }
-    actions  = @()
-}
-
-# Add task details
-foreach ($key in $global:TaskResults.Keys) {
-    $result = $global:TaskResults[$key]
-    $desc = ($global:ScriptTasks | Where-Object { $_.Name -eq $key }).Description
-    $taskObj = [ordered]@{
-        name        = $key
-        description = $desc
-        success     = $result.Success
-        duration    = [math]::Round($result.Duration, 2)
-        started     = $result.Started.ToString('o')
-        ended       = $result.Ended.ToString('o')
-    }
-    if ($result.ContainsKey('Error') -and $result.Error) {
-        $taskObj.error = $result.Error
-    }
-    $reportData.tasks += $taskObj
-}
-
-# Reference files created
-$inventoryFiles = @('inventory.json', 'bloatware.json', 'essential_apps.json')
-$legacyFiles = @('inventory.txt')  # Keep legacy reference
-$logFiles = @('maintenance.log')
-
-foreach ($file in $inventoryFiles) {
-    $path = Join-Path $PSScriptRoot $file
-    if (Test-Path $path) {
-        $reportData.files.inventoryFiles += $file
-    }
-}
-
-foreach ($file in $legacyFiles) {
-    $path = Join-Path $PSScriptRoot $file
-    if (Test-Path $path) {
-        $reportData.files.inventoryFiles += $file
-    }
-}
-
-foreach ($file in $logFiles) {
-    $path = Join-Path $PSScriptRoot $file
-    if (Test-Path $path) {
-        $reportData.files.logFiles += $file
-    }
-}
-
-# Extract detailed actions from maintenance.log
-$logActions = @('Installed', 'Uninstalled', 'Updated', 'Removed', 'Deleted', 'Upgraded', 'Cleaned')
-$logPath = Join-Path $PSScriptRoot "maintenance.log"
-if (Test-Path $logPath) {
-    $logContent = Get-Content $logPath
-    $actionLines = $logContent | Where-Object {
-        $line = $_
-        $logActions | Where-Object { $line -match $_ }
-    }
-    $reportData.actions = @($actionLines)
-}
-
-# Write structured JSON report
-try {
-    $reportData | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonSummaryPath -Encoding UTF8
-    Write-Log "Structured report saved to $jsonSummaryPath" 'INFO'
-}
-catch {
-    Write-Log "Failed to write JSON report: $_" 'WARN'
-}
-
-# Build human-readable text report
-$summaryLines = @()
-$summaryLines += "==== Maintenance Report ===="
-$summaryLines += "Date: $($reportData.metadata.date)"
-$summaryLines += "User: $($reportData.metadata.user)"
-$summaryLines += "Computer: $($reportData.metadata.computer)"
-$summaryLines += "Script Version: $($reportData.metadata.scriptVersion)"
-$summaryLines += "OS: $($reportData.metadata.os) ($($reportData.metadata.osVersion))"
-$summaryLines += "PowerShell Version: $($reportData.metadata.powershellVersion)"
-$summaryLines += "---"
-$summaryLines += "Total tasks: $($reportData.summary.totalTasks) | Success: $($reportData.summary.successfulTasks) | Failed: $($reportData.summary.failedTasks) | Success Rate: $($reportData.summary.successRate)%"
-$summaryLines += "---"
-$summaryLines += "Task Breakdown:"
-foreach ($task in $reportData.tasks) {
-    $status = if ($task.success) { 'SUCCESS' } else { 'FAIL' }
-    $summaryLines += "- $($task.name) $status | $($task.description) | Duration: $($task.duration)s"
-    if ($task.error) {
-        $summaryLines += "    Error: $($task.error)"
-    }
-}
-$summaryLines += "---"
-
-$summaryLines += "Files generated:"
-if ($reportData.files.inventoryFiles.Count -gt 0) {
-    $summaryLines += "Inventory files:"
-    $reportData.files.inventoryFiles | ForEach-Object { $summaryLines += "- $_" }
-}
-if ($reportData.files.logFiles.Count -gt 0) {
-    $summaryLines += "Log files:"
-    $reportData.files.logFiles | ForEach-Object { $summaryLines += "- $_" }
-}
-$summaryLines += "---"
-
-if ($reportData.actions.Count -gt 0) {
-    $summaryLines += "Detailed actions performed during maintenance:"
-    $summaryLines += $reportData.actions
-    $summaryLines += "---"
+# Generate the unified enhanced report
+$reportSuccess = Write-UnifiedMaintenanceReport -ReportPath $unifiedReportPath
+if ($reportSuccess) {
+    Write-Log "Unified maintenance report generated: $unifiedReportPath" 'INFO'
 }
 else {
-    $summaryLines += "No detailed action logs found in maintenance.log."
-    $summaryLines += "---"
+    Write-Log "Failed to generate unified maintenance report" 'ERROR'
 }
 
-$summaryLines | Out-File -FilePath $summaryPath -Append
-Write-Log "Summary report written to $summaryPath" 'INFO'
+### [POST-TASK 5] Cleanup and Finalization
 
 # Ensure repo folder is deleted only after report creation
 try {
@@ -3767,12 +3865,11 @@ catch {
     Write-Log "Failed to remove repo folder: $_" 'WARN'
 }
 
-### [POST-TASK 6] Example: Optionally send report via email or webhook (not implemented)
-### ...
+### [POST-TASK 6] Script Completion
 
 Write-Log "Script ended." 'INFO'
 
-### [POST-TASK 7] Prompt to close the window if running interactively
+### [POST-TASK 7] Interactive prompt if running in console
 if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host
     Read-Host -Prompt 'Press Enter to close this window...'

@@ -7,8 +7,8 @@
 - `script.ps1`: Main PowerShell script optimized for PowerShell 7.5.2. Contains all maintenance logic, modular functions, and orchestrates tasks with enhanced logging and progress tracking.
 - `README.md`: Project documentation, usage, and configuration details.
 - `.github/copilot-instructions.md`: AI agent instructions and conventions.
-- `maintenance.log`: Log file for all operations (created at runtime).
-- `maintenance_report.txt`: Summary report after each run (created at runtime).
+- `maintenance.log`: Detailed timestamped log file for all operations (created at runtime).
+- `maintenance_report.txt`: **Unified Enhanced Report** - Comprehensive system maintenance report with execution summary, system info, task results, actions performed, and performance metrics (created at runtime).
 - `config.json`: Optional, for custom settings (see README for format).
 - `inventory.json`: System inventory in JSON format (created at runtime).
 - Temp lists: Standardized JSON temp files for bloatware/essential app operations.
@@ -18,12 +18,13 @@
 - **PowerShell (`script.ps1`)**: Written in PowerShell 7.5.2 syntax with backward compatibility to PowerShell 5.1. Uses modern features like parallel processing, async operations, enhanced JSON handling, and improved error management. Centralized task coordination via `$global:ScriptTasks` array.
 - **Config (`config.json`)**: JSON format. Allows customization of task execution, exclusions, and reporting.
 
-## Enhanced Logging System (PowerShell 7.5.2 Optimized)
+## Enhanced Unified Reporting System (PowerShell 7.5.2 Optimized)
 - **Write-Log**: Combined function for both console and file output with enhanced color support
 - **Write-LogFile**: File-only logging without console noise, perfect for detailed operations
 - **Write-ConsoleMessage**: Console-only messages with enhanced color coding (INFO, WARN, ERROR, SUCCESS, PROGRESS)
 - **Write-TaskProgress**: Smart progress bars for console, simple completion messages for file logs
-- **Progress Tracking**: Visual progress bars for major operations (task execution, bloatware removal, app installation, inventory collection, cleanup)
+- **Write-UnifiedMaintenanceReport**: Comprehensive unified report generation with system info, task execution details, performance metrics, categorized actions, and file listings
+- **Performance Tracking**: Automated collection of execution metrics, inventory timings, and system performance data
 
 ## Modern PowerShell 7.5.2 Features
 - **Sequential Processing**: Reliable inventory collection and package operations (no hanging)
@@ -40,7 +41,7 @@
 - Function names: PascalCase for PowerShell functions.
 - Comments: Descriptive, with region markers for major sections.
 - Logging: Separated console progress from file logging - progress bars in console, clean timestamped entries in files.
-- Reports: Human-readable summary in `maintenance_report.txt`, detailed inventory files for audit.
+- Reports: **Unified Enhanced Report** in `maintenance_report.txt` with comprehensive system information, execution metrics, and categorized actions. Detailed inventory files for audit.
 - Temp Lists: Standardized JSON format with metadata for bloatware and essential app operations.
 
 ## Environment of Execution
@@ -66,7 +67,7 @@
    - System restore and cleanup
    - Final reporting and temp list generation
 4. Enhanced logging: Progress bars in console, clean entries in `maintenance.log`.
-5. Structured reports generated with detailed inventory and operation results.
+5. **Unified Enhanced Reporting**: Comprehensive system maintenance report with execution summary, performance metrics, categorized actions, and detailed system information.
 
 ## Key Modernizations
 - **Standardized Temp Lists**: JSON format with metadata for bloatware/essential app diff operations

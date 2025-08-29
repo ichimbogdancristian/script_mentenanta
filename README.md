@@ -20,7 +20,7 @@ Automates essential Windows maintenance tasks for IT, sysadmins, and power users
 - `README.md`: Project documentation, usage, and configuration details.
 - `.github/copilot-instructions.md`: AI agent instructions and conventions.
 - `maintenance.log`: Clean, timestamped log file for all operations (created at runtime).
-- `maintenance_report.txt`: Summary report after each run (created at runtime).
+- `maintenance_report.txt`: **Unified Enhanced Report** - Comprehensive maintenance report with system information, execution metrics, task results, categorized actions, and performance data (created at runtime).
 - `config.json`: Optional, for custom settings (see below).
 - `inventory.json`: Comprehensive system inventory in structured JSON format (created at runtime).
 - **Temp Lists**: Standardized JSON files for bloatware/essential app diff operations with metadata.
@@ -70,7 +70,7 @@ Log files now contain only relevant operational data without progress bar noise,
 1. **Double-click `script.bat`** or run it from an elevated command prompt.
 2. **Watch the progress bars** in the console for real-time feedback.
 3. Optionally edit `config.json` to customize tasks, exclusions, or reporting.
-4. Review `maintenance.log` (clean, timestamped entries) and `maintenance_report.txt` after each run.
+4. Review `maintenance.log` (clean, timestamped entries) and `maintenance_report.txt` (unified enhanced report with comprehensive system information and performance metrics) after each run.
 5. Check `inventory.json` for comprehensive system state information.
 
 ## Configuration (`config.json`)
@@ -129,7 +129,7 @@ All keys are optional. The script intelligently handles missing configurations.
 
 ## Troubleshooting
 - **Check `maintenance.log`** for clean, timestamped operational logs without progress noise.
-- **Review `maintenance_report.txt`** for summary and detailed results.
+- **Review `maintenance_report.txt`** for the unified enhanced report with comprehensive system information, execution metrics, and performance data.
 - **Examine `inventory.json`** for comprehensive system state information.
 - **Check temp list files** (JSON format) for bloatware/essential app operation details.
 - **Ensure PowerShell 7.5.2+** is installed for optimal performance (script will auto-fallback if needed).
