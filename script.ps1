@@ -39,6 +39,11 @@ $global:ScriptTasks = @(
     # Environment: Windows 10/11, admin required, supports custom app lists via config.
     # Logic: Inventory-based filtering, skips already installed apps, logs every install attempt and result.
     @{ Name = 'InstallEssentialApps'; Function = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log 'Essential apps installation skipped by config' 'INFO' } }; Description = 'Install essential applications' },
+    # --- Task: TempListsSummary ---
+    # Purpose: Generates comprehensive summary of all temp lists and diff operations for debugging and reporting.
+    # Environment: Windows 10/11, outputs to temp folder, reads all temp list files.
+    # Logic: Consolidates all list data into human-readable summary report.
+    @{ Name = 'TempListsSummary'; Function = { Write-TempListsSummary }; Description = 'Generate temp lists summary report' },
     # --- Task: UpdateAllPackages ---
     # Purpose: Updates all installed packages via Winget and Chocolatey.
     # Environment: Windows 10/11, admin required, silent/non-interactive.
@@ -765,6 +770,68 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[END] Extensive System Inventory (JSON Format)" 'INFO'
 }
 
+### Standardized Temp List Management Functions
+function New-StandardizedTempList {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ListType,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Operation,
+        
+        [Parameter(Mandatory = $true)]
+        $Data,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Description = ""
+    )
+    
+    # Generate standardized filename
+    $fileName = "temp_${ListType}_${Operation}.json"
+    $filePath = Join-Path $global:TempFolder $fileName
+    
+    # Create metadata object
+    $tempListData = @{
+        Metadata = @{
+            ListType = $ListType
+            Operation = $Operation
+            Description = $Description
+            Created = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            ScriptVersion = "1.0.0"
+            DataCount = if ($Data -is [array]) { $Data.Count } else { 1 }
+        }
+        Data = $Data
+    }
+    
+    # Save to file
+    $tempListData | ConvertTo-Json -Depth 10 | Out-File $filePath -Encoding UTF8
+    Write-Log "Standardized temp list created: $fileName (Count: $($tempListData.Metadata.DataCount))" 'VERBOSE'
+    
+    return $filePath
+}
+
+function Get-StandardizedTempList {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+    
+    if (Test-Path $FilePath) {
+        try {
+            $content = Get-Content $FilePath | ConvertFrom-Json
+            return $content
+        }
+        catch {
+            Write-Log "Failed to read standardized temp list: $FilePath - $_" 'WARN'
+            return $null
+        }
+    }
+    else {
+        Write-Log "Standardized temp list not found: $FilePath" 'WARN'
+        return $null
+    }
+}
+
 # [PRE-TASK 3] Run inventory before anything else
 Get-ExtensiveSystemInventory
 
@@ -778,6 +845,43 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
+
+### Load configuration FIRST (before creating lists)
+$configPath = Join-Path $PSScriptRoot "config.json"
+$global:Config = @{
+    SkipBloatwareRemoval = $false
+    SkipEssentialApps    = $false
+    SkipWindowsUpdates   = $false
+    SkipTelemetryDisable = $false
+    SkipSystemRestore    = $false
+    CustomEssentialApps  = @()
+    CustomBloatwareList  = @()
+    EnableVerboseLogging = $false
+}
+
+if (Test-Path $configPath) {
+    try {
+        $config = Get-Content $configPath | ConvertFrom-Json
+        # Merge custom config with defaults
+        if ($config.SkipBloatwareRemoval) { $global:Config.SkipBloatwareRemoval = $config.SkipBloatwareRemoval }
+        if ($config.SkipEssentialApps) { $global:Config.SkipEssentialApps = $config.SkipEssentialApps }
+        if ($config.SkipWindowsUpdates) { $global:Config.SkipWindowsUpdates = $config.SkipWindowsUpdates }
+        if ($config.SkipTelemetryDisable) { $global:Config.SkipTelemetryDisable = $config.SkipTelemetryDisable }
+        if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
+        if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
+        if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
+        if ($config.EnableVerboseLogging) { $global:Config.EnableVerboseLogging = $config.EnableVerboseLogging }
+        
+        Write-Log "Loaded configuration from config.json" 'INFO'
+        Write-Log "Config: SkipBloatware=$($global:Config.SkipBloatwareRemoval), SkipEssential=$($global:Config.SkipEssentialApps), SkipUpdates=$($global:Config.SkipWindowsUpdates)" 'INFO'
+    }
+    catch {
+        Write-Log "Failed to load configuration: $_" 'WARN'
+    }
+}
+else {
+    Write-Log "No config.json found. Using defaults." 'INFO'
+}
 
 ### Centralized temp folder and essential/bloatware lists
 # Use repo folder as temp folder for better organization
@@ -930,8 +1034,8 @@ if ($global:Config.CustomBloatwareList -and $global:Config.CustomBloatwareList.C
     Write-Log "Added $($global:Config.CustomBloatwareList.Count) custom bloatware entries from config" 'INFO'
 }
 
-$bloatwareListPath = Join-Path $global:TempFolder 'bloatware.json'
-$global:BloatwareList | ConvertTo-Json -Depth 3 | Out-File $bloatwareListPath -Encoding UTF8
+# Create standardized temp lists with consistent naming and metadata
+New-StandardizedTempList -ListType "bloatware" -Operation "main_list" -Data $global:BloatwareList -Description "Complete bloatware list including custom entries from config"
 
 ### Essential Apps List
 $global:EssentialApps = @(
@@ -956,45 +1060,11 @@ if ($global:Config.CustomEssentialApps -and $global:Config.CustomEssentialApps.C
     Write-Log "Added $($global:Config.CustomEssentialApps.Count) custom essential apps from config" 'INFO'
 }
 
-$essentialAppsListPath = Join-Path $global:TempFolder 'essential_apps.json'
-$global:EssentialApps | ConvertTo-Json -Depth 5 | Out-File $essentialAppsListPath -Encoding UTF8
+# Save main essential apps list using standardized temp list function
+New-StandardizedTempList -ListType "essential" -Operation "main_list" -Data $global:EssentialApps -Description "Complete essential apps list including custom entries from config"
 
 ### Load configuration (if exists)
-$configPath = Join-Path $PSScriptRoot "config.json"
-$global:Config = @{
-    SkipBloatwareRemoval = $false
-    SkipEssentialApps    = $false
-    SkipWindowsUpdates   = $false
-    SkipTelemetryDisable = $false
-    SkipSystemRestore    = $false
-    CustomEssentialApps  = @()
-    CustomBloatwareList  = @()
-    EnableVerboseLogging = $false
-}
-
-if (Test-Path $configPath) {
-    try {
-        $config = Get-Content $configPath | ConvertFrom-Json
-        # Merge custom config with defaults
-        if ($config.SkipBloatwareRemoval) { $global:Config.SkipBloatwareRemoval = $config.SkipBloatwareRemoval }
-        if ($config.SkipEssentialApps) { $global:Config.SkipEssentialApps = $config.SkipEssentialApps }
-        if ($config.SkipWindowsUpdates) { $global:Config.SkipWindowsUpdates = $config.SkipWindowsUpdates }
-        if ($config.SkipTelemetryDisable) { $global:Config.SkipTelemetryDisable = $config.SkipTelemetryDisable }
-        if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
-        if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
-        if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
-        if ($config.EnableVerboseLogging) { $global:Config.EnableVerboseLogging = $config.EnableVerboseLogging }
-        
-        Write-Log "Loaded configuration from config.json" 'INFO'
-        Write-Log "Config: SkipBloatware=$($global:Config.SkipBloatwareRemoval), SkipEssential=$($global:Config.SkipEssentialApps), SkipUpdates=$($global:Config.SkipWindowsUpdates)" 'INFO'
-    }
-    catch {
-        Write-Log "Failed to load configuration: $_" 'WARN'
-    }
-}
-else {
-    Write-Log "No config.json found. Using defaults." 'INFO'
-}
+# Configuration is now loaded at the top of the script before list creation
 
 ### Check Windows version and compatibility
 $os = Get-CimInstance Win32_OperatingSystem
@@ -1233,6 +1303,23 @@ function Install-EssentialApps {
 
     Write-Log "[EssentialApps] Diff analysis: $($appsToInstall.Count) essential apps need installation (out of $($global:EssentialApps.Count) total in list)" 'INFO'
 
+    # Save diff lists using standardized temp list functions
+    New-StandardizedTempList -ListType "essential" -Operation "to_install" -Data $appsToInstall -Description "Essential apps that need to be installed"
+    
+    # Save already installed apps list
+    $appsAlreadyInstalled = $global:EssentialApps | Where-Object { 
+        $currentApp = $_
+        $found = $false
+        foreach ($toInstall in $appsToInstall) {
+            if ($toInstall.Name -eq $currentApp.Name) {
+                $found = $true
+                break
+            }
+        }
+        return -not $found
+    }
+    New-StandardizedTempList -ListType "essential" -Operation "already_installed" -Data $appsAlreadyInstalled -Description "Essential apps already installed on system"
+
     if ($appsToInstall.Count -eq 0) {
         Write-Log "[EssentialApps] All essential apps already installed. Skipping installation process." 'INFO'
         Write-Log "[END] Install Essential Apps" 'INFO'
@@ -1414,6 +1501,19 @@ function Install-EssentialApps {
     foreach ($result in $detailedResults) {
         Write-Log $result 'INFO'
     }
+    
+    # Create final installation results temp list
+    $installResults = @{
+        Summary = @{
+            Installed = $success
+            Failed = $fail
+            Skipped = $skipped
+            Total = $success + $fail + $skipped
+        }
+        Details = $detailedResults
+    }
+    New-StandardizedTempList -ListType "essential" -Operation "install_results" -Data $installResults -Description "Final results of essential apps installation process"
+    
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
 
@@ -1488,16 +1588,12 @@ function Remove-Bloatware {
     
     Write-Log "[Bloatware] Diff analysis: $($bloatwareToRemove.Count) bloatware apps found installed (out of $($global:BloatwareList.Count) total in list)" 'INFO'
     
-    # Save the diff list to temporary file for debugging
-    $diffListPath = Join-Path $global:TempFolder 'bloatware_diff_to_remove.json'
-    $bloatwareToRemove | ConvertTo-Json -Depth 3 | Out-File $diffListPath -Encoding UTF8
-    Write-Log "[Bloatware] Diff list saved to: $diffListPath" 'VERBOSE'
+    # Save diff lists using standardized temp list functions
+    New-StandardizedTempList -ListType "bloatware" -Operation "to_remove" -Data $bloatwareToRemove -Description "Bloatware apps found on system and targeted for removal"
     
     # Save the apps NOT found (for debugging purposes)
     $appsNotFound = $global:BloatwareList | Where-Object { $_ -notin $bloatwareToRemove }
-    $notFoundPath = Join-Path $global:TempFolder 'bloatware_not_found.json'
-    $appsNotFound | ConvertTo-Json -Depth 3 | Out-File $notFoundPath -Encoding UTF8
-    Write-Log "[Bloatware] Apps not found on system saved to: $notFoundPath" 'VERBOSE'
+    New-StandardizedTempList -ListType "bloatware" -Operation "not_found" -Data $appsNotFound -Description "Bloatware apps not found on system"
     Write-Log "[Bloatware] Apps not found on system: $($appsNotFound.Count)" 'INFO'
     
     if ($bloatwareToRemove.Count -eq 0) {
@@ -2083,10 +2179,167 @@ function Remove-Bloatware {
     Write-Log "  - Failed to remove: $failed apps" 'INFO'
     Write-Log "  - Total in bloatware list: $($global:BloatwareList.Count) apps" 'INFO'
     Write-Log "  - Only apps from diff list were processed for removal" 'INFO'
+    
+    # Create final removal results temp list
+    $removalResults = @{
+        Summary = @{
+            Processed = $totalApps
+            Removed = $removed
+            Failed = $failed
+            TotalInMainList = $global:BloatwareList.Count
+        }
+        ProcessedApps = $bloatwareToRemove
+    }
+    New-StandardizedTempList -ListType "bloatware" -Operation "removal_results" -Data $removalResults -Description "Final results of bloatware removal process"
+    
     Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
 }
 
-### [TASK 4] System Inventory (Legacy)
+### [TASK 4] Generate Temp Lists Summary Report
+function Write-TempListsSummary {
+    # ===============================
+    # Task: TempListsSummary
+    # ===============================
+    # Purpose: Creates a comprehensive summary of all temp lists and diff operations
+    # Environment: Windows 10/11, outputs standardized report to temp folder
+    # Logic: Reads all temp list files and creates human-readable summary
+    Write-Log "[START] Generate Temp Lists Summary Report" 'INFO'
+    
+    $summaryPath = Join-Path $global:TempFolder 'temp_lists_summary_report.txt'
+    $summaryContent = @()
+    
+    $summaryContent += "=============================================="
+    $summaryContent += "Windows Maintenance Script - Temp Lists Summary"
+    $summaryContent += "Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    $summaryContent += "=============================================="
+    $summaryContent += ""
+    
+    # Find all standardized temp list files
+    $tempFiles = Get-ChildItem -Path $global:TempFolder -Filter "temp_*.json" | Sort-Object Name
+    
+    if ($tempFiles.Count -eq 0) {
+        $summaryContent += "No standardized temp list files found in: $global:TempFolder"
+        $summaryContent | Out-File $summaryPath -Encoding UTF8
+        Write-Log "Temp lists summary report generated (no files found): $summaryPath" 'WARN'
+        return
+    }
+    
+    # Group files by list type
+    $bloatwareFiles = $tempFiles | Where-Object { $_.Name -like "temp_bloatware_*" }
+    $essentialFiles = $tempFiles | Where-Object { $_.Name -like "temp_essential_*" }
+    $otherFiles = $tempFiles | Where-Object { $_.Name -notlike "temp_bloatware_*" -and $_.Name -notlike "temp_essential_*" }
+    
+    # Bloatware Lists Summary
+    $summaryContent += "BLOATWARE MANAGEMENT:"
+    $summaryContent += "====================="
+    
+    foreach ($file in $bloatwareFiles) {
+        $listData = Get-StandardizedTempList -FilePath $file.FullName
+        if ($listData) {
+            $summaryContent += "File: $($file.Name)"
+            $summaryContent += "  Operation: $($listData.Metadata.Operation)"
+            $summaryContent += "  Description: $($listData.Metadata.Description)"
+            $summaryContent += "  Count: $($listData.Metadata.DataCount)"
+            $summaryContent += "  Created: $($listData.Metadata.Created)"
+            
+            # Show first few items if count is reasonable
+            if ($listData.Metadata.DataCount -gt 0 -and $listData.Metadata.DataCount -le 10) {
+                $summaryContent += "  Items:"
+                if ($listData.Data -is [array]) {
+                    $listData.Data | ForEach-Object { $summaryContent += "    - $_" }
+                }
+                else {
+                    $summaryContent += "    - $($listData.Data)"
+                }
+            }
+            elseif ($listData.Metadata.DataCount -gt 10) {
+                $summaryContent += "  Items: (Too many to display, see file for details)"
+            }
+            $summaryContent += ""
+        }
+    }
+    
+    # Essential Apps Lists Summary
+    $summaryContent += "ESSENTIAL APPS MANAGEMENT:"
+    $summaryContent += "=========================="
+    
+    foreach ($file in $essentialFiles) {
+        $listData = Get-StandardizedTempList -FilePath $file.FullName
+        if ($listData) {
+            $summaryContent += "File: $($file.Name)"
+            $summaryContent += "  Operation: $($listData.Metadata.Operation)"
+            $summaryContent += "  Description: $($listData.Metadata.Description)"
+            $summaryContent += "  Count: $($listData.Metadata.DataCount)"
+            $summaryContent += "  Created: $($listData.Metadata.Created)"
+            
+            # Show apps with details if count is reasonable
+            if ($listData.Metadata.DataCount -gt 0 -and $listData.Metadata.DataCount -le 10) {
+                $summaryContent += "  Apps:"
+                if ($listData.Data -is [array]) {
+                    $listData.Data | ForEach-Object { 
+                        if ($_.Name) {
+                            $summaryContent += "    - $($_.Name) (Winget: $($_.Winget), Choco: $($_.Choco))"
+                        }
+                        else {
+                            $summaryContent += "    - $_"
+                        }
+                    }
+                }
+                else {
+                    if ($listData.Data.Name) {
+                        $summaryContent += "    - $($listData.Data.Name) (Winget: $($listData.Data.Winget), Choco: $($listData.Data.Choco))"
+                    }
+                    else {
+                        $summaryContent += "    - $($listData.Data)"
+                    }
+                }
+            }
+            elseif ($listData.Metadata.DataCount -gt 10) {
+                $summaryContent += "  Apps: (Too many to display, see file for details)"
+            }
+            $summaryContent += ""
+        }
+    }
+    
+    # Other Files Summary
+    if ($otherFiles.Count -gt 0) {
+        $summaryContent += "OTHER TEMP FILES:"
+        $summaryContent += "================="
+        
+        foreach ($file in $otherFiles) {
+            $listData = Get-StandardizedTempList -FilePath $file.FullName
+            if ($listData) {
+                $summaryContent += "File: $($file.Name)"
+                $summaryContent += "  Operation: $($listData.Metadata.Operation)"
+                $summaryContent += "  Description: $($listData.Metadata.Description)"
+                $summaryContent += "  Count: $($listData.Metadata.DataCount)"
+                $summaryContent += "  Created: $($listData.Metadata.Created)"
+                $summaryContent += ""
+            }
+        }
+    }
+    
+    $summaryContent += "TEMP FILES LOCATIONS:"
+    $summaryContent += "===================="
+    foreach ($file in $tempFiles) {
+        $summaryContent += "$($file.Name): EXISTS"
+        $summaryContent += "  Path: $($file.FullName)"
+        $summaryContent += "  Size: $([math]::Round($file.Length / 1KB, 2)) KB"
+    }
+    
+    $summaryContent += ""
+    $summaryContent += "=============================================="
+    $summaryContent += "End of Temp Lists Summary Report"
+    $summaryContent += "Total Files: $($tempFiles.Count)"
+    $summaryContent += "=============================================="
+    
+    # Write summary to file
+    $summaryContent | Out-File $summaryPath -Encoding UTF8
+    Write-Log "Temp lists summary report generated: $summaryPath" 'INFO'
+    Write-Log "[END] Generate Temp Lists Summary Report" 'INFO'
+}
+
+### [TASK 5] System Inventory (Legacy)
 function Get-SystemInventory {
     # ===============================
     # Task: SystemInventory
