@@ -26,12 +26,13 @@
 - **Progress Tracking**: Visual progress bars for major operations (task execution, bloatware removal, app installation, inventory collection, cleanup)
 
 ## Modern PowerShell 7.5.2 Features
-- **Parallel Processing**: ForEach-Object -Parallel for inventory collection and package operations
+- **Sequential Processing**: Reliable inventory collection and package operations (no hanging)
 - **Async Operations**: Modern process management with timeout support
 - **Enhanced JSON**: Improved parsing with -AsHashtable and better error handling
 - **Modern Package Management**: Invoke-ModernPackageManager wrapper with enhanced reliability
 - **Thread-Safe Operations**: Using System.Collections.Concurrent namespaces
 - **Improved File I/O**: UTF-8 encoding and async file operations
+- **Reduced PS5.1 Dependency**: Native PS7+ implementations for AppX, Windows Updates, and System Restore
 - **Fallback Compatibility**: Automatic detection and fallback to Windows PowerShell 5.1 for legacy operations
 
 ## Formatting Conventions
@@ -71,11 +72,25 @@
 - **Standardized Temp Lists**: JSON format with metadata for bloatware/essential app diff operations
 - **Enhanced Error Handling**: Detailed exception information and graceful degradation
 - **Modern Package Management**: Unified wrapper for winget/chocolatey with timeout and retry logic
-- **Parallel Inventory Collection**: Significantly improved performance using PowerShell 7.5.2 parallel processing
+- **Sequential Inventory Collection**: Reliable performance using sequential processing (no hanging issues)
 - **Smart Progress Tracking**: Visual feedback without cluttering log files
+- **Reduced PS5.1 Dependency**: Native PowerShell 7+ implementations for most operations
 - **Compatibility Layer**: Automatic PowerShell version detection and appropriate command execution
 
+## VSCode Development and Quality Assurance
+- **Always Check Diagnostics**: Before any code submission or completion, check VSCode's Problems tab and Diagnostics panel for:
+  - PowerShell script analysis warnings (PSScriptAnalyzer)
+  - Syntax errors and parsing issues
+  - Best practice violations
+  - Security concerns and automatic variable conflicts
+- **Diagnostic Panel Access**: View → Problems (Ctrl+Shift+M) or check the bottom panel's "Problems" tab
+- **Fix All Issues**: Address all warnings and errors before considering work complete
+- **Code Quality Standards**: Maintain PSScriptAnalyzer compliance and follow PowerShell best practices
+- **Variable Naming**: Avoid automatic variables like `$error`, use descriptive names like `$errorOutput`
+- **Function Standards**: Use approved verbs, proper parameter validation, and comprehensive error handling
+
 ## Best Practices
+- **Quality First**: Always check VSCode Problems/Diagnostics tab before completing any code changes
 - Always start with `script.bat` for full automation.
 - Review `README.md` for config options and usage.
 - Check `maintenance.log` for clean, timestamped operational logs.
@@ -83,6 +98,9 @@
 - Use temp list files for debugging bloatware/essential app operations.
 - Leverage PowerShell 7.5.2 features while maintaining backward compatibility.
 - Progress bars provide user feedback without affecting log file quality.
+- **Code Validation**: Run PSScriptAnalyzer checks and resolve all warnings before deployment
+- **Error Handling**: Implement comprehensive try/catch blocks with meaningful error messages
+- **Performance**: Use sequential processing for external commands to avoid hanging issues
 
 ---
 

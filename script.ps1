@@ -7,7 +7,7 @@
 #
 # MODERNIZED FOR POWERSHELL 7.5.2:
 # - Enhanced async operations and improved process management
-# - Parallel processing for inventory collection and package operations
+# - Sequential processing for inventory collection (reliable, no hanging)
 # - Modern JSON parsing with better error handling and performance
 # - Improved file I/O operations with UTF-8 encoding
 # - Enhanced error handling with detailed exception information
@@ -1215,159 +1215,116 @@ function Get-ExtensiveSystemInventory {
         $inventory.winget = @()
     }
 
-    # Use PowerShell 7.5.2's parallel processing for better performance on multiple inventory collections
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        Write-Log "[Inventory] Using parallel processing for remaining inventory collections..." 'INFO'
-        
-        # Define inventory collection jobs
-        $inventoryJobs = @(
-            @{ Name = 'choco'; Script = {
-                if (Get-Command choco -ErrorAction SilentlyContinue) {
-                    try {
-                        $chocoOutput = choco list --local-only 2>$null
-                        if ($chocoOutput) {
-                            return @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
-                                ForEach-Object { 
-                                    $parts = $_ -split '\s+', 2
-                                    [PSCustomObject]@{
-                                        Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
-                                        Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
-                                    }
-                                })
-                        }
-                    }
-                    catch { return @() }
-                }
-                return @()
-            }},
-            @{ Name = 'registry'; Script = {
-                $uninstallKeys = @(
-                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-                )
-                try {
-                    return @(foreach ($key in $uninstallKeys) {
-                        Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-                            if ($props.DisplayName) {
-                                [PSCustomObject]@{ 
-                                    DisplayName     = $props.DisplayName
-                                    UninstallString = $props.UninstallString
-                                    Publisher       = $props.Publisher
-                                    Version         = $props.DisplayVersion
-                                }
-                            }
+    # Use reliable sequential processing to avoid hanging issues with external commands
+    # Parallel execution was causing hangs with choco, CIM operations, and registry access
+    Write-LogFile "[Inventory] Using reliable sequential processing for remaining inventory collections..." 'INFO'
+    
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting chocolatey apps..." -PercentComplete 50
+    Write-LogFile "[Inventory] Collecting installed choco apps..." 'INFO'
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        try {
+            $chocoOutput = choco list --local-only 2>$null
+            if ($chocoOutput) {
+                $inventory.choco = @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
+                    ForEach-Object { 
+                        $parts = $_ -split '\s+', 2
+                        [PSCustomObject]@{
+                            Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
+                            Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
                         }
                     })
-                }
-                catch { return @() }
-            }},
-            @{ Name = 'services'; Script = {
-                try {
-                    return @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | 
-                        Select-Object Name, Status, StartType)
-                }
-                catch { return @() }
-            }},
-            @{ Name = 'tasks'; Script = {
-                try {
-                    return @(Get-ScheduledTask -ErrorAction SilentlyContinue | 
-                        Select-Object TaskName, TaskPath, State)
-                }
-                catch { return @() }
-            }},
-            @{ Name = 'drivers'; Script = {
-                try {
-                    return @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | 
-                        Select-Object DeviceName, DriverVersion, Manufacturer)
-                }
-                catch { return @() }
-            }},
-            @{ Name = 'updates'; Script = {
-                try {
-                    return @(Get-HotFix -ErrorAction SilentlyContinue | 
-                        Select-Object Description, HotFixID, InstalledOn)
-                }
-                catch { return @() }
-            }}
-        )
-        
-        # Execute inventory jobs in parallel using PowerShell 7.5.2's ForEach-Object -Parallel
-        Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting remaining data (parallel)..." -PercentComplete 50
-        Write-LogFile "[Inventory] Starting parallel collection for: choco, registry, services, tasks, drivers, updates" 'INFO'
-        
-        $results = $inventoryJobs | ForEach-Object -Parallel {
-            $job = $_
-            try {
-                $result = & $job.Script
-                return @{ Name = $job.Name; Data = $result; Success = $true }
+                Write-LogFile "[Inventory] Collected $($inventory.choco.Count) choco apps." 'INFO'
             }
-            catch {
-                return @{ Name = $job.Name; Data = @(); Success = $false; Error = $_.Exception.Message }
+            else {
+                $inventory.choco = @()
+                Write-LogFile "[Inventory] No choco apps found." 'INFO'
             }
-        } -ThrottleLimit 6
-        
-        # Process parallel results
-        Write-TaskProgress -Activity "Building System Inventory" -Status "Processing parallel results..." -PercentComplete 70
-        foreach ($result in $results) {
-            switch ($result.Name) {
-                'choco' { 
-                    $inventory.choco = $result.Data
-                    if ($result.Success) { 
-                        Write-LogFile "[Inventory] Collected $($inventory.choco.Count) choco apps via parallel processing." 'INFO' 
-                    } else { 
-                        Write-LogFile "[Inventory] Choco collection failed: $($result.Error)" 'WARN' 
-                    }
-                }
-                'registry' { 
-                    $inventory.registry_uninstall = $result.Data
-                    if ($result.Success) { 
-                        Write-Log "[Inventory] Collected $($inventory.registry_uninstall.Count) registry entries via parallel processing." 'INFO' 
-                    } else { 
-                        Write-Log "[Inventory] Registry collection failed: $($result.Error)" 'WARN' 
-                    }
-                }
-                'services' { 
-                    $inventory.services = $result.Data
-                    if ($result.Success) { 
-                        Write-Log "[Inventory] Collected $($inventory.services.Count) services via parallel processing." 'INFO' 
-                    } else { 
-                        Write-Log "[Inventory] Services collection failed: $($result.Error)" 'WARN' 
-                    }
-                }
-                'tasks' { 
-                    $inventory.scheduled_tasks = $result.Data
-                    if ($result.Success) { 
-                        Write-Log "[Inventory] Collected $($inventory.scheduled_tasks.Count) scheduled tasks via parallel processing." 'INFO' 
-                    } else { 
-                        Write-Log "[Inventory] Scheduled tasks collection failed: $($result.Error)" 'WARN' 
-                    }
-                }
-                'drivers' { 
-                    $inventory.drivers = $result.Data
-                    if ($result.Success) { 
-                        Write-Log "[Inventory] Collected $($inventory.drivers.Count) drivers via parallel processing." 'INFO' 
-                    } else { 
-                        Write-Log "[Inventory] Drivers collection failed: $($result.Error)" 'WARN' 
-                    }
-                }
-                'updates' { 
-                    $inventory.updates = $result.Data
-                    if ($result.Success) { 
-                        Write-Log "[Inventory] Collected $($inventory.updates.Count) updates via parallel processing." 'INFO' 
-                    } else { 
-                        Write-Log "[Inventory] Updates collection failed: $($result.Error)" 'WARN' 
-                    }
-                }
-            }
+        }
+        catch { 
+            Write-LogFile "[Inventory] Choco apps failed: $_" 'WARN'
+            $inventory.choco = @()
         }
     }
     else {
-        # Fallback sequential processing for PowerShell 5.1
-        Write-Log "[Inventory] Using sequential processing (PowerShell 5.1 mode)..." 'INFO'
-        
-        Write-Log "[Inventory] Collecting installed choco apps..." 'INFO'
+        Write-LogFile "[Inventory] Chocolatey not available." 'WARN'
+        $inventory.choco = @()
+    }
+
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting registry entries..." -PercentComplete 60
+    Write-LogFile "[Inventory] Collecting registry uninstall keys..." 'INFO'
+    $uninstallKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    try {
+        $inventory.registry_uninstall = @(foreach ($key in $uninstallKeys) {
+            Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+                $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                if ($props.DisplayName) {
+                    [PSCustomObject]@{ 
+                        DisplayName     = $props.DisplayName
+                        UninstallString = $props.UninstallString
+                        Publisher       = $props.Publisher
+                        Version         = $props.DisplayVersion
+                    }
+                }
+            }
+        })
+        Write-LogFile "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries." 'INFO'
+    }
+    catch { 
+        Write-LogFile "[Inventory] Registry uninstall keys failed: $_" 'WARN'
+        $inventory.registry_uninstall = @()
+    }
+
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting services..." -PercentComplete 70
+    Write-LogFile "[Inventory] Collecting services..." 'INFO'
+    try {
+        $inventory.services = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | 
+            Select-Object Name, Status, StartType)
+        Write-LogFile "[Inventory] Collected $($inventory.services.Count) services." 'INFO'
+    }
+    catch { 
+        Write-LogFile "[Inventory] Services failed: $_" 'WARN'
+        $inventory.services = @()
+    }
+
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting scheduled tasks..." -PercentComplete 80
+    Write-LogFile "[Inventory] Collecting scheduled tasks..." 'INFO'
+    try {
+        $inventory.scheduled_tasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | 
+            Select-Object TaskName, TaskPath, State)
+        Write-LogFile "[Inventory] Collected $($inventory.scheduled_tasks.Count) scheduled tasks." 'INFO'
+    }
+    catch { 
+        Write-LogFile "[Inventory] Scheduled tasks failed: $_" 'WARN'
+        $inventory.scheduled_tasks = @()
+    }
+
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting drivers..." -PercentComplete 85
+    Write-LogFile "[Inventory] Collecting drivers..." 'INFO'
+    try {
+        $inventory.drivers = @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | 
+            Select-Object DeviceName, DriverVersion, Manufacturer)
+        Write-LogFile "[Inventory] Collected $($inventory.drivers.Count) drivers." 'INFO'
+    }
+    catch { 
+        Write-LogFile "[Inventory] Drivers failed: $_" 'WARN'
+        $inventory.drivers = @()
+    }
+
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting Windows updates..." -PercentComplete 90
+    Write-LogFile "[Inventory] Collecting Windows updates..." 'INFO'
+    try {
+        $inventory.updates = @(Get-HotFix -ErrorAction SilentlyContinue | 
+            Select-Object Description, HotFixID, InstalledOn)
+        Write-LogFile "[Inventory] Collected $($inventory.updates.Count) Windows updates." 'INFO'
+    }
+    catch { 
+        Write-LogFile "[Inventory] Windows updates failed: $_" 'WARN'
+        $inventory.updates = @()
+    }
         if (Get-Command choco -ErrorAction SilentlyContinue) {
             try {
                 $chocoOutput = choco list --local-only 2>$null
@@ -1463,77 +1420,6 @@ function Get-ExtensiveSystemInventory {
             Write-Log "[Inventory] Windows updates failed: $_" 'WARN'
             $inventory.updates = @()
         }
-    }
-
-    Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO'
-    $uninstallKeys = @(
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-    )
-    try {
-        $inventory.registry_uninstall = @(foreach ($key in $uninstallKeys) {
-                Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                    $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-                    if ($props.DisplayName) {
-                        [PSCustomObject]@{ 
-                            DisplayName     = $props.DisplayName
-                            UninstallString = $props.UninstallString
-                            Publisher       = $props.Publisher
-                            Version         = $props.DisplayVersion
-                        }
-                    }
-                }
-            })
-        Write-Log "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries." 'INFO'
-    }
-    catch { 
-        Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN'
-        $inventory.registry_uninstall = @()
-    }
-
-    Write-Log "[Inventory] Collecting services..." 'INFO'
-    try {
-        $inventory.services = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | 
-            Select-Object Name, Status, StartType)
-        Write-Log "[Inventory] Collected $($inventory.services.Count) services." 'INFO'
-    }
-    catch { 
-        Write-Log "[Inventory] Services failed: $_" 'WARN'
-        $inventory.services = @()
-    }
-
-    Write-Log "[Inventory] Collecting scheduled tasks..." 'INFO'
-    try {
-        $inventory.scheduled_tasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | 
-            Select-Object TaskName, TaskPath, State)
-        Write-Log "[Inventory] Collected $($inventory.scheduled_tasks.Count) scheduled tasks." 'INFO'
-    }
-    catch { 
-        Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN'
-        $inventory.scheduled_tasks = @()
-    }
-
-    Write-Log "[Inventory] Collecting drivers..." 'INFO'
-    try {
-        $inventory.drivers = @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | 
-            Select-Object DeviceName, DriverVersion, Manufacturer)
-        Write-Log "[Inventory] Collected $($inventory.drivers.Count) drivers." 'INFO'
-    }
-    catch { 
-        Write-Log "[Inventory] Drivers failed: $_" 'WARN'
-        $inventory.drivers = @()
-    }
-
-    Write-Log "[Inventory] Collecting Windows updates..." 'INFO'
-    try {
-        $inventory.updates = @(Get-HotFix -ErrorAction SilentlyContinue | 
-            Select-Object Description, HotFixID, InstalledOn)
-        Write-Log "[Inventory] Collected $($inventory.updates.Count) Windows updates." 'INFO'
-    }
-    catch { 
-        Write-Log "[Inventory] Windows updates failed: $_" 'WARN'
-        $inventory.updates = @()
     }
 
     # Write structured inventory.json
