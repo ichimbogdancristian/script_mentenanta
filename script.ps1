@@ -354,11 +354,11 @@ function Get-AppxPackageCompatible {
                     foreach ($pkg in $cimPackages) {
                         if ($Name -eq "*" -or $pkg.Name -like "*$Name*") {
                             $packages += [PSCustomObject]@{
-                                Name = $pkg.Name
+                                Name            = $pkg.Name
                                 PackageFullName = $pkg.Name
-                                Publisher = $pkg.Vendor
-                                Architecture = "Unknown"
-                                Version = $pkg.Version
+                                Publisher       = $pkg.Vendor
+                                Architecture    = "Unknown"
+                                Version         = $pkg.Version
                             }
                         }
                     }
@@ -370,11 +370,11 @@ function Get-AppxPackageCompatible {
                 if ($cimPackages) {
                     foreach ($pkg in $cimPackages) {
                         $packages += [PSCustomObject]@{
-                            Name = $pkg.Name
+                            Name            = $pkg.Name
                             PackageFullName = $pkg.Name
-                            Publisher = $pkg.Vendor
-                            Architecture = "Unknown"
-                            Version = $pkg.Version
+                            Publisher       = $pkg.Vendor
+                            Architecture    = "Unknown"
+                            Version         = $pkg.Version
                         }
                     }
                 }
@@ -663,9 +663,9 @@ function Checkpoint-ComputerCompatible {
                 try {
                     # Create restore point using CIM method
                     $result = Invoke-CimMethod -ClassName Win32_SystemRestore -MethodName CreateRestorePoint -Arguments @{
-                        Description = $Description
+                        Description      = $Description
                         RestorePointType = 12  # MODIFY_SETTINGS
-                        EventType = 100        # BEGIN_SYSTEM_CHANGE
+                        EventType        = 100        # BEGIN_SYSTEM_CHANGE
                     } -ErrorAction Stop
                     
                     if ($result.ReturnValue -eq 0) {
@@ -961,7 +961,7 @@ function Write-ConsoleMessage {
     
     $colorParams = $consoleColors[$Level]
     $writeParams = @{
-        Object = $Message
+        Object          = $Message
         ForegroundColor = $colorParams.ForegroundColor
     }
     
@@ -1003,8 +1003,8 @@ function Write-TaskProgress {
     }
     else {
         $progressParams = @{
-            Activity = $Activity
-            Status = $Status
+            Activity        = $Activity
+            Status          = $Status
             PercentComplete = $PercentComplete
         }
         
@@ -1049,7 +1049,7 @@ function Invoke-Task {
     try {
         # Use PowerShell 7.5.2's enhanced error handling with more detailed error records
         $ErrorActionPreference = 'Stop'
-        $result = & $Action
+        $null = & $Action
         
         $stopwatch.Stop()
         Write-Log "Task succeeded: $TaskName (Duration: $($stopwatch.Elapsed.TotalSeconds.ToString('F2'))s)" 'INFO'
@@ -1059,15 +1059,15 @@ function Invoke-Task {
         $stopwatch.Stop()
         # Use PowerShell 7.5.2's improved exception details
         $errorDetails = @{
-            Message = $_.Exception.Message
-            Type = $_.Exception.GetType().Name
-            Line = $_.InvocationInfo.ScriptLineNumber
+            Message  = $_.Exception.Message
+            Type     = $_.Exception.GetType().Name
+            Line     = $_.InvocationInfo.ScriptLineNumber
             Position = $_.InvocationInfo.OffsetInLine
         }
         
         $errorMessage = "Task failed: $TaskName (Duration: $($stopwatch.Elapsed.TotalSeconds.ToString('F2'))s). " +
-                       "Error: $($errorDetails.Type) - $($errorDetails.Message) " +
-                       "(Line: $($errorDetails.Line), Position: $($errorDetails.Position))"
+        "Error: $($errorDetails.Type) - $($errorDetails.Message) " +
+        "(Line: $($errorDetails.Line), Position: $($errorDetails.Position))"
         
         Write-Log $errorMessage 'ERROR'
         return $false
@@ -1259,18 +1259,18 @@ function Get-ExtensiveSystemInventory {
     )
     try {
         $inventory.registry_uninstall = @(foreach ($key in $uninstallKeys) {
-            Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-                if ($props.DisplayName) {
-                    [PSCustomObject]@{ 
-                        DisplayName     = $props.DisplayName
-                        UninstallString = $props.UninstallString
-                        Publisher       = $props.Publisher
-                        Version         = $props.DisplayVersion
+                Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+                    $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                    if ($props.DisplayName) {
+                        [PSCustomObject]@{ 
+                            DisplayName     = $props.DisplayName
+                            UninstallString = $props.UninstallString
+                            Publisher       = $props.Publisher
+                            Version         = $props.DisplayVersion
+                        }
                     }
                 }
-            }
-        })
+            })
         Write-LogFile "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries." 'INFO'
     }
     catch { 
@@ -1325,120 +1325,120 @@ function Get-ExtensiveSystemInventory {
         Write-LogFile "[Inventory] Windows updates failed: $_" 'WARN'
         $inventory.updates = @()
     }
-        if (Get-Command choco -ErrorAction SilentlyContinue) {
-            try {
-                $chocoOutput = choco list --local-only 2>$null
-                if ($chocoOutput) {
-                    $inventory.choco = @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
-                        ForEach-Object { 
-                            $parts = $_ -split '\s+', 2
-                            [PSCustomObject]@{
-                                Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
-                                Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
-                            }
-                        })
-                    Write-Log "[Inventory] Collected $($inventory.choco.Count) choco apps." 'INFO'
-                }
-            }
-            catch { 
-                Write-Log "[Inventory] Choco apps failed: $_" 'WARN'
-                $inventory.choco = @()
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        try {
+            $chocoOutput = choco list --local-only 2>$null
+            if ($chocoOutput) {
+                $inventory.choco = @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
+                    ForEach-Object { 
+                        $parts = $_ -split '\s+', 2
+                        [PSCustomObject]@{
+                            Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
+                            Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                        }
+                    })
+                Write-Log "[Inventory] Collected $($inventory.choco.Count) choco apps." 'INFO'
             }
         }
-        else {
-            Write-Log "[Inventory] Chocolatey not available." 'WARN'
+        catch { 
+            Write-Log "[Inventory] Choco apps failed: $_" 'WARN'
             $inventory.choco = @()
         }
+    }
+    else {
+        Write-Log "[Inventory] Chocolatey not available." 'WARN'
+        $inventory.choco = @()
+    }
 
-        Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO'
-        $uninstallKeys = @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
-        )
-        try {
-            $inventory.registry_uninstall = @(foreach ($key in $uninstallKeys) {
-                    Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                        $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-                        if ($props.DisplayName) {
-                            [PSCustomObject]@{ 
-                                DisplayName     = $props.DisplayName
-                                UninstallString = $props.UninstallString
-                                Publisher       = $props.Publisher
-                                Version         = $props.DisplayVersion
-                            }
+    Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO'
+    $uninstallKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    try {
+        $inventory.registry_uninstall = @(foreach ($key in $uninstallKeys) {
+                Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+                    $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                    if ($props.DisplayName) {
+                        [PSCustomObject]@{ 
+                            DisplayName     = $props.DisplayName
+                            UninstallString = $props.UninstallString
+                            Publisher       = $props.Publisher
+                            Version         = $props.DisplayVersion
                         }
                     }
-                })
-            Write-Log "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries." 'INFO'
-        }
-        catch { 
-            Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN'
-            $inventory.registry_uninstall = @()
-        }
-
-        Write-Log "[Inventory] Collecting services..." 'INFO'
-        try {
-            $inventory.services = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | 
-                Select-Object Name, Status, StartType)
-            Write-Log "[Inventory] Collected $($inventory.services.Count) services." 'INFO'
-        }
-        catch { 
-            Write-Log "[Inventory] Services failed: $_" 'WARN'
-            $inventory.services = @()
-        }
-
-        Write-Log "[Inventory] Collecting scheduled tasks..." 'INFO'
-        try {
-            $inventory.scheduled_tasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | 
-                Select-Object TaskName, TaskPath, State)
-            Write-Log "[Inventory] Collected $($inventory.scheduled_tasks.Count) scheduled tasks." 'INFO'
-        }
-        catch { 
-            Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN'
-            $inventory.scheduled_tasks = @()
-        }
-
-        Write-Log "[Inventory] Collecting drivers..." 'INFO'
-        try {
-            $inventory.drivers = @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | 
-                Select-Object DeviceName, DriverVersion, Manufacturer)
-            Write-Log "[Inventory] Collected $($inventory.drivers.Count) drivers." 'INFO'
-        }
-        catch { 
-            Write-Log "[Inventory] Drivers failed: $_" 'WARN'
-            $inventory.drivers = @()
-        }
-
-        Write-Log "[Inventory] Collecting Windows updates..." 'INFO'
-        try {
-            $inventory.updates = @(Get-HotFix -ErrorAction SilentlyContinue | 
-                Select-Object Description, HotFixID, InstalledOn)
-            Write-Log "[Inventory] Collected $($inventory.updates.Count) Windows updates." 'INFO'
-        }
-        catch { 
-            Write-Log "[Inventory] Windows updates failed: $_" 'WARN'
-            $inventory.updates = @()
-        }
+                }
+            })
+        Write-Log "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries." 'INFO'
+    }
+    catch { 
+        Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN'
+        $inventory.registry_uninstall = @()
     }
 
-    # Write structured inventory.json
-    Write-TaskProgress -Activity "Building System Inventory" -Status "Saving inventory to file..." -PercentComplete 95
-    $inventoryPath = Join-Path $inventoryFolder 'inventory.json'
+    Write-Log "[Inventory] Collecting services..." 'INFO'
     try {
-        $inventory | ConvertTo-Json -Depth 6 | Out-File -FilePath $inventoryPath -Encoding UTF8
-        Write-LogFile "[Inventory] Structured inventory saved to inventory.json" 'INFO'
-        
-        # Store global reference for diff operations
-        $global:SystemInventory = $inventory
+        $inventory.services = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | 
+            Select-Object Name, Status, StartType)
+        Write-Log "[Inventory] Collected $($inventory.services.Count) services." 'INFO'
     }
-    catch {
-        Write-LogFile "[Inventory] Failed to write inventory.json: $_" 'WARN'
+    catch { 
+        Write-Log "[Inventory] Services failed: $_" 'WARN'
+        $inventory.services = @()
     }
 
-    Write-TaskProgress -Activity "Building System Inventory" -Status "Inventory completed" -PercentComplete 100 -Completed
-    Write-Log "[END] Extensive System Inventory (JSON Format)" 'SUCCESS'
+    Write-Log "[Inventory] Collecting scheduled tasks..." 'INFO'
+    try {
+        $inventory.scheduled_tasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | 
+            Select-Object TaskName, TaskPath, State)
+        Write-Log "[Inventory] Collected $($inventory.scheduled_tasks.Count) scheduled tasks." 'INFO'
+    }
+    catch { 
+        Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN'
+        $inventory.scheduled_tasks = @()
+    }
+
+    Write-Log "[Inventory] Collecting drivers..." 'INFO'
+    try {
+        $inventory.drivers = @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | 
+            Select-Object DeviceName, DriverVersion, Manufacturer)
+        Write-Log "[Inventory] Collected $($inventory.drivers.Count) drivers." 'INFO'
+    }
+    catch { 
+        Write-Log "[Inventory] Drivers failed: $_" 'WARN'
+        $inventory.drivers = @()
+    }
+
+    Write-Log "[Inventory] Collecting Windows updates..." 'INFO'
+    try {
+        $inventory.updates = @(Get-HotFix -ErrorAction SilentlyContinue | 
+            Select-Object Description, HotFixID, InstalledOn)
+        Write-Log "[Inventory] Collected $($inventory.updates.Count) Windows updates." 'INFO'
+    }
+    catch { 
+        Write-Log "[Inventory] Windows updates failed: $_" 'WARN'
+        $inventory.updates = @()
+    }
 }
+
+# Write structured inventory.json
+Write-TaskProgress -Activity "Building System Inventory" -Status "Saving inventory to file..." -PercentComplete 95
+$inventoryPath = Join-Path $inventoryFolder 'inventory.json'
+try {
+    $inventory | ConvertTo-Json -Depth 6 | Out-File -FilePath $inventoryPath -Encoding UTF8
+    Write-LogFile "[Inventory] Structured inventory saved to inventory.json" 'INFO'
+        
+    # Store global reference for diff operations
+    $global:SystemInventory = $inventory
+}
+catch {
+    Write-LogFile "[Inventory] Failed to write inventory.json: $_" 'WARN'
+}
+
+Write-TaskProgress -Activity "Building System Inventory" -Status "Inventory completed" -PercentComplete 100 -Completed
+Write-Log "[END] Extensive System Inventory (JSON Format)" 'SUCCESS'
+
 
 ### Modern Standardized Temp List Management with PowerShell 7.5.2 Optimizations
 function New-StandardizedTempList {
@@ -1463,17 +1463,17 @@ function New-StandardizedTempList {
     # Create enhanced metadata object with PowerShell 7.5.2 features
     $tempListData = [ordered]@{
         Metadata = [ordered]@{
-            ListType = $ListType
-            Operation = $Operation
-            Description = $Description
-            Created = [DateTime]::Now.ToString('o')
-            ScriptVersion = "2.0.0"
+            ListType          = $ListType
+            Operation         = $Operation
+            Description       = $Description
+            Created           = [DateTime]::Now.ToString('o')
+            ScriptVersion     = "2.0.0"
             PowerShellVersion = $PSVersionTable.PSVersion.ToString()
-            DataCount = if ($Data -is [array]) { $Data.Count } elseif ($null -eq $Data) { 0 } else { 1 }
-            DataType = $Data.GetType().Name
-            FileSize = 0  # Will be updated after save
+            DataCount         = if ($Data -is [array]) { $Data.Count } elseif ($null -eq $Data) { 0 } else { 1 }
+            DataType          = $Data.GetType().Name
+            FileSize          = 0  # Will be updated after save
         }
-        Data = $Data
+        Data     = $Data
     }
     
     try {
@@ -2003,10 +2003,10 @@ function Invoke-ModernPackageManager {
             Write-Log "[$PackageManager] Completed with exit code: $exitCode" 'VERBOSE'
             
             $result = @{
-                Success = ($exitCode -eq 0)
+                Success  = ($exitCode -eq 0)
                 ExitCode = $exitCode
-                Output = if ($ReturnOutput) { $output } else { '' }
-                Error = $errorOutput
+                Output   = if ($ReturnOutput) { $output } else { '' }
+                Error    = $errorOutput
             }
             
             if ($exitCode -ne 0) {
@@ -2027,10 +2027,10 @@ function Invoke-ModernPackageManager {
             Remove-Item "$env:TEMP\pkg_out.txt", "$env:TEMP\pkg_err.txt" -ErrorAction SilentlyContinue
             
             return @{
-                Success = ($process.ExitCode -eq 0)
+                Success  = ($process.ExitCode -eq 0)
                 ExitCode = $process.ExitCode
-                Output = if ($ReturnOutput) { $output } else { '' }
-                Error = $errorOutput
+                Output   = if ($ReturnOutput) { $output } else { '' }
+                Error    = $errorOutput
             }
         }
     }
@@ -2328,9 +2328,9 @@ function Install-EssentialApps {
     $installResults = @{
         Summary = @{
             Installed = $success
-            Failed = $fail
-            Skipped = $skipped
-            Total = $success + $fail + $skipped
+            Failed    = $fail
+            Skipped   = $skipped
+            Total     = $success + $fail + $skipped
         }
         Details = $detailedResults
     }
@@ -3014,10 +3014,10 @@ function Remove-Bloatware {
     
     # Create final removal results temp list
     $removalResults = @{
-        Summary = @{
-            Processed = $totalApps
-            Removed = $removed
-            Failed = $failed
+        Summary       = @{
+            Processed       = $totalApps
+            Removed         = $removed
+            Failed          = $failed
             TotalInMainList = $global:BloatwareList.Count
         }
         ProcessedApps = $bloatwareToRemove
