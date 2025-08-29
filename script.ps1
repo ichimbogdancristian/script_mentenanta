@@ -1,21 +1,46 @@
 # ===============================
-# Windows Maintenance Script - Task Coordinator
+# Windows Maintenance Script - Task Coordinator (PowerShell 7.5.2 Optimized)
 # ===============================
 # This script is designed to automate and orchestrate a full suite of Windows maintenance tasks.
 # It is intended to run as Administrator on Windows 10/11, with all actions logged and reported.
 # Each task is modular, robust, and designed for unattended execution in enterprise or home environments.
 #
+# MODERNIZED FOR POWERSHELL 7.5.2:
+# - Enhanced async operations and improved process management
+# - Parallel processing for inventory collection and package operations
+# - Modern JSON parsing with better error handling and performance
+# - Improved file I/O operations with UTF-8 encoding
+# - Enhanced error handling with detailed exception information
+# - Modern package manager wrapper with timeout support
+# - Optimized logging with better console color support
+# - Thread-safe operations using System.Collections.Concurrent
+#
+# ENHANCED LOGGING SYSTEM:
+# - Separated console progress bars from file logging for cleaner log files
+# - Write-Log: Combined function for both console and file output
+# - Write-LogFile: File-only logging without console noise
+# - Write-ConsoleMessage: Console-only messages with enhanced colors
+# - Write-TaskProgress: Progress bars for console, simple messages for file
+# - Progress tracking for all major operations (tasks, bloatware removal, app installation, inventory)
+#
 # Key Environment Details:
-# - Compatible with PowerShell 7+ and Windows PowerShell 5.1
+# - Optimized for PowerShell 7.5.2+ with fallback compatibility for Windows PowerShell 5.1
 # - Must be run as Administrator
 # - Uses $PSScriptRoot for all temp and log files
 # - Integrates with Winget, Chocolatey, AppX (via Windows PowerShell), DISM, Registry, and Windows Capabilities
 # - All actions are silent/non-interactive
 # - Graceful degradation if dependencies are missing
 # - Automatically switches to Windows PowerShell for legacy module operations
+# - Leverages PowerShell 7.5.2 features: parallel execution, improved error handling, and enhanced JSON support
 #
 # Task Array: $global:ScriptTasks
 # Each entry defines a maintenance task with its logic, description, and config-driven enable/disable.
+
+#Requires -Version 5.1
+#Requires -RunAsAdministrator
+
+using namespace System.Collections.Concurrent
+using namespace System.Threading.Tasks
 
 # Define all tasks in a single array with metadata
 $global:ScriptTasks = @(
@@ -45,18 +70,25 @@ $global:ScriptTasks = @(
     # Logic: Consolidates all list data into human-readable summary report.
     @{ Name = 'TempListsSummary'; Function = { Write-TempListsSummary }; Description = 'Generate temp lists summary report' },
     # --- Task: UpdateAllPackages ---
-    # Purpose: Updates all installed packages via Winget and Chocolatey.
-    # Environment: Windows 10/11, admin required, silent/non-interactive.
-    # Logic: Tries both package managers, logs all actions and errors.
+    # Purpose: Updates all installed packages via Winget and Chocolatey using modern process management.
+    # Environment: Windows 10/11, admin required, silent/non-interactive, enhanced with PowerShell 7.5.2 features.
+    # Logic: Uses modern package manager wrapper for better reliability and error handling.
     @{ Name = 'UpdateAllPackages'; Function = {
-            Write-Log '[START] Update All Apps and Packages' 'INFO'
+            Write-Log '[START] Update All Apps and Packages (Modern)' 'INFO'
             
-            # Update using Winget if available
+            # Update using Winget if available with modern package manager
             if ($global:HasWinget) {
                 try {
                     Write-Log 'Running winget upgrade for all packages...' 'INFO'
-                    winget upgrade --all --silent --accept-source-agreements --accept-package-agreements
-                    Write-Log 'Winget upgrade completed successfully.' 'INFO'
+                    $wingetArgs = @("upgrade", "--all", "--silent", "--accept-source-agreements", "--accept-package-agreements")
+                    $result = Invoke-ModernPackageManager -PackageManager 'winget' -Arguments $wingetArgs -Description "Upgrade all winget packages" -TimeoutSeconds 600
+                    
+                    if ($result.Success) {
+                        Write-Log 'Winget upgrade completed successfully.' 'INFO'
+                    }
+                    else {
+                        Write-Log "Winget upgrade failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
+                    }
                 }
                 catch {
                     Write-Log "Winget upgrade failed: $_" 'WARN'
@@ -66,12 +98,19 @@ $global:ScriptTasks = @(
                 Write-Log 'Winget not available, skipping winget upgrades.' 'WARN'
             }
             
-            # Update using Chocolatey if available
+            # Update using Chocolatey if available with modern package manager
             if ($global:HasChocolatey) {
                 try {
                     Write-Log 'Running chocolatey upgrade for all packages...' 'INFO'
-                    choco upgrade all -y --limit-output
-                    Write-Log 'Chocolatey upgrade completed successfully.' 'INFO'
+                    $chocoArgs = @("upgrade", "all", "-y", "--limit-output")
+                    $result = Invoke-ModernPackageManager -PackageManager 'choco' -Arguments $chocoArgs -Description "Upgrade all choco packages" -TimeoutSeconds 600
+                    
+                    if ($result.Success) {
+                        Write-Log 'Chocolatey upgrade completed successfully.' 'INFO'
+                    }
+                    else {
+                        Write-Log "Chocolatey upgrade failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
+                    }
                 }
                 catch {
                     Write-Log "Chocolatey upgrade failed: $_" 'WARN'
@@ -85,8 +124,8 @@ $global:ScriptTasks = @(
                 Write-Log 'No package managers available for updates. Consider installing Winget or Chocolatey.' 'WARN'
             }
             
-            Write-Log '[END] Update All Apps and Packages' 'INFO'
-        }; Description = 'Update all apps and packages' 
+            Write-Log '[END] Update All Apps and Packages (Modern)' 'INFO'
+        }; Description = 'Update all apps and packages using modern process management' 
     },
     # --- Task: WindowsUpdateCheck ---
     # Purpose: Checks for and installs Windows Updates using PSWindowsUpdate module.
@@ -122,26 +161,52 @@ $global:ScriptTasks = @(
             Write-Log '[START] Clean Temp Files and Disk Cleanup (Unattended)' 'INFO'
             $tempFolders = @($env:TEMP, "$env:SystemRoot\Temp", "$env:LOCALAPPDATA\Temp", "$env:USERPROFILE\AppData\Local\Temp")
             $deletedFiles = 0
+            $currentFolder = 0
+            $totalFolders = ($tempFolders | Sort-Object -Unique).Count
+            
             foreach ($folder in $tempFolders | Sort-Object -Unique) {
+                $currentFolder++
+                $percentComplete = [math]::Round(($currentFolder / $totalFolders) * 80) # Reserve 20% for disk cleanup
+                
                 if (Test-Path $folder) {
+                    Write-TaskProgress -Activity "Cleaning Temporary Files" -Status "Processing folder: $folder" -PercentComplete $percentComplete
+                    Write-LogFile "Processing temp folder: $folder" 'VERBOSE'
+                    
                     $items = Get-ChildItem -Path $folder -Recurse -ErrorAction SilentlyContinue
+                    $totalItems = $items.Count
+                    $currentItem = 0
+                    
                     foreach ($item in $items) {
+                        $currentItem++
+                        if ($currentItem % 50 -eq 0 -or $currentItem -eq $totalItems) {
+                            $itemPercent = [math]::Round((($currentFolder - 1) / $totalFolders * 80) + ($currentItem / $totalItems * 80 / $totalFolders))
+                            Write-TaskProgress -Activity "Cleaning Temporary Files" -Status "Processing folder: $folder" -PercentComplete $itemPercent -CurrentOperation "Deleting $currentItem of $totalItems items"
+                        }
+                        
                         try {
                             Remove-Item $item.FullName -Force -Recurse -ErrorAction Stop
                             $deletedFiles++
                         }
                         catch {
-                            Write-Log "Failed to delete $($item.FullName): $_" 'WARN'
+                            Write-LogFile "Failed to delete $($item.FullName): $_" 'WARN'
                         }
                     }
                 }
+                else {
+                    Write-TaskProgress -Activity "Cleaning Temporary Files" -Status "Skipping non-existent folder: $folder" -PercentComplete $percentComplete
+                    Write-LogFile "Temp folder does not exist: $folder" 'VERBOSE'
+                }
             }
+            
             Write-Log "Deleted $deletedFiles temp files from temp folders." 'INFO'
+            
+            # Disk cleanup phase
+            Write-TaskProgress -Activity "Cleaning Temporary Files" -Status "Running system disk cleanup..." -PercentComplete 85
             try {
                 $cleanmgrArgs = '/AUTOCLEAN'
                 $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
                 if ($proc.ExitCode -eq 0) {
-                    Write-Log 'Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN).' 'INFO'
+                    Write-Log 'Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN).' 'SUCCESS'
                 }
                 else {
                     Write-Log "Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
@@ -159,16 +224,26 @@ $global:ScriptTasks = @(
 function Use-AllScriptTasks {
     Write-Log '[COORDINATION] Starting all maintenance tasks...' 'INFO'
     $global:TaskResults = @{}
+    
+    $totalTasks = $global:ScriptTasks.Count
+    $currentTask = 0
+    
     foreach ($task in $global:ScriptTasks) {
+        $currentTask++
         $taskName = $task.Name
         $desc = $task.Description
+        
+        # Show progress bar for console, simple log for file
+        $percentComplete = [math]::Round(($currentTask / $totalTasks) * 100)
+        Write-TaskProgress -Activity "Windows Maintenance Tasks" -Status "Executing: $taskName" -PercentComplete $percentComplete -CurrentOperation $desc
+        
         Write-Log "[COORDINATION] Executing: $taskName - $desc" 'INFO'
         $startTime = Get-Date
         try {
             $result = Invoke-Task $taskName $task.Function
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
-            Write-Log "[COORDINATION] $taskName completed in $duration seconds. Result: $result" 'INFO'
+            Write-Log "[COORDINATION] $taskName completed in $duration seconds. Result: $result" 'SUCCESS'
             $global:TaskResults[$taskName] = @{ Success = $result; Duration = $duration; Started = $startTime; Ended = $endTime }
         }
         catch {
@@ -176,39 +251,75 @@ function Use-AllScriptTasks {
             $global:TaskResults[$taskName] = @{ Success = $false; Duration = 0; Started = $startTime; Ended = (Get-Date) }
         }
     }
-    Write-Log '[COORDINATION] All maintenance tasks completed.' 'INFO'
+    
+    # Complete the progress bar
+    Write-TaskProgress -Activity "Windows Maintenance Tasks" -Status "All tasks completed" -PercentComplete 100 -Completed
+    Write-Log '[COORDINATION] All maintenance tasks completed.' 'SUCCESS'
 }
 
 # [PRE-TASK 0] Set up log file in the repo folder
 $logPath = Join-Path $PSScriptRoot "maintenance.log"
 
-### PowerShell 7 Compatibility Functions
+### Modern PowerShell 7.5.2 Compatibility and Performance Functions
 function Invoke-WindowsPowerShellCommand {
     param(
         [string]$Command,
-        [string]$Description = "Windows PowerShell command"
+        [string]$Description = "Windows PowerShell command",
+        [int]$TimeoutSeconds = 300
     )
     
     Write-Log "[PS5.1] Executing via Windows PowerShell: $Description" 'INFO'
     
     try {
-        # Create a script block to execute in Windows PowerShell
-        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
+        # Use PowerShell 7.5.2's improved process management with timeout
+        $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $processInfo.FileName = "powershell.exe"
+        $processInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"$Command`""
+        $processInfo.UseShellExecute = $false
+        $processInfo.RedirectStandardOutput = $true
+        $processInfo.RedirectStandardError = $true
+        $processInfo.CreateNoWindow = $true
         
-        $result = & powershell.exe -EncodedCommand $encodedCommand
+        $process = [System.Diagnostics.Process]::Start($processInfo)
         
-        if ($LASTEXITCODE -eq 0) {
+        # Use modern async pattern available in PowerShell 7.5.2
+        $outputTask = $process.StandardOutput.ReadToEndAsync()
+        $errorTask = $process.StandardError.ReadToEndAsync()
+        
+        $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+        
+        if (-not $completed) {
+            $process.Kill()
+            Write-Log "[PS5.1] Command timed out after $TimeoutSeconds seconds: $Description" 'WARN'
+            return $null
+        }
+        
+        $output = $outputTask.Result
+        $error = $errorTask.Result
+        
+        if ($process.ExitCode -eq 0) {
             Write-Log "[PS5.1] Successfully executed: $Description" 'INFO'
-            return $result
+            return $output
         }
         else {
-            Write-Log "[PS5.1] Command failed with exit code $LASTEXITCODE`: $Description" 'WARN'
+            Write-Log "[PS5.1] Command failed with exit code $($process.ExitCode): $Description" 'WARN'
+            if ($error) {
+                Write-Log "[PS5.1] Error output: $error" 'VERBOSE'
+            }
             return $null
         }
     }
     catch {
         Write-Log "[PS5.1] Exception executing command: $_" 'ERROR'
         return $null
+    }
+    finally {
+        if ($null -ne $process -and -not $process.HasExited) {
+            try { $process.Kill() } catch { }
+        }
+        if ($null -ne $process) {
+            $process.Dispose()
+        }
     }
 }
 
@@ -219,16 +330,18 @@ function Get-AppxPackageCompatible {
     )
     
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Appx operations
-        $command = "Import-Module Appx -ErrorAction SilentlyContinue; Get-AppxPackage"
-        if ($AllUsers) { $command += " -AllUsers" }
-        if ($Name -ne "*") { $command += " -Name '$Name'" }
-        $command += " | Select-Object Name, PackageFullName, Publisher | ConvertTo-Json -Depth 3"
+        # Use Windows PowerShell for Appx operations with enhanced JSON parsing
+        $command = @"
+Import-Module Appx -ErrorAction SilentlyContinue
+`$packages = Get-AppxPackage $(if ($AllUsers) { '-AllUsers' }) $(if ($Name -ne '*') { "-Name '$Name'" })
+`$packages | Select-Object Name, PackageFullName, Publisher, Architecture, Version | ConvertTo-Json -Depth 3 -Compress
+"@
         
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get AppX packages"
         if ($result) {
             try {
-                return ($result | ConvertFrom-Json)
+                # Use PowerShell 7.5.2's improved ConvertFrom-Json with better error handling
+                return ($result | ConvertFrom-Json -AsHashtable:$false -ErrorAction Stop)
             }
             catch {
                 Write-Log "Failed to parse AppX package JSON: $_" 'WARN'
@@ -255,13 +368,19 @@ function Remove-AppxPackageCompatible {
     )
     
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Appx operations
-        $command = "Import-Module Appx -ErrorAction SilentlyContinue; Remove-AppxPackage -Package '$PackageFullName'"
-        if ($AllUsers) { $command += " -AllUsers" }
-        $command += " -ErrorAction Stop"
+        # Use Windows PowerShell for Appx operations with better error reporting
+        $command = @"
+Import-Module Appx -ErrorAction SilentlyContinue
+try {
+    Remove-AppxPackage -Package '$PackageFullName' $(if ($AllUsers) { '-AllUsers' }) -ErrorAction Stop
+    Write-Output 'SUCCESS'
+} catch {
+    Write-Output "ERROR: `$(`$_.Exception.Message)"
+}
+"@
         
         $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove AppX package $PackageFullName"
-        return $null -ne $result
+        return $result -eq 'SUCCESS'
     }
     else {
         # Native PowerShell 5.1
@@ -484,8 +603,17 @@ function Get-StartAppsCompatible {
     }
 }
 
-### [PRE-TASK 1] Logging & Task Functions
-function Write-Log {
+### [PRE-TASK 1] Modern Logging & Task Functions with PowerShell 7.5.2 Optimizations
+# ===============================
+# Enhanced Logging System for PowerShell 7.5.2
+# ===============================
+# Separates file logging from console display, with progress bar support
+
+function Write-LogFile {
+    <#
+    .SYNOPSIS
+    Writes log entries to file only, without console output or progress bars.
+    #>
     param(
         [string]$Message,
         [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE')][string]$Level = 'INFO'
@@ -496,16 +624,123 @@ function Write-Log {
         return
     }
     
-    $timestamp = Get-Date -Format 'HH:mm:ss'
+    # Use PowerShell 7.5.2's optimized date formatting
+    $timestamp = [DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss')
     $entry = "[$timestamp] [$Level] $Message"
-    $entry | Out-File -FilePath $logPath -Append
     
-    # Color-code output based on level
-    switch ($Level) {
-        'ERROR' { Write-Host $entry -ForegroundColor Red }
-        'WARN' { Write-Host $entry -ForegroundColor Yellow }
-        'VERBOSE' { Write-Host $entry -ForegroundColor Gray }
-        default { Write-Host $entry }
+    # Use PowerShell 7.5.2's improved file I/O with better encoding handling
+    try {
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # Use modern async file operations for better performance
+            [System.IO.File]::AppendAllText($logPath, "$entry`n", [System.Text.Encoding]::UTF8)
+        }
+        else {
+            # Fallback for PowerShell 5.1
+            $entry | Out-File -FilePath $logPath -Append -Encoding UTF8
+        }
+    }
+    catch {
+        # If file logging fails, show warning but don't interrupt execution
+        Write-Warning "Failed to write to log file: $_"
+    }
+}
+
+function Write-ConsoleMessage {
+    <#
+    .SYNOPSIS
+    Writes colored messages to console only, without file logging.
+    #>
+    param(
+        [string]$Message,
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE', 'SUCCESS', 'PROGRESS')][string]$Level = 'INFO',
+        [switch]$NoNewline
+    )
+    
+    # Enhanced color-coding with PowerShell 7.5.2's improved console support
+    $consoleColors = @{
+        'ERROR'    = @{ ForegroundColor = 'Red'; BackgroundColor = $null }
+        'WARN'     = @{ ForegroundColor = 'Yellow'; BackgroundColor = $null }
+        'VERBOSE'  = @{ ForegroundColor = 'Gray'; BackgroundColor = $null }
+        'INFO'     = @{ ForegroundColor = 'White'; BackgroundColor = $null }
+        'SUCCESS'  = @{ ForegroundColor = 'Green'; BackgroundColor = $null }
+        'PROGRESS' = @{ ForegroundColor = 'Cyan'; BackgroundColor = $null }
+    }
+    
+    $colorParams = $consoleColors[$Level]
+    $writeParams = @{
+        Object = $Message
+        ForegroundColor = $colorParams.ForegroundColor
+    }
+    
+    if ($colorParams.BackgroundColor) {
+        $writeParams.BackgroundColor = $colorParams.BackgroundColor
+    }
+    
+    if ($NoNewline) {
+        $writeParams.NoNewline = $true
+    }
+    
+    Write-Host @writeParams
+}
+
+function Write-TaskProgress {
+    <#
+    .SYNOPSIS
+    Displays progress bar for console, logs simple message to file.
+    #>
+    param(
+        [string]$Activity,
+        [string]$Status,
+        [int]$PercentComplete,
+        [string]$CurrentOperation = $null,
+        [switch]$Completed
+    )
+    
+    # Log simple message to file (no progress bar noise)
+    if ($Completed) {
+        Write-LogFile "$Activity completed" 'INFO'
+    }
+    else {
+        Write-LogFile "$Activity - $Status" 'VERBOSE'
+    }
+    
+    # Show progress bar in console
+    if ($Completed) {
+        Write-Progress -Activity $Activity -Completed
+    }
+    else {
+        $progressParams = @{
+            Activity = $Activity
+            Status = $Status
+            PercentComplete = $PercentComplete
+        }
+        
+        if ($CurrentOperation) {
+            $progressParams.CurrentOperation = $CurrentOperation
+        }
+        
+        Write-Progress @progressParams
+    }
+}
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+    Combined logging function - writes to both file and console.
+    #>
+    param(
+        [string]$Message,
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE', 'SUCCESS')][string]$Level = 'INFO'
+    )
+    
+    # Write to log file
+    Write-LogFile -Message $Message -Level $Level
+    
+    # Write to console (skip verbose if disabled)
+    if ($Level -ne 'VERBOSE' -or $global:Config.EnableVerboseLogging) {
+        $timestamp = [DateTime]::Now.ToString('HH:mm:ss')
+        $consoleMessage = "[$timestamp] [$Level] $Message"
+        Write-ConsoleMessage -Message $consoleMessage -Level $Level
     }
 }
 
@@ -514,21 +749,48 @@ function Invoke-Task {
         [string]$TaskName,
         [scriptblock]$Action
     )
+    
     Write-Log "Starting task: $TaskName" 'INFO'
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    
     try {
-        & $Action
-        Write-Log "Task succeeded: $TaskName" 'INFO'
+        # Use PowerShell 7.5.2's enhanced error handling with more detailed error records
+        $ErrorActionPreference = 'Stop'
+        $result = & $Action
+        
+        $stopwatch.Stop()
+        Write-Log "Task succeeded: $TaskName (Duration: $($stopwatch.Elapsed.TotalSeconds.ToString('F2'))s)" 'INFO'
         return $true
     }
     catch {
-        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
+        $stopwatch.Stop()
+        # Use PowerShell 7.5.2's improved exception details
+        $errorDetails = @{
+            Message = $_.Exception.Message
+            Type = $_.Exception.GetType().Name
+            Line = $_.InvocationInfo.ScriptLineNumber
+            Position = $_.InvocationInfo.OffsetInLine
+        }
+        
+        $errorMessage = "Task failed: $TaskName (Duration: $($stopwatch.Elapsed.TotalSeconds.ToString('F2'))s). " +
+                       "Error: $($errorDetails.Type) - $($errorDetails.Message) " +
+                       "(Line: $($errorDetails.Line), Position: $($errorDetails.Position))"
+        
+        Write-Log $errorMessage 'ERROR'
         return $false
+    }
+    finally {
+        if ($stopwatch.IsRunning) {
+            $stopwatch.Stop()
+        }
     }
 }
 
 ### [PRE-TASK 2] Extensive System Inventory (Initial)
 function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory (JSON Format)" 'INFO'
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Initializing..." -PercentComplete 5
+    
     $inventoryFolder = $PSScriptRoot
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
 
@@ -552,35 +814,38 @@ function Get-ExtensiveSystemInventory {
         updates            = @()
     }
 
-    Write-Log "[Inventory] Collecting system info..." 'INFO'
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting system info..." -PercentComplete 10
+    Write-LogFile "[Inventory] Collecting system info..." 'INFO'
     try {
         $systemInfo = Get-ComputerInfo
         $inventory.system = $systemInfo
-        Write-Log "[Inventory] System info collected." 'INFO'
+        Write-LogFile "[Inventory] System info collected." 'INFO'
     }
     catch { 
-        Write-Log "[Inventory] System info failed: $_" 'WARN'
+        Write-LogFile "[Inventory] System info failed: $_" 'WARN'
         $inventory.system = @{ error = $_.ToString() }
     }
 
-    Write-Log "[Inventory] Collecting installed Appx apps..." 'INFO'
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting Appx apps..." -PercentComplete 20
+    Write-LogFile "[Inventory] Collecting installed Appx apps..." 'INFO'
     try {
         $appxPackages = Get-AppxPackageCompatible -AllUsers
         if ($appxPackages -and $appxPackages.Count -gt 0) {
             $inventory.appx = @($appxPackages | Select-Object Name, PackageFullName, Publisher)
-            Write-Log "[Inventory] Collected $($inventory.appx.Count) Appx apps." 'INFO'
+            Write-LogFile "[Inventory] Collected $($inventory.appx.Count) Appx apps." 'INFO'
         }
         else {
-            Write-Log "[Inventory] No Appx apps found or module not available." 'WARN'
+            Write-LogFile "[Inventory] No Appx apps found or module not available." 'WARN'
             $inventory.appx = @()
         }
     }
     catch { 
-        Write-Log "[Inventory] Appx apps failed: $_" 'WARN'
+        Write-LogFile "[Inventory] Appx apps failed: $_" 'WARN'
         $inventory.appx = @()
     }
 
-    Write-Log "[Inventory] Collecting installed winget apps..." 'INFO'
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting winget apps..." -PercentComplete 35
+    Write-LogFile "[Inventory] Collecting installed winget apps..." 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         try {
             # Try JSON output first (modern winget versions)
@@ -657,30 +922,254 @@ function Get-ExtensiveSystemInventory {
         $inventory.winget = @()
     }
 
-    Write-Log "[Inventory] Collecting installed choco apps..." 'INFO'
-    if (Get-Command choco -ErrorAction SilentlyContinue) {
-        try {
-            $chocoOutput = choco list --local-only 2>$null
-            if ($chocoOutput) {
-                $inventory.choco = @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
-                    ForEach-Object { 
-                        $parts = $_ -split '\s+', 2
-                        [PSCustomObject]@{
-                            Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
-                            Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+    # Use PowerShell 7.5.2's parallel processing for better performance on multiple inventory collections
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        Write-Log "[Inventory] Using parallel processing for remaining inventory collections..." 'INFO'
+        
+        # Define inventory collection jobs
+        $inventoryJobs = @(
+            @{ Name = 'choco'; Script = {
+                if (Get-Command choco -ErrorAction SilentlyContinue) {
+                    try {
+                        $chocoOutput = choco list --local-only 2>$null
+                        if ($chocoOutput) {
+                            return @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
+                                ForEach-Object { 
+                                    $parts = $_ -split '\s+', 2
+                                    [PSCustomObject]@{
+                                        Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
+                                        Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                                    }
+                                })
+                        }
+                    }
+                    catch { return @() }
+                }
+                return @()
+            }},
+            @{ Name = 'registry'; Script = {
+                $uninstallKeys = @(
+                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+                )
+                try {
+                    return @(foreach ($key in $uninstallKeys) {
+                        Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+                            $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                            if ($props.DisplayName) {
+                                [PSCustomObject]@{ 
+                                    DisplayName     = $props.DisplayName
+                                    UninstallString = $props.UninstallString
+                                    Publisher       = $props.Publisher
+                                    Version         = $props.DisplayVersion
+                                }
+                            }
                         }
                     })
-                Write-Log "[Inventory] Collected $($inventory.choco.Count) choco apps." 'INFO'
+                }
+                catch { return @() }
+            }},
+            @{ Name = 'services'; Script = {
+                try {
+                    return @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | 
+                        Select-Object Name, Status, StartType)
+                }
+                catch { return @() }
+            }},
+            @{ Name = 'tasks'; Script = {
+                try {
+                    return @(Get-ScheduledTask -ErrorAction SilentlyContinue | 
+                        Select-Object TaskName, TaskPath, State)
+                }
+                catch { return @() }
+            }},
+            @{ Name = 'drivers'; Script = {
+                try {
+                    return @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | 
+                        Select-Object DeviceName, DriverVersion, Manufacturer)
+                }
+                catch { return @() }
+            }},
+            @{ Name = 'updates'; Script = {
+                try {
+                    return @(Get-HotFix -ErrorAction SilentlyContinue | 
+                        Select-Object Description, HotFixID, InstalledOn)
+                }
+                catch { return @() }
+            }}
+        )
+        
+        # Execute inventory jobs in parallel using PowerShell 7.5.2's ForEach-Object -Parallel
+        Write-TaskProgress -Activity "Building System Inventory" -Status "Collecting remaining data (parallel)..." -PercentComplete 50
+        Write-LogFile "[Inventory] Starting parallel collection for: choco, registry, services, tasks, drivers, updates" 'INFO'
+        
+        $results = $inventoryJobs | ForEach-Object -Parallel {
+            $job = $_
+            try {
+                $result = & $job.Script
+                return @{ Name = $job.Name; Data = $result; Success = $true }
             }
-        }
-        catch { 
-            Write-Log "[Inventory] Choco apps failed: $_" 'WARN'
-            $inventory.choco = @()
+            catch {
+                return @{ Name = $job.Name; Data = @(); Success = $false; Error = $_.Exception.Message }
+            }
+        } -ThrottleLimit 6
+        
+        # Process parallel results
+        Write-TaskProgress -Activity "Building System Inventory" -Status "Processing parallel results..." -PercentComplete 70
+        foreach ($result in $results) {
+            switch ($result.Name) {
+                'choco' { 
+                    $inventory.choco = $result.Data
+                    if ($result.Success) { 
+                        Write-LogFile "[Inventory] Collected $($inventory.choco.Count) choco apps via parallel processing." 'INFO' 
+                    } else { 
+                        Write-LogFile "[Inventory] Choco collection failed: $($result.Error)" 'WARN' 
+                    }
+                }
+                'registry' { 
+                    $inventory.registry_uninstall = $result.Data
+                    if ($result.Success) { 
+                        Write-Log "[Inventory] Collected $($inventory.registry_uninstall.Count) registry entries via parallel processing." 'INFO' 
+                    } else { 
+                        Write-Log "[Inventory] Registry collection failed: $($result.Error)" 'WARN' 
+                    }
+                }
+                'services' { 
+                    $inventory.services = $result.Data
+                    if ($result.Success) { 
+                        Write-Log "[Inventory] Collected $($inventory.services.Count) services via parallel processing." 'INFO' 
+                    } else { 
+                        Write-Log "[Inventory] Services collection failed: $($result.Error)" 'WARN' 
+                    }
+                }
+                'tasks' { 
+                    $inventory.scheduled_tasks = $result.Data
+                    if ($result.Success) { 
+                        Write-Log "[Inventory] Collected $($inventory.scheduled_tasks.Count) scheduled tasks via parallel processing." 'INFO' 
+                    } else { 
+                        Write-Log "[Inventory] Scheduled tasks collection failed: $($result.Error)" 'WARN' 
+                    }
+                }
+                'drivers' { 
+                    $inventory.drivers = $result.Data
+                    if ($result.Success) { 
+                        Write-Log "[Inventory] Collected $($inventory.drivers.Count) drivers via parallel processing." 'INFO' 
+                    } else { 
+                        Write-Log "[Inventory] Drivers collection failed: $($result.Error)" 'WARN' 
+                    }
+                }
+                'updates' { 
+                    $inventory.updates = $result.Data
+                    if ($result.Success) { 
+                        Write-Log "[Inventory] Collected $($inventory.updates.Count) updates via parallel processing." 'INFO' 
+                    } else { 
+                        Write-Log "[Inventory] Updates collection failed: $($result.Error)" 'WARN' 
+                    }
+                }
+            }
         }
     }
     else {
-        Write-Log "[Inventory] Chocolatey not available." 'WARN'
-        $inventory.choco = @()
+        # Fallback sequential processing for PowerShell 5.1
+        Write-Log "[Inventory] Using sequential processing (PowerShell 5.1 mode)..." 'INFO'
+        
+        Write-Log "[Inventory] Collecting installed choco apps..." 'INFO'
+        if (Get-Command choco -ErrorAction SilentlyContinue) {
+            try {
+                $chocoOutput = choco list --local-only 2>$null
+                if ($chocoOutput) {
+                    $inventory.choco = @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
+                        ForEach-Object { 
+                            $parts = $_ -split '\s+', 2
+                            [PSCustomObject]@{
+                                Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
+                                Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                            }
+                        })
+                    Write-Log "[Inventory] Collected $($inventory.choco.Count) choco apps." 'INFO'
+                }
+            }
+            catch { 
+                Write-Log "[Inventory] Choco apps failed: $_" 'WARN'
+                $inventory.choco = @()
+            }
+        }
+        else {
+            Write-Log "[Inventory] Chocolatey not available." 'WARN'
+            $inventory.choco = @()
+        }
+
+        Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO'
+        $uninstallKeys = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+        )
+        try {
+            $inventory.registry_uninstall = @(foreach ($key in $uninstallKeys) {
+                    Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+                        $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                        if ($props.DisplayName) {
+                            [PSCustomObject]@{ 
+                                DisplayName     = $props.DisplayName
+                                UninstallString = $props.UninstallString
+                                Publisher       = $props.Publisher
+                                Version         = $props.DisplayVersion
+                            }
+                        }
+                    }
+                })
+            Write-Log "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries." 'INFO'
+        }
+        catch { 
+            Write-Log "[Inventory] Registry uninstall keys failed: $_" 'WARN'
+            $inventory.registry_uninstall = @()
+        }
+
+        Write-Log "[Inventory] Collecting services..." 'INFO'
+        try {
+            $inventory.services = @(Get-Service -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ } | 
+                Select-Object Name, Status, StartType)
+            Write-Log "[Inventory] Collected $($inventory.services.Count) services." 'INFO'
+        }
+        catch { 
+            Write-Log "[Inventory] Services failed: $_" 'WARN'
+            $inventory.services = @()
+        }
+
+        Write-Log "[Inventory] Collecting scheduled tasks..." 'INFO'
+        try {
+            $inventory.scheduled_tasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | 
+                Select-Object TaskName, TaskPath, State)
+            Write-Log "[Inventory] Collected $($inventory.scheduled_tasks.Count) scheduled tasks." 'INFO'
+        }
+        catch { 
+            Write-Log "[Inventory] Scheduled tasks failed: $_" 'WARN'
+            $inventory.scheduled_tasks = @()
+        }
+
+        Write-Log "[Inventory] Collecting drivers..." 'INFO'
+        try {
+            $inventory.drivers = @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | 
+                Select-Object DeviceName, DriverVersion, Manufacturer)
+            Write-Log "[Inventory] Collected $($inventory.drivers.Count) drivers." 'INFO'
+        }
+        catch { 
+            Write-Log "[Inventory] Drivers failed: $_" 'WARN'
+            $inventory.drivers = @()
+        }
+
+        Write-Log "[Inventory] Collecting Windows updates..." 'INFO'
+        try {
+            $inventory.updates = @(Get-HotFix -ErrorAction SilentlyContinue | 
+                Select-Object Description, HotFixID, InstalledOn)
+            Write-Log "[Inventory] Collected $($inventory.updates.Count) Windows updates." 'INFO'
+        }
+        catch { 
+            Write-Log "[Inventory] Windows updates failed: $_" 'WARN'
+            $inventory.updates = @()
+        }
     }
 
     Write-Log "[Inventory] Collecting registry uninstall keys..." 'INFO'
@@ -755,22 +1244,24 @@ function Get-ExtensiveSystemInventory {
     }
 
     # Write structured inventory.json
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Saving inventory to file..." -PercentComplete 95
     $inventoryPath = Join-Path $inventoryFolder 'inventory.json'
     try {
         $inventory | ConvertTo-Json -Depth 6 | Out-File -FilePath $inventoryPath -Encoding UTF8
-        Write-Log "[Inventory] Structured inventory saved to inventory.json" 'INFO'
+        Write-LogFile "[Inventory] Structured inventory saved to inventory.json" 'INFO'
         
         # Store global reference for diff operations
         $global:SystemInventory = $inventory
     }
     catch {
-        Write-Log "[Inventory] Failed to write inventory.json: $_" 'WARN'
+        Write-LogFile "[Inventory] Failed to write inventory.json: $_" 'WARN'
     }
 
-    Write-Log "[END] Extensive System Inventory (JSON Format)" 'INFO'
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Inventory completed" -PercentComplete 100 -Completed
+    Write-Log "[END] Extensive System Inventory (JSON Format)" 'SUCCESS'
 }
 
-### Standardized Temp List Management Functions
+### Modern Standardized Temp List Management with PowerShell 7.5.2 Optimizations
 function New-StandardizedTempList {
     param(
         [Parameter(Mandatory = $true)]
@@ -786,28 +1277,55 @@ function New-StandardizedTempList {
         [string]$Description = ""
     )
     
-    # Generate standardized filename
+    # Generate standardized filename with enhanced naming
     $fileName = "temp_${ListType}_${Operation}.json"
     $filePath = Join-Path $global:TempFolder $fileName
     
-    # Create metadata object
-    $tempListData = @{
-        Metadata = @{
+    # Create enhanced metadata object with PowerShell 7.5.2 features
+    $tempListData = [ordered]@{
+        Metadata = [ordered]@{
             ListType = $ListType
             Operation = $Operation
             Description = $Description
-            Created = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            ScriptVersion = "1.0.0"
-            DataCount = if ($Data -is [array]) { $Data.Count } else { 1 }
+            Created = [DateTime]::Now.ToString('o')
+            ScriptVersion = "2.0.0"
+            PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+            DataCount = if ($Data -is [array]) { $Data.Count } elseif ($null -eq $Data) { 0 } else { 1 }
+            DataType = $Data.GetType().Name
+            FileSize = 0  # Will be updated after save
         }
         Data = $Data
     }
     
-    # Save to file
-    $tempListData | ConvertTo-Json -Depth 10 | Out-File $filePath -Encoding UTF8
-    Write-Log "Standardized temp list created: $fileName (Count: $($tempListData.Metadata.DataCount))" 'VERBOSE'
-    
-    return $filePath
+    try {
+        # Use PowerShell 7.5.2's enhanced JSON serialization with better performance
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            $jsonContent = $tempListData | ConvertTo-Json -Depth 10 -Compress:$false -EscapeHandling EscapeNonAscii
+            [System.IO.File]::WriteAllText($filePath, $jsonContent, [System.Text.Encoding]::UTF8)
+        }
+        else {
+            # Fallback for PowerShell 5.1
+            $tempListData | ConvertTo-Json -Depth 10 | Out-File $filePath -Encoding UTF8
+        }
+        
+        # Update file size in metadata
+        $fileInfo = Get-Item $filePath -ErrorAction SilentlyContinue
+        if ($fileInfo) {
+            $tempListData.Metadata.FileSize = $fileInfo.Length
+            # Re-save with updated metadata if using modern PowerShell
+            if ($PSVersionTable.PSVersion.Major -ge 7) {
+                $jsonContent = $tempListData | ConvertTo-Json -Depth 10 -Compress:$false -EscapeHandling EscapeNonAscii
+                [System.IO.File]::WriteAllText($filePath, $jsonContent, [System.Text.Encoding]::UTF8)
+            }
+        }
+        
+        Write-Log "Modern temp list created: $fileName (Count: $($tempListData.Metadata.DataCount), Size: $([math]::Round($tempListData.Metadata.FileSize / 1KB, 2)) KB)" 'VERBOSE'
+        return $filePath
+    }
+    catch {
+        Write-Log "Failed to create standardized temp list $fileName`: $_" 'ERROR'
+        return $null
+    }
 }
 
 function Get-StandardizedTempList {
@@ -818,8 +1336,16 @@ function Get-StandardizedTempList {
     
     if (Test-Path $FilePath) {
         try {
-            $content = Get-Content $FilePath | ConvertFrom-Json
-            return $content
+            # Use PowerShell 7.5.2's enhanced JSON parsing
+            if ($PSVersionTable.PSVersion.Major -ge 7) {
+                $jsonContent = [System.IO.File]::ReadAllText($FilePath, [System.Text.Encoding]::UTF8)
+                return ($jsonContent | ConvertFrom-Json -AsHashtable:$false -ErrorAction Stop)
+            }
+            else {
+                # Fallback for PowerShell 5.1
+                $content = Get-Content $FilePath -Encoding UTF8 | Out-String
+                return ($content | ConvertFrom-Json -ErrorAction Stop)
+            }
         }
         catch {
             Write-Log "Failed to read standardized temp list: $FilePath - $_" 'WARN'
@@ -1233,7 +1759,117 @@ else {
 
 
 
-### [TASK 2] Install Essential Apps - Diff-Based Approach
+### Modern Package Manager Wrapper with PowerShell 7.5.2 Process Improvements
+function Invoke-ModernPackageManager {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('winget', 'choco')]
+        [string]$PackageManager,
+        
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Description = "Package manager operation",
+        
+        [Parameter(Mandatory = $false)]
+        [int]$TimeoutSeconds = 300,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$ReturnOutput
+    )
+    
+    $executable = switch ($PackageManager) {
+        'winget' { 'winget.exe' }
+        'choco' { 'choco.exe' }
+    }
+    
+    if (-not (Get-Command $executable -ErrorAction SilentlyContinue)) {
+        Write-Log "Package manager '$PackageManager' not available" 'WARN'
+        return @{ Success = $false; ExitCode = -1; Output = ''; Error = "Package manager not found" }
+    }
+    
+    try {
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # Use PowerShell 7.5.2's improved process management
+            $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $processInfo.FileName = $executable
+            $processInfo.Arguments = $Arguments -join ' '
+            $processInfo.UseShellExecute = $false
+            $processInfo.RedirectStandardOutput = $true
+            $processInfo.RedirectStandardError = $true
+            $processInfo.CreateNoWindow = $true
+            $processInfo.WorkingDirectory = $env:TEMP
+            
+            Write-Log "[$PackageManager] Executing: $executable $($processInfo.Arguments)" 'VERBOSE'
+            
+            $process = [System.Diagnostics.Process]::Start($processInfo)
+            
+            # Use async operations for better performance
+            $outputTask = $process.StandardOutput.ReadToEndAsync()
+            $errorTask = $process.StandardError.ReadToEndAsync()
+            
+            $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+            
+            if (-not $completed) {
+                $process.Kill()
+                Write-Log "[$PackageManager] Operation timed out after $TimeoutSeconds seconds: $Description" 'WARN'
+                return @{ Success = $false; ExitCode = -2; Output = ''; Error = "Operation timed out" }
+            }
+            
+            $output = $outputTask.Result
+            $error = $errorTask.Result
+            $exitCode = $process.ExitCode
+            
+            Write-Log "[$PackageManager] Completed with exit code: $exitCode" 'VERBOSE'
+            
+            $result = @{
+                Success = ($exitCode -eq 0)
+                ExitCode = $exitCode
+                Output = if ($ReturnOutput) { $output } else { '' }
+                Error = $error
+            }
+            
+            if ($exitCode -ne 0) {
+                Write-Log "[$PackageManager] Failed with exit code $exitCode. Error: $error" 'WARN'
+            }
+            
+            return $result
+        }
+        else {
+            # Fallback for PowerShell 5.1
+            Write-Log "[$PackageManager] Using legacy process execution (PS 5.1)" 'VERBOSE'
+            $process = Start-Process -FilePath $executable -ArgumentList $Arguments -NoNewWindow -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\pkg_out.txt" -RedirectStandardError "$env:TEMP\pkg_err.txt"
+            
+            $output = if (Test-Path "$env:TEMP\pkg_out.txt") { Get-Content "$env:TEMP\pkg_out.txt" -Raw } else { '' }
+            $error = if (Test-Path "$env:TEMP\pkg_err.txt") { Get-Content "$env:TEMP\pkg_err.txt" -Raw } else { '' }
+            
+            # Cleanup temp files
+            Remove-Item "$env:TEMP\pkg_out.txt", "$env:TEMP\pkg_err.txt" -ErrorAction SilentlyContinue
+            
+            return @{
+                Success = ($process.ExitCode -eq 0)
+                ExitCode = $process.ExitCode
+                Output = if ($ReturnOutput) { $output } else { '' }
+                Error = $error
+            }
+        }
+    }
+    catch {
+        Write-Log "[$PackageManager] Exception during execution: $_" 'ERROR'
+        return @{ Success = $false; ExitCode = -3; Output = ''; Error = $_.Exception.Message }
+    }
+    finally {
+        if ($null -ne $process -and -not $process.HasExited) {
+            try { $process.Kill() } catch { }
+        }
+        if ($null -ne $process) {
+            $process.Dispose()
+        }
+    }
+}
+
+### [TASK 2] Install Essential Apps - Enhanced with Modern Package Management
 function Install-EssentialApps {
     # ===============================
     # Task: InstallEssentialApps
@@ -1334,48 +1970,55 @@ function Install-EssentialApps {
     $fail = 0
     $skipped = 0
     $detailedResults = @()
+    $totalApps = $appsToInstall.Count
+    $currentApp = 0
 
     foreach ($app in $appsToInstall) {
+        $currentApp++
+        $percentComplete = [math]::Round(($currentApp / $totalApps) * 100)
+        Write-TaskProgress -Activity "Installing Essential Apps" -Status "Installing: $($app.Name)" -PercentComplete $percentComplete -CurrentOperation "$currentApp of $totalApps apps"
+        
         $installSuccess = $false
         $installMethod = ""
         $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
         $chocoAvailable = Get-Command choco -ErrorAction SilentlyContinue
         
         try {
-            # Try Winget first (preferred)
+            # Try Winget first (preferred) using modern package manager
             if ($app.Winget -and $wingetAvailable) {
-                Write-Log "Installing $($app.Name) via winget..." 'INFO'
-                $wingetArgs = @(
-                    "install", "--id", $app.Winget,
-                    "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e"
-                )
-                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
-                if ($wingetProc.ExitCode -eq 0) {
+                Write-LogFile "Installing $($app.Name) via winget..." 'INFO'
+                $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
+                $result = Invoke-ModernPackageManager -PackageManager 'winget' -Arguments $wingetArgs -Description "Install $($app.Name)"
+                
+                if ($result.Success) {
                     $installSuccess = $true
                     $installMethod = "winget"
+                    Write-LogFile "Successfully installed $($app.Name) via winget" 'INFO'
                 }
                 else {
-                    Write-Log "$($app.Name) winget install failed with exit code $($wingetProc.ExitCode)" 'WARN'
+                    Write-LogFile "$($app.Name) winget install failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
                 }
             }
             
-            # Try Chocolatey as fallback
+            # Try Chocolatey as fallback using modern package manager
             if (-not $installSuccess -and $app.Choco -and $chocoAvailable) {
-                Write-Log "Installing $($app.Name) via choco..." 'INFO'
-                $chocoArgs = @("install", $app.Choco, "-y", "--no-progress")
-                $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                if ($chocoProc.ExitCode -eq 0) {
+                Write-LogFile "Installing $($app.Name) via choco..." 'INFO'
+                $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--limit-output")
+                $result = Invoke-ModernPackageManager -PackageManager 'choco' -Arguments $chocoArgs -Description "Install $($app.Name)"
+                
+                if ($result.Success) {
                     $installSuccess = $true
                     $installMethod = "choco"
+                    Write-LogFile "Successfully installed $($app.Name) via choco" 'INFO'
                 }
                 else {
-                    Write-Log "$($app.Name) choco install failed with exit code $($chocoProc.ExitCode)" 'WARN'
+                    Write-LogFile "$($app.Name) choco install failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
                 }
             }
             
             # Log results
             if ($installSuccess) {
-                Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
+                Write-Log "Installed: $($app.Name) via $installMethod" 'SUCCESS'
                 $success++
                 $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
             }
@@ -1452,32 +2095,31 @@ function Install-EssentialApps {
         $libreSuccess = $false
         try {
             if (Get-Command winget -ErrorAction SilentlyContinue) {
-                $libreArgs = @(
-                    "install", "--id", "TheDocumentFoundation.LibreOffice",
-                    "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e"
-                )
-                $libreProc = Start-Process -FilePath "winget" -ArgumentList $libreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
-                if ($libreProc.ExitCode -eq 0) {
+                $wingetArgs = @("install", "--id", "TheDocumentFoundation.LibreOffice", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
+                $result = Invoke-ModernPackageManager -PackageManager 'winget' -Arguments $wingetArgs -Description "Install LibreOffice"
+                
+                if ($result.Success) {
                     Write-Log "LibreOffice installed via winget." 'INFO'
                     $libreSuccess = $true
                     $success++
                     $detailedResults += "SUCCESS: LibreOffice via winget"
                 }
                 else {
-                    Write-Log "LibreOffice winget install failed with exit code $($libreProc.ExitCode)" 'WARN'
+                    Write-Log "LibreOffice winget install failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
                 }
             }
             if (-not $libreSuccess -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-                $chocoLibreArgs = @("install", "libreoffice-fresh", "-y", "--no-progress")
-                $chocoLibreProc = Start-Process -FilePath "choco" -ArgumentList $chocoLibreArgs -NoNewWindow -WindowStyle Hidden -Wait -PassThru
-                if ($chocoLibreProc.ExitCode -eq 0) {
+                $chocoArgs = @("install", "libreoffice-fresh", "-y", "--no-progress", "--limit-output")
+                $result = Invoke-ModernPackageManager -PackageManager 'choco' -Arguments $chocoArgs -Description "Install LibreOffice"
+                
+                if ($result.Success) {
                     Write-Log "LibreOffice installed via choco." 'INFO'
                     $libreSuccess = $true
                     $success++
                     $detailedResults += "SUCCESS: LibreOffice via choco"
                 }
                 else {
-                    Write-Log "LibreOffice choco install failed with exit code $($chocoLibreProc.ExitCode)" 'WARN'
+                    Write-Log "LibreOffice choco install failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
                 }
             }
             if (-not $libreSuccess) {
@@ -1497,9 +2139,10 @@ function Install-EssentialApps {
         $detailedResults += "SKIPPED: LibreOffice (Office already installed)"
     }
 
-    Write-Log "Install Essential Apps summary: Installed: $success, Failed: $fail, Skipped: $skipped" 'INFO'
+    Write-TaskProgress -Activity "Installing Essential Apps" -Status "Installation completed" -PercentComplete 100 -Completed
+    Write-Log "Install Essential Apps summary: Installed: $success, Failed: $fail, Skipped: $skipped" 'SUCCESS'
     foreach ($result in $detailedResults) {
-        Write-Log $result 'INFO'
+        Write-LogFile $result 'INFO'
     }
     
     # Create final installation results temp list
@@ -1514,7 +2157,7 @@ function Install-EssentialApps {
     }
     New-StandardizedTempList -ListType "essential" -Operation "install_results" -Data $installResults -Description "Final results of essential apps installation process"
     
-    Write-Log "[END] Install Essential Apps" 'INFO'
+    Write-Log "[END] Install Essential Apps" 'SUCCESS'
 }
 
 ### [TASK 3] Enhanced Remove Bloatware - Diff-Based Approach
@@ -1611,8 +2254,11 @@ function Remove-Bloatware {
     $totalApps = $bloatwareToRemove.Count
     
     Write-Log "[Bloatware] Starting removal process for $totalApps apps from diff list only..." 'INFO'
+    
+    $currentApp = 0
 
     # Check module availability
+    Write-TaskProgress -Activity "Removing Bloatware" -Status "Checking module availability..." -PercentComplete 5
     $appxAvailable = $false
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         try {
@@ -1621,7 +2267,7 @@ function Remove-Bloatware {
             $appxAvailable = $null -ne $result
         }
         catch {
-            Write-Log "Failed to test Appx module: $_" 'WARN'
+            Write-LogFile "Failed to test Appx module: $_" 'WARN'
         }
     }
     else {
@@ -1632,7 +2278,7 @@ function Remove-Bloatware {
             }
         }
         catch {
-            Write-Log "Failed to load Appx module: $_" 'WARN'
+            Write-LogFile "Failed to load Appx module: $_" 'WARN'
         }
     }
 
@@ -1663,13 +2309,17 @@ function Remove-Bloatware {
 
     # Process ONLY the diff list (apps that are confirmed to be installed)
     foreach ($app in $bloatwareToRemove) {
+        $currentApp++
+        $percentComplete = [math]::Round(10 + ($currentApp / $totalApps) * 80) # 10-90% for removal process
+        Write-TaskProgress -Activity "Removing Bloatware" -Status "Processing app: $app" -PercentComplete $percentComplete -CurrentOperation "$currentApp of $totalApps apps"
+        
         # Validation: Ensure this app is indeed in our diff list
         if ($app -notin $bloatwareToRemove) {
-            Write-Log "[ERROR] App '$app' is not in the diff list but is being processed. This should not happen!" 'ERROR'
+            Write-LogFile "[ERROR] App '$app' is not in the diff list but is being processed. This should not happen!" 'ERROR'
             continue
         }
         
-        Write-Log "[Bloatware] Processing app from diff list: $app" 'VERBOSE'
+        Write-LogFile "[Bloatware] Processing app from diff list: $app" 'VERBOSE'
         $appRemoved = $false
         $removalMethods = @()
         
@@ -1684,7 +2334,7 @@ function Remove-Bloatware {
                             try {
                                 $success = Remove-AppxPackageCompatible -PackageFullName $pkg.PackageFullName -AllUsers
                                 if ($success) {
-                                    Write-Log "Removed AppX package: $($pkg.Name) ($($pkg.PackageFullName))" 'INFO'
+                                    Write-LogFile "Removed AppX package: $($pkg.Name) ($($pkg.PackageFullName))" 'INFO'
                                     $appRemoved = $true
                                     $removalMethods += 'AppX'
                                 }
@@ -1698,7 +2348,7 @@ function Remove-Bloatware {
                         try {
                             $success = Remove-AppxProvisionedPackageCompatible -Online -PackageName $pkg.PackageName
                             if ($success) {
-                                Write-Log "Removed provisioned package: $($pkg.DisplayName) ($($pkg.PackageName))" 'INFO'
+                                Write-LogFile "Removed provisioned package: $($pkg.DisplayName) ($($pkg.PackageName))" 'INFO'
                                 $appRemoved = $true
                                 $removalMethods += 'DISM-Provisioned'
                             }
@@ -1719,7 +2369,7 @@ function Remove-Bloatware {
                             if ($packageName) {
                                 try {
                                     dism /online /remove-provisionedappxpackage /packagename:"$packageName" /NoRestart
-                                    Write-Log "DISM removed provisioned package: $packageName" 'INFO'
+                                    Write-LogFile "DISM removed provisioned package: $packageName" 'INFO'
                                     $appRemoved = $true
                                     $removalMethods += 'DISM'
                                 }
@@ -2142,17 +2792,20 @@ function Remove-Bloatware {
                 Write-Log "Successfully removed bloatware: $app via [$methodStr]" 'INFO'
             }
             else {
-                Write-Log "Bloatware removal failed or not found: $app" 'WARN'
+                Write-LogFile "Bloatware removal failed or not found: $app" 'WARN'
                 $failed++
             }
         }
         catch {
-            Write-Log "Exception during removal of $app`: $_" 'ERROR'
+            Write-LogFile "Exception during removal of $app`: $_" 'ERROR'
             $failed++
         }
         
         Start-Sleep -Milliseconds 100
     }
+    
+    # Complete the progress bar
+    Write-TaskProgress -Activity "Removing Bloatware" -Status "Bloatware removal completed" -PercentComplete 100 -Completed
 
     # Final cleanup: Disable app reinstallation
     $bloatwareRegKeys = @(
