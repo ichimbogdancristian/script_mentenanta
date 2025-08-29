@@ -213,7 +213,7 @@ $global:ScriptTasks = @(
                 $cleanmgrArgs = '/AUTOCLEAN'
                 $proc = Start-Process -FilePath 'cleanmgr.exe' -ArgumentList $cleanmgrArgs -WindowStyle Hidden -NoNewWindow -Wait -PassThru
                 if ($proc.ExitCode -eq 0) {
-                    Write-Log 'Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN).' 'SUCCESS'
+                    Write-Log 'Disk cleanup completed using cleanmgr.exe (silent AUTOCLEAN).' 'INFO'
                 }
                 else {
                     Write-Log "Disk cleanup process exited with code $($proc.ExitCode)" 'WARN'
@@ -250,7 +250,7 @@ function Use-AllScriptTasks {
             $result = Invoke-Task $taskName $task.Function
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
-            Write-Log "[COORDINATION] $taskName completed in $duration seconds. Result: $result" 'SUCCESS'
+            Write-Log "[COORDINATION] $taskName completed in $duration seconds. Result: $result" 'INFO'
             $global:TaskResults[$taskName] = @{ Success = $result; Duration = $duration; Started = $startTime; Ended = $endTime }
         }
         catch {
@@ -261,11 +261,11 @@ function Use-AllScriptTasks {
     
     # Complete the progress bar
     Write-TaskProgress -Activity "Windows Maintenance Tasks" -Status "All tasks completed" -PercentComplete 100 -Completed
-    Write-Log '[COORDINATION] All maintenance tasks completed.' 'SUCCESS'
+    Write-Log '[COORDINATION] All maintenance tasks completed.' 'INFO'
 }
 
 # [PRE-TASK 0] Set up log file in the repo folder
-$logPath = Join-Path $PSScriptRoot "maintenance.log"
+$global:logPath = Join-Path $PSScriptRoot "maintenance.log"
 
 ### Modern PowerShell 7.5.2 Compatibility and Performance Functions
 function Invoke-WindowsPowerShellCommand {
@@ -909,7 +909,7 @@ function Write-LogFile {
     #>
     param(
         [string]$Message,
-        [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE')][string]$Level = 'INFO'
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'VERBOSE', 'SUCCESS')][string]$Level = 'INFO'
     )
     
     # Skip verbose messages if verbose logging is disabled
@@ -921,15 +921,21 @@ function Write-LogFile {
     $timestamp = [DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss')
     $entry = "[$timestamp] [$Level] $Message"
     
+    # Use global log path
+    $currentLogPath = $global:logPath
+    if (-not $currentLogPath) {
+        $currentLogPath = Join-Path $PSScriptRoot "maintenance.log"
+    }
+    
     # Use PowerShell 7.5.2's improved file I/O with better encoding handling
     try {
         if ($PSVersionTable.PSVersion.Major -ge 7) {
             # Use modern async file operations for better performance
-            [System.IO.File]::AppendAllText($logPath, "$entry`n", [System.Text.Encoding]::UTF8)
+            [System.IO.File]::AppendAllText($currentLogPath, "$entry`n", [System.Text.Encoding]::UTF8)
         }
         else {
             # Fallback for PowerShell 5.1
-            $entry | Out-File -FilePath $logPath -Append -Encoding UTF8
+            $entry | Out-File -FilePath $currentLogPath -Append -Encoding UTF8
         }
     }
     catch {
@@ -1084,7 +1090,8 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory (JSON Format)" 'INFO'
     Write-TaskProgress -Activity "Building System Inventory" -Status "Initializing..." -PercentComplete 5
     
-    $inventoryFolder = $PSScriptRoot
+    # Ensure we have a valid path for inventory folder
+    $inventoryFolder = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
 
     # Build structured inventory object
@@ -1417,27 +1424,33 @@ function Get-ExtensiveSystemInventory {
         Write-Log "[Inventory] Collected $($inventory.updates.Count) Windows updates." 'INFO'
     }
     catch { 
-        Write-Log "[Inventory] Windows updates failed: $_" 'WARN'
+        Write-LogFile "[Inventory] Windows updates failed: $_" 'WARN'
         $inventory.updates = @()
     }
-}
 
-# Write structured inventory.json
-Write-TaskProgress -Activity "Building System Inventory" -Status "Saving inventory to file..." -PercentComplete 95
-$inventoryPath = Join-Path $inventoryFolder 'inventory.json'
-try {
-    $inventory | ConvertTo-Json -Depth 6 | Out-File -FilePath $inventoryPath -Encoding UTF8
-    Write-LogFile "[Inventory] Structured inventory saved to inventory.json" 'INFO'
+    # Write structured inventory.json
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Saving inventory to file..." -PercentComplete 95
+    
+    # Ensure inventory folder is still valid
+    if (-not $inventoryFolder) {
+        $inventoryFolder = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
+    }
+    
+    $inventoryPath = Join-Path $inventoryFolder 'inventory.json'
+    try {
+        $inventory | ConvertTo-Json -Depth 6 | Out-File -FilePath $inventoryPath -Encoding UTF8
+        Write-LogFile "[Inventory] Structured inventory saved to inventory.json" 'INFO'
         
-    # Store global reference for diff operations
-    $global:SystemInventory = $inventory
-}
-catch {
-    Write-LogFile "[Inventory] Failed to write inventory.json: $_" 'WARN'
-}
+        # Store global reference for diff operations
+        $global:SystemInventory = $inventory
+    }
+    catch {
+        Write-LogFile "[Inventory] Failed to write inventory.json: $_" 'WARN'
+    }
 
-Write-TaskProgress -Activity "Building System Inventory" -Status "Inventory completed" -PercentComplete 100 -Completed
-Write-Log "[END] Extensive System Inventory (JSON Format)" 'SUCCESS'
+    Write-TaskProgress -Activity "Building System Inventory" -Status "Inventory completed" -PercentComplete 100 -Completed
+    Write-Log "[END] Extensive System Inventory (JSON Format)" 'INFO'
+}
 
 
 ### Modern Standardized Temp List Management with PowerShell 7.5.2 Optimizations
@@ -2133,7 +2146,11 @@ function Install-EssentialApps {
         }
         return -not $found
     }
-    New-StandardizedTempList -ListType "essential" -Operation "already_installed" -Data $appsAlreadyInstalled -Description "Essential apps already installed on system"
+    
+    # Only create temp list if there are apps already installed
+    if ($appsAlreadyInstalled -and $appsAlreadyInstalled.Count -gt 0) {
+        New-StandardizedTempList -ListType "essential" -Operation "already_installed" -Data $appsAlreadyInstalled -Description "Essential apps already installed on system"
+    }
 
     if ($appsToInstall.Count -eq 0) {
         Write-Log "[EssentialApps] All essential apps already installed. Skipping installation process." 'INFO'
@@ -2197,7 +2214,7 @@ function Install-EssentialApps {
             
             # Log results
             if ($installSuccess) {
-                Write-Log "Installed: $($app.Name) via $installMethod" 'SUCCESS'
+                Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
                 $success++
                 $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
             }
@@ -2319,7 +2336,7 @@ function Install-EssentialApps {
     }
 
     Write-TaskProgress -Activity "Installing Essential Apps" -Status "Installation completed" -PercentComplete 100 -Completed
-    Write-Log "Install Essential Apps summary: Installed: $success, Failed: $fail, Skipped: $skipped" 'SUCCESS'
+    Write-Log "Install Essential Apps summary: Installed: $success, Failed: $fail, Skipped: $skipped" 'INFO'
     foreach ($result in $detailedResults) {
         Write-LogFile $result 'INFO'
     }
@@ -2336,7 +2353,7 @@ function Install-EssentialApps {
     }
     New-StandardizedTempList -ListType "essential" -Operation "install_results" -Data $installResults -Description "Final results of essential apps installation process"
     
-    Write-Log "[END] Install Essential Apps" 'SUCCESS'
+    Write-Log "[END] Install Essential Apps" 'INFO'
 }
 
 ### [TASK 3] Enhanced Remove Bloatware - Diff-Based Approach
