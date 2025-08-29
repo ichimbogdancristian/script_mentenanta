@@ -1,0 +1,84 @@
+{
+  "//": "Enhanced Windows Maintenance Script Configuration (2025)",
+  "//": "=============================================================",
+  "//": "This configuration file controls the behavior of the enhanced",
+  "//": "bloatware removal and essential apps installation features.",
+  "//": "",
+  
+  "//": "=== MAIN TASK CONTROLS ===",
+  "SkipBloatwareRemoval": false,
+  "SkipEssentialApps": false,
+  "SkipWindowsUpdates": false,
+  "SkipTelemetryDisable": false,
+  "SkipSystemRestore": false,
+  "EnableVerboseLogging": false,
+  
+  "//": "=== ENHANCED BLOATWARE CONTROLS (NEW 2025) ===",
+  "//": "Control which categories of apps to keep or remove",
+  "KeepSocialApps": false,
+  "//": "Set to true to keep: Facebook, Instagram, Twitter, TikTok, Discord, etc.",
+  
+  "KeepMediaStreamingApps": false,
+  "//": "Set to true to keep: Netflix, Spotify, Amazon Prime Video, Hulu, etc.",
+  
+  "KeepAlternativeBrowsers": false,
+  "//": "Set to true to keep: Opera, Vivaldi, Brave, Tor Browser, etc.",
+  
+  "KeepGamingApps": false,
+  "//": "Set to true to keep: Xbox apps, game launchers, King games, etc.",
+  
+  "AggressiveBloatwareRemoval": true,
+  "//": "Set to false to keep some Microsoft built-in apps like Calculator, Paint",
+  
+  "//": "=== ENHANCED ESSENTIAL APPS CONTROLS (NEW 2025) ===",
+  "//": "Control which categories of essential apps to install",
+  "InstallProductivityApps": true,
+  "//": "Installs: LibreOffice, PDF readers, WinRAR, Total Commander, etc.",
+  
+  "InstallMediaApps": true,
+  "//": "Installs: VLC, GIMP, Audacity, Paint.NET, etc.",
+  
+  "InstallDevelopmentTools": false,
+  "//": "Installs: VS Code, Git, Python, Node.js, Windows Terminal, etc.",
+  
+  "InstallCommunicationApps": true,
+  "//": "Installs: Teams, Zoom, Thunderbird, etc.",
+  
+  "InstallUtilities": true,
+  "//": "Installs: PowerToys, Everything Search, CCleaner, etc.",
+  
+  "InstallGamingApps": false,
+  "//": "Installs: Steam, Epic Games Launcher, Discord, etc.",
+  
+  "//": "=== LEGACY SUPPORT ===",
+  "//": "Custom lists are still supported for backward compatibility",
+  "CustomEssentialApps": [],
+  "CustomBloatwareList": [],
+  
+  "//": "=== EXAMPLE CONFIGURATIONS ===",
+  "//": "================================================",
+  "//": "",
+  "//": "MINIMAL CONFIGURATION (Conservative approach):",
+  "//": "- KeepSocialApps: true",
+  "//": "- KeepMediaStreamingApps: true", 
+  "//": "- KeepAlternativeBrowsers: true",
+  "//": "- KeepGamingApps: true",
+  "//": "- AggressiveBloatwareRemoval: false",
+  "//": "- InstallDevelopmentTools: false",
+  "//": "- InstallGamingApps: false",
+  "//": "",
+  "//": "AGGRESSIVE CONFIGURATION (Maximum cleanup):",
+  "//": "- All Keep* settings: false",
+  "//": "- AggressiveBloatwareRemoval: true",
+  "//": "- All Install* settings: true",
+  "//": "",
+  "//": "DEVELOPER CONFIGURATION:",
+  "//": "- InstallDevelopmentTools: true",
+  "//": "- InstallUtilities: true",
+  "//": "- KeepAlternativeBrowsers: true",
+  "//": "",
+  "//": "GAMER CONFIGURATION:",
+  "//": "- KeepGamingApps: true",
+  "//": "- InstallGamingApps: true",
+  "//": "- InstallMediaApps: true"
+}

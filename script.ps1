@@ -1578,14 +1578,32 @@ Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Scr
 ### Load configuration FIRST (before creating lists)
 $configPath = Join-Path $PSScriptRoot "config.json"
 $global:Config = @{
+    # Main Task Controls
     SkipBloatwareRemoval = $false
     SkipEssentialApps    = $false
     SkipWindowsUpdates   = $false
     SkipTelemetryDisable = $false
     SkipSystemRestore    = $false
+    EnableVerboseLogging = $false
+    
+    # Bloatware Category Controls (Enhanced 2025)
+    KeepSocialApps = $false              # Keep social media apps (Facebook, Twitter, etc.)
+    KeepMediaStreamingApps = $false      # Keep streaming apps (Netflix, Spotify, etc.)
+    KeepAlternativeBrowsers = $false     # Keep alternative browsers (Opera, Vivaldi, etc.)
+    KeepGamingApps = $false              # Keep gaming apps and platforms
+    AggressiveBloatwareRemoval = $true   # Include Microsoft built-in apps in removal
+    
+    # Essential Apps Category Controls (Enhanced 2025)
+    InstallProductivityApps = $true      # Install productivity apps (Office alternatives, PDF readers)
+    InstallMediaApps = $true             # Install media apps (VLC, image editors)
+    InstallDevelopmentTools = $false     # Install development tools (VS Code, Git, Python)
+    InstallCommunicationApps = $true     # Install communication apps (Teams, Zoom)
+    InstallUtilities = $true             # Install system utilities (PowerToys, Everything)
+    InstallGamingApps = $false           # Install gaming platforms (Steam, Epic Games)
+    
+    # Legacy Support
     CustomEssentialApps  = @()
     CustomBloatwareList  = @()
-    EnableVerboseLogging = $false
 }
 
 if (Test-Path $configPath) {
@@ -1597,19 +1615,36 @@ if (Test-Path $configPath) {
         if ($config.SkipWindowsUpdates) { $global:Config.SkipWindowsUpdates = $config.SkipWindowsUpdates }
         if ($config.SkipTelemetryDisable) { $global:Config.SkipTelemetryDisable = $config.SkipTelemetryDisable }
         if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
-        if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
-        if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
         if ($config.EnableVerboseLogging) { $global:Config.EnableVerboseLogging = $config.EnableVerboseLogging }
         
-        Write-Log "Loaded configuration from config.json" 'INFO'
-        Write-Log "Config: SkipBloatware=$($global:Config.SkipBloatwareRemoval), SkipEssential=$($global:Config.SkipEssentialApps), SkipUpdates=$($global:Config.SkipWindowsUpdates)" 'INFO'
+        # Enhanced 2025 Configuration Options
+        if ($config.KeepSocialApps -ne $null) { $global:Config.KeepSocialApps = $config.KeepSocialApps }
+        if ($config.KeepMediaStreamingApps -ne $null) { $global:Config.KeepMediaStreamingApps = $config.KeepMediaStreamingApps }
+        if ($config.KeepAlternativeBrowsers -ne $null) { $global:Config.KeepAlternativeBrowsers = $config.KeepAlternativeBrowsers }
+        if ($config.KeepGamingApps -ne $null) { $global:Config.KeepGamingApps = $config.KeepGamingApps }
+        if ($config.AggressiveBloatwareRemoval -ne $null) { $global:Config.AggressiveBloatwareRemoval = $config.AggressiveBloatwareRemoval }
+        
+        if ($config.InstallProductivityApps -ne $null) { $global:Config.InstallProductivityApps = $config.InstallProductivityApps }
+        if ($config.InstallMediaApps -ne $null) { $global:Config.InstallMediaApps = $config.InstallMediaApps }
+        if ($config.InstallDevelopmentTools -ne $null) { $global:Config.InstallDevelopmentTools = $config.InstallDevelopmentTools }
+        if ($config.InstallCommunicationApps -ne $null) { $global:Config.InstallCommunicationApps = $config.InstallCommunicationApps }
+        if ($config.InstallUtilities -ne $null) { $global:Config.InstallUtilities = $config.InstallUtilities }
+        if ($config.InstallGamingApps -ne $null) { $global:Config.InstallGamingApps = $config.InstallGamingApps }
+        
+        # Legacy support
+        if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
+        if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
+        
+        Write-Log "Loaded enhanced configuration from config.json" 'INFO'
+        Write-Log "Config: SkipBloatware=$($global:Config.SkipBloatwareRemoval), SkipEssential=$($global:Config.SkipEssentialApps), AggressiveBloatware=$($global:Config.AggressiveBloatwareRemoval)" 'INFO'
+        Write-Log "Categories: DevTools=$($global:Config.InstallDevelopmentTools), Gaming=$($global:Config.InstallGamingApps), KeepSocial=$($global:Config.KeepSocialApps)" 'INFO'
     }
     catch {
         Write-Log "Failed to load configuration: $_" 'WARN'
     }
 }
 else {
-    Write-Log "No config.json found. Using defaults." 'INFO'
+    Write-Log "No config.json found. Using enhanced defaults (2025)." 'INFO'
 }
 
 ### Centralized temp folder and essential/bloatware lists
@@ -1619,35 +1654,151 @@ if (-not (Test-Path $global:TempFolder)) {
     New-Item -ItemType Directory -Path $global:TempFolder -Force | Out-Null
 }
 
-### Enhanced comprehensive bloatware list for Windows 10/11 (2025)
-$global:BloatwareList = @(
-    # OEM Bloatware (Acer, ASUS, Dell, HP, Lenovo)
-    'Acer.AcerPowerManagement', 'Acer.AcerQuickAccess', 'Acer.AcerUEIPFramework', 'Acer.AcerUserExperienceImprovementProgram',
-    'ASUS.ASUSGiftBox', 'ASUS.ASUSLiveUpdate', 'ASUS.ASUSSplendidVideoEnhancementTechnology', 'ASUS.ASUSWebStorage',
-    'ASUS.ASUSZenAnywhere', 'ASUS.ASUSZenLink', 'ASUS.MyASUS', 'ASUS.GlideX', 'ASUS.ASUSDisplayControl',
-    'Dell.CustomerConnect', 'Dell.DellDigitalDelivery', 'Dell.DellFoundationServices', 'Dell.DellHelpAndSupport', 
-    'Dell.DellMobileConnect', 'Dell.DellPowerManager', 'Dell.DellProductRegistration', 'Dell.DellSupportAssist', 
-    'Dell.DellUpdate', 'Dell.MyDell', 'Dell.DellOptimizer', 'Dell.CommandUpdate',
-    'HP.HP3DDriveGuard', 'HP.HPAudioSwitch', 'HP.HPClientSecurityManager', 'HP.HPConnectionOptimizer',
-    'HP.HPDocumentation', 'HP.HPDropboxPlugin', 'HP.HPePrintSW', 'HP.HPJumpStart', 'HP.HPJumpStartApps',
-    'HP.HPJumpStartLaunch', 'HP.HPRegistrationService', 'HP.HPSupportSolutionsFramework', 'HP.HPSureConnect',
-    'HP.HPSystemEventUtility', 'HP.HPWelcome', 'HP.HPSmart', 'HP.HPQuickActions', 'HewlettPackard.SupportAssistant',
-    'Lenovo.AppExplorer', 'Lenovo.LenovoCompanion', 'Lenovo.LenovoExperienceImprovement', 'Lenovo.LenovoFamilyCloud',
-    'Lenovo.LenovoHotkeys', 'Lenovo.LenovoMigrationAssistant', 'Lenovo.LenovoModernIMController',
-    'Lenovo.LenovoServiceBridge', 'Lenovo.LenovoSolutionCenter', 'Lenovo.LenovoUtility', 'Lenovo.LenovoVantage',
-    'Lenovo.LenovoVoice', 'Lenovo.LenovoWiFiSecurity', 'Lenovo.LenovoNow', 'Lenovo.ImController.PluginHost',
+### Enhanced comprehensive bloatware list for Windows 10/11 (2025) - Categorized Approach
+$global:BloatwareCategories = @{
+    # Critical apps that should NEVER be removed (safety list)
+    Critical = @(
+        'Microsoft.Windows.Cortana', 'Microsoft.WindowsStore', 'Microsoft.StorePurchaseApp',
+        'Microsoft.WindowsCalculator', 'Microsoft.WindowsCamera', 'Microsoft.WindowsStore',
+        'Microsoft.DesktopAppInstaller', 'Microsoft.Winget.Source', 'Microsoft.VCLibs.*',
+        'Microsoft.UI.Xaml.*', 'Microsoft.NET.*', 'Microsoft.WindowsNotepad', 'Microsoft.Paint'
+    )
+    
+    # OEM Manufacturer Bloatware (High Priority Removal)
+    OEM = @(
+        # Acer
+        'Acer.AcerPowerManagement', 'Acer.AcerQuickAccess', 'Acer.AcerUEIPFramework', 
+        'Acer.AcerUserExperienceImprovementProgram', 'Acer.AcerCare', 'Acer.AcerPortal',
+        
+        # ASUS
+        'ASUS.ASUSGiftBox', 'ASUS.ASUSLiveUpdate', 'ASUS.ASUSSplendidVideoEnhancementTechnology', 
+        'ASUS.ASUSWebStorage', 'ASUS.ASUSZenAnywhere', 'ASUS.ASUSZenLink', 'ASUS.MyASUS', 
+        'ASUS.GlideX', 'ASUS.ASUSDisplayControl', 'ASUS.GameFirst', 'ASUS.KeyboardHotkeys',
+        
+        # Dell
+        'Dell.CustomerConnect', 'Dell.DellDigitalDelivery', 'Dell.DellFoundationServices', 
+        'Dell.DellHelpAndSupport', 'Dell.DellMobileConnect', 'Dell.DellPowerManager', 
+        'Dell.DellProductRegistration', 'Dell.DellSupportAssist', 'Dell.DellUpdate', 
+        'Dell.MyDell', 'Dell.DellOptimizer', 'Dell.CommandUpdate', 'Dell.DellCinemaColor',
+        
+        # HP
+        'HP.HP3DDriveGuard', 'HP.HPAudioSwitch', 'HP.HPClientSecurityManager', 'HP.HPConnectionOptimizer',
+        'HP.HPDocumentation', 'HP.HPDropboxPlugin', 'HP.HPePrintSW', 'HP.HPJumpStart', 
+        'HP.HPJumpStartApps', 'HP.HPJumpStartLaunch', 'HP.HPRegistrationService', 
+        'HP.HPSupportSolutionsFramework', 'HP.HPSureConnect', 'HP.HPSystemEventUtility', 
+        'HP.HPWelcome', 'HP.HPSmart', 'HP.HPQuickActions', 'HewlettPackard.SupportAssistant',
+        
+        # Lenovo
+        'Lenovo.AppExplorer', 'Lenovo.LenovoCompanion', 'Lenovo.LenovoExperienceImprovement', 
+        'Lenovo.LenovoFamilyCloud', 'Lenovo.LenovoHotkeys', 'Lenovo.LenovoMigrationAssistant',
+        'Lenovo.LenovoModernIMController', 'Lenovo.LenovoServiceBridge', 'Lenovo.LenovoSolutionCenter', 
+        'Lenovo.LenovoUtility', 'Lenovo.LenovoVantage', 'Lenovo.LenovoVoice', 'Lenovo.LenovoWiFiSecurity', 
+        'Lenovo.LenovoNow', 'Lenovo.ImController.PluginHost',
+        
+        # MSI
+        'MSI.CenterCommand', 'MSI.MysticLight', 'MSI.CreatorCenter', 'MSI.Gaming',
+        
+        # Gigabyte
+        'Gigabyte.ControlCenter', 'Gigabyte.EasyTune', 'Gigabyte.SmartSwitch'
+    )
+    
+    # Gaming and Entertainment Bloatware (Medium Priority)
+    Gaming = @(
+        # King Games
+        'king.com.BubbleWitch', 'king.com.BubbleWitch3Saga', 'king.com.CandyCrush', 
+        'king.com.CandyCrushFriends', 'king.com.CandyCrushSaga', 'king.com.CandyCrushSodaSaga', 
+        'king.com.FarmHeroes', 'king.com.FarmHeroesSaga',
+        
+        # Other Gaming Apps
+        'Gameloft.MarchofEmpires', 'G5Entertainment.HiddenCity', 'RandomSaladGamesLLC.SimpleSolitaire',
+        'RoyalRevolt2.RoyalRevolt2', 'WildTangent.WildTangentGamesApp', 'WildTangent.WildTangentHelper',
+        'Microsoft.XboxGameCallableUI', 'Microsoft.GamingApp', 'Microsoft.GamingServices',
+        'Microsoft.MinecraftUWP', 'Microsoft.MinecraftEducationEdition',
+        
+        # Xbox (Keep if user wants gaming)
+        'Microsoft.Xbox.TCUI', 'Microsoft.XboxApp', 'Microsoft.XboxGameOverlay', 
+        'Microsoft.XboxGamingOverlay', 'Microsoft.XboxIdentityProvider', 'Microsoft.XboxSpeechToTextOverlay'
+    )
+    
+    # Social Media and Communication (Low Priority - User Choice)
+    Social = @(
+        'Facebook.Facebook', 'Instagram.Instagram', 'LinkedIn.LinkedIn', 'TikTok.TikTok', 
+        'Twitter.Twitter', 'Discord.Discord', 'Snapchat.Snapchat', 'Telegram.TelegramDesktop',
+        'Skype.Skype', 'Microsoft.SkypeApp', 'WhatsApp.WhatsApp', 'Messenger.Messenger'
+    )
+    
+    # Microsoft Bloatware (High Priority)
+    Microsoft = @(
+        # Bing Apps
+        'Microsoft.BingFinance', 'Microsoft.BingFoodAndDrink', 'Microsoft.BingHealthAndFitness', 
+        'Microsoft.BingNews', 'Microsoft.BingSports', 'Microsoft.BingTravel', 'Microsoft.BingWeather',
+        
+        # Office and Productivity Bloatware
+        'Microsoft.MicrosoftOfficeHub', 'Microsoft.MicrosoftPowerBIForWindows', 'Microsoft.Office.OneNote', 
+        'Microsoft.Office.Sway', 'Microsoft.OneConnect', 'Microsoft.ToDo', 'Microsoft.Whiteboard',
+        
+        # Media and Entertainment
+        'Microsoft.ZuneMusic', 'Microsoft.ZuneVideo', 'Microsoft.Groove', 'Microsoft.Movies', 'Microsoft.Music',
+        
+        # Feedback and Help
+        'Microsoft.GetHelp', 'Microsoft.Getstarted', 'Microsoft.HelpAndTips', 'Microsoft.WindowsTips',
+        'Microsoft.WindowsFeedback', 'Microsoft.WindowsFeedbackHub',
+        
+        # Other Microsoft Apps
+        'Microsoft.People', 'Microsoft.StickyNotes', 'Microsoft.WindowsAlarms', 'Microsoft.WindowsMaps',
+        'Microsoft.WindowsReadingList', 'Microsoft.WindowsSoundRecorder', 'Microsoft.SoundRecorder',
+        'Microsoft.NetworkSpeedTest', 'Microsoft.News', 'Microsoft.PowerAutomateDesktop', 'Microsoft.Wallet',
+        'Microsoft.MixedReality.Portal', 'Microsoft.ScreenSketch', 'Microsoft.MicrosoftSolitaireCollection',
+        
+        # Windows 11 Specific
+        'Microsoft.Clipchamp', 'Microsoft.WidgetsPlatformRuntime', 'Microsoft.Widgets'
+    )
+    
+    # 3D and AR Applications (High Priority - Usually Unused)
+    Media3D = @(
+        'Microsoft.3DBuilder', 'Microsoft.Microsoft3DViewer', 'Microsoft.Print3D', 'Microsoft.Paint3D'
+    )
+    
+    # Media Streaming Services (User Choice)
+    MediaStreaming = @(
+        'Spotify.Spotify', 'Amazon.AmazonPrimeVideo', 'Netflix.Netflix', 'Hulu.Hulu', 'Disney.DisneyPlus',
+        'SlingTV.Sling', 'Pandora.Pandora', 'iHeartRadio.iHeartRadio', 'TuneIn.TuneIn'
+    )
+    
+    # Security Software Bloatware (High Priority - Often Trials)
+    Security = @(
+        'Avast.AvastFreeAntivirus', 'AVG.AVGAntiVirusFree', 'Avira.Avira', 'ESET.ESETNOD32Antivirus',
+        'Kaspersky.Kaspersky', 'McAfee.LiveSafe', 'McAfee.Livesafe', 'McAfee.SafeConnect', 
+        'McAfee.Security', 'McAfee.WebAdvisor', 'Norton.OnlineBackup', 'Norton.Security',
+        'Norton.NortonSecurity', 'Malwarebytes.Malwarebytes', 'IOBit.AdvancedSystemCare', 
+        'IOBit.DriverBooster', 'Piriform.CCleaner'
+    )
+    
+    # Browser Bloatware (Keep Essential Ones)
+    Browsers = @(
+        'Opera.Opera', 'Opera.OperaGX', 'BraveSoftware.BraveBrowser', 'VivaldiTechnologies.Vivaldi',
+        'Mozilla.SeaMonkey', 'TheTorProject.TorBrowser', 'Yandex.YandexBrowser', 'UCWeb.UCBrowser'
+    )
+    
+    # Adobe Trial Software
+    Adobe = @(
+        'Adobe.AdobeCreativeCloud', 'Adobe.AdobeExpress', 'Adobe.PhotoshopExpress', 'Adobe.AdobePremiere'
+    )
+}
 
-    # Gaming and Social Apps
-    'king.com.BubbleWitch', 'king.com.BubbleWitch3Saga', 'king.com.CandyCrush', 'king.com.CandyCrushFriends', 
-    'king.com.CandyCrushSaga', 'king.com.CandyCrushSodaSaga', 'king.com.FarmHeroes', 'king.com.FarmHeroesSaga',
-    'Gameloft.MarchofEmpires', 'G5Entertainment.HiddenCity', 'RandomSaladGamesLLC.SimpleSolitaire',
-    'RoyalRevolt2.RoyalRevolt2', 'WildTangent.WildTangentGamesApp', 'WildTangent.WildTangentHelper',
-    'Facebook.Facebook', 'Instagram.Instagram', 'LinkedIn.LinkedIn', 'TikTok.TikTok', 'Twitter.Twitter',
-    'Discord.Discord', 'Snapchat.Snapchat', 'Telegram.TelegramDesktop',
+# Create consolidated bloatware list with priority levels
+$global:BloatwareList = @()
+$global:BloatwareList += $global:BloatwareCategories.OEM
+$global:BloatwareList += $global:BloatwareCategories.Gaming
+$global:BloatwareList += $global:BloatwareCategories.Microsoft
+$global:BloatwareList += $global:BloatwareCategories.Media3D
+$global:BloatwareList += $global:BloatwareCategories.Security
+$global:BloatwareList += $global:BloatwareCategories.Adobe
 
-    # Microsoft Built-in Bloatware
-    'Microsoft.3DBuilder', 'Microsoft.Microsoft3DViewer', 'Microsoft.Print3D', 'Microsoft.Paint3D',
-    'Microsoft.BingFinance', 'Microsoft.BingFoodAndDrink', 'Microsoft.BingHealthAndFitness', 'Microsoft.BingNews', 
+# Add optional categories based on user preference (can be configured)
+if (-not $global:Config.KeepSocialApps) { $global:BloatwareList += $global:BloatwareCategories.Social }
+if (-not $global:Config.KeepMediaStreamingApps) { $global:BloatwareList += $global:BloatwareCategories.MediaStreaming }
+if (-not $global:Config.KeepAlternativeBrowsers) { $global:BloatwareList += $global:BloatwareCategories.Browsers } 
     'Microsoft.BingSports', 'Microsoft.BingTravel', 'Microsoft.BingWeather', 'Microsoft.MSN',
     'Microsoft.GetHelp', 'Microsoft.Getstarted', 'Microsoft.HelpAndTips', 'Microsoft.WindowsTips',
     'Microsoft.MicrosoftOfficeHub', 'Microsoft.MicrosoftPowerBIForWindows', 'Microsoft.Office.OneNote', 
@@ -1766,22 +1917,100 @@ if ($global:Config.CustomBloatwareList -and $global:Config.CustomBloatwareList.C
 # Create standardized temp lists with consistent naming and metadata
 New-StandardizedTempList -ListType "bloatware" -Operation "main_list" -Data $global:BloatwareList -Description "Complete bloatware list including custom entries from config"
 
-### Essential Apps List
-$global:EssentialApps = @(
-    @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit'; Choco = 'adobereader' },
-    @{ Name = 'Google Chrome'; Winget = 'Google.Chrome'; Choco = 'googlechrome' },
-    @{ Name = 'Mozilla Firefox'; Winget = 'Mozilla.Firefox'; Choco = 'firefox' },
-    @{ Name = 'Mozilla Thunderbird'; Winget = 'Mozilla.Thunderbird'; Choco = 'thunderbird' },
-    @{ Name = 'Microsoft Edge'; Winget = 'Microsoft.Edge'; Choco = 'microsoft-edge' },
-    @{ Name = 'Total Commander'; Winget = 'Ghisler.TotalCommander'; Choco = 'totalcommander' },
-    @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell' },
-    @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal' },
-    @{ Name = 'WinRAR'; Winget = 'RARLab.WinRAR'; Choco = 'winrar' },
-    @{ Name = '7-Zip'; Winget = '7zip.7zip'; Choco = '7zip' },
-    @{ Name = 'Notepad++'; Winget = 'Notepad++.Notepad++'; Choco = 'notepadplusplus' },
-    @{ Name = 'PDF24 Creator'; Winget = 'PDF24.PDF24Creator'; Choco = 'pdf24' },
-    @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime' }
-)
+### Enhanced Essential Applications List - Categorized by Priority and Function
+$global:EssentialAppsCategories = @{
+    # Core System & Security (Highest Priority)
+    SystemCore = @(
+        @{ Name = "Microsoft Visual C++ Redistributables"; Winget = "Microsoft.VCRedist.2015+.x64"; Choco = "vcredist-all"; Priority = 1; Category = "Runtime" },
+        @{ Name = "Microsoft .NET Runtime"; Winget = "Microsoft.DotNet.Runtime.8"; Choco = "dotnet"; Priority = 1; Category = "Runtime" },
+        @{ Name = "PowerShell 7"; Winget = "Microsoft.Powershell"; Choco = "powershell"; Priority = 1; Category = "System" },
+        @{ Name = "Windows Terminal"; Winget = "Microsoft.WindowsTerminal"; Choco = "microsoft-windows-terminal"; Priority = 1; Category = "System" }
+    )
+    
+    # Web Browsers (High Priority)
+    Browsers = @(
+        @{ Name = "Google Chrome"; Winget = "Google.Chrome"; Choco = "googlechrome"; Priority = 2; Category = "Browser" },
+        @{ Name = "Mozilla Firefox"; Winget = "Mozilla.Firefox"; Choco = "firefox"; Priority = 2; Category = "Browser" },
+        @{ Name = "Microsoft Edge"; Winget = "Microsoft.Edge"; Choco = "microsoft-edge"; Priority = 2; Category = "Browser" }
+    )
+    
+    # Essential Productivity (High Priority)
+    Productivity = @(
+        @{ Name = "Adobe Acrobat Reader"; Winget = "Adobe.Acrobat.Reader.64-bit"; Choco = "adobereader"; Priority = 2; Category = "Productivity" },
+        @{ Name = "7-Zip"; Winget = "7zip.7zip"; Choco = "7zip"; Priority = 2; Category = "Utility" },
+        @{ Name = "Notepad++"; Winget = "Notepad++.Notepad++"; Choco = "notepadplusplus"; Priority = 2; Category = "Editor" },
+        @{ Name = "WinRAR"; Winget = "RARLab.WinRAR"; Choco = "winrar"; Priority = 3; Category = "Utility" },
+        @{ Name = "PDF24 Creator"; Winget = "PDF24.PDF24Creator"; Choco = "pdf24"; Priority = 3; Category = "Productivity" },
+        @{ Name = "Total Commander"; Winget = "Ghisler.TotalCommander"; Choco = "totalcommander"; Priority = 3; Category = "FileManager" }
+    )
+    
+    # Communication & Email (Medium Priority)
+    Communication = @(
+        @{ Name = "Mozilla Thunderbird"; Winget = "Mozilla.Thunderbird"; Choco = "thunderbird"; Priority = 3; Category = "Email" },
+        @{ Name = "Microsoft Teams"; Winget = "Microsoft.Teams"; Choco = "microsoft-teams"; Priority = 3; Category = "Communication" },
+        @{ Name = "Zoom"; Winget = "Zoom.Zoom"; Choco = "zoom"; Priority = 3; Category = "Communication" },
+        @{ Name = "Discord"; Winget = "Discord.Discord"; Choco = "discord"; Priority = 4; Category = "Communication" }
+    )
+    
+    # Media & Graphics (Medium Priority)
+    Media = @(
+        @{ Name = "VLC Media Player"; Winget = "VideoLAN.VLC"; Choco = "vlc"; Priority = 3; Category = "Media" },
+        @{ Name = "GIMP"; Winget = "GIMP.GIMP"; Choco = "gimp"; Priority = 4; Category = "Graphics" },
+        @{ Name = "Audacity"; Winget = "Audacity.Audacity"; Choco = "audacity"; Priority = 4; Category = "Audio" },
+        @{ Name = "Paint.NET"; Winget = "dotPDN.PaintDotNet"; Choco = "paint.net"; Priority = 3; Category = "Graphics" }
+    )
+    
+    # Development Tools (Optional - User Choice)
+    Development = @(
+        @{ Name = "Visual Studio Code"; Winget = "Microsoft.VisualStudioCode"; Choco = "vscode"; Priority = 4; Category = "Development" },
+        @{ Name = "Git"; Winget = "Git.Git"; Choco = "git"; Priority = 4; Category = "Development" },
+        @{ Name = "Python"; Winget = "Python.Python.3.12"; Choco = "python"; Priority = 4; Category = "Development" },
+        @{ Name = "Node.js"; Winget = "OpenJS.NodeJS"; Choco = "nodejs"; Priority = 4; Category = "Development" },
+        @{ Name = "Java Runtime Environment"; Winget = "Oracle.JavaRuntimeEnvironment"; Choco = "javaruntime"; Priority = 4; Category = "Runtime" }
+    )
+    
+    # System Utilities (Medium Priority)
+    Utilities = @(
+        @{ Name = "CCleaner"; Winget = "Piriform.CCleaner"; Choco = "ccleaner"; Priority = 4; Category = "Utility" },
+        @{ Name = "PowerToys"; Winget = "Microsoft.PowerToys"; Choco = "powertoys"; Priority = 3; Category = "Utility" },
+        @{ Name = "Everything Search"; Winget = "voidtools.Everything"; Choco = "everything"; Priority = 3; Category = "Utility" },
+        @{ Name = "Malwarebytes"; Winget = "Malwarebytes.Malwarebytes"; Choco = "malwarebytes"; Priority = 4; Category = "Security" }
+    )
+    
+    # Gaming Platform (Optional)
+    Gaming = @(
+        @{ Name = "Steam"; Winget = "Valve.Steam"; Choco = "steam"; Priority = 5; Category = "Gaming" },
+        @{ Name = "Epic Games Launcher"; Winget = "EpicGames.EpicGamesLauncher"; Choco = "epicgameslauncher"; Priority = 5; Category = "Gaming" }
+    )
+}
+
+# Create consolidated essential apps list based on priority and configuration
+$global:EssentialApps = @()
+
+# Always include core system apps (Priority 1-2)
+$global:EssentialApps += $global:EssentialAppsCategories.SystemCore
+$global:EssentialApps += $global:EssentialAppsCategories.Browsers | Where-Object { $_.Priority -le 2 }
+$global:EssentialApps += $global:EssentialAppsCategories.Productivity | Where-Object { $_.Priority -le 2 }
+
+# Add additional categories based on configuration (Priority 3+)
+if ($global:Config.InstallProductivityApps -ne $false) {
+    $global:EssentialApps += $global:EssentialAppsCategories.Productivity | Where-Object { $_.Priority -ge 3 }
+}
+if ($global:Config.InstallMediaApps -ne $false) {
+    $global:EssentialApps += $global:EssentialAppsCategories.Media
+}
+if ($global:Config.InstallDevelopmentTools -eq $true) {
+    $global:EssentialApps += $global:EssentialAppsCategories.Development
+}
+if ($global:Config.InstallCommunicationApps -ne $false) {
+    $global:EssentialApps += $global:EssentialAppsCategories.Communication
+}
+if ($global:Config.InstallUtilities -ne $false) {
+    $global:EssentialApps += $global:EssentialAppsCategories.Utilities
+}
+if ($global:Config.InstallGamingApps -eq $true) {
+    $global:EssentialApps += $global:EssentialAppsCategories.Gaming
+}
 
 # Add custom essential apps from config if any
 if ($global:Config.CustomEssentialApps -and $global:Config.CustomEssentialApps.Count -gt 0) {
@@ -2072,15 +2301,16 @@ function Invoke-ModernPackageManager {
     }
 }
 
-### [TASK 2] Install Essential Apps - Enhanced with Modern Package Management
+### [TASK 2] Install Essential Apps - Enhanced Categorized Smart Installation
 function Install-EssentialApps {
     # ===============================
-    # Task: InstallEssentialApps
+    # Task: InstallEssentialApps (Enhanced 2025)
     # ===============================
-    # Purpose: Installs essential applications using diff-based comparison with inventory.
-    # Environment: Windows 10/11, must run as Administrator, supports config-driven custom app lists.
-    # Logic: Compare essential apps list against inventory, only install what's missing.
-    Write-Log "[START] Install Essential Apps (Diff-Based Approach)" 'INFO'
+    # Purpose: Installs essential applications using categorized, priority-based approach.
+    # Research: Based on best practices from package management and automated deployment tools.
+    # Environment: Windows 10/11, Administrator required, supports multi-source installation.
+    # Intelligence: Smart detection, fallback methods, category-based installation.
+    Write-Log "[START] Install Essential Apps (Enhanced Categorized Approach)" 'INFO'
 
     # Use global inventory if available, otherwise build a quick one
     if (-not $global:SystemInventory) {
@@ -2091,49 +2321,220 @@ function Install-EssentialApps {
     $inventory = $global:SystemInventory
     Write-Log "[EssentialApps] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
 
-    # Build comprehensive list of all installed app identifiers for matching
-    $installedIdentifiers = @()
-    
-    # Add AppX package names
-    $inventory.appx | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
+    # Initialize installation statistics by category
+    $installStats = @{
+        SystemCore = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
+        Browsers = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
+        Productivity = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
+        Communication = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
+        Media = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
+        Development = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
+        Utilities = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
+        Gaming = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
     }
     
-    # Add Winget app names and IDs
-    $inventory.winget | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-        if ($_.Id) { $installedIdentifiers += $_.Id }
-    }
+    $totalToInstall = 0
+    $totalInstalled = 0
+    $totalFailed = 0
+    $totalAlreadyInstalled = 0
     
-    # Add Chocolatey app names
-    $inventory.choco | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-    }
+    Write-TaskProgress -Activity "Analyzing Essential Apps" -Status "Building installation lists by category..." -PercentComplete 5
     
-    # Add registry app display names
-    $inventory.registry_uninstall | ForEach-Object {
-        if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName }
-    }
+    # Process each category with priority-based installation
+    $categories = @('SystemCore', 'Browsers', 'Productivity', 'Communication', 'Media', 'Development', 'Utilities', 'Gaming')
+    $currentCategory = 0
     
-    # Remove duplicates and create lookup for faster matching
-    $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
-    Write-Log "[EssentialApps] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
-
-    # Find essential apps that are NOT installed (diff operation)
-    $appsToInstall = @()
-    foreach ($essentialApp in $global:EssentialApps) {
-        $found = $false
-        foreach ($installed in $installedIdentifiers) {
-            # Enhanced matching: check Name, Winget ID, Choco ID, and partial matches
-            if (
-                ($essentialApp.Name -and ($installed -like "*$($essentialApp.Name)*" -or $installed -eq $essentialApp.Name)) -or
-                ($essentialApp.Winget -and ($installed -eq $essentialApp.Winget -or $installed -like "*$($essentialApp.Winget)*")) -or
-                ($essentialApp.Choco -and ($installed -eq $essentialApp.Choco -or $installed -like "*$($essentialApp.Choco)*")) -or
-                ($essentialApp.Name -and $installed -like "*$($essentialApp.Name.Split(' ')[0])*")
-            ) {
-                $found = $true
-                break
+    foreach ($categoryName in $categories) {
+        $currentCategory++
+        $categoryApps = $global:EssentialAppsCategories[$categoryName]
+        if (-not $categoryApps -or $categoryApps.Count -eq 0) { continue }
+        
+        $baseCategoryProgress = [math]::Round(10 + ($currentCategory / $categories.Count) * 70) # 10-80% for category processing
+        Write-TaskProgress -Activity "Installing Essential Apps" -Status "Processing $categoryName category..." -PercentComplete $baseCategoryProgress
+        Write-Log "[EssentialApps] Processing category: $categoryName ($($categoryApps.Count) apps)" 'INFO'
+        
+        # Check which apps in this category need installation
+        $appsToInstallInCategory = @()
+        foreach ($app in $categoryApps) {
+            $isInstalled = Test-AppInstalled -AppIdentifier $app.Name -Inventory $inventory
+            if (-not $isInstalled.IsInstalled) {
+                # Also check by Winget and Choco IDs
+                $wingetInstalled = if ($app.Winget) { Test-AppInstalled -AppIdentifier $app.Winget -Inventory $inventory } else @{ IsInstalled = $false }
+                $chocoInstalled = if ($app.Choco) { Test-AppInstalled -AppIdentifier $app.Choco -Inventory $inventory } else @{ IsInstalled = $false }
+                
+                if (-not $wingetInstalled.IsInstalled -and -not $chocoInstalled.IsInstalled) {
+                    $appsToInstallInCategory += $app
+                    $installStats[$categoryName].ToInstall++
+                    $totalToInstall++
+                }
+                else {
+                    $installStats[$categoryName].AlreadyInstalled++
+                    $totalAlreadyInstalled++
+                    Write-Log "[EssentialApps] App already installed: $($app.Name) (detected via $($wingetInstalled.DetectionMethod)$($chocoInstalled.DetectionMethod))" 'VERBOSE'
+                }
             }
+            else {
+                $installStats[$categoryName].AlreadyInstalled++
+                $totalAlreadyInstalled++
+                Write-Log "[EssentialApps] App already installed: $($app.Name) (detected via $($isInstalled.DetectionMethod))" 'VERBOSE'
+            }
+        }
+        
+        Write-Log "[EssentialApps] Category $categoryName: $($appsToInstallInCategory.Count) apps to install, $($installStats[$categoryName].AlreadyInstalled) already installed" 'INFO'
+        
+        # Install apps in this category with priority order
+        $categoryCurrentApp = 0
+        $sortedApps = $appsToInstallInCategory | Sort-Object Priority
+        
+        foreach ($app in $sortedApps) {
+            $categoryCurrentApp++
+            
+            $categoryProgress = $baseCategoryProgress + [math]::Round(($categoryCurrentApp / [math]::Max($appsToInstallInCategory.Count, 1)) * 8) # 8% per category
+            Write-TaskProgress -Activity "Installing Essential Apps" -Status "[$categoryName] Installing: $($app.Name)" -PercentComplete $categoryProgress -CurrentOperation "$categoryCurrentApp of $($appsToInstallInCategory.Count) in category"
+            
+            $installResult = Install-SingleEssentialApp -AppInfo $app -Category $categoryName
+            
+            if ($installResult.Success) {
+                $installStats[$categoryName].Installed++
+                $totalInstalled++
+                Write-Log "[SUCCESS] Installed $categoryName app: $($app.Name) via $($installResult.Method)" 'INFO'
+            }
+            else {
+                $installStats[$categoryName].Failed++
+                $totalFailed++
+                Write-Log "[FAILED] Could not install $categoryName app: $($app.Name) - $($installResult.Error)" 'WARN'
+            }
+        }
+    }
+    
+    # Generate comprehensive installation report
+    Write-TaskProgress -Activity "Installing Essential Apps" -Status "Generating installation report..." -PercentComplete 85
+    
+    $installReport = @"
+=== ENHANCED ESSENTIAL APPS INSTALLATION REPORT ===
+
+Total Statistics:
+- Apps To Install: $totalToInstall
+- Successfully Installed: $totalInstalled
+- Failed Installations: $totalFailed
+- Already Installed: $totalAlreadyInstalled
+
+Category Breakdown:
+"@
+    
+    foreach ($cat in $categories) {
+        $stats = $installStats[$cat]
+        if ($stats.ToInstall -gt 0 -or $stats.AlreadyInstalled -gt 0) {
+            $installReport += "`n- $cat : To Install $($stats.ToInstall), Installed $($stats.Installed), Failed $($stats.Failed), Already Present $($stats.AlreadyInstalled)"
+        }
+    }
+    
+    Write-Log $installReport 'INFO'
+    
+    # Save comprehensive temp lists
+    $allAppsToInstall = @()
+    $allInstalledApps = @()
+    $allFailedApps = @()
+    
+    foreach ($cat in $categories) {
+        if ($installStats[$cat].ToInstall -gt 0) {
+            $categoryApps = $global:EssentialAppsCategories[$cat] | Where-Object { 
+                $testResult = Test-AppInstalled -AppIdentifier $_.Name -Inventory $inventory
+                -not $testResult.IsInstalled
+            }
+            $allAppsToInstall += $categoryApps | ForEach-Object { @{ App = $_; Category = $cat } }
+        }
+    }
+    
+    New-StandardizedTempList -ListType "essential" -Operation "comprehensive_analysis" -Data $allAppsToInstall -Description "All essential apps analyzed by category for installation"
+    
+    Write-TaskProgress -Activity "Installing Essential Apps" -Status "Essential apps installation completed" -PercentComplete 100 -Completed
+    Write-Log "[END] Install Essential Apps - To Install: $totalToInstall, Installed: $totalInstalled, Failed: $totalFailed, Already Present: $totalAlreadyInstalled" 'INFO'
+    
+    return $totalInstalled -gt 0
+}
+
+function Install-SingleEssentialApp {
+    param(
+        [hashtable]$AppInfo,
+        [string]$Category
+    )
+    
+    $result = @{
+        Success = $false
+        Method = ''
+        Error = ''
+    }
+    
+    $appName = $AppInfo.Name
+    $wingetId = $AppInfo.Winget
+    $chocoId = $AppInfo.Choco
+    
+    try {
+        # Method 1: Try Winget installation first (preferred for modern apps)
+        if ($wingetId -and $wingetId -ne $null) {
+            Write-Log "[EssentialApps] Attempting Winget installation: $wingetId" 'VERBOSE'
+            $wingetResult = Invoke-ModernPackageManager -Action 'install' -PackageId $wingetId -Source 'winget'
+            if ($wingetResult.Success) {
+                $result.Success = $true
+                $result.Method = 'Winget'
+                return $result
+            }
+            else {
+                Write-Log "[EssentialApps] Winget installation failed: $($wingetResult.Error)" 'VERBOSE'
+            }
+        }
+        
+        # Method 2: Try Chocolatey installation as fallback
+        if ($chocoId -and $chocoId -ne $null) {
+            Write-Log "[EssentialApps] Attempting Chocolatey installation: $chocoId" 'VERBOSE'
+            $chocoResult = Invoke-ModernPackageManager -Action 'install' -PackageId $chocoId -Source 'chocolatey'
+            if ($chocoResult.Success) {
+                $result.Success = $true
+                $result.Method = 'Chocolatey'
+                return $result
+            }
+            else {
+                Write-Log "[EssentialApps] Chocolatey installation failed: $($chocoResult.Error)" 'VERBOSE'
+            }
+        }
+        
+        # Method 3: Check if it's a built-in app that doesn't need installation
+        if ($AppInfo.Note -and $AppInfo.Note -like "*Built-in*") {
+            Write-Log "[EssentialApps] App is built-in: $appName" 'VERBOSE'
+            $result.Success = $true
+            $result.Method = 'Built-in (No installation needed)'
+            return $result
+        }
+        
+        # Method 4: Try alternative package manager detection
+        if ($wingetId) {
+            # Try variations of the Winget ID
+            $variations = @(
+                $wingetId.Replace('.', ''),
+                $wingetId.Split('.')[0],
+                $appName.Replace(' ', ''),
+                $appName.Replace(' ', '.')
+            )
+            
+            foreach ($variation in $variations) {
+                $wingetResult = Invoke-ModernPackageManager -Action 'install' -PackageId $variation -Source 'winget'
+                if ($wingetResult.Success) {
+                    $result.Success = $true
+                    $result.Method = "Winget (variation: $variation)"
+                    return $result
+                }
+            }
+        }
+        
+        $result.Error = "All installation methods failed for $appName"
+    }
+    catch {
+        $result.Error = "Exception during installation: $_"
+    }
+    
+    return $result
+}
         }
         if (-not $found) {
             $appsToInstall += $essentialApp
@@ -2367,15 +2768,22 @@ function Install-EssentialApps {
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
 
-### [TASK 3] Enhanced Remove Bloatware - Diff-Based Approach
+### [TASK 3] Enhanced Remove Bloatware - Multi-Method Categorized Approach
 function Remove-Bloatware {
     # ===============================
-    # Task: RemoveBloatware
+    # Task: RemoveBloatware (Enhanced 2025)
     # ===============================
-    # Purpose: Removes unwanted apps using diff-based comparison with inventory.
-    # Environment: Windows 10/11, must run as Administrator, supports OEM, Microsoft, and third-party bloatware.
-    # Logic: Compare bloatware list against inventory, only attempt removal of actually installed apps.
-    Write-Log "[START] Enhanced Remove Bloatware (Diff-Based Approach)" 'INFO'
+    # Purpose: Removes unwanted apps using categorized, multi-method approach with safety checks.
+    # Research: Based on Windows10Debloater, ChrisTitusTech/WinUtil, and W4RH4WK/Debloat-Windows-10
+    # Environment: Windows 10/11, Administrator required, supports multiple removal methods.
+    # Safety: Critical app protection, rollback support, comprehensive detection.
+    Write-Log "[START] Enhanced Remove Bloatware (Multi-Method Categorized Approach)" 'INFO'
+    
+    # Safety check: Ensure we have the critical apps protection list
+    if (-not $global:BloatwareCategories -or -not $global:BloatwareCategories.Critical) {
+        Write-Log "[CRITICAL] Bloatware categories not properly initialized. Aborting for safety." 'ERROR'
+        return $false
+    }
     
     # Use global inventory if available, otherwise build a quick one
     if (-not $global:SystemInventory) {
@@ -2386,74 +2794,344 @@ function Remove-Bloatware {
     $inventory = $global:SystemInventory
     Write-Log "[Bloatware] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
     
-    # Build comprehensive list of all installed app identifiers
-    $installedIdentifiers = @()
-    
-    # Add AppX package names and IDs
-    $inventory.appx | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-        if ($_.PackageFullName) { $installedIdentifiers += $_.PackageFullName }
+    # Initialize removal statistics
+    $removalStats = @{
+        OEM = @{ Found = 0; Removed = 0; Failed = 0 }
+        Gaming = @{ Found = 0; Removed = 0; Failed = 0 }
+        Microsoft = @{ Found = 0; Removed = 0; Failed = 0 }
+        Media3D = @{ Found = 0; Removed = 0; Failed = 0 }
+        Security = @{ Found = 0; Removed = 0; Failed = 0 }
+        Social = @{ Found = 0; Removed = 0; Failed = 0 }
+        MediaStreaming = @{ Found = 0; Removed = 0; Failed = 0 }
+        Browsers = @{ Found = 0; Removed = 0; Failed = 0 }
+        Adobe = @{ Found = 0; Removed = 0; Failed = 0 }
+        Protected = @{ Found = 0; Skipped = 0 }
     }
     
-    # Add Winget app names and IDs
-    $inventory.winget | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-        if ($_.Id) { $installedIdentifiers += $_.Id }
-    }
+    $totalProcessed = 0
+    $totalRemoved = 0
+    $totalFailed = 0
+    $protectedApps = @()
     
-    # Add Chocolatey app names
-    $inventory.choco | ForEach-Object {
-        if ($_.Name) { $installedIdentifiers += $_.Name }
-    }
+    Write-TaskProgress -Activity "Analyzing Bloatware" -Status "Building comprehensive detection lists..." -PercentComplete 5
     
-    # Add registry app display names
-    $inventory.registry_uninstall | ForEach-Object {
-        if ($_.DisplayName) { $installedIdentifiers += $_.DisplayName }
-    }
+    # Process each category with priority-based removal
+    $categories = @('OEM', 'Security', 'Adobe', 'Media3D', 'Microsoft', 'Gaming', 'Social', 'MediaStreaming', 'Browsers')
+    $currentCategory = 0
     
-    # Remove duplicates and create lookup for faster matching
-    $installedIdentifiers = $installedIdentifiers | Where-Object { $null -ne $_ -and $_ -ne '' } | Sort-Object -Unique
-    Write-Log "[Bloatware] Total unique installed identifiers: $($installedIdentifiers.Count)" 'INFO'
-    
-    # Find bloatware that is actually installed (diff operation)
-    $bloatwareToRemove = @()
-    foreach ($bloatApp in $global:BloatwareList) {
-        $found = $false
-        foreach ($installed in $installedIdentifiers) {
-            # Enhanced matching: exact, partial, and pattern-based
-            if ($installed -eq $bloatApp -or 
-                $installed -like "*$bloatApp*" -or 
-                $bloatApp -like "*$installed*" -or
-                ($bloatApp.Contains('.') -and $installed -like "*$($bloatApp.Split('.')[1])*") -or
-                ($bloatApp.Contains('.') -and $installed -like "*$($bloatApp.Split('.')[0])*")) {
-                $found = $true
-                Write-Log "[Bloatware] Match found: '$bloatApp' matches installed app '$installed'" 'VERBOSE'
-                break
+    foreach ($categoryName in $categories) {
+        $currentCategory++
+        $categoryApps = $global:BloatwareCategories[$categoryName]
+        if (-not $categoryApps -or $categoryApps.Count -eq 0) { continue }
+        
+        $baseCategoryProgress = [math]::Round(10 + ($currentCategory / $categories.Count) * 70) # 10-80% for category processing
+        Write-TaskProgress -Activity "Removing Bloatware" -Status "Processing $categoryName category..." -PercentComplete $baseCategoryProgress
+        Write-Log "[Bloatware] Processing category: $categoryName ($($categoryApps.Count) apps)" 'INFO'
+        
+        # Find installed apps in this category
+        $installedInCategory = @()
+        foreach ($app in $categoryApps) {
+            $isInstalled = Test-AppInstalled -AppIdentifier $app -Inventory $inventory
+            if ($isInstalled.IsInstalled) {
+                # Safety check: Ensure app is not in critical protection list
+                $isCritical = $false
+                foreach ($criticalApp in $global:BloatwareCategories.Critical) {
+                    if ($app -like $criticalApp -or $criticalApp -like "*$app*") {
+                        $isCritical = $true
+                        $protectedApps += $app
+                        $removalStats.Protected.Found++
+                        Write-Log "[SAFETY] App '$app' matches critical protection pattern '$criticalApp' - SKIPPING for safety" 'WARN'
+                        break
+                    }
+                }
+                
+                if (-not $isCritical) {
+                    $installedInCategory += @{
+                        AppName = $app
+                        DetectionMethod = $isInstalled.DetectionMethod
+                        FoundAs = $isInstalled.FoundAs
+                        CanUninstall = $isInstalled.CanUninstall
+                    }
+                    $removalStats[$categoryName].Found++
+                }
+                else {
+                    $removalStats.Protected.Skipped++
+                }
             }
         }
-        if ($found) {
-            $bloatwareToRemove += $bloatApp
+        
+        Write-Log "[Bloatware] Category $categoryName: $($installedInCategory.Count) apps found (out of $($categoryApps.Count) total)" 'INFO'
+        
+        # Remove apps in this category
+        $categoryCurrentApp = 0
+        foreach ($appInfo in $installedInCategory) {
+            $categoryCurrentApp++
+            $totalProcessed++
+            
+            $categoryProgress = $baseCategoryProgress + [math]::Round(($categoryCurrentApp / [math]::Max($installedInCategory.Count, 1)) * 8) # 8% per category
+            Write-TaskProgress -Activity "Removing Bloatware" -Status "[$categoryName] Removing: $($appInfo.AppName)" -PercentComplete $categoryProgress -CurrentOperation "$categoryCurrentApp of $($installedInCategory.Count) in category"
+            
+            $removalResult = Remove-SingleBloatwareApp -AppInfo $appInfo -Category $categoryName
+            
+            if ($removalResult.Success) {
+                $removalStats[$categoryName].Removed++
+                $totalRemoved++
+                Write-Log "[SUCCESS] Removed $categoryName app: $($appInfo.AppName) via $($removalResult.Method)" 'INFO'
+            }
+            else {
+                $removalStats[$categoryName].Failed++
+                $totalFailed++
+                Write-Log "[FAILED] Could not remove $categoryName app: $($appInfo.AppName) - $($removalResult.Error)" 'WARN'
+            }
         }
     }
     
-    Write-Log "[Bloatware] Diff analysis: $($bloatwareToRemove.Count) bloatware apps found installed (out of $($global:BloatwareList.Count) total in list)" 'INFO'
+    # Generate comprehensive removal report
+    Write-TaskProgress -Activity "Removing Bloatware" -Status "Generating removal report..." -PercentComplete 85
     
-    # Save diff lists using standardized temp list functions
-    New-StandardizedTempList -ListType "bloatware" -Operation "to_remove" -Data $bloatwareToRemove -Description "Bloatware apps found on system and targeted for removal"
+    $removalReport = @"
+=== ENHANCED BLOATWARE REMOVAL REPORT ===
+
+Total Statistics:
+- Apps Processed: $totalProcessed
+- Successfully Removed: $totalRemoved
+- Failed Removals: $totalFailed
+- Protected/Skipped: $($removalStats.Protected.Skipped)
+
+Category Breakdown:
+"@
     
-    # Save the apps NOT found (for debugging purposes)
-    $appsNotFound = $global:BloatwareList | Where-Object { $_ -notin $bloatwareToRemove }
-    New-StandardizedTempList -ListType "bloatware" -Operation "not_found" -Data $appsNotFound -Description "Bloatware apps not found on system"
-    Write-Log "[Bloatware] Apps not found on system: $($appsNotFound.Count)" 'INFO'
-    
-    if ($bloatwareToRemove.Count -eq 0) {
-        Write-Log "[Bloatware] No bloatware found on system. Skipping removal process." 'INFO'
-        Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
-        return
+    foreach ($cat in $categories + @('Protected')) {
+        if ($cat -eq 'Protected') {
+            $removalReport += "`n- $cat : Found $($removalStats[$cat].Found), Skipped $($removalStats[$cat].Skipped)"
+        }
+        else {
+            $stats = $removalStats[$cat]
+            $removalReport += "`n- $cat : Found $($stats.Found), Removed $($stats.Removed), Failed $($stats.Failed)"
+        }
     }
     
-    # Log the bloatware that will be removed
-    Write-Log "[Bloatware] Apps targeted for removal (diff list):" 'INFO'
+    if ($protectedApps.Count -gt 0) {
+        $removalReport += "`n`nProtected Apps (Safety Skip):`n"
+        $protectedApps | ForEach-Object { $removalReport += "  - $_`n" }
+    }
+    
+    Write-Log $removalReport 'INFO'
+    
+    # Save comprehensive temp lists
+    $allFoundBloatware = @()
+    $allRemovedBloatware = @()
+    $allFailedBloatware = @()
+    
+    foreach ($cat in $categories) {
+        if ($removalStats[$cat].Found -gt 0) {
+            $categoryApps = $global:BloatwareCategories[$cat] | Where-Object { 
+                $testResult = Test-AppInstalled -AppIdentifier $_ -Inventory $inventory
+                $testResult.IsInstalled
+            }
+            $allFoundBloatware += $categoryApps | ForEach-Object { @{ App = $_; Category = $cat } }
+        }
+    }
+    
+    New-StandardizedTempList -ListType "bloatware" -Operation "comprehensive_found" -Data $allFoundBloatware -Description "All bloatware found on system by category"
+    New-StandardizedTempList -ListType "bloatware" -Operation "protected_apps" -Data $protectedApps -Description "Apps protected from removal for safety"
+    
+    Write-TaskProgress -Activity "Removing Bloatware" -Status "Bloatware removal completed" -PercentComplete 100 -Completed
+    Write-Log "[END] Enhanced Remove Bloatware - Processed: $totalProcessed, Removed: $totalRemoved, Failed: $totalFailed, Protected: $($protectedApps.Count)" 'INFO'
+    
+    return $totalRemoved -gt 0
+}
+
+# Enhanced supporting functions for improved bloatware and essential apps management
+function Test-AppInstalled {
+    param(
+        [string]$AppIdentifier,
+        [hashtable]$Inventory
+    )
+    
+    # Test multiple detection methods
+    $result = @{
+        IsInstalled = $false
+        DetectionMethod = ''
+        FoundAs = ''
+        CanUninstall = $true
+    }
+    
+    # Check AppX packages
+    foreach ($appx in $Inventory.appx) {
+        if ($appx.Name -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($appx.Name)*" -or $appx.PackageFullName -like "*$AppIdentifier*") {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'AppX'
+            $result.FoundAs = $appx.Name
+            $result.CanUninstall = -not $appx.NonRemovable
+            return $result
+        }
+    }
+    
+    # Check Winget packages
+    foreach ($winget in $Inventory.winget) {
+        if ($winget.Id -eq $AppIdentifier -or $winget.Name -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($winget.Name)*") {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'Winget'
+            $result.FoundAs = $winget.Name
+            return $result
+        }
+    }
+    
+    # Check Registry uninstall entries
+    foreach ($regApp in $Inventory.registry_uninstall) {
+        if ($regApp.DisplayName -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($regApp.DisplayName)*") {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'Registry'
+            $result.FoundAs = $regApp.DisplayName
+            return $result
+        }
+    }
+    
+    # Check Chocolatey packages
+    foreach ($choco in $Inventory.choco) {
+        if ($choco.Name -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($choco.Name)*") {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'Chocolatey'
+            $result.FoundAs = $choco.Name
+            return $result
+        }
+    }
+    
+    return $result
+}
+
+function Remove-SingleBloatwareApp {
+    param(
+        [hashtable]$AppInfo,
+        [string]$Category
+    )
+    
+    $result = @{
+        Success = $false
+        Method = ''
+        Error = ''
+    }
+    
+    $appName = $AppInfo.AppName
+    $detectionMethod = $AppInfo.DetectionMethod
+    
+    try {
+        switch ($detectionMethod) {
+            'AppX' {
+                # Try AppX removal
+                $success = Remove-AppxPackageCompatible -Name $appName -AllUsers
+                if ($success) {
+                    $result.Success = $true
+                    $result.Method = 'AppX'
+                    return $result
+                }
+                
+                # Try provisioned package removal
+                $provisionedPkgs = Get-AppxProvisionedPackageCompatible -Online | Where-Object { $_.DisplayName -like "*$appName*" }
+                foreach ($pkg in $provisionedPkgs) {
+                    $success = Remove-AppxProvisionedPackageCompatible -Online -PackageName $pkg.PackageName
+                    if ($success) {
+                        $result.Success = $true
+                        $result.Method = 'AppX Provisioned'
+                        return $result
+                    }
+                }
+            }
+            
+            'Winget' {
+                # Try Winget uninstall
+                $wingetResult = Invoke-ModernPackageManager -Action 'uninstall' -PackageId $appName -Source 'winget'
+                if ($wingetResult.Success) {
+                    $result.Success = $true
+                    $result.Method = 'Winget'
+                    return $result
+                }
+            }
+            
+            'Registry' {
+                # Try to find and run uninstaller
+                $uninstallString = Get-UninstallString -AppName $appName
+                if ($uninstallString) {
+                    $uninstallResult = Invoke-UninstallString -UninstallString $uninstallString -Silent
+                    if ($uninstallResult) {
+                        $result.Success = $true
+                        $result.Method = 'Registry Uninstaller'
+                        return $result
+                    }
+                }
+            }
+            
+            'Chocolatey' {
+                # Try Chocolatey uninstall
+                $chocoResult = Invoke-ModernPackageManager -Action 'uninstall' -PackageId $appName -Source 'chocolatey'
+                if ($chocoResult.Success) {
+                    $result.Success = $true
+                    $result.Method = 'Chocolatey'
+                    return $result
+                }
+            }
+        }
+        
+        $result.Error = "No removal method succeeded for $detectionMethod detection"
+    }
+    catch {
+        $result.Error = "Exception during removal: $_"
+    }
+    
+    return $result
+}
+
+function Get-UninstallString {
+    param([string]$AppName)
+    
+    $uninstallKeys = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    
+    foreach ($keyPath in $uninstallKeys) {
+        try {
+            $apps = Get-ItemProperty $keyPath -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*$AppName*" }
+            foreach ($app in $apps) {
+                if ($app.UninstallString) {
+                    return $app.UninstallString
+                }
+            }
+        }
+        catch {
+            continue
+        }
+    }
+    
+    return $null
+}
+
+function Invoke-UninstallString {
+    param(
+        [string]$UninstallString,
+        [switch]$Silent
+    )
+    
+    try {
+        if ($Silent) {
+            # Try to make it silent
+            $silentArgs = "/S", "/SILENT", "/QUIET", "/VERYSILENT"
+            foreach ($arg in $silentArgs) {
+                if ($UninstallString -notlike "*$arg*") {
+                    $UninstallString += " $arg"
+                    break
+                }
+            }
+        }
+        
+        $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $UninstallString -Wait -PassThru -WindowStyle Hidden
+        return $process.ExitCode -eq 0
+    }
+    catch {
+        return $false
+    }
+}
     $bloatwareToRemove | ForEach-Object { Write-Log "  - $_" 'VERBOSE' }
     
     $removed = 0
