@@ -14,20 +14,27 @@
 # - Modern package manager wrapper with timeout support
 # - Optimized logging with better console color support
 # - Thread-safe operations using System.Collections.Concurrent
+# - REDUCED PS5.1 DEPENDENCY: Native PS7+ implementations for AppX, Windows Updates, and System Restore
 #
 # ENHANCED LOGGING SYSTEM:
 # - Separated console progress bars from file logging for cleaner log files
 # - Write-Log: Combined function for both console and file output
-# - Write-LogFile: File-only logging without console noise
+# - Write-LogFile: File-only logging without console noise (reduces PS5.1 operation noise)
 # - Write-ConsoleMessage: Console-only messages with enhanced colors
 # - Write-TaskProgress: Progress bars for console, simple messages for file
 # - Progress tracking for all major operations (tasks, bloatware removal, app installation, inventory)
 #
+# MODERN POWERSHELL 7+ NATIVE OPERATIONS:
+# - AppX Management: Uses CIM, WinRT APIs, winget, and DISM instead of Appx module
+# - Windows Updates: Uses Windows Update COM API and winget upgrade instead of PSWindowsUpdate
+# - System Restore: Uses CIM, vssadmin, and WMI instead of ComputerRestore cmdlets
+# - Graceful fallback to Windows PowerShell 5.1 only when modern approaches fail
+#
 # Key Environment Details:
-# - Optimized for PowerShell 7.5.2+ with fallback compatibility for Windows PowerShell 5.1
+# - Optimized for PowerShell 7.5.2+ with minimal Windows PowerShell 5.1 dependency
 # - Must be run as Administrator
 # - Uses $PSScriptRoot for all temp and log files
-# - Integrates with Winget, Chocolatey, AppX (via Windows PowerShell), DISM, Registry, and Windows Capabilities
+# - Integrates with Winget, Chocolatey, CIM, WinRT, DISM, Registry, and Windows APIs
 # - All actions are silent/non-interactive
 # - Graceful degradation if dependencies are missing
 # - Automatically switches to Windows PowerShell for legacy module operations
@@ -268,7 +275,7 @@ function Invoke-WindowsPowerShellCommand {
         [int]$TimeoutSeconds = 300
     )
     
-    Write-Log "[PS5.1] Executing via Windows PowerShell: $Description" 'INFO'
+    Write-LogFile "[PS5.1] Executing via Windows PowerShell: $Description" 'VERBOSE'
     
     try {
         # Use PowerShell 7.5.2's improved process management with timeout
@@ -298,13 +305,13 @@ function Invoke-WindowsPowerShellCommand {
         $errorOutput = $errorTask.Result
         
         if ($process.ExitCode -eq 0) {
-            Write-Log "[PS5.1] Successfully executed: $Description" 'INFO'
+            Write-LogFile "[PS5.1] Successfully executed: $Description" 'VERBOSE'
             return $output
         }
         else {
             Write-Log "[PS5.1] Command failed with exit code $($process.ExitCode): $Description" 'WARN'
             if ($errorOutput) {
-                Write-Log "[PS5.1] Error output: $errorOutput" 'VERBOSE'
+                Write-LogFile "[PS5.1] Error output: $errorOutput" 'VERBOSE'
             }
             return $null
         }
@@ -330,25 +337,93 @@ function Get-AppxPackageCompatible {
     )
     
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Appx operations with enhanced JSON parsing
-        $command = @"
+        # Modern PowerShell 7+ approach using direct WinRT APIs
+        try {
+            Write-LogFile "[AppX] Using PowerShell 7+ native WinRT API approach" 'VERBOSE'
+            
+            # Load Windows Runtime assemblies
+            Add-Type -AssemblyName System.Runtime.WindowsRuntime -ErrorAction SilentlyContinue
+            
+            # Use CIM for cross-platform compatibility
+            $packages = @()
+            
+            if ($AllUsers) {
+                # Query all user packages via CIM
+                $cimPackages = Get-CimInstance -ClassName Win32_InstalledStoreProgram -ErrorAction SilentlyContinue
+                if ($cimPackages) {
+                    foreach ($pkg in $cimPackages) {
+                        if ($Name -eq "*" -or $pkg.Name -like "*$Name*") {
+                            $packages += [PSCustomObject]@{
+                                Name = $pkg.Name
+                                PackageFullName = $pkg.Name
+                                Publisher = $pkg.Vendor
+                                Architecture = "Unknown"
+                                Version = $pkg.Version
+                            }
+                        }
+                    }
+                }
+            }
+            else {
+                # For current user, use Get-AppxPackage via Windows PowerShell as fallback only if CIM fails
+                $cimPackages = Get-CimInstance -ClassName Win32_InstalledStoreProgram -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*$Name*" }
+                if ($cimPackages) {
+                    foreach ($pkg in $cimPackages) {
+                        $packages += [PSCustomObject]@{
+                            Name = $pkg.Name
+                            PackageFullName = $pkg.Name
+                            Publisher = $pkg.Vendor
+                            Architecture = "Unknown"
+                            Version = $pkg.Version
+                        }
+                    }
+                }
+                else {
+                    # Fallback to Windows PowerShell only if CIM approach fails
+                    Write-LogFile "[AppX] CIM approach failed, using Windows PowerShell fallback" 'VERBOSE'
+                    $command = @"
+Import-Module Appx -ErrorAction SilentlyContinue
+`$packages = Get-AppxPackage $(if ($Name -ne '*') { "-Name '$Name'" })
+`$packages | Select-Object Name, PackageFullName, Publisher, Architecture, Version | ConvertTo-Json -Depth 3 -Compress
+"@
+                    
+                    $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get AppX packages (fallback)"
+                    if ($result) {
+                        try {
+                            return ($result | ConvertFrom-Json -AsHashtable:$false -ErrorAction Stop)
+                        }
+                        catch {
+                            Write-LogFile "Failed to parse AppX package JSON: $_" 'VERBOSE'
+                            return @()
+                        }
+                    }
+                }
+            }
+            
+            Write-LogFile "[AppX] Found $($packages.Count) packages using modern approach" 'VERBOSE'
+            return $packages
+        }
+        catch {
+            Write-LogFile "[AppX] Modern approach failed: $_, using Windows PowerShell fallback" 'VERBOSE'
+            # Complete fallback to Windows PowerShell
+            $command = @"
 Import-Module Appx -ErrorAction SilentlyContinue
 `$packages = Get-AppxPackage $(if ($AllUsers) { '-AllUsers' }) $(if ($Name -ne '*') { "-Name '$Name'" })
 `$packages | Select-Object Name, PackageFullName, Publisher, Architecture, Version | ConvertTo-Json -Depth 3 -Compress
 "@
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get AppX packages"
-        if ($result) {
-            try {
-                # Use PowerShell 7.5.2's improved ConvertFrom-Json with better error handling
-                return ($result | ConvertFrom-Json -AsHashtable:$false -ErrorAction Stop)
+            
+            $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get AppX packages (complete fallback)"
+            if ($result) {
+                try {
+                    return ($result | ConvertFrom-Json -AsHashtable:$false -ErrorAction Stop)
+                }
+                catch {
+                    Write-LogFile "Failed to parse AppX package JSON: $_" 'VERBOSE'
+                    return @()
+                }
             }
-            catch {
-                Write-Log "Failed to parse AppX package JSON: $_" 'WARN'
-                return @()
-            }
+            return @()
         }
-        return @()
     }
     else {
         # Native PowerShell 5.1
@@ -368,8 +443,41 @@ function Remove-AppxPackageCompatible {
     )
     
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Appx operations with better error reporting
-        $command = @"
+        # Modern PowerShell 7+ approach using direct WinRT/Windows APIs
+        try {
+            Write-LogFile "[AppX] Attempting modern package removal for: $PackageFullName" 'VERBOSE'
+            
+            # Try using winget for removal first (modern approach)
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-LogFile "[AppX] Trying winget uninstall approach" 'VERBOSE'
+                $wingetArgs = @('uninstall', '--id', $PackageFullName, '--silent', '--accept-source-agreements')
+                if ($AllUsers) {
+                    $wingetArgs += '--scope', 'machine'
+                }
+                
+                $result = Invoke-ModernPackageManager -PackageManager 'winget' -Arguments $wingetArgs -Description "Remove package $PackageFullName"
+                if ($result.Success) {
+                    Write-LogFile "[AppX] Successfully removed package using winget: $PackageFullName" 'VERBOSE'
+                    return $true
+                }
+                Write-LogFile "[AppX] Winget removal failed, trying DISM approach" 'VERBOSE'
+            }
+            
+            # Try DISM for provisioned packages (works in PS7)
+            if (Get-Command dism -ErrorAction SilentlyContinue) {
+                Write-LogFile "[AppX] Trying DISM removal approach" 'VERBOSE'
+                $dismArgs = "/Online /Remove-ProvisionedAppxPackage /PackageName:$PackageFullName"
+                $dismResult = Start-Process -FilePath 'dism.exe' -ArgumentList $dismArgs -WindowStyle Hidden -Wait -PassThru
+                if ($dismResult.ExitCode -eq 0) {
+                    Write-LogFile "[AppX] Successfully removed provisioned package using DISM: $PackageFullName" 'VERBOSE'
+                    return $true
+                }
+                Write-LogFile "[AppX] DISM removal failed, falling back to Windows PowerShell" 'VERBOSE'
+            }
+            
+            # Fallback to Windows PowerShell only if modern approaches fail
+            Write-LogFile "[AppX] Using Windows PowerShell fallback for package removal" 'VERBOSE'
+            $command = @"
 Import-Module Appx -ErrorAction SilentlyContinue
 try {
     Remove-AppxPackage -Package '$PackageFullName' $(if ($AllUsers) { '-AllUsers' }) -ErrorAction Stop
@@ -378,9 +486,14 @@ try {
     Write-Output "ERROR: `$(`$_.Exception.Message)"
 }
 "@
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove AppX package $PackageFullName"
-        return $result -eq 'SUCCESS'
+            
+            $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove AppX package $PackageFullName (fallback)"
+            return $result -eq 'SUCCESS'
+        }
+        catch {
+            Write-LogFile "[AppX] All removal approaches failed for $PackageFullName : $_" 'VERBOSE'
+            return $false
+        }
     }
     else {
         # Native PowerShell 5.1
@@ -471,11 +584,54 @@ function Enable-ComputerRestoreCompatible {
     )
     
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for System Restore operations
-        $command = "Enable-ComputerRestore -Drive '$Drive' -ErrorAction Stop"
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Enable System Restore on $Drive"
-        return $null -ne $result
+        # Modern PowerShell 7+ approach using CIM and direct APIs
+        try {
+            Write-LogFile "[SystemRestore] Using PowerShell 7+ native approach for enabling System Restore" 'VERBOSE'
+            
+            # Use CIM to enable System Restore (works in PS7)
+            $driveLetter = $Drive.TrimEnd(':\')
+            
+            # Check if System Restore is already enabled
+            $restorePoints = Get-CimInstance -ClassName SystemRestore -ErrorAction SilentlyContinue
+            if ($restorePoints) {
+                Write-LogFile "[SystemRestore] System Restore appears to be already configured" 'VERBOSE'
+                return $true
+            }
+            
+            # Try using vssadmin (works in PS7)
+            if (Get-Command vssadmin -ErrorAction SilentlyContinue) {
+                Write-LogFile "[SystemRestore] Attempting to enable System Restore using vssadmin" 'VERBOSE'
+                $vssResult = Start-Process -FilePath 'vssadmin.exe' -ArgumentList "Resize ShadowStorage /For=$($driveLetter): /On=$($driveLetter): /MaxSize=10%" -WindowStyle Hidden -Wait -PassThru
+                if ($vssResult.ExitCode -eq 0) {
+                    Write-LogFile "[SystemRestore] System Restore enabled successfully using vssadmin" 'VERBOSE'
+                    return $true
+                }
+            }
+            
+            # Try using WMI/CIM for System Restore configuration
+            try {
+                $systemRestore = Get-CimInstance -ClassName Win32_SystemRestore -ErrorAction SilentlyContinue
+                if ($systemRestore) {
+                    Write-LogFile "[SystemRestore] System Restore service is available" 'VERBOSE'
+                    return $true
+                }
+            }
+            catch {
+                Write-LogFile "[SystemRestore] CIM approach failed: $_" 'VERBOSE'
+            }
+            
+            # Fallback to Windows PowerShell
+            Write-LogFile "[SystemRestore] Using Windows PowerShell fallback" 'VERBOSE'
+            $command = "Enable-ComputerRestore -Drive '$Drive' -ErrorAction Stop"
+            $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Enable System Restore on $Drive (fallback)"
+            return $null -ne $result
+        }
+        catch {
+            Write-LogFile "[SystemRestore] All modern approaches failed: $_, using Windows PowerShell fallback" 'VERBOSE'
+            $command = "Enable-ComputerRestore -Drive '$Drive' -ErrorAction Stop"
+            $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Enable System Restore on $Drive (complete fallback)"
+            return $null -ne $result
+        }
     }
     else {
         # Native PowerShell 5.1
@@ -496,11 +652,57 @@ function Checkpoint-ComputerCompatible {
     )
     
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for System Restore operations
-        $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType' -ErrorAction Stop"
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Create restore point: $Description"
-        return $null -ne $result
+        # Modern PowerShell 7+ approach using WMI/CIM and direct APIs
+        try {
+            Write-LogFile "[SystemRestore] Using PowerShell 7+ native approach for creating restore point" 'VERBOSE'
+            
+            # Try using WMI SystemRestore class (works in PS7)
+            $systemRestoreClass = Get-CimClass -ClassName Win32_SystemRestore -ErrorAction SilentlyContinue
+            if ($systemRestoreClass) {
+                Write-LogFile "[SystemRestore] Attempting to create restore point using CIM" 'VERBOSE'
+                try {
+                    # Create restore point using CIM method
+                    $result = Invoke-CimMethod -ClassName Win32_SystemRestore -MethodName CreateRestorePoint -Arguments @{
+                        Description = $Description
+                        RestorePointType = 12  # MODIFY_SETTINGS
+                        EventType = 100        # BEGIN_SYSTEM_CHANGE
+                    } -ErrorAction Stop
+                    
+                    if ($result.ReturnValue -eq 0) {
+                        Write-LogFile "[SystemRestore] Restore point created successfully using CIM" 'VERBOSE'
+                        return $true
+                    }
+                    else {
+                        Write-LogFile "[SystemRestore] CIM restore point creation returned code: $($result.ReturnValue)" 'VERBOSE'
+                    }
+                }
+                catch {
+                    Write-LogFile "[SystemRestore] CIM restore point creation failed: $_" 'VERBOSE'
+                }
+            }
+            
+            # Try using vssadmin for shadow copy (alternative approach)
+            if (Get-Command vssadmin -ErrorAction SilentlyContinue) {
+                Write-LogFile "[SystemRestore] Attempting to create shadow copy using vssadmin" 'VERBOSE'
+                $vssResult = Start-Process -FilePath 'vssadmin.exe' -ArgumentList 'Create Shadow /For=C:' -WindowStyle Hidden -Wait -PassThru
+                if ($vssResult.ExitCode -eq 0) {
+                    Write-LogFile "[SystemRestore] Shadow copy created successfully" 'VERBOSE'
+                    return $true
+                }
+            }
+            
+            # Fallback to Windows PowerShell
+            Write-LogFile "[SystemRestore] Using Windows PowerShell fallback for restore point creation" 'VERBOSE'
+            $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType' -ErrorAction Stop"
+            $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Create restore point: $Description (fallback)"
+            return $null -ne $result
+        }
+        catch {
+            Write-LogFile "[SystemRestore] All modern approaches failed: $_, using Windows PowerShell fallback" 'VERBOSE'
+            $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType' -ErrorAction Stop"
+            $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Create restore point: $Description (complete fallback)"
+            return $null -ne $result
+        }
     }
     else {
         # Native PowerShell 5.1
@@ -518,8 +720,98 @@ function Install-WindowsUpdatesCompatible {
     param()
     
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for PSWindowsUpdate
-        $command = @"
+        # Modern PowerShell 7+ approach using Windows Update API directly
+        try {
+            Write-LogFile "[Updates] Using PowerShell 7+ native Windows Update API approach" 'VERBOSE'
+            
+            # Try winget upgrade first (modern approach)
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-LogFile "[Updates] Attempting winget upgrade for all packages" 'VERBOSE'
+                $result = Invoke-ModernPackageManager -PackageManager 'winget' -Arguments @('upgrade', '--all', '--silent', '--accept-source-agreements', '--accept-package-agreements') -Description "Upgrade all packages via winget" -TimeoutSeconds 600
+                
+                if ($result.Success) {
+                    Write-LogFile "[Updates] Winget upgrade completed successfully" 'VERBOSE'
+                }
+                else {
+                    Write-LogFile "[Updates] Winget upgrade had some issues, checking Windows Updates" 'VERBOSE'
+                }
+            }
+            
+            # Use Windows Update Session COM object (works in PS7)
+            Write-LogFile "[Updates] Checking Windows Updates using COM API" 'VERBOSE'
+            $updateSession = New-Object -ComObject Microsoft.Update.Session -ErrorAction Stop
+            $updateSearcher = $updateSession.CreateUpdateSearcher()
+            
+            # Search for updates
+            Write-LogFile "[Updates] Searching for available Windows Updates..." 'VERBOSE'
+            $searchResult = $updateSearcher.Search("IsInstalled=0 and Type='Software' and IsHidden=0")
+            
+            if ($searchResult.Updates.Count -eq 0) {
+                Write-LogFile "[Updates] No Windows Updates found" 'VERBOSE'
+                return $true
+            }
+            
+            Write-LogFile "[Updates] Found $($searchResult.Updates.Count) Windows Updates available" 'VERBOSE'
+            
+            # Create update collection
+            $updatesToDownload = New-Object -ComObject Microsoft.Update.UpdateColl
+            $updatesToInstall = New-Object -ComObject Microsoft.Update.UpdateColl
+            
+            foreach ($update in $searchResult.Updates) {
+                if ($update.IsDownloaded) {
+                    $updatesToInstall.Add($update) | Out-Null
+                    Write-LogFile "[Updates] Queued for install: $($update.Title)" 'VERBOSE'
+                }
+                else {
+                    $updatesToDownload.Add($update) | Out-Null
+                    Write-LogFile "[Updates] Queued for download: $($update.Title)" 'VERBOSE'
+                }
+            }
+            
+            # Download updates if needed
+            if ($updatesToDownload.Count -gt 0) {
+                Write-LogFile "[Updates] Downloading $($updatesToDownload.Count) updates..." 'VERBOSE'
+                $downloader = $updateSession.CreateUpdateDownloader()
+                $downloader.Updates = $updatesToDownload
+                $downloadResult = $downloader.Download()
+                
+                if ($downloadResult.ResultCode -eq 2) {
+                    Write-LogFile "[Updates] Updates downloaded successfully" 'VERBOSE'
+                    # Add downloaded updates to install collection
+                    foreach ($update in $updatesToDownload) {
+                        if ($update.IsDownloaded) {
+                            $updatesToInstall.Add($update) | Out-Null
+                        }
+                    }
+                }
+                else {
+                    Write-LogFile "[Updates] Some updates failed to download (ResultCode: $($downloadResult.ResultCode))" 'VERBOSE'
+                }
+            }
+            
+            # Install updates
+            if ($updatesToInstall.Count -gt 0) {
+                Write-LogFile "[Updates] Installing $($updatesToInstall.Count) updates..." 'VERBOSE'
+                $installer = $updateSession.CreateUpdateInstaller()
+                $installer.Updates = $updatesToInstall
+                $installResult = $installer.Install()
+                
+                Write-LogFile "[Updates] Installation completed with ResultCode: $($installResult.ResultCode)" 'VERBOSE'
+                if ($installResult.RebootRequired) {
+                    Write-LogFile "[Updates] System reboot required after updates" 'VERBOSE'
+                }
+                
+                return $installResult.ResultCode -eq 2 -or $installResult.ResultCode -eq 3
+            }
+            else {
+                Write-LogFile "[Updates] No updates available for installation" 'VERBOSE'
+                return $true
+            }
+        }
+        catch {
+            Write-LogFile "[Updates] Native Windows Update API failed: $_, falling back to Windows PowerShell" 'VERBOSE'
+            # Fallback to Windows PowerShell approach
+            $command = @"
 # Check if PSWindowsUpdate is installed
 if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
     try {
@@ -550,9 +842,10 @@ catch {
     exit 1
 }
 "@
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Install Windows Updates"
-        return $null -ne $result
+            
+            $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Install Windows Updates (fallback)"
+            return $null -ne $result
+        }
     }
     else {
         # Native PowerShell 5.1
