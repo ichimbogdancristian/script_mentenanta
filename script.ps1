@@ -85,7 +85,6 @@ $global:ScriptTasks = @(
     @{ Name = 'UpdateAllPackages'; Function = {
             Write-Log '[START] Update All Apps and Packages (Modern)' 'INFO'
             
-    $error = $errorTask.Result
             if ($global:HasWinget) {
                 try {
                     Write-Log 'Running winget upgrade for all packages...' 'INFO'
@@ -2537,17 +2536,19 @@ function Invoke-EnhancedAppInstallation {
             
             switch ($method.Type) {
                 "Winget" {
-                    $wingetResult = Invoke-ModernPackageManager -PackageManager "winget" -Operation "install" -PackageId $method.ID -Timeout 300
+                    $wingetArgs = @("install", $method.ID, "--silent", "--accept-source-agreements", "--accept-package-agreements")
+                    $wingetResult = Invoke-ModernPackageManager -PackageManager "winget" -Arguments $wingetArgs -Description "Install $($AppInfo.Name) via Winget" -TimeoutSeconds 300
                     $installSuccess = $wingetResult.Success
                     if (-not $installSuccess) {
-                        $result.AttemptLog += "Winget failed: $($wingetResult.Output)"
+                        $result.AttemptLog += "Winget failed: $($wingetResult.Error) $($wingetResult.Output)"
                     }
                 }
                 "Chocolatey" {
-                    $chocoResult = Invoke-ModernPackageManager -PackageManager "chocolatey" -Operation "install" -PackageId $method.ID -Timeout 300
+                    $chocoArgs = @("install", $method.ID, "-y", "--no-progress")
+                    $chocoResult = Invoke-ModernPackageManager -PackageManager "choco" -Arguments $chocoArgs -Description "Install $($AppInfo.Name) via Chocolatey" -TimeoutSeconds 300
                     $installSuccess = $chocoResult.Success
                     if (-not $installSuccess) {
-                        $result.AttemptLog += "Chocolatey failed: $($chocoResult.Output)"
+                        $result.AttemptLog += "Chocolatey failed: $($chocoResult.Error) $($chocoResult.Output)"
                     }
                 }
                 "AppX" {
