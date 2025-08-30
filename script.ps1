@@ -2963,7 +2963,7 @@ function Test-AppInstalled {
 
 function Remove-SingleBloatwareApp {
     param(
-        [hashtable]$AppInfo,
+        [object]$AppInfo,
         [string]$Category
     )
     
