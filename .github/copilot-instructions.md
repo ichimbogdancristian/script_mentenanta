@@ -85,13 +85,40 @@
 
 #### **Pre-Code Change Protocol (MANDATORY STEPS)**
 1. **BEFORE making ANY code changes**: Run `get_errors` tool on target files
-2. **DURING code editing**: Monitor for new diagnostic issues  
-3. **AFTER each code change**: Run `get_errors` tool again to verify no new issues
-4. **BEFORE completion**: Final `get_errors` check on ALL modified files
+2. **CONTEXT ANALYSIS**: When syntax/structural errors are found, examine the ENTIRE function or code block for complete understanding
+3. **DURING code editing**: Monitor for new diagnostic issues  
+4. **AFTER each code change**: Run `get_errors` tool again to verify no new issues
+5. **BEFORE completion**: Final `get_errors` check on ALL modified files
+
+#### **Enhanced Context Analysis for Complex Issues (MANDATORY)**
+When diagnostic errors involve structural problems (missing brackets, orphaned code, function boundaries):
+
+**🔍 REQUIRED CONTEXT INVESTIGATION:**
+1. **Function Scope Analysis**: Use `read_file` to examine the COMPLETE function from start to end
+2. **Structural Mapping**: Identify function boundaries, nested blocks, and proper indentation
+3. **Orphaned Code Detection**: Look for code floating outside proper function/block contexts
+4. **Cross-Reference Checking**: Verify that variables, parameters, and return values are properly scoped
+5. **Integration Verification**: Ensure orphaned code segments are properly integrated or removed
+
+**📊 TOOLS FOR COMPREHENSIVE ANALYSIS:**
+```powershell
+# Get complete function context (not just error lines)
+read_file -filePath "script.ps1" -startLine [function_start] -endLine [function_end]
+
+# Search for function boundaries and structure
+grep_search -query "function.*FunctionName" -includePattern "script.ps1"
+
+# Find orphaned code blocks
+grep_search -query "^\s*[{}]\s*$" -isRegexp true -includePattern "script.ps1"
+
+# Check for structural completeness
+semantic_search -query "function boundaries missing brackets orphaned code"
+```
 
 #### **Diagnostic Categories to Address (ALL REQUIRED)**
 - ✅ **PowerShell Script Analysis**: PSScriptAnalyzer warnings and errors
 - ✅ **Syntax Errors**: Parsing issues, missing brackets, unmatched quotes
+- ✅ **Structural Issues**: Orphaned code, incomplete functions, malformed blocks
 - ✅ **Best Practice Violations**: Code quality, security, performance issues
 - ✅ **Variable Conflicts**: Automatic variables like `$error`, `$input`, `$host`
 - ✅ **Function Standards**: Approved verbs, parameter validation, error handling
@@ -156,11 +183,40 @@ Every code change MUST include:
 #### **Every Code Edit Session MUST Follow This Pattern:**
 ```
 1. 🔍 PRE-CHECK: get_errors on target files
-2. ✏️ EDIT: Make code changes  
-3. 🔍 MID-CHECK: get_errors on modified files
-4. 🔧 FIX: Resolve any new issues immediately
-5. 🔍 FINAL-CHECK: get_errors on all modified files
-6. ✅ COMPLETE: Only when zero errors/warnings remain
+2. 📋 CONTEXT-ANALYSIS: If errors found, read COMPLETE function/block contexts
+3. 🗺️ STRUCTURAL-MAPPING: Map function boundaries, nested blocks, orphaned code
+4. ✏️ EDIT: Make code changes with full structural understanding
+5. 🔍 MID-CHECK: get_errors on modified files
+6. 🔧 FIX: Resolve any new issues immediately with context awareness
+7. 🔍 FINAL-CHECK: get_errors on all modified files
+8. ✅ COMPLETE: Only when zero errors/warnings remain
+```
+
+#### **Enhanced Contextual Analysis Workflow (MANDATORY FOR STRUCTURAL ISSUES)**
+When dealing with complex syntax or structural errors:
+
+**Phase 1 - Complete Context Gathering:**
+```
+1. Identify error location from get_errors
+2. Use read_file to examine ENTIRE affected function (start to end)
+3. Use grep_search to find function boundaries and related code
+4. Use semantic_search for structural pattern analysis
+```
+
+**Phase 2 - Structural Understanding:**
+```
+1. Map complete function scope and nesting levels
+2. Identify orphaned code segments outside proper contexts
+3. Verify variable scoping and parameter flow
+4. Check for incomplete blocks, missing brackets, or malformed structures
+```
+
+**Phase 3 - Comprehensive Resolution:**
+```
+1. Fix structural issues with complete context understanding
+2. Integrate orphaned code properly or remove if redundant
+3. Ensure proper indentation and function boundaries
+4. Validate that all code is within appropriate scopes
 ```
 
 #### **Completion Criteria (ALL REQUIRED)**
@@ -178,17 +234,32 @@ When resolving diagnostics, document:
 - **How it was fixed**: Specific changes made
 - **Prevention**: How to avoid similar issues
 
-### **Examples of Automatic Diagnostic Checking**
+### **Examples of Enhanced Diagnostic Checking with Context Analysis**
 
-#### **✅ CORRECT Workflow:**
+#### **✅ CORRECT Workflow for Simple Changes:**
 ```
-Agent: "I need to modify the Remove-Bloatware function"
+Agent: "I need to modify a variable assignment"
 1. get_errors -filePaths ["script.ps1"]  # PRE-CHECK
-2. [Makes code changes]
+2. [Makes simple code changes]
 3. get_errors -filePaths ["script.ps1"]  # POST-CHECK  
 4. [Resolves any new issues]
 5. get_errors -filePaths ["script.ps1"]  # FINAL-CHECK
 6. "Changes complete - zero diagnostics remaining"
+```
+
+#### **✅ CORRECT Workflow for Structural Issues:**
+```
+Agent: "I need to fix function boundary errors"
+1. get_errors -filePaths ["script.ps1"]  # PRE-CHECK - identifies structural problems
+2. read_file -filePath "script.ps1" -startLine [func_start] -endLine [func_end]  # CONTEXT
+3. grep_search -query "function.*FunctionName" -includePattern "script.ps1"  # BOUNDARIES
+4. semantic_search -query "orphaned code missing brackets function scope"  # PATTERNS
+5. [Analyzes complete function structure and identifies orphaned code]
+6. [Makes comprehensive structural fixes with full context understanding]
+7. get_errors -filePaths ["script.ps1"]  # POST-CHECK
+8. [Addresses any remaining issues with context awareness]
+9. get_errors -filePaths ["script.ps1"]  # FINAL-CHECK
+10. "Structural issues resolved - zero diagnostics remaining"
 ```
 
 #### **❌ INCORRECT Workflow:**
@@ -196,6 +267,21 @@ Agent: "I need to modify the Remove-Bloatware function"
 Agent: "I'll modify the function and check later"
 [Makes changes without diagnostic checking]
 "Changes complete" # ❌ NO - Must check diagnostics first
+
+Agent: "I see a syntax error at line 50"
+[Fixes only line 50 without examining function context]
+# ❌ NO - Must analyze complete function scope for structural issues
+```
+
+#### **🔧 REAL-WORLD EXAMPLE: Fixing Orphaned Code**
+```
+1. get_errors shows "Unexpected token '}'" at line 2437
+2. read_file -startLine 2400 -endLine 2500  # Get broader context
+3. grep_search -query "function.*Install.*Essential" # Find function boundaries  
+4. Discovery: Code at 2437 is orphaned outside function scope
+5. read_file -startLine 2200 -endLine 2450  # Read COMPLETE function
+6. Integration: Move orphaned code into proper function context
+7. get_errors confirms all structural issues resolved
 ```
 
 ## Best Practices (WITH MANDATORY DIAGNOSTICS)
