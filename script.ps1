@@ -1105,11 +1105,11 @@ function Get-ExtensiveSystemInventory {
     $inventoryFolder = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
 
-    # Build structured inventory object
+    # Build structured inventory object  
     $inventory = [ordered]@{
         metadata           = [ordered]@{
             generatedOn   = (Get-Date).ToString('o')
-            scriptVersion = '1.0.0'
+            scriptVersion = $global:ScriptVersion
             hostname      = $env:COMPUTERNAME
             user          = $env:USERNAME
             powershell    = $PSVersionTable.PSVersion.ToString()
@@ -1578,7 +1578,12 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit 1
 }
 
-Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
+# Generate automatic script version based on last modified date
+$scriptLastModified = (Get-Item $PSCommandPath -ErrorAction SilentlyContinue).LastWriteTime
+if (-not $scriptLastModified) { $scriptLastModified = Get-Date }
+$global:ScriptVersion = $scriptLastModified.ToString('yyyy.MM.dd.HHmm')
+
+Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: $global:ScriptVersion" 'INFO'
 
 ### Load configuration FIRST (before creating lists)
 $configPath = Join-Path $PSScriptRoot "config.json"
@@ -4452,7 +4457,7 @@ EXECUTION SUMMARY
 ─────────────────────────────────────────────────────────────────────────────────
 Date & Time        : $(Get-Date -Format 'dddd, MMMM dd, yyyy - HH:mm:ss')
 Execution Duration : $([math]::Round($totalExecutionTime, 2)) minutes
-Script Version     : 1.0.0
+Script Version     : $global:ScriptVersion
 PowerShell Version : $($PSVersionTable.PSVersion.ToString())
 Run Mode          : $(if ($Host.Name -eq 'ConsoleHost') { 'Interactive' } else { 'Automated' })
 
