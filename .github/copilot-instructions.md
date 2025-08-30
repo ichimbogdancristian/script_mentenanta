@@ -333,6 +333,7 @@ Every code change MUST include:
 - ✅ Use approved PowerShell verbs only
 - ✅ Proper parameter validation and types
 - ✅ Comprehensive error handling with try/catch
+- 🚨 **NEVER use PowerShell automatic variables (e.g., `$error`, `$input`, `$host`, `$args`, `$PSItem`, `$null`, `$true`, `$false`, `$LASTEXITCODE`, `$PID`, `$PSVersionTable`, etc.) for custom logic, assignments, or error handling.**
 - ✅ Avoid automatic variables (`$error` → `$errorOutput`)
 - ✅ Function naming: PascalCase with approved verbs
 - ✅ Variable naming: Descriptive, avoiding conflicts

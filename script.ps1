@@ -85,7 +85,7 @@ $global:ScriptTasks = @(
     @{ Name = 'UpdateAllPackages'; Function = {
             Write-Log '[START] Update All Apps and Packages (Modern)' 'INFO'
             
-            # Update using Winget if available with modern package manager
+    $error = $errorTask.Result
             if ($global:HasWinget) {
                 try {
                     Write-Log 'Running winget upgrade for all packages...' 'INFO'
@@ -311,7 +311,7 @@ function Invoke-WindowsPowerShellCommand {
         }
         
         $output = $outputTask.Result
-        $errorOutput = $errorTask.Result
+    $errorOutput = $errorTask.Result
         
         if ($process.ExitCode -eq 0) {
             Write-LogFile "[PS5.1] Successfully executed: $Description" 'VERBOSE'
@@ -4145,7 +4145,6 @@ function Write-UnifiedMaintenanceReport {
         [string]$ReportPath
     )
     
-    # Gather comprehensive system info
     $osInfo = Get-CimInstance Win32_OperatingSystem
     $compInfo = Get-CimInstance Win32_ComputerSystem
     $memInfo = Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum
@@ -4155,6 +4154,17 @@ function Write-UnifiedMaintenanceReport {
     $scriptStartTime = $global:ScriptStartTime
     $scriptEndTime = Get-Date
     $totalExecutionTime = ($scriptEndTime - $scriptStartTime).TotalMinutes
+    
+    # Safe date handling for uptime calculation
+    $uptimeDays = "N/A"
+    if ($osInfo.LastBootUpTime -and $osInfo.LastBootUpTime -is [DateTime]) {
+        try {
+            $uptimeDays = [math]::Round((Get-Date - $osInfo.LastBootUpTime).TotalDays, 2)
+        }
+        catch {
+            $uptimeDays = "Error calculating uptime"
+        }
+    }
     
     # Build comprehensive report sections
     $reportSections = @()
@@ -4184,7 +4194,7 @@ Architecture      : $($osInfo.OSArchitecture)
 Total RAM         : $([math]::Round($memInfo.Sum / 1GB, 2)) GB
 System Model      : $($compInfo.Manufacturer) $($compInfo.Model)
 Last Boot Time    : $($osInfo.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss'))
-System Uptime     : $([math]::Round((Get-Date - $osInfo.LastBootUpTime).TotalDays, 2)) days
+System Uptime     : $uptimeDays days
 
 "@
 
