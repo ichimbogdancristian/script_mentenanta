@@ -273,6 +273,8 @@ function Use-AllScriptTasks {
 $global:ScriptStartTime = Get-Date
 $global:PerformanceMetrics = @{}
 $global:logPath = Join-Path $PSScriptRoot "maintenance.log"
+$global:InstallResults = $null
+$global:RemovalResults = $null
 
 # PowerShell 7.5.2 Compatibility Functions
 function Invoke-WindowsPowerShellCommand {
@@ -2676,13 +2678,13 @@ function Optimize-OfficeInstallation {
         }
         
         $result.Error = "All installation methods failed for $appName"
-    }
-    catch {
-        $result.Error = "Exception during installation: $_"
-    }
+        
+        catch {
+            $result.Error = "Exception during installation: $_"
+        }
+
+        return $result
     
-    return $result
-}
 
 # END function Install-SingleEssentialApp
 
@@ -2901,7 +2903,7 @@ foreach ($result in $detailedResults) {
 }
     
 # Create final installation results temp list
-$installResults = @{
+$InstallResults = @{
     Summary = @{
         Installed = $success
         Failed    = $fail
@@ -3862,7 +3864,7 @@ Write-Log "  - Total in bloatware list: $($global:BloatwareList.Count) apps" 'IN
 Write-Log "  - Only apps from diff list were processed for removal" 'INFO'
     
 # Create final removal results temp list
-$removalResults = @{
+$RemovalResults = @{
     Summary       = @{
         Processed       = $totalApps
         Removed         = $removed
@@ -4523,11 +4525,43 @@ DETAILED TASK RESULTS
         $reportSections += ""
     }
 
-    # === ACTIONS PERFORMED SECTION ===
-    $reportSections += @"
-ACTIONS PERFORMED
+    # === ESSENTIAL APPS INSTALLATION RESULTS ===
+    if ($global:InstallResults) {
+        $reportSections += @"
+ESSENTIAL APPS INSTALLATION RESULTS
 ─────────────────────────────────────────────────────────────────────────────────
+Total Apps Processed : $($global:InstallResults.Summary.Total)
+Successfully Installed : $($global:InstallResults.Summary.Installed)
+Failed Installations  : $($global:InstallResults.Summary.Failed)
+Skipped Apps         : $($global:InstallResults.Summary.Skipped)
+
+Detailed Results:
 "@
+        foreach ($detail in $global:InstallResults.Details) {
+            $reportSections += "  • $detail"
+        }
+        $reportSections += ""
+    }
+
+    # === BLOATWARE REMOVAL RESULTS ===
+    if ($global:RemovalResults) {
+        $reportSections += @"
+BLOATWARE REMOVAL RESULTS
+─────────────────────────────────────────────────────────────────────────────────
+Total Apps in List   : $($global:RemovalResults.Summary.TotalInMainList)
+Apps Processed       : $($global:RemovalResults.Summary.Processed)
+Successfully Removed : $($global:RemovalResults.Summary.Removed)
+Failed Removals      : $($global:RemovalResults.Summary.Failed)
+
+Processed Apps:
+"@
+        foreach ($app in $global:RemovalResults.ProcessedApps) {
+            $reportSections += "  • $app"
+        }
+        $reportSections += ""
+    }
+
+    # === ACTIONS PERFORMED SECTION ===
 
     # Extract and categorize actions from log
     $logPath = $global:logPath
