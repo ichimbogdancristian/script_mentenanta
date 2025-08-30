@@ -1094,6 +1094,59 @@ function Invoke-Task {
 # ===============================
 # SECTION 3: SYSTEM UTILITIES
 # ===============================
+# Diff List Generator: Cross-reference bloatware categories with inventory
+function New-BloatwareDiffList {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Inventory,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$BloatwareCategories,
+        [Parameter(Mandatory = $true)]
+        [string]$Category
+    )
+    $categoryApps = $BloatwareCategories[$Category]
+    $diffApps = @()
+    foreach ($app in $categoryApps) {
+        # Try to find exact match in inventory (Id, PackageFullName, DisplayName)
+        $found = $false
+        foreach ($appx in $Inventory.appx) {
+            if ($appx.PackageFullName -eq $app -or $appx.AppId -eq $app -or $appx.Name -eq $app) {
+                $diffApps += $appx
+                $found = $true
+                break
+            }
+        }
+        if (-not $found) {
+            foreach ($winget in $Inventory.winget) {
+                if ($winget.Id -eq $app -or $winget.Name -eq $app) {
+                    $diffApps += $winget
+                    $found = $true
+                    break
+                }
+            }
+        }
+        if (-not $found) {
+            foreach ($regApp in $Inventory.registry_uninstall) {
+                if ($regApp.DisplayName -eq $app) {
+                    $diffApps += $regApp
+                    $found = $true
+                    break
+                }
+            }
+        }
+        if (-not $found) {
+            foreach ($choco in $Inventory.choco) {
+                if ($choco.Name -eq $app) {
+                    $diffApps += $choco
+                    break
+                }
+            }
+        }
+    }
+    # Save standardized diff list
+    $diffListPath = New-StandardizedTempList -ListType 'bloatware' -Operation "diff_${Category}" -Data $diffApps -Description "Apps in both bloatware category '$Category' and inventory (ready for removal)"
+    return $diffListPath
+}
 # System Inventory Functions
 function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory (JSON Format)" 'INFO'
@@ -2709,65 +2762,38 @@ function Remove-Bloatware {
         $currentCategory++
         $categoryApps = $global:BloatwareCategories[$categoryName]
         if (-not $categoryApps -or $categoryApps.Count -eq 0) { continue }
-        
+
         $baseCategoryProgress = [math]::Round(10 + ($currentCategory / $categories.Count) * 70) # 10-80% for category processing
         Write-TaskProgress -Activity "Removing Bloatware" -Status "Processing $categoryName category..." -PercentComplete $baseCategoryProgress
         Write-Log "[Bloatware] Processing category: $categoryName ($($categoryApps.Count) apps)" 'INFO'
-        
-        # Find installed apps in this category
-        $installedInCategory = @()
-        foreach ($app in $categoryApps) {
-            $isInstalled = Test-AppInstalled -AppIdentifier $app -Inventory $inventory
-            if ($isInstalled.IsInstalled) {
-                # Safety check: Ensure app is not in critical protection list
-                $isCritical = $false
-                foreach ($criticalApp in $global:BloatwareCategories.Critical) {
-                    if ($app -like $criticalApp -or $criticalApp -like "*$app*") {
-                        $isCritical = $true
-                        $protectedApps += $app
-                        $removalStats.Protected.Found++
-                        Write-Log "[SAFETY] App '$app' matches critical protection pattern '$criticalApp' - SKIPPING for safety" 'WARN'
-                        break
-                    }
-                }
-                
-                if (-not $isCritical) {
-                    $installedInCategory += @{
-                        AppName         = $app
-                        DetectionMethod = $isInstalled.DetectionMethod
-                        FoundAs         = $isInstalled.FoundAs
-                        CanUninstall    = $isInstalled.CanUninstall
-                    }
-                    $removalStats[$categoryName].Found++
-                }
-                else {
-                    $removalStats.Protected.Skipped++
-                }
-            }
-        }
-        
-        Write-Log "[Bloatware] Category $categoryName`: $($installedInCategory.Count) apps found (out of $($categoryApps.Count) total)" 'INFO'
-        
+
+        # Generate diff list for this category
+        $diffListPath = New-BloatwareDiffList -Inventory $inventory -BloatwareCategories $global:BloatwareCategories -Category $categoryName
+        $diffList = Get-StandardizedTempList -FilePath $diffListPath
+        $installedInCategory = $diffList.Data
+
+        Write-Log "[Bloatware] Category $categoryName: $($installedInCategory.Count) apps found in diff list (out of $($categoryApps.Count) total)" 'INFO'
+
         # Remove apps in this category
         $categoryCurrentApp = 0
         foreach ($appInfo in $installedInCategory) {
             $categoryCurrentApp++
             $totalProcessed++
-            
+
             $categoryProgress = $baseCategoryProgress + [math]::Round(($categoryCurrentApp / [math]::Max($installedInCategory.Count, 1)) * 8) # 8% per category
-            Write-TaskProgress -Activity "Removing Bloatware" -Status "[$categoryName] Removing: $($appInfo.AppName)" -PercentComplete $categoryProgress -CurrentOperation "$categoryCurrentApp of $($installedInCategory.Count) in category"
-            
+            Write-TaskProgress -Activity "Removing Bloatware" -Status "[$categoryName] Removing: $($appInfo.Name)" -PercentComplete $categoryProgress -CurrentOperation "$categoryCurrentApp of $($($installedInCategory.Count)) in category"
+
             $removalResult = Remove-SingleBloatwareApp -AppInfo $appInfo -Category $categoryName
-            
+
             if ($removalResult.Success) {
                 $removalStats[$categoryName].Removed++
                 $totalRemoved++
-                Write-Log "[SUCCESS] Removed $categoryName app: $($appInfo.AppName) via $($removalResult.Method)" 'INFO'
+                Write-Log "[SUCCESS] Removed $categoryName app: $($appInfo.Name) via $($removalResult.Method)" 'INFO'
             }
             else {
                 $removalStats[$categoryName].Failed++
                 $totalFailed++
-                Write-Log "[FAILED] Could not remove $categoryName app: $($appInfo.AppName) - $($removalResult.Error)" 'WARN'
+                Write-Log "[FAILED] Could not remove $categoryName app: $($appInfo.Name) - $($removalResult.Error)" 'WARN'
             }
         }
     }
