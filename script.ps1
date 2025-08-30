@@ -2772,7 +2772,7 @@ function Remove-Bloatware {
         $diffList = Get-StandardizedTempList -FilePath $diffListPath
         $installedInCategory = $diffList.Data
 
-        Write-Log "[Bloatware] Category $categoryName: $($installedInCategory.Count) apps found in diff list (out of $($categoryApps.Count) total)" 'INFO'
+    Write-Log "[Bloatware] Category $categoryName: $($installedInCategory.Count) apps found in diff list (out of $($categoryApps.Count) total)" 'INFO'
 
         # Remove apps in this category
         $categoryCurrentApp = 0
