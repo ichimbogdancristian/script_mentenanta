@@ -2232,8 +2232,8 @@ function Install-EssentialApps {
     
     # Initialize comprehensive installation tracking
     $installationSession = @{
-        StartTime = Get-Date
-        Statistics = @{
+        StartTime           = Get-Date
+        Statistics          = @{
             SystemCore    = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
             Browsers      = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
             Productivity  = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
@@ -2243,10 +2243,10 @@ function Install-EssentialApps {
             Utilities     = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
             Gaming        = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
         }
-        InstallationQueue = @()
+        InstallationQueue   = @()
         InstallationResults = @()
-        ProtectedApps = @()
-        SkippedApps = @()
+        ProtectedApps       = @()
+        SkippedApps         = @()
     }
     
     # Phase 1: Intelligent App Analysis and Queue Building
@@ -2275,18 +2275,18 @@ function Install-EssentialApps {
             elseif ($detectionResult.IsProtected) {
                 $installationSession.Statistics[$categoryName].Skipped++
                 $installationSession.ProtectedApps += @{
-                    App = $app
+                    App      = $app
                     Category = $categoryName
-                    Reason = $detectionResult.ProtectionReason
+                    Reason   = $detectionResult.ProtectionReason
                 }
                 Write-Log "[EssentialApps] Protected from installation: $($app.Name) - $($detectionResult.ProtectionReason)" 'VERBOSE'
             }
             else {
                 $installationSession.Statistics[$categoryName].ToInstall++
                 $installationSession.InstallationQueue += @{
-                    App = $app
-                    Category = $categoryName
-                    Priority = $app.Priority
+                    App             = $app
+                    Category        = $categoryName
+                    Priority        = $app.Priority
                     DetectionResult = $detectionResult
                 }
                 Write-Log "[EssentialApps] Queued for installation: $($app.Name) (Priority: $($app.Priority))" 'VERBOSE'
@@ -2295,7 +2295,7 @@ function Install-EssentialApps {
     }
     
     # Sort installation queue by priority (lower numbers = higher priority)
-    $installationSession.InstallationQueue = $installationSession.InstallationQueue | Sort-Object Priority, @{Expression = {$_.App.Name}}
+    $installationSession.InstallationQueue = $installationSession.InstallationQueue | Sort-Object Priority, @{Expression = { $_.App.Name } }
     
     # Generate analysis report
     $totalToInstall = ($installationSession.Statistics.Values | Measure-Object -Property ToInstall -Sum).Sum
@@ -2306,11 +2306,11 @@ function Install-EssentialApps {
     
     # Save comprehensive analysis temp lists
     New-StandardizedTempList -ListType "essential" -Operation "analysis_results" -Data @{
-        AnalysisTimestamp = Get-Date
-        TotalAnalyzed = $totalAnalyzed
+        AnalysisTimestamp  = Get-Date
+        TotalAnalyzed      = $totalAnalyzed
         CategoryStatistics = $installationSession.Statistics
-        InstallationQueue = $installationSession.InstallationQueue
-        ProtectedApps = $installationSession.ProtectedApps
+        InstallationQueue  = $installationSession.InstallationQueue
+        ProtectedApps      = $installationSession.ProtectedApps
     } -Description "Comprehensive essential apps analysis results"
     
     # Early exit if nothing to install
@@ -2320,7 +2320,7 @@ function Install-EssentialApps {
         
         # Save final results
         New-StandardizedTempList -ListType "essential" -Operation "install_results" -Data @{
-            Summary = @{ Installed = 0; Failed = 0; Skipped = $totalSkipped; AlreadyInstalled = $totalAlreadyInstalled }
+            Summary       = @{ Installed = 0; Failed = 0; Skipped = $totalSkipped; AlreadyInstalled = $totalAlreadyInstalled }
             ExecutionTime = ((Get-Date) - $installationSession.StartTime).TotalSeconds
         } -Description "Essential apps installation session results (all apps already installed)"
         
@@ -2404,22 +2404,22 @@ CATEGORY BREAKDOWN:
     
     # Save comprehensive installation results
     $finalResults = @{
-        SessionInfo = @{
-            StartTime = $installationSession.StartTime
-            EndTime = Get-Date
-            Duration = $sessionDuration
+        SessionInfo         = @{
+            StartTime     = $installationSession.StartTime
+            EndTime       = Get-Date
+            Duration      = $sessionDuration
             TotalAnalyzed = $totalAnalyzed
         }
-        Summary = @{
-            ToInstall = $totalToInstall
-            Installed = $totalInstalled
-            Failed = $totalFailed
+        Summary             = @{
+            ToInstall        = $totalToInstall
+            Installed        = $totalInstalled
+            Failed           = $totalFailed
             AlreadyInstalled = $totalAlreadyInstalled
-            Skipped = $totalSkipped
+            Skipped          = $totalSkipped
         }
-        CategoryStatistics = $installationSession.Statistics
+        CategoryStatistics  = $installationSession.Statistics
         InstallationResults = $installationSession.InstallationResults
-        ProtectedApps = $installationSession.ProtectedApps
+        ProtectedApps       = $installationSession.ProtectedApps
     }
     
     New-StandardizedTempList -ListType "essential" -Operation "install_results" -Data $finalResults -Description "Comprehensive essential apps installation session results"
@@ -2442,12 +2442,12 @@ function Test-EnhancedAppInstallation {
     )
     
     $result = @{
-        IsInstalled = $false
-        IsProtected = $false
-        DetectionMethod = $null
-        FoundAs = $null
+        IsInstalled      = $false
+        IsProtected      = $false
+        DetectionMethod  = $null
+        FoundAs          = $null
         ProtectionReason = $null
-        Confidence = 0
+        Confidence       = 0
     }
     
     # Protection checks first
@@ -2511,12 +2511,12 @@ function Invoke-EnhancedAppInstallation {
     
     $startTime = Get-Date
     $result = @{
-        App = $AppInfo
-        Category = $Category
-        Success = $false
-        Method = $null
-        Duration = 0
-        Error = $null
+        App        = $AppInfo
+        Category   = $Category
+        Success    = $false
+        Method     = $null
+        Duration   = 0
+        Error      = $null
         AttemptLog = @()
     }
     
@@ -2554,7 +2554,8 @@ function Invoke-EnhancedAppInstallation {
                     if (Get-Command "Add-AppxPackage" -ErrorAction SilentlyContinue) {
                         Add-AppxPackage -Name $method.ID -ErrorAction Stop
                         $installSuccess = $true
-                    } else {
+                    }
+                    else {
                         $result.AttemptLog += "AppX: Add-AppxPackage not available"
                     }
                 }
@@ -2596,7 +2597,9 @@ function Invoke-EnhancedAppInstallation {
 
 # Office vs LibreOffice Optimization Function
 function Optimize-OfficeInstallation {
-    param([array]$InstallationResults)
+    param(
+        [array]$InstallationResults
+    )
     
     $officeApps = $InstallationResults | Where-Object { 
         $_.App.Name -like "*Office*" -or 
@@ -2619,231 +2622,6 @@ function Optimize-OfficeInstallation {
     else {
         Write-Log "[OfficeOptimization] No office suite detected in installations" 'VERBOSE'
     }
-}
-
-### [TASK 3] Enhanced Remove Bloatware - Multi-Method Categorized Approach
-
-Write-Log "[EssentialApps] Diff analysis: $($appsToInstall.Count) essential apps need installation (out of $($global:EssentialApps.Count) total in list)" 'INFO'
-
-# Save diff lists using standardized temp list functions
-New-StandardizedTempList -ListType "essential" -Operation "to_install" -Data $appsToInstall -Description "Essential apps that need to be installed"
-    
-# Save already installed apps list
-$appsAlreadyInstalled = $global:EssentialApps | Where-Object { 
-    $currentApp = $_
-    $found = $false
-    foreach ($toInstall in $appsToInstall) {
-        if ($toInstall.Name -eq $currentApp.Name) {
-            $found = $true
-            break
-        }
-    }
-    return -not $found
-}
-    
-# Only create temp list if there are apps already installed
-if ($appsAlreadyInstalled -and $appsAlreadyInstalled.Count -gt 0) {
-    New-StandardizedTempList -ListType "essential" -Operation "already_installed" -Data $appsAlreadyInstalled -Description "Essential apps already installed on system"
-}
-
-if ($appsToInstall.Count -eq 0) {
-    Write-Log "[EssentialApps] All essential apps already installed. Skipping installation process." 'INFO'
-    Write-Log "[END] Install Essential Apps" 'INFO'
-    return
-}
-
-# Log the apps that will be installed
-Write-Log "[EssentialApps] Apps targeted for installation:" 'INFO'
-$appsToInstall | ForEach-Object { Write-Log "  - $($_.Name)" 'VERBOSE' }
-
-$success = 0
-$fail = 0
-$skipped = 0
-$detailedResults = @()
-$totalApps = $appsToInstall.Count
-$currentApp = 0
-
-foreach ($app in $appsToInstall) {
-    $currentApp++
-    $percentComplete = [math]::Round(($currentApp / $totalApps) * 100)
-    Write-TaskProgress -Activity "Installing Essential Apps" -Status "Installing: $($app.Name)" -PercentComplete $percentComplete -CurrentOperation "$currentApp of $totalApps apps"
-        
-    $installSuccess = $false
-    $installMethod = ""
-    $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
-    $chocoAvailable = Get-Command choco -ErrorAction SilentlyContinue
-        
-    try {
-        # Try Winget first (preferred) using modern package manager
-        if ($app.Winget -and $wingetAvailable) {
-            Write-LogFile "Installing $($app.Name) via winget..." 'INFO'
-            $wingetArgs = @("install", "--id", $app.Winget, "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-            $result = Invoke-ModernPackageManager -PackageManager 'winget' -Arguments $wingetArgs -Description "Install $($app.Name)"
-                
-            if ($result.Success) {
-                $installSuccess = $true
-                $installMethod = "winget"
-                Write-LogFile "Successfully installed $($app.Name) via winget" 'INFO'
-            }
-            else {
-                Write-LogFile "$($app.Name) winget install failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
-            }
-        }
-            
-        # Try Chocolatey as fallback using modern package manager
-        if (-not $installSuccess -and $app.Choco -and $chocoAvailable) {
-            Write-LogFile "Installing $($app.Name) via choco..." 'INFO'
-            $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--limit-output")
-            $result = Invoke-ModernPackageManager -PackageManager 'choco' -Arguments $chocoArgs -Description "Install $($app.Name)"
-                
-            if ($result.Success) {
-                $installSuccess = $true
-                $installMethod = "choco"
-                Write-LogFile "Successfully installed $($app.Name) via choco" 'INFO'
-            }
-            else {
-                Write-LogFile "$($app.Name) choco install failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
-            }
-        }
-            
-        # Log results
-        if ($installSuccess) {
-            Write-Log "Installed: $($app.Name) via $installMethod" 'INFO'
-            $success++
-            $detailedResults += "SUCCESS: $($app.Name) via $installMethod"
-        }
-        elseif (-not $wingetAvailable -and -not $chocoAvailable) {
-            Write-Log "Skipped installation of $($app.Name): No package manager available (winget/choco missing)" 'WARN'
-            $skipped++
-            $detailedResults += "SKIPPED: $($app.Name) (no package manager available)"
-        }
-        else {
-            Write-Log "Failed to install $($app.Name) (no available installer succeeded)" 'WARN'
-            $fail++
-            $detailedResults += "FAIL: $($app.Name) (installer failed)"
-        }
-    }
-    catch {
-        Write-Log "Exception during install of $($app.Name): $_" 'ERROR'
-        $fail++
-        $detailedResults += "FAIL: $($app.Name) (exception: $_)"
-    }
-}
-
-# Office check and LibreOffice fallback
-$officeInstalled = $false
-try {
-    # Check for Office in inventory first
-    $officeKeywords = @('Office', 'Word', 'Excel', 'PowerPoint', 'Outlook', 'Microsoft Office')
-    foreach ($keyword in $officeKeywords) {
-        $foundInRegistry = $inventory.registry_uninstall | Where-Object { $_.DisplayName -like "*$keyword*" }
-        $foundInWinget = $inventory.winget | Where-Object { $_.Name -like "*$keyword*" -or $_.Id -like "*$keyword*" }
-        $foundInAppx = $inventory.appx | Where-Object { $_.Name -like "*$keyword*" }
-            
-        if ($foundInRegistry -or $foundInWinget -or $foundInAppx) {
-            $officeInstalled = $true
-            Write-Log "Office detected in inventory: $keyword" 'INFO'
-            break
-        }
-    }
-        
-    # Fallback: check registry keys directly
-    if (-not $officeInstalled) {
-        $officeKeys = @(
-            'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration',
-            'HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\Microsoft\Office\15.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\Microsoft\Office\14.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\15.0\Common\InstallRoot',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\14.0\Common\InstallRoot'
-        )
-        foreach ($key in $officeKeys) {
-            if (Test-Path $key) {
-                $officeInstalled = $true
-                Write-Log "Office detected via registry key: $key" 'INFO'
-                break
-            }
-        }
-    }
-        
-    # Last resort: check Start Menu apps
-    if (-not $officeInstalled) {
-        $officeApps = Get-StartAppsCompatible | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
-        if ($officeApps) { 
-            $officeInstalled = $true 
-            Write-Log "Office detected via Start Menu apps" 'INFO'
-        }
-    }
-}
-catch {
-    Write-Log "Error checking for Microsoft Office: $_" 'WARN'
-}
-
-if (-not $officeInstalled) {
-    Write-Log "Microsoft Office not detected. Installing LibreOffice as alternative..." 'INFO'
-    $libreSuccess = $false
-    try {
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            $wingetArgs = @("install", "--id", "TheDocumentFoundation.LibreOffice", "--accept-source-agreements", "--accept-package-agreements", "--silent", "-e")
-            $result = Invoke-ModernPackageManager -PackageManager 'winget' -Arguments $wingetArgs -Description "Install LibreOffice"
-                
-            if ($result.Success) {
-                Write-Log "LibreOffice installed via winget." 'INFO'
-                $libreSuccess = $true
-                $success++
-                $detailedResults += "SUCCESS: LibreOffice via winget"
-            }
-            else {
-                Write-Log "LibreOffice winget install failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
-            }
-        }
-        if (-not $libreSuccess -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-            $chocoArgs = @("install", "libreoffice-fresh", "-y", "--no-progress", "--limit-output")
-            $result = Invoke-ModernPackageManager -PackageManager 'choco' -Arguments $chocoArgs -Description "Install LibreOffice"
-                
-            if ($result.Success) {
-                Write-Log "LibreOffice installed via choco." 'INFO'
-                $libreSuccess = $true
-                $success++
-                $detailedResults += "SUCCESS: LibreOffice via choco"
-            }
-            else {
-                Write-Log "LibreOffice choco install failed with exit code $($result.ExitCode): $($result.Error)" 'WARN'
-            }
-        }
-        if (-not $libreSuccess) {
-            Write-Log "No installer found or succeeded for LibreOffice." 'WARN'
-            $fail++
-            $detailedResults += "FAIL: LibreOffice (no installer succeeded)"
-        }
-    }
-    catch {
-        Write-Log "Failed to install LibreOffice: $_" 'WARN'
-        $fail++
-        $detailedResults += "FAIL: LibreOffice (exception: $_)"
-    }
-}
-else {
-    Write-Log "Microsoft Office detected. Skipping LibreOffice installation." 'INFO'
-    $detailedResults += "SKIPPED: LibreOffice (Office already installed)"
-}
-
-Write-TaskProgress -Activity "Installing Essential Apps" -Status "Installation completed" -PercentComplete 100 -Completed
-Write-Log "Install Essential Apps summary: Installed: $success, Failed: $fail, Skipped: $skipped" 'INFO'
-foreach ($result in $detailedResults) {
-    Write-LogFile $result 'INFO'
-}
-    
-# Create final installation results temp list
-$InstallResults = @{
-    Summary = @{
-        Installed = $success
-        Failed    = $fail
-        Skipped   = $skipped
-        Total     = $success + $fail + $skipped
-    }
-    Details = $detailedResults
 }
 
 # ===============================
