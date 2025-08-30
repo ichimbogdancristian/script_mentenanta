@@ -2871,71 +2871,65 @@ function Remove-SingleBloatwareApp {
     }
     
     $appName = $AppInfo.AppName
-    $detectionMethod = $AppInfo.DetectionMethod
     
     try {
-        switch ($detectionMethod) {
-            'AppX' {
-                # Try AppX removal
-                $success = Remove-AppxPackageCompatible -Name $appName -AllUsers
-                if ($success) {
-                    $result.Success = $true
-                    $result.Method = 'AppX'
-                    return $result
-                }
-                
-                # Try provisioned package removal
-                $provisionedPkgs = Get-AppxProvisionedPackageCompatible -Online | Where-Object { $_.DisplayName -like "*$appName*" }
-                foreach ($pkg in $provisionedPkgs) {
-                    $success = Remove-AppxProvisionedPackageCompatible -Online -PackageName $pkg.PackageName
-                    if ($success) {
-                        $result.Success = $true
-                        $result.Method = 'AppX Provisioned'
-                        return $result
-                    }
-                }
-            }
-            
-            'Winget' {
-                # Try Winget uninstall
-                $wingetResult = Invoke-ModernPackageManager -Action 'uninstall' -PackageId $appName -Source 'winget'
-                if ($wingetResult.Success) {
-                    $result.Success = $true
-                    $result.Method = 'Winget'
-                    return $result
-                }
-            }
-            
-            'Registry' {
-                # Try to find and run uninstaller
-                $uninstallString = Get-UninstallString -AppName $appName
-                if ($uninstallString) {
-                    $uninstallResult = Invoke-UninstallString -UninstallString $uninstallString -Silent
-                    if ($uninstallResult) {
-                        $result.Success = $true
-                        $result.Method = 'Registry Uninstaller'
-                        return $result
-                    }
-                }
-            }
-            
-            'Chocolatey' {
-                # Try Chocolatey uninstall
-                $chocoResult = Invoke-ModernPackageManager -Action 'uninstall' -PackageId $appName -Source 'chocolatey'
-                if ($chocoResult.Success) {
-                    $result.Success = $true
-                    $result.Method = 'Chocolatey'
-                    return $result
-                }
+        # 1. Try Winget uninstall (most modern, silent)
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $wingetArgs = @('uninstall', '--id', $appName, '--silent', '--accept-source-agreements')
+            $wingetResult = Invoke-ModernPackageManager -PackageManager 'winget' -Arguments $wingetArgs -Description "Winget uninstall $appName" -TimeoutSeconds 120
+            if ($wingetResult.Success) {
+                $result.Success = $true
+                $result.Method = 'Winget'
+                return $result
             }
         }
-        
-        $result.Error = "No removal method succeeded for $detectionMethod detection"
+
+        # 2. Try AppX removal (for AppX apps)
+        $appxSuccess = Remove-AppxPackageCompatible -PackageFullName $appName -AllUsers
+        if ($appxSuccess) {
+            $result.Success = $true
+            $result.Method = 'AppX'
+            return $result
+        }
+
+        # 3. Try DISM for provisioned packages
+        $provisionedPkgs = Get-AppxProvisionedPackageCompatible -Online | Where-Object { $_.DisplayName -like "*$appName*" -or $_.PackageName -like "*$appName*" }
+        foreach ($pkg in $provisionedPkgs) {
+            $dismSuccess = Remove-AppxProvisionedPackageCompatible -Online -PackageName $pkg.PackageName
+            if ($dismSuccess) {
+                $result.Success = $true
+                $result.Method = 'DISM Provisioned'
+                return $result
+            }
+        }
+
+        # 4. Try registry uninstaller
+        $uninstallString = Get-UninstallString -AppName $appName
+        if ($uninstallString) {
+            $uninstallResult = Invoke-UninstallString -UninstallString $uninstallString -Silent
+            if ($uninstallResult) {
+                $result.Success = $true
+                $result.Method = 'Registry Uninstaller'
+                return $result
+            }
+        }
+
+        # 5. Try Chocolatey uninstall
+        if (Get-Command choco -ErrorAction SilentlyContinue) {
+            $chocoArgs = @('uninstall', $appName, '-y', '--limit-output')
+            $chocoResult = Invoke-ModernPackageManager -PackageManager 'choco' -Arguments $chocoArgs -Description "Chocolatey uninstall $appName" -TimeoutSeconds 120
+            if ($chocoResult.Success) {
+                $result.Success = $true
+                $result.Method = 'Chocolatey'
+                return $result
+            }
+        }
+
+        $result.Error = "No removal method succeeded for $appName"
     }
     catch {
         $result.Error = "Exception during removal: $_"
     }
-    
     return $result
 }
 
