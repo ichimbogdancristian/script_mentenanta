@@ -71,7 +71,6 @@ IF %ERRORLEVEL% EQU 0 (
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
-        /D 1 ^
         /TN "%TASK_NAME%" ^
         /TR "cmd.exe /c \"\"%SCRIPT_DIR%script.bat\"\"" ^
         /ST 01:00 ^
