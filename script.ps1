@@ -1106,7 +1106,7 @@ function Get-ExtensiveSystemInventory {
     $inventoryFolder = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
     if (-not (Test-Path $inventoryFolder)) { New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null }
 
-    # Build structured inventory object  
+    # Build enhanced structured inventory object for diff operations
     $inventory = [ordered]@{
         metadata           = [ordered]@{
             generatedOn   = (Get-Date).ToString('o')
@@ -1114,6 +1114,12 @@ function Get-ExtensiveSystemInventory {
             hostname      = $env:COMPUTERNAME
             user          = $env:USERNAME
             powershell    = $PSVersionTable.PSVersion.ToString()
+            schema        = [ordered]@{
+                appx    = @{ fields = @('Name','PackageFullName','Publisher','Version','AppId','Source') }
+                winget  = @{ fields = @('Name','Id','Version','Source','Hash') }
+                choco   = @{ fields = @('Name','Id','Version','Source','Hash') }
+                registry_uninstall = @{ fields = @('DisplayName','UninstallString','Publisher','Version','RegistryKey','Hash') }
+            }
         }
         system             = @{}
         appx               = @()
@@ -1143,15 +1149,24 @@ function Get-ExtensiveSystemInventory {
     try {
         $appxPackages = Get-AppxPackageCompatible -AllUsers
         if ($appxPackages -and $appxPackages.Count -gt 0) {
-            $inventory.appx = @($appxPackages | Select-Object Name, PackageFullName, Publisher)
-            Write-LogFile "[Inventory] Collected $($inventory.appx.Count) Appx apps." 'INFO'
+            $inventory.appx = @($appxPackages | ForEach-Object {
+                [PSCustomObject]@{
+                    Name            = $_.Name
+                    PackageFullName = $_.PackageFullName
+                    Publisher       = $_.Publisher
+                    Version         = $_.Version
+                    AppId           = $_.PackageFullName
+                    Source          = 'Appx'
+                }
+            })
+            Write-LogFile "[Inventory] Collected $($inventory.appx.Count) Appx apps (enhanced for diff)." 'INFO'
         }
         else {
             Write-LogFile "[Inventory] No Appx apps found or module not available." 'WARN'
             $inventory.appx = @()
         }
     }
-    catch { 
+    catch {
         Write-LogFile "[Inventory] Appx apps failed: $_" 'WARN'
         $inventory.appx = @()
     }
@@ -1163,7 +1178,6 @@ function Get-ExtensiveSystemInventory {
             # Try JSON output first (modern winget versions)
             $wingetJsonRaw = winget list --accept-source-agreements --output json 2>$null | Out-String
             if ($wingetJsonRaw -and $wingetJsonRaw.Trim() -ne '') {
-                # Clean the JSON output - sometimes winget returns warnings before JSON
                 $jsonStartIndex = $wingetJsonRaw.IndexOf('{')
                 if ($jsonStartIndex -ge 0) {
                     $cleanJson = $wingetJsonRaw.Substring($jsonStartIndex)
@@ -1171,14 +1185,16 @@ function Get-ExtensiveSystemInventory {
                         $wingetData = $cleanJson | ConvertFrom-Json -ErrorAction Stop
                         if ($wingetData.Sources) {
                             $inventory.winget = @($wingetData.Sources | ForEach-Object { $_.Packages } | ForEach-Object {
-                                    [PSCustomObject]@{
-                                        Name    = $_.Name
-                                        Id      = $_.Id
-                                        Version = $_.InstalledVersion
-                                        Source  = $_.Source
-                                    }
-                                })
-                            Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON." 'INFO'
+                                $hash = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($_.Name + $_.Id + $_.InstalledVersion + $_.Source))).Replace("-","")
+                                [PSCustomObject]@{
+                                    Name    = $_.Name
+                                    Id      = $_.Id
+                                    Version = $_.InstalledVersion
+                                    Source  = $_.Source
+                                    Hash    = $hash
+                                }
+                            })
+                            Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via JSON (enhanced for diff)." 'INFO'
                         }
                         else {
                             Write-Log "[Inventory] Winget JSON output has no Sources property. Using fallback." 'WARN'
@@ -1209,14 +1225,16 @@ function Get-ExtensiveSystemInventory {
                     $inventory.winget = @($wingetOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Name|^-+|^$' } | 
                         ForEach-Object { 
                             $parts = $_ -split '\s+', 3
+                            $hash = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes(($parts -join '')))).Replace("-","")
                             [PSCustomObject]@{
                                 Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
                                 Id      = if ($parts.Count -gt 1) { $parts[1] } else { $null }
                                 Version = if ($parts.Count -gt 2) { $parts[2] } else { $null }
                                 Source  = 'text-parsed'
+                                Hash    = $hash
                             }
                         })
-                    Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via text parsing." 'INFO'
+                    Write-Log "[Inventory] Collected $($inventory.winget.Count) winget apps via text parsing (enhanced for diff)." 'INFO'
                 }
                 else {
                     Write-Log "[Inventory] No winget output in text mode either." 'WARN'
@@ -1242,25 +1260,28 @@ function Get-ExtensiveSystemInventory {
     Write-LogFile "[Inventory] Collecting installed choco apps..." 'INFO'
     if (Get-Command choco -ErrorAction SilentlyContinue) {
         try {
-            $chocoOutput = choco list --local-only 2>$null
+            $chocoOutput = choco list --local-only --limit-output 2>$null
             if ($chocoOutput) {
-                $inventory.choco = @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | 
-                    ForEach-Object { 
-                        $parts = $_ -split '\s+', 2
-                        [PSCustomObject]@{
-                            Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
-                            Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
-                        }
-                    })
-                Write-LogFile "[Inventory] Collected $($inventory.choco.Count) choco apps." 'INFO'
+                $inventory.choco = @($chocoOutput | Where-Object { $_ -match '\S' -and $_ -notmatch '^Chocolatey|packages installed|^$' } | ForEach-Object {
+                    $parts = $_ -split '\s+', 3
+                    $hash = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes(($parts -join '')))).Replace("-","")
+                    [PSCustomObject]@{
+                        Name    = if ($parts.Count -gt 0) { $parts[0] } else { $_ }
+                        Id      = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                        Version = if ($parts.Count -gt 2) { $parts[2] } else { $null }
+                        Source  = 'choco'
+                        Hash    = $hash
+                    }
+                })
+                Write-Log "[Inventory] Collected $($inventory.choco.Count) choco apps (enhanced for diff)." 'INFO'
             }
             else {
+                Write-Log "[Inventory] No choco output received." 'WARN'
                 $inventory.choco = @()
-                Write-LogFile "[Inventory] No choco apps found." 'INFO'
             }
         }
-        catch { 
-            Write-LogFile "[Inventory] Choco apps failed: $_" 'WARN'
+        catch {
+            Write-Log "[Inventory] Failed to collect choco apps: $_" 'WARN'
             $inventory.choco = @()
         }
     }
@@ -1277,23 +1298,29 @@ function Get-ExtensiveSystemInventory {
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
     )
     try {
-        $inventory.registry_uninstall = @(foreach ($key in $uninstallKeys) {
-                Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
-                    $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-                    if ($props.DisplayName) {
-                        [PSCustomObject]@{ 
-                            DisplayName     = $props.DisplayName
-                            UninstallString = $props.UninstallString
-                            Publisher       = $props.Publisher
-                            Version         = $props.DisplayVersion
-                        }
+        $regApps = @()
+        foreach ($key in $uninstallKeys) {
+            $items = Get-ChildItem -Path $key -ErrorAction SilentlyContinue
+            foreach ($item in $items) {
+                $props = Get-ItemProperty -Path $item.PSPath -ErrorAction SilentlyContinue
+                if ($props.DisplayName) {
+                    $hash = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($props.DisplayName + ($props.DisplayVersion -join '') + ($props.Publisher -join '') + ($props.UninstallString -join '')))).Replace("-","")
+                    $regApps += [PSCustomObject]@{
+                        DisplayName    = $props.DisplayName
+                        UninstallString= $props.UninstallString
+                        Publisher      = $props.Publisher
+                        Version        = $props.DisplayVersion
+                        RegistryKey    = $item.PSPath
+                        Hash           = $hash
                     }
                 }
-            })
-        Write-LogFile "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries." 'INFO'
+            }
+        }
+        $inventory.registry_uninstall = $regApps
+        Write-Log "[Inventory] Collected $($inventory.registry_uninstall.Count) registry uninstall entries (enhanced for diff)." 'INFO'
     }
-    catch { 
-        Write-LogFile "[Inventory] Registry uninstall keys failed: $_" 'WARN'
+    catch {
+        Write-Log "[Inventory] Failed to collect registry uninstall entries: $_" 'WARN'
         $inventory.registry_uninstall = @()
     }
 
@@ -2814,7 +2841,25 @@ function Test-AppInstalled {
         CanUninstall    = $true
     }
     
-    # Check AppX packages
+    # Check AppX packages (prefer exact PackageFullName match, then Name)
+    foreach ($appx in $Inventory.appx) {
+        if ($appx.PackageFullName -eq $AppIdentifier -or $appx.AppId -eq $AppIdentifier) {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'AppX'
+            $result.FoundAs = $appx.PackageFullName
+            $result.CanUninstall = -not $appx.NonRemovable
+            return $result
+        }
+    }
+    foreach ($appx in $Inventory.appx) {
+        if ($appx.Name -eq $AppIdentifier) {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'AppX'
+            $result.FoundAs = $appx.Name
+            $result.CanUninstall = -not $appx.NonRemovable
+            return $result
+        }
+    }
     foreach ($appx in $Inventory.appx) {
         if ($appx.Name -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($appx.Name)*" -or $appx.PackageFullName -like "*$AppIdentifier*") {
             $result.IsInstalled = $true
@@ -2824,18 +2869,42 @@ function Test-AppInstalled {
             return $result
         }
     }
-    
-    # Check Winget packages
+
+    # Check Winget packages (prefer exact Id match, then Name)
     foreach ($winget in $Inventory.winget) {
-        if ($winget.Id -eq $AppIdentifier -or $winget.Name -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($winget.Name)*") {
+        if ($winget.Id -eq $AppIdentifier) {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'Winget'
+            $result.FoundAs = $winget.Id
+            return $result
+        }
+    }
+    foreach ($winget in $Inventory.winget) {
+        if ($winget.Name -eq $AppIdentifier) {
             $result.IsInstalled = $true
             $result.DetectionMethod = 'Winget'
             $result.FoundAs = $winget.Name
             return $result
         }
     }
-    
-    # Check Registry uninstall entries
+    foreach ($winget in $Inventory.winget) {
+        if ($winget.Name -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($winget.Name)*") {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'Winget'
+            $result.FoundAs = $winget.Name
+            return $result
+        }
+    }
+
+    # Check Registry uninstall entries (prefer exact DisplayName match)
+    foreach ($regApp in $Inventory.registry_uninstall) {
+        if ($regApp.DisplayName -eq $AppIdentifier) {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'Registry'
+            $result.FoundAs = $regApp.DisplayName
+            return $result
+        }
+    }
     foreach ($regApp in $Inventory.registry_uninstall) {
         if ($regApp.DisplayName -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($regApp.DisplayName)*") {
             $result.IsInstalled = $true
@@ -2844,8 +2913,16 @@ function Test-AppInstalled {
             return $result
         }
     }
-    
-    # Check Chocolatey packages
+
+    # Check Chocolatey packages (prefer exact Name match)
+    foreach ($choco in $Inventory.choco) {
+        if ($choco.Name -eq $AppIdentifier) {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = 'Chocolatey'
+            $result.FoundAs = $choco.Name
+            return $result
+        }
+    }
     foreach ($choco in $Inventory.choco) {
         if ($choco.Name -like "*$AppIdentifier*" -or $AppIdentifier -like "*$($choco.Name)*") {
             $result.IsInstalled = $true
@@ -2854,7 +2931,7 @@ function Test-AppInstalled {
             return $result
         }
     }
-    
+
     return $result
 }
 
