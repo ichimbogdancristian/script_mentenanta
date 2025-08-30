@@ -1111,7 +1111,7 @@ function New-BloatwareDiffList {
         $found = $false
         foreach ($appx in $Inventory.appx) {
             if ($appx.PackageFullName -eq $app -or $appx.AppId -eq $app -or $appx.Name -eq $app) {
-                $diffApps += $appx
+                $diffApps += (Normalize-AppRecord -App $appx -Source 'AppX' -Category $Category)
                 $found = $true
                 break
             }
@@ -1119,7 +1119,7 @@ function New-BloatwareDiffList {
         if (-not $found) {
             foreach ($winget in $Inventory.winget) {
                 if ($winget.Id -eq $app -or $winget.Name -eq $app) {
-                    $diffApps += $winget
+                    $diffApps += (Normalize-AppRecord -App $winget -Source 'Winget' -Category $Category)
                     $found = $true
                     break
                 }
@@ -1128,7 +1128,7 @@ function New-BloatwareDiffList {
         if (-not $found) {
             foreach ($regApp in $Inventory.registry_uninstall) {
                 if ($regApp.DisplayName -eq $app) {
-                    $diffApps += $regApp
+                    $diffApps += (Normalize-AppRecord -App $regApp -Source 'Registry' -Category $Category)
                     $found = $true
                     break
                 }
@@ -1137,15 +1137,76 @@ function New-BloatwareDiffList {
         if (-not $found) {
             foreach ($choco in $Inventory.choco) {
                 if ($choco.Name -eq $app) {
-                    $diffApps += $choco
+                    $diffApps += (Normalize-AppRecord -App $choco -Source 'Chocolatey' -Category $Category)
                     break
                 }
             }
         }
     }
-    # Save standardized diff list
+    # Save standardized diff list (normalized entries)
     $diffListPath = New-StandardizedTempList -ListType 'bloatware' -Operation "diff_${Category}" -Data $diffApps -Description "Apps in both bloatware category '$Category' and inventory (ready for removal)"
     return $diffListPath
+}
+
+# Normalize app/inventory records to a consistent schema used across temp lists
+function Normalize-AppRecord {
+    param(
+        [Parameter(Mandatory = $true)] [object]$App,
+        [Parameter(Mandatory = $false)] [string]$Source = '',
+        [Parameter(Mandatory = $false)] [string]$Category = ''
+    )
+
+    $record = [ordered]@{
+        Source          = $Source
+        Id              = $null
+        Name            = $null
+        DisplayName     = $null
+        PackageFullName = $null
+        AppId           = $null
+        Version         = $null
+        UninstallString = $null
+        NonRemovable    = $false
+        Category        = $Category
+        Original        = $App
+        Hash            = $null
+    }
+
+    try {
+        if ($null -eq $App) { return [PSCustomObject]$record }
+
+        # Common property accessors (works with PSCustomObject and hashtable)
+        if ($App -is [System.Management.Automation.PSCustomObject] -or $App -is [hashtable]) {
+            if ($App.PSObject.Properties.Name -contains 'Id') { $record.Id = $App.Id }
+            if ($App.PSObject.Properties.Name -contains 'Name') { $record.Name = $App.Name }
+            if ($App.PSObject.Properties.Name -contains 'DisplayName') { $record.DisplayName = $App.DisplayName }
+            if ($App.PSObject.Properties.Name -contains 'PackageFullName') { $record.PackageFullName = $App.PackageFullName }
+            if ($App.PSObject.Properties.Name -contains 'AppId') { $record.AppId = $App.AppId }
+            if ($App.PSObject.Properties.Name -contains 'Version') { $record.Version = $App.Version }
+            if ($App.PSObject.Properties.Name -contains 'UninstallString') { $record.UninstallString = $App.UninstallString }
+            if ($App.PSObject.Properties.Name -contains 'NonRemovable') { $record.NonRemovable = $App.NonRemovable }
+        }
+        else {
+            # If it's a string or other scalar, use it as Name/DisplayName
+            $record.Name = [string]$App
+            $record.DisplayName = [string]$App
+        }
+
+        # Populate fallback fields
+        if (-not $record.DisplayName -and $record.Name) { $record.DisplayName = $record.Name }
+        if (-not $record.Name -and $record.DisplayName) { $record.Name = $record.DisplayName }
+
+        # Compute simple SHA256 hash of identifying fields for change detection
+        $hashInput = "${($record.Source)}|${($record.Id)}|${($record.PackageFullName)}|${($record.Name)}|${($record.DisplayName)}|${($record.Version)}"
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($hashInput)
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        $hash = [System.BitConverter]::ToString($sha256.ComputeHash($bytes)).Replace('-', '').ToLower()
+        $record.Hash = $hash
+    }
+    catch {
+        Write-Log "Normalize-AppRecord failed for app: $App - $_" 'WARN'
+    }
+
+    return [PSCustomObject]$record
 }
 # System Inventory Functions
 function Get-ExtensiveSystemInventory {
@@ -1899,7 +1960,9 @@ if ($global:Config.CustomBloatwareList -and $global:Config.CustomBloatwareList.C
 }
 
 # Create standardized temp lists with consistent naming and metadata
-New-StandardizedTempList -ListType "bloatware" -Operation "main_list" -Data $global:BloatwareList -Description "Complete bloatware list including custom entries from config"
+# Normalize and save main bloatware list
+$normalizedBloatware = $global:BloatwareList | ForEach-Object { Normalize-AppRecord -App $_ -Source 'BloatwareList' }
+New-StandardizedTempList -ListType "bloatware" -Operation "main_list" -Data $normalizedBloatware -Description "Complete bloatware list including custom entries from config"
 
 ### Enhanced Essential Applications List - Categorized by Priority and Function
 $global:EssentialAppsCategories = @{
@@ -2003,7 +2066,9 @@ if ($global:Config.CustomEssentialApps -and $global:Config.CustomEssentialApps.C
 }
 
 # Save main essential apps list using standardized temp list function
-New-StandardizedTempList -ListType "essential" -Operation "main_list" -Data $global:EssentialApps -Description "Complete essential apps list including custom entries from config"
+# Normalize and save main essential apps list
+$normalizedEssential = $global:EssentialApps | ForEach-Object { Normalize-AppRecord -App $_ -Source 'EssentialList' }
+New-StandardizedTempList -ListType "essential" -Operation "main_list" -Data $normalizedEssential -Description "Complete essential apps list including custom entries from config"
 
 ### Load configuration (if exists)
 # Configuration is now loaded at the top of the script before list creation
