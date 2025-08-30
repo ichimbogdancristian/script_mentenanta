@@ -44,6 +44,116 @@
 - Reports: **Unified Enhanced Report** in `maintenance_report.txt` with comprehensive system information, execution metrics, and categorized actions. Detailed inventory files for audit.
 - Temp Lists: Standardized JSON format with metadata for bloatware and essential app operations.
 
+## 📋 Structured Code Organization Standards (MANDATORY)
+
+### **Code Block Architecture (ENFORCED)**
+The PowerShell script (`script.ps1`) MUST be organized into clearly defined, logical sections with specific purposes. This structure enhances maintainability, readability, debugging, and professional development standards.
+
+#### **🏗️ MANDATORY Section Structure:**
+
+```powershell
+# ===============================
+# SECTION 1: SCRIPT HEADER & METADATA  
+# ===============================
+# - Script documentation and purpose
+# - PowerShell requirements (#Requires statements)
+# - Using namespace declarations
+# - Global configuration definitions
+# - Task array definitions ($global:ScriptTasks)
+
+# ===============================
+# SECTION 2: CORE INFRASTRUCTURE
+# ===============================
+# - Compatibility functions (Invoke-WindowsPowerShellCommand, etc.)
+# - Logging system (Write-Log, Write-LogFile, Write-ConsoleMessage)
+# - Progress tracking (Write-TaskProgress)
+# - Task coordination (Invoke-Task, Use-AllScriptTasks)
+# - Error handling utilities
+
+# ===============================
+# SECTION 3: SYSTEM UTILITIES
+# ===============================
+# - System inventory functions (Get-ExtensiveSystemInventory)
+# - Temp list management (New-StandardizedTempList, Get-StandardizedTempList)
+# - Package manager utilities (Invoke-ModernPackageManager)
+# - App detection utilities (Test-AppInstalled, Test-EnhancedAppInstallation)
+# - System compatibility functions (AppX, Windows Updates, etc.)
+
+# ===============================
+# SECTION 4: BLOATWARE MANAGEMENT
+# ===============================
+# - Remove-Bloatware (main function)
+# - Bloatware detection and removal utilities
+# - Bloatware categories and classification logic
+# - Supporting bloatware functions
+
+# ===============================
+# SECTION 5: ESSENTIAL APPS MANAGEMENT
+# ===============================
+# - Install-EssentialApps (main function)
+# - Test-EnhancedAppInstallation
+# - Invoke-EnhancedAppInstallation
+# - Optimize-OfficeInstallation
+# - Essential apps categories and installation logic
+
+# ===============================
+# SECTION 6: SYSTEM MAINTENANCE TASKS
+# ===============================
+# - Windows Updates (Install-WindowsUpdatesCompatible)
+# - System Restore (Enable-ComputerRestoreCompatible, Checkpoint-ComputerCompatible)
+# - Telemetry/Privacy (Disable-Telemetry)
+# - Temp cleanup and disk maintenance functions
+
+# ===============================
+# SECTION 7: REPORTING & ANALYTICS
+# ===============================
+# - Write-TempListsSummary
+# - Write-UnifiedMaintenanceReport
+# - Performance tracking functions
+# - Report generation utilities
+# - Analytics and metrics collection
+
+# ===============================
+# SECTION 8: SCRIPT EXECUTION & INITIALIZATION
+# ===============================
+# - Configuration loading and validation
+# - Global variables initialization
+# - Main execution logic and task orchestration
+# - Cleanup and finalization processes
+```
+
+#### **🔧 Code Organization Enforcement Rules:**
+
+1. **Logical Grouping**: All related functions MUST be grouped in their appropriate section
+2. **Clear Section Headers**: Each section MUST have a standardized header with description
+3. **Function Proximity**: Supporting functions MUST be placed immediately after their main function
+4. **No Function Scatter**: Functions belonging to the same feature MUST NOT be scattered across the file
+5. **Section Boundaries**: Clear separation between sections with standardized dividers
+6. **Consistent Structure**: All AI agents MUST maintain this structure when making changes
+
+#### **📍 Section Placement Guidelines:**
+
+- **Infrastructure Functions**: Place in Section 2 (logging, progress, task coordination)
+- **Utility Functions**: Place in Section 3 (inventory, package management, detection)
+- **Feature-Specific Functions**: Place in appropriate feature section (4, 5, or 6)
+- **Helper Functions**: Place immediately after the main function they support
+- **Reporting Functions**: Place in Section 7 (reports, analytics, metrics)
+
+#### **🚨 Mandatory Compliance:**
+- **EVERY code change** MUST respect the section structure
+- **NEW functions** MUST be placed in the appropriate section
+- **REFACTORING** MUST maintain or improve the organization
+- **NO mixing** of unrelated functions within sections
+- **SECTION headers** MUST be preserved and updated as needed
+
+### **Benefits of Structured Organization:**
+✅ **Enhanced Maintainability**: Easy to locate and update related functionality  
+✅ **Improved Debugging**: Related code co-located for efficient troubleshooting  
+✅ **Professional Standards**: Industry-standard code organization  
+✅ **Better Collaboration**: Clear structure for multiple developers  
+✅ **Reduced Errors**: Logical grouping prevents function scatter and confusion  
+✅ **Faster Development**: Quick navigation to relevant sections  
+
 ## Environment of Execution
 - **OS:** Windows 10/11 (x64, ARM64 supported).
 - **Shell:** PowerShell 7.5.2+ preferred, with automatic fallback to PowerShell 5.1 for compatibility.
@@ -99,6 +209,69 @@ When diagnostic errors involve structural problems (missing brackets, orphaned c
 3. **Orphaned Code Detection**: Look for code floating outside proper function/block contexts
 4. **Cross-Reference Checking**: Verify that variables, parameters, and return values are properly scoped
 5. **Integration Verification**: Ensure orphaned code segments are properly integrated or removed
+
+#### **🚨 CRITICAL: Orphaned Code Prevention Protocol (MANDATORY)**
+**⚠️ ABSOLUTE REQUIREMENT**: AI agents MUST NEVER leave orphaned code blocks floating outside proper function/context boundaries.
+
+**🔍 ORPHANED CODE DETECTION REQUIREMENTS:**
+1. **Before Any Code Changes**: Scan for existing orphaned code using structural analysis
+2. **During Replacements**: Verify that ALL code being replaced is properly scoped within functions
+3. **After Modifications**: Ensure no code fragments are left floating outside function boundaries
+4. **Before Completion**: Final scan for any orphaned code segments
+
+**📋 ORPHANED CODE IDENTIFICATION:**
+- **Function Fragments**: Code outside `function Name { ... }` boundaries
+- **Floating Variables**: Variable assignments outside proper scopes
+- **Incomplete Blocks**: Code missing opening or closing braces
+- **Disconnected Logic**: Code that doesn't belong to any parent function or block
+- **Remnant Code**: Left-over fragments from previous edits
+
+**🔧 ORPHANED CODE RESOLUTION STEPS:**
+1. **Identify Origin**: Determine what function the orphaned code should belong to
+2. **Integration**: Move orphaned code into appropriate function context
+3. **Validation**: Verify the code makes sense in its new location
+4. **Testing**: Ensure integration doesn't break functionality
+5. **Cleanup**: Remove any truly redundant orphaned fragments
+
+**🚫 ZERO TOLERANCE POLICY:**
+- **NO orphaned code is EVER acceptable**
+- **ALL floating code MUST be properly integrated or removed**
+- **EVERY replacement operation MUST account for context boundaries**
+- **NO "temporary" orphaned code - fix immediately**
+
+**📊 TOOLS FOR ORPHANED CODE DETECTION:**
+```powershell
+# Scan for function boundaries
+grep_search -query "^function|^}$" -isRegexp true -includePattern "script.ps1"
+
+# Look for floating code outside functions
+grep_search -query "^\s*\$[^=]*=|^\s*[A-Z][a-zA-Z]+-" -isRegexp true -includePattern "script.ps1"
+
+# Verify structural integrity
+semantic_search -query "orphaned code floating outside functions incomplete blocks"
+```
+
+**📈 PREVENTION EXAMPLES:**
+```powershell
+# ❌ WRONG - Creates orphaned code
+function MyFunction {
+    # function content
+}
+$orphanedVariable = "value"  # ❌ This is orphaned!
+
+# ✅ CORRECT - All code properly scoped
+function MyFunction {
+    $properVariable = "value"  # ✅ Properly scoped
+    # function content
+}
+```
+
+**📍 COMMON ORPHANED CODE SCENARIOS:**
+1. **Incomplete Function Replacements**: Not including complete function boundaries
+2. **Variable Assignments**: Variables defined outside any function scope
+3. **Import/Configuration Code**: Module imports or settings outside proper initialization
+4. **Error Handling**: Try/catch blocks not properly enclosed in functions
+5. **Temporary Variables**: Variables created during edits but left floating
 
 **📊 TOOLS FOR COMPREHENSIVE ANALYSIS:**
 ```powershell
@@ -185,11 +358,13 @@ Every code change MUST include:
 1. 🔍 PRE-CHECK: get_errors on target files
 2. 📋 CONTEXT-ANALYSIS: If errors found, read COMPLETE function/block contexts
 3. 🗺️ STRUCTURAL-MAPPING: Map function boundaries, nested blocks, orphaned code
-4. ✏️ EDIT: Make code changes with full structural understanding
-5. 🔍 MID-CHECK: get_errors on modified files
-6. 🔧 FIX: Resolve any new issues immediately with context awareness
-7. 🔍 FINAL-CHECK: get_errors on all modified files
-8. ✅ COMPLETE: Only when zero errors/warnings remain
+4. 🛡️ ORPHANED-CODE-SCAN: Identify any floating code outside proper contexts
+5. ✏️ EDIT: Make code changes with full structural understanding
+6. 🔍 MID-CHECK: get_errors on modified files
+7. 🔧 FIX: Resolve any new issues immediately with context awareness
+8. 🧹 ORPHANED-CODE-CLEANUP: Ensure no floating code fragments remain
+9. 🔍 FINAL-CHECK: get_errors on all modified files
+10. ✅ COMPLETE: Only when zero errors/warnings remain AND no orphaned code
 ```
 
 #### **Enhanced Contextual Analysis Workflow (MANDATORY FOR STRUCTURAL ISSUES)**
@@ -217,6 +392,7 @@ When dealing with complex syntax or structural errors:
 2. Integrate orphaned code properly or remove if redundant
 3. Ensure proper indentation and function boundaries
 4. Validate that all code is within appropriate scopes
+5. Remove any floating code fragments outside function contexts
 ```
 
 #### **Completion Criteria (ALL REQUIRED)**
@@ -226,6 +402,8 @@ When dealing with complex syntax or structural errors:
 - [ ] Code follows project formatting conventions
 - [ ] Security standards met
 - [ ] Performance considerations addressed
+- [ ] **NO ORPHANED CODE**: All code fragments properly scoped within functions
+- [ ] **CLEAN BOUNDARIES**: All function and block boundaries intact and complete
 
 #### **Documentation of Fixes**
 When resolving diagnostics, document:
@@ -284,6 +462,23 @@ Agent: "I see a syntax error at line 50"
 7. get_errors confirms all structural issues resolved
 ```
 
+#### **🧹 ORPHANED CODE CLEANUP EXAMPLE:**
+```
+BEFORE (❌ Orphaned Code):
+function MyFunction {
+    # function content
+}
+$orphanedVariable = "leftover"  # ❌ Floating outside function!
+Write-Log "orphaned log" 'INFO'  # ❌ Disconnected code!
+
+AFTER (✅ Properly Integrated):
+function MyFunction {
+    $properVariable = "integrated"  # ✅ Moved inside function
+    Write-Log "integrated log" 'INFO'  # ✅ Now properly scoped
+    # function content
+}
+```
+
 ## Best Practices (WITH MANDATORY DIAGNOSTICS)
 
 ### **🚨 PRIMARY RULE: DIAGNOSTICS FIRST**
@@ -327,7 +522,18 @@ get_errors -filePaths ["all_modified_files.ps1"]
 3. ✅ Security issues resolved or documented  
 4. ✅ Performance optimizations applied
 5. ✅ Code follows project formatting conventions
-6. ✅ Final `get_errors` check passes with zero issues
+6. ✅ **Structured organization maintained**: Functions placed in appropriate sections
+7. ✅ **Section boundaries preserved**: Clear separation between logical code blocks
+8. ✅ Final `get_errors` check passes with zero issues
+
+### **Code Organization Compliance Checklist**
+Before completing any code changes, verify:
+- [ ] New functions placed in appropriate section (1-8)
+- [ ] Related functions grouped together  
+- [ ] Helper functions placed immediately after main functions
+- [ ] Section headers maintained and updated as needed
+- [ ] No function scatter across multiple unrelated sections
+- [ ] Clear logical separation between sections maintained
 
 ---
 

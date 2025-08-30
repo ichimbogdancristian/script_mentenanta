@@ -1,6 +1,8 @@
 # ===============================
-# Windows Maintenance Script - Task Coordinator (PowerShell 7.5.2 Optimized)
+# SECTION 1: SCRIPT HEADER & METADATA  
 # ===============================
+# Windows Maintenance Script - Task Coordinator (PowerShell 7.5.2 Optimized)
+# 
 # This script is designed to automate and orchestrate a full suite of Windows maintenance tasks.
 # It is intended to run as Administrator on Windows 10/11, with all actions logged and reported.
 # Each task is modular, robust, and designed for unattended execution in enterprise or home environments.
@@ -49,7 +51,7 @@
 using namespace System.Collections.Concurrent
 using namespace System.Threading.Tasks
 
-# Define all tasks in a single array with metadata
+# Global Task Definitions
 $global:ScriptTasks = @(
     # --- Task: SystemRestoreProtection ---
     # Purpose: Ensures System Restore is enabled and creates a restore point before maintenance.
@@ -227,7 +229,10 @@ $global:ScriptTasks = @(
     }
 )
 
-# Main Coordinator Function
+# ===============================
+# SECTION 2: CORE INFRASTRUCTURE
+# ===============================
+# Main Task Coordinator Function
 function Use-AllScriptTasks {
     Write-Log '[COORDINATION] Starting all maintenance tasks...' 'INFO'
     $global:TaskResults = @{}
@@ -264,12 +269,12 @@ function Use-AllScriptTasks {
     Write-Log '[COORDINATION] All maintenance tasks completed.' 'INFO'
 }
 
-# [PRE-TASK 0] Initialize script execution tracking
+# Initialize script execution tracking
 $global:ScriptStartTime = Get-Date
 $global:PerformanceMetrics = @{}
 $global:logPath = Join-Path $PSScriptRoot "maintenance.log"
 
-### Modern PowerShell 7.5.2 Compatibility and Performance Functions
+# PowerShell 7.5.2 Compatibility Functions
 function Invoke-WindowsPowerShellCommand {
     param(
         [string]$Command,
@@ -898,9 +903,7 @@ function Get-StartAppsCompatible {
     }
 }
 
-### [PRE-TASK 1] Modern Logging & Task Functions with PowerShell 7.5.2 Optimizations
-# ===============================
-# Enhanced Logging System for PowerShell 7.5.2
+# Enhanced Logging System
 # ===============================
 # Separates file logging from console display, with progress bar support
 
@@ -1087,7 +1090,10 @@ function Invoke-Task {
     }
 }
 
-### [PRE-TASK 2] Extensive System Inventory (Initial)
+# ===============================
+# SECTION 3: SYSTEM UTILITIES
+# ===============================
+# System Inventory Functions
 function Get-ExtensiveSystemInventory {
     Write-Log "[START] Extensive System Inventory (JSON Format)" 'INFO'
     Write-TaskProgress -Activity "Building System Inventory" -Status "Initializing..." -PercentComplete 5
@@ -1463,8 +1469,7 @@ function Get-ExtensiveSystemInventory {
     Write-Log "[END] Extensive System Inventory (JSON Format)" 'INFO'
 }
 
-
-### Modern Standardized Temp List Management with PowerShell 7.5.2 Optimizations
+# Temp List Management Functions
 function New-StandardizedTempList {
     param(
         [Parameter(Mandatory = $true)]
@@ -2082,9 +2087,7 @@ else {
     Write-Log "Running in Windows PowerShell 5.1 native mode." 'INFO'
 }
 
-
-
-### Modern Package Manager Wrapper with PowerShell 7.5.2 Process Improvements
+# Package Manager Utilities
 function Invoke-ModernPackageManager {
     param(
         [Parameter(Mandatory = $true)]
@@ -2194,175 +2197,424 @@ function Invoke-ModernPackageManager {
     }
 }
 
-### [TASK 2] Install Essential Apps - Enhanced Categorized Smart Installation
+# ===============================
+# SECTION 5: ESSENTIAL APPS MANAGEMENT
+# ===============================
 function Install-EssentialApps {
     # ===============================
     # Task: InstallEssentialApps (Enhanced 2025)
     # ===============================
-    # Purpose: Installs essential applications using categorized, priority-based approach.
-    # Research: Based on best practices from package management and automated deployment tools.
-    # Environment: Windows 10/11, Administrator required, supports multi-source installation.
-    # Intelligence: Smart detection, fallback methods, category-based installation.
-    Write-Log "[START] Install Essential Apps (Enhanced Categorized Approach)" 'INFO'
-
-    # Use global inventory if available, otherwise build a quick one
+    # Purpose: Comprehensive essential apps installation with modern package management
+    # Features: Category-based prioritization, multi-source fallbacks, intelligent detection
+    # Research: Based on Microsoft package management best practices and automated deployment
+    # Environment: Windows 10/11, Administrator required, PowerShell 7+ optimized
+    # Intelligence: Smart duplicate detection, dependency resolution, progress tracking
+    # ===============================
+    
+    Write-Log "[START] Enhanced Essential Apps Installation (Modern Unified Approach)" 'INFO'
+    Write-TaskProgress -Activity "Essential Apps Installation" -Status "Initializing..." -PercentComplete 0
+    
+    # Validate system inventory
     if (-not $global:SystemInventory) {
-        Write-Log "[EssentialApps] No system inventory available, building quick inventory..." 'WARN'
+        Write-Log "[EssentialApps] Building system inventory for intelligent app detection..." 'INFO'
         Get-ExtensiveSystemInventory
     }
     
     $inventory = $global:SystemInventory
-    Write-Log "[EssentialApps] Using inventory with $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Choco, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
-
-    # Initialize installation statistics by category
-    $installStats = @{
-        SystemCore    = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
-        Browsers      = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
-        Productivity  = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
-        Communication = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
-        Media         = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
-        Development   = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
-        Utilities     = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
-        Gaming        = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0 }
+    Write-Log "[EssentialApps] Using comprehensive inventory: $($inventory.appx.Count) AppX, $($inventory.winget.Count) Winget, $($inventory.choco.Count) Chocolatey, $($inventory.registry_uninstall.Count) registry apps" 'INFO'
+    
+    # Initialize comprehensive installation tracking
+    $installationSession = @{
+        StartTime = Get-Date
+        Statistics = @{
+            SystemCore    = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
+            Browsers      = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
+            Productivity  = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
+            Communication = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
+            Media         = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
+            Development   = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
+            Utilities     = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
+            Gaming        = @{ ToInstall = 0; Installed = 0; Failed = 0; AlreadyInstalled = 0; Skipped = 0 }
+        }
+        InstallationQueue = @()
+        InstallationResults = @()
+        ProtectedApps = @()
+        SkippedApps = @()
     }
     
-    $totalToInstall = 0
-    $totalInstalled = 0
-    $totalFailed = 0
-    $totalAlreadyInstalled = 0
+    # Phase 1: Intelligent App Analysis and Queue Building
+    Write-TaskProgress -Activity "Essential Apps Installation" -Status "Analyzing categories and building installation queue..." -PercentComplete 10
+    Write-Log "[EssentialApps] Phase 1: Analyzing app categories and building intelligent installation queue" 'INFO'
     
-    Write-TaskProgress -Activity "Analyzing Essential Apps" -Status "Building installation lists by category..." -PercentComplete 5
+    $categoryOrder = @('SystemCore', 'Browsers', 'Productivity', 'Communication', 'Media', 'Development', 'Utilities', 'Gaming')
+    $totalAnalyzed = 0
     
-    # Process each category with priority-based installation
-    $categories = @('SystemCore', 'Browsers', 'Productivity', 'Communication', 'Media', 'Development', 'Utilities', 'Gaming')
-    $currentCategory = 0
-    
-    foreach ($categoryName in $categories) {
-        $currentCategory++
+    foreach ($categoryName in $categoryOrder) {
         $categoryApps = $global:EssentialAppsCategories[$categoryName]
         if (-not $categoryApps -or $categoryApps.Count -eq 0) { continue }
         
-        $baseCategoryProgress = [math]::Round(10 + ($currentCategory / $categories.Count) * 70) # 10-80% for category processing
-        Write-TaskProgress -Activity "Installing Essential Apps" -Status "Processing $categoryName category..." -PercentComplete $baseCategoryProgress
-        Write-Log "[EssentialApps] Processing category: $categoryName ($($categoryApps.Count) apps)" 'INFO'
+        Write-Log "[EssentialApps] Analyzing category: $categoryName ($($categoryApps.Count) apps available)" 'INFO'
         
-        # Check which apps in this category need installation
-        $appsToInstallInCategory = @()
         foreach ($app in $categoryApps) {
-            $isInstalled = Test-AppInstalled -AppIdentifier $app.Name -Inventory $inventory
-            if (-not $isInstalled.IsInstalled) {
-                # Also check by Winget and Choco IDs
-                $wingetInstalled = if ($app.Winget) { Test-AppInstalled -AppIdentifier $app.Winget -Inventory $inventory } else { @{ IsInstalled = $false } }
-                $chocoInstalled = if ($app.Choco) { Test-AppInstalled -AppIdentifier $app.Choco -Inventory $inventory } else { @{ IsInstalled = $false } }
-                
-                if (-not $wingetInstalled.IsInstalled -and -not $chocoInstalled.IsInstalled) {
-                    $appsToInstallInCategory += $app
-                    $installStats[$categoryName].ToInstall++
-                    $totalToInstall++
+            $totalAnalyzed++
+            
+            # Enhanced app detection with multiple fallback methods
+            $detectionResult = Test-EnhancedAppInstallation -AppInfo $app -Inventory $inventory
+            
+            if ($detectionResult.IsInstalled) {
+                $installationSession.Statistics[$categoryName].AlreadyInstalled++
+                Write-Log "[EssentialApps] Already installed: $($app.Name) ($($detectionResult.DetectionMethod): $($detectionResult.FoundAs))" 'VERBOSE'
+            }
+            elseif ($detectionResult.IsProtected) {
+                $installationSession.Statistics[$categoryName].Skipped++
+                $installationSession.ProtectedApps += @{
+                    App = $app
+                    Category = $categoryName
+                    Reason = $detectionResult.ProtectionReason
                 }
-                else {
-                    $installStats[$categoryName].AlreadyInstalled++
-                    $totalAlreadyInstalled++
-                    Write-Log "[EssentialApps] App already installed: $($app.Name) (detected via $($wingetInstalled.DetectionMethod)$($chocoInstalled.DetectionMethod))" 'VERBOSE'
-                }
+                Write-Log "[EssentialApps] Protected from installation: $($app.Name) - $($detectionResult.ProtectionReason)" 'VERBOSE'
             }
             else {
-                $installStats[$categoryName].AlreadyInstalled++
-                $totalAlreadyInstalled++
-                Write-Log "[EssentialApps] App already installed: $($app.Name) (detected via $($isInstalled.DetectionMethod))" 'VERBOSE'
-            }
-        }
-        
-        Write-Log "[EssentialApps] Category $categoryName`: $($appsToInstallInCategory.Count) apps to install, $($installStats[$categoryName].AlreadyInstalled) already installed" 'INFO'
-        
-        # Install apps in this category with priority order
-        $categoryCurrentApp = 0
-        $sortedApps = $appsToInstallInCategory | Sort-Object Priority
-        
-        foreach ($app in $sortedApps) {
-            $categoryCurrentApp++
-            
-            $categoryProgress = $baseCategoryProgress + [math]::Round(($categoryCurrentApp / [math]::Max($appsToInstallInCategory.Count, 1)) * 8) # 8% per category
-            Write-TaskProgress -Activity "Installing Essential Apps" -Status "[$categoryName] Installing: $($app.Name)" -PercentComplete $categoryProgress -CurrentOperation "$categoryCurrentApp of $($appsToInstallInCategory.Count) in category"
-            
-            $installResult = Install-SingleEssentialApp -AppInfo $app -Category $categoryName
-            
-            if ($installResult.Success) {
-                $installStats[$categoryName].Installed++
-                $totalInstalled++
-                Write-Log "[SUCCESS] Installed $categoryName app: $($app.Name) via $($installResult.Method)" 'INFO'
-            }
-            else {
-                $installStats[$categoryName].Failed++
-                $totalFailed++
-                Write-Log "[FAILED] Could not install $categoryName app: $($app.Name) - $($installResult.Error)" 'WARN'
+                $installationSession.Statistics[$categoryName].ToInstall++
+                $installationSession.InstallationQueue += @{
+                    App = $app
+                    Category = $categoryName
+                    Priority = $app.Priority
+                    DetectionResult = $detectionResult
+                }
+                Write-Log "[EssentialApps] Queued for installation: $($app.Name) (Priority: $($app.Priority))" 'VERBOSE'
             }
         }
     }
+    
+    # Sort installation queue by priority (lower numbers = higher priority)
+    $installationSession.InstallationQueue = $installationSession.InstallationQueue | Sort-Object Priority, @{Expression = {$_.App.Name}}
+    
+    # Generate analysis report
+    $totalToInstall = ($installationSession.Statistics.Values | Measure-Object -Property ToInstall -Sum).Sum
+    $totalAlreadyInstalled = ($installationSession.Statistics.Values | Measure-Object -Property AlreadyInstalled -Sum).Sum
+    $totalSkipped = ($installationSession.Statistics.Values | Measure-Object -Property Skipped -Sum).Sum
+    
+    Write-Log "[EssentialApps] Analysis complete: $totalAnalyzed apps analyzed, $totalToInstall to install, $totalAlreadyInstalled already present, $totalSkipped skipped" 'INFO'
+    
+    # Save comprehensive analysis temp lists
+    New-StandardizedTempList -ListType "essential" -Operation "analysis_results" -Data @{
+        AnalysisTimestamp = Get-Date
+        TotalAnalyzed = $totalAnalyzed
+        CategoryStatistics = $installationSession.Statistics
+        InstallationQueue = $installationSession.InstallationQueue
+        ProtectedApps = $installationSession.ProtectedApps
+    } -Description "Comprehensive essential apps analysis results"
+    
+    # Early exit if nothing to install
+    if ($totalToInstall -eq 0) {
+        Write-TaskProgress -Activity "Essential Apps Installation" -Status "All essential apps already installed" -PercentComplete 100 -Completed
+        Write-Log "[EssentialApps] All essential apps are already installed. Installation process complete." 'INFO'
+        
+        # Save final results
+        New-StandardizedTempList -ListType "essential" -Operation "install_results" -Data @{
+            Summary = @{ Installed = 0; Failed = 0; Skipped = $totalSkipped; AlreadyInstalled = $totalAlreadyInstalled }
+            ExecutionTime = ((Get-Date) - $installationSession.StartTime).TotalSeconds
+        } -Description "Essential apps installation session results (all apps already installed)"
+        
+        Write-Log "[END] Enhanced Essential Apps Installation - All apps already present" 'INFO'
+        return $true
+    }
+    
+    # Phase 2: Smart Installation Process
+    Write-TaskProgress -Activity "Essential Apps Installation" -Status "Starting installation process..." -PercentComplete 20
+    Write-Log "[EssentialApps] Phase 2: Starting smart installation process ($totalToInstall apps queued)" 'INFO'
+    
+    $currentInstallation = 0
+    $totalInstalled = 0
+    $totalFailed = 0
+    
+    foreach ($queueItem in $installationSession.InstallationQueue) {
+        $currentInstallation++
+        $app = $queueItem.App
+        $category = $queueItem.Category
+        
+        # Calculate progress (20% for analysis, 70% for installation, 10% for reporting)
+        $installProgress = [math]::Round(20 + (($currentInstallation / $totalToInstall) * 70))
+        Write-TaskProgress -Activity "Essential Apps Installation" -Status "[$category] Installing: $($app.Name)" -PercentComplete $installProgress -CurrentOperation "$currentInstallation of $totalToInstall apps"
+        
+        Write-Log "[EssentialApps] Installing [$category] app: $($app.Name) (Priority $($app.Priority), $currentInstallation/$totalToInstall)" 'INFO'
+        
+        # Enhanced installation with comprehensive error handling
+        $installResult = Invoke-EnhancedAppInstallation -AppInfo $app -Category $category -Session $installationSession
+        
+        # Update statistics and results
+        if ($installResult.Success) {
+            $installationSession.Statistics[$category].Installed++
+            $totalInstalled++
+            Write-Log "[SUCCESS] Installed [$category]: $($app.Name) via $($installResult.Method) in $($installResult.Duration)s" 'INFO'
+        }
+        else {
+            $installationSession.Statistics[$category].Failed++
+            $totalFailed++
+            Write-Log "[FAILED] Installation failed [$category]: $($app.Name) - $($installResult.Error)" 'WARN'
+        }
+        
+        $installationSession.InstallationResults += $installResult
+        
+        # Brief pause to prevent overwhelming package managers
+        Start-Sleep -Milliseconds 500
+    }
+    
+    # Phase 3: Post-Installation Analysis and Reporting
+    Write-TaskProgress -Activity "Essential Apps Installation" -Status "Generating installation report..." -PercentComplete 90
+    Write-Log "[EssentialApps] Phase 3: Generating comprehensive installation report" 'INFO'
+    
+    $sessionDuration = ((Get-Date) - $installationSession.StartTime).TotalSeconds
     
     # Generate comprehensive installation report
-    Write-TaskProgress -Activity "Installing Essential Apps" -Status "Generating installation report..." -PercentComplete 85
-    
-    $installReport = @"
+    $installationReport = @"
 === ENHANCED ESSENTIAL APPS INSTALLATION REPORT ===
+Execution Time: $($sessionDuration) seconds
+Started: $($installationSession.StartTime)
+Completed: $(Get-Date)
 
-Total Statistics:
+SUMMARY:
+- Total Apps Analyzed: $totalAnalyzed
 - Apps To Install: $totalToInstall
-- Successfully Installed: $totalInstalled
+- Successfully Installed: $totalInstalled  
 - Failed Installations: $totalFailed
 - Already Installed: $totalAlreadyInstalled
+- Protected/Skipped: $totalSkipped
 
-Category Breakdown:
+CATEGORY BREAKDOWN:
 "@
     
-    foreach ($cat in $categories) {
-        $stats = $installStats[$cat]
-        if ($stats.ToInstall -gt 0 -or $stats.AlreadyInstalled -gt 0) {
-            $installReport += "`n- $cat : To Install $($stats.ToInstall), Installed $($stats.Installed), Failed $($stats.Failed), Already Present $($stats.AlreadyInstalled)"
+    foreach ($categoryName in $categoryOrder) {
+        $stats = $installationSession.Statistics[$categoryName]
+        $categoryTotal = $stats.ToInstall + $stats.Installed + $stats.Failed + $stats.AlreadyInstalled + $stats.Skipped
+        if ($categoryTotal -gt 0) {
+            $installationReport += "`n- $categoryName : Install($($stats.ToInstall)) | Success($($stats.Installed)) | Failed($($stats.Failed)) | Present($($stats.AlreadyInstalled)) | Skipped($($stats.Skipped))"
         }
     }
     
-    Write-Log $installReport 'INFO'
+    Write-Log $installationReport 'INFO'
     
-    # Save comprehensive temp lists
-    $allAppsToInstall = @()
-    
-    foreach ($cat in $categories) {
-        if ($installStats[$cat].ToInstall -gt 0) {
-            $categoryApps = $global:EssentialAppsCategories[$cat] | Where-Object { 
-                $testResult = Test-AppInstalled -AppIdentifier $_.Name -Inventory $inventory
-                -not $testResult.IsInstalled
-            }
-            $allAppsToInstall += $categoryApps | ForEach-Object { @{ App = $_; Category = $cat } }
+    # Save comprehensive installation results
+    $finalResults = @{
+        SessionInfo = @{
+            StartTime = $installationSession.StartTime
+            EndTime = Get-Date
+            Duration = $sessionDuration
+            TotalAnalyzed = $totalAnalyzed
         }
+        Summary = @{
+            ToInstall = $totalToInstall
+            Installed = $totalInstalled
+            Failed = $totalFailed
+            AlreadyInstalled = $totalAlreadyInstalled
+            Skipped = $totalSkipped
+        }
+        CategoryStatistics = $installationSession.Statistics
+        InstallationResults = $installationSession.InstallationResults
+        ProtectedApps = $installationSession.ProtectedApps
     }
     
-    New-StandardizedTempList -ListType "essential" -Operation "comprehensive_analysis" -Data $allAppsToInstall -Description "All essential apps analyzed by category for installation"
+    New-StandardizedTempList -ListType "essential" -Operation "install_results" -Data $finalResults -Description "Comprehensive essential apps installation session results"
     
-    Write-TaskProgress -Activity "Installing Essential Apps" -Status "Essential apps installation completed" -PercentComplete 100 -Completed
-    Write-Log "[END] Install Essential Apps - To Install: $totalToInstall, Installed: $totalInstalled, Failed: $totalFailed, Already Present: $totalAlreadyInstalled" 'INFO'
+    # Special handling for Office vs LibreOffice
+    Optimize-OfficeInstallation -InstallationResults $installationSession.InstallationResults
+    
+    # Final status
+    Write-TaskProgress -Activity "Essential Apps Installation" -Status "Installation process completed" -PercentComplete 100 -Completed
+    Write-Log "[END] Enhanced Essential Apps Installation - Installed: $totalInstalled, Failed: $totalFailed, Duration: $($sessionDuration)s" 'INFO'
     
     return $totalInstalled -gt 0
 }
 
-function Install-SingleEssentialApp {
+# Enhanced App Detection Function for Essential Apps
+function Test-EnhancedAppInstallation {
     param(
         [hashtable]$AppInfo,
-        [string]$Category
+        [hashtable]$Inventory
     )
     
     $result = @{
-        Success = $false
-        Method  = ''
-        Error   = ''
+        IsInstalled = $false
+        IsProtected = $false
+        DetectionMethod = $null
+        FoundAs = $null
+        ProtectionReason = $null
+        Confidence = 0
     }
     
-    $appName = $AppInfo.Name
-    $wingetId = $AppInfo.Winget
-    $chocoId = $AppInfo.Choco
+    # Protection checks first
+    if ($AppInfo.Protected -eq $true) {
+        $result.IsProtected = $true
+        $result.ProtectionReason = "App marked as protected in configuration"
+        return $result
+    }
     
-    try {
-        # Method 1: Try Winget installation first (preferred for modern apps)
+    # Multiple detection methods for enhanced accuracy
+    $detectionMethods = @(
+        @{ Name = "Exact Name"; Field = "Name"; List = "display_name" }
+        @{ Name = "Winget ID"; Field = "Winget"; List = "winget" }
+        @{ Name = "Chocolatey ID"; Field = "Choco"; List = "choco" }
+        @{ Name = "AppX Package"; Field = "AppX"; List = "appx" }
+        @{ Name = "Registry Uninstall"; Field = "Name"; List = "registry_uninstall" }
+    )
+    
+    foreach ($method in $detectionMethods) {
+        $identifier = $AppInfo[$method.Field]
+        if (-not $identifier) { continue }
+        
+        $inventoryList = $Inventory[$method.List]
+        if (-not $inventoryList) { continue }
+        
+        # Exact match
+        $exactMatch = $inventoryList | Where-Object { $_.id -eq $identifier -or $_.name -eq $identifier -or $_.display_name -eq $identifier }
+        if ($exactMatch) {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = $method.Name
+            $result.FoundAs = $exactMatch.name
+            $result.Confidence = 100
+            return $result
+        }
+        
+        # Fuzzy match for common naming variations
+        $fuzzyMatch = $inventoryList | Where-Object { 
+            $_.display_name -like "*$identifier*" -or 
+            $_.name -like "*$identifier*" -or
+            $identifier -like "*$($_.name)*"
+        }
+        if ($fuzzyMatch) {
+            $result.IsInstalled = $true
+            $result.DetectionMethod = "$($method.Name) (Fuzzy)"
+            $result.FoundAs = $fuzzyMatch.name
+            $result.Confidence = 75
+            return $result
+        }
+    }
+    
+    return $result
+}
+
+# Enhanced App Installation Function with Comprehensive Error Handling
+function Invoke-EnhancedAppInstallation {
+    param(
+        [hashtable]$AppInfo,
+        [string]$Category,
+        [hashtable]$Session
+    )
+    
+    $startTime = Get-Date
+    $result = @{
+        App = $AppInfo
+        Category = $Category
+        Success = $false
+        Method = $null
+        Duration = 0
+        Error = $null
+        AttemptLog = @()
+    }
+    
+    # Installation method priority order
+    $installMethods = @()
+    
+    if ($AppInfo.Winget) { $installMethods += @{ Type = "Winget"; ID = $AppInfo.Winget } }
+    if ($AppInfo.Choco) { $installMethods += @{ Type = "Chocolatey"; ID = $AppInfo.Choco } }
+    if ($AppInfo.AppX) { $installMethods += @{ Type = "AppX"; ID = $AppInfo.AppX } }
+    if ($AppInfo.DirectURL) { $installMethods += @{ Type = "Direct"; ID = $AppInfo.DirectURL } }
+    
+    foreach ($method in $installMethods) {
+        $attemptStart = Get-Date
+        Write-LogFile "[EssentialApps] Attempting $($method.Type) installation for $($AppInfo.Name): $($method.ID)"
+        
+        try {
+            $installSuccess = $false
+            
+            switch ($method.Type) {
+                "Winget" {
+                    $wingetResult = Invoke-ModernPackageManager -PackageManager "winget" -Operation "install" -PackageId $method.ID -Timeout 300
+                    $installSuccess = $wingetResult.Success
+                    if (-not $installSuccess) {
+                        $result.AttemptLog += "Winget failed: $($wingetResult.Output)"
+                    }
+                }
+                "Chocolatey" {
+                    $chocoResult = Invoke-ModernPackageManager -PackageManager "chocolatey" -Operation "install" -PackageId $method.ID -Timeout 300
+                    $installSuccess = $chocoResult.Success
+                    if (-not $installSuccess) {
+                        $result.AttemptLog += "Chocolatey failed: $($chocoResult.Output)"
+                    }
+                }
+                "AppX" {
+                    if (Get-Command "Add-AppxPackage" -ErrorAction SilentlyContinue) {
+                        Add-AppxPackage -Name $method.ID -ErrorAction Stop
+                        $installSuccess = $true
+                    } else {
+                        $result.AttemptLog += "AppX: Add-AppxPackage not available"
+                    }
+                }
+                "Direct" {
+                    # Direct download and installation
+                    $tempFile = Join-Path $env:TEMP "$($AppInfo.Name)_installer.exe"
+                    Invoke-WebRequest -Uri $method.ID -OutFile $tempFile -UseBasicParsing -TimeoutSec 120
+                    
+                    $installProcess = Start-Process -FilePath $tempFile -ArgumentList "/S", "/SILENT", "/VERYSILENT" -Wait -PassThru -WindowStyle Hidden
+                    $installSuccess = $installProcess.ExitCode -eq 0
+                    
+                    Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+                }
+            }
+            
+            if ($installSuccess) {
+                $result.Success = $true
+                $result.Method = $method.Type
+                $result.Duration = ((Get-Date) - $attemptStart).TotalSeconds
+                Write-LogFile "[SUCCESS] $($AppInfo.Name) installed via $($method.Type) in $($result.Duration)s"
+                break
+            }
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            $result.AttemptLog += "$($method.Type) exception: $errorMessage"
+            Write-LogFile "[ERROR] $($method.Type) installation failed for $($AppInfo.Name): $errorMessage"
+        }
+    }
+    
+    if (-not $result.Success) {
+        $result.Error = "All installation methods failed: " + ($result.AttemptLog -join "; ")
+        Write-LogFile "[FAILED] Could not install $($AppInfo.Name) via any method"
+    }
+    
+    $result.Duration = ((Get-Date) - $startTime).TotalSeconds
+    return $result
+}
+
+# Office vs LibreOffice Optimization Function
+function Optimize-OfficeInstallation {
+    param([array]$InstallationResults)
+    
+    $officeApps = $InstallationResults | Where-Object { 
+        $_.App.Name -like "*Office*" -or 
+        $_.App.Name -like "*LibreOffice*" -or
+        $_.Category -eq "Productivity"
+    }
+    
+    $microsoftOffice = $officeApps | Where-Object { $_.App.Name -like "*Microsoft*Office*" -and $_.Success }
+    $libreOffice = $officeApps | Where-Object { $_.App.Name -like "*LibreOffice*" -and $_.Success }
+    
+    if ($microsoftOffice -and $libreOffice) {
+        Write-Log "[OfficeOptimization] Both Microsoft Office and LibreOffice installed - this is acceptable for compatibility testing" 'INFO'
+    }
+    elseif ($microsoftOffice) {
+        Write-Log "[OfficeOptimization] Microsoft Office suite detected - primary productivity suite established" 'INFO'
+    }
+    elseif ($libreOffice) {
+        Write-Log "[OfficeOptimization] LibreOffice suite detected - open-source productivity suite established" 'INFO'
+    }
+    else {
+        Write-Log "[OfficeOptimization] No office suite detected in installations" 'VERBOSE'
+    }
+}
+
+### [TASK 3] Enhanced Remove Bloatware - Multi-Method Categorized Approach
         if ($wingetId -and $null -ne $wingetId) {
             Write-Log "[EssentialApps] Attempting Winget installation: $wingetId" 'VERBOSE'
             $wingetResult = Invoke-ModernPackageManager -Action 'install' -PackageId $wingetId -Source 'winget'
@@ -2653,12 +2905,10 @@ $installResults = @{
     }
     Details = $detailedResults
 }
-New-StandardizedTempList -ListType "essential" -Operation "install_results" -Data $installResults -Description "Final results of essential apps installation process"
-    
-Write-Log "[END] Install Essential Apps" 'INFO'
 
-
-### [TASK 3] Enhanced Remove Bloatware - Multi-Method Categorized Approach
+# ===============================
+# SECTION 4: BLOATWARE MANAGEMENT
+# ===============================
 function Remove-Bloatware {
     # ===============================
     # Task: RemoveBloatware (Enhanced 2025)
@@ -3616,12 +3866,10 @@ $removalResults = @{
     }
     ProcessedApps = $bloatwareToRemove
 }
-New-StandardizedTempList -ListType "bloatware" -Operation "removal_results" -Data $removalResults -Description "Final results of bloatware removal process"
-    
-Write-Log "[END] Enhanced Remove Bloatware" 'INFO'
 
-
-### [TASK 4] Generate Temp Lists Summary Report
+# ===============================
+# SECTION 7: REPORTING & ANALYTICS
+# ===============================
 function Write-TempListsSummary {
     # ===============================
     # Task: TempListsSummary
@@ -3780,8 +4028,9 @@ function Get-SystemInventory {
     Write-Log "[END] System Inventory (legacy)" 'INFO'
 }
 
-
-### [TASK 5] Disable Telemetry
+# ===============================
+# SECTION 6: SYSTEM MAINTENANCE TASKS
+# ===============================
 function Disable-Telemetry {
     # ===============================
     # Task: DisableTelemetry
@@ -4134,16 +4383,17 @@ function Protect-SystemRestore {
     Write-Log "[END] System Restore Protection" 'INFO'
 }
 
+# ===============================
+# SECTION 8: SCRIPT EXECUTION & INITIALIZATION
+# ===============================
 
-### [MAIN TASK EXECUTION IN TIMELINE ORDER]
+# Configuration Loading and Validation
+# (This section will be moved here from its current location)
 
-# Run all tasks using the coordinator
+# Main Script Execution
 Use-AllScriptTasks
 
-
-
-
-### [POST-TASK 1] Script completion cleanup
+# Post-Task Cleanup and Finalization
 
 
 
