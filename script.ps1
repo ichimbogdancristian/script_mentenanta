@@ -4635,7 +4635,20 @@ function Protect-SystemRestore {
             Write-Log "[SystemRestore] Recent restore points (last 2 hours): $recentPointsCount" 'VERBOSE'
         }
         else {
-            Write-Log "[SystemRestore] Get-ComputerRestorePoint not available - continuing without recent point check" 'VERBOSE'
+            # Fallback to CIM method for checking recent restore points
+            try {
+                $recentPoints = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction SilentlyContinue | Where-Object {
+                    $_.CreationTime -gt (Get-Date).AddHours(-2)
+                }
+                $recentPointsCount = ($recentPoints | Measure-Object).Count
+                if ($recentPoints) {
+                    $lastPointTime = ($recentPoints | Sort-Object CreationTime -Descending | Select-Object -First 1).CreationTime
+                }
+                Write-Log "[SystemRestore] Recent restore points via CIM (last 2 hours): $recentPointsCount" 'VERBOSE'
+            }
+            catch {
+                Write-Log "[SystemRestore] CIM method for recent points check failed - continuing without recent point check" 'VERBOSE'
+            }
         }
     }
     catch {
@@ -4658,8 +4671,8 @@ function Protect-SystemRestore {
                         
                     # Verify that System Restore was actually enabled
                     Start-Sleep -Seconds 2
-                    $restoreCheck = Get-CimInstance -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $drive }
-                    if ($restoreCheck -and -not $restoreCheck.Disable) {
+                    $restoreCheck = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue
+                    if ($restoreCheck -and $restoreCheck.Enable) {
                         $enableSuccess = $true
                         Write-Log "[SystemRestore] Enabled using Enable-ComputerRestore cmdlet" 'INFO'
                     }
@@ -4677,11 +4690,18 @@ function Protect-SystemRestore {
                 try {
                     $null = Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "DisableSR" -Value 0 -Force -ErrorAction Stop
                         
-                    # Also enable for the specific drive
+                    # Also enable for the specific drive registry setting
                     $driveKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore\Cfg"
                     if (Test-Path $driveKey) {
                         $null = Set-ItemProperty -Path $driveKey -Name "DisableSR" -Value 0 -Force -ErrorAction SilentlyContinue
                     }
+                    
+                    # Create drive-specific registry entry if it doesn't exist
+                    $driveRegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore\Cfg\$($drive.TrimEnd(':'))"
+                    if (-not (Test-Path $driveRegPath)) {
+                        New-Item -Path $driveRegPath -Force -ErrorAction SilentlyContinue | Out-Null
+                    }
+                    $null = Set-ItemProperty -Path $driveRegPath -Name "DisableSR" -Value 0 -Force -ErrorAction SilentlyContinue
                         
                     $enableSuccess = $true
                     Write-Log "[SystemRestore] Enabled using registry method" 'INFO'
@@ -4694,15 +4714,21 @@ function Protect-SystemRestore {
             # Method 3: Try VSSAdmin as final fallback
             if (-not $enableSuccess) {
                 try {
-                    & vssadmin list writers 2>$null
+                    $vssOutput = & vssadmin list writers 2>&1
                     if ($LASTEXITCODE -eq 0) {
-                        # VSSAdmin is working, try to enable via WMI
+                        # VSSAdmin is working, try to enable via CIM with proper error handling
                         $systemRestoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue
                         if ($systemRestoreConfig) {
-                            $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true } -ErrorAction Stop
+                            $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true} -ErrorAction Stop
                             $enableSuccess = $true
                             Write-Log "[SystemRestore] Enabled using WMI/CIM method" 'INFO'
                         }
+                        else {
+                            Write-Log "[SystemRestore] SystemRestoreConfig CIM class not found" 'VERBOSE'
+                        }
+                    }
+                    else {
+                        Write-Log "[SystemRestore] VSSAdmin not available or failed" 'VERBOSE'
                     }
                 }
                 catch {
@@ -4865,9 +4891,9 @@ function Protect-SystemRestore {
         Write-Host "⚠️ System Restore protection incomplete" -ForegroundColor Yellow
         Write-Log "System Restore protection completed with limitations" 'WARN'
     }
+
+    Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
 }
-    
-Write-Log "[END] PowerShell 7.5 Native System Restore Protection" 'INFO'
 
 ### [MAIN TASK EXECUTION IN TIMELINE ORDER]
 
