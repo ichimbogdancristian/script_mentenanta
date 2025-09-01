@@ -10,11 +10,12 @@ param(
 
 # Enhanced environment detection for consistency with batch script
 $ScriptFullPath = $MyInvocation.MyCommand.Path
-$ScriptDir      = Split-Path -Parent $ScriptFullPath
-$ScriptName     = Split-Path -Leaf $ScriptFullPath
+$ScriptDir = Split-Path -Parent $ScriptFullPath
+$ScriptName = Split-Path -Leaf $ScriptFullPath
 $ScriptDrive = if ($ScriptFullPath.StartsWith("\\")) { 
     "UNC Path" 
-} else { 
+}
+else { 
     (Get-Item $ScriptFullPath).PSDrive.Name + ":" 
 }
 
@@ -25,8 +26,9 @@ $IsUNCPath = $ScriptFullPath.StartsWith("\\")
 $DriveType = if ($IsUNCPath) {
     $IsNetworkPath = $true
     "Network"
-} elseif ($ScriptDrive -ne "UNC Path") {
-    $DriveInfo = Get-WmiObject -Class Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $ScriptDrive }
+}
+elseif ($ScriptDrive -ne "UNC Path") {
+    $DriveInfo = Get-CimInstance -Class Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $ScriptDrive }
     if ($DriveInfo) { 
         $DriveTypeNum = $DriveInfo.DriveType
         if ($DriveTypeNum -eq 4) { $IsNetworkPath = $true }
@@ -37,16 +39,18 @@ $DriveType = if ($IsUNCPath) {
             5 { "CD-ROM" }
             default { "Unknown" }
         }
-    } else { "Unknown" }
-} else { "Unknown" }
+    }
+    else { "Unknown" }
+}
+else { "Unknown" }
 
 # System environment information (matching batch script variables)
-$ComputerName   = $env:COMPUTERNAME
-$CurrentUser    = $env:USERNAME
-$IsAdmin        = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$ComputerName = $env:COMPUTERNAME
+$CurrentUser = $env:USERNAME
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 # OS information (matching batch script format)
-$OSVersion = (Get-WmiObject -Class Win32_OperatingSystem).Caption
+$OSVersion = (Get-CimInstance -Class Win32_OperatingSystem).Caption
 $OSArchitecture = $env:PROCESSOR_ARCHITECTURE
 if ($OSArchitecture -eq "AMD64") { $OSArch = "x64" }
 elseif ($OSArchitecture -eq "x86") { $OSArch = "x86" }
@@ -60,10 +64,12 @@ $WorkingDirectory = Get-Location
 if ($LogFilePath) {
     $LogFile = $LogFilePath
     Write-Host "[INFO] Using log file from parameter: $LogFile" -ForegroundColor Green
-} elseif ($env:SCRIPT_LOG_FILE) {
+}
+elseif ($env:SCRIPT_LOG_FILE) {
     $LogFile = $env:SCRIPT_LOG_FILE
     Write-Host "[INFO] Using batch script log file from environment: $LogFile" -ForegroundColor Green
-} else {
+}
+else {
     # Fallback: script.ps1 might be inside extracted repo folder, maintenance.log should be in parent directory (where script.bat is)
     $batchScriptDirectory = Split-Path $ScriptDir -Parent
     $LogFile = Join-Path $batchScriptDirectory 'maintenance.log'
@@ -117,7 +123,8 @@ if (-not $IsAdmin) {
     Add-Content -Path $LogFile -Value "[$(Get-Date -Format 'MM/dd/yyyy HH:mm:ss')] [WARN] Script not running as administrator. Relaunching..."
     if ($LogFilePath) {
         Start-Process -FilePath pwsh -ArgumentList "-File", $ScriptFullPath, "-LogFilePath", $LogFile -Verb RunAs
-    } else {
+    }
+    else {
         Start-Process -FilePath pwsh -ArgumentList "-File", $ScriptFullPath -Verb RunAs
     }
     exit
@@ -577,7 +584,8 @@ $global:ScriptTasks = @(
                             Remove-Item $item.FullName -Force -Recurse -ErrorAction SilentlyContinue
                             if (-not (Test-Path $item.FullName -ErrorAction SilentlyContinue)) {
                                 $deletedFolders++
-                            } else {
+                            }
+                            else {
                                 $errorCount++
                             }
                         }
@@ -585,7 +593,8 @@ $global:ScriptTasks = @(
                             Remove-Item $item.FullName -Force -ErrorAction SilentlyContinue
                             if (-not (Test-Path $item.FullName -ErrorAction SilentlyContinue)) {
                                 $deletedFiles++
-                            } else {
+                            }
+                            else {
                                 $errorCount++
                             }
                         }
@@ -693,7 +702,8 @@ $global:ScriptTasks = @(
                     $restartReasons += "Windows Update"
                     Write-Log 'Windows Update restart flag detected' 'INFO'
                 }
-            } catch { Write-Log "Failed to check Windows Update restart flag: $_" 'VERBOSE' }
+            }
+            catch { Write-Log "Failed to check Windows Update restart flag: $_" 'VERBOSE' }
             
             # Check Component Based Servicing reboot flag
             try {
@@ -702,7 +712,8 @@ $global:ScriptTasks = @(
                     $restartReasons += "Component Based Servicing"
                     Write-Log 'Component Based Servicing restart detected' 'INFO'
                 }
-            } catch { Write-Log "Failed to check CBS restart flag: $_" 'VERBOSE' }
+            }
+            catch { Write-Log "Failed to check CBS restart flag: $_" 'VERBOSE' }
             
             # Check pending file operations
             try {
@@ -712,7 +723,8 @@ $global:ScriptTasks = @(
                     $restartReasons += "Pending File Operations"
                     Write-Log 'Pending file rename operations detected' 'INFO'
                 }
-            } catch { Write-Log "Failed to check pending file operations: $_" 'VERBOSE' }
+            }
+            catch { Write-Log "Failed to check pending file operations: $_" 'VERBOSE' }
             
             # Check Windows Feature installation requiring restart
             try {
@@ -721,7 +733,8 @@ $global:ScriptTasks = @(
                     $restartReasons += "Windows Features"
                     Write-Log 'Windows Features pending restart detected' 'INFO'
                 }
-            } catch { Write-Log "Failed to check Windows Features restart flag: $_" 'VERBOSE' }
+            }
+            catch { Write-Log "Failed to check Windows Features restart flag: $_" 'VERBOSE' }
             
             # Check for computer name change
             try {
@@ -732,7 +745,8 @@ $global:ScriptTasks = @(
                     $restartReasons += "Computer Name Change"
                     Write-Log 'Computer name change pending restart detected' 'INFO'
                 }
-            } catch { Write-Log "Failed to check computer name change: $_" 'VERBOSE' }
+            }
+            catch { Write-Log "Failed to check computer name change: $_" 'VERBOSE' }
             
             if (-not $restartRequired) {
                 Write-Log 'No pending restart detected. System is up to date.' 'INFO'
@@ -757,7 +771,8 @@ $global:ScriptTasks = @(
                 $seconds = $i % 60
                 if ($minutes -gt 0) {
                     $timeDisplay = "{0}:{1:D2}" -f $minutes, $seconds
-                } else {
+                }
+                else {
                     $timeDisplay = "0:{0:D2}" -f $seconds
                 }
                 
@@ -765,7 +780,8 @@ $global:ScriptTasks = @(
                 
                 try {
                     Start-Sleep -Seconds 1
-                } catch [System.Management.Automation.PipelineStoppedException] {
+                }
+                catch [System.Management.Automation.PipelineStoppedException] {
                     Write-Host ""
                     Write-Host ""
                     Write-Log 'Restart countdown aborted by user.' 'INFO'
@@ -785,7 +801,8 @@ $global:ScriptTasks = @(
                 Start-Process -FilePath "shutdown.exe" -ArgumentList "/r", "/t", "10", "/c", "System restart required to complete maintenance operations" -NoNewWindow
                 Write-Log 'System restart initiated successfully.' 'INFO'
                 return $true
-            } catch {
+            }
+            catch {
                 Write-Log "Failed to initiate system restart: $_" 'ERROR'
                 Write-Host "❌ Failed to initiate restart: $_" -ForegroundColor Red
                 Write-Host 'Please restart your system manually.' -ForegroundColor Yellow
@@ -806,18 +823,18 @@ $global:ScriptTasks = @(
 # ================================================================
 $configPath = Join-Path $PSScriptRoot "config.json"
 $global:Config = @{
-    SkipBloatwareRemoval  = $false
-    SkipEssentialApps     = $false
-    SkipWindowsUpdates    = $false
-    SkipTelemetryDisable  = $false
-    SkipSystemRestore     = $false
-    SkipEventLogAnalysis  = $false
-    SkipSecurityHardening = $false
+    SkipBloatwareRemoval    = $false
+    SkipEssentialApps       = $false
+    SkipWindowsUpdates      = $false
+    SkipTelemetryDisable    = $false
+    SkipSystemRestore       = $false
+    SkipEventLogAnalysis    = $false
+    SkipSecurityHardening   = $false
     SkipTaskbarOptimization = $false
     SkipPendingRestartCheck = $false
-    CustomEssentialApps   = @()
-    CustomBloatwareList   = @()
-    EnableVerboseLogging  = $false
+    CustomEssentialApps     = @()
+    CustomBloatwareList     = @()
+    EnableVerboseLogging    = $false
 }
 
 if (Test-Path $configPath) {
@@ -1092,7 +1109,7 @@ function Remove-AppxProvisionedPackageCompatible {
             
                         # Verify that the restore point was actually enabled
                         Start-Sleep -Seconds 1
-                        $verifyRestore = Get-WmiObject -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
+                        $verifyRestore = Get-CimInstance -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
                         if ($verifyRestore -and -not $verifyRestore.Disable) {
                             Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
                             return $true
