@@ -1,79 +1,136 @@
 
-# 🚀 Enhanced Windows Maintenance Script (2025)
+# 🚀 Windows Maintenance Script (2025 Edition)
 
-**Professional-grade Windows 10/11 maintenance automation with unified reporting and categorized bloatware/essential apps management.**
+**Professional-grade Windows 10/11 maintenance automation with parallel processing, modular architecture, and comprehensive system care.**
 
-## ⭐ **What's New in 2025 Enhanced Version**
+## 📋 Overview
 
-### 🎯 **Enhanced Bloatware Removal**
-- **Categorized Approach**: OEM, Gaming, Microsoft, Security, Social Media, Streaming Apps
-- **Safety Protection**: Critical apps are automatically protected from removal
-- **Multi-Method Removal**: AppX, Winget, Registry, Provisioned packages, and Services
-- **Smart Detection**: Multiple detection methods with enhanced pattern matching
-- **Rollback Support**: Track removed apps for potential restoration
+This maintenance script provides an enterprise-grade solution for Windows system maintenance and optimization, with features including bloatware removal, essential application installation, Windows updates, telemetry control, and system cleanup. Built for performance with PowerShell 7+ capabilities, it leverages parallel processing and modular design.
 
-### 📦 **Enhanced Essential Apps Installation**
-- **Priority-Based Installation**: System Core → Browsers → Productivity → Optional
-- **Category Controls**: Productivity, Media, Development, Communication, Utilities, Gaming
-- **Fallback Methods**: Winget → Chocolatey → Alternative sources
-- **Smart Detection**: Avoid duplicate installations across package managers
+## ⭐ Key Features (2025 Edition)
 
-### 📊 **Unified Reporting System**
-- **Single Report File**: Replaces separate log files with comprehensive maintenance_report.txt
-- **Categorized Results**: Detailed breakdown by category and operation
-- **Performance Metrics**: Execution times, success rates, system impact
-- **Professional Format**: Ready for IT documentation and compliance
+### 🎯 **Advanced Bloatware Removal**
+- **Multi-Category Detection**: OEM, Gaming, Microsoft, Security, Social Media, Streaming
+- **Protection System**: Critical system components automatically preserved
+- **Comprehensive Removal**: AppX, Winget, Registry, Provisioned packages, Services
+- **Smart Pattern Matching**: Optimized detection with pre-compiled regex patterns
+- **Parallel Processing**: 8-thread concurrent removal for maximum performance
 
-### ⚙️ **Enhanced Configuration**
-- **Granular Controls**: Configure each category independently
-- **User Profiles**: Developer, Gamer, Conservative, Aggressive presets
-- **Backward Compatibility**: Existing configurations continue to work
+### � **High-Performance App Installation**
+- **Ultra-Parallel Processing**: Multiple concurrent installations with job throttling
+- **Smart Duplicate Detection**: O(1) HashSet lookups for maximum efficiency
+- **Package Manager Fallbacks**: Winget → Chocolatey → Manual installation methods
+- **Categorized Installation**: System Core, Browsers, Productivity, Development, Media
+- **Custom Extensions**: Support for user-defined application lists via config.json
 
-## 🔧 **Core Features**
+### 📊 **Enhanced Reporting System**
+- **Unified Report Generation**: Comprehensive maintenance_report.txt with all actions
+- **Performance Analytics**: Detailed execution metrics, success rates, timings
+- **System Health Checks**: Pre/post operation system state comparisons
+- **Action Logging**: Detailed tracking of all performed operations with timestamps
 
-### 📋 **Maintenance Tasks**
-- **System Inventory**: Comprehensive AppX, Winget, Chocolatey, and Registry scanning
-- **Temp File Cleanup**: Enhanced cleanup with progress tracking
-- **Windows Updates**: Automated update check and installation
-- **System Restore Protection**: Automatic restore point creation
-- **Telemetry Disable**: Privacy-focused Windows telemetry disable
-- **Registry Optimization**: Safe registry cleanup and optimization
+### ⚙️ **Modular Architecture**
+- **Task-Based Structure**: $global:ScriptTasks array with standardized task definitions
+- **Configuration System**: Granular controls for each maintenance operation
+- **Environment Awareness**: Auto-detection of system capabilities and requirements
+- **Conditional Execution**: Smart dependency tracking and prerequisite validation
 
-### 🛡️ **Safety Features**
-- **Administrator Check**: Ensures proper permissions
-- **Critical App Protection**: Prevents removal of essential system apps
-- **PowerShell 7.5.2 Compatibility**: Modern PowerShell features with PS5.1 fallback
-- **Error Handling**: Comprehensive error tracking and recovery
-- **Backup Support**: System restore points before major changes
+## 🔧 **Core Maintenance Capabilities**
 
-## 📁 **Project Structure**
+### 📋 **System Optimization Tasks**
+- **Comprehensive Inventory**: Multi-source system scanning (AppX, Winget, Choco, Registry)
+- **Intelligent Temp Cleanup**: Smart detection and removal of unnecessary files
+- **Windows Update Management**: Automated update detection and installation
+- **System Protection**: Automatic restore point creation before major changes
+- **Privacy Controls**: Telemetry and tracking limitation
+- **Performance Tuning**: Registry and system service optimization
 
+### 🛡️ **Safety & Protection**
+- **Administrator Verification**: Automatic privilege detection and elevation
+- **Protected Component List**: Critical system apps safeguarded from removal
+- **PowerShell 7+ Optimized**: Native PowerShell 7 features with 5.1 fallbacks when needed
+- **Comprehensive Error Handling**: Try/catch blocks with detailed error reporting
+- **Automatic System Protection**: Restore points created before major system changes
+- **Execution Policy Management**: Safe handling of PowerShell execution policies
+
+## 📁 **Project Architecture (2025 Edition)**
+
+### 🏗️ **Two-Tier Architecture**
+This project uses a **launcher → orchestrator** architecture for maximum reliability and separation of concerns:
+
+#### **🚀 Tier 1: Launcher (script.bat)**
+- **Environment Preparation**: Handles all dependency installation and validation
+- **Auto-Elevation**: Automatic administrator privilege detection and elevation
+- **Dependency Management**: Installs Winget, PowerShell 7, Chocolatey, NuGet, PSWindowsUpdate
+- **Repository Updates**: Downloads and extracts latest version from GitHub
+- **Scheduled Tasks**: Creates monthly maintenance and post-restart continuation tasks
+- **System Validation**: Verifies Windows 10/11 compatibility and PowerShell availability
+- **Safe Launching**: Launches script.ps1 in properly configured environment
+
+#### **⚙️ Tier 2: Orchestrator (script.ps1)**
+- **Maintenance Execution**: Focuses purely on system maintenance tasks
+- **Task Coordination**: Uses `$global:ScriptTasks` array for modular task management
+- **Parallel Processing**: Leverages PowerShell 7+ for high-performance operations
+- **Smart Inventory**: Comprehensive system analysis for informed decision-making
+- **Graceful Degradation**: Handles missing dependencies with fallback strategies
+- **Enhanced Reporting**: Generates detailed maintenance reports and analytics
+
+### 📂 **File Structure**
 ```
 script_mentenanta/
-├── script.ps1                 # Main enhanced maintenance script
-├── script.bat                 # Windows batch launcher
-├── config_example.json        # Enhanced configuration example
-├── README.md                  # This documentation
-└── temp_lists/                # Generated temp files and reports
-    ├── maintenance_report.txt  # Unified maintenance report
-    ├── bloatware_*.json       # Bloatware analysis results
-    └── essential_*.json       # Essential apps analysis results
+├── script.bat                    # 🚀 Launcher - Dependency & Environment Setup
+├── script.ps1                    # ⚙️ Orchestrator - Maintenance Task Execution
+├── README.md                     # 📖 Project Documentation
+├── .github/
+│   └── copilot-instructions.md   # 🤖 AI Development Guidelines
+├── maintenance.log               # 📝 Runtime Log (created by launcher)
+├── maintenance_report.txt        # 📊 Detailed Execution Report
+├── config.json                   # ⚙️ Optional Configuration (auto-created)
+├── inventory.json               # 📋 System Inventory Export
+└── temp_files/                   # 📁 Temporary Analysis Files
+    ├── bloatware.json            # 🗑️ Bloatware Detection Results
+    └── essential_apps.json       # 📦 Essential Apps Analysis
 ```
+
+### 🔄 **Enhanced Execution Flow**
+1. **🚀 script.bat** - Environment preparation and validation
+   - Checks administrator privileges → auto-elevates if needed
+   - Validates Windows 10/11 compatibility
+   - Installs dependencies: Winget → PowerShell 7 → NuGet → PSWindowsUpdate → Chocolatey
+   - Downloads latest repository version from GitHub
+   - Creates/manages scheduled tasks for recurring maintenance
+   - Launches script.ps1 with proper environment
+
+2. **⚙️ script.ps1** - Maintenance orchestration
+   - Comprehensive system inventory collection
+   - Executes maintenance tasks via `$global:ScriptTasks` coordination
+   - Parallel processing for high-performance operations
+   - Generates detailed reports and analytics
+   - Provides graceful degradation for missing dependencies
+
+### 💡 **Architecture Benefits**
+- **🛡️ Separation of Concerns**: Environment vs. Maintenance logic clearly separated
+- **🚀 Reliability**: Dependencies guaranteed before maintenance begins
+- **⚡ Performance**: script.ps1 focuses purely on maintenance without setup overhead
+- **🔄 Maintainability**: Clear responsibility boundaries for easier development
+- **📈 Scalability**: Easy to extend either environment setup or maintenance features
 
 ## 🚀 **Quick Start**
 
-### **Method 1: Run with Default Settings**
+### **Method 1: Recommended - Full Automation**
 ```cmd
-# Right-click "Run as Administrator"
+# Right-click → "Run as administrator" OR double-click (auto-elevates)
 script.bat
 ```
+*This method handles everything automatically: dependencies, elevation, updates, and execution*
 
-### **Method 2: PowerShell Direct**
+### **Method 2: PowerShell Direct (Advanced)**
 ```powershell
-# Open PowerShell as Administrator
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+# Requires manual dependency management - only if script.bat has already run
+# Open PowerShell 7 as Administrator
 .\script.ps1
 ```
+*Note: Direct PowerShell execution requires dependencies to be pre-installed by script.bat*
 
 ### **Method 3: Custom Configuration**
 ```powershell
@@ -82,6 +139,54 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 # 3. Run the script
 .\script.ps1
 ```
+
+## 🔧 **Requirements & Dependencies**
+
+### **🖥️ System Requirements**
+- **Operating System**: Windows 10 (version 1903+) or Windows 11
+- **Architecture**: x64, x86, or ARM64 supported
+- **Administrator Access**: Required for system modifications
+- **Internet Connection**: Required for dependency downloads and repository updates
+- **Disk Space**: ~500MB free space for dependencies and temporary files
+
+### **📦 Automated Dependency Management**
+The `script.bat` launcher automatically handles all dependencies with zero user intervention:
+
+#### **✅ Automatically Installed Components**
+1. **🚀 Windows Package Manager (Winget)** - Latest from Microsoft Store
+2. **💻 PowerShell 7.5.2+** - Modern PowerShell environment 
+3. **📦 NuGet PackageProvider** - PowerShell package management
+4. **🏪 PowerShell Gallery** - Configured as trusted repository
+5. **🔄 PSWindowsUpdate Module** - Windows Update automation
+6. **🍫 Chocolatey** - Community package manager
+
+#### **⚡ Installation Order & Logic**
+```mermaid
+graph TD
+    A[script.bat starts] --> B[Check Admin Privileges]
+    B --> C[Auto-elevate if needed]
+    C --> D[Install Winget]
+    D --> E[Install PowerShell 7]
+    E --> F[Install NuGet + PSGallery]
+    F --> G[Install PSWindowsUpdate]
+    G --> H[Install Chocolatey]
+    H --> I[Download latest repository]
+    I --> J[Launch script.ps1]
+```
+
+#### **🛡️ Zero Manual Setup Required**
+- **No PowerShell execution policy changes needed**
+- **No manual package manager installations**
+- **No module imports or configurations**
+- **No repository trust configurations**
+- **No version compatibility checks**
+
+### **🔄 Graceful Degradation**
+If any dependency fails to install, the script automatically:
+- ✅ Continues with available package managers
+- ✅ Uses alternative installation methods
+- ✅ Logs missing dependencies for troubleshooting
+- ✅ Provides comprehensive fallback strategies
 
 ## ⚙️ **Enhanced Configuration Guide**
 
@@ -381,16 +486,34 @@ All keys are optional. The script intelligently handles missing configurations.
 - **Ensure PowerShell 7.5.2+** is installed for optimal performance (script will auto-fallback if needed).
 - **Verify all dependencies** are installed and up to date.
 
-## Performance Notes
-- **Significantly faster** inventory collection using parallel processing
-- **Improved package management** with modern timeout and retry logic
-- **Better memory usage** with thread-safe concurrent collections
-- **Enhanced file I/O** with UTF-8 encoding and async operations
+## ⚡ Performance Optimizations
 
-## Contributing
-Pull requests and feedback are welcome! See `.github/copilot-instructions.md` for AI agent conventions and PowerShell 7.5.2 best practices.
+- **Parallel Processing**: Multi-threaded operations for inventory, bloatware removal, and app installation
+- **HashSet Lookups**: O(1) lookups instead of array iterations for identification checks
+- **Smart Caching**: Reuse system inventory data across operations to prevent redundant scans
+- **Action-Only Logging**: Reduced verbose logging for non-essential operations
+- **Pre-compiled Regex**: Optimized pattern matching for app identification
+- **Thread-Safe Collections**: Concurrent dictionaries and hash sets for multi-threaded access
 
-## License
+## 📝 Documentation & Development
+
+Full documentation for maintaining and extending this script is available in the `.github/copilot-instructions.md` file. This includes:
+
+- Detailed function documentation standards
+- Code organization guidelines
+- Architecture overview
+- Performance optimization guidance
+
+## 🔄 Usage
+
+```
+.\script.bat [options]
+```
+
+For detailed options and configurations, see the script.bat file header comments.
+
+## 📄 License
+
 [MIT](LICENSE)
   ```powershell
   # Remove non-whitelisted browsers

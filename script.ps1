@@ -1,9 +1,10 @@
 # ================================================================
+# Windows Maintenance Script
 # ================================================================
-# [ENVIRONMENT AWARENESS & PATH/PERMISSION SETUP]
+# Purpose: Professional-grade Windows 10/11 maintenance automation
+# Features: Bloatware removal, essential apps, updates, optimization
+# Environment: PowerShell 7+, Administrator privileges required
 # ================================================================
-# Purpose: Ensure script is aware of its environment, path, and permissions before any operations
-# ------------------------------------------------
 param(
     [string]$LogFilePath
 )
@@ -647,23 +648,24 @@ $global:ScriptTasks = @(
             catch {
                 Write-Log "WinSxS cleanup failed: $_" 'WARN'
             }
-                # Run Delivery Optimization cache cleanup only if service exists
-                if (Get-Service -Name dosvc -ErrorAction SilentlyContinue) {
-                    try {
-                        $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
-                        if ($doProc.ExitCode -eq 0) {
-                            Write-Log 'Delivery Optimization cache cleanup completed successfully.' 'INFO'
-                        }
-                        else {
-                            Write-Log "Delivery Optimization cleanup exited with error code $($doProc.ExitCode)." 'WARN'
-                        }
+            # Run Delivery Optimization cache cleanup only if service exists
+            if (Get-Service -Name dosvc -ErrorAction SilentlyContinue) {
+                try {
+                    $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
+                    if ($doProc.ExitCode -eq 0) {
+                        Write-Log 'Delivery Optimization cache cleanup completed successfully.' 'INFO'
                     }
-                    catch {
-                        Write-Log "Delivery Optimization cleanup failed: $_" 'WARN'
+                    else {
+                        Write-Log "Delivery Optimization cleanup exited with error code $($doProc.ExitCode)." 'WARN'
                     }
-                } else {
-                    Write-Log "Delivery Optimization service not found, skipping cleanup." 'INFO'
                 }
+                catch {
+                    Write-Log "Delivery Optimization cleanup failed: $_" 'WARN'
+                }
+            }
+            else {
+                Write-Log "Delivery Optimization service not found, skipping cleanup." 'INFO'
+            }
             $cleanupEnd = Get-Date
             $duration = ($cleanupEnd - $cleanupStart).TotalSeconds
             Write-Log "Full system cleanup completed in $([math]::Round($duration,2)) seconds." 'INFO'
@@ -906,8 +908,12 @@ function Use-AllScriptTasks {
 # COPILOT_FUNCTION_ID: Write-Log
 # Purpose: Provides consistent logging across all maintenance operations.
 # Environment: Any PowerShell version, writes to file and color-coded console.
-# Logic: Timestamped entries, level-based filtering, file and console output.
-# Performance: Fast, minimal overhead, unified logging to parent directory.
+# ================================================================
+# Function: Write-Log
+# ================================================================
+# Purpose: Unified logging function with file and console output
+# Logic: Timestamped entries, level-based filtering, file and console output
+# Performance: Fast, minimal overhead, unified logging to parent directory
 # Dependencies: File system access, global config for verbose logging control
 # Output: maintenance.log in parent directory, color-coded console messages
 # ================================================================
@@ -1021,13 +1027,6 @@ function Get-AppxProvisionedPackageCompatible {
         Write-Log "Failed to get provisioned AppX packages: $_" 'WARN'
         return @()
     }
-        if ($Online) {
-            return Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
-        }
-        else {
-            return Get-AppxProvisionedPackage -ErrorAction SilentlyContinue
-        }
-    }
 }
 
 ### Function: Remove-AppxProvisionedPackageCompatible
@@ -1066,67 +1065,62 @@ function Remove-AppxProvisionedPackageCompatible {
         Write-Log "Failed to remove provisioned AppX package: $_" 'ERROR'
         return $false
     }
+}
 
-            ### Function: Enable-ComputerRestoreCompatible
-            # Purpose: Enables System Restore protection (cross-version).
-            # Environment: Administrator, System Restore service access.
-            # Logic: Enables protection for specified drive.
-            # Performance: Fast, minimal overhead.
-            function Enable-ComputerRestoreCompatible {
-                param(
-                    [string]$Drive
-                )
-    
-                try {
-                    Write-Log "Enabling System Restore on drive $Drive" 'INFO'
-                    
-                    Enable-ComputerRestore -Drive $Drive -ErrorAction SilentlyContinue
+### Function: Enable-ComputerRestoreCompatible
+# Purpose: Enables System Restore protection (cross-version).
+# Environment: Administrator, System Restore service access.
+# Logic: Enables protection for specified drive.
+# Performance: Fast, minimal overhead.
+function Enable-ComputerRestoreCompatible {
+    param(
+        [string]$Drive
+    )
+
+    try {
+        Write-Log "Enabling System Restore on drive $Drive" 'INFO'
         
-                    # Verify that the restore point was actually enabled
-                    Start-Sleep -Seconds 1
-                    $verifyRestore = Get-CimInstance -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
-                    if ($verifyRestore -and -not $verifyRestore.Disable) {
-                        Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
-                        return $true
-                    }
-                    else {
-                        Write-Log "System Restore enable operation completed but verification failed for drive $Drive" 'WARN'
-                        return $false
-                    }
-                }
-                catch {
-                    Write-Log "Failed to enable System Restore on drive $Drive : $_" 'ERROR'
-                    return $false
-                }
-            }
-
-            ### Function: Checkpoint-ComputerCompatible
-            # Purpose: Creates restore point (cross-version).
-            # Environment: Administrator, System Restore enabled.
-            # Logic: Creates restore point with description and type.
-            # Performance: Fast, minimal overhead.
-            function Checkpoint-ComputerCompatible {
-                param(
-                    [string]$Description,
-                    [string]$RestorePointType = 'MODIFY_SETTINGS'
-                )
+        Enable-ComputerRestore -Drive $Drive -ErrorAction SilentlyContinue
     
-                try {
-                    Write-Log "Creating system restore point: $Description" 'INFO'
-                    
-                    Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
-                    Write-Log "Successfully created restore point: $Description" 'INFO'
-                    return $true
-                }
-                catch {
-                    Write-Log "Failed to create restore point '$Description': $_" 'ERROR'
-                    return $false
-                }
-            }
+        # Verify that the restore point was actually enabled
+        Start-Sleep -Seconds 1
+        $verifyRestore = Get-CimInstance -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
+        if ($verifyRestore -and -not $verifyRestore.Disable) {
+            Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
+            return $true
         }
-        catch {
+        else {
+            Write-Log "System Restore enable operation completed but verification failed for drive $Drive" 'WARN'
             return $false
         }
+    }
+    catch {
+        Write-Log "Failed to enable System Restore on drive $Drive : $_" 'ERROR'
+        return $false
+    }
+}
+
+### Function: Checkpoint-ComputerCompatible
+# Purpose: Creates restore point (cross-version).
+# Environment: Administrator, System Restore enabled.
+# Logic: Creates restore point with description and type.
+# Performance: Fast, minimal overhead.
+function Checkpoint-ComputerCompatible {
+    param(
+        [string]$Description,
+        [string]$RestorePointType = 'MODIFY_SETTINGS'
+    )
+
+    try {
+        Write-Log "Creating system restore point: $Description" 'INFO'
+        
+        Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
+        Write-Log "Successfully created restore point: $Description" 'INFO'
+        return $true
+    }
+    catch {
+        Write-Log "Failed to create restore point '$Description': $_" 'ERROR'
+        return $false
     }
 }
 
@@ -1139,29 +1133,10 @@ function Install-WindowsUpdatesCompatible {
     $startTime = Get-Date
     
     try {
-        # Module validation: Enhanced module availability and installation check
+        # Module validation: Check for PSWindowsUpdate module (installation handled by script.bat)
         if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
-            Write-Log 'PSWindowsUpdate module not found - attempting installation...' 'INFO'
-            
-            try {
-                # Use TLS 1.2 for secure downloads
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                
-                # Install with enhanced parameters for reliability - FULLY SILENT
-                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Confirm:$false -AllowClobber -SkipPublisherCheck -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-                
-                # Verify installation
-                if (Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue) {
-                    Write-Log 'PSWindowsUpdate module installed successfully.' 'INFO'
-                }
-                else {
-                    throw "PSWindowsUpdate module installation failed - module not available after installation"
-                }
-            }
-            catch {
-                Write-Log "Failed to install PSWindowsUpdate module: $_" 'ERROR'
-                return $false
-            }
+            Write-Log 'PSWindowsUpdate module not available - using graceful degradation' 'WARN'
+            return $false
         }
         
         # Module import: Enhanced module import with validation
@@ -1752,13 +1727,7 @@ Get-ExtensiveSystemInventory
 
 ### [MAIN SCRIPT STARTS HERE]
 
-# Check if script is running as Administrator early
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Warning "This script must be run as Administrator. Exiting."
-    Read-Host -Prompt 'Press Enter to exit...'
-    exit 1
-}
-
+# Note: Administrator privileges are validated and ensured by script.bat launcher
 Write-Log "Script started. User: $env:USERNAME, Computer: $env:COMPUTERNAME, Script Version: 1.0.0" 'INFO'
 
 ### Centralized temp folder and essential/bloatware lists
@@ -1945,31 +1914,31 @@ $global:EssentialApps | ConvertTo-Json -Depth 5 | Out-File $essentialAppsListPat
 Write-Log "Loaded configuration from config.json" 'INFO'
 Write-Log "Config: SkipBloatware=$($global:Config.SkipBloatwareRemoval), SkipEssential=$($global:Config.SkipEssentialApps), SkipUpdates=$($global:Config.SkipWindowsUpdates)" 'INFO'
 
-### Check Windows version and compatibility
+# Note: Windows version compatibility is validated by script.bat launcher
+# Log Windows version for reference
 $os = Get-CimInstance Win32_OperatingSystem
 $osVersion = $os.Version
 $osCaption = $os.Caption
 Write-Log "Detected Windows version: $osCaption ($osVersion)" 'INFO'
-if ($osVersion -lt '10.0') {
-    Write-Log "Unsupported Windows version. Exiting." 'ERROR'
-    exit 2
-}
 
-### PowerShell-specific Dependency Management
-# AI_FUNCTION: PowerShell dependency validation and management
-# AI_PURPOSE: Validates and installs required PowerShell modules and package managers
-# AI_ENVIRONMENT: Windows 10/11, Administrator required for installations, PowerShell Gallery access
-# AI_DEPENDENCIES: Winget, Chocolatey, NuGet, PSWindowsUpdate, PowerShellGet modules  
-# AI_LOGIC: Systematic dependency checking, automatic installation, version compatibility validation
-# AI_PERFORMANCE: Cached checks, parallel installations where safe, comprehensive error handling
+# ================================================================
+# Function: Test-PowerShellDependencies
+# ================================================================
+# Purpose: Validates availability of PowerShell modules and package managers (no installation)
+# Environment: Windows 10/11, dependency installation handled by script.bat launcher
+# Performance: Fast availability checks with graceful degradation support
+# Dependencies: None (dependencies are installed by script.bat)
+# Logic: Availability detection only, sets global flags for graceful degradation
+# Features: Comprehensive status reporting without installation attempts
+# ================================================================
 function Test-PowerShellDependencies {
     param()
     
-    Write-Log '[DEPENDENCIES] Verifying PowerShell-specific dependencies...' 'INFO'
+    Write-Log '[DEPENDENCIES] Verifying PowerShell dependencies (installation handled by script.bat)...' 'INFO'
     Write-Log "[DEPENDENCIES] Running PowerShell version: $($PSVersionTable.PSVersion.ToString())" 'INFO'
     $dependencyStatus = @{}
     
-    # Test Module Availability
+    # Test Module Availability (no installation attempts)
     $modules = @(
         @{ Name = 'Appx'; Critical = $false; Description = 'UWP/Store app management' },
         @{ Name = 'PSWindowsUpdate'; Critical = $false; Description = 'Windows Update management' },
@@ -1986,11 +1955,11 @@ function Test-PowerShellDependencies {
         }
         else {
             $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
-            Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
+            Write-Log "[DEPENDENCIES] Module '$moduleName' not available - graceful degradation will be used" $level
         }
     }
     
-    # Test Command Availability
+    # Test Command Availability (dependencies installed by script.bat)
     $commands = @(
         @{ Name = 'winget'; Critical = $false; Description = 'Windows Package Manager' },
         @{ Name = 'choco'; Critical = $false; Description = 'Chocolatey Package Manager' },
@@ -2007,7 +1976,7 @@ function Test-PowerShellDependencies {
         }
         else {
             $level = if ($command.Critical) { 'ERROR' } else { 'WARN' }
-            Write-Log "[DEPENDENCIES] Command '$commandName' is not available ($($command.Description))" $level
+            Write-Log "[DEPENDENCIES] Command '$commandName' not available - graceful degradation will be used" $level
         }
     }
     
@@ -2026,8 +1995,7 @@ function Test-PowerShellDependencies {
     Write-Log "[DEPENDENCIES] Status: $working/$total dependencies available" 'INFO'
     if ($missing -gt 0) {
         $missingList = ($dependencyStatus.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object { $_.Key }) -join ', '
-        Write-Log "[DEPENDENCIES] Missing: $missingList" 'WARN'
-        Write-Log "[DEPENDENCIES] Some features will use graceful degradation" 'INFO'
+        Write-Log "[DEPENDENCIES] Missing: $missingList (graceful degradation enabled)" 'INFO'
     }
     else {
         Write-Log "[DEPENDENCIES] All dependencies are available" 'INFO'
@@ -2036,12 +2004,16 @@ function Test-PowerShellDependencies {
     return $dependencyStatus
 }
 
-# AI_FUNCTION: PowerShell module import with graceful fallback handling
-# AI_PURPOSE: Safely imports PowerShell modules with comprehensive error handling and alternatives
-# AI_ENVIRONMENT: PowerShell 7+, handles module availability
-# AI_PARAMETERS: $ModuleName (string) - Name of module to import with fallback strategies
-# AI_LOGIC: Try native import, attempt installation if missing, graceful degradation on failure
-# AI_RETURNS: Boolean success status of module import operation
+# ================================================================
+# Function: Import-ModuleWithGracefulFallback
+# ================================================================
+# Purpose: Safely imports PowerShell modules with graceful fallback handling
+# Environment: PowerShell 7+, module installation handled by script.bat launcher
+# Performance: Fast import with comprehensive error handling
+# Dependencies: Module availability (installed by script.bat)
+# Logic: Simple import attempt with graceful degradation on failure
+# Features: Clean error handling without installation attempts
+# ================================================================
 function Import-ModuleWithGracefulFallback {
     param(
         [string]$ModuleName,
@@ -2074,14 +2046,8 @@ function Import-ModuleWithGracefulFallback {
 # Initialize dependency status
 $global:DependencyStatus = Test-PowerShellDependencies
 
-### Check for required PowerShell version
-
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Log "PowerShell 7 or higher is required. Current version: $($PSVersionTable.PSVersion). Exiting." 'ERROR'
-    exit 3
-}
-
-# Log PowerShell version
+# Note: PowerShell version validation is handled by script.bat launcher
+# Log PowerShell version for reference
 Write-Log "Running in PowerShell 7+ native mode. Version: $($PSVersionTable.PSVersion)" 'INFO'
 
 
@@ -2089,32 +2055,16 @@ Write-Log "Running in PowerShell 7+ native mode. Version: $($PSVersionTable.PSVe
 # ================================================================
 # [C.1] ESSENTIAL APPS INSTALLATION - COPILOT MAINTENANCE TASK
 # ================================================================
-# COPILOT_TASK_ID: InstallEssentialApps  
+# Function: Install-EssentialApps
+# ================================================================
 # Purpose: High-performance installation of curated essential applications using parallel processing
-# Environment: Windows 10/11, Administrator required, Winget/Chocolatey access
-# Logic: HashSet optimization, parallel processing, smart filtering, custom app support
-# Performance: Ultra-parallel execution, timeout handling, detailed progress tracking
-# Dependencies: Winget, Chocolatey, inventory system, config.json integration
-# Function Location: [C.1] Lines 2095-2439 (approximate)
+# Environment: Windows 10/11, Administrator required, Winget/Chocolatey package manager access
+# Performance: O(1) HashSet lookups, parallel job execution, smart pre-filtering, action-only logging
+# Dependencies: Winget, Chocolatey, system inventory, config.json custom app support
+# Logic: Inventory-based duplicate detection, parallel installation batches, comprehensive error handling
+# Customization: Supports custom app lists via $global:Config.CustomEssentialApps array
 # ================================================================
 function Install-EssentialApps {
-    # ================================================================
-    # COPILOT_TASK_HEADER: InstallEssentialApps (Application Management)
-    # ================================================================
-    # Purpose: High-performance installation of curated essential applications using parallel processing
-    # Environment: Windows 10/11, Administrator required, Winget/Chocolatey package manager access
-    # Performance: O(1) HashSet lookups, parallel job execution, smart pre-filtering, action-only logging
-    # Dependencies: Winget, Chocolatey, system inventory, config.json custom app support
-    # Logic: Inventory-based duplicate detection, parallel installation batches, comprehensive error handling
-    # Customization: Supports custom app lists via $global:Config.CustomEssentialApps array
-    # ================================================================
-    # AI_TASK_HEADER: InstallEssentialApps (Ultra-Performance Edition)
-    # ===============================
-    # AI_PURPOSE: Parallel installation of essential applications with smart filtering and optimization
-    # AI_ENVIRONMENT: Windows 10/11, Administrator required, package managers available
-    # AI_LOGIC: HashSet O(1) lookups, parallel processing, comprehensive validation, action-only logging
-    # Performance: Optimized for speed with hashtable filtering and parallel job execution
-    # ===============================
     Write-Log 'Starting Install Essential Apps - Ultra-Parallel Processing Mode.' 'INFO'
 
     # Logic: Use global inventory if available, otherwise build optimized inventory for app detection
@@ -2192,11 +2142,6 @@ function Install-EssentialApps {
 
     Write-Log "[EssentialApps] Processing $($appsToInstall.Count) apps for installation..." 'INFO'
 
-    # Initialize counters and results collection
-    $successfulInstalls = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
-    $failedInstalls = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
-    $skippedInstalls = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
-
     # PowerShell 7 Native Parallel Processing - Enhanced Performance
     Write-Log "[EssentialApps] Using PowerShell 7 native parallel processing for enhanced performance..." 'INFO'
     
@@ -2222,89 +2167,77 @@ function Install-EssentialApps {
                     "--accept-source-agreements", "--accept-package-agreements", 
                     "--silent", "-e", "--disable-interactivity", "--force"
                 )
-                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
-                    if ($wingetProc.ExitCode -eq 0) {
-                        $result.Success = $true
-                        $result.Method = "winget"
-                        return $result
-                    }
-                    elseif ($wingetProc.ExitCode -eq -1978335189) {
-                        # App already installed
-                        $result.Skipped = $true
-                        $result.SkipReason = "already installed (winget)"
-                        return $result
-                    }
-                    else {
-                        $result.Error += "winget failed (exit: $($wingetProc.ExitCode)); "
-                    }
+                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
+                if ($wingetProc.ExitCode -eq 0) {
+                    $result.Success = $true
+                    $result.Method = "winget"
+                    return $result
                 }
-                
-                # Try Chocolatey as fallback
-                if (-not $result.Success -and $app.Choco -and $chocoAvailable) {
-                    $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--limit-output")
-                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                    if ($chocoProc.ExitCode -eq 0) {
-                        $result.Success = $true
-                        $result.Method = "choco"
-                        return $result
-                    }
-                    elseif ($chocoProc.ExitCode -eq 1641 -or $chocoProc.ExitCode -eq 3010) {
-                        # Success with reboot required
-                        $result.Success = $true
-                        $result.Method = "choco (reboot required)"
-                        return $result
-                    }
-                    else {
-                        $result.Error += "choco failed (exit: $($chocoProc.ExitCode))"
-                    }
-                }
-                
-                # No installation method succeeded
-                if (-not $wingetAvailable -and -not $chocoAvailable) {
+                elseif ($wingetProc.ExitCode -eq -1978335189) {
+                    # App already installed
                     $result.Skipped = $true
-                    $result.SkipReason = "no package manager available"
-                }
-                elseif (-not $app.Winget -and -not $app.Choco) {
-                    $result.Skipped = $true
-                    $result.SkipReason = "no installer defined"
+                    $result.SkipReason = "already installed (winget)"
+                    return $result
                 }
                 else {
-                    $result.Error = $result.Error.TrimEnd("; ")
+                    $result.Error += "winget failed (exit: $($wingetProc.ExitCode)); "
                 }
             }
-            catch {
-                $result.Error = "Exception: $($_.Exception.Message)"
+                
+            # Try Chocolatey as fallback
+            if (-not $result.Success -and $app.Choco -and $chocoAvailable) {
+                $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--limit-output")
+                $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                if ($chocoProc.ExitCode -eq 0) {
+                    $result.Success = $true
+                    $result.Method = "choco"
+                    return $result
+                }
+                elseif ($chocoProc.ExitCode -eq 1641 -or $chocoProc.ExitCode -eq 3010) {
+                    # Success with reboot required
+                    $result.Success = $true
+                    $result.Method = "choco (reboot required)"
+                    return $result
+                }
+                else {
+                    $result.Error += "choco failed (exit: $($chocoProc.ExitCode))"
+                }
             }
-            
-            return $result
-        }
-        $installJobs += $job
-    }
-    
-    # Wait for all installation jobs to complete using enhanced PS7 features
-    $installResults = $installJobs | ForEach-Object {
-        try {
-            $jobResult = Receive-Job -Job $_ -Wait -ErrorAction Stop
-            Remove-Job -Job $_ -Force
-            return $jobResult
+                
+            # No installation method succeeded
+            if (-not $wingetAvailable -and -not $chocoAvailable) {
+                $result.Skipped = $true
+                $result.SkipReason = "no package manager available"
+            }
+            elseif (-not $app.Winget -and -not $app.Choco) {
+                $result.Skipped = $true
+                $result.SkipReason = "no installer defined"
+            }
+            else {
+                $result.Error = $result.Error.TrimEnd("; ")
+            }
         }
         catch {
-            Write-Log "[EssentialApps] Job processing error: $($_.Exception.Message)" 'WARN'
-            Remove-Job -Job $_ -Force -ErrorAction SilentlyContinue
-            return $null
+            $result.Error = "Exception: $($_.Exception.Message)"
         }
-    } | Where-Object { $null -ne $_ }
+            
+        return $result
+    }
     
     # Process results using PowerShell 7 enhanced collection methods
+    $successArray = @()
+    $failedArray = @()
+    $skippedArray = @()
+    
     foreach ($result in $installResults) {
         if ($result.Success) {
-            [void]$successfulInstalls.Add([PSCustomObject]$result)
+            $successArray += $result
         }
         elseif ($result.Skipped) {
-            [void]$skippedInstalls.Add([PSCustomObject]$result)
+            $skippedArray += $result
         }
         else {
-            [void]$failedInstalls.Add([PSCustomObject]$result)
+            $failedArray += $result
         }
     }
 
@@ -2415,25 +2348,22 @@ function Install-EssentialApps {
         Remove-Job -Job $libreOfficeJob -Force
         
         if ($libreResult.Success) {
-            [void]$successfulInstalls.Add([PSCustomObject]@{
-                    AppName = "LibreOffice"
-                    Method  = $libreResult.Method
-                    Success = $true
-                })
+            $successArray += [PSCustomObject]@{
+                AppName = "LibreOffice"
+                Method  = $libreResult.Method
+                Success = $true
+            }
         }
         else {
-            [void]$failedInstalls.Add([PSCustomObject]@{
-                    AppName = "LibreOffice"
-                    Error   = $libreResult.Error
-                    Success = $false
-                })
+            $failedArray += [PSCustomObject]@{
+                AppName = "LibreOffice"
+                Error   = $libreResult.Error
+                Success = $false
+            }
         }
     }
 
-    # Convert concurrent collections to arrays for reporting
-    $successArray = @($successfulInstalls.ToArray())
-    $failedArray = @($failedInstalls.ToArray())
-    $skippedArray = @($skippedInstalls.ToArray())
+    # Arrays are already defined above, no conversion needed
 
     # Action-only logging: Only log successful installations
     if ($successArray.Count -gt 0) {
@@ -2461,7 +2391,7 @@ function Install-EssentialApps {
     if ($skippedArray.Count -gt 0) {
         Write-Log "[EssentialApps] Skipped installations: $($skippedArray.Count)" 'INFO'
     }
-
+    
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
 
@@ -3064,35 +2994,28 @@ function Get-EventLogAnalysis {
 
 ### AI_MAINTENANCE_TASK: Ultra-Enhanced Bloatware Removal - Action-Only Logging & Maximum Performance
 # AI_TASK_ID: RemoveBloatware  
-# AI_PURPOSE: High-speed bloatware removal with PowerShell 7.5 native capabilities - action-only logging
-# AI_ENVIRONMENT: Windows 10/11, Administrator required, PowerShell 7.5 native AppX/DISM support
-# AI_PERFORMANCE: Ultra-parallel 8-thread processing, pre-compiled regex, smart caching, action-only logging
-# AI_DEPENDENCIES: Native PS7.5 AppX cmdlets, DISM, Winget, Chocolatey, Registry, Windows Capabilities
-# AI_LOGIC: Multi-method removal approach, intelligent filtering, comprehensive error handling
-# AI_FEATURES: Shows ONLY removed apps, maximum performance optimization, detailed success tracking
+# ================================================================
+# Function: Remove-Bloatware
+# ================================================================
+# Purpose: High-speed bloatware removal with PowerShell 7.5 native capabilities
+# Environment: Windows 10/11, Administrator required, PowerShell 7.5 native AppX/DISM support
+# Performance: Ultra-parallel 8-thread processing, pre-compiled regex, smart caching, action-only logging
+# Dependencies: Native PS7.5 AppX cmdlets, DISM, Winget, Chocolatey, Registry, Windows Capabilities
+# Logic: Multi-method removal approach, intelligent filtering, comprehensive error handling
+# Features: Shows ONLY removed apps, maximum performance optimization, detailed success tracking
+# ================================================================
 function Remove-Bloatware {
-    # ===============================
-    # AI_TASK_HEADER: RemoveBloatware (Ultra-Enhanced PowerShell 7.5 Native)
-    # ===============================  
-    # AI_PURPOSE: High-speed bloatware removal with native PS7.5 capabilities and action-only logging
-    # AI_ENVIRONMENT: Windows 10/11, Administrator required, PS7.5 native AppX/DISM integration
-    # AI_LOGIC: Ultra-parallel removal, smart pre-filtering, action-only logging, maximum performance
-    # AI_PERFORMANCE: Native PS7.5 AppX, 8-thread parallel processing, pre-compiled regex, smart caching
-    # ===============================
     Write-Log "Starting Ultra-Enhanced Bloatware Removal - PowerShell 7.5 Native Mode" 'INFO'
     
-    # AI_OPTIMIZATION: Use cached inventory if available, otherwise trigger fresh comprehensive scan
+    # Use cached inventory if available, otherwise trigger fresh comprehensive scan
     if (-not $global:SystemInventory) {
         Get-ExtensiveSystemInventory
     }
     
     $inventory = $global:SystemInventory
     
-    # AI_PERFORMANCE: Ultra-fast lookup using case-insensitive Dictionary with pre-compiled regex patterns
+    # Ultra-fast lookup using case-insensitive Dictionary with pre-compiled regex patterns
     $installedApps = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    
-    # AI_OPTIMIZATION: Pre-compile common app name patterns for faster matching performance
-    # (Removed unused variable assignment to 'commonPatterns')
     
     # Ultra-parallel inventory processing with optimized data structures
     $inventoryJobs = @(
@@ -3208,7 +3131,6 @@ function Remove-Bloatware {
     $bloatwareMatches | ForEach-Object -Parallel {
         $match = $_
         $capabilities = $using:toolCapabilities
-        $psVersion = $using:PSVersionTable
         
         $result = @{
             Success    = $false
@@ -3316,7 +3238,6 @@ function Remove-Bloatware {
                     }
                 }
                 catch { }
-            }
             }
         }
         catch { }
@@ -4627,7 +4548,7 @@ function Protect-SystemRestore {
                         # VSSAdmin is working, try to enable via CIM with proper error handling
                         $systemRestoreConfig = Get-CimInstance -Namespace root/default -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue
                         if ($systemRestoreConfig) {
-                            $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true} -ErrorAction Stop
+                            $systemRestoreConfig | Set-CimInstance -Property @{Enable = $true } -ErrorAction Stop
                             $enableSuccess = $true
                             Write-Log "[SystemRestore] Enabled using WMI/CIM method" 'INFO'
                         }

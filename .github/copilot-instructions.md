@@ -2,16 +2,60 @@
 
 # Copilot Instructions for Windows Maintenance Automation Project
 
-## Project Structure
-- `script.bat`: Batch file entry point. Handles dependency checks, auto-elevation, repo update, and launches `script.ps1` as administrator.
-- `script.ps1`: Main PowerShell script optimized for PowerShell 7.5.2. Contains all maintenance logic, modular functions, and orchestrates tasks with enhanced logging and progress tracking.
-- `README.md`: Project documentation, usage, and configuration details.
-- `.github/copilot-instructions.md`: AI agent instructions and conventions.
-- `maintenance.log`: Detailed timestamped log file for all operations (created at runtime).
-- `maintenance_report.txt`: **Unified Enhanced Report** - Comprehensive system maintenance report with execution summary, system info, task results, actions performed, and performance metrics (created at runtime).
-- `config.json`: Optional, for custom settings (see README for format).
-- `inventory.json`: System inventory in JSON format (created at runtime).
-- Temp lists: Standardized JSON temp files for bloatware/essential app operations.
+## Project Architecture (2025 Edition)
+
+### 🏗️ **Two-Tier Architecture Overview**
+This project implements a **launcher → orchestrator** architecture with clear separation of concerns:
+
+#### **🚀 Tier 1: Environment Launcher (script.bat)**
+- **Responsibility**: Environment preparation, dependency management, system validation
+- **Key Functions**: Admin elevation, dependency installation, repository updates, scheduled tasks
+- **Dependencies Handled**: Winget, PowerShell 7, Chocolatey, NuGet, PSWindowsUpdate, PowerShell Gallery
+- **Validations Performed**: Windows 10/11 compatibility, PowerShell availability, administrator privileges
+- **Output**: Launches script.ps1 in fully prepared environment
+
+#### **⚙️ Tier 2: Maintenance Orchestrator (script.ps1)**
+- **Responsibility**: System maintenance execution, task coordination, reporting
+- **Key Functions**: Bloatware removal, essential apps, updates, cleanup, security hardening
+- **Architecture**: Task-based modular design using `$global:ScriptTasks` array
+- **Assumptions**: All dependencies pre-installed, admin privileges guaranteed, environment validated
+- **Output**: Comprehensive maintenance reports and system improvements
+
+### 📂 **File Structure & Responsibilities**
+```
+script_mentenanta/
+├── script.bat                    # 🚀 LAUNCHER: Environment & Dependencies
+├── script.ps1                    # ⚙️ ORCHESTRATOR: Maintenance Execution
+├── README.md                     # 📖 User Documentation  
+├── .github/copilot-instructions.md # 🤖 AI Development Guidelines
+├── maintenance.log               # 📝 Runtime Execution Log
+├── maintenance_report.txt        # 📊 Comprehensive Results Report
+├── config.json                   # ⚙️ Optional User Configuration
+├── inventory.json               # 📋 System Analysis Export
+└── temp_files/                   # 📁 Analysis & Processing Files
+```
+
+## Critical Architecture Principles
+
+### 🚫 **WHAT script.ps1 SHOULD NOT DO** 
+Since these are handled by script.bat launcher:
+- ❌ **NO administrator privilege checks** (guaranteed by launcher)
+- ❌ **NO PowerShell version validation** (PS7+ guaranteed by launcher)  
+- ❌ **NO Windows version compatibility checks** (validated by launcher)
+- ❌ **NO dependency installation attempts** (all dependencies pre-installed)
+- ❌ **NO package manager installation** (Winget/Chocolatey guaranteed available)
+- ❌ **NO module installation logic** (PSWindowsUpdate/NuGet pre-installed)
+- ❌ **NO scheduled task management** (handled by launcher)
+- ❌ **NO repository update logic** (latest version guaranteed by launcher)
+
+### ✅ **WHAT script.ps1 SHOULD DO**
+Focus purely on maintenance orchestration:
+- ✅ **Graceful degradation** if dependencies somehow missing
+- ✅ **Availability detection** for fallback strategies
+- ✅ **Core maintenance tasks** (bloatware, apps, updates, cleanup)
+- ✅ **Task coordination** via `$global:ScriptTasks` architecture
+- ✅ **Comprehensive reporting** and analytics
+- ✅ **Performance optimization** using PowerShell 7+ features
 
 ## Logic & Syntax
 - **Batch (`script.bat`)**: Uses Windows batch syntax for dependency checks, elevation, repo update, and PowerShell invocation. Color-coded console output for status.
@@ -37,12 +81,29 @@
 - **Fallback Compatibility**: Automatic detection and fallback to Windows PowerShell 5.1 for legacy operations
 
 ## Formatting Conventions
-- Indentation: 4 spaces for PowerShell, tabs for batch files.
-- Function names: PascalCase for PowerShell functions.
-- Comments: Descriptive, with region markers for major sections.
-- Logging: Separated console progress from file logging - progress bars in console, clean timestamped entries in files.
-- Reports: **Unified Enhanced Report** in `maintenance_report.txt` with comprehensive system information, execution metrics, and categorized actions. Detailed inventory files for audit.
-- Temp Lists: Standardized JSON format with metadata for bloatware and essential app operations.
+- **Indentation**: 4 spaces for PowerShell, tabs for batch files.
+- **Function Names**: PascalCase for all PowerShell functions (e.g., `Install-EssentialApps`).
+- **Comments**: Standardized function header block before each function.
+- **Function Documentation**: All function documentation should be placed BEFORE the function declaration, not inside the function.
+- **Comment Format**:
+  ```powershell
+  # ================================================================
+  # Function: FunctionName
+  # ================================================================
+  # Purpose: Clear description of what the function does
+  # Environment: Required environment (Windows version, privileges, etc.)
+  # Performance: Performance characteristics and optimization notes
+  # Dependencies: Required dependencies, external tools, or configurations
+  # Logic: Brief explanation of the function's internal logic/algorithm
+  # Features: Special features or capabilities
+  # ================================================================
+  function FunctionName {
+      # Function code here
+  }
+  ```
+- **Logging**: Separated console progress from file logging with progress bars in console and clean timestamped entries in log files.
+- **Reports**: Comprehensive unified reports in `maintenance_report.txt` with system info, execution metrics, and categorized actions.
+- **Temp Files**: Standardized JSON format for bloatware and essential app operations.
 
 ## 📋 Structured Code Organization Standards (MANDATORY)
 
@@ -154,39 +215,56 @@ The PowerShell script (`script.ps1`) MUST be organized into clearly defined, log
 ✅ **Reduced Errors**: Logical grouping prevents function scatter and confusion  
 ✅ **Faster Development**: Quick navigation to relevant sections  
 
-## Environment of Execution
-- **OS:** Windows 10/11 (x64, ARM64 supported).
-- **Shell:** PowerShell 7.5.2+ preferred, with automatic fallback to PowerShell 5.1 for compatibility.
-- **Dependencies:** Winget, Chocolatey, NuGet, PSWindowsUpdate, Appx (checked/installed at runtime).
-- **Execution:** Always run as administrator (auto-elevated by batch file).
-- **Scheduled Tasks:** Monthly/startup tasks auto-created for recurring runs and post-restart continuation.
-- **Repo Update:** Batch file downloads/extracts latest repo ZIP from GitHub before each run.
-- **Modern Process Management:** Enhanced timeout handling, async operations, and improved error reporting.
+## Environment of Execution (Launcher → Orchestrator Architecture)
 
-## Example Execution Flow
-1. User runs `script.bat` (double-click or scheduled task).
-2. Batch file checks dependencies, auto-elevates, updates repo, launches `script.ps1` as admin.
-3. PowerShell script loads config, defines `$global:ScriptTasks`, and executes each task with progress tracking:
-   - System inventory collection (with parallel processing)
-   - Bloatware removal (diff-based with progress bars)
-   - Essential app installation (modern package managers with progress)
-   - Package updates (winget/chocolatey with enhanced reliability)
-   - Windows updates (with progress tracking)
-   - Telemetry/privacy tweaks
-   - Temp file cleanup (with detailed progress)
-   - System restore and cleanup
-   - Final reporting and temp list generation
-4. Enhanced logging: Progress bars in console, clean entries in `maintenance.log`.
-5. **Unified Enhanced Reporting**: Comprehensive system maintenance report with execution summary, performance metrics, categorized actions, and detailed system information.
+### 🚀 **script.bat Environment (Launcher Tier)**
+- **OS:** Windows 10/11 (x64, x86, ARM64 supported)
+- **Privileges:** Automatic administrator detection and elevation
+- **Dependencies:** Handles all dependency installation and validation
+- **Repository:** Downloads latest version from GitHub before each execution
+- **Scheduled Tasks:** Creates and manages monthly maintenance and post-restart tasks
+- **Validation:** Windows version compatibility, PowerShell availability
+- **Output:** Launches script.ps1 in fully prepared environment
 
-## Key Modernizations
-- **Standardized Temp Lists**: JSON format with metadata for bloatware/essential app diff operations
-- **Enhanced Error Handling**: Detailed exception information and graceful degradation
-- **Modern Package Management**: Unified wrapper for winget/chocolatey with timeout and retry logic
-- **Sequential Inventory Collection**: Reliable performance using sequential processing (no hanging issues)
-- **Smart Progress Tracking**: Visual feedback without cluttering log files
-- **Reduced PS5.1 Dependency**: Native PowerShell 7+ implementations for most operations
-- **Compatibility Layer**: Automatic PowerShell version detection and appropriate command execution
+### ⚙️ **script.ps1 Environment (Orchestrator Tier)**
+- **PowerShell:** 7.5.2+ native mode (guaranteed by launcher)
+- **Privileges:** Administrator access (guaranteed by launcher)
+- **Dependencies:** Pre-installed and validated (Winget, Chocolatey, NuGet, PSWindowsUpdate, Appx)
+- **Architecture:** Task-based modular design using `$global:ScriptTasks` array
+- **Execution:** Pure maintenance focus without environment setup overhead
+- **Fallback:** Graceful degradation if dependencies somehow unavailable
+
+### 🔄 **Simplified Execution Flow (Post-Refactoring)**
+1. **🚀 script.bat** - Complete environment preparation
+   - Auto-elevation and privilege validation
+   - Windows 10/11 compatibility verification  
+   - Dependency installation: Winget → PS7 → NuGet → PSWindowsUpdate → Chocolatey
+   - Latest repository download and extraction
+   - Scheduled task management
+   - Launch script.ps1 with guaranteed environment
+
+2. **⚙️ script.ps1** - Pure maintenance orchestration
+   - ~~NO admin checks~~ (guaranteed by launcher)
+   - ~~NO PowerShell version validation~~ (guaranteed by launcher)
+   - ~~NO Windows version checks~~ (guaranteed by launcher)
+   - ~~NO dependency installation~~ (handled by launcher)
+   - ✅ Core maintenance tasks via `$global:ScriptTasks`
+   - ✅ Graceful degradation for missing dependencies
+   - ✅ Comprehensive reporting and analytics
+
+### 📈 **Architecture Benefits**
+- **⚡ Faster Startup**: No redundant validation in script.ps1
+- **🛡️ Reliability**: Environment guaranteed before maintenance starts
+- **🔧 Maintainability**: Clear separation between setup and execution
+- **📊 Performance**: script.ps1 focuses purely on maintenance optimization
+- **🔄 Scalability**: Easy to extend either tier independently
+
+## Key Refactoring Improvements (2025 Edition)
+- **🚫 Removed Redundant Validations**: Admin, PowerShell version, Windows version checks
+- **🔧 Simplified Dependency Management**: Installation removed, availability detection retained
+- **⚡ Enhanced Performance**: Reduced startup overhead in script.ps1
+- **🏗️ Cleaner Architecture**: Launcher handles environment, orchestrator handles maintenance
+- **📋 Better Documentation**: Clear responsibilities and architectural boundaries
 
 ## 🚨 MANDATORY VSCode Development and Quality Assurance Protocol
 
