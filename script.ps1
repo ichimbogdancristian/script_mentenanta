@@ -158,14 +158,14 @@ if (-not $IsAdmin) {
 #         - Use-AllScriptTasks() (Lines 559-627)
 #     B.2 Logging System (Lines 629-659)
 #         - Write-Log() (Lines 629-659)
-#     B.3 AppX Compatibility Layer (Lines 661-887)
+#     B.3 AppX Layer (Lines 661-887)
 #         - Get-AppxPackageCompatible() (Lines 661-677)
 #         - Remove-AppxPackageCompatible() (Lines 679-710)
 #         - Get-AppxProvisionedPackageCompatible() (Lines 712-749)
 #         - Remove-AppxProvisionedPackageCompatible() (Lines 751-887)
-#     B.4 Windows Update Compatibility (Lines 888-1068)
+#     B.4 Windows Update Management (Lines 888-1068)
 #         - Install-WindowsUpdatesCompatible() (Lines 888-1068)
-#     B.5 Start Apps Compatibility (Lines 1070-1096)
+#     B.5 Start Apps Management (Lines 1070-1096)
 #         - Get-StartAppsCompatible() (Lines 1070-1096)
 #     B.6 Task Management (Lines 1098-1120)
 #         - Invoke-Task() (Lines 1098-1120)
@@ -647,19 +647,23 @@ $global:ScriptTasks = @(
             catch {
                 Write-Log "WinSxS cleanup failed: $_" 'WARN'
             }
-            # Run Delivery Optimization cache cleanup
-            try {
-                $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
-                if ($doProc.ExitCode -eq 0) {
-                    Write-Log 'Delivery Optimization cache cleanup completed successfully.' 'INFO'
+                # Run Delivery Optimization cache cleanup only if service exists
+                if (Get-Service -Name dosvc -ErrorAction SilentlyContinue) {
+                    try {
+                        $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
+                        if ($doProc.ExitCode -eq 0) {
+                            Write-Log 'Delivery Optimization cache cleanup completed successfully.' 'INFO'
+                        }
+                        else {
+                            Write-Log "Delivery Optimization cleanup exited with error code $($doProc.ExitCode)." 'WARN'
+                        }
+                    }
+                    catch {
+                        Write-Log "Delivery Optimization cleanup failed: $_" 'WARN'
+                    }
+                } else {
+                    Write-Log "Delivery Optimization service not found, skipping cleanup." 'INFO'
                 }
-                else {
-                    Write-Log "Delivery Optimization cleanup exited with error code $($doProc.ExitCode)." 'WARN'
-                }
-            }
-            catch {
-                Write-Log "Delivery Optimization cleanup failed: $_" 'WARN'
-            }
             $cleanupEnd = Get-Date
             $duration = ($cleanupEnd - $cleanupStart).TotalSeconds
             Write-Log "Full system cleanup completed in $([math]::Round($duration,2)) seconds." 'INFO'
@@ -936,7 +940,7 @@ function Write-Log {
 # Performance: Fast, minimal overhead.
 
 # ================================================================
-# [B.3] APPX COMPATIBILITY LAYER - COPILOT FUNCTIONS
+# [B.3] APPX LAYER - COPILOT FUNCTIONS
 # ================================================================
 
 # ================================================================
@@ -1004,26 +1008,19 @@ function Get-AppxProvisionedPackageCompatible {
         [switch]$Online
     )
     
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        ### [REMOVED] Legacy compatibility block - all Appx operations are PowerShell 7 native
-        $command = "Import-Module Dism -ErrorAction SilentlyContinue; Get-AppxProvisionedPackage"
-        if ($Online) { $command += " -Online" }
-        $command += " | Select-Object DisplayName, PackageName | ConvertTo-Json -Depth 3"
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get provisioned AppX packages"
-        if ($result) {
-            try {
-                return ($result | ConvertFrom-Json)
-            }
-            catch {
-                Write-Log "Failed to parse provisioned AppX package JSON: $_" 'WARN'
-                return @()
-            }
+    try {
+        Import-Module Dism -ErrorAction SilentlyContinue
+        if ($Online) {
+            return Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Select-Object DisplayName, PackageName
         }
+        else {
+            return Get-AppxProvisionedPackage -ErrorAction SilentlyContinue | Select-Object DisplayName, PackageName
+        }
+    }
+    catch {
+        Write-Log "Failed to get provisioned AppX packages: $_" 'WARN'
         return @()
     }
-    else {
-        # [REMOVED] Native PowerShell 5.1 block
         if ($Online) {
             return Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
         }
@@ -1044,37 +1041,31 @@ function Remove-AppxProvisionedPackageCompatible {
         [switch]$Online
     )
     
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # Use Windows PowerShell for Appx operations
-        $command = "Import-Module Dism -ErrorAction SilentlyContinue; Remove-AppxProvisionedPackage -PackageName '$PackageName'"
-        if ($Online) { $command += " -Online" }
-        $command += " -ErrorAction Stop"
-        
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Remove provisioned AppX package $PackageName"
-        return $null -ne $result
-    }
-    else {
-        # Native PowerShell 5.1
-        try {
-            if ($Online) {
-                Remove-AppxProvisionedPackage -Online -PackageName $PackageName -ErrorAction SilentlyContinue
-                
-                # Verify removal by checking if package still exists
-                $remainingPackage = Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -eq $PackageName }
-                if (-not $remainingPackage) {
-                    return $true
-                }
-                else {
-                    Write-Log "AppX provisioned package removal may have failed - package still found: $PackageName" 'WARN'
-                    return $false
-                }
-            }
-            else {
-                Remove-AppxProvisionedPackage -PackageName $PackageName -ErrorAction SilentlyContinue
-                
-                # For offline operations, assume success if no exception was thrown
+    try {
+        Import-Module Dism -ErrorAction SilentlyContinue
+        if ($Online) {
+            Remove-AppxProvisionedPackage -Online -PackageName $PackageName -ErrorAction SilentlyContinue
+            
+            # Verify removal by checking if package still exists
+            $remainingPackage = Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -eq $PackageName }
+            if (-not $remainingPackage) {
                 return $true
             }
+            else {
+                Write-Log "AppX provisioned package removal may have failed - package still found: $PackageName" 'WARN'
+                return $false
+            }
+        }
+        else {
+            Remove-AppxProvisionedPackage -PackageName $PackageName -ErrorAction SilentlyContinue
+            # For offline operations, assume success if no exception was thrown
+            return $true
+        }
+    }
+    catch {
+        Write-Log "Failed to remove provisioned AppX package: $_" 'ERROR'
+        return $false
+    }
 
             ### Function: Enable-ComputerRestoreCompatible
             # Purpose: Enables System Restore protection (cross-version).
@@ -1088,36 +1079,19 @@ function Remove-AppxProvisionedPackageCompatible {
     
                 try {
                     Write-Log "Enabling System Restore on drive $Drive" 'INFO'
+                    
+                    Enable-ComputerRestore -Drive $Drive -ErrorAction SilentlyContinue
         
-                    if ($PSVersionTable.PSVersion.Major -ge 7) {
-                        # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
-                        $command = "Enable-ComputerRestore -Drive '$Drive'"
-                        & powershell.exe -Command $command 2>&1 | Out-Null
-            
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
-                            return $true
-                        }
-                        else {
-                            & powershell.exe -Command $command 2>&1
-                            return $false
-                        }
+                    # Verify that the restore point was actually enabled
+                    Start-Sleep -Seconds 1
+                    $verifyRestore = Get-CimInstance -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
+                    if ($verifyRestore -and -not $verifyRestore.Disable) {
+                        Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
+                        return $true
                     }
                     else {
-                        # Native PowerShell 5.1
-                        Enable-ComputerRestore -Drive $Drive -ErrorAction SilentlyContinue
-            
-                        # Verify that the restore point was actually enabled
-                        Start-Sleep -Seconds 1
-                        $verifyRestore = Get-CimInstance -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
-                        if ($verifyRestore -and -not $verifyRestore.Disable) {
-                            Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
-                            return $true
-                        }
-                        else {
-                            Write-Log "System Restore enable operation completed but verification failed for drive $Drive" 'WARN'
-                            return $false
-                        }
+                        Write-Log "System Restore enable operation completed but verification failed for drive $Drive" 'WARN'
+                        return $false
                     }
                 }
                 catch {
@@ -1139,27 +1113,10 @@ function Remove-AppxProvisionedPackageCompatible {
     
                 try {
                     Write-Log "Creating system restore point: $Description" 'INFO'
-        
-                    if ($PSVersionTable.PSVersion.Major -ge 7) {
-                        # Use Windows PowerShell via powershell.exe for System Restore operations (PS7 compatibility issue)
-                        $command = "Checkpoint-Computer -Description '$Description' -RestorePointType '$RestorePointType'"
-                        & powershell.exe -Command $command 2>&1 | Out-Null
-            
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Log "Successfully created restore point: $Description" 'INFO'
-                            return $true
-                        }
-                        else {
-                            Write-Log "Failed to create restore point: $Description. Exit code: $LASTEXITCODE" 'WARN'
-                            return $false
-                        }
-                    }
-                    else {
-                        # Native PowerShell 5.1
-                        Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
-                        Write-Log "Successfully created restore point: $Description" 'INFO'
-                        return $true
-                    }
+                    
+                    Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
+                    Write-Log "Successfully created restore point: $Description" 'INFO'
+                    return $true
                 }
                 catch {
                     Write-Log "Failed to create restore point '$Description': $_" 'ERROR'
@@ -1361,24 +1318,12 @@ function Install-WindowsUpdatesCompatible {
 ### Start menu apps enumeration: PowerShell 7 native
 # Returns: Array of Start menu app objects for inventory and management operations
 function Get-StartAppsCompatible {
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # [REMOVED] Legacy compatibility block - all StartApps operations are PowerShell 7 native
-        $command = "Get-StartApps | Select-Object Name, AppId | ConvertTo-Json -Depth 2"
-        $result = Invoke-WindowsPowerShellCommand -Command $command -Description "Get Start menu apps"
-        if ($result) {
-            try {
-                return ($result | ConvertFrom-Json)
-            }
-            catch {
-                Write-Log "Failed to parse Start apps JSON: $_" 'WARN'
-                return @()
-            }
-        }
-        return @()
+    try {
+        return Get-StartApps -ErrorAction SilentlyContinue | Select-Object Name, AppId
     }
-    else {
-        # [REMOVED] Native PowerShell 5.1 block
-        return Get-StartApps -ErrorAction SilentlyContinue
+    catch {
+        Write-Log "Failed to get Start apps: $_" 'WARN'
+        return @()
     }
 }
 
@@ -2024,63 +1969,24 @@ function Test-PowerShellDependencies {
     Write-Log "[DEPENDENCIES] Running PowerShell version: $($PSVersionTable.PSVersion.ToString())" 'INFO'
     $dependencyStatus = @{}
     
-    # Test Module Availability (with PowerShell 7 compatibility notes)
+    # Test Module Availability
     $modules = @(
-        @{ Name = 'Appx'; Critical = $false; Description = 'UWP/Store app management (via Windows PowerShell)' },
-        @{ Name = 'PSWindowsUpdate'; Critical = $false; Description = 'Windows Update management (via Windows PowerShell)' },
+        @{ Name = 'Appx'; Critical = $false; Description = 'UWP/Store app management' },
+        @{ Name = 'PSWindowsUpdate'; Critical = $false; Description = 'Windows Update management' },
         @{ Name = 'DISM'; Critical = $false; Description = 'Windows image servicing' }
     )
     
     foreach ($module in $modules) {
         $moduleName = $module.Name
+        $available = $null -ne (Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue)
+        $dependencyStatus[$moduleName] = $available
         
-        if ($PSVersionTable.PSVersion.Major -ge 7) {
-            # For PowerShell 7, check if Windows PowerShell can access these modules
-            if ($moduleName -in @('Appx', 'PSWindowsUpdate')) {
-                try {
-                    $testCommand = "Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue | Select-Object Name"
-                    $result = Invoke-WindowsPowerShellCommand -Command $testCommand -Description "Test $moduleName availability"
-                    $available = $null -ne $result
-                }
-                catch {
-                    $available = $false
-                }
-                $dependencyStatus[$moduleName] = $available
-                
-                if ($available) {
-                    Write-Log "[DEPENDENCIES] Module '$moduleName' is available via Windows PowerShell" 'VERBOSE'
-                }
-                else {
-                    $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
-                    Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
-                }
-            }
-            else {
-                # Regular module check for PowerShell 7 compatible modules
-                $available = $null -ne (Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue)
-                $dependencyStatus[$moduleName] = $available
-                
-                if ($available) {
-                    Write-Log "[DEPENDENCIES] Module '$moduleName' is available" 'VERBOSE'
-                }
-                else {
-                    $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
-                    Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
-                }
-            }
+        if ($available) {
+            Write-Log "[DEPENDENCIES] Module '$moduleName' is available" 'VERBOSE'
         }
         else {
-            # Windows PowerShell 5.1 - native check
-            $available = $null -ne (Get-Module -ListAvailable -Name $moduleName -ErrorAction SilentlyContinue)
-            $dependencyStatus[$moduleName] = $available
-            
-            if ($available) {
-                Write-Log "[DEPENDENCIES] Module '$moduleName' is available" 'VERBOSE'
-            }
-            else {
-                $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
-                Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
-            }
+            $level = if ($module.Critical) { 'ERROR' } else { 'WARN' }
+            Write-Log "[DEPENDENCIES] Module '$moduleName' is not available ($($module.Description))" $level
         }
     }
     
@@ -2132,7 +2038,7 @@ function Test-PowerShellDependencies {
 
 # AI_FUNCTION: PowerShell module import with graceful fallback handling
 # AI_PURPOSE: Safely imports PowerShell modules with comprehensive error handling and alternatives
-# AI_ENVIRONMENT: Any PowerShell version, handles module availability and compatibility issues
+# AI_ENVIRONMENT: PowerShell 7+, handles module availability
 # AI_PARAMETERS: $ModuleName (string) - Name of module to import with fallback strategies
 # AI_LOGIC: Try native import, attempt installation if missing, graceful degradation on failure
 # AI_RETURNS: Boolean success status of module import operation
@@ -2170,18 +2076,13 @@ $global:DependencyStatus = Test-PowerShellDependencies
 
 ### Check for required PowerShell version
 
-if ($PSVersionTable.PSVersion.Major -lt 5) {
-    Write-Log "PowerShell 5.1 or higher is required. Exiting." 'ERROR'
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Log "PowerShell 7 or higher is required. Current version: $($PSVersionTable.PSVersion). Exiting." 'ERROR'
     exit 3
 }
 
-# Log PowerShell version and compatibility mode
-if ($PSVersionTable.PSVersion.Major -ge 7) {
-    Write-Log "Running in PowerShell 7+ compatibility mode. Legacy operations will use Windows PowerShell 5.1." 'INFO'
-}
-else {
-    Write-Log "Running in Windows PowerShell 5.1 native mode." 'INFO'
-}
+# Log PowerShell version
+Write-Log "Running in PowerShell 7+ native mode. Version: $($PSVersionTable.PSVersion)" 'INFO'
 
 
 
@@ -2296,30 +2197,31 @@ function Install-EssentialApps {
     $failedInstalls = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
     $skippedInstalls = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 
-    # Create installation jobs for parallel processing
-    $installJobs = @()
+    # PowerShell 7 Native Parallel Processing - Enhanced Performance
+    Write-Log "[EssentialApps] Using PowerShell 7 native parallel processing for enhanced performance..." 'INFO'
     
-    foreach ($app in $appsToInstall) {
-        $job = Start-Job -ArgumentList $app, $wingetAvailable, $chocoAvailable -ScriptBlock {
-            param($app, $wingetAvailable, $chocoAvailable)
-            
-            $result = @{
-                AppName    = $app.Name
-                Success    = $false
-                Method     = ""
-                Error      = ""
-                Skipped    = $false
-                SkipReason = ""
-            }
-            
-            try {
-                # Try Winget first (preferred method)
-                if ($app.Winget -and $wingetAvailable) {
-                    $wingetArgs = @(
-                        "install", "--id", $app.Winget,
-                        "--accept-source-agreements", "--accept-package-agreements", 
-                        "--silent", "-e", "--disable-interactivity"
-                    )
+    $installResults = $appsToInstall | ForEach-Object -Parallel {
+        $app = $_
+        $wingetAvailable = $using:wingetAvailable
+        $chocoAvailable = $using:chocoAvailable
+        
+        $result = [PSCustomObject]@{
+            AppName    = $app.Name
+            Success    = $false
+            Method     = ""
+            Error      = ""
+            Skipped    = $false
+            SkipReason = ""
+        }
+        
+        try {
+            # Try Winget first (preferred method)
+            if ($app.Winget -and $wingetAvailable) {
+                $wingetArgs = @(
+                    "install", "--id", $app.Winget,
+                    "--accept-source-agreements", "--accept-package-agreements", 
+                    "--silent", "-e", "--disable-interactivity", "--force"
+                )
                     $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
                     if ($wingetProc.ExitCode -eq 0) {
                         $result.Success = $true
@@ -2379,19 +2281,30 @@ function Install-EssentialApps {
         $installJobs += $job
     }
     
-    # Wait for all installation jobs to complete and collect results
-    $installJobs | ForEach-Object {
-        $jobResult = Receive-Job -Job $_ -Wait
-        Remove-Job -Job $_ -Force
-        
-        if ($jobResult.Success) {
-            [void]$successfulInstalls.Add([PSCustomObject]$jobResult)
+    # Wait for all installation jobs to complete using enhanced PS7 features
+    $installResults = $installJobs | ForEach-Object {
+        try {
+            $jobResult = Receive-Job -Job $_ -Wait -ErrorAction Stop
+            Remove-Job -Job $_ -Force
+            return $jobResult
         }
-        elseif ($jobResult.Skipped) {
-            [void]$skippedInstalls.Add([PSCustomObject]$jobResult)
+        catch {
+            Write-Log "[EssentialApps] Job processing error: $($_.Exception.Message)" 'WARN'
+            Remove-Job -Job $_ -Force -ErrorAction SilentlyContinue
+            return $null
+        }
+    } | Where-Object { $null -ne $_ }
+    
+    # Process results using PowerShell 7 enhanced collection methods
+    foreach ($result in $installResults) {
+        if ($result.Success) {
+            [void]$successfulInstalls.Add([PSCustomObject]$result)
+        }
+        elseif ($result.Skipped) {
+            [void]$skippedInstalls.Add([PSCustomObject]$result)
         }
         else {
-            [void]$failedInstalls.Add([PSCustomObject]$jobResult)
+            [void]$failedInstalls.Add([PSCustomObject]$result)
         }
     }
 
@@ -3270,19 +3183,17 @@ function Remove-Bloatware {
     }
     
     # Fast native AppX detection for PS7.5+
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
+    try {
+        $null = Get-AppxPackage -Name "NonExistent*" -ErrorAction SilentlyContinue
+        $toolCapabilities.AppX = $true
+    }
+    catch {
+        # Test if Appx module is available
         try {
-            $null = Get-AppxPackage -Name "NonExistent*" -ErrorAction SilentlyContinue
-            $toolCapabilities.AppX = $true
+            $toolCapabilities.AppX = $null -ne (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue)
         }
-        catch {
-            # Try compatibility mode
-            try {
-                $testCmd = "Get-Module -ListAvailable -Name Appx"
-                $result = Invoke-WindowsPowerShellCommand -Command $testCmd -Description "Test AppX"
-                $toolCapabilities.AppX = $null -ne $result
-            }
-            catch { }
+        catch { 
+            $toolCapabilities.AppX = $false
         }
     }
     
@@ -3316,16 +3227,14 @@ function Remove-Bloatware {
                 'AppX' {
                     if ($capabilities.AppX -and $appData.PackageFullName) {
                         try {
-                            if ($psVersion.PSVersion.Major -ge 7) {
-                                Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
-                                
-                                # Verify removal
-                                $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
-                                if (-not $remainingPackage) {
-                                    $result.Success = $true
-                                    $result.Method = "AppX"
-                                    $result.ActualName = $appData.Name
-                                }
+                            Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                            
+                            # Verify removal
+                            $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
+                            if (-not $remainingPackage) {
+                                $result.Success = $true
+                                $result.Method = "AppX"
+                                $result.ActualName = $appData.Name
                             }
                             else {
                                 $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
@@ -3392,23 +3301,22 @@ function Remove-Bloatware {
             # Fast AppX fallback if primary method failed
             if (-not $result.Success -and $capabilities.AppX) {
                 try {
-                    if ($psVersion.PSVersion.Major -ge 7) {
-                        $packages = Get-AppxPackage -Name "*$($match.BloatwareName)*" -AllUsers -ErrorAction SilentlyContinue
-                        foreach ($pkg in $packages | Select-Object -First 1) {
-                            Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
-                            
-                            # Verify removal
-                            $verifyPackage = Get-AppxPackage -PackageFullName $pkg.PackageFullName -ErrorAction SilentlyContinue
-                            if (-not $verifyPackage) {
-                                $result.Success = $true
-                                $result.Method = "AppX Fallback"
-                                $result.ActualName = $pkg.Name
-                                break
-                            }
+                    $packages = Get-AppxPackage -Name "*$($match.BloatwareName)*" -AllUsers -ErrorAction SilentlyContinue
+                    foreach ($pkg in $packages | Select-Object -First 1) {
+                        Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                        
+                        # Verify removal
+                        $verifyPackage = Get-AppxPackage -PackageFullName $pkg.PackageFullName -ErrorAction SilentlyContinue
+                        if (-not $verifyPackage) {
+                            $result.Success = $true
+                            $result.Method = "AppX Fallback"
+                            $result.ActualName = $pkg.Name
+                            break
                         }
                     }
                 }
                 catch { }
+            }
             }
         }
         catch { }
@@ -3480,10 +3388,10 @@ function Remove-Bloatware {
 
 ### [TASK 4] System Inventory (Legacy)
 # AI_FUNCTION: Legacy system inventory collection wrapper
-# AI_PURPOSE: Simple system inventory collection for basic reporting and compatibility
+# AI_PURPOSE: Simple system inventory collection for basic reporting
 # AI_ENVIRONMENT: Windows 10/11, any privilege level, basic system information gathering
-# AI_LOGIC: Calls comprehensive Get-ExtensiveSystemInventory, maintains backward compatibility
-# AI_USE_CASE: Legacy support, simple inventory needs, compatibility with older script versions
+# AI_LOGIC: Calls comprehensive Get-ExtensiveSystemInventory for modern PowerShell environments
+# AI_USE_CASE: Simple inventory needs for PowerShell 7+ environments
 function Get-SystemInventory {
     # ===============================
     # Task: SystemInventory
@@ -4517,7 +4425,7 @@ Important Notes:
 # AI_PERFORMANCE: Native CIM operations, smart duplicate protection, enhanced validation, optimized execution
 # AI_DEPENDENCIES: Native PS7.5 CIM cmdlets, SystemRestoreConfig, Enable-ComputerRestore, Checkpoint-Computer
 # AI_LOGIC: Multiple fallback strategies, comprehensive error handling, intelligent restore point management
-# AI_FEATURES: PS7.5 native operations, no compatibility layer overhead, enhanced reliability and speed
+# AI_FEATURES: PS7+ native operations, enhanced reliability and speed
 function Protect-SystemRestore {
     # ===============================
     # AI_TASK_HEADER: SystemRestoreProtection (PowerShell 7.5 Native)
@@ -4525,7 +4433,7 @@ function Protect-SystemRestore {
     # AI_PURPOSE: Native PS7.5 System Restore management with enhanced error handling and performance
     # AI_ENVIRONMENT: Windows 10/11, Administrator required, native PS7.5 CIM cmdlets optimized
     # AI_LOGIC: Native CIM operations, smart duplicate protection, enhanced validation, optimized performance
-    # AI_PERFORMANCE: Eliminates PS5.1 compatibility overhead, uses direct PS7.5 native capabilities
+    # AI_PERFORMANCE: Uses direct PS7+ native capabilities for optimal performance
     # ===============================
     Write-Log "Starting PowerShell 7.5 Native System Restore Protection" 'INFO'
 
@@ -5151,7 +5059,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
 #   - Maintain AI_ comment prefixes for all AI-focused documentation
 #   - Follow established task header patterns when adding new functions
 #   - Use consistent performance optimization patterns (HashSet, parallel processing, action-only logging)
-#   - Maintain PowerShell 7.5 native operation preferences with compatibility fallbacks
+#   - Maintain PowerShell 7+ native operation preferences
 #   - Preserve comprehensive error handling and logging patterns
 #   - Keep action-focused logging for user-facing operations
 # AI_PERFORMANCE_PATTERNS: O(1) lookups, parallel processing, native PS7.5 cmdlets, smart caching, batch operations
