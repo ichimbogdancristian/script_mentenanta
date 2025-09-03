@@ -319,7 +319,7 @@ $global:ScriptTasks = @(
                 Write-Host 'Event Log Analysis skipped by configuration.' -ForegroundColor Yellow
                 return $false
             } 
-        }; Description = 'Survey Event Viewer and CBS logs for errors from last 96 hours' 
+        }; Description = 'Survey Event Viewer and CBS logs for errors only (no warnings) from last 96 hours' 
     },
 
     # ================================================================
@@ -2862,16 +2862,15 @@ function Get-EventLogAnalysis {
     # ===============================
     # AI_TASK_HEADER: EventLogAnalysis (Event Viewer and CBS Log Survey)
     # ===============================
-    # AI_PURPOSE: Comprehensive error analysis from Event Viewer and CBS logs (last 96 hours)
+    # AI_PURPOSE: Comprehensive error analysis from Event Viewer and CBS logs (last 96 hours) - errors only
     # AI_ENVIRONMENT: Windows 10/11, any user context, system log file access required
-    # AI_LOGIC: Event log querying, CBS file parsing, time-based filtering, detailed error reporting
-    # AI_PERFORMANCE: Optimized queries with time filters, selective log parsing, efficient processing
+    # AI_LOGIC: Event log querying for critical/error events only, CBS/DISM file parsing for errors only
+    # AI_PERFORMANCE: Optimized queries with time and error-level filters, selective log parsing, efficient processing
     # ===============================
     Write-Log "Starting Event Log and CBS Log Analysis - Last 96 Hours" 'INFO'
     
     $startTime = (Get-Date).AddHours(-96)
     $errorCount = 0
-    $warningCount = 0
     
     try {
         # === Event Viewer Analysis ===
@@ -2884,10 +2883,10 @@ function Get-EventLogAnalysis {
             try {
                 Write-Log "[EventLogAnalysis] Checking $logName event log..." 'VERBOSE'
                 
-                # Get error and warning events from the last 96 hours
+                # Get only critical and error events from the last 96 hours (excluding warnings)
                 $events = Get-WinEvent -FilterHashtable @{
                     LogName   = $logName
-                    Level     = @(1, 2, 3)  # Critical, Error, Warning
+                    Level     = @(1, 2)  # Critical and Error only (excluding Level 3 warnings)
                     StartTime = $startTime
                 } -ErrorAction SilentlyContinue | Sort-Object TimeCreated -Descending
                 
@@ -2896,13 +2895,12 @@ function Get-EventLogAnalysis {
                         $levelText = switch ($evt.Level) {
                             1 { 'CRITICAL'; $errorCount++ }
                             2 { 'ERROR'; $errorCount++ }
-                            3 { 'WARNING'; $warningCount++ }
                             default { 'INFO' }
                         }
                         $eventDetails = "[$logName] $levelText - ID:$($evt.Id) - $($evt.TimeCreated) - Source:$($evt.ProviderName) - Message:$($evt.Message -replace '[\r\n]+', ' ' | Out-String -Stream | Select-Object -First 200)"
                         Write-Log $eventDetails 'WARN'
                     }
-                    Write-Log "[EventLogAnalysis] Found $($events.Count) error/warning events in $logName log" 'INFO'
+                    Write-Log "[EventLogAnalysis] Found $($events.Count) critical/error events in $logName log" 'INFO'
                 }
                 else {
                     Write-Log "[EventLogAnalysis] No error/warning events found in $logName log since $startTime" 'INFO'
@@ -2925,8 +2923,10 @@ function Get-EventLogAnalysis {
                     return
                 }
                 $cbsErrors = $cbsContent | Where-Object { 
-                    $_ -match '\[SR\]|\[FATAL\]|\[ERROR\]|\[WARN\]' -and
-                    $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}' 
+                    # Only match ERROR and FATAL entries, excluding WARN entries
+                    $_ -match '\[SR\]|\[FATAL\]|\[ERROR\]' -and
+                    $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}' -and
+                    $_ -notmatch '\[WARN\]'
                 }
                 
                 foreach ($cbsLine in $cbsErrors) {
@@ -2935,8 +2935,7 @@ function Get-EventLogAnalysis {
                         try {
                             $cbsTimestamp = [DateTime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
                             if ($cbsTimestamp -ge $startTime) {
-                                $cbsLogType = if ($cbsLine -match '\[FATAL\]|\[ERROR\]') { 'ERROR'; $errorCount++ } 
-                                elseif ($cbsLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
+                                $cbsLogType = if ($cbsLine -match '\[FATAL\]|\[ERROR\]|\[SR\]') { 'ERROR'; $errorCount++ } 
                                 else { 'INFO' }
                                 Write-Log "[CBS] $cbsLogType - $cbsTimestamp - $($cbsLine.Trim())" 'WARN'
                             }
@@ -2969,8 +2968,10 @@ function Get-EventLogAnalysis {
                     return
                 }
                 $dismErrors = $dismContent | Where-Object { 
-                    $_ -match '\[ERROR\]|\[FATAL\]|\[WARN\]' -and
-                    $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
+                    # Only match ERROR and FATAL entries, excluding WARN entries
+                    $_ -match '\[ERROR\]|\[FATAL\]' -and
+                    $_ -match '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}' -and
+                    $_ -notmatch '\[WARN\]'
                 }
                 
                 foreach ($dismLine in $dismErrors) {
@@ -2978,9 +2979,7 @@ function Get-EventLogAnalysis {
                         try {
                             $dismTimestamp = [DateTime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss', $null)
                             if ($dismTimestamp -ge $startTime) {
-                                $dismLogType = if ($dismLine -match '\[FATAL\]|\[ERROR\]') { 'ERROR'; $errorCount++ } 
-                                elseif ($dismLine -match '\[WARN\]') { 'WARNING'; $warningCount++ }
-                                else { 'INFO' }
+                                $dismLogType = 'ERROR'; $errorCount++
                                 Write-Log "[DISM] $dismLogType - $dismTimestamp - $($dismLine.Trim())" 'WARN'
                             }
                         }
@@ -3000,16 +2999,13 @@ function Get-EventLogAnalysis {
         }
         
         # === Summary ===
-        Write-Log "[EventLogAnalysis] SUMMARY: Found $errorCount errors and $warningCount warnings in the last 96 hours" 'INFO'
+        Write-Log "[EventLogAnalysis] SUMMARY: Found $errorCount errors in the last 96 hours" 'INFO'
         
-        if ($errorCount -eq 0 -and $warningCount -eq 0) {
+        if ($errorCount -eq 0) {
             Write-Host "✅ Event Log Analysis: No critical errors found in the last 96 hours" -ForegroundColor Green
         }
-        elseif ($errorCount -eq 0) {
-            Write-Host "⚠️ Event Log Analysis: $warningCount warnings found, no critical errors" -ForegroundColor Yellow  
-        }
         else {
-            Write-Host "⚠️ Event Log Analysis: $errorCount errors and $warningCount warnings found" -ForegroundColor Red
+            Write-Host "⚠️ Event Log Analysis: $errorCount errors found" -ForegroundColor Red
         }
         
     }
