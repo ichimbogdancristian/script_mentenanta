@@ -484,9 +484,36 @@ $global:ScriptTasks = @(
             } 
         }; Description = 'Hide taskbar elements and disable web search for local-only Start menu search' 
     },
+    
+    # ================================================================
+    # [A.2.10] COPILOT_TASK: DesktopBackground
+    # ================================================================
+    # COPILOT_TASK_ID: DesktopBackground
+    # Purpose: Change desktop background from Windows Spotlight to personalized slideshow.
+    # Environment: Windows 10/11, any user context, registry and filesystem access
+    # Logic: Slideshow directory creation, wallpaper configuration, theme settings
+    # Dependencies: Registry access, filesystem access, Windows theme capabilities
+    # Function Location: [C.7] Lines 3783-3897
+    # ================================================================
+    @{ Name = 'DesktopBackground'; Function = { 
+            Write-Log 'Starting Desktop Background Configuration task.' 'INFO'
+            Write-Host 'Starting Desktop Background Configuration task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipDesktopBackground) { 
+                Set-DesktopBackground
+                Write-Log 'Completed Desktop Background Configuration task.' 'INFO'
+                Write-Host 'Completed Desktop Background Configuration task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'Desktop Background Configuration skipped by configuration.' 'INFO'
+                Write-Host 'Desktop Background Configuration skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
+        }; Description = 'Change desktop background from Windows Spotlight to personalized slideshow' 
+    },
 
     # ================================================================
-    # [A.2.10] COPILOT_TASK: SecurityHardening
+    # [A.2.11] COPILOT_TASK: SecurityHardening
     # ================================================================
     # COPILOT_TASK_ID: SecurityHardening
     # Purpose: Enable essential Windows security features while preserving SMB and authentication.
@@ -837,6 +864,7 @@ $global:Config = @{
     SkipEventLogAnalysis    = $false
     SkipSecurityHardening   = $false
     SkipTaskbarOptimization = $false
+    SkipDesktopBackground   = $false
     SkipPendingRestartCheck = $false
     CustomEssentialApps     = @()
     CustomBloatwareList     = @()
@@ -855,6 +883,7 @@ if (Test-Path $configPath) {
         if ($config.SkipEventLogAnalysis) { $global:Config.SkipEventLogAnalysis = $config.SkipEventLogAnalysis }
         if ($config.SkipSecurityHardening) { $global:Config.SkipSecurityHardening = $config.SkipSecurityHardening }
         if ($config.SkipTaskbarOptimization) { $global:Config.SkipTaskbarOptimization = $config.SkipTaskbarOptimization }
+        if ($config.SkipDesktopBackground) { $global:Config.SkipDesktopBackground = $config.SkipDesktopBackground }
         if ($config.SkipPendingRestartCheck) { $global:Config.SkipPendingRestartCheck = $config.SkipPendingRestartCheck }
         if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
         if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
@@ -3780,6 +3809,184 @@ function Disable-Telemetry {
     Write-Log "[END] Disable Telemetry" 'INFO'
 }
 
+### AI_MAINTENANCE_TASK: Desktop Background Customization
+# AI_TASK_ID: Set-DesktopBackground
+# AI_PURPOSE: Change desktop background from Windows Spotlight to custom slideshow
+# AI_ENVIRONMENT: Windows 10/11, any user context, registry modification access
+# AI_LOGIC: Registry-based wallpaper configuration, folder creation, default image paths
+# AI_DEPENDENCIES: Registry access, filesystem access
+function Set-DesktopBackground {
+    # ===============================
+    # AI_TASK_HEADER: DesktopBackground (Personalization)
+    # ===============================
+    # AI_PURPOSE: Change desktop background from Windows Spotlight to personalized slideshow
+    # AI_ENVIRONMENT: Windows 10/11, any user context, registry-based configuration
+    # AI_LOGIC: Registry modifications for wallpaper settings, slideshow folder creation
+    # AI_PERFORMANCE: Fast registry operations, minimal filesystem operations
+    # ===============================
+    Write-Log "Starting Desktop Background Configuration - Changing from Spotlight to Slideshow" 'INFO'
+    
+    $bgActions = 0
+    $bgErrors = 0
+    $bgResults = @()
+    
+    # Create slideshow directory if it doesn't exist
+    $slideshowPath = "$env:USERPROFILE\Pictures\Wallpapers"
+    if (-not (Test-Path $slideshowPath)) {
+        try {
+            Write-Log "Creating slideshow directory at $slideshowPath" 'INFO'
+            New-Item -Path $slideshowPath -ItemType Directory -Force | Out-Null
+            Write-Host "✓ Created slideshow directory" -ForegroundColor Green
+            $bgActions++
+            $bgResults += "Directory Creation: SUCCESS"
+        }
+        catch {
+            Write-Host "✗ Failed to create slideshow directory: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "Failed to create slideshow directory: $_" 'ERROR'
+            $bgErrors++
+            $bgResults += "Directory Creation: FAILED"
+        }
+    }
+    else {
+        Write-Log "Slideshow directory already exists at $slideshowPath" 'INFO'
+        $bgResults += "Directory: ALREADY EXISTS"
+    }
+    
+    # Copy default wallpapers if directory is empty
+    $defaultWallpapers = @(
+        "$env:windir\Web\Wallpaper\Theme1\*.*",
+        "$env:windir\Web\Wallpaper\Windows\*.*"
+    )
+    
+    $existingFiles = Get-ChildItem -Path $slideshowPath -Filter "*.jpg" -File -ErrorAction SilentlyContinue
+    if (-not $existingFiles -or $existingFiles.Count -eq 0) {
+        Write-Log "Copying default wallpapers to slideshow directory" 'INFO'
+        try {
+            foreach ($wallpaperPath in $defaultWallpapers) {
+                $files = Get-ChildItem -Path $wallpaperPath -Filter "*.jpg" -File -ErrorAction SilentlyContinue
+                if ($files) {
+                    foreach ($file in $files) {
+                        Copy-Item -Path $file.FullName -Destination $slideshowPath -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+            $copiedFiles = Get-ChildItem -Path $slideshowPath -Filter "*.jpg" -File -ErrorAction SilentlyContinue
+            Write-Host "✓ Copied $($copiedFiles.Count) default wallpapers" -ForegroundColor Green
+            Write-Log "Copied $($copiedFiles.Count) default wallpapers to slideshow directory" 'INFO'
+            $bgActions++
+            $bgResults += "Default Wallpapers: COPIED ($($copiedFiles.Count))"
+        }
+        catch {
+            Write-Host "✗ Failed to copy default wallpapers: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "Failed to copy default wallpapers: $_" 'ERROR'
+            $bgErrors++
+            $bgResults += "Default Wallpapers: FAILED"
+        }
+    }
+    else {
+        Write-Log "Slideshow directory already contains $($existingFiles.Count) wallpapers" 'INFO'
+        $bgResults += "Wallpapers: ALREADY PRESENT ($($existingFiles.Count))"
+    }
+    
+    # Set desktop background to slideshow via registry
+    Write-Log "Configuring desktop background to slideshow..." 'INFO'
+    try {
+        $personalizeRegPath = "HKCU:\Control Panel\Personalization\Desktop Slideshow"
+        if (-not (Test-Path $personalizeRegPath)) {
+            New-Item -Path $personalizeRegPath -Force | Out-Null
+        }
+        
+        # Set slideshow settings
+        Set-ItemProperty -Path $personalizeRegPath -Name "Interval" -Value 1800000 -Type DWord -Force # 30 minutes
+        Set-ItemProperty -Path $personalizeRegPath -Name "Shuffle" -Value 1 -Type DWord -Force # Enable shuffle
+        
+        # Set main desktop background settings
+        $desktopRegPath = "HKCU:\Control Panel\Desktop"
+        Set-ItemProperty -Path $desktopRegPath -Name "WallpaperStyle" -Value 10 -Type String -Force # Fill
+        Set-ItemProperty -Path $desktopRegPath -Name "TileWallpaper" -Value 0 -Type String -Force
+        
+        # Configure wallpaper slideshow
+        $personalizationRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        if (-not (Test-Path $personalizationRegPath)) {
+            New-Item -Path $personalizationRegPath -Force | Out-Null
+        }
+        
+        # Disable Windows Spotlight
+        Set-ItemProperty -Path $personalizationRegPath -Name "EnableTransparency" -Value 1 -Type DWord -Force
+        
+        # Set slideshow as wallpaper source
+        $backgroundRegPath = "HKCU:\Control Panel\Personalization\Desktop Background"
+        if (-not (Test-Path $backgroundRegPath)) {
+            New-Item -Path $backgroundRegPath -Force | Out-Null
+        }
+        
+        # Set background type to slideshow
+        Set-ItemProperty -Path $backgroundRegPath -Name "BackgroundType" -Value 2 -Type DWord -Force # Slideshow
+        
+        # Apply slideshow path using SystemParametersInfo
+        $wallpaperPath = "$slideshowPath"
+        
+        # Create .theme file to apply slideshow
+        $themeContent = @"
+; Copyright © Microsoft Corp.
+
+[Theme]
+DisplayName=Custom Slideshow Theme
+
+[Control Panel\Desktop]
+Wallpaper=$wallpaperPath
+WallpaperStyle=10
+TileWallpaper=0
+
+[Slideshow]
+Interval=1800000
+Shuffle=1
+ImagesRootPath=$wallpaperPath
+"@
+        
+        $themePath = Join-Path $env:TEMP "CustomSlideshow.theme"
+        $themeContent | Out-File -FilePath $themePath -Encoding Unicode -Force
+        
+        # Apply the theme using rundll32
+        Start-Process -FilePath "rundll32.exe" -ArgumentList "desk.cpl,InstallScreenSaver $themePath" -NoNewWindow -Wait
+        
+        Write-Host "✓ Desktop background set to slideshow" -ForegroundColor Green
+        Write-Log "Desktop background successfully configured to slideshow" 'INFO'
+        $bgActions++
+        $bgResults += "Slideshow Configuration: SUCCESS"
+    }
+    catch {
+        Write-Host "✗ Failed to configure desktop background: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to configure desktop background: $_" 'ERROR'
+        $bgErrors++
+        $bgResults += "Slideshow Configuration: FAILED"
+    }
+    
+    # Results Summary
+    Write-Log "Desktop background configuration completed: $bgActions actions, $bgErrors errors" 'INFO'
+    Write-Host "📊 Desktop Background Configuration Summary:" -ForegroundColor Cyan
+    foreach ($result in $bgResults) {
+        if ($result -match "FAILED") {
+            Write-Host "  ✗ $result" -ForegroundColor Red
+        }
+        elseif ($result -match "ALREADY") {
+            Write-Host "  ○ $result" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "  ✓ $result" -ForegroundColor Green
+        }
+    }
+    
+    if ($bgActions -gt 0) {
+        Write-Log "Desktop background configuration completed successfully with $bgActions changes applied" 'INFO'
+        Write-Host "✅ Desktop background changed from Windows Spotlight to personalized slideshow" -ForegroundColor Green
+    }
+    else {
+        Write-Log "Desktop background configuration completed with no changes applied" 'WARN'
+        Write-Host "⚠️ No desktop background changes were applied" -ForegroundColor Yellow
+    }
+}
+
 ### AI_MAINTENANCE_TASK: Windows Security Hardening
 # AI_TASK_ID: Optimize-Taskbar
 # AI_PURPOSE: Optimize Windows interface by hiding taskbar elements and disabling web search in Start menu
@@ -3944,7 +4151,76 @@ function Optimize-Taskbar {
         $taskbarErrors++
     }
 
-    # 6. Restart Windows Explorer to apply changes
+    # 6. Disable News and Interests / Widgets Feed (Windows 10 20H2+ and Windows 11)
+    Write-Log "Disabling News and Interests/Widgets on taskbar..." 'INFO'
+    try {
+        # Windows 10 - News and Interests settings
+        if ($isWindows10) {
+            # Primary registry path for News and Interests in Windows 10
+            $newsRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Feeds"
+            if (-not (Test-Path $newsRegPath)) {
+                New-Item -Path $newsRegPath -Force | Out-Null
+            }
+            
+            # Disable News and Interests feed (value 2 = completely disabled)
+            Set-ItemProperty -Path $newsRegPath -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+            
+            # Disable "Show icon and text" option
+            if (-not (Get-ItemProperty -Path $newsRegPath -Name "ShellFeedsTaskbarOpenOnHover" -ErrorAction SilentlyContinue)) {
+                New-ItemProperty -Path $newsRegPath -Name "ShellFeedsTaskbarOpenOnHover" -Value 0 -PropertyType DWord -Force | Out-Null
+            } 
+            else {
+                Set-ItemProperty -Path $newsRegPath -Name "ShellFeedsTaskbarOpenOnHover" -Value 0 -Force
+            }
+        }
+        
+        # Windows 11 and Windows 10 - Additional settings
+        $taskbarRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+        if (-not (Test-Path $taskbarRegPath)) {
+            New-Item -Path $taskbarRegPath -Force | Out-Null
+        }
+        
+        if ($isWindows11) {
+            # Windows 11 - Disable Widgets button (already covered in step 3 but making sure)
+            Set-ItemProperty -Path $taskbarRegPath -Name "TaskbarDa" -Value 0 -Type DWord -Force
+        } 
+        else {
+            # Windows 10 - Set News and Interests to disabled
+            if (-not (Get-ItemProperty -Path $taskbarRegPath -Name "ShowNewsAndInterests" -ErrorAction SilentlyContinue)) {
+                New-ItemProperty -Path $taskbarRegPath -Name "ShowNewsAndInterests" -Value 0 -PropertyType DWord -Force | Out-Null
+            }
+            else {
+                Set-ItemProperty -Path $taskbarRegPath -Name "ShowNewsAndInterests" -Value 0 -Force
+            }
+        }
+        
+        # Group Policy equivalent registry setting - works on both Windows 10 and 11
+        $policyRegPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
+        if (-not (Test-Path $policyRegPath)) {
+            New-Item -Path $policyRegPath -Force | Out-Null
+        }
+        Set-ItemProperty -Path $policyRegPath -Name "EnableFeeds" -Value 0 -Type DWord -Force
+        
+        # Additional policy setting to disable News and Interests
+        $dssRegPath = "HKLM:\SOFTWARE\Policies\Microsoft\Dss"
+        if (-not (Test-Path $dssRegPath)) {
+            New-Item -Path $dssRegPath -Force | Out-Null
+        }
+        Set-ItemProperty -Path $dssRegPath -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force
+        
+        Write-Host "✓ News and Interests/Widgets disabled on taskbar" -ForegroundColor Green
+        Write-Log "News and Interests/Widgets disabled successfully" 'INFO'
+        $taskbarResults += "News and Interests: DISABLED"
+        $taskbarActions++
+    }
+    catch {
+        Write-Host "✗ Failed to disable News and Interests/Widgets: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Failed to disable News and Interests/Widgets: $_" 'ERROR'
+        $taskbarResults += "News and Interests: FAILED"
+        $taskbarErrors++
+    }
+
+    # 7. Restart Windows Explorer to apply changes
     Write-Log "Restarting Windows Explorer to apply taskbar and search changes..." 'INFO'
     try {
         $explorerProcesses = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
