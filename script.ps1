@@ -4725,10 +4725,12 @@ function Protect-SystemRestore {
                         }
                         else {
                             Write-Log "[SystemRestore] SystemRestoreConfig CIM class not found" 'VERBOSE'
+                            Write-Log "[SystemRestore] VSSAdmin output: $($vssOutput -join '\n')" 'VERBOSE'
                         }
                     }
                     else {
                         Write-Log "[SystemRestore] VSSAdmin not available or failed" 'VERBOSE'
+                        Write-Log "[SystemRestore] VSSAdmin output: $($vssOutput -join '\n')" 'VERBOSE'
                     }
                 }
                 catch {
@@ -4747,6 +4749,7 @@ function Protect-SystemRestore {
             else {
                 Write-Host "✗ Failed to enable System Restore" -ForegroundColor Red
                 Write-Log "All methods to enable System Restore failed" 'ERROR'
+                Write-Log "[SystemRestore] Last VSSAdmin output: $($vssOutput -join '\n')" 'ERROR'
                 return
             }
         }
