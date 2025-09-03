@@ -3887,14 +3887,39 @@ function Set-DesktopBackground {
     # Set desktop background to slideshow via registry
     Write-Log "Configuring desktop background to slideshow..." 'INFO'
     try {
+        # Disable Windows Spotlight completely (both methods for better compatibility)
+        Write-Log "Disabling Windows Spotlight..." 'INFO'
+        
+        # Method 1: Windows Settings App Registry
+        $spotlightRegPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+        if (-not (Test-Path $spotlightRegPath)) {
+            New-Item -Path $spotlightRegPath -Force | Out-Null
+        }
+        
+        # Disable all Spotlight features
+        Set-ItemProperty -Path $spotlightRegPath -Name "RotatingLockScreenEnabled" -Value 0 -Type DWord -Force
+        Set-ItemProperty -Path $spotlightRegPath -Name "RotatingLockScreenOverlayEnabled" -Value 0 -Type DWord -Force
+        Set-ItemProperty -Path $spotlightRegPath -Name "SubscribedContent-338387Enabled" -Value 0 -Type DWord -Force
+        
+        # Method 2: Spotlight Service Registry
+        $spotlightServicePath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Lock Screen\Creative"
+        if (Test-Path $spotlightServicePath) {
+            Set-ItemProperty -Path $spotlightServicePath -Name "LandscapeAssetPath" -Value "" -Type String -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $spotlightServicePath -Name "PortraitAssetPath" -Value "" -Type String -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $spotlightServicePath -Name "HotspotImageFolderPath" -Value "" -Type String -Force -ErrorAction SilentlyContinue
+            Set-ItemProperty -Path $spotlightServicePath -Name "CreativeId" -Value "" -Type String -Force -ErrorAction SilentlyContinue
+        }
+        
+        # Configure slideshow settings
         $personalizeRegPath = "HKCU:\Control Panel\Personalization\Desktop Slideshow"
         if (-not (Test-Path $personalizeRegPath)) {
             New-Item -Path $personalizeRegPath -Force | Out-Null
         }
         
-        # Set slideshow settings
+        # Set slideshow settings with enhanced options
         Set-ItemProperty -Path $personalizeRegPath -Name "Interval" -Value 1800000 -Type DWord -Force # 30 minutes
         Set-ItemProperty -Path $personalizeRegPath -Name "Shuffle" -Value 1 -Type DWord -Force # Enable shuffle
+        Set-ItemProperty -Path $personalizeRegPath -Name "FolderPath" -Value $slideshowPath -Type ExpandString -Force
         
         # Set main desktop background settings
         $desktopRegPath = "HKCU:\Control Panel\Desktop"
@@ -3907,8 +3932,10 @@ function Set-DesktopBackground {
             New-Item -Path $personalizationRegPath -Force | Out-Null
         }
         
-        # Disable Windows Spotlight
+        # Enable transparency effects for compatibility with slideshow
         Set-ItemProperty -Path $personalizationRegPath -Name "EnableTransparency" -Value 1 -Type DWord -Force
+        # Ensure dark/light mode is properly set for best slideshow visibility
+        Set-ItemProperty -Path $personalizationRegPath -Name "AppsUseLightTheme" -Value 1 -Type DWord -Force
         
         # Set slideshow as wallpaper source
         $backgroundRegPath = "HKCU:\Control Panel\Personalization\Desktop Background"
@@ -3916,8 +3943,9 @@ function Set-DesktopBackground {
             New-Item -Path $backgroundRegPath -Force | Out-Null
         }
         
-        # Set background type to slideshow
-        Set-ItemProperty -Path $backgroundRegPath -Name "BackgroundType" -Value 2 -Type DWord -Force # Slideshow
+        # Set background type to slideshow (2)
+        Set-ItemProperty -Path $backgroundRegPath -Name "BackgroundType" -Value 2 -Type DWord -Force
+        Set-ItemProperty -Path $backgroundRegPath -Name "SlideShowSource" -Value $slideshowPath -Type String -Force
         
         # Apply slideshow path using SystemParametersInfo
         $wallpaperPath = "$slideshowPath"
@@ -3943,13 +3971,72 @@ ImagesRootPath=$wallpaperPath
         $themePath = Join-Path $env:TEMP "CustomSlideshow.theme"
         $themeContent | Out-File -FilePath $themePath -Encoding Unicode -Force
         
-        # Apply the theme using rundll32
+        # Apply the theme using rundll32 (silently)
         Start-Process -FilePath "rundll32.exe" -ArgumentList "desk.cpl,InstallScreenSaver $themePath" -NoNewWindow -Wait
+        
+        # Additional method to set wallpaper using P/Invoke for greater reliability
+        try {
+            # Add P/Invoke for SystemParametersInfo
+            Add-Type -TypeDefinition @"
+                using System;
+                using System.Runtime.InteropServices;
+                
+                public class Wallpaper {
+                    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+                    public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+                }
+"@ -ErrorAction SilentlyContinue
+
+            # Define SPI constants
+            $SPI_SETDESKWALLPAPER = 0x0014
+            $SPIF_UPDATEINIFILE = 0x01
+            $SPIF_SENDCHANGE = 0x02
+            
+            # Set the first wallpaper from the directory
+            $firstWallpaper = Get-ChildItem -Path $slideshowPath -Filter "*.jpg" -File | Select-Object -First 1
+            if ($firstWallpaper) {
+                $firstWallpaperPath = $firstWallpaper.FullName
+                [Wallpaper]::SystemParametersInfo($SPI_SETDESKWALLPAPER, 0, $firstWallpaperPath, $SPIF_UPDATEINIFILE -bor $SPIF_SENDCHANGE) | Out-Null
+                Write-Log "Applied initial wallpaper from slideshow directory" 'INFO'
+            }
+        }
+        catch {
+            Write-Log "P/Invoke method for wallpaper setting failed (non-critical): $_" 'WARN'
+        }
+        
+        # Force update desktop settings (reset explorer for wallpaper refresh)
+        try {
+            # Send a message to update desktop settings
+            $signature = @'
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SetSysColors(int cElements, int[] lpaElements, int[] lpaRgbValues);
+            [DllImport("user32.dll", SetLastError = true)]
+            public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+'@
+
+            Add-Type -MemberDefinition $signature -Name Win32Utils -Namespace Win32 -ErrorAction SilentlyContinue
+            
+            # Update desktop colors (forces wallpaper refresh)
+            $elements = @(1)
+            $colors = @(0)
+            [Win32.Win32Utils]::SetSysColors(1, $elements, $colors) | Out-Null
+            
+            $HWND_BROADCAST = [IntPtr]0xffff
+            $WM_SETTINGCHANGE = 0x001A
+            $result = [IntPtr]::Zero
+            [Win32.Win32Utils]::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [IntPtr]::Zero, [IntPtr]::Zero, 2, 5000, [ref]$result) | Out-Null
+        }
+        catch {
+            Write-Log "Explorer refresh method failed (non-critical): $_" 'WARN'
+        }
         
         Write-Host "✓ Desktop background set to slideshow" -ForegroundColor Green
         Write-Log "Desktop background successfully configured to slideshow" 'INFO'
         $bgActions++
         $bgResults += "Slideshow Configuration: SUCCESS"
+        $bgResults += "Spotlight: DISABLED"
     }
     catch {
         Write-Host "✗ Failed to configure desktop background: $($_.Exception.Message)" -ForegroundColor Red
