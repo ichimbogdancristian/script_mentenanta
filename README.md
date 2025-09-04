@@ -1,3 +1,13 @@
+## Project Structure & Refactoring (2025 Edition)
+
+### Key Updates (2025)
+- Legacy self-update logic fully removed from both scripts
+- All logging now uses robust timestamping (LOG_TIMESTAMP)
+- script.bat: Only handles environment, dependencies, repo update, and launching
+- script.ps1: Only handles maintenance, reporting, and analytics
+- No redundant admin, version, or dependency checks in script.ps1
+- All status messages are current and relevant; no legacy or comparison messages
+
 
 # 🚀 Windows Maintenance Script (2025 Edition)
 
@@ -86,10 +96,10 @@ script_mentenanta/
 ├── maintenance.log               # 📝 Runtime Log (created by launcher)
 ├── maintenance_report.txt        # 📊 Detailed Execution Report
 ├── config.json                   # ⚙️ Optional Configuration (auto-created)
-├── inventory.json               # 📋 System Inventory Export
+├── inventory.json                # 📋 System Inventory Export
 └── temp_files/                   # 📁 Temporary Analysis Files
-    ├── bloatware.json            # 🗑️ Bloatware Detection Results
-    └── essential_apps.json       # 📦 Essential Apps Analysis
+  ├── bloatware.json            # 🗑️ Bloatware Detection Results
+  └── essential_apps.json       # 📦 Essential Apps Analysis
 ```
 
 ### 🔄 **Enhanced Execution Flow**

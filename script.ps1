@@ -388,10 +388,8 @@ $global:ScriptTasks = @(
     # ================================================================
     @{ Name = 'UpdateAllPackages'; Function = { 
             Write-Log 'Starting Package Updates task.' 'INFO'
-            Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
             Update-AllPackages
             Write-Log 'Completed Package Updates task.' 'INFO'
-            Write-Host 'Completed Package Updates task.' -ForegroundColor Green
             return $true
         }; Description = 'Ultra-parallel package updates with performance optimization' 
     },
@@ -408,13 +406,11 @@ $global:ScriptTasks = @(
     # ================================================================
     @{ Name = 'WindowsUpdateCheck'; Function = {
             Write-Log 'Starting Windows Updates check task.' 'INFO'
-            Write-Host 'Starting Windows Updates check task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipWindowsUpdates) {
                 Write-Log 'Initiating Windows Updates check and installation.' 'INFO'
                 $success = Install-WindowsUpdatesCompatible
                 if ($success) {
                     Write-Log 'Windows Updates completed successfully.' 'INFO'
-                    Write-Host 'Completed Windows Updates check task.' -ForegroundColor Green
                     return $true
                 }
                 else {
@@ -678,15 +674,19 @@ $global:ScriptTasks = @(
             # Run Delivery Optimization cache cleanup only if service exists
             if (Get-Service -Name dosvc -ErrorAction SilentlyContinue) {
                 try {
-                    $doProc = Start-Process -FilePath 'dosvc.exe' -ArgumentList '/Cleanup' -WindowStyle Hidden -Wait -PassThru
-                    if ($doProc.ExitCode -eq 0) {
+                    if (Get-Command Clear-DeliveryOptimizationCache -ErrorAction SilentlyContinue) {
+                        Clear-DeliveryOptimizationCache -ErrorAction SilentlyContinue
                         Write-Log 'Delivery Optimization cache cleanup completed successfully.' 'INFO'
+                    } else {
+                        $doCachePath = 'C:\Windows\SoftwareDistribution\DeliveryOptimization'
+                        if (Test-Path $doCachePath) {
+                            Remove-Item "$doCachePath\*" -Recurse -Force -ErrorAction SilentlyContinue
+                            Write-Log 'Delivery Optimization cache folder cleaned manually.' 'INFO'
+                        } else {
+                            Write-Log 'Delivery Optimization cache folder not found.' 'WARN'
+                        }
                     }
-                    else {
-                        Write-Log "Delivery Optimization cleanup exited with error code $($doProc.ExitCode)." 'WARN'
-                    }
-                }
-                catch {
+                } catch {
                     Write-Log "Delivery Optimization cleanup failed: $_" 'WARN'
                 }
             }
@@ -1176,7 +1176,7 @@ function Install-WindowsUpdatesCompatible {
             
             try {
                 # Batch install: Install all updates with comprehensive error handling - FULLY UNATTENDED
-                $installResults = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+                $installResults = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                 
                 if ($installResults) {
                     foreach ($result in $installResults) {
@@ -2653,7 +2653,7 @@ function Update-AllPackages {
     while ($updateJobs.Count -gt 0 -and (Get-Date).Subtract($startTime).TotalSeconds -lt $jobTimeout) {
         Start-Sleep -Milliseconds 500  # Check every 500ms
         
-        foreach ($job in $updateJobs.ToArray()) {
+    foreach ($job in @($updateJobs)) {
             if ($job.State -eq 'Completed') {
                 $completedJobs += $job
                 $updateJobs = $updateJobs | Where-Object { $_.Id -ne $job.Id }
@@ -2726,9 +2726,9 @@ function Update-AllPackages {
     }
 
     # Convert concurrent collections to arrays for enhanced reporting
-    $successArray = @($successfulUpdates.ToArray())
-    $failedArray = @($failedUpdates.ToArray())
-    $noUpdatesArray = @($noUpdatesAvailable.ToArray())
+    $successArray = @($successfulUpdates)
+    $failedArray = @($failedUpdates)
+    $noUpdatesArray = @($noUpdatesAvailable)
 
     # Enhanced action-only logging with performance metrics
     if ($successArray.Count -gt 0) {
@@ -3004,7 +3004,7 @@ function Remove-Bloatware {
                 }
             }
         }
-        return $results.ToArray()
+    return @($results)
     } -ThrottleLimit 8
     
     # Merge results into lookup dictionary
@@ -3213,7 +3213,7 @@ function Remove-Bloatware {
     }
     
     # Convert to array for processing
-    $removedArray = @($removedApps.ToArray())
+    $removedArray = @($removedApps)
     
     # ACTION-ONLY LOGGING: Only show what was actually removed
     if ($removedArray.Count -gt 0) {
@@ -3433,7 +3433,11 @@ function Disable-Telemetry {
     # Combine all detected browsers
     foreach ($result in $detectionResults) {
         foreach ($browser in $result.Browsers) {
-            $installedBrowsers.Add($browser) | Out-Null
+            if ($browser -is [string]) {
+                $installedBrowsers.Add($browser) | Out-Null
+            } elseif ($browser) {
+                $installedBrowsers.Add([string]$browser) | Out-Null
+            }
         }
     }
     
@@ -4185,7 +4189,11 @@ function Optimize-Taskbar {
             }
             
             # Disable News and Interests feed (value 2 = completely disabled)
-            Set-ItemProperty -Path $newsRegPath -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+            try {
+                Set-ItemProperty -Path $newsRegPath -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+            } catch {
+                Write-Log "Failed to set ShellFeedsTaskbarViewMode: $_" 'WARN'
+            }
             
             # Disable "Show icon and text" option
             if (-not (Get-ItemProperty -Path $newsRegPath -Name "ShellFeedsTaskbarOpenOnHover" -ErrorAction SilentlyContinue)) {
@@ -4506,19 +4514,24 @@ function Enable-SecurityHardening {
                 }
             } else {
                 # No Group Policy override, try to set secure policy
-                Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction Stop
-                
-                # Verify the change took effect
-                $newPolicy = Get-ExecutionPolicy
-                if ($newPolicy -eq 'RemoteSigned') {
-                    Write-Host "✓ PowerShell execution policy set to RemoteSigned" -ForegroundColor Green
-                    Write-Log "[SecurityHardening] PowerShell execution policy set to RemoteSigned" 'INFO'
-                    $hardeningResults += "PowerShell Execution Policy: SECURE (RemoteSigned)"
-                    $securityActions++
-                } else {
-                    Write-Host "⚠️ PowerShell execution policy change may not have taken effect (current: $newPolicy)" -ForegroundColor Yellow
-                    Write-Log "[SecurityHardening] PowerShell execution policy change verification failed (current: $newPolicy)" 'WARN'
-                    $hardeningResults += "PowerShell Execution Policy: UNCERTAIN (Set to RemoteSigned, current: $newPolicy)"
+                try {
+                    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction Stop
+                    # Verify the change took effect
+                    $newPolicy = Get-ExecutionPolicy
+                    if ($newPolicy -eq 'RemoteSigned') {
+                        Write-Host "✓ PowerShell execution policy set to RemoteSigned" -ForegroundColor Green
+                        Write-Log "[SecurityHardening] PowerShell execution policy set to RemoteSigned" 'INFO'
+                        $hardeningResults += "PowerShell Execution Policy: SECURE (RemoteSigned)"
+                        $securityActions++
+                    } else {
+                        Write-Host "⚠️ PowerShell execution policy change may not have taken effect (current: $newPolicy)" -ForegroundColor Yellow
+                        Write-Log "[SecurityHardening] PowerShell execution policy change verification failed (current: $newPolicy)" 'WARN'
+                        $hardeningResults += "PowerShell Execution Policy: UNCERTAIN (Set to RemoteSigned, current: $newPolicy)"
+                    }
+                } catch {
+                    Write-Host "✗ Failed to configure PowerShell execution policy: $_" -ForegroundColor Red
+                    Write-Log "[SecurityHardening] Failed to configure PowerShell execution policy: $_" 'ERROR'
+                    $hardeningResults += "PowerShell Execution Policy: FAILED ($_)."
                 }
             }
         }

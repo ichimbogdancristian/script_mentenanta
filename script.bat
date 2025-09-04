@@ -8,6 +8,11 @@ REM  Environment: Requires Administrator, Windows 10/11, PowerShell 5.1+.
 REM  All actions are logged to console; PowerShell script handles file logging.
 REM ============================================================================
 SETLOCAL ENABLEDELAYEDEXPANSION
+REM -----------------------------------------------------------------------------
+REM Robust Timestamp Function for Logging
+REM -----------------------------------------------------------------------------
+SET "LOG_TIMESTAMP=%DATE% %TIME%"
+REM Usage: !LOG_TIMESTAMP! (if delayed expansion) or %LOG_TIMESTAMP% (if not)
 
 REM -----------------------------------------------------------------------------
 REM Basic Environment Setup
@@ -24,14 +29,12 @@ IF "%1"=="PS7_RESTART" (
 )
 
 REM Check if this is a restart after script.bat self-update
-IF "%1"=="UPDATED" (
-    ECHO [%TIME%] [INFO] Script restarted after script.bat self-update.
-    ECHO [%TIME%] [INFO] Skipping update check to prevent loops.
-    GOTO :SKIP_SELF_UPDATE
-)
+REM (Legacy self-update logic removed)
 
-ECHO [%TIME%] [INFO] Starting maintenance script...
-ECHO [%TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME%
+SET "LOG_TIMESTAMP=%DATE% %TIME%"
+ECHO [%LOG_TIMESTAMP%] [INFO] Starting maintenance script...
+SET "LOG_TIMESTAMP=%DATE% %TIME%"
+ECHO [%LOG_TIMESTAMP%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME%
 
 REM -----------------------------------------------------------------------------
 REM Admin Privilege Check
@@ -69,12 +72,15 @@ REM ----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup
 REM Ensures a monthly scheduled task is created to run this script as admin.
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking for monthly scheduled task '%TASK_NAME%'...
+SET "LOG_TIMESTAMP=%DATE% %TIME%"
+ECHO [%LOG_TIMESTAMP%] [INFO] Checking for monthly scheduled task '%TASK_NAME%'...
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
-    ECHO [%TIME%] [INFO] Monthly scheduled task already exists. Skipping creation.
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    ECHO [%LOG_TIMESTAMP%] [INFO] Monthly scheduled task already exists. Skipping creation.
 ) ELSE (
-    ECHO [%TIME%] [INFO] Monthly scheduled task not found. Creating...
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    ECHO [%LOG_TIMESTAMP%] [INFO] Monthly scheduled task not found. Creating...
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
@@ -87,16 +93,20 @@ IF %ERRORLEVEL% EQU 0 (
         /Z ^
         /F >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Monthly scheduled task created successfully.
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    ECHO [%LOG_TIMESTAMP%] [INFO] Monthly scheduled task created successfully.
         schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            ECHO [%TIME%] [INFO] Task verification successful.
+            SET "LOG_TIMESTAMP=%DATE% %TIME%"
+            ECHO [%LOG_TIMESTAMP%] [INFO] Task verification successful.
             FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
-                ECHO [%TIME%] [INFO] Next scheduled run: %%i
+                SET "LOG_TIMESTAMP=%DATE% %TIME%"
+                ECHO [%LOG_TIMESTAMP%] [INFO] Next scheduled run: %%i
             )
         )
     ) ELSE (
-        ECHO [%TIME%] [ERROR] Failed to create monthly scheduled task.
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    ECHO [%LOG_TIMESTAMP%] [ERROR] Failed to create monthly scheduled task.
     )
 )
 
@@ -104,18 +114,23 @@ REM ----------------------------------------------------------------------------
 REM Startup Task Management - Check and Remove if Exists
 REM This task should only exist temporarily after a system restart.
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking startup task '%STARTUP_TASK_NAME%'...
+SET "LOG_TIMESTAMP=%DATE% %TIME%"
+ECHO [%LOG_TIMESTAMP%] [INFO] Checking startup task '%STARTUP_TASK_NAME%'...
 schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Existing startup task found. Removing...
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    ECHO [%LOG_TIMESTAMP%] [INFO] Existing startup task found. Removing...
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Startup task removed successfully.
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    ECHO [%LOG_TIMESTAMP%] [INFO] Startup task removed successfully.
     ) ELSE (
-        ECHO [%TIME%] [WARN] Failed to remove startup task, but continuing...
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    ECHO [%LOG_TIMESTAMP%] [WARN] Failed to remove startup task, but continuing...
     )
 ) ELSE (
-    ECHO [%TIME%] [INFO] No existing startup task found.
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    ECHO [%LOG_TIMESTAMP%] [INFO] No existing startup task found.
 )
 
 REM -----------------------------------------------------------------------------

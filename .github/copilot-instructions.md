@@ -1,3 +1,13 @@
+## Project Structure & Refactoring (2025 Edition)
+
+### Key Updates (2025)
+- Legacy self-update logic fully removed from both scripts
+- All logging now uses robust timestamping (LOG_TIMESTAMP)
+- script.bat: Only handles environment, dependencies, repo update, and launching
+- script.ps1: Only handles maintenance, reporting, and analytics
+- No redundant admin, version, or dependency checks in script.ps1
+- All status messages are current and relevant; no legacy or comparison messages
+
 
 
 # Copilot Instructions for Windows Maintenance Automation Project
@@ -26,13 +36,15 @@ This project implements a **launcher → orchestrator** architecture with clear 
 script_mentenanta/
 ├── script.bat                    # 🚀 LAUNCHER: Environment & Dependencies
 ├── script.ps1                    # ⚙️ ORCHESTRATOR: Maintenance Execution
-├── README.md                     # 📖 User Documentation  
+├── README.md                     # 📖 User Documentation
 ├── .github/copilot-instructions.md # 🤖 AI Development Guidelines
 ├── maintenance.log               # 📝 Runtime Execution Log
 ├── maintenance_report.txt        # 📊 Comprehensive Results Report
 ├── config.json                   # ⚙️ Optional User Configuration
-├── inventory.json               # 📋 System Analysis Export
+├── inventory.json                # 📋 System Analysis Export
 └── temp_files/                   # 📁 Analysis & Processing Files
+    ├── bloatware.json            # 🗑️ Bloatware Detection Results
+    └── essential_apps.json       # 📦 Essential Apps Analysis
 ```
 
 ## Critical Architecture Principles
