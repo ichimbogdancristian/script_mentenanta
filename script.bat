@@ -388,12 +388,26 @@ REM ----------------------------------------------------------------------------
 REM Repository Extraction - Using PowerShell (More Reliable)
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Extracting repository to clean folder...
-powershell -ExecutionPolicy Bypass -Command "& { try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('!ZIP_FILE!', '!SCRIPT_DIR!'); Write-Host '[INFO] Repository extracted successfully' } catch { try { $shell = New-Object -ComObject Shell.Application; $zip = $shell.Namespace('!ZIP_FILE!'); $dest = $shell.Namespace('!SCRIPT_DIR!'); $dest.CopyHere($zip.Items(), 4); Write-Host '[INFO] Repository extracted successfully (fallback method)' } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 } } }"
 
-IF !ERRORLEVEL! NEQ 0 (
-    ECHO [%TIME%] [ERROR] Failed to extract repository.
-    pause
-    EXIT /B 3
+REM Method 1: Try .NET extraction
+ECHO [%TIME%] [INFO] Attempting .NET zip extraction...
+powershell -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%TEMP%\script_mentenanta.zip', '%~dp0')"
+
+IF !ERRORLEVEL! EQU 0 (
+    ECHO [%TIME%] [INFO] Repository extracted successfully using .NET method.
+) ELSE (
+    ECHO [%TIME%] [WARN] .NET extraction failed. Trying COM object method...
+    
+    REM Method 2: Fallback to COM object
+    powershell -ExecutionPolicy Bypass -Command "$shell = New-Object -ComObject Shell.Application; $zip = $shell.Namespace('%TEMP%\script_mentenanta.zip'); $dest = $shell.Namespace('%~dp0'); $dest.CopyHere($zip.Items(), 4)"
+    
+    IF !ERRORLEVEL! EQU 0 (
+        ECHO [%TIME%] [INFO] Repository extracted successfully using COM method.
+    ) ELSE (
+        ECHO [%TIME%] [ERROR] Both extraction methods failed.
+        pause
+        EXIT /B 3
+    )
 )
 
 REM Clean up ZIP file
