@@ -722,80 +722,80 @@ $global:ScriptTasks = @(
                 return $false
             }
             
-            # Comprehensive restart detection
+            # Smart restart detection - Only check for UPDATE-RELATED restarts
             $restartRequired = $false
             $restartReasons = @()
             
-            Write-Log 'Checking for pending system restarts...' 'INFO'
+            Write-Log 'Checking for pending UPDATE-RELATED restarts...' 'INFO'
             
-            # Check Windows Update reboot flag
+            # Check if updates were installed in this session that require restart
             try {
-                if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") {
-                    $restartRequired = $true
-                    $restartReasons += "Windows Update"
-                    Write-Log 'Windows Update restart flag detected' 'INFO'
+                if ($global:HasPSWindowsUpdate -and (Get-Module -Name PSWindowsUpdate -ErrorAction SilentlyContinue)) {
+                    # Check for updates that were installed and require restart
+                    $rebootStatus = Get-WURebootStatus -Silent -ErrorAction SilentlyContinue
+                    if ($rebootStatus) {
+                        $restartRequired = $true
+                        $restartReasons += "Recently Installed Windows Updates"
+                        Write-Log 'Recently installed Windows Updates require restart' 'INFO'
+                    }
+                    
+                    # Also check for any pending updates that require restart
+                    $pendingUpdatesWithRestart = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot -ErrorAction SilentlyContinue | Where-Object { $_.RebootRequired -eq $true }
+                    if ($pendingUpdatesWithRestart) {
+                        $restartRequired = $true
+                        $restartReasons += "Pending Windows Updates Requiring Restart"
+                        Write-Log "Found $($pendingUpdatesWithRestart.Count) pending updates requiring restart" 'INFO'
+                    }
+                }
+                else {
+                    Write-Log 'PSWindowsUpdate not available - checking Windows Update restart flags only' 'VERBOSE'
                 }
             }
-            catch { Write-Log "Failed to check Windows Update restart flag: $_" 'VERBOSE' }
-            
-            # Check Component Based Servicing reboot flag
-            try {
-                if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") {
-                    $restartRequired = $true
-                    $restartReasons += "Component Based Servicing"
-                    Write-Log 'Component Based Servicing restart detected' 'INFO'
-                }
+            catch { 
+                Write-Log "Failed to check PSWindowsUpdate restart status: $_" 'VERBOSE' 
             }
-            catch { Write-Log "Failed to check CBS restart flag: $_" 'VERBOSE' }
             
-            # Check pending file operations
-            try {
-                $pendingFileOps = Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name "PendingFileRenameOperations" -ErrorAction SilentlyContinue
-                if ($pendingFileOps) {
-                    $restartRequired = $true
-                    $restartReasons += "Pending File Operations"
-                    Write-Log 'Pending file rename operations detected' 'INFO'
+            # Only check Windows Update system flags if PSWindowsUpdate indicated restart needed
+            if (-not $restartRequired) {
+                try {
+                    if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") {
+                        $restartRequired = $true
+                        $restartReasons += "Windows Update System Flag"
+                        Write-Log 'Windows Update system restart flag detected' 'INFO'
+                    }
                 }
+                catch { Write-Log "Failed to check Windows Update restart flag: $_" 'VERBOSE' }
+                
+                # Check Component Based Servicing reboot flag (often update-related)
+                try {
+                    if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") {
+                        $restartRequired = $true
+                        $restartReasons += "Component Based Servicing (Update-Related)"
+                        Write-Log 'Component Based Servicing restart detected (likely update-related)' 'INFO'
+                    }
+                }
+                catch { Write-Log "Failed to check CBS restart flag: $_" 'VERBOSE' }
             }
-            catch { Write-Log "Failed to check pending file operations: $_" 'VERBOSE' }
             
-            # Check Windows Feature installation requiring restart
-            try {
-                if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending") {
-                    $restartRequired = $true
-                    $restartReasons += "Windows Features"
-                    Write-Log 'Windows Features pending restart detected' 'INFO'
-                }
-            }
-            catch { Write-Log "Failed to check Windows Features restart flag: $_" 'VERBOSE' }
-            
-            # Check for computer name change
-            try {
-                $currentName = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name ComputerName).ComputerName
-                $pendingName = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name ComputerName).ComputerName
-                if ($currentName -ne $pendingName) {
-                    $restartRequired = $true
-                    $restartReasons += "Computer Name Change"
-                    Write-Log 'Computer name change pending restart detected' 'INFO'
-                }
-            }
-            catch { Write-Log "Failed to check computer name change: $_" 'VERBOSE' }
+            # Skip general system restart checks (file operations, computer name, etc.)
+            # as these are not update-related and don't require immediate restart
             
             if (-not $restartRequired) {
-                Write-Log 'No pending restart detected. System is up to date.' 'INFO'
-                Write-Host '✅ No pending restart detected. System is up to date.' -ForegroundColor Green
+                Write-Log 'No pending UPDATE-RELATED restarts detected. System is up to date.' 'INFO'
+                Write-Host '✅ No pending update-related restarts detected. System is up to date.' -ForegroundColor Green
                 return $true
             }
             
-            # Restart required - show countdown
+            # Update-related restart required - show countdown
             $reasonsList = $restartReasons -join ", "
-            Write-Log "Restart required due to: $reasonsList" 'WARN'
+            Write-Log "UPDATE-RELATED restart required due to: $reasonsList" 'WARN'
             Write-Host "" 
-            Write-Host "⚠️  SYSTEM RESTART REQUIRED" -ForegroundColor Yellow -BackgroundColor DarkRed
-            Write-Host "Restart required due to: $reasonsList" -ForegroundColor Yellow
+            Write-Host "🔄 UPDATE-RELATED SYSTEM RESTART REQUIRED" -ForegroundColor Yellow -BackgroundColor DarkBlue
+            Write-Host "Restart required to complete: $reasonsList" -ForegroundColor Yellow
             Write-Host ""
-            Write-Host "The system will automatically restart in 120 seconds." -ForegroundColor White
+            Write-Host "The system will automatically restart in 120 seconds to complete updates." -ForegroundColor White
             Write-Host "Press Ctrl+C to abort the restart countdown." -ForegroundColor Cyan
+            Write-Host "Note: Manual restart will be needed later to complete the updates." -ForegroundColor Gray
             Write-Host ""
             
             # 120-second countdown with abort option
@@ -809,7 +809,7 @@ $global:ScriptTasks = @(
                     $timeDisplay = "0:{0:D2}" -f $seconds
                 }
                 
-                Write-Host "`rRestarting in $timeDisplay... (Press Ctrl+C to abort)" -NoNewline -ForegroundColor Yellow
+                Write-Host "`rRestarting to complete updates in $timeDisplay... (Press Ctrl+C to abort)" -NoNewline -ForegroundColor Cyan
                 
                 try {
                     Start-Sleep -Seconds 1
@@ -817,9 +817,9 @@ $global:ScriptTasks = @(
                 catch [System.Management.Automation.PipelineStoppedException] {
                     Write-Host ""
                     Write-Host ""
-                    Write-Log 'Restart countdown aborted by user.' 'INFO'
-                    Write-Host '❌ Restart countdown aborted by user.' -ForegroundColor Red
-                    Write-Host 'Please restart your system manually when convenient to complete the maintenance.' -ForegroundColor Yellow
+                    Write-Log 'Update-related restart countdown aborted by user.' 'INFO'
+                    Write-Host '❌ Update-related restart countdown aborted by user.' -ForegroundColor Red
+                    Write-Host 'Please restart your system manually when convenient to complete pending updates.' -ForegroundColor Yellow
                     return $false
                 }
             }

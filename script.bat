@@ -119,55 +119,69 @@ IF !ERRORLEVEL! EQU 0 (
 )
 
 REM -----------------------------------------------------------------------------
-REM System Restart Detection and Handling
-REM Check if Windows requires a restart, create startup task if needed, restart immediately
+REM Smart Restart Detection - Only restart for pending updates requiring restart
+REM Check if Windows requires a restart for PENDING UPDATES, not general maintenance
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Checking for pending system restarts...
+ECHO [%TIME%] [INFO] Checking for pending updates requiring restart...
 SET "RESTART_NEEDED=NO"
+SET "RESTART_REASON="
 
-REM Check Windows Update reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Windows Update restart required.
+REM Check if there are pending updates that require restart (more specific)
+powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $restartRequired = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($restartRequired) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }"
+
+IF !ERRORLEVEL! EQU 1 (
+    ECHO [%TIME%] [INFO] Pending updates require restart for installation.
     SET "RESTART_NEEDED=YES"
+    SET "RESTART_REASON=Pending updates require restart"
+) ELSE IF !ERRORLEVEL! EQU 0 (
+    ECHO [%TIME%] [INFO] No pending updates require restart.
+) ELSE IF !ERRORLEVEL! EQU 2 (
+    ECHO [%TIME%] [WARN] PSWindowsUpdate module not available. Checking system restart flags...
+    
+    REM Fallback: Check Windows Update reboot flag only
+    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        ECHO [%TIME%] [INFO] Windows Update restart flag detected.
+        SET "RESTART_NEEDED=YES"
+        SET "RESTART_REASON=Windows Update restart flag detected"
+    )
+    
+    REM Check Component Based Servicing reboot flag (only for update-related restarts)
+    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        ECHO [%TIME%] [INFO] Component Based Servicing restart pending.
+        SET "RESTART_NEEDED=YES"
+        SET "RESTART_REASON=Component Based Servicing restart pending"
+    )
+) ELSE (
+    ECHO [%TIME%] [WARN] Update check failed. Skipping restart check.
 )
 
-REM Check Component Based Servicing reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Component Based Servicing restart pending.
-    SET "RESTART_NEEDED=YES"
-)
-
-REM Check pending file operations
-REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Pending file rename operations detected.
-    SET "RESTART_NEEDED=YES"
-)
-
+REM Only restart if there are actual updates requiring restart
 IF "%RESTART_NEEDED%"=="YES" (
-    ECHO [%TIME%] [WARN] System restart is required. Creating startup task and restarting...
+    ECHO [%TIME%] [WARN] System restart is required for pending updates.
+    ECHO [%TIME%] [INFO] Reason: %RESTART_REASON%
+    ECHO [%TIME%] [INFO] Creating startup task and restarting to complete update installation...
+    
     REM Delete any existing startup task first
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
+    
     REM Create startup task to run 1 minute after user login with admin rights
     schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
     IF !ERRORLEVEL! EQU 0 (
         ECHO [%TIME%] [INFO] Startup task created successfully. Will run 1 minute after user login.
-        ECHO [%TIME%] [INFO] Restarting system immediately...
-        shutdown /r /t 5 /c "System restart required for maintenance continuation"
-        ECHO [%TIME%] [INFO] System will restart in 5 seconds...
-        timeout /t 10 /nobreak >nul
+        ECHO [%TIME%] [INFO] Restarting system to complete pending updates...
+        shutdown /r /t 10 /c "System restart required to complete pending Windows Updates"
+        ECHO [%TIME%] [INFO] System will restart in 10 seconds to complete updates...
+        timeout /t 12 /nobreak >nul
         EXIT /B 0
     ) ELSE (
         ECHO [%TIME%] [ERROR] Failed to create startup task. Continuing without restart...
-        ECHO [%TIME%] [DEBUG] Task name: %STARTUP_TASK_NAME%
-        ECHO [%TIME%] [DEBUG] Script path: %SCRIPT_PATH%
-        ECHO [%TIME%] [DEBUG] Username: %USERNAME%
-        ECHO [%TIME%] [DEBUG] Error level: !ERRORLEVEL!
+        ECHO [%TIME%] [WARN] Updates may require manual restart after installation.
     )
 ) ELSE (
-    ECHO [%TIME%] [INFO] No pending restart detected. No startup task needed. Continuing with script...
+    ECHO [%TIME%] [INFO] No pending updates require restart. Continuing with maintenance script...
+)
 )
 
 REM -----------------------------------------------------------------------------
@@ -385,43 +399,63 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
 )
 
 REM -----------------------------------------------------------------------------
-REM Repository Extraction - Using PowerShell (More Reliable)
+REM Repository Extraction - Using Expand-Archive (Most Reliable)
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Extracting repository to clean folder...
 
-REM Method 1: Try .NET extraction
-ECHO [%TIME%] [INFO] Attempting .NET zip extraction...
-powershell -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%TEMP%\script_mentenanta.zip', '%~dp0')"
+REM Method 1: Try PowerShell Expand-Archive (Primary)
+ECHO [%TIME%] [INFO] Attempting PowerShell Expand-Archive extraction...
+powershell -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%TEMP%\script_mentenanta.zip' -DestinationPath '%~dp0' -Force"
 
 IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Repository extracted successfully using .NET method.
+    ECHO [%TIME%] [INFO] Repository extracted successfully using Expand-Archive.
 ) ELSE (
-    ECHO [%TIME%] [WARN] .NET extraction failed. Trying COM object method...
+    ECHO [%TIME%] [WARN] Expand-Archive failed. Trying .NET method...
     
-    REM Method 2: Fallback to COM object
-    powershell -ExecutionPolicy Bypass -Command "$shell = New-Object -ComObject Shell.Application; $zip = $shell.Namespace('%TEMP%\script_mentenanta.zip'); $dest = $shell.Namespace('%~dp0'); $dest.CopyHere($zip.Items(), 4)"
+    REM Method 2: Fallback to .NET extraction
+    powershell -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%TEMP%\script_mentenanta.zip', '%~dp0')"
     
     IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Repository extracted successfully using COM method.
+        ECHO [%TIME%] [INFO] Repository extracted successfully using .NET method.
     ) ELSE (
-        ECHO [%TIME%] [ERROR] Both extraction methods failed.
+        ECHO [%TIME%] [ERROR] All extraction methods failed.
+        ECHO [%TIME%] [ERROR] Please check if the ZIP file is valid and not corrupted.
         pause
         EXIT /B 3
     )
 )
 
-REM Clean up ZIP file
+REM Clean up ZIP file after extraction
 DEL /F /Q "!ZIP_FILE!" >nul 2>&1
 
-REM Verify extraction success
+REM Verify extraction success with detailed debugging
 ECHO [%TIME%] [INFO] Verifying repository extraction...
-ECHO [%TIME%] [INFO] Expected folder: !SCRIPT_DIR!!EXTRACT_FOLDER!
+ECHO [%TIME%] [INFO] Looking for folder: !SCRIPT_DIR!!EXTRACT_FOLDER!
+
+REM List all folders in current directory for debugging
+ECHO [%TIME%] [DEBUG] Current directory contents:
+DIR "%~dp0" /AD /B
+
 IF EXIST "!SCRIPT_DIR!!EXTRACT_FOLDER!" (
-    ECHO [%TIME%] [INFO] Extraction successful - folder exists.
+    ECHO [%TIME%] [INFO] ✓ Extraction successful - folder exists.
     ECHO [%TIME%] [INFO] Contents of extracted folder:
     DIR "!SCRIPT_DIR!!EXTRACT_FOLDER!" /B
 ) ELSE (
-    ECHO [%TIME%] [ERROR] Extraction failed - folder not found!
+    ECHO [%TIME%] [ERROR] ✗ Extraction failed - expected folder not found!
+    ECHO [%TIME%] [ERROR] Expected: !SCRIPT_DIR!!EXTRACT_FOLDER!
+    ECHO [%TIME%] [ERROR] Checking for alternative folder names...
+    
+    REM Check for common GitHub zip extraction patterns
+    IF EXIST "%~dp0script_mentenanta-main" (
+        ECHO [%TIME%] [INFO] Found: script_mentenanta-main folder
+        SET "EXTRACT_FOLDER=script_mentenanta-main"
+        ECHO [%TIME%] [INFO] Updated extraction folder to: !EXTRACT_FOLDER!
+    ) ELSE IF EXIST "%~dp0script_mentenanta-master" (
+        ECHO [%TIME%] [INFO] Found: script_mentenanta-master folder  
+        SET "EXTRACT_FOLDER=script_mentenanta-master"
+        ECHO [%TIME%] [INFO] Updated extraction folder to: !EXTRACT_FOLDER!
+    ) ELSE (
+        ECHO [%TIME%] [ERROR] No valid extraction folder found.
     pause
     EXIT /B 3
 )
