@@ -421,10 +421,25 @@ IF EXIST "!NEW_SCRIPT_BAT!" (
     FOR %%A IN ("!CURRENT_SCRIPT_BAT!") DO SET "CURRENT_SIZE=%%~zA"
     FOR %%A IN ("!NEW_SCRIPT_BAT!") DO SET "NEW_SIZE=%%~zA"
     
-    REM Compare modification dates and sizes
-    powershell -ExecutionPolicy Bypass -Command "$current = Get-Item '!CURRENT_SCRIPT_BAT!'; $new = Get-Item '!NEW_SCRIPT_BAT!'; if ($new.LastWriteTime -gt $current.LastWriteTime -or $new.Length -ne $current.Length) { Write-Host 'UPDATE_NEEDED'; exit 0 } else { Write-Host 'NO_UPDATE_NEEDED'; exit 1 }" >nul 2>&1
+    REM Simple file comparison - check if files are different
+    SET "UPDATE_NEEDED=NO"
     
-    IF !ERRORLEVEL! EQU 0 (
+    REM Compare file sizes first (fastest check)
+    IF NOT "!CURRENT_SIZE!"=="!NEW_SIZE!" (
+        SET "UPDATE_NEEDED=YES"
+        ECHO [%TIME%] [INFO] File sizes differ ^(!CURRENT_SIZE! vs !NEW_SIZE!^) - update needed.
+    ) ELSE (
+        REM If sizes are same, do a binary comparison
+        FC /B "!CURRENT_SCRIPT_BAT!" "!NEW_SCRIPT_BAT!" >nul 2>&1
+        IF !ERRORLEVEL! NEQ 0 (
+            SET "UPDATE_NEEDED=YES"
+            ECHO [%TIME%] [INFO] File contents differ - update needed.
+        ) ELSE (
+            ECHO [%TIME%] [INFO] Files are identical - no update needed.
+        )
+    )
+    
+    IF "!UPDATE_NEEDED!"=="YES" (
         ECHO [%TIME%] [INFO] Script.bat update detected! Preparing self-update...
         
         REM Create temporary updater script
