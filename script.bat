@@ -367,7 +367,7 @@ SET "ZIP_FILE=%TEMP%\script_mentenanta.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 
 ECHO [%TIME%] [INFO] Downloading latest repository...
-powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '!REPO_URL!' -OutFile '!ZIP_FILE!' -UseBasicParsing; Write-Host '[INFO] Repository downloaded successfully' } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
+powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $webClient = New-Object System.Net.WebClient; $webClient.DownloadFile('%REPO_URL%', '%ZIP_FILE%'); Write-Host '[INFO] Repository downloaded successfully' } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [ERROR] Failed to download repository. Check internet connection.
@@ -375,7 +375,7 @@ IF !ERRORLEVEL! NEQ 0 (
     EXIT /B 2
 )
 
-IF NOT EXIST "!ZIP_FILE!" (
+IF NOT EXIST "%ZIP_FILE%" (
     ECHO [%TIME%] [ERROR] Download failed - ZIP file not created.
     pause
     EXIT /B 2
@@ -390,7 +390,7 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
     RMDIR /S /Q "%SCRIPT_DIR%%EXTRACT_FOLDER%" >nul 2>&1
     IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
         ECHO [%TIME%] [WARN] Could not remove existing folder completely. Attempting forced removal...
-        powershell -ExecutionPolicy Bypass -Command "try { Remove-Item -Path '%SCRIPT_DIR%%EXTRACT_FOLDER%' -Recurse -Force -ErrorAction Stop; Write-Host '[INFO] Existing folder removed successfully' } catch { Write-Host '[WARN] Failed to remove existing folder:' $_.Exception.Message }"
+        powershell -ExecutionPolicy Bypass -Command "try { if(Test-Path '%SCRIPT_DIR%%EXTRACT_FOLDER%') { Remove-Item -Path '%SCRIPT_DIR%%EXTRACT_FOLDER%' -Recurse -Force; Write-Host '[INFO] Existing folder removed successfully' } } catch { Write-Host '[WARN] Failed to remove existing folder:' $_.Exception.Message }"
     ) ELSE (
         ECHO [%TIME%] [INFO] Existing repository folder removed successfully.
     )
@@ -399,65 +399,49 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
 )
 
 REM -----------------------------------------------------------------------------
-REM Repository Extraction - Using Expand-Archive (Most Reliable)
+REM Repository Extraction - Simplified with PowerShell 5 compatible code
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Extracting repository to clean folder...
 
-REM Method 1: Try PowerShell Expand-Archive (Primary)
-ECHO [%TIME%] [INFO] Attempting PowerShell Expand-Archive extraction...
-powershell -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%TEMP%\script_mentenanta.zip' -DestinationPath '%~dp0' -Force"
+REM Simple, reliable extraction with PowerShell 5 compatible code
+powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; if(Test-Path '%ZIP_FILE%') { [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%~dp0'); Write-Host '[INFO] Repository extracted successfully.' } else { Write-Host '[ERROR] ZIP file not found at %ZIP_FILE%'; exit 1 } } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
 
-IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] Repository extracted successfully using Expand-Archive.
-) ELSE (
-    ECHO [%TIME%] [WARN] Expand-Archive failed. Trying .NET method...
-    
-    REM Method 2: Fallback to .NET extraction
-    powershell -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%TEMP%\script_mentenanta.zip', '%~dp0')"
-    
-    IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Repository extracted successfully using .NET method.
-    ) ELSE (
-        ECHO [%TIME%] [ERROR] All extraction methods failed.
-        ECHO [%TIME%] [ERROR] Please check if the ZIP file is valid and not corrupted.
-        pause
-        EXIT /B 3
-    )
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO [%TIME%] [ERROR] Repository extraction failed.
+    ECHO [%TIME%] [ERROR] Please check if the ZIP file is valid and not corrupted.
+    pause
+    EXIT /B 3
 )
 
 REM Clean up ZIP file after extraction
-DEL /F /Q "!ZIP_FILE!" >nul 2>&1
+DEL /F /Q "%ZIP_FILE%" >nul 2>&1
 
-REM Verify extraction success with detailed debugging
+REM Verify extraction success
 ECHO [%TIME%] [INFO] Verifying repository extraction...
-ECHO [%TIME%] [INFO] Looking for folder: !SCRIPT_DIR!!EXTRACT_FOLDER!
+ECHO [%TIME%] [INFO] Looking for folder: %SCRIPT_DIR%%EXTRACT_FOLDER%
 
 REM List all folders in current directory for debugging
-ECHO [%TIME%] [DEBUG] Current directory contents:
 DIR "%~dp0" /AD /B
 
-IF EXIST "!SCRIPT_DIR!!EXTRACT_FOLDER!" (
+IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
     ECHO [%TIME%] [INFO] ✓ Extraction successful - folder exists.
-    ECHO [%TIME%] [INFO] Contents of extracted folder:
-    DIR "!SCRIPT_DIR!!EXTRACT_FOLDER!" /B
+    DIR "%SCRIPT_DIR%%EXTRACT_FOLDER%" /B
 ) ELSE (
-    ECHO [%TIME%] [ERROR] ✗ Extraction failed - expected folder not found!
-    ECHO [%TIME%] [ERROR] Expected: !SCRIPT_DIR!!EXTRACT_FOLDER!
+    ECHO [%TIME%] [ERROR] ✗ Extraction failed - expected folder not found.
     ECHO [%TIME%] [ERROR] Checking for alternative folder names...
     
     REM Check for common GitHub zip extraction patterns
     IF EXIST "%~dp0script_mentenanta-main" (
         ECHO [%TIME%] [INFO] Found: script_mentenanta-main folder
         SET "EXTRACT_FOLDER=script_mentenanta-main"
-        ECHO [%TIME%] [INFO] Updated extraction folder to: !EXTRACT_FOLDER!
     ) ELSE IF EXIST "%~dp0script_mentenanta-master" (
         ECHO [%TIME%] [INFO] Found: script_mentenanta-master folder  
         SET "EXTRACT_FOLDER=script_mentenanta-master"
-        ECHO [%TIME%] [INFO] Updated extraction folder to: !EXTRACT_FOLDER!
     ) ELSE (
         ECHO [%TIME%] [ERROR] No valid extraction folder found.
-    pause
-    EXIT /B 3
+        pause
+        EXIT /B 3
+    )
 )
 
 REM -----------------------------------------------------------------------------
