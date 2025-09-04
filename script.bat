@@ -447,88 +447,25 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
 REM -----------------------------------------------------------------------------
 REM Self-Update Mechanism - Update script.bat if a newer version is available
 REM -----------------------------------------------------------------------------
-REM Skip self-update if this is a restart after update (prevent infinite loops)
-IF "%1"=="UPDATED" (
-    ECHO [%TIME%] [INFO] Skipping self-update check (script was just updated).
-    GOTO :SKIP_SELF_UPDATE_CHECK
-)
+REM -----------------------------------------------------------------------------
+REM Overwrite script.bat if a new version is found
+REM -----------------------------------------------------------------------------
+SET "NEW_SCRIPT_BAT=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.bat"
+SET "CURRENT_SCRIPT_BAT=%SCRIPT_PATH%"
 
-SET "NEW_SCRIPT_BAT=!SCRIPT_DIR!!EXTRACT_FOLDER!\script.bat"
-SET "CURRENT_SCRIPT_BAT=!SCRIPT_PATH!"
-
-ECHO [%TIME%] [INFO] Checking for script.bat updates...
-
-REM Check if new script.bat exists in downloaded repo
-IF EXIST "!NEW_SCRIPT_BAT!" (
-    ECHO [%TIME%] [INFO] Found script.bat in downloaded repository. Comparing versions...
-    
-    REM Compare file sizes first (quick check)
-    FOR %%A IN ("!CURRENT_SCRIPT_BAT!") DO SET "CURRENT_SIZE=%%~zA"
-    FOR %%A IN ("!NEW_SCRIPT_BAT!") DO SET "NEW_SIZE=%%~zA"
-    
-    REM Simple file comparison - check if files are different
-    SET "UPDATE_NEEDED=NO"
-    
-    REM Compare file sizes first (fastest check)
-    IF NOT "!CURRENT_SIZE!"=="!NEW_SIZE!" (
-        SET "UPDATE_NEEDED=YES"
-        ECHO [%TIME%] [INFO] File sizes differ ^(!CURRENT_SIZE! vs !NEW_SIZE!^) - update needed.
+IF EXIST "%NEW_SCRIPT_BAT%" (
+    ECHO [%TIME%] [INFO] Found new script.bat in extracted repository. Overwriting current script...
+    COPY /Y "%NEW_SCRIPT_BAT%" "%CURRENT_SCRIPT_BAT%" >nul 2>&1
+    IF %ERRORLEVEL% EQU 0 (
+        ECHO [%TIME%] [INFO] script.bat overwritten successfully.
     ) ELSE (
-        REM If sizes are same, do a binary comparison
-        FC /B "!CURRENT_SCRIPT_BAT!" "!NEW_SCRIPT_BAT!" >nul 2>&1
-        IF !ERRORLEVEL! NEQ 0 (
-            SET "UPDATE_NEEDED=YES"
-            ECHO [%TIME%] [INFO] File contents differ - update needed.
-        ) ELSE (
-            ECHO [%TIME%] [INFO] Files are identical - no update needed.
-        )
-    )
-    
-    IF "!UPDATE_NEEDED!"=="YES" (
-        ECHO [%TIME%] [INFO] Script.bat update detected! Preparing self-update...
-        
-        REM Create temporary updater script
-        SET "UPDATER_SCRIPT=%TEMP%\script_updater_%RANDOM%.bat"
-        
-        ECHO @echo off > "!UPDATER_SCRIPT!"
-        ECHO REM Auto-generated updater script >> "!UPDATER_SCRIPT!"
-        ECHO ECHO [%%TIME%%] [INFO] Starting script.bat update process... >> "!UPDATER_SCRIPT!"
-        ECHO. >> "!UPDATER_SCRIPT!"
-        ECHO REM Wait for main script to fully exit >> "!UPDATER_SCRIPT!"
-        ECHO TIMEOUT /T 3 /NOBREAK ^>nul >> "!UPDATER_SCRIPT!"
-        ECHO. >> "!UPDATER_SCRIPT!"
-        ECHO REM Backup current script.bat >> "!UPDATER_SCRIPT!"
-        ECHO COPY "!CURRENT_SCRIPT_BAT!" "!CURRENT_SCRIPT_BAT!.backup.%%DATE:~-4,4%%%%DATE:~-10,2%%%%DATE:~-7,2%%" ^>nul 2^>^&1 >> "!UPDATER_SCRIPT!"
-        ECHO IF EXIST "!CURRENT_SCRIPT_BAT!.backup.*" ECHO [%%TIME%%] [INFO] Current script.bat backed up successfully >> "!UPDATER_SCRIPT!"
-        ECHO. >> "!UPDATER_SCRIPT!"
-        ECHO REM Update script.bat with new version >> "!UPDATER_SCRIPT!"
-        ECHO COPY "!NEW_SCRIPT_BAT!" "!CURRENT_SCRIPT_BAT!" /Y ^>nul 2^>^&1 >> "!UPDATER_SCRIPT!"
-        ECHO IF %%ERRORLEVEL%% EQU 0 ^( >> "!UPDATER_SCRIPT!"
-        ECHO     ECHO [%%TIME%%] [INFO] Script.bat updated successfully! >> "!UPDATER_SCRIPT!"
-        ECHO     ECHO [%%TIME%%] [INFO] Restarting with updated script... >> "!UPDATER_SCRIPT!"
-        ECHO     START "" "!CURRENT_SCRIPT_BAT!" UPDATED >> "!UPDATER_SCRIPT!"
-        ECHO ^) ELSE ^( >> "!UPDATER_SCRIPT!"
-        ECHO     ECHO [%%TIME%%] [ERROR] Failed to update script.bat! >> "!UPDATER_SCRIPT!"
-        ECHO     PAUSE >> "!UPDATER_SCRIPT!"
-        ECHO ^) >> "!UPDATER_SCRIPT!"
-        ECHO. >> "!UPDATER_SCRIPT!"
-        ECHO REM Clean up >> "!UPDATER_SCRIPT!"
-        ECHO DEL "%%~f0" ^>nul 2^>^&1 >> "!UPDATER_SCRIPT!"
-        
-        ECHO [%TIME%] [INFO] Launching updater and exiting current script...
-        ECHO [%TIME%] [INFO] The script will restart automatically with the updated version.
-        START "" "!UPDATER_SCRIPT!"
-        
-        REM Exit current script to allow update
-        EXIT /B 0
-    ) ELSE (
-        ECHO [%TIME%] [INFO] Script.bat is already up to date.
+        ECHO [%TIME%] [ERROR] Failed to overwrite script.bat!
+        pause
+        EXIT /B 6
     )
 ) ELSE (
-    ECHO [%TIME%] [INFO] No script.bat found in repository (this is normal for some downloads).
+    ECHO [%TIME%] [INFO] No new script.bat found in extracted repository.
 )
-
-:SKIP_SELF_UPDATE_CHECK
 
 REM Check if extraction worked
 IF NOT EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
