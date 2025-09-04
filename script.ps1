@@ -970,10 +970,6 @@ function Write-Log {
     }
 }
 
-### Function: Invoke-WindowsPowerShellCommand
-### [REMOVED] Legacy compatibility wrapper (Invoke-WindowsPowerShellCommand) - all logic now PowerShell 7 native
-# Performance: Fast, minimal overhead.
-
 # ================================================================
 # [B.3] APPX LAYER - COPILOT FUNCTIONS
 # ================================================================
@@ -1092,63 +1088,6 @@ function Remove-AppxProvisionedPackageCompatible {
     }
     catch {
         Write-Log "Failed to remove provisioned AppX package: $_" 'ERROR'
-        return $false
-    }
-}
-
-### Function: Enable-ComputerRestoreCompatible
-# Purpose: Enables System Restore protection (cross-version).
-# Environment: Administrator, System Restore service access.
-# Logic: Enables protection for specified drive.
-# Performance: Fast, minimal overhead.
-function Enable-ComputerRestoreCompatible {
-    param(
-        [string]$Drive
-    )
-
-    try {
-        Write-Log "Enabling System Restore on drive $Drive" 'INFO'
-        
-        Enable-ComputerRestore -Drive $Drive -ErrorAction SilentlyContinue
-    
-        # Verify that the restore point was actually enabled
-        Start-Sleep -Seconds 1
-        $verifyRestore = Get-CimInstance -Class SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq $Drive }
-        if ($verifyRestore -and -not $verifyRestore.Disable) {
-            Write-Log "Successfully enabled System Restore on drive $Drive" 'INFO'
-            return $true
-        }
-        else {
-            Write-Log "System Restore enable operation completed but verification failed for drive $Drive" 'WARN'
-            return $false
-        }
-    }
-    catch {
-        Write-Log "Failed to enable System Restore on drive $Drive : $_" 'ERROR'
-        return $false
-    }
-}
-
-### Function: Checkpoint-ComputerCompatible
-# Purpose: Creates restore point (cross-version).
-# Environment: Administrator, System Restore enabled.
-# Logic: Creates restore point with description and type.
-# Performance: Fast, minimal overhead.
-function Checkpoint-ComputerCompatible {
-    param(
-        [string]$Description,
-        [string]$RestorePointType = 'MODIFY_SETTINGS'
-    )
-
-    try {
-        Write-Log "Creating system restore point: $Description" 'INFO'
-        
-        Checkpoint-Computer -Description $Description -RestorePointType $RestorePointType -ErrorAction Stop
-        Write-Log "Successfully created restore point: $Description" 'INFO'
-        return $true
-    }
-    catch {
-        Write-Log "Failed to create restore point '$Description': $_" 'ERROR'
         return $false
     }
 }
@@ -4535,15 +4474,79 @@ function Enable-SecurityHardening {
         # 8. Configure PowerShell Execution Policy
         Write-Log "[SecurityHardening] Configuring PowerShell Execution Policy..." 'INFO'
         try {
-            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
-            Write-Host "✓ PowerShell execution policy set to RemoteSigned" -ForegroundColor Green
-            Write-Log "[SecurityHardening] PowerShell execution policy set to RemoteSigned" 'INFO'
-            $securityActions++
+            # First check current execution policy and scope hierarchy
+            $currentPolicy = Get-ExecutionPolicy
+            $policyList = Get-ExecutionPolicy -List
+            
+            Write-Log "[SecurityHardening] Current execution policy: $currentPolicy" 'VERBOSE'
+            $policyList | ForEach-Object { 
+                Write-Log "[SecurityHardening] $($_.Scope): $($_.ExecutionPolicy)" 'VERBOSE' 
+            }
+            
+            # Check if there's a Group Policy override
+            $groupPolicyOverride = $policyList | Where-Object { $_.Scope -eq 'MachinePolicy' -and $_.ExecutionPolicy -ne 'Undefined' }
+            $userPolicyOverride = $policyList | Where-Object { $_.Scope -eq 'UserPolicy' -and $_.ExecutionPolicy -ne 'Undefined' }
+            
+            if ($groupPolicyOverride -or $userPolicyOverride) {
+                $overrideScope = if ($groupPolicyOverride) { "Machine Group Policy ($($groupPolicyOverride.ExecutionPolicy))" } else { "User Group Policy ($($userPolicyOverride.ExecutionPolicy))" }
+                Write-Host "ℹ️ PowerShell execution policy controlled by $overrideScope" -ForegroundColor Cyan
+                Write-Log "[SecurityHardening] PowerShell execution policy controlled by $overrideScope - cannot override" 'INFO'
+                
+                # Check if the current effective policy is secure enough
+                $securePolicy = $currentPolicy -in @('AllSigned', 'RemoteSigned', 'Restricted')
+                if ($securePolicy) {
+                    Write-Host "✓ Current execution policy ($currentPolicy) is secure" -ForegroundColor Green
+                    Write-Log "[SecurityHardening] Current execution policy ($currentPolicy) is secure" 'INFO'
+                    $hardeningResults += "PowerShell Execution Policy: SECURE (Group Policy Managed)"
+                    $securityActions++
+                } else {
+                    Write-Host "⚠️ Current execution policy ($currentPolicy) is not secure but managed by Group Policy" -ForegroundColor Yellow
+                    Write-Log "[SecurityHardening] Current execution policy ($currentPolicy) is not secure but managed by Group Policy" 'WARN'
+                    $hardeningResults += "PowerShell Execution Policy: INSECURE (Group Policy Managed)"
+                }
+            } else {
+                # No Group Policy override, try to set secure policy
+                Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction Stop
+                
+                # Verify the change took effect
+                $newPolicy = Get-ExecutionPolicy
+                if ($newPolicy -eq 'RemoteSigned') {
+                    Write-Host "✓ PowerShell execution policy set to RemoteSigned" -ForegroundColor Green
+                    Write-Log "[SecurityHardening] PowerShell execution policy set to RemoteSigned" 'INFO'
+                    $hardeningResults += "PowerShell Execution Policy: SECURE (RemoteSigned)"
+                    $securityActions++
+                } else {
+                    Write-Host "⚠️ PowerShell execution policy change may not have taken effect (current: $newPolicy)" -ForegroundColor Yellow
+                    Write-Log "[SecurityHardening] PowerShell execution policy change verification failed (current: $newPolicy)" 'WARN'
+                    $hardeningResults += "PowerShell Execution Policy: UNCERTAIN (Set to RemoteSigned, current: $newPolicy)"
+                }
+            }
         }
         catch {
-            Write-Host "✗ Failed to set PowerShell execution policy: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Log "[SecurityHardening] Failed to set PowerShell execution policy: $_" 'ERROR'
-            $securityErrors++
+            $errorMessage = $_.Exception.Message
+            if ($errorMessage -like "*overridden by a policy defined at a more specific scope*") {
+                Write-Host "ℹ️ PowerShell execution policy managed by higher-level policy" -ForegroundColor Cyan
+                Write-Log "[SecurityHardening] PowerShell execution policy managed by higher-level policy" 'INFO'
+                
+                # Check if current policy is secure
+                $currentPolicy = Get-ExecutionPolicy -ErrorAction SilentlyContinue
+                $securePolicy = $currentPolicy -in @('AllSigned', 'RemoteSigned', 'Restricted')
+                if ($securePolicy) {
+                    Write-Host "✓ Current execution policy ($currentPolicy) is secure" -ForegroundColor Green
+                    Write-Log "[SecurityHardening] Current execution policy ($currentPolicy) is secure" 'INFO'
+                    $hardeningResults += "PowerShell Execution Policy: SECURE (Policy Managed)"
+                    $securityActions++
+                } else {
+                    Write-Host "⚠️ Current execution policy ($currentPolicy) may not be secure" -ForegroundColor Yellow
+                    Write-Log "[SecurityHardening] Current execution policy ($currentPolicy) may not be secure" 'WARN'
+                    $hardeningResults += "PowerShell Execution Policy: UNCERTAIN (Policy Managed)"
+                }
+            } else {
+                Write-Host "✗ Failed to configure PowerShell execution policy: $errorMessage" -ForegroundColor Red
+                Write-Log "[SecurityHardening] Failed to configure PowerShell execution policy: $_" 'ERROR'
+                $hardeningResults += "PowerShell Execution Policy: FAILED"
+                $securityErrors++
+            }
         }
 
         # 9. Enable Controlled Folder Access (Windows Defender)
