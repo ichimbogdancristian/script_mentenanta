@@ -59,9 +59,9 @@ IF %PS_VERSION% LSS 5 (
 ECHO [%TIME%] [INFO] PowerShell version: %PS_VERSION%
 
 REM -----------------------------------------------------------------------------
-REM Windows Version Detection
+REM Windows Version Detection - PowerShell 5.1 Compatible
 REM -----------------------------------------------------------------------------
-FOR /F "tokens=*" %%i IN ('powershell -Command "(Get-CimInstance Win32_OperatingSystem).Version" 2^>nul') DO SET OS_VERSION=%%i
+FOR /F "tokens=*" %%i IN ('powershell -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }" 2^>nul') DO SET OS_VERSION=%%i
 IF "%OS_VERSION%"=="" SET OS_VERSION=Unknown
 ECHO [%TIME%] [INFO] Detected Windows version: %OS_VERSION%
 
@@ -192,7 +192,7 @@ IF !ERRORLEVEL! NEQ 0 (
     
     IF !ERRORLEVEL! EQU 0 (
         ECHO [%TIME%] [INFO] Installing Winget package...
-        powershell -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
+        powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
         IF !ERRORLEVEL! EQU 0 (
             ECHO [%TIME%] [INFO] Winget installation completed successfully.
         ) ELSE (
@@ -258,7 +258,7 @@ REM ----------------------------------------------------------------------------
 REM 3. NuGet PackageProvider - Direct download and installation
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Installing NuGet PackageProvider...
-echo Y | powershell -ExecutionPolicy Bypass -Command "$env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:\$false -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' \$_.Exception.Message; exit 1 } } else { Write-Host '[INFO] NuGet PackageProvider already available' }"
+powershell -ExecutionPolicy Bypass -Command "& { $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:$false -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' $_.Exception.Message } } else { Write-Host '[INFO] NuGet PackageProvider already available' } }"
 
 IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [WARN] NuGet PackageProvider installation failed, but continuing...
@@ -274,7 +274,7 @@ REM ----------------------------------------------------------------------------
 REM 5. PSWindowsUpdate Module - Download from PowerShell Gallery
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Installing PSWindowsUpdate module...
-powershell -ExecutionPolicy Bypass -Command "if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:\$false -Repository PSGallery; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' \$_.Exception.Message; exit 1 } } else { Write-Host '[INFO] PSWindowsUpdate module already available' }"
+powershell -ExecutionPolicy Bypass -Command "& { if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:$false -Repository PSGallery; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' $_.Exception.Message } } else { Write-Host '[INFO] PSWindowsUpdate module already available' } }"
 
 IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [WARN] PSWindowsUpdate module installation failed.
@@ -289,7 +289,7 @@ IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [INFO] Chocolatey not found, downloading from official source...
     
     REM Download and install Chocolatey from official source
-    powershell -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-ExecutionPolicy Bypass -Scope Process -Force; $chocoInstallScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'); Invoke-Expression $chocoInstallScript; Write-Host '[INFO] Chocolatey installed successfully' } catch { Write-Host '[WARN] Chocolatey installation failed:' \$_.Exception.Message }"
+    powershell -ExecutionPolicy Bypass -Command "& { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-ExecutionPolicy Bypass -Scope Process -Force; $chocoInstallScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'); Invoke-Expression $chocoInstallScript; Write-Host '[INFO] Chocolatey installed successfully' } catch { Write-Host '[WARN] Chocolatey installation failed:' $_.Exception.Message } }"
     
     REM Refresh PATH to include Chocolatey
     IF EXIST "%ProgramData%\chocolatey\bin" (
@@ -388,7 +388,7 @@ REM ----------------------------------------------------------------------------
 REM Repository Extraction - Using PowerShell (More Reliable)
 REM -----------------------------------------------------------------------------
 ECHO [%TIME%] [INFO] Extracting repository to clean folder...
-powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('!ZIP_FILE!', '!SCRIPT_DIR!'); Write-Host '[INFO] Repository extracted successfully' } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
+powershell -ExecutionPolicy Bypass -Command "& { try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('!ZIP_FILE!', '!SCRIPT_DIR!'); Write-Host '[INFO] Repository extracted successfully' } catch { try { $shell = New-Object -ComObject Shell.Application; $zip = $shell.Namespace('!ZIP_FILE!'); $dest = $shell.Namespace('!SCRIPT_DIR!'); $dest.CopyHere($zip.Items(), 4); Write-Host '[INFO] Repository extracted successfully (fallback method)' } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 } } }"
 
 IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [ERROR] Failed to extract repository.
@@ -398,6 +398,19 @@ IF !ERRORLEVEL! NEQ 0 (
 
 REM Clean up ZIP file
 DEL /F /Q "!ZIP_FILE!" >nul 2>&1
+
+REM Verify extraction success
+ECHO [%TIME%] [INFO] Verifying repository extraction...
+ECHO [%TIME%] [INFO] Expected folder: !SCRIPT_DIR!!EXTRACT_FOLDER!
+IF EXIST "!SCRIPT_DIR!!EXTRACT_FOLDER!" (
+    ECHO [%TIME%] [INFO] Extraction successful - folder exists.
+    ECHO [%TIME%] [INFO] Contents of extracted folder:
+    DIR "!SCRIPT_DIR!!EXTRACT_FOLDER!" /B
+) ELSE (
+    ECHO [%TIME%] [ERROR] Extraction failed - folder not found!
+    pause
+    EXIT /B 3
+)
 
 REM -----------------------------------------------------------------------------
 REM Self-Update Mechanism - Update script.bat if a newer version is available
@@ -526,18 +539,30 @@ IF NOT EXIST "!PS1_PATH!" (
 
 ECHO [%TIME%] [INFO] Launching PowerShell maintenance script...
 
-IF "!PS7_AVAILABLE!"=="YES" (
-    ECHO [%TIME%] [INFO] Using PowerShell 7 environment...
-    START "Maintenance Script - PowerShell 7" pwsh.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
-) ELSE (
-    ECHO [%TIME%] [INFO] Using Windows PowerShell environment...
-    START "Maintenance Script - Windows PowerShell" powershell.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
+REM Test PowerShell availability before launching
+powershell.exe -Command "Write-Host 'PowerShell test successful'" >nul 2>&1
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO [%TIME%] [ERROR] Windows PowerShell is not available or functioning properly.
+    pause
+    EXIT /B 5
 )
 
-IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] PowerShell script launched successfully in new window.
-    ECHO [%TIME%] [INFO] Maintenance operations are now running in the background.
-    ECHO.
+IF "!PS7_AVAILABLE!"=="YES" (
+    ECHO [%TIME%] [INFO] Using PowerShell 7 environment...
+    pwsh.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
+    SET "LAUNCH_RESULT=!ERRORLEVEL!"
+) ELSE (
+    ECHO [%TIME%] [INFO] Using Windows PowerShell environment...
+    powershell.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
+    SET "LAUNCH_RESULT=!ERRORLEVEL!"
+)
+
+IF !LAUNCH_RESULT! EQU 0 (
+    ECHO [%TIME%] [INFO] PowerShell script execution completed successfully.
+) ELSE (
+    ECHO [%TIME%] [ERROR] PowerShell script execution failed with error code: !LAUNCH_RESULT!
+    pause
+)
     ECHO [%TIME%] [INFO] This launcher will close automatically in 10 seconds...
     FOR /L %%i IN (10,-1,1) DO (
         ECHO [%TIME%] [INFO] Closing in %%i seconds...
