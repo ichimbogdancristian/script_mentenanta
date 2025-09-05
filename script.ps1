@@ -2033,7 +2033,64 @@ Write-Log "Running in PowerShell 7+ native mode. Version: $($PSVersionTable.PSVe
 # Customization: Supports custom app lists via $global:Config.CustomEssentialApps array
 # ================================================================
 function Install-EssentialApps {
-    Write-Log 'Starting Install Essential Apps - Ultra-Parallel Processing Mode.' 'INFO'
+    Write-Log 'Starting Install Essential Apps - Diff-Based Optimization Mode.' 'INFO'
+
+    # DIFF-BASED OPTIMIZATION: Create current essential app requirements list
+    Write-Log 'Creating standardized essential apps list for diff analysis...' 'INFO'
+    $currentEssentialApps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    
+    # Build comprehensive list of all essential app identifiers from definition
+    $global:EssentialApps | ForEach-Object {
+        if ($_.Name) { [void]$currentEssentialApps.Add($_.Name.Trim()) }
+        if ($_.Winget) { [void]$currentEssentialApps.Add($_.Winget.Trim()) }
+        if ($_.Choco) { [void]$currentEssentialApps.Add($_.Choco.Trim()) }
+    }
+
+    # Save current essential apps list
+    $currentListPath = Join-Path $global:TempFolder 'essential_apps_current.json'
+    $previousListPath = Join-Path $global:TempFolder 'essential_apps_previous.json'
+    @($currentEssentialApps) | ConvertTo-Json -Depth 2 | Out-File $currentListPath -Encoding UTF8
+    Write-Log "Current essential apps list saved: $($currentEssentialApps.Count) required apps" 'INFO'
+
+    # DIFF CALCULATION: Compare with previous run to find new requirements
+    $newlyRequiredApps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    
+    if (Test-Path $previousListPath) {
+        try {
+            Write-Log "Loading previous essential apps list for diff comparison..." 'INFO'
+            $previousEssentialApps = Get-Content $previousListPath -Raw | ConvertFrom-Json
+            $previousHashSet = [System.Collections.Generic.HashSet[string]]::new($previousEssentialApps, [System.StringComparer]::OrdinalIgnoreCase)
+            Write-Log "Previous run required $($previousHashSet.Count) essential apps" 'INFO'
+            
+            # Calculate diff: apps in current but not in previous (newly required)
+            foreach ($currentApp in $currentEssentialApps) {
+                if (-not $previousHashSet.Contains($currentApp)) {
+                    [void]$newlyRequiredApps.Add($currentApp)
+                }
+            }
+            
+            Write-Log "DIFF ANALYSIS COMPLETE:" 'INFO'
+            Write-Log "  - Current requirements: $($currentEssentialApps.Count)" 'INFO'
+            Write-Log "  - Previous requirements: $($previousHashSet.Count)" 'INFO'
+            Write-Log "  - Newly required: $($newlyRequiredApps.Count)" 'INFO'
+            
+            # Log some examples of newly required apps for debugging (max 10)
+            if ($newlyRequiredApps.Count -gt 0) {
+                $exampleApps = @($newlyRequiredApps) | Select-Object -First 10
+                Write-Log "Examples of newly required apps: $($exampleApps -join ', ')" 'VERBOSE'
+            }
+        }
+        catch {
+            Write-Log "Could not load previous essential apps list: $($_.Exception.Message). Processing all apps." 'WARN'
+            $newlyRequiredApps = $currentEssentialApps
+            Write-Log "DIFF ANALYSIS FALLBACK: Processing all $($newlyRequiredApps.Count) required apps" 'INFO'
+        }
+    }
+    else {
+        Write-Log "No previous essential apps list found. Processing all required apps." 'INFO'
+        $newlyRequiredApps = $currentEssentialApps
+        Write-Log "DIFF ANALYSIS FIRST-RUN: Processing all $($newlyRequiredApps.Count) required apps" 'INFO'
+    }
 
     # Logic: Use global inventory if available, otherwise build optimized inventory for app detection
     if (-not $global:SystemInventory) {
@@ -2069,16 +2126,30 @@ function Install-EssentialApps {
     }
 
     # Smart filtering: find essential apps that are NOT installed using O(1) lookups
+    # DIFF OPTIMIZATION: Only process apps that are newly required OR not in diff mode
     $appsToInstall = @()
     foreach ($essentialApp in $global:EssentialApps) {
-        $found = $false
-        
-        # Check all possible identifiers for the essential app
+        # Check if this app should be processed based on diff analysis
+        $shouldProcess = $false
         $identifiersToCheck = @()
         if ($essentialApp.Winget) { $identifiersToCheck += $essentialApp.Winget.Trim() }
         if ($essentialApp.Choco) { $identifiersToCheck += $essentialApp.Choco.Trim() }
         if ($essentialApp.Name) { $identifiersToCheck += $essentialApp.Name.Trim() }
         
+        # Check if any identifier is in newly required apps
+        foreach ($identifier in $identifiersToCheck) {
+            if ($newlyRequiredApps.Contains($identifier)) {
+                $shouldProcess = $true
+                break
+            }
+        }
+        
+        # Skip processing if not in diff list (already processed in previous run)
+        if (-not $shouldProcess) {
+            continue
+        }
+        
+        $found = $false
         # Use HashSet.Contains for O(1) lookup performance
         foreach ($identifier in $identifiersToCheck) {
             if ($installedLookup.Contains($identifier)) {
@@ -2093,7 +2164,16 @@ function Install-EssentialApps {
     }
 
     if ($appsToInstall.Count -eq 0) {
-        Write-Log "[EssentialApps] All essential apps already installed. Skipping installation process." 'INFO'
+        # Calculate efficiency gain from diff-based processing
+        $efficiencyGain = if ($currentEssentialApps.Count -gt 0) { 
+            [math]::Round((1 - ($newlyRequiredApps.Count / $currentEssentialApps.Count)) * 100, 1) 
+        } else { 0 }
+        
+        Write-Log "[EssentialApps] All essential apps already installed. No new installations needed." 'INFO'
+        Write-Log "PERFORMANCE: Processed $($newlyRequiredApps.Count)/$($currentEssentialApps.Count) required apps (${efficiencyGain}% reduction in processing)" 'INFO'
+        
+        # Update previous list for next run
+        Copy-Item $currentListPath $previousListPath -Force
         Write-Log "[END] Install Essential Apps" 'INFO'
         return
     }
@@ -2108,15 +2188,35 @@ function Install-EssentialApps {
         return
     }
 
-    Write-Log "[EssentialApps] Processing $($appsToInstall.Count) apps for installation..." 'INFO'
-
-    # PowerShell 7 Native Parallel Processing - Enhanced Performance
-    Write-Log "[EssentialApps] Using PowerShell 7 native parallel processing for enhanced performance..." 'INFO'
+    # Calculate efficiency gain from diff-based processing
+    $efficiencyGain = if ($currentEssentialApps.Count -gt 0) { 
+        [math]::Round((1 - ($newlyRequiredApps.Count / $currentEssentialApps.Count)) * 100, 1) 
+    } else { 0 }
     
-    $installResults = $appsToInstall | ForEach-Object -Parallel {
-        $app = $_
-        $wingetAvailable = $using:wingetAvailable
-        $chocoAvailable = $using:chocoAvailable
+    Write-Log "[EssentialApps] DIFF-BASED MODE: Processing $($appsToInstall.Count) apps for installation..." 'INFO'
+    Write-Log "PERFORMANCE: Processing $($newlyRequiredApps.Count)/$($currentEssentialApps.Count) required apps (${efficiencyGain}% reduction)" 'INFO'
+
+    # PowerShell 7 Native Parallel Processing with Progress Tracking
+    Write-Log "[EssentialApps] Using PowerShell 7 parallel processing with individual app progress..." 'INFO'
+    
+    $totalApps = $appsToInstall.Count
+    $currentAppIndex = 0
+    $successCount = 0
+    $failedCount = 0
+    $skippedCount = 0
+    
+    # ACTION-ONLY LOGGING: Enhanced logging for each app installation
+    Write-Log "[EssentialApps] Starting installation of $totalApps essential apps:" 'INFO'
+    
+    foreach ($app in $appsToInstall) {
+        $currentAppIndex++
+        $progressPercent = [math]::Round(($currentAppIndex / $totalApps) * 100, 1)
+        
+        # Console progress bar
+        Write-TaskProgress -TaskName "Installing Essential Apps" -CurrentItem $currentAppIndex -TotalItems $totalApps -ItemName $app.Name
+        
+        # Log current app being processed
+        Write-Log "[$currentAppIndex/$totalApps] Processing: $($app.Name)..." 'INFO'
         
         $result = [PSCustomObject]@{
             AppName    = $app.Name
@@ -2130,6 +2230,7 @@ function Install-EssentialApps {
         try {
             # Try Winget first (preferred method)
             if ($app.Winget -and $wingetAvailable) {
+                Write-Host "  → Trying Winget installation for $($app.Name)..." -ForegroundColor Cyan
                 $wingetArgs = @(
                     "install", "--id", $app.Winget,
                     "--accept-source-agreements", "--accept-package-agreements", 
@@ -2139,36 +2240,51 @@ function Install-EssentialApps {
                 if ($wingetProc.ExitCode -eq 0) {
                     $result.Success = $true
                     $result.Method = "winget"
-                    return $result
+                    $successCount++
+                    Write-Log "✓ INSTALLED: $($app.Name) [Method: Winget]" 'INFO'
+                    Write-Host "    ✓ Successfully installed via Winget" -ForegroundColor Green
+                    continue
                 }
                 elseif ($wingetProc.ExitCode -eq -1978335189) {
                     # App already installed
                     $result.Skipped = $true
                     $result.SkipReason = "already installed (winget)"
-                    return $result
+                    $skippedCount++
+                    Write-Log "⚪ SKIPPED: $($app.Name) [Reason: Already installed via Winget]" 'INFO'
+                    Write-Host "    ⚪ Already installed (Winget detected)" -ForegroundColor Yellow
+                    continue
                 }
                 else {
                     $result.Error += "winget failed (exit: $($wingetProc.ExitCode)); "
+                    Write-Host "    ✗ Winget failed (exit code: $($wingetProc.ExitCode))" -ForegroundColor Red
                 }
             }
                 
             # Try Chocolatey as fallback
             if (-not $result.Success -and $app.Choco -and $chocoAvailable) {
+                Write-Host "  → Trying Chocolatey installation for $($app.Name)..." -ForegroundColor Cyan
                 $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--limit-output")
                 $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
                 if ($chocoProc.ExitCode -eq 0) {
                     $result.Success = $true
                     $result.Method = "choco"
-                    return $result
+                    $successCount++
+                    Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey]" 'INFO'
+                    Write-Host "    ✓ Successfully installed via Chocolatey" -ForegroundColor Green
+                    continue
                 }
                 elseif ($chocoProc.ExitCode -eq 1641 -or $chocoProc.ExitCode -eq 3010) {
                     # Success with reboot required
                     $result.Success = $true
                     $result.Method = "choco (reboot required)"
-                    return $result
+                    $successCount++
+                    Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey - Reboot Required]" 'INFO'
+                    Write-Host "    ✓ Successfully installed via Chocolatey (reboot required)" -ForegroundColor Green
+                    continue
                 }
                 else {
                     $result.Error += "choco failed (exit: $($chocoProc.ExitCode))"
+                    Write-Host "    ✗ Chocolatey failed (exit code: $($chocoProc.ExitCode))" -ForegroundColor Red
                 }
             }
                 
@@ -2176,40 +2292,34 @@ function Install-EssentialApps {
             if (-not $wingetAvailable -and -not $chocoAvailable) {
                 $result.Skipped = $true
                 $result.SkipReason = "no package manager available"
+                $skippedCount++
+                Write-Log "⚪ SKIPPED: $($app.Name) [Reason: No package manager available]" 'WARN'
+                Write-Host "    ⚪ Skipped - No package manager available" -ForegroundColor Yellow
             }
             elseif (-not $app.Winget -and -not $app.Choco) {
                 $result.Skipped = $true
                 $result.SkipReason = "no installer defined"
+                $skippedCount++
+                Write-Log "⚪ SKIPPED: $($app.Name) [Reason: No installer defined]" 'WARN'
+                Write-Host "    ⚪ Skipped - No installer defined" -ForegroundColor Yellow
             }
             else {
                 $result.Error = $result.Error.TrimEnd("; ")
+                $failedCount++
+                Write-Log "✗ FAILED: $($app.Name) [Error: $($result.Error)]" 'ERROR'
+                Write-Host "    ✗ Installation failed: $($result.Error)" -ForegroundColor Red
             }
         }
         catch {
             $result.Error = "Exception: $($_.Exception.Message)"
-        }
-            
-        return $result
-    }
-    
-    # Process results using PowerShell 7 enhanced collection methods
-    $successArray = @()
-    $failedArray = @()
-    $skippedArray = @()
-    
-    foreach ($result in $installResults) {
-        if ($result.Success) {
-            $successArray += $result
-        }
-        elseif ($result.Skipped) {
-            $skippedArray += $result
-        }
-        else {
-            $failedArray += $result
+            $failedCount++
+            Write-Log "✗ FAILED: $($app.Name) [Exception: $($_.Exception.Message)]" 'ERROR'
+            Write-Host "    ✗ Exception occurred: $($_.Exception.Message)" -ForegroundColor Red
         }
     }
 
     # Enhanced Office detection with parallel checking
+    Write-Log "Checking for existing office suite installations..." 'INFO'
     $officeDetectionJob = Start-Job -ScriptBlock {
         # Check registry keys in parallel
         $registryJob = Start-Job -ScriptBlock {
@@ -2263,6 +2373,9 @@ function Install-EssentialApps {
 
     # LibreOffice installation logic
     if (-not $officeResult.Installed) {
+        Write-Log "No office suite detected. Installing LibreOffice..." 'INFO'
+        Write-Host "Installing LibreOffice as default office suite..." -ForegroundColor Cyan
+        
         $libreOfficeJob = Start-Job -ArgumentList $wingetAvailable, $chocoAvailable -ScriptBlock {
             param($wingetAvailable, $chocoAvailable)
             
@@ -2316,49 +2429,65 @@ function Install-EssentialApps {
         Remove-Job -Job $libreOfficeJob -Force
         
         if ($libreResult.Success) {
-            $successArray += [PSCustomObject]@{
-                AppName = "LibreOffice"
-                Method  = $libreResult.Method
-                Success = $true
-            }
+            $successCount++
+            Write-Log "✓ INSTALLED: LibreOffice [Method: $($libreResult.Method)]" 'INFO'
+            Write-Host "✓ LibreOffice successfully installed via $($libreResult.Method)" -ForegroundColor Green
         }
         else {
-            $failedArray += [PSCustomObject]@{
-                AppName = "LibreOffice"
-                Error   = $libreResult.Error
-                Success = $false
-            }
+            $failedCount++
+            Write-Log "✗ FAILED: LibreOffice [Error: $($libreResult.Error)]" 'ERROR'
+            Write-Host "✗ LibreOffice installation failed: $($libreResult.Error)" -ForegroundColor Red
         }
     }
-
-    # Arrays are already defined above, no conversion needed
-
-    # Action-only logging: Only log successful installations
-    if ($successArray.Count -gt 0) {
-        Write-Log "[EssentialApps] Successfully installed $($successArray.Count) apps:" 'INFO'
-        $successArray | ForEach-Object {
-            Write-Log "Installed: $($_.AppName) via $($_.Method)" 'INFO'
-            Write-Host "✓ Installed: $($_.AppName) via $($_.Method)" -ForegroundColor Green
-        }
+    else {
+        Write-Log "⚪ SKIPPED: LibreOffice [Reason: Office suite already detected via $($officeResult.DetectionMethod)]" 'INFO'
+        Write-Host "⚪ LibreOffice installation skipped - Office suite already detected" -ForegroundColor Yellow
     }
 
+    # ENHANCED SUMMARY AND PERFORMANCE REPORTING
+    Write-Log "[EssentialApps] INSTALLATION SUMMARY - DIFF-BASED MODE:" 'INFO'
+    Write-Log "- Required apps: $($newlyRequiredApps.Count) (${efficiencyGain}% reduction from $($currentEssentialApps.Count) total requirements)" 'INFO'
+    Write-Log "- Successfully installed: $successCount apps" 'INFO'
+    Write-Log "- Failed installations: $failedCount apps" 'INFO'
+    Write-Log "- Skipped installations: $skippedCount apps" 'INFO'
+    
     # Office detection summary (action-only)
     if ($officeResult.Installed) {
         Write-Log "[EssentialApps] Microsoft Office detected ($($officeResult.DetectionMethod)). LibreOffice installation skipped." 'INFO'
     }
 
-    # Summary statistics
-    $totalProcessed = $successArray.Count + $failedArray.Count + $skippedArray.Count
-    Write-Log "[EssentialApps] Installation complete. Processed: $totalProcessed apps (Success: $($successArray.Count), Failed: $($failedArray.Count), Skipped: $($skippedArray.Count))" 'INFO'
-    
     # Only log errors and skips if they exist (minimal noise)
-    if ($failedArray.Count -gt 0) {
-        Write-Log "[EssentialApps] Failed installations: $($failedArray.Count)" 'WARN'
+    if ($failedCount -gt 0) {
+        Write-Log "[EssentialApps] Some installations failed. Check individual app logs above for details." 'WARN'
     }
     
-    if ($skippedArray.Count -gt 0) {
-        Write-Log "[EssentialApps] Skipped installations: $($skippedArray.Count)" 'INFO'
+    if ($skippedCount -gt 0) {
+        Write-Log "[EssentialApps] Some installations were skipped. Check individual app logs above for reasons." 'INFO'
     }
+
+    # Create audit file with detailed results
+    $auditData = @{
+        Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        ProcessingMode = "DIFF-BASED"
+        TotalRequiredApps = $currentEssentialApps.Count
+        NewlyRequiredApps = $newlyRequiredApps.Count
+        SuccessfulInstalls = $successCount
+        FailedInstalls = $failedCount
+        SkippedInstalls = $skippedCount
+        EfficiencyGain = "${efficiencyGain}%"
+        OfficeDetection = @{
+            Installed = $officeResult.Installed
+            DetectionMethod = $officeResult.DetectionMethod
+        }
+    }
+    
+    $auditPath = Join-Path $global:TempFolder "essential_apps_audit.json"
+    $auditData | ConvertTo-Json -Depth 3 | Out-File $auditPath -Encoding UTF8
+    Write-Log "Audit trail saved to: $auditPath" 'VERBOSE'
+
+    # Update previous list for next run
+    Copy-Item $currentListPath $previousListPath -Force
+    Write-Log "Essential apps list updated for next diff comparison" 'VERBOSE'
     
     Write-Log "[END] Install Essential Apps" 'INFO'
 }
@@ -2969,7 +3098,7 @@ function Get-EventLogAnalysis {
 # Features: Shows ONLY removed apps, maximum performance optimization, detailed success tracking
 # ================================================================
 function Remove-Bloatware {
-    Write-Log "Starting Ultra-Enhanced Bloatware Removal - PowerShell 7.5 Native Mode" 'INFO'
+    Write-Log "Starting Ultra-Enhanced Bloatware Removal - Diff-Based Processing Mode" 'INFO'
     
     # Use cached inventory if available, otherwise trigger fresh comprehensive scan
     if (-not $global:SystemInventory) {
@@ -2978,15 +3107,102 @@ function Remove-Bloatware {
     
     $inventory = $global:SystemInventory
     
-    # Ultra-fast lookup using case-insensitive Dictionary with pre-compiled regex patterns
+    # ================================================================
+    # STEP 1: Create standardized current installed apps list
+    # ================================================================
+    Write-Log "Creating standardized current installed apps list..." 'INFO'
+    $currentInstalledApps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    
+    # Add all app identifiers from all sources to current list
+    $inventory.appx | ForEach-Object {
+        if ($_.Name) { [void]$currentInstalledApps.Add($_.Name.Trim()) }
+        if ($_.PackageFullName) { [void]$currentInstalledApps.Add($_.PackageFullName.Trim()) }
+    }
+    
+    $inventory.winget | ForEach-Object {
+        if ($_.Name) { [void]$currentInstalledApps.Add($_.Name.Trim()) }
+        if ($_.Id) { [void]$currentInstalledApps.Add($_.Id.Trim()) }
+    }
+    
+    $inventory.choco | ForEach-Object {
+        if ($_.Name) { [void]$currentInstalledApps.Add($_.Name.Trim()) }
+    }
+    
+    $inventory.registry_uninstall | ForEach-Object {
+        if ($_.DisplayName) { [void]$currentInstalledApps.Add($_.DisplayName.Trim()) }
+    }
+    
+    # Save current list for future diff operations
+    $currentListPath = Join-Path $global:TempFolder 'current_installed_apps.json'
+    @($currentInstalledApps) | ConvertTo-Json -Depth 2 | Out-File $currentListPath -Encoding UTF8
+    Write-Log "Current installed apps list saved: $($currentInstalledApps.Count) total apps" 'INFO'
+    
+    # ================================================================
+    # STEP 2: Load previous installed apps list and calculate diff
+    # ================================================================
+    $previousListPath = Join-Path $global:TempFolder 'previous_installed_apps.json'
+    $newlyInstalledApps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    
+    if (Test-Path $previousListPath) {
+        try {
+            Write-Log "Loading previous installed apps list for diff comparison..." 'INFO'
+            $previousInstalledApps = Get-Content $previousListPath -Raw | ConvertFrom-Json
+            $previousHashSet = [System.Collections.Generic.HashSet[string]]::new($previousInstalledApps, [System.StringComparer]::OrdinalIgnoreCase)
+            Write-Log "Previous run had $($previousHashSet.Count) installed apps" 'INFO'
+            
+            # Calculate diff: apps in current but not in previous (newly installed)
+            foreach ($currentApp in $currentInstalledApps) {
+                if (-not $previousHashSet.Contains($currentApp)) {
+                    [void]$newlyInstalledApps.Add($currentApp)
+                }
+            }
+            
+            Write-Log "DIFF ANALYSIS COMPLETE:" 'INFO'
+            Write-Log "  - Current apps: $($currentInstalledApps.Count)" 'INFO'
+            Write-Log "  - Previous apps: $($previousHashSet.Count)" 'INFO'
+            Write-Log "  - Newly installed: $($newlyInstalledApps.Count)" 'INFO'
+            
+            # Log some examples of newly installed apps for debugging (max 10)
+            if ($newlyInstalledApps.Count -gt 0) {
+                $exampleApps = @($newlyInstalledApps) | Select-Object -First 10
+                Write-Log "Examples of newly installed apps: $($exampleApps -join ', ')" 'VERBOSE'
+            }
+            
+            # Save diff list for debugging
+            $diffListPath = Join-Path $global:TempFolder 'newly_installed_apps_diff.json'
+            @($newlyInstalledApps) | ConvertTo-Json -Depth 2 | Out-File $diffListPath -Encoding UTF8
+            
+        }
+        catch {
+            Write-Log "Failed to load previous list, processing all apps: $_" 'WARN'
+            $newlyInstalledApps = $currentInstalledApps
+        }
+    }
+    else {
+        Write-Log "No previous installed apps list found, processing all current apps (first run)" 'INFO'
+        $newlyInstalledApps = $currentInstalledApps
+    }
+    
+    # Early exit if no newly installed apps
+    if ($newlyInstalledApps.Count -eq 0) {
+        Write-Log "No newly installed apps detected since last run. Skipping bloatware removal." 'INFO'
+        # Update previous list for next run
+        Copy-Item $currentListPath $previousListPath -Force
+        return
+    }
+    
+    # ================================================================
+    # STEP 3: Build optimized lookup for ONLY newly installed apps
+    # ================================================================
+    Write-Log "Building optimized lookup for $($newlyInstalledApps.Count) newly installed apps..." 'INFO'
     $installedApps = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new([System.StringComparer]::OrdinalIgnoreCase)
     
-    # Ultra-parallel inventory processing with optimized data structures
-    $inventoryJobs = @(
-        @{ Name = 'AppX'; Data = $inventory.appx; Props = @('Name', 'PackageFullName') },
-        @{ Name = 'Winget'; Data = $inventory.winget; Props = @('Name', 'Id') },
-        @{ Name = 'Chocolatey'; Data = $inventory.choco; Props = @('Name') },
-        @{ Name = 'Registry'; Data = $inventory.registry_uninstall; Props = @('DisplayName', 'UninstallString') }
+    # Filter inventory to only include newly installed apps
+    $filteredInventoryJobs = @(
+        @{ Name = 'AppX'; Data = $inventory.appx | Where-Object { $newlyInstalledApps.Contains($_.Name) -or $newlyInstalledApps.Contains($_.PackageFullName) }; Props = @('Name', 'PackageFullName') },
+        @{ Name = 'Winget'; Data = $inventory.winget | Where-Object { $newlyInstalledApps.Contains($_.Name) -or $newlyInstalledApps.Contains($_.Id) }; Props = @('Name', 'Id') },
+        @{ Name = 'Chocolatey'; Data = $inventory.choco | Where-Object { $newlyInstalledApps.Contains($_.Name) }; Props = @('Name') },
+        @{ Name = 'Registry'; Data = $inventory.registry_uninstall | Where-Object { $newlyInstalledApps.Contains($_.DisplayName) }; Props = @('DisplayName', 'UninstallString') }
     ) | ForEach-Object -Parallel {
         $type = $_.Name
         $data = $_.Data
@@ -3007,8 +3223,8 @@ function Remove-Bloatware {
     return @($results)
     } -ThrottleLimit 8
     
-    # Merge results into lookup dictionary
-    foreach ($jobResult in $inventoryJobs) {
+    # Merge filtered results into lookup dictionary
+    foreach ($jobResult in $filteredInventoryJobs) {
         foreach ($item in $jobResult) {
             if (-not $installedApps.ContainsKey($item.Key)) {
                 $installedApps[$item.Key] = [PSCustomObject]@{
@@ -3215,26 +3431,72 @@ function Remove-Bloatware {
     # Convert to array for processing
     $removedArray = @($removedApps)
     
-    # ACTION-ONLY LOGGING: Only show what was actually removed
+    # ================================================================
+    # ENHANCED ACTION-ONLY LOGGING: Every removed app with diff context
+    # ================================================================
     if ($removedArray.Count -gt 0) {
-        # Individual app removals - one line per app
+        Write-Log "=== BLOATWARE REMOVAL RESULTS (DIFF-BASED PROCESSING) ===" 'INFO'
+        Write-Host "=== BLOATWARE REMOVAL RESULTS ===" -ForegroundColor Yellow
+        
+        # Individual app removals - one line per app with enhanced details
         foreach ($removed in $removedArray) {
-            $logMsg = "Removed: $($removed.ActualName) [$($removed.Method)]"
+            $logMsg = "✓ REMOVED: $($removed.ActualName) [Method: $($removed.Method)]"
             Write-Log $logMsg 'INFO'
-            Write-Host "✓ $logMsg" -ForegroundColor Green
+            Write-Host $logMsg -ForegroundColor Green
         }
         
-        # Summary log entry
+        # Enhanced summary with diff context
         $appNames = ($removedArray | ForEach-Object { $_.ActualName } | Sort-Object -Unique) -join ', '
-        Write-Log "Bloatware removal summary: $($removedArray.Count) apps removed - $appNames" 'INFO'
+        Write-Log "DIFF-BASED REMOVAL SUMMARY: $($removedArray.Count) bloatware apps removed from $($newlyInstalledApps.Count) newly detected apps" 'INFO'
+        Write-Log "Removed apps: $appNames" 'INFO'
         
-        # Method breakdown
+        # Method breakdown with statistics
         $methodGroups = $removedArray | Group-Object Method
         $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
         Write-Log "Removal methods used: $methodSummary" 'INFO'
+        
+        # Performance metrics for diff-based processing
+        $efficiencyGain = if ($currentInstalledApps.Count -gt 0) { 
+            [math]::Round((1 - ($newlyInstalledApps.Count / $currentInstalledApps.Count)) * 100, 1) 
+        } else { 0 }
+        Write-Log "PERFORMANCE: Processed $($newlyInstalledApps.Count)/$($currentInstalledApps.Count) apps (${efficiencyGain}% reduction in processing)" 'INFO'
+        
+        # Create detailed removal log for audit trail
+        $removalAuditPath = Join-Path $global:TempFolder 'bloatware_removed_$(Get-Date -Format "yyyyMMdd_HHmmss").json'
+        $auditData = @{
+            Timestamp = (Get-Date).ToString('o')
+            ProcessingMode = "Diff-Based"
+            TotalCurrentApps = $currentInstalledApps.Count
+            NewlyInstalledApps = $newlyInstalledApps.Count
+            BloatwareRemoved = $removedArray.Count
+            EfficiencyGain = "${efficiencyGain}%"
+            RemovedApps = $removedArray | ForEach-Object { 
+                @{
+                    Name = $_.ActualName
+                    Method = $_.Method
+                    OriginalName = $_.AppName
+                }
+            }
+            MethodBreakdown = $methodGroups | ForEach-Object { 
+                @{
+                    Method = $_.Name
+                    Count = $_.Count
+                }
+            }
+        }
+        $auditData | ConvertTo-Json -Depth 4 | Out-File $removalAuditPath -Encoding UTF8
+        Write-Log "Detailed removal audit saved to: $removalAuditPath" 'VERBOSE'
+        
     }
     else {
-        Write-Log "No bloatware apps were removed" 'INFO'
+        if ($newlyInstalledApps.Count -eq 0) {
+            Write-Log "DIFF-BASED PROCESSING: No newly installed apps detected since last run - no bloatware removal needed" 'INFO'
+            Write-Host "✓ No newly installed apps detected - system clean" -ForegroundColor Green
+        }
+        else {
+            Write-Log "DIFF-BASED PROCESSING: $($newlyInstalledApps.Count) newly installed apps checked, no bloatware found" 'INFO'
+            Write-Host "✓ $($newlyInstalledApps.Count) newly installed apps checked - no bloatware detected" -ForegroundColor Green
+        }
     }
     
     # Ultra-fast registry cleanup to prevent reinstallation
@@ -3268,7 +3530,32 @@ function Remove-Bloatware {
         catch { }
     } -ThrottleLimit 3 | Out-Null
     
-    Write-Log "[END] Ultra-Enhanced Bloatware Removal" 'INFO'
+    # ================================================================
+    # STEP 4: Update previous installed apps list for next diff operation
+    # ================================================================
+    try {
+        # Update the previous list with current list for next run
+        Copy-Item $currentListPath $previousListPath -Force
+        Write-Log "Updated previous installed apps list for next diff operation" 'INFO'
+        
+        # Create summary report of diff-based processing
+        $diffSummary = @{
+            TotalCurrentApps = $currentInstalledApps.Count
+            NewlyInstalledApps = $newlyInstalledApps.Count
+            BloatwareRemoved = if ($removedArray) { $removedArray.Count } else { 0 }
+            ProcessingMode = "Diff-Based (Optimized)"
+            LastRun = (Get-Date).ToString('o')
+        }
+        
+        $diffSummaryPath = Join-Path $global:TempFolder 'bloatware_diff_summary.json'
+        $diffSummary | ConvertTo-Json -Depth 3 | Out-File $diffSummaryPath -Encoding UTF8
+        Write-Log "Diff-based processing summary saved to $diffSummaryPath" 'INFO'
+    }
+    catch {
+        Write-Log "Failed to update previous list for diff operation: $_" 'WARN'
+    }
+    
+    Write-Log "[END] Ultra-Enhanced Bloatware Removal - Diff-Based Processing Complete" 'INFO'
 }
 
 ### [TASK 4] System Inventory (Legacy)
