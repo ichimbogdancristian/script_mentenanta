@@ -197,7 +197,7 @@ IF "%RESTART_NEEDED%"=="YES" (
 ) ELSE (
     ECHO [%TIME%] [INFO] No pending updates require restart. Continuing with maintenance script...
 )
-)
+
 
 REM -----------------------------------------------------------------------------
 REM Dependency Management - Direct Downloads from Official Sources
@@ -284,10 +284,18 @@ IF !ERRORLEVEL! NEQ 0 (
 :SKIP_PS7_INSTALL
 
 REM -----------------------------------------------------------------------------
-REM 3. NuGet PackageProvider - Direct download and installation
+REM 3. NuGet PackageProvider - Automatic installation with multiple methods
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Installing NuGet PackageProvider...
-powershell -ExecutionPolicy Bypass -Command "& { $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:$false -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Failed to install NuGet PackageProvider:' $_.Exception.Message } } else { Write-Host '[INFO] NuGet PackageProvider already available' } }"
+ECHO [%TIME%] [INFO] Installing NuGet PackageProvider with automatic confirmation...
+
+REM Method 1: Direct bootstrap with automatic Y response
+ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Method 1 failed, trying direct download...' } } else { Write-Host '[INFO] NuGet PackageProvider already available' } }"
+
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO [%TIME%] [INFO] Trying alternative NuGet installation method...
+    REM Method 2: Direct download and install (fallback)
+    powershell -ExecutionPolicy Bypass -Command "& { try { $nugetUrl = 'https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll'; $nugetPath = Join-Path $env:ProgramFiles 'PackageManagement\ProviderAssemblies\nuget\2.8.5.208\Microsoft.PackageManagement.NuGetProvider.dll'; $nugetDir = Split-Path $nugetPath; if (-not (Test-Path $nugetDir)) { New-Item -ItemType Directory -Path $nugetDir -Force | Out-Null }; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath -UseBasicParsing; Write-Host '[INFO] NuGet PackageProvider downloaded and installed manually' } catch { Write-Host '[WARN] Direct download also failed:' $_.Exception.Message } }"
+)
 
 IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [WARN] NuGet PackageProvider installation failed, but continuing...
@@ -300,10 +308,10 @@ ECHO [%TIME%] [INFO] Configuring PowerShell Gallery as trusted repository...
 powershell -ExecutionPolicy Bypass -Command "try { Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; Write-Host '[INFO] PowerShell Gallery configured as trusted' } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' $_.Exception.Message }"
 
 REM -----------------------------------------------------------------------------
-REM 5. PSWindowsUpdate Module - Download from PowerShell Gallery
+REM 5. PSWindowsUpdate Module - Download from PowerShell Gallery with auto-confirmation
 REM -----------------------------------------------------------------------------
-ECHO [%TIME%] [INFO] Installing PSWindowsUpdate module...
-powershell -ExecutionPolicy Bypass -Command "& { if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Confirm:$false -Repository PSGallery; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' $_.Exception.Message } } else { Write-Host '[INFO] PSWindowsUpdate module already available' } }"
+ECHO [%TIME%] [INFO] Installing PSWindowsUpdate module with automatic confirmation...
+ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Repository PSGallery; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' $_.Exception.Message } } else { Write-Host '[INFO] PSWindowsUpdate module already available' } }"
 
 IF !ERRORLEVEL! NEQ 0 (
     ECHO [%TIME%] [WARN] PSWindowsUpdate module installation failed.
