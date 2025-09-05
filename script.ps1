@@ -3914,8 +3914,15 @@ ImagesRootPath=$wallpaperPath
         $themePath = Join-Path $env:TEMP "CustomSlideshow.theme"
         $themeContent | Out-File -FilePath $themePath -Encoding Unicode -Force
         
-        # Apply the theme using rundll32 (silently)
-        Start-Process -FilePath "rundll32.exe" -ArgumentList "desk.cpl,InstallScreenSaver $themePath" -NoNewWindow -Wait
+        # Apply theme using proper method (removed problematic InstallScreenSaver command)
+        try {
+            # Apply theme file directly without screensaver dialog
+            Start-Process -FilePath $themePath -WindowStyle Hidden -ErrorAction SilentlyContinue
+            Write-Log "Theme file applied successfully" 'VERBOSE'
+        }
+        catch {
+            Write-Log "Theme file application failed (non-critical): $_" 'WARN'
+        }
         
         # Additional method to set wallpaper using P/Invoke for greater reliability
         try {
