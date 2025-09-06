@@ -30,7 +30,8 @@ $ScriptDir = Split-Path -Parent $ScriptFullPath
 $ScriptName = Split-Path -Leaf $ScriptFullPath
 $ScriptDrive = if ($ScriptFullPath.StartsWith("\\")) { 
     "UNC Path" 
-} else { 
+}
+else { 
     (Get-Item $ScriptFullPath).PSDrive.Name + ":" 
 }
 
@@ -41,7 +42,8 @@ $IsUNCPath = $ScriptFullPath.StartsWith("\\")
 if ($IsUNCPath) {
     $IsNetworkPath = $true
     $DriveType = "Network"
-} elseif ($ScriptDrive -ne "UNC Path") {
+}
+elseif ($ScriptDrive -ne "UNC Path") {
     $DriveInfo = Get-CimInstance -Class Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $ScriptDrive }
     if ($DriveInfo) { 
         $DriveTypeNum = $DriveInfo.DriveType
@@ -55,10 +57,12 @@ if ($IsUNCPath) {
             5 { "CD-ROM" }
             default { "Unknown" }
         }
-    } else { 
+    }
+    else { 
         $DriveType = "Unknown" 
     }
-} else { 
+}
+else { 
     $DriveType = "Unknown" 
 }
 
@@ -81,10 +85,12 @@ $WorkingDirectory = Get-Location
 if ($LogFilePath) {
     $LogFile = $LogFilePath
     Write-Host "[INFO] Using log file from parameter: $LogFile" -ForegroundColor Green
-} elseif ($env:SCRIPT_LOG_FILE) {
+}
+elseif ($env:SCRIPT_LOG_FILE) {
     $LogFile = $env:SCRIPT_LOG_FILE
     Write-Host "[INFO] Using batch script log file from environment: $LogFile" -ForegroundColor Green
-} else {
+}
+else {
     $batchScriptDirectory = Split-Path $ScriptDir -Parent
     $LogFile = Join-Path $batchScriptDirectory 'maintenance.log'
     Write-Host "[INFO] Using default PowerShell log file (parent directory): $LogFile" -ForegroundColor Yellow
@@ -98,17 +104,17 @@ if (-not (Test-Path $logDir)) {
 
 # Global configuration object with defaults
 $global:Config = @{
-    SkipBloatwareRemoval = $false
-    SkipEssentialApps = $false
-    SkipWindowsUpdates = $false
-    SkipTelemetryDisable = $false
-    SkipSystemRestore = $false
-    SkipEventLogAnalysis = $false
+    SkipBloatwareRemoval    = $false
+    SkipEssentialApps       = $false
+    SkipWindowsUpdates      = $false
+    SkipTelemetryDisable    = $false
+    SkipSystemRestore       = $false
+    SkipEventLogAnalysis    = $false
     SkipPendingRestartCheck = $false
-    EnableVerboseLogging = $false
-    CustomEssentialApps = @()
-    CustomBloatwareList = @()
-    ExcludeTasks = @()
+    EnableVerboseLogging    = $false
+    CustomEssentialApps     = @()
+    CustomBloatwareList     = @()
+    ExcludeTasks            = @()
 }
 
 # Global variables for task execution and results tracking
@@ -129,238 +135,263 @@ $global:EssentialApps = @()
 
 $global:ScriptTasks = @(
     @{ Name = 'SystemRestoreProtection'; Function = { 
-        Write-Log 'Starting System Restore Protection task.' 'INFO'
-        Write-Host 'Starting System Restore Protection task.' -ForegroundColor Cyan
-        if (-not $global:Config.SkipSystemRestore) { 
-            Protect-SystemRestore
-            Write-Log 'Completed System Restore Protection task.' 'INFO'
-            Write-Host 'Completed System Restore Protection task.' -ForegroundColor Green
-            return $true
-        } else { 
-            Write-Log 'System Restore Protection skipped by configuration.' 'INFO'
-            Write-Host 'System Restore Protection skipped by configuration.' -ForegroundColor Yellow
-            return $false
-        } 
-    }; Description = 'Enable System Restore and create pre-maintenance checkpoint' },
+            Write-Log 'Starting System Restore Protection task.' 'INFO'
+            Write-Host 'Starting System Restore Protection task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipSystemRestore) { 
+                Protect-SystemRestore
+                Write-Log 'Completed System Restore Protection task.' 'INFO'
+                Write-Host 'Completed System Restore Protection task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'System Restore Protection skipped by configuration.' 'INFO'
+                Write-Host 'System Restore Protection skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
+        }; Description = 'Enable System Restore and create pre-maintenance checkpoint' 
+    },
 
     @{ Name = 'SystemInventory'; Function = { 
-        Write-Log 'Starting System Inventory task.' 'INFO'
-        Write-Host 'Starting System Inventory task.' -ForegroundColor Cyan
-        Get-SystemInventory
-        Write-Log 'Completed System Inventory task.' 'INFO'
-        Write-Host 'Completed System Inventory task.' -ForegroundColor Green
-        return $true
-    }; Description = 'Collect comprehensive system information for analysis and reporting' },
+            Write-Log 'Starting System Inventory task.' 'INFO'
+            Write-Host 'Starting System Inventory task.' -ForegroundColor Cyan
+            Get-SystemInventory
+            Write-Log 'Completed System Inventory task.' 'INFO'
+            Write-Host 'Completed System Inventory task.' -ForegroundColor Green
+            return $true
+        }; Description = 'Collect comprehensive system information for analysis and reporting' 
+    },
 
     @{ Name = 'EventLogAnalysis'; Function = { 
-        Write-Log 'Starting Event Log Analysis task.' 'INFO'
-        Write-Host 'Starting Event Log Analysis task.' -ForegroundColor Cyan
-        if (-not $global:Config.SkipEventLogAnalysis) { 
-            Get-EventLogAnalysis
-            Write-Log 'Completed Event Log Analysis task.' 'INFO'
-            Write-Host 'Completed Event Log Analysis task.' -ForegroundColor Green
-            return $true
-        } else { 
-            Write-Log 'Event Log Analysis skipped by configuration.' 'INFO'
-            Write-Host 'Event Log Analysis skipped by configuration.' -ForegroundColor Yellow
-            return $false
-        } 
-    }; Description = 'Analyze Event Viewer and CBS logs for system errors (last 96 hours)' },
+            Write-Log 'Starting Event Log Analysis task.' 'INFO'
+            Write-Host 'Starting Event Log Analysis task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipEventLogAnalysis) { 
+                Get-EventLogAnalysis
+                Write-Log 'Completed Event Log Analysis task.' 'INFO'
+                Write-Host 'Completed Event Log Analysis task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'Event Log Analysis skipped by configuration.' 'INFO'
+                Write-Host 'Event Log Analysis skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
+        }; Description = 'Analyze Event Viewer and CBS logs for system errors (last 96 hours)' 
+    },
 
     @{ Name = 'RemoveBloatware'; Function = { 
-        Write-Log 'Starting Bloatware Removal task.' 'INFO'
-        Write-Host 'Starting Bloatware Removal task.' -ForegroundColor Cyan
-        if (-not $global:Config.SkipBloatwareRemoval) { 
-            Remove-Bloatware
-            Write-Log 'Completed Bloatware Removal task.' 'INFO'
-            Write-Host 'Completed Bloatware Removal task.' -ForegroundColor Green
-            return $true
-        } else { 
-            Write-Log 'Bloatware removal skipped by configuration.' 'INFO'
-            Write-Host 'Bloatware removal skipped by configuration.' -ForegroundColor Yellow
-            return $false
-        } 
-    }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' },
+            Write-Log 'Starting Bloatware Removal task.' 'INFO'
+            Write-Host 'Starting Bloatware Removal task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipBloatwareRemoval) { 
+                Remove-Bloatware
+                Write-Log 'Completed Bloatware Removal task.' 'INFO'
+                Write-Host 'Completed Bloatware Removal task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'Bloatware removal skipped by configuration.' 'INFO'
+                Write-Host 'Bloatware removal skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
+        }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' 
+    },
 
     @{ Name = 'InstallEssentialApps'; Function = { 
-        Write-Log 'Starting Essential Apps Installation task.' 'INFO'
-        Write-Host 'Starting Essential Apps Installation task.' -ForegroundColor Cyan
-        if (-not $global:Config.SkipEssentialApps) { 
-            Install-EssentialApps
-            Write-Log 'Completed Essential Apps Installation task.' 'INFO'
-            Write-Host 'Completed Essential Apps Installation task.' -ForegroundColor Green
-            return $true
-        } else { 
-            Write-Log 'Essential apps installation skipped by configuration.' 'INFO'
-            Write-Host 'Essential apps installation skipped by configuration.' -ForegroundColor Yellow
-            return $false
-        } 
-    }; Description = 'Install curated essential applications via parallel processing' },
+            Write-Log 'Starting Essential Apps Installation task.' 'INFO'
+            Write-Host 'Starting Essential Apps Installation task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipEssentialApps) { 
+                Install-EssentialApps
+                Write-Log 'Completed Essential Apps Installation task.' 'INFO'
+                Write-Host 'Completed Essential Apps Installation task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'Essential apps installation skipped by configuration.' 'INFO'
+                Write-Host 'Essential apps installation skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
+        }; Description = 'Install curated essential applications via parallel processing' 
+    },
 
     @{ Name = 'UpdateAllPackages'; Function = { 
-        Write-Log 'Starting Package Updates task.' 'INFO'
-        Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
-        Update-AllPackages
-        Write-Log 'Completed Package Updates task.' 'INFO'
-        Write-Host 'Completed Package Updates task.' -ForegroundColor Green
-        return $true
-    }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers' },
+            Write-Log 'Starting Package Updates task.' 'INFO'
+            Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
+            Update-AllPackages
+            Write-Log 'Completed Package Updates task.' 'INFO'
+            Write-Host 'Completed Package Updates task.' -ForegroundColor Green
+            return $true
+        }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers' 
+    },
 
     @{ Name = 'WindowsUpdateCheck'; Function = {
-        Write-Log 'Starting Windows Update Check task.' 'INFO'
-        Write-Host 'Starting Windows Update Check task.' -ForegroundColor Cyan
-        if (-not $global:Config.SkipWindowsUpdates) { 
-            Install-WindowsUpdatesCompatible
-            Write-Log 'Completed Windows Update Check task.' 'INFO'
-            Write-Host 'Completed Windows Update Check task.' -ForegroundColor Green
-            return $true
-        } else { 
-            Write-Log 'Windows Update check skipped by configuration.' 'INFO'
-            Write-Host 'Windows Update check skipped by configuration.' -ForegroundColor Yellow
-            return $false
-        } 
-    }; Description = 'Check and install available Windows Updates with compatibility layer' },
+            Write-Log 'Starting Windows Update Check task.' 'INFO'
+            Write-Host 'Starting Windows Update Check task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipWindowsUpdates) { 
+                Install-WindowsUpdatesCompatible
+                Write-Log 'Completed Windows Update Check task.' 'INFO'
+                Write-Host 'Completed Windows Update Check task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'Windows Update check skipped by configuration.' 'INFO'
+                Write-Host 'Windows Update check skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
+        }; Description = 'Check and install available Windows Updates with compatibility layer' 
+    },
 
     @{ Name = 'DisableTelemetry'; Function = { 
-        Write-Log 'Starting Telemetry Disable task.' 'INFO'
-        Write-Host 'Starting Telemetry Disable task.' -ForegroundColor Cyan
-        if (-not $global:Config.SkipTelemetryDisable) { 
-            Disable-Telemetry
-            Write-Log 'Completed Telemetry Disable task.' 'INFO'
-            Write-Host 'Completed Telemetry Disable task.' -ForegroundColor Green
-            return $true
-        } else { 
-            Write-Log 'Telemetry disable skipped by configuration.' 'INFO'
-            Write-Host 'Telemetry disable skipped by configuration.' -ForegroundColor Yellow
-            return $false
-        } 
-    }; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking' },
+            Write-Log 'Starting Telemetry Disable task.' 'INFO'
+            Write-Host 'Starting Telemetry Disable task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipTelemetryDisable) { 
+                Disable-Telemetry
+                Write-Log 'Completed Telemetry Disable task.' 'INFO'
+                Write-Host 'Completed Telemetry Disable task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'Telemetry disable skipped by configuration.' 'INFO'
+                Write-Host 'Telemetry disable skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
+        }; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking' 
+    },
 
     @{ Name = 'TaskbarOptimization'; Function = { 
-        Write-Log 'Starting Taskbar Optimization task.' 'INFO'
-        Write-Host 'Starting Taskbar Optimization task.' -ForegroundColor Cyan
-        Optimize-Taskbar
-        Write-Log 'Completed Taskbar Optimization task.' 'INFO'
-        Write-Host 'Completed Taskbar Optimization task.' -ForegroundColor Green
-        return $true
-    }; Description = 'Optimize taskbar layout and disable web search in Start menu' },
+            Write-Log 'Starting Taskbar Optimization task.' 'INFO'
+            Write-Host 'Starting Taskbar Optimization task.' -ForegroundColor Cyan
+            Optimize-Taskbar
+            Write-Log 'Completed Taskbar Optimization task.' 'INFO'
+            Write-Host 'Completed Taskbar Optimization task.' -ForegroundColor Green
+            return $true
+        }; Description = 'Optimize taskbar layout and disable web search in Start menu' 
+    },
 
     @{ Name = 'DesktopBackground'; Function = { 
-        Write-Log 'Starting Desktop Background Configuration task.' 'INFO'
-        Write-Host 'Starting Desktop Background Configuration task.' -ForegroundColor Cyan
-        Set-DesktopBackground
-        Write-Log 'Completed Desktop Background Configuration task.' 'INFO'
-        Write-Host 'Completed Desktop Background Configuration task.' -ForegroundColor Green
-        return $true
-    }; Description = 'Change desktop background from Windows Spotlight to personalized slideshow' },
+            Write-Log 'Starting Desktop Background Configuration task.' 'INFO'
+            Write-Host 'Starting Desktop Background Configuration task.' -ForegroundColor Cyan
+            Set-DesktopBackground
+            Write-Log 'Completed Desktop Background Configuration task.' 'INFO'
+            Write-Host 'Completed Desktop Background Configuration task.' -ForegroundColor Green
+            return $true
+        }; Description = 'Change desktop background from Windows Spotlight to personalized slideshow' 
+    },
 
     @{ Name = 'SecurityHardening'; Function = { 
-        Write-Log 'Starting Security Hardening task.' 'INFO'
-        Write-Host 'Starting Security Hardening task.' -ForegroundColor Cyan
-        Enable-SecurityHardening
-        Write-Log 'Completed Security Hardening task.' 'INFO'
-        Write-Host 'Completed Security Hardening task.' -ForegroundColor Green
-        return $true
-    }; Description = 'Apply security hardening configurations and policy improvements' },
+            Write-Log 'Starting Security Hardening task.' 'INFO'
+            Write-Host 'Starting Security Hardening task.' -ForegroundColor Cyan
+            Enable-SecurityHardening
+            Write-Log 'Completed Security Hardening task.' 'INFO'
+            Write-Host 'Completed Security Hardening task.' -ForegroundColor Green
+            return $true
+        }; Description = 'Apply security hardening configurations and policy improvements' 
+    },
 
     @{ Name = 'CleanTempAndDisk'; Function = {
-        Write-Log 'Starting Temporary Files and Disk Cleanup task.' 'INFO'
-        Write-Host 'Starting Temporary Files and Disk Cleanup task.' -ForegroundColor Cyan
-        try {
-            Write-TaskProgress "Starting disk cleanup" 20
-            $cleanupActions = @(
-                @{ Path = $env:TEMP; Name = "User Temp Files" },
-                @{ Path = "$env:WINDIR\Temp"; Name = "System Temp Files" },
-                @{ Path = "$env:LOCALAPPDATA\Microsoft\Windows\INetCache"; Name = "Internet Cache" },
-                @{ Path = "$env:USERPROFILE\AppData\Local\Temp"; Name = "Local Temp Files" }
-            )
-            
-            $totalCleaned = 0
-            foreach ($action in $cleanupActions) {
-                if (Test-Path $action.Path) {
-                    try {
-                        $beforeSize = (Get-ChildItem $action.Path -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-                        Get-ChildItem $action.Path -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-                        $afterSize = (Get-ChildItem $action.Path -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-                        $cleaned = [math]::Max(0, ($beforeSize - $afterSize))
-                        $totalCleaned += $cleaned
-                        Write-Log "Cleaned $($action.Name): $([math]::Round($cleaned/1MB, 2)) MB" 'INFO'
-                    } catch {
-                        Write-Log "Failed to clean $($action.Name): $_" 'WARN'
-                    }
-                }
-            }
-            
-            Write-TaskProgress "Disk cleanup completed" 100
-            Write-Host "✓ Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" -ForegroundColor Green
-            Write-Log "Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" 'INFO'
-            return $true
-        } catch {
-            Write-Log "Disk cleanup failed: $_" 'ERROR'
-            Write-Host "✗ Disk cleanup failed: $_" -ForegroundColor Red
-            return $false
-        }
-    }; Description = 'Clean temporary files and perform disk space optimization' },
-
-    @{ Name = 'PendingRestartCheck'; Function = { 
-        Write-Log 'Starting Pending Restart Check task.' 'INFO'
-        Write-Host 'Starting Pending Restart Check task.' -ForegroundColor Cyan
-        if (-not $global:Config.SkipPendingRestartCheck) {
+            Write-Log 'Starting Temporary Files and Disk Cleanup task.' 'INFO'
+            Write-Host 'Starting Temporary Files and Disk Cleanup task.' -ForegroundColor Cyan
             try {
-                $pendingRestart = $false
-                
-                # Check multiple indicators for pending restart
-                $registryKeys = @(
-                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
-                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
-                    "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations"
+                Write-TaskProgress "Starting disk cleanup" 20
+                $cleanupActions = @(
+                    @{ Path = $env:TEMP; Name = "User Temp Files" },
+                    @{ Path = "$env:WINDIR\Temp"; Name = "System Temp Files" },
+                    @{ Path = "$env:LOCALAPPDATA\Microsoft\Windows\INetCache"; Name = "Internet Cache" },
+                    @{ Path = "$env:USERPROFILE\AppData\Local\Temp"; Name = "Local Temp Files" }
                 )
-                
-                foreach ($key in $registryKeys) {
-                    if (Test-Path $key) {
-                        $pendingRestart = $true
-                        Write-Log "Pending restart detected: $key" 'INFO'
-                        break
+            
+                $totalCleaned = 0
+                foreach ($action in $cleanupActions) {
+                    if (Test-Path $action.Path) {
+                        try {
+                            $beforeSize = (Get-ChildItem $action.Path -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                            Get-ChildItem $action.Path -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+                            $afterSize = (Get-ChildItem $action.Path -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                            $cleaned = [math]::Max(0, ($beforeSize - $afterSize))
+                            $totalCleaned += $cleaned
+                            Write-Log "Cleaned $($action.Name): $([math]::Round($cleaned/1MB, 2)) MB" 'INFO'
+                        }
+                        catch {
+                            Write-Log "Failed to clean $($action.Name): $_" 'WARN'
+                        }
                     }
                 }
-                
-                if ($pendingRestart) {
-                    Write-Host '⚠️  SYSTEM RESTART REQUIRED' -ForegroundColor Yellow
-                    Write-Host 'Windows maintenance operations require a system restart to complete.' -ForegroundColor Yellow
-                    Write-Host 'Starting 120-second countdown. Press Ctrl+C to abort restart.' -ForegroundColor Yellow
-                    
-                    for ($i = 120; $i -gt 0; $i--) {
-                        Write-Host "🔄 Restart in $i seconds... (Ctrl+C to abort)" -ForegroundColor Yellow
-                        Start-Sleep -Seconds 1
-                    }
-                    
-                    Write-Host '🔄 Initiating system restart...' -ForegroundColor Green
-                    try {
-                        Start-Process -FilePath "shutdown.exe" -ArgumentList "/r", "/t", "10", "/c", "System restart required to complete maintenance operations" -NoNewWindow
-                        Write-Log 'System restart initiated successfully.' 'INFO'
-                        return $true
-                    } catch {
-                        Write-Log "Failed to initiate system restart: $_" 'ERROR'
-                        Write-Host "❌ Failed to initiate restart: $_" -ForegroundColor Red
-                        Write-Host 'Please restart your system manually.' -ForegroundColor Yellow
-                        return $false
-                    }
-                } else {
-                    Write-Host '✓ No pending restart required' -ForegroundColor Green
-                    Write-Log 'No pending restart required.' 'INFO'
-                    return $true
-                }
-            } catch {
-                Write-Log "Pending restart check failed: $_" 'ERROR'
-                Write-Host "❌ Pending restart check failed: $_" -ForegroundColor Red
+            
+                Write-TaskProgress "Disk cleanup completed" 100
+                Write-Host "✓ Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" -ForegroundColor Green
+                Write-Log "Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" 'INFO'
+                return $true
+            }
+            catch {
+                Write-Log "Disk cleanup failed: $_" 'ERROR'
+                Write-Host "✗ Disk cleanup failed: $_" -ForegroundColor Red
                 return $false
             }
-        } else {
-            Write-Log 'Pending restart check skipped by configuration.' 'INFO'
-            Write-Host 'Pending restart check skipped by configuration.' -ForegroundColor Yellow
-            return $false
-        }
-    }; Description = 'Check for pending system restarts with 120-second countdown and abort option' }
+        }; Description = 'Clean temporary files and perform disk space optimization' 
+    },
+
+    @{ Name = 'PendingRestartCheck'; Function = { 
+            Write-Log 'Starting Pending Restart Check task.' 'INFO'
+            Write-Host 'Starting Pending Restart Check task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipPendingRestartCheck) {
+                try {
+                    $pendingRestart = $false
+                
+                    # Check multiple indicators for pending restart
+                    $registryKeys = @(
+                        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
+                        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+                        "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations"
+                    )
+                
+                    foreach ($key in $registryKeys) {
+                        if (Test-Path $key) {
+                            $pendingRestart = $true
+                            Write-Log "Pending restart detected: $key" 'INFO'
+                            break
+                        }
+                    }
+                
+                    if ($pendingRestart) {
+                        Write-Host '⚠️  SYSTEM RESTART REQUIRED' -ForegroundColor Yellow
+                        Write-Host 'Windows maintenance operations require a system restart to complete.' -ForegroundColor Yellow
+                        Write-Host 'Starting 120-second countdown. Press Ctrl+C to abort restart.' -ForegroundColor Yellow
+                    
+                        for ($i = 120; $i -gt 0; $i--) {
+                            Write-Host "🔄 Restart in $i seconds... (Ctrl+C to abort)" -ForegroundColor Yellow
+                            Start-Sleep -Seconds 1
+                        }
+                    
+                        Write-Host '🔄 Initiating system restart...' -ForegroundColor Green
+                        try {
+                            Start-Process -FilePath "shutdown.exe" -ArgumentList "/r", "/t", "10", "/c", "System restart required to complete maintenance operations" -NoNewWindow
+                            Write-Log 'System restart initiated successfully.' 'INFO'
+                            return $true
+                        }
+                        catch {
+                            Write-Log "Failed to initiate system restart: $_" 'ERROR'
+                            Write-Host "❌ Failed to initiate restart: $_" -ForegroundColor Red
+                            Write-Host 'Please restart your system manually.' -ForegroundColor Yellow
+                            return $false
+                        }
+                    }
+                    else {
+                        Write-Host '✓ No pending restart required' -ForegroundColor Green
+                        Write-Log 'No pending restart required.' 'INFO'
+                        return $true
+                    }
+                }
+                catch {
+                    Write-Log "Pending restart check failed: $_" 'ERROR'
+                    Write-Host "❌ Pending restart check failed: $_" -ForegroundColor Red
+                    return $false
+                }
+            }
+            else {
+                Write-Log 'Pending restart check skipped by configuration.' 'INFO'
+                Write-Host 'Pending restart check skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            }
+        }; Description = 'Check for pending system restarts with 120-second countdown and abort option' 
+    }
 )
 
 # ===============================
@@ -397,23 +428,24 @@ function Use-AllScriptTasks {
             $duration = ($endTime - $startTime).TotalSeconds
             Write-Log "Task $taskName completed in $duration seconds - Result: $result" 'INFO'
             $global:TaskResults[$taskName] = @{ 
-                Success = $result
-                Duration = $duration
-                Started = $startTime
-                Ended = $endTime
+                Success     = $result
+                Duration    = $duration
+                Started     = $startTime
+                Ended       = $endTime
                 Description = $desc
             }
-        } catch {
+        }
+        catch {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
             Write-Log "Task $taskName execution failed: $_" 'ERROR'
             $global:TaskResults[$taskName] = @{ 
-                Success = $false
-                Duration = $duration
-                Started = $startTime
-                Ended = $endTime
+                Success     = $false
+                Duration    = $duration
+                Started     = $startTime
+                Ended       = $endTime
                 Description = $desc
-                Error = $_.Exception.Message
+                Error       = $_.Exception.Message
             }
         }
     }
@@ -442,7 +474,8 @@ function Write-Log {
     # Write to file
     try {
         Add-Content -Path $global:LogFile -Value $logEntry -ErrorAction SilentlyContinue
-    } catch {
+    }
+    catch {
         # Silently continue if log file is inaccessible
     }
     
@@ -499,7 +532,8 @@ function Invoke-Task {
         $result = & $Action
         Write-Log "Task succeeded: $TaskName" 'SUCCESS'
         return $result
-    } catch {
+    }
+    catch {
         Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
         return $false
     }
@@ -532,10 +566,12 @@ function Get-AppxPackageCompatible {
     try {
         if ($AllUsers) {
             return Get-AppxPackage -Name $Name -AllUsers -ErrorAction SilentlyContinue
-        } else {
+        }
+        else {
             return Get-AppxPackage -Name $Name -ErrorAction SilentlyContinue
         }
-    } catch {
+    }
+    catch {
         Write-Log "Failed to get AppX packages: $_" 'WARN'
         return @()
     }
@@ -559,7 +595,8 @@ function Remove-AppxPackageCompatible {
     try {
         if ($AllUsers) {
             Remove-AppxPackage -Package $PackageFullName -AllUsers -ErrorAction SilentlyContinue
-        } else {
+        }
+        else {
             Remove-AppxPackage -Package $PackageFullName -ErrorAction SilentlyContinue
         }
 
@@ -571,7 +608,8 @@ function Remove-AppxPackageCompatible {
         }
 
         return $true
-    } catch {
+    }
+    catch {
         Write-Log "Failed to remove AppX package $PackageFullName: $($_.Exception.Message)" 'ERROR'
         return $false
     }
@@ -595,10 +633,12 @@ function Get-AppxProvisionedPackageCompatible {
         Import-Module Dism -ErrorAction SilentlyContinue
         if ($Online) {
             return Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Select-Object DisplayName, PackageName
-        } else {
+        }
+        else {
             return Get-AppxProvisionedPackage -ErrorAction SilentlyContinue | Select-Object DisplayName, PackageName
         }
-    } catch {
+    }
+    catch {
         Write-Log "Failed to get provisioned AppX packages: $_" 'WARN'
         return @()
     }
@@ -628,16 +668,19 @@ function Remove-AppxProvisionedPackageCompatible {
             $remainingPackage = Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -eq $PackageName }
             if (-not $remainingPackage) {
                 return $true
-            } else {
+            }
+            else {
                 Write-Log "AppX provisioned package removal may have failed - package still found: $PackageName" 'WARN'
                 return $false
             }
-        } else {
+        }
+        else {
             Remove-AppxProvisionedPackage -PackageName $PackageName -ErrorAction SilentlyContinue
             # For offline operations, assume success if no exception was thrown
             return $true
         }
-    } catch {
+    }
+    catch {
         Write-Log "Failed to remove provisioned AppX package $PackageName: $($_.Exception.Message)" 'ERROR'
         return $false
     }
@@ -675,7 +718,8 @@ function Install-WindowsUpdatesCompatible {
             }
     
             Write-Log 'PSWindowsUpdate module imported successfully.' 'INFO'
-        } catch {
+        }
+        catch {
             Write-Log "Failed to import PSWindowsUpdate module: $_" 'ERROR'
             return $false
         }
@@ -707,23 +751,28 @@ function Install-WindowsUpdatesCompatible {
                     Write-Log "Windows Updates installation completed successfully." 'SUCCESS'
                     Write-TaskProgress "Windows Updates completed" 100
                     return $true
-                } catch {
+                }
+                catch {
                     Write-Log "Windows Updates installation failed: $_" 'ERROR'
                     return $false
                 }
-            } else {
+            }
+            else {
                 Write-Log 'No new Windows Updates available.' 'INFO'
                 Write-TaskProgress "No updates available" 100
                 return $true
             }
-        } catch {
+        }
+        catch {
             Write-Log "Failed to check for Windows Updates: $_" 'ERROR'
             return $false
         }
-    } catch {
+    }
+    catch {
         Write-Log "Windows Updates operation failed: $_" 'ERROR'
         return $false
-    } finally {
+    }
+    finally {
         $duration = (Get-Date) - $startTime
         Write-Log "Windows Updates check completed in $([math]::Round($duration.TotalSeconds, 2)) seconds" 'INFO'
     }
@@ -741,7 +790,8 @@ function Install-WindowsUpdatesCompatible {
 function Get-StartAppsCompatible {
     try {
         return Get-StartApps -ErrorAction SilentlyContinue | Select-Object Name, AppId
-    } catch {
+    }
+    catch {
         Write-Log "Failed to get Start apps: $_" 'WARN'
         return @()
     }
@@ -767,21 +817,21 @@ function Get-ExtensiveSystemInventory {
 
     # Build structured inventory object
     $inventory = [ordered]@{
-        metadata = [ordered]@{
-            generatedOn = (Get-Date).ToString('o')
+        metadata           = [ordered]@{
+            generatedOn   = (Get-Date).ToString('o')
             scriptVersion = '1.0.0'
-            hostname = $env:COMPUTERNAME
-            user = $env:USERNAME
-            powershell = $PSVersionTable.PSVersion.ToString()
+            hostname      = $env:COMPUTERNAME
+            user          = $env:USERNAME
+            powershell    = $PSVersionTable.PSVersion.ToString()
         }
-        system = @{}
-        appx = @()
-        winget = @()
-        choco = @()
+        system             = @{}
+        appx               = @()
+        winget             = @()
+        choco              = @()
         registry_uninstall = @()
-        services = @()
-        scheduled_tasks = @()
-        drivers = @()
+        services           = @()
+        scheduled_tasks    = @()
+        drivers            = @()
     }
 
     Write-TaskProgress "Collecting system information" 20
@@ -790,7 +840,8 @@ function Get-ExtensiveSystemInventory {
         $systemInfo = Get-ComputerInfo -ErrorAction SilentlyContinue
         $inventory.system = $systemInfo
         Write-Log 'System information collected successfully.' 'INFO'
-    } catch { 
+    }
+    catch { 
         Write-Log "System information collection failed: $_" 'WARN'
         $inventory.system = @{ error = $_.ToString() }
     }
@@ -802,11 +853,13 @@ function Get-ExtensiveSystemInventory {
         if ($appxPackages -and $appxPackages.Count -gt 0) {
             $inventory.appx = @($appxPackages | Select-Object Name, PackageFullName, Publisher)
             Write-Log "Successfully collected $($inventory.appx.Count) AppX applications." 'INFO'
-        } else {
+        }
+        else {
             Write-Log 'No AppX applications found or module not available.' 'INFO'
             $inventory.appx = @()
         }
-    } catch { 
+    }
+    catch { 
         Write-Log "AppX applications collection failed: $_" 'WARN'
         $inventory.appx = @()
     }
@@ -837,13 +890,14 @@ function Get-ExtensiveSystemInventory {
                             $parts = $line -split '\s{2,}' | Where-Object { $_.Trim() -ne '' }
                             if ($parts.Count -ge 1) {
                                 $apps += @{
-                                    Name = $parts[0].Trim()
-                                    Id = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
+                                    Name    = $parts[0].Trim()
+                                    Id      = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
                                     Version = if ($parts.Count -gt 2) { $parts[2].Trim() } else { "" }
-                                    Source = if ($parts.Count -gt 3) { $parts[3].Trim() } else { "" }
+                                    Source  = if ($parts.Count -gt 3) { $parts[3].Trim() } else { "" }
                                 }
                             }
-                        } catch {
+                        }
+                        catch {
                             Write-Log "[Inventory] Failed to parse winget line: $line" 'WARN'
                         }
                     }
@@ -851,15 +905,18 @@ function Get-ExtensiveSystemInventory {
                 
                 $inventory.winget = $apps
                 Write-Log "[Inventory] Collected $($apps.Count) winget applications." 'INFO'
-            } else {
+            }
+            else {
                 Write-Log "[Inventory] No winget applications found." 'INFO'
                 $inventory.winget = @()
             }
-        } catch {
+        }
+        catch {
             Write-Log "[Inventory] Winget enumeration failed: $_" 'WARN'
             $inventory.winget = @()
         }
-    } else {
+    }
+    else {
         Write-Log "[Inventory] Winget not available." 'INFO'
         $inventory.winget = @()
     }
@@ -874,21 +931,24 @@ function Get-ExtensiveSystemInventory {
                 foreach ($line in $chocoOutput) {
                     if ($line -match '^(.+?)\s+(.+?)$' -and $line -notmatch 'packages installed') {
                         $chocoApps += @{
-                            Name = $matches[1].Trim()
+                            Name    = $matches[1].Trim()
                             Version = $matches[2].Trim()
                         }
                     }
                 }
                 $inventory.choco = $chocoApps
                 Write-Log "[Inventory] Collected $($chocoApps.Count) Chocolatey applications." 'INFO'
-            } else {
+            }
+            else {
                 $inventory.choco = @()
             }
-        } catch {
+        }
+        catch {
             Write-Log "[Inventory] Chocolatey enumeration failed: $_" 'WARN'
             $inventory.choco = @()
         }
-    } else {
+    }
+    else {
         Write-Log "[Inventory] Chocolatey not available." 'INFO'
         $inventory.choco = @()
     }
@@ -903,7 +963,8 @@ function Get-ExtensiveSystemInventory {
 
         # Store global reference
         $global:SystemInventory = $inventory
-    } catch {
+    }
+    catch {
         Write-Log "[Inventory] Failed to write inventory.json: $_" 'WARN'
     }
 
@@ -1942,29 +2003,29 @@ function Disable-Telemetry {
 
     # Enhanced telemetry registry settings with parallel processing
     $telemetrySettings = @{
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' = @{
-            'AllowTelemetry' = 0
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'                = @{
+            'AllowTelemetry'                 = 0
             'DoNotShowFeedbackNotifications' = 1
-            'AllowCommercialDataPipeline' = 0
-            'AllowDeviceNameInTelemetry' = 0
+            'AllowCommercialDataPipeline'    = 0
+            'AllowDeviceNameInTelemetry'     = 0
         }
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' = @{
-            'AllowTelemetry' = 0
+            'AllowTelemetry'      = 0
             'MaxTelemetryAllowed' = 0
         }
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' = @{
-            'ContentDeliveryAllowed' = 0
-            'OemPreInstalledAppsEnabled' = 0
-            'PreInstalledAppsEnabled' = 0
-            'SilentInstalledAppsEnabled' = 0
-            'SubscribedContentEnabled' = 0
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'  = @{
+            'ContentDeliveryAllowed'       = 0
+            'OemPreInstalledAppsEnabled'   = 0
+            'PreInstalledAppsEnabled'      = 0
+            'SilentInstalledAppsEnabled'   = 0
+            'SubscribedContentEnabled'     = 0
             'SystemPaneSuggestionsEnabled' = 0
-            'SoftLandingEnabled' = 0
+            'SoftLandingEnabled'           = 0
         }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'                  = @{
             'DisableWindowsConsumerFeatures' = 1
-            'DisableCloudOptimizedContent' = 1
-            'DisableSoftLanding' = 1
+            'DisableCloudOptimizedContent'   = 1
+            'DisableSoftLanding'             = 1
         }
     }
 
@@ -2341,7 +2402,8 @@ function Clear-TempFiles {
             $pathsToClean = @()
             if ($location.Path -contains "*") {
                 $pathsToClean = Get-ChildItem -Path $location.Path -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
-            } else {
+            }
+            else {
                 if (Test-Path $location.Path) {
                     $pathsToClean = @($location.Path)
                 }
@@ -2353,7 +2415,8 @@ function Clear-TempFiles {
                     try {
                         $sizeBeforeBytes = (Get-ChildItem -Path $cleanPath -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
                         $sizeBeforeMB = [math]::Round($sizeBeforeBytes / 1MB, 2)
-                    } catch {
+                    }
+                    catch {
                         $sizeBeforeMB = 0
                     }
 
@@ -2368,8 +2431,8 @@ function Clear-TempFiles {
                             
                             # Clean empty directories
                             Get-ChildItem -Path $cleanPath -Recurse -Directory -ErrorAction SilentlyContinue | 
-                                Where-Object { -not (Get-ChildItem -Path $_.FullName -ErrorAction SilentlyContinue) } | 
-                                Remove-Item -Force -ErrorAction SilentlyContinue
+                            Where-Object { -not (Get-ChildItem -Path $_.FullName -ErrorAction SilentlyContinue) } | 
+                            Remove-Item -Force -ErrorAction SilentlyContinue
 
                             $totalFilesDeleted += $filesInLocation
                             $totalSizeFreed += $sizeBeforeMB
@@ -2378,18 +2441,22 @@ function Clear-TempFiles {
                                 Write-Host "    ✓ Cleaned $filesInLocation files ($sizeBeforeMB MB)" -ForegroundColor Green
                                 Write-Log "Cleaned $($location.Name): $filesInLocation files, $sizeBeforeMB MB freed" 'INFO'
                             }
-                        } else {
+                        }
+                        else {
                             Write-Host "    ○ No files to clean" -ForegroundColor Gray
                         }
-                    } catch {
+                    }
+                    catch {
                         Write-Host "    ✗ Error cleaning location: $_" -ForegroundColor Red
                         Write-Log "Error cleaning $($location.Name): $_" 'WARN'
                     }
-                } else {
+                }
+                else {
                     Write-Host "    ○ Location not found" -ForegroundColor Gray
                 }
             }
-        } catch {
+        }
+        catch {
             Write-Log "Error processing cleanup location $($location.Name): $_" 'WARN'
         }
     }
@@ -2403,7 +2470,8 @@ function Clear-TempFiles {
         try {
             $recycleBinItems = Get-ChildItem -Path 'C:\$Recycle.Bin' -Recurse -File -ErrorAction SilentlyContinue
             $recycleBinSize = [math]::Round(($recycleBinItems | Measure-Object -Property Length -Sum).Sum / 1MB, 2)
-        } catch { }
+        }
+        catch { }
 
         # Empty Recycle Bin using COM object
         $shell = New-Object -ComObject Shell.Application
@@ -2413,10 +2481,12 @@ function Clear-TempFiles {
             $totalSizeFreed += $recycleBinSize
             Write-Host "    ✓ Recycle Bin emptied ($recycleBinSize MB)" -ForegroundColor Green
             Write-Log "Recycle Bin emptied: $recycleBinSize MB freed" 'INFO'
-        } else {
+        }
+        else {
             Write-Host "    ○ Recycle Bin already empty" -ForegroundColor Gray
         }
-    } catch {
+    }
+    catch {
         Write-Log "Error cleaning Recycle Bin: $_" 'WARN'
     }
 
@@ -2591,31 +2661,31 @@ function Write-UnifiedMaintenanceReport {
     
     $startTime = Get-Date
     $reportData = @{
-        metadata = @{
-            date = $startTime.ToString('yyyy-MM-dd HH:mm:ss')
-            user = $env:USERNAME
-            computer = $env:COMPUTERNAME
-            scriptVersion = "2025.1"
-            os = (Get-CimInstance Win32_OperatingSystem).Caption
-            osVersion = (Get-CimInstance Win32_OperatingSystem).Version
+        metadata   = @{
+            date              = $startTime.ToString('yyyy-MM-dd HH:mm:ss')
+            user              = $env:USERNAME
+            computer          = $env:COMPUTERNAME
+            scriptVersion     = "2025.1"
+            os                = (Get-CimInstance Win32_OperatingSystem).Caption
+            osVersion         = (Get-CimInstance Win32_OperatingSystem).Version
             powershellVersion = $PSVersionTable.PSVersion.ToString()
-            scriptPath = $PSCommandPath
-            tempFolder = $global:TempFolder
+            scriptPath        = $PSCommandPath
+            tempFolder        = $global:TempFolder
         }
-        summary = @{
-            totalTasks = if ($global:TaskResults) { $global:TaskResults.Count } else { 0 }
+        summary    = @{
+            totalTasks      = if ($global:TaskResults) { $global:TaskResults.Count } else { 0 }
             successfulTasks = if ($global:TaskResults) { ($global:TaskResults.Values | Where-Object { $_.Success }).Count } else { 0 }
-            failedTasks = if ($global:TaskResults) { ($global:TaskResults.Values | Where-Object { -not $_.Success }).Count } else { 0 }
-            successRate = 0
-            totalDuration = 0
+            failedTasks     = if ($global:TaskResults) { ($global:TaskResults.Values | Where-Object { -not $_.Success }).Count } else { 0 }
+            successRate     = 0
+            totalDuration   = 0
         }
-        tasks = @()
-        files = @{
+        tasks      = @()
+        files      = @{
             inventoryFiles = @()
-            logFiles = @()
-            tempFiles = @()
+            logFiles       = @()
+            tempFiles      = @()
         }
-        actions = @()
+        actions    = @()
         systemInfo = @{}
     }
 
@@ -2630,13 +2700,13 @@ function Write-UnifiedMaintenanceReport {
             $result = $global:TaskResults[$taskName]
             $task = $global:ScriptTasks | Where-Object { $_.Name -eq $taskName }
             $taskDetail = @{
-                name = $taskName
+                name        = $taskName
                 description = if ($task) { $task.Description } else { "Task description not available" }
-                success = $result.Success
-                duration = if ($result.Duration) { [math]::Round($result.Duration, 2) } else { 0 }
-                started = if ($result.Started) { $result.Started.ToString('HH:mm:ss') } else { "Unknown" }
-                ended = if ($result.Ended) { $result.Ended.ToString('HH:mm:ss') } else { "Unknown" }
-                error = if ($result.ContainsKey('Error')) { $result.Error } else { $null }
+                success     = $result.Success
+                duration    = if ($result.Duration) { [math]::Round($result.Duration, 2) } else { 0 }
+                started     = if ($result.Started) { $result.Started.ToString('HH:mm:ss') } else { "Unknown" }
+                ended       = if ($result.Ended) { $result.Ended.ToString('HH:mm:ss') } else { "Unknown" }
+                error       = if ($result.ContainsKey('Error')) { $result.Error } else { $null }
             }
             $reportData.tasks += $taskDetail
             $reportData.summary.totalDuration += $taskDetail.duration
@@ -2646,33 +2716,33 @@ function Write-UnifiedMaintenanceReport {
     # Collect system information
     try {
         $reportData.systemInfo = @{
-            processor = (Get-CimInstance Win32_Processor).Name
-            memory = @{
-                totalGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+            processor      = (Get-CimInstance Win32_Processor).Name
+            memory         = @{
+                totalGB     = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
                 availableGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB / 1024, 2)
             }
-            disk = @{}
-            uptime = @{
-                days = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+            disk           = @{}
+            uptime         = @{
+                days  = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
                 hours = [math]::Round(((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalHours, 1)
             }
             windowsVersion = @{
-                build = (Get-CimInstance Win32_OperatingSystem).BuildNumber
+                build        = (Get-CimInstance Win32_OperatingSystem).BuildNumber
                 architecture = (Get-CimInstance Win32_OperatingSystem).OSArchitecture
             }
-            script = @{
-                name = $ScriptName
-                path = $ScriptFullPath
-                drive = $ScriptDrive
-                driveType = $DriveType
-                isNetworkPath = $IsNetworkPath
-                currentUser = $CurrentUser
-                isAdmin = $IsAdmin
-                osVersion = $OSVersion
-                osArch = $OSArch
-                psVersion = $PSVersion
+            script         = @{
+                name             = $ScriptName
+                path             = $ScriptFullPath
+                drive            = $ScriptDrive
+                driveType        = $DriveType
+                isNetworkPath    = $IsNetworkPath
+                currentUser      = $CurrentUser
+                isAdmin          = $IsAdmin
+                osVersion        = $OSVersion
+                osArch           = $OSArch
+                psVersion        = $PSVersion
                 workingDirectory = $WorkingDirectory.Path
-                computerName = $ComputerName
+                computerName     = $ComputerName
             }
         }
 
@@ -2680,8 +2750,8 @@ function Write-UnifiedMaintenanceReport {
         $systemDrive = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$($env:SystemDrive)'"
         if ($systemDrive) {
             $reportData.systemInfo.disk = @{
-                totalGB = [math]::Round($systemDrive.Size / 1GB, 2)
-                freeGB = [math]::Round($systemDrive.FreeSpace / 1GB, 2)
+                totalGB     = [math]::Round($systemDrive.Size / 1GB, 2)
+                freeGB      = [math]::Round($systemDrive.FreeSpace / 1GB, 2)
                 usedPercent = [math]::Round((($systemDrive.Size - $systemDrive.FreeSpace) / $systemDrive.Size) * 100, 1)
             }
         }
@@ -2696,9 +2766,9 @@ function Write-UnifiedMaintenanceReport {
         $inventoryFiles = Get-ChildItem -Path $global:TempFolder -Filter "*.json" -ErrorAction SilentlyContinue
         $reportData.files.inventoryFiles = $inventoryFiles | ForEach-Object { 
             @{
-                name = $_.Name
-                path = $_.FullName
-                sizeKB = [math]::Round($_.Length / 1KB, 2)
+                name    = $_.Name
+                path    = $_.FullName
+                sizeKB  = [math]::Round($_.Length / 1KB, 2)
                 created = $_.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
             }
         }
@@ -2706,7 +2776,7 @@ function Write-UnifiedMaintenanceReport {
         $tempFiles = Get-ChildItem -Path $global:TempFolder -File -ErrorAction SilentlyContinue
         $reportData.files.tempFiles = $tempFiles | ForEach-Object {
             @{
-                name = $_.Name
+                name   = $_.Name
                 sizeKB = [math]::Round($_.Length / 1KB, 2)
             }
         }
@@ -2715,8 +2785,8 @@ function Write-UnifiedMaintenanceReport {
     # Log files
     if (Test-Path $LogFile) {
         $reportData.files.logFiles += @{
-            name = "maintenance.log"
-            path = $LogFile
+            name   = "maintenance.log"
+            path   = $LogFile
             sizeKB = [math]::Round((Get-Item $LogFile).Length / 1KB, 2)
         }
     }
@@ -2825,9 +2895,9 @@ function Write-UnifiedMaintenanceReport {
 
     Write-Log "[END] Unified Maintenance Report Generation" 'INFO'
     return @{
-        JsonReport = $jsonReportPath
-        TextReport = $textReportPath
-        TaskCount = $reportData.summary.totalTasks
+        JsonReport  = $jsonReportPath
+        TextReport  = $textReportPath
+        TaskCount   = $reportData.summary.totalTasks
         SuccessRate = $reportData.summary.successRate
     }
 }
@@ -3005,38 +3075,38 @@ $global:EssentialApps | ConvertTo-Json -Depth 5 | Out-File $essentialAppsListPat
 # Task definitions
 $global:ScriptTasks = @(
     @{ 
-        Name = 'SystemInventory'; 
-        Function = { Get-ExtensiveSystemInventory }; 
+        Name        = 'SystemInventory'; 
+        Function    = { Get-ExtensiveSystemInventory }; 
         Description = 'Comprehensive system inventory collection (AppX, Winget, Chocolatey, Registry)' 
     },
     @{ 
-        Name = 'BloatwareRemoval'; 
-        Function = { if (-not $global:Config.SkipBloatwareRemoval) { Remove-Bloatware } else { Write-Log "Bloatware removal skipped via config" 'INFO'; $true } }; 
+        Name        = 'BloatwareRemoval'; 
+        Function    = { if (-not $global:Config.SkipBloatwareRemoval) { Remove-Bloatware } else { Write-Log "Bloatware removal skipped via config" 'INFO'; $true } }; 
         Description = 'Remove bloatware applications using diff-based optimization' 
     },
     @{ 
-        Name = 'EssentialApps'; 
-        Function = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log "Essential apps installation skipped via config" 'INFO'; $true } }; 
+        Name        = 'EssentialApps'; 
+        Function    = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log "Essential apps installation skipped via config" 'INFO'; $true } }; 
         Description = 'Install essential applications with LibreOffice fallback' 
     },
     @{ 
-        Name = 'WindowsUpdates'; 
-        Function = { if (-not $global:Config.SkipWindowsUpdates) { Install-WindowsUpdatesCompatible } else { Write-Log "Windows updates skipped via config" 'INFO'; $true } }; 
+        Name        = 'WindowsUpdates'; 
+        Function    = { if (-not $global:Config.SkipWindowsUpdates) { Install-WindowsUpdatesCompatible } else { Write-Log "Windows updates skipped via config" 'INFO'; $true } }; 
         Description = 'Install Windows updates using PSWindowsUpdate module' 
     },
     @{ 
-        Name = 'TelemetryDisable'; 
-        Function = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log "Telemetry disable skipped via config" 'INFO'; $true } }; 
+        Name        = 'TelemetryDisable'; 
+        Function    = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log "Telemetry disable skipped via config" 'INFO'; $true } }; 
         Description = 'Disable Windows telemetry and privacy features' 
     },
     @{ 
-        Name = 'SystemRestore'; 
-        Function = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log "System restore skipped via config" 'INFO'; $true } }; 
+        Name        = 'SystemRestore'; 
+        Function    = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log "System restore skipped via config" 'INFO'; $true } }; 
         Description = 'Create system restore point and enable protection' 
     },
     @{ 
-        Name = 'TempCleanup'; 
-        Function = { Clear-TempFiles }; 
+        Name        = 'TempCleanup'; 
+        Function    = { Clear-TempFiles }; 
         Description = 'Clean temporary files and browser caches' 
     }
 )
