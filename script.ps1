@@ -857,7 +857,21 @@ function Get-AppxPackageCompatible {
         [switch]$AllUsers
     )
     
+    # Check if Appx module is available and can be loaded
     try {
+        if (-not (Get-Module -Name Appx -ListAvailable)) {
+            Write-Log "Appx module not available on this system" 'WARN'
+            return @()
+        }
+        
+        # Try to import the module if not already loaded
+        if (-not (Get-Module -Name Appx)) {
+            Import-Module Appx -ErrorAction Stop
+        }
+        
+        # Test if Get-AppxPackage is actually functional
+        $null = Get-AppxPackage -ErrorAction Stop | Select-Object -First 1
+        
         if ($AllUsers) {
             return Get-AppxPackage -Name $Name -AllUsers -ErrorAction SilentlyContinue
         }
@@ -866,7 +880,15 @@ function Get-AppxPackageCompatible {
         }
     }
     catch {
-        Write-Log "Failed to get AppX packages: $_" 'WARN'
+        if ($_.Exception.Message -like "*Operation is not supported on this platform*") {
+            Write-Log "AppX subsystem not supported on this platform (likely Windows Server Core or minimal installation)" 'WARN'
+        }
+        elseif ($_.Exception.Message -like "*module could not be loaded*") {
+            Write-Log "Appx module failed to load - AppX subsystem may be disabled or unavailable" 'WARN'
+        }
+        else {
+            Write-Log "Failed to get AppX packages: $_" 'WARN'
+        }
         return @()
     }
 }
@@ -1162,15 +1184,24 @@ function Get-ExtensiveSystemInventory {
     Write-Log 'Collecting installed Winget applications...' 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         try {
-            # Use UTF8 encoding and better error handling for winget
-            $wingetOutput = cmd /c "chcp 65001 >nul && winget list --accept-source-agreements 2>nul"
+            # Use better encoding handling for winget with console output optimization
+            $env:PYTHONUTF8 = 1
+            $originalOutputEncoding = [Console]::OutputEncoding
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            
+            $wingetOutput = & cmd /c "chcp 65001 >nul 2>&1 && winget list --accept-source-agreements 2>nul"
+            
+            # Restore original encoding
+            [Console]::OutputEncoding = $originalOutputEncoding
+            
             if ($wingetOutput -and $wingetOutput.Count -gt 0) {
                 $apps = @()
                 $headerFound = $false
+                $skipPatterns = @('ΓÇª', '…', 'Microsoft .Net Native', 'Microsoft Visual C\+\+ 2015 UWP', 'Update for Windows')
                 
                 foreach ($line in $wingetOutput) {
-                    # Clean up encoding issues
-                    $cleanLine = $line -replace 'ΓÇª', '…' -replace '[^\x20-\x7E\x09\x0A\x0D\u00A0-\uFFFF]', ''
+                    # Enhanced encoding cleanup
+                    $cleanLine = $line -replace 'ΓÇª', '…' -replace '[^\x20-\x7E\x09\x0A\x0D\u00A0-\uFFFF]', '' -replace '\s+', ' '
                     
                     if (-not $headerFound) {
                         if ($cleanLine -match '^Name\s+' -or $cleanLine -match '^-+\s+') {
@@ -1183,14 +1214,30 @@ function Get-ExtensiveSystemInventory {
                         continue
                     }
                     
-                    if ($cleanLine -match '\S') {
+                    # Skip lines that are known to cause encoding issues
+                    $shouldSkip = $false
+                    foreach ($pattern in $skipPatterns) {
+                        if ($cleanLine -match $pattern) {
+                            $shouldSkip = $true
+                            break
+                        }
+                    }
+                    
+                    if ($shouldSkip) {
+                        continue
+                    }
+                    
+                    if ($cleanLine -match '\S' -and $cleanLine.Length -gt 3) {
                         try {
                             # More robust parsing that handles truncated names
                             $parts = $cleanLine -split '\s{2,}' | Where-Object { $_.Trim() -ne '' }
                             if ($parts.Count -ge 1) {
                                 $appName = $parts[0].Trim()
-                                # Skip if name contains encoding artifacts or is too short
-                                if ($appName.Length -gt 1 -and $appName -notmatch '^[ΓÇ\s]+') {
+                                # Enhanced validation for meaningful app names
+                                if ($appName.Length -gt 2 -and 
+                                    $appName -notmatch '^[ΓÇ\s…]+$' -and 
+                                    $appName -notmatch '^\.\.\.$' -and
+                                    $appName -match '[a-zA-Z0-9]') {
                                     $apps += @{
                                         Name    = $appName
                                         Id      = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
@@ -1201,9 +1248,11 @@ function Get-ExtensiveSystemInventory {
                             }
                         }
                         catch {
-                            # Only log if line seems meaningful (not encoding artifacts)
-                            if ($cleanLine.Length -gt 10 -and $cleanLine -notmatch '^[ΓÇ\s]+') {
-                                Write-Log "[Inventory] Failed to parse winget line (encoding issue): $($cleanLine.Substring(0, [Math]::Min(50, $cleanLine.Length)))..." 'WARN'
+                            # More selective logging - only for lines that seem genuinely problematic
+                            if ($cleanLine.Length -gt 20 -and 
+                                $cleanLine -notmatch '^[ΓÇ\s…]+$' -and 
+                                $cleanLine -match '[a-zA-Z]{3,}') {
+                                Write-Log "[Inventory] Failed to parse winget line: $($cleanLine.Substring(0, [Math]::Min(40, $cleanLine.Length)))..." 'VERBOSE'
                             }
                         }
                     }
