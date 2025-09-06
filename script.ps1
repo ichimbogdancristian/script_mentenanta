@@ -682,10 +682,14 @@ function Invoke-LoggedCommand {
         [string]$Context = "",
         [switch]$WindowStyle,
         [string]$WindowStyleValue = "Hidden",
-        [switch]$Wait = $true,
-        [switch]$PassThru = $true,
+        [switch]$Wait,
+        [switch]$PassThru,
         [int]$TimeoutSeconds = 300
     )
+    
+    # Set default values for switch parameters (proper PowerShell practice)
+    if (-not $PSBoundParameters.ContainsKey('Wait')) { $Wait = $true }
+    if (-not $PSBoundParameters.ContainsKey('PassThru')) { $PassThru = $true }
     
     $startTime = Get-Date
     
