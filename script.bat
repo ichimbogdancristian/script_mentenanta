@@ -8,6 +8,19 @@ REM  Environment: Requires Administrator, Windows 10/11, PowerShell 5.1+.
 REM  All actions are logged to console; PowerShell script handles file logging.
 REM ============================================================================
 SETLOCAL ENABLEDELAYEDEXPANSION
+
+REM -----------------------------------------------------------------------------
+REM Unified Logging Function - Logs to both console and maintenance.log
+REM Usage: CALL :LOG_MESSAGE "message"
+REM -----------------------------------------------------------------------------
+GOTO :MAIN_SCRIPT
+:LOG_MESSAGE
+SET "LOG_TIMESTAMP=%DATE% %TIME%"
+ECHO %~1
+ECHO %~1 >> "%LOG_FILE%" 2>nul
+EXIT /B
+
+:MAIN_SCRIPT
 REM -----------------------------------------------------------------------------
 REM Robust Timestamp Function for Logging
 REM -----------------------------------------------------------------------------
@@ -407,32 +420,38 @@ IF "%RESTART_NEEDED%"=="YES" (
 )
 
 REM -----------------------------------------------------------------------------
-REM Repository Download - Simplified
+REM -----------------------------------------------------------------------------
+REM Forced Repository Download - Always download fresh from GitHub
+REM Clean up existing files and download latest version as requested
 REM -----------------------------------------------------------------------------
 :SKIP_SELF_UPDATE
+
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading latest repository from GitHub (forced fresh download)..."
+
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 SET "ZIP_FILE=%TEMP%\script_mentenanta.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading latest repository..."
 powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $webClient = New-Object System.Net.WebClient; $webClient.DownloadFile('%REPO_URL%', '%ZIP_FILE%'); Write-Host '[INFO] Repository downloaded successfully' } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] Failed to download repository. Check internet connection."
     pause
-    EXIT /B 2
+    EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] Download failed - ZIP file not created."
     pause
-    EXIT /B 2
+    EXIT /B 3
 )
 
 REM -----------------------------------------------------------------------------
 REM Repository Cleanup - Remove existing folder if it exists
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Checking for existing repository folder..."
+
+REM Check for existing extraction folder
 IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Existing repository folder found. Removing for clean extraction..."
     RMDIR /S /Q "%SCRIPT_DIR%%EXTRACT_FOLDER%" >nul 2>&1
@@ -446,9 +465,6 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] No existing repository folder found. Proceeding with clean extraction."
 )
 
-REM -----------------------------------------------------------------------------
-REM Repository Extraction - Simplified with PowerShell 5 compatible code
-REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Extracting repository to clean folder..."
 
 REM Simple, reliable extraction with PowerShell 5 compatible code
@@ -469,20 +485,22 @@ CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying repository extraction..."
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Looking for folder: %SCRIPT_DIR%%EXTRACT_FOLDER%"
 
 REM List all folders in current directory for debugging
-DIR "%~dp0" /AD /B
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of script directory:"
+DIR "%SCRIPT_DIR%" /AD /B
 
 IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Extraction successful - folder exists."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
     DIR "%SCRIPT_DIR%%EXTRACT_FOLDER%" /B
 ) ELSE (
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] ✗ Extraction failed - expected folder not found."
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] Checking for alternative folder names..."
     
     REM Check for common GitHub zip extraction patterns
-    IF EXIST "%~dp0script_mentenanta-main" (
+    IF EXIST "%SCRIPT_DIR%script_mentenanta-main" (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Found: script_mentenanta-main folder"
         SET "EXTRACT_FOLDER=script_mentenanta-main"
-    ) ELSE IF EXIST "%~dp0script_mentenanta-master" (
+    ) ELSE IF EXIST "%SCRIPT_DIR%script_mentenanta-master" (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Found: script_mentenanta-master folder"
         SET "EXTRACT_FOLDER=script_mentenanta-master"
     ) ELSE (
@@ -494,9 +512,6 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
 
 REM -----------------------------------------------------------------------------
 REM Self-Update Mechanism - Update script.bat if a newer version is available
-REM -----------------------------------------------------------------------------
-REM -----------------------------------------------------------------------------
-REM Overwrite script.bat if a new version is found
 REM -----------------------------------------------------------------------------
 SET "NEW_SCRIPT_BAT=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.bat"
 SET "CURRENT_SCRIPT_BAT=%SCRIPT_PATH%"
@@ -542,17 +557,64 @@ IF !ERRORLEVEL! EQU 0 (
 )
 
 REM -----------------------------------------------------------------------------
-REM Launch PowerShell Script with Priority for PowerShell 7
+REM Smart PowerShell Script Path Detection (Location-Agnostic)
+REM Uses environment-based path detection similar to script.ps1
 REM -----------------------------------------------------------------------------
-SET "PS1_PATH=!SCRIPT_DIR!!EXTRACT_FOLDER!\script.ps1"
+SET "PS1_PATH="
+SET "PS1_FOUND=NO"
 
-IF NOT EXIST "!PS1_PATH!" (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script not found: !PS1_PATH!"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
-    DIR "!SCRIPT_DIR!!EXTRACT_FOLDER!" /B
+REM Priority 1: Check current directory first (same location as script.bat)
+IF EXIST "%SCRIPT_DIR%script.ps1" (
+    SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
+    SET "PS1_FOUND=YES"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in current directory: %SCRIPT_DIR%"
+)
+
+REM Priority 2: Check extracted folder (GitHub download)
+IF "!PS1_FOUND!"=="NO" (
+    IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1" (
+        SET "PS1_PATH=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
+        SET "PS1_FOUND=YES"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in extracted folder: %SCRIPT_DIR%%EXTRACT_FOLDER%\"
+    )
+)
+
+REM Priority 3: Search for script.ps1 in subdirectories
+IF "!PS1_FOUND!"=="NO" (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Searching for script.ps1 in subdirectories..."
+    FOR /R "%SCRIPT_DIR%" %%F IN (script.ps1) DO (
+        IF EXIST "%%F" (
+            SET "PS1_PATH=%%F"
+            SET "PS1_FOUND=YES"
+            CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 at: %%F"
+            GOTO :PS1_FOUND
+        )
+    )
+    :PS1_FOUND
+)
+
+REM Final check: If still not found, show detailed diagnostics
+IF "!PS1_FOUND!"=="NO" (
+    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script (script.ps1) not found in any location!"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Searched locations:"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] 1. Current directory: %SCRIPT_DIR%"
+    IF DEFINED EXTRACT_FOLDER (
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] 2. Extracted folder: %SCRIPT_DIR%!EXTRACT_FOLDER!\"
+    )
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] 3. All subdirectories under: %SCRIPT_DIR%"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of current directory:"
+    DIR "%SCRIPT_DIR%" /B
+    IF DEFINED EXTRACT_FOLDER (
+        IF EXIST "%SCRIPT_DIR%!EXTRACT_FOLDER!" (
+            CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
+            DIR "%SCRIPT_DIR%!EXTRACT_FOLDER!" /B
+        )
+    )
     pause
     EXIT /B 4
 )
+
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell script: !PS1_PATH!"
 
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Launching PowerShell maintenance script..."
 
@@ -594,14 +656,8 @@ IF !LAUNCH_RESULT! EQU 0 (
 )
 
 REM -----------------------------------------------------------------------------
-REM Unified Logging Function - Logs to both console and maintenance.log
-REM Usage: CALL :LOG_MESSAGE "message"
+REM Script completed successfully
 REM -----------------------------------------------------------------------------
-:LOG_MESSAGE
-SET "LOG_TIMESTAMP=%DATE% %TIME%"
-ECHO %~1
-ECHO %~1 >> "%LOG_FILE%" 2>nul
-EXIT /B
 
 ENDLOCAL
 EXIT /B 0
