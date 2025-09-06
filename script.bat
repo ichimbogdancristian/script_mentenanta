@@ -36,6 +36,28 @@ SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 SET "LOG_FILE=%SCRIPT_DIR%maintenance.log"
 
+REM -----------------------------------------------------------------------------
+REM Robust Script Path Detection for Scheduled Tasks
+REM Determines the best path to use for scheduled task creation
+REM -----------------------------------------------------------------------------
+SET "SCHEDULED_TASK_SCRIPT_PATH="
+
+REM Priority 1: Use current executing script path (most reliable)
+IF EXIST "%SCRIPT_PATH%" (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Scheduled task will use current script path: %SCRIPT_PATH%"
+) ELSE (
+    REM Priority 2: Look for script.bat in current directory
+    IF EXIST "%SCRIPT_DIR%script.bat" (
+        SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
+        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Scheduled task will use directory script: %SCRIPT_DIR%script.bat"
+    ) ELSE (
+        REM Priority 3: Use script path as fallback (should not happen)
+        SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
+        CALL :LOG_MESSAGE "[%TIME%] [WARN] Using fallback script path for scheduled task: %SCRIPT_PATH%"
+    )
+)
+
 REM Check if this is a restart after PowerShell 7 installation
 IF "%1"=="PS7_RESTART" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Script restarted after PowerShell 7 installation."
@@ -93,12 +115,13 @@ IF %ERRORLEVEL% EQU 0 (
 ) ELSE (
     SET "LOG_TIMESTAMP=%DATE% %TIME%"
     CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task not found. Creating..."
+    CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [DEBUG] Using script path for task: %SCHEDULED_TASK_SCRIPT_PATH%"
     REM Create scheduled task with proper escaping
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "%SCRIPT_DIR%script.bat" ^
+        /TR "%SCHEDULED_TASK_SCRIPT_PATH%" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
@@ -129,11 +152,12 @@ IF %ERRORLEVEL% EQU 0 (
         REM Try alternative approach with current user instead of SYSTEM
         SET "LOG_TIMESTAMP=%DATE% %TIME%"
         CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Attempting to create task under current user account..."
+        CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [DEBUG] Using script path for user task: %SCHEDULED_TASK_SCRIPT_PATH%"
         schtasks /Create ^
             /SC MONTHLY ^
             /MO 1 ^
             /TN "%TASK_NAME%" ^
-            /TR "%SCRIPT_DIR%script.bat" ^
+            /TR "%SCHEDULED_TASK_SCRIPT_PATH%" ^
             /ST 01:00 ^
             /RL HIGHEST ^
             /F >schtasks_create_user.log 2>&1
@@ -220,7 +244,8 @@ IF "%RESTART_NEEDED%"=="YES" (
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
     
     REM Create startup task to run 1 minute after user login with admin rights
-    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Creating startup task with script path: %SCHEDULED_TASK_SCRIPT_PATH%"
+    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCHEDULED_TASK_SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Startup task created successfully. Will run 1 minute after user login."
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Restarting system to complete pending updates..."
@@ -563,19 +588,27 @@ REM ----------------------------------------------------------------------------
 SET "PS1_PATH="
 SET "PS1_FOUND=NO"
 
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting PowerShell script path detection..."
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] SCRIPT_DIR: %SCRIPT_DIR%"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] EXTRACT_FOLDER: %EXTRACT_FOLDER%"
+
 REM Priority 1: Check current directory first (same location as script.bat)
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking Priority 1: %SCRIPT_DIR%script.ps1"
 IF EXIST "%SCRIPT_DIR%script.ps1" (
     SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
     SET "PS1_FOUND=YES"
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in current directory: %SCRIPT_DIR%"
+    GOTO :PS1_DETECTION_COMPLETE
 )
 
 REM Priority 2: Check extracted folder (GitHub download)
 IF "!PS1_FOUND!"=="NO" (
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking Priority 2: %SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
     IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1" (
         SET "PS1_PATH=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
         SET "PS1_FOUND=YES"
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in extracted folder: %SCRIPT_DIR%%EXTRACT_FOLDER%\"
+        GOTO :PS1_DETECTION_COMPLETE
     )
 )
 
@@ -587,11 +620,12 @@ IF "!PS1_FOUND!"=="NO" (
             SET "PS1_PATH=%%F"
             SET "PS1_FOUND=YES"
             CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 at: %%F"
-            GOTO :PS1_FOUND
+            GOTO :PS1_DETECTION_COMPLETE
         )
     )
-    :PS1_FOUND
 )
+
+:PS1_DETECTION_COMPLETE
 
 REM Final check: If still not found, show detailed diagnostics
 IF "!PS1_FOUND!"=="NO" (
@@ -612,10 +646,29 @@ IF "!PS1_FOUND!"=="NO" (
     )
     pause
     EXIT /B 4
+) ELSE (
+    CALL :LOG_MESSAGE "[%TIME%] [SUCCESS] PowerShell script found successfully!"
 )
 
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell script: !PS1_PATH!"
 
+REM Debug: Verify the PS1_PATH variable is actually set
+IF "!PS1_PATH!"=="" (
+    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PS1_PATH variable is empty! Attempting emergency path detection..."
+    REM Emergency fallback - check current directory again
+    IF EXIST "%SCRIPT_DIR%script.ps1" (
+        SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Emergency fallback found: %SCRIPT_DIR%script.ps1"
+    ) ELSE (
+        CALL :LOG_MESSAGE "[%TIME%] [ERROR] Emergency fallback failed - no script.ps1 found in %SCRIPT_DIR%"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of script directory:"
+        DIR "%SCRIPT_DIR%" /B
+        pause
+        EXIT /B 4
+    )
+)
+
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Final PowerShell script path: !PS1_PATH!"
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Launching PowerShell maintenance script..."
 
 REM Test PowerShell availability before launching
@@ -624,6 +677,48 @@ IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] Windows PowerShell is not available or functioning properly."
     pause
     EXIT /B 5
+)
+
+REM Final check that PS1_PATH is not empty before execution
+IF "!PS1_PATH!"=="" (
+    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PS1_PATH is still empty before execution! Attempting emergency recovery..."
+    
+    REM Emergency Recovery: Try all possible locations
+    IF EXIST "%SCRIPT_DIR%script.ps1" (
+        SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [RECOVERY] Emergency recovery successful: %SCRIPT_DIR%script.ps1"
+    ) ELSE IF EXIST "%SCRIPT_DIR%script_mentenanta-main\script.ps1" (
+        SET "PS1_PATH=%SCRIPT_DIR%script_mentenanta-main\script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [RECOVERY] Emergency recovery successful: %SCRIPT_DIR%script_mentenanta-main\script.ps1"
+    ) ELSE IF EXIST "%SCRIPT_DIR%script_mentenanta-master\script.ps1" (
+        SET "PS1_PATH=%SCRIPT_DIR%script_mentenanta-master\script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [RECOVERY] Emergency recovery successful: %SCRIPT_DIR%script_mentenanta-master\script.ps1"
+    ) ELSE (
+        CALL :LOG_MESSAGE "[%TIME%] [FATAL] Emergency recovery failed! No script.ps1 found anywhere!"
+        CALL :LOG_MESSAGE "[%TIME%] [FATAL] Searched:"
+        CALL :LOG_MESSAGE "[%TIME%] [FATAL] 1. %SCRIPT_DIR%script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [FATAL] 2. %SCRIPT_DIR%script_mentenanta-main\script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [FATAL] 3. %SCRIPT_DIR%script_mentenanta-master\script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [FATAL] Contents of script directory:"
+        DIR "%SCRIPT_DIR%" /B
+        pause
+        EXIT /B 4
+    )
+)
+
+REM Final validation that PS1_PATH is now set
+IF "!PS1_PATH!"=="" (
+    CALL :LOG_MESSAGE "[%TIME%] [FATAL] PS1_PATH is STILL empty after emergency recovery!"
+    pause
+    EXIT /B 4
+)
+
+CALL :LOG_MESSAGE "[%TIME%] [INFO] About to execute: !PS1_PATH!"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying file exists: !PS1_PATH!"
+IF NOT EXIST "!PS1_PATH!" (
+    CALL :LOG_MESSAGE "[%TIME%] [FATAL] PowerShell script file does not exist: !PS1_PATH!"
+    pause
+    EXIT /B 4
 )
 
 IF "!PS7_AVAILABLE!"=="YES" (
