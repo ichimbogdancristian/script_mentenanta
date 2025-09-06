@@ -1,29 +1,6 @@
 @echo off
 REM ============================================================================
-REM  script_mentenanta - Windows Maintenance AutomatiIF !ERRORLEVEL!     REM Fallback: Check Windows Update reboot flag only
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Windows Update restart flag detected."
-        SET "RESTART_NEEDED=YES"
-        SET "RESTART_REASON=Windows Update restart flag detected"
-    )
-    
-    REM Check Component Based Servicing reboot flag (only for update-related restarts)
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Component Based Servicing restart pending."
-        SET "RESTART_NEEDED=YES"
-        SET "RESTART_REASON=Component Based Servicing restart pending"
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] Update check failed. Skipping restart check."
-):LOG_MESSAGE "[%TIME%] [INFO] Pending updates require restart for installation."
-    SET "RESTART_NEEDED=YES"
-    SET "RESTART_REASON=Pending updates require restart"
-) ELSE IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] No pending updates require restart."
-) ELSE IF !ERRORLEVEL! EQU 2 (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] PSWindowsUpdate module not available. Checking system restart flags..."her (Refactored)
+REM  script_mentenanta - Windows Maintenance Automation Launcher (Refactored)
 REM  Purpose: Entry point for all maintenance operations. Handles dependency
 REM           installation, scheduled task setup, repo download/update, and
 REM           launches PowerShell orchestrator (script.ps1).
