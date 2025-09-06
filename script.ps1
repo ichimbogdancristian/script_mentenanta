@@ -610,7 +610,7 @@ function Remove-AppxPackageCompatible {
         return $true
     }
     catch {
-        Write-Log "Failed to remove AppX package $PackageFullName: $($_.Exception.Message)" 'ERROR'
+        Write-Log "Failed to remove AppX package $PackageFullName: $($_)" 'ERROR'
         return $false
     }
 }
@@ -681,7 +681,7 @@ function Remove-AppxProvisionedPackageCompatible {
         }
     }
     catch {
-        Write-Log "Failed to remove provisioned AppX package $PackageName: $($_.Exception.Message)" 'ERROR'
+        Write-Log "Failed to remove provisioned AppX package $PackageName: $($_)" 'ERROR'
         return $false
     }
 }
