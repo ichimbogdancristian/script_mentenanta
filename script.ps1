@@ -572,7 +572,7 @@ function Remove-AppxPackageCompatible {
 
         return $true
     } catch {
-        Write-Log "Failed to remove AppX package $PackageFullName: ${_}" 'ERROR'
+        Write-Log "Failed to remove AppX package $PackageFullName: $($_.Exception.Message)" 'ERROR'
         return $false
     }
 }
