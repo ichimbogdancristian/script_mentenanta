@@ -757,6 +757,92 @@ function Invoke-LoggedCommand {
 # ===============================
 
 # ================================================================
+# Function: Invoke-WindowsPowerShellCommand
+# ================================================================
+# Purpose: PowerShell 7 compatibility layer for executing Windows PowerShell 5.1 specific cmdlets
+# Environment: PowerShell 7+ with Windows PowerShell 5.1 fallback capability
+# Logic: Executes commands in Windows PowerShell 5.1 context for legacy cmdlet compatibility
+# Performance: Minimal overhead for cross-version compatibility, handles serialization automatically
+# Dependencies: Windows PowerShell 5.1 installation, powershell.exe availability
+# ================================================================
+function Invoke-WindowsPowerShellCommand {
+    param(
+        [string]$Command,
+        [string]$ErrorAction = "Continue"
+    )
+    
+    try {
+        Write-ActionLog -Action "Executing Windows PowerShell compatibility command" -Details $Command -Category "PowerShell Compatibility" -Status 'START'
+        
+        # Build the full command with error action
+        $fullCommand = if ($ErrorAction -eq "SilentlyContinue") {
+            "$Command -ErrorAction SilentlyContinue 2>`$null"
+        } else {
+            $Command
+        }
+        
+        # Execute command in Windows PowerShell 5.1 context with proper encoding
+        $outputFile = [System.IO.Path]::GetTempFileName()
+        $errorFile = [System.IO.Path]::GetTempFileName()
+        
+        try {
+            $process = Start-Process -FilePath "powershell.exe" -ArgumentList "-Command", "& {$fullCommand} | Out-File -FilePath '$outputFile' -Encoding UTF8" -RedirectStandardError $errorFile -Wait -PassThru -WindowStyle Hidden
+            
+            $output = if (Test-Path $outputFile) { Get-Content $outputFile -Raw -Encoding UTF8 } else { $null }
+            $errorOutput = if (Test-Path $errorFile) { Get-Content $errorFile -Raw -Encoding UTF8 } else { $null }
+            
+            if ($process.ExitCode -eq 0) {
+                Write-ActionLog -Action "Windows PowerShell command completed successfully" -Details "ExitCode: $($process.ExitCode)" -Category "PowerShell Compatibility" -Status 'SUCCESS'
+                
+                # Parse output if it's structured data
+                if ($output -and $output.Trim()) {
+                    try {
+                        # Try to convert from JSON if it looks like structured data
+                        if ($output.Trim().StartsWith('[') -or $output.Trim().StartsWith('{')) {
+                            return $output | ConvertFrom-Json
+                        }
+                        else {
+                            # Return raw output for simple commands
+                            return $output.Trim() -split "`r?`n" | Where-Object { $_.Trim() -ne "" }
+                        }
+                    }
+                    catch {
+                        # If parsing fails, return raw output
+                        return $output.Trim()
+                    }
+                }
+                else {
+                    return $null
+                }
+            }
+            else {
+                Write-ActionLog -Action "Windows PowerShell command failed" -Details "ExitCode: $($process.ExitCode) | Error: $errorOutput" -Category "PowerShell Compatibility" -Status 'FAILURE'
+                if ($ErrorAction -eq "SilentlyContinue") {
+                    return $null
+                }
+                else {
+                    throw "Windows PowerShell command failed with exit code: $($process.ExitCode). Error: $errorOutput"
+                }
+            }
+        }
+        finally {
+            # Cleanup temp files
+            if (Test-Path $outputFile) { Remove-Item $outputFile -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $errorFile) { Remove-Item $errorFile -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    catch {
+        Write-ActionLog -Action "Failed to execute Windows PowerShell command" -Details $_.Exception.Message -Category "PowerShell Compatibility" -Status 'FAILURE'
+        if ($ErrorAction -eq "SilentlyContinue") {
+            return $null
+        }
+        else {
+            throw $_
+        }
+    }
+}
+
+# ================================================================
 # Function: Get-AppxPackageCompatible
 # ================================================================
 # Purpose: Cross-version AppX package enumeration with enhanced compatibility and error handling
