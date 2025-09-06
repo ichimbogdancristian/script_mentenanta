@@ -406,27 +406,40 @@ $global:ScriptTasks = @(
 # ================================================================
 # Function: Use-AllScriptTasks
 # ================================================================
-# Purpose: Main task execution orchestrator that coordinates all maintenance operations
+# Purpose: Enhanced main task execution orchestrator with comprehensive logging and progress tracking
 # Environment: Windows 10/11, PowerShell 7+, Administrator context required
-# Logic: Sequential task execution with comprehensive error handling and performance tracking
-# Performance: Tracks execution time, success/failure rates, provides detailed console output
-# Dependencies: Global task array, Write-Log function, global config system, task result tracking
+# Logic: Sequential task execution with comprehensive error handling, progress tracking, and detailed performance analytics
+# Performance: Tracks execution time, success/failure rates, provides detailed console output, comprehensive task analytics
+# Dependencies: Global task array, Write-Log, Write-ActionLog functions, global config system, task result tracking
 # ================================================================
 function Use-AllScriptTasks {
-    Write-Log 'Initiating all maintenance tasks execution sequence.' 'INFO'
+    Write-ActionLog -Action 'Initiating maintenance tasks execution sequence' -Details "Total tasks to execute: $($global:ScriptTasks.Count)" -Category "Task Orchestration" -Status 'START'
     $global:TaskResults = @{}
+    $taskIndex = 0
+    $totalTasks = $global:ScriptTasks.Count
     
     foreach ($task in $global:ScriptTasks) {
+        $taskIndex++
         $taskName = $task.Name
         $desc = $task.Description
-        Write-Log "Executing task: $taskName - $desc" 'INFO'
+        
+        Write-ActionLog -Action "Preparing task execution" -Details "$taskName ($taskIndex/$totalTasks) - $desc" -Category "Task Execution" -Status 'START'
+        Write-Log "[$taskIndex/$totalTasks] Executing task: $taskName - $desc" 'INFO'
         
         $startTime = Get-Date
         try {
+            Write-ActionLog -Action "Starting task function" -Details "$taskName | Function execution beginning" -Category "Task Execution" -Status 'START'
             $result = Invoke-Task $taskName $task.Function
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
-            Write-Log "Task $taskName completed in $duration seconds - Result: $result" 'INFO'
+            
+            if ($result) {
+                Write-ActionLog -Action "Task completed successfully" -Details "$taskName | Duration: ${duration}s | Result: $result" -Category "Task Execution" -Status 'SUCCESS'
+            } else {
+                Write-ActionLog -Action "Task completed with issues" -Details "$taskName | Duration: ${duration}s | Result: $result" -Category "Task Execution" -Status 'FAILURE'
+            }
+            
+            Write-Log "[$taskIndex/$totalTasks] Task $taskName completed in $duration seconds - Result: $result" 'SUCCESS'
             $global:TaskResults[$taskName] = @{ 
                 Success     = $result
                 Duration    = $duration
@@ -438,7 +451,9 @@ function Use-AllScriptTasks {
         catch {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
-            Write-Log "Task $taskName execution failed: $_" 'ERROR'
+            
+            Write-ActionLog -Action "Task execution failed with exception" -Details "$taskName | Duration: ${duration}s | Exception: $_.Exception.Message" -Category "Task Execution" -Status 'FAILURE'
+            Write-Log "[$taskIndex/$totalTasks] Task $taskName execution failed: $_" 'ERROR'
             $global:TaskResults[$taskName] = @{ 
                 Success     = $false
                 Duration    = $duration
@@ -448,48 +463,145 @@ function Use-AllScriptTasks {
                 Error       = $_.Exception.Message
             }
         }
+        
+        # Progress update
+        $progressPercent = [math]::Round(($taskIndex / $totalTasks) * 100, 1)
+        Write-ActionLog -Action "Task execution progress" -Details "$taskIndex/$totalTasks tasks completed ($progressPercent%)" -Category "Task Orchestration" -Status 'INFO'
     }
-    Write-Log 'All maintenance tasks execution sequence completed.' 'INFO'
+    
+    # Final summary
+    $successfulTasks = ($global:TaskResults.Values | Where-Object { $_.Success -eq $true }).Count
+    $failedTasks = $totalTasks - $successfulTasks
+    $totalDuration = ($global:TaskResults.Values | Measure-Object -Property Duration -Sum).Sum
+    
+    Write-ActionLog -Action 'All maintenance tasks execution sequence completed' -Details "Total: $totalTasks | Successful: $successfulTasks | Failed: $failedTasks | Total Duration: ${totalDuration}s" -Category "Task Orchestration" -Status 'SUCCESS'
 }
 
 # ================================================================
 # Function: Write-Log
 # ================================================================
-# Purpose: Unified logging function providing consistent file and console output with color coding
+# Purpose: Enhanced unified logging function with dual output (console + file) and comprehensive action tracking
 # Environment: Any PowerShell version, requires global $LogFile variable, console access
-# Logic: Timestamped entries with severity levels, file persistence, color-coded console display
-# Performance: Minimal overhead, efficient string formatting, non-blocking operations
+# Logic: Timestamped entries with severity levels, file persistence, color-coded console display, enhanced action tracking
+# Performance: Minimal overhead, efficient string formatting, non-blocking operations, enhanced error handling
 # Dependencies: Global $LogFile variable, Windows console capabilities, file system access
 # ================================================================
 function Write-Log {
     param(
         [string]$Message,
-        [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS')]
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND')]
         [string]$Level = 'INFO'
     )
     
     $timestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
     $logEntry = "[$timestamp] [$Level] $Message"
     
-    # Write to file
+    # Write to file with enhanced error handling
     try {
-        Add-Content -Path $global:LogFile -Value $logEntry -ErrorAction SilentlyContinue
+        Add-Content -Path $global:LogFile -Value $logEntry -ErrorAction SilentlyContinue -Encoding UTF8
     }
     catch {
-        # Silently continue if log file is inaccessible
+        # If main log fails, try writing to backup location
+        try {
+            $backupLog = Join-Path $env:TEMP "maintenance_backup.log"
+            Add-Content -Path $backupLog -Value $logEntry -ErrorAction SilentlyContinue -Encoding UTF8
+        }
+        catch {
+            # Silently continue if all logging fails
+        }
     }
     
-    # Write to console with color coding
+    # Write to console with enhanced color coding
     $color = switch ($Level) {
         'INFO' { 'White' }
         'WARN' { 'Yellow' }
         'ERROR' { 'Red' }
         'SUCCESS' { 'Green' }
         'PROGRESS' { 'Cyan' }
+        'ACTION' { 'Magenta' }
+        'COMMAND' { 'DarkCyan' }
         default { 'White' }
     }
     
     Write-Host $logEntry -ForegroundColor $color
+    
+    # For important actions, also write to host using Write-Output for comprehensive logging
+    if ($Level -in @('ACTION', 'COMMAND', 'ERROR', 'SUCCESS')) {
+        Write-Output $logEntry
+    }
+}
+
+# ================================================================
+# Function: Write-ActionLog
+# ================================================================
+# Purpose: Specialized logging for specific actions with detailed context and categorization
+# Environment: Windows 10/11, PowerShell 7+, supports action categorization and detailed tracking
+# Logic: Enhanced action logging with categorization, timing, and detailed context information
+# Performance: Optimized for action tracking, minimal overhead, comprehensive detail capture
+# Dependencies: Write-Log function, timing capabilities, process tracking
+# ================================================================
+function Write-ActionLog {
+    param(
+        [string]$Action,
+        [string]$Details = "",
+        [string]$Category = "General",
+        [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO')]
+        [string]$Status = 'INFO'
+    )
+    
+    $contextInfo = ""
+    if ($Details) {
+        $contextInfo = " | Details: $Details"
+    }
+    
+    $fullMessage = "[$Category] $Action$contextInfo"
+    
+    $logLevel = switch ($Status) {
+        'START' { 'ACTION' }
+        'SUCCESS' { 'SUCCESS' }
+        'FAILURE' { 'ERROR' }
+        'INFO' { 'INFO' }
+        default { 'INFO' }
+    }
+    
+    Write-Log $fullMessage $logLevel
+}
+
+# ================================================================
+# Function: Write-CommandLog
+# ================================================================
+# Purpose: Specialized logging for external command execution with full command tracking
+# Environment: Windows 10/11, PowerShell 7+, supports external process monitoring and detailed execution tracking
+# Logic: Logs command execution with full command line, arguments, exit codes, and execution timing
+# Performance: Minimal overhead wrapper for external commands, comprehensive execution tracking
+# Dependencies: Write-Log function, process execution capabilities, timing functions
+# ================================================================
+function Write-CommandLog {
+    param(
+        [string]$Command,
+        [string[]]$Arguments = @(),
+        [string]$Context = "",
+        [ValidateSet('START', 'SUCCESS', 'FAILURE')]
+        [string]$Status = 'START'
+    )
+    
+    $fullCommand = $Command
+    if ($Arguments.Count -gt 0) {
+        $argString = $Arguments -join " "
+        $fullCommand = "$Command $argString"
+    }
+    
+    $contextInfo = if ($Context) { " | Context: $Context" } else { "" }
+    $message = "COMMAND: $fullCommand$contextInfo"
+    
+    $logLevel = switch ($Status) {
+        'START' { 'COMMAND' }
+        'SUCCESS' { 'SUCCESS' }
+        'FAILURE' { 'ERROR' }
+        default { 'COMMAND' }
+    }
+    
+    Write-Log $message $logLevel
 }
 
 # ================================================================
@@ -521,11 +633,11 @@ function Write-TaskProgress {
 # ================================================================
 # Function: Invoke-Task
 # ================================================================
-# Purpose: Wrapper function for individual task execution with standardized error handling
+# Purpose: Enhanced wrapper function for individual task execution with comprehensive logging and timing
 # Environment: Windows 10/11, PowerShell 7+, supports any task type
-# Logic: Try/catch wrapper with detailed logging for all maintenance task operations
-# Performance: Minimal overhead wrapper, comprehensive error capture, standardized execution
-# Dependencies: Write-Log function, PowerShell execution environment
+# Logic: Try/catch wrapper with detailed action logging, timing, and comprehensive error capture
+# Performance: Minimal overhead wrapper, comprehensive error capture, standardized execution with timing
+# Dependencies: Write-Log, Write-ActionLog functions, PowerShell execution environment
 # ================================================================
 function Invoke-Task {
     param(
@@ -533,15 +645,100 @@ function Invoke-Task {
         [scriptblock]$Action
     )
     
-    Write-Log "Starting task: $TaskName" 'INFO'
+    $startTime = Get-Date
+    Write-ActionLog -Action "Starting task execution" -Details $TaskName -Category "Task Management" -Status 'START'
+    
     try {
         $result = & $Action
-        Write-Log "Task succeeded: $TaskName" 'SUCCESS'
+        $endTime = Get-Date
+        $duration = ($endTime - $startTime).TotalSeconds
+        
+        Write-ActionLog -Action "Task completed successfully" -Details "$TaskName | Duration: ${duration}s" -Category "Task Management" -Status 'SUCCESS'
         return $result
     }
     catch {
-        Write-Log "Task failed: $TaskName. Error: $_" 'ERROR'
+        $endTime = Get-Date
+        $duration = ($endTime - $startTime).TotalSeconds
+        
+        Write-ActionLog -Action "Task execution failed" -Details "$TaskName | Duration: ${duration}s | Error: $_" -Category "Task Management" -Status 'FAILURE'
         return $false
+    }
+}
+
+# ================================================================
+# Function: Invoke-LoggedCommand
+# ================================================================
+# Purpose: Enhanced wrapper for external command execution with comprehensive logging and monitoring
+# Environment: Windows 10/11, PowerShell 7+, supports external process execution with detailed tracking
+# Logic: Wraps Start-Process with comprehensive logging, timing, exit code tracking, and error handling
+# Performance: Minimal overhead wrapper with detailed execution tracking and comprehensive error capture
+# Dependencies: Write-CommandLog, Write-ActionLog functions, Start-Process cmdlet, process monitoring
+# ================================================================
+function Invoke-LoggedCommand {
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList = @(),
+        [string]$Context = "",
+        [switch]$WindowStyle,
+        [string]$WindowStyleValue = "Hidden",
+        [switch]$Wait = $true,
+        [switch]$PassThru = $true,
+        [int]$TimeoutSeconds = 300
+    )
+    
+    $startTime = Get-Date
+    
+    # Log command start
+    Write-CommandLog -Command $FilePath -Arguments $ArgumentList -Context $Context -Status 'START'
+    
+    try {
+        $processArgs = @{
+            FilePath = $FilePath
+            Wait = $Wait
+            PassThru = $PassThru
+        }
+        
+        if ($ArgumentList.Count -gt 0) {
+            $processArgs.ArgumentList = $ArgumentList
+        }
+        
+        if ($WindowStyle) {
+            $processArgs.WindowStyle = $WindowStyleValue
+        }
+        
+        Write-ActionLog -Action "Executing external command" -Details "$FilePath with arguments: $($ArgumentList -join ' ')" -Category "Command Execution" -Status 'START'
+        
+        $process = Start-Process @processArgs
+        
+        if ($Wait -and $process) {
+            $endTime = Get-Date
+            $duration = ($endTime - $startTime).TotalSeconds
+            $exitCode = $process.ExitCode
+            
+            if ($exitCode -eq 0) {
+                Write-CommandLog -Command $FilePath -Arguments $ArgumentList -Context "$Context | Duration: ${duration}s | ExitCode: $exitCode" -Status 'SUCCESS'
+                Write-ActionLog -Action "Command completed successfully" -Details "$FilePath | Duration: ${duration}s | ExitCode: $exitCode" -Category "Command Execution" -Status 'SUCCESS'
+            }
+            else {
+                Write-CommandLog -Command $FilePath -Arguments $ArgumentList -Context "$Context | Duration: ${duration}s | ExitCode: $exitCode" -Status 'FAILURE'
+                Write-ActionLog -Action "Command completed with error" -Details "$FilePath | Duration: ${duration}s | ExitCode: $exitCode" -Category "Command Execution" -Status 'FAILURE'
+            }
+            
+            return $process
+        }
+        else {
+            Write-ActionLog -Action "Command started in background" -Details "$FilePath | Background execution" -Category "Command Execution" -Status 'INFO'
+            return $process
+        }
+    }
+    catch {
+        $endTime = Get-Date
+        $duration = ($endTime - $startTime).TotalSeconds
+        
+        Write-CommandLog -Command $FilePath -Arguments $ArgumentList -Context "$Context | Duration: ${duration}s | Exception: $_" -Status 'FAILURE'
+        Write-ActionLog -Action "Command execution failed" -Details "$FilePath | Duration: ${duration}s | Exception: $_" -Category "Command Execution" -Status 'FAILURE'
+        
+        throw $_
     }
 }
 
@@ -3140,17 +3337,23 @@ $global:ScriptTasks = @(
 # MAIN EXECUTION LOGIC
 # ================================================================
 
-# Script startup logging
+# Enhanced script startup logging with system information
 $startTime = Get-Date
 Write-Log "============================================================" 'INFO'
-Write-Log "PowerShell Maintenance Script Starting" 'INFO'
-Write-Log "Script Path: $PSCommandPath" 'INFO'
-Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
-Write-Log "Temp Folder: $global:TempFolder" 'INFO'
-Write-Log "Configuration loaded - Verbose: $($global:Config.EnableVerboseLogging)" 'INFO'
+Write-ActionLog -Action "PowerShell Maintenance Script Starting" -Details "Enhanced logging enabled" -Category "System Startup" -Status 'START'
+Write-ActionLog -Action "Environment Analysis" -Details "Script Path: $PSCommandPath" -Category "System Startup" -Status 'INFO'
+Write-ActionLog -Action "Environment Analysis" -Details "PowerShell Version: $($PSVersionTable.PSVersion)" -Category "System Startup" -Status 'INFO'
+Write-ActionLog -Action "Environment Analysis" -Details "PowerShell Edition: $($PSVersionTable.PSEdition)" -Category "System Startup" -Status 'INFO'
+Write-ActionLog -Action "Environment Analysis" -Details "OS Version: $([System.Environment]::OSVersion.VersionString)" -Category "System Startup" -Status 'INFO'
+Write-ActionLog -Action "Environment Analysis" -Details "User: $([System.Environment]::UserName)" -Category "System Startup" -Status 'INFO'
+Write-ActionLog -Action "Environment Analysis" -Details "Machine: $([System.Environment]::MachineName)" -Category "System Startup" -Status 'INFO'
+Write-ActionLog -Action "Environment Analysis" -Details "Temp Folder: $global:TempFolder" -Category "System Startup" -Status 'INFO'
+Write-ActionLog -Action "Configuration Status" -Details "Verbose Logging: $($global:Config.EnableVerboseLogging)" -Category "System Startup" -Status 'INFO'
+Write-ActionLog -Action "Logging Configuration" -Details "Log File: $global:LogFile" -Category "System Startup" -Status 'INFO'
 Write-Log "============================================================" 'INFO'
 
-# Execute all maintenance tasks
+# Execute all maintenance tasks with enhanced logging
+Write-ActionLog -Action "Starting maintenance task execution" -Details "All configured tasks will be executed" -Category "Task Orchestration" -Status 'START'
 Use-AllScriptTasks
 
 # ================================================================
