@@ -476,6 +476,9 @@ Every code change MUST include:
 - 🚨 **NEVER use PowerShell automatic variables (e.g., `$error`, `$input`, `$host`, `$args`, `$PSItem`, `$null`, `$true`, `$false`, `$LASTEXITCODE`, `$PID`, `$PSVersionTable`, etc.) for custom logic, assignments, or error handling.**
 - ✅ Avoid automatic variables (`$error` → `$errorOutput`)
 - ✅ Function naming: PascalCase with approved verbs
+- ✅ **Variable Delimitation**: When a variable inside a double-quoted string is immediately followed by a colon (`:`), it MUST be enclosed in curly braces (`${...}`). This prevents parser errors.
+  - **❌ WRONG**: `"Log entry for $item: processed"`
+  - **✅ CORRECT**: `"Log entry for ${item}: processed"`
 - ✅ Variable naming: Descriptive, avoiding conflicts
 
 #### **2. Security Standards**
