@@ -490,7 +490,7 @@ function Use-AllScriptTasks {
 function Write-Log {
     param(
         [string]$Message,
-        [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND')]
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE')]
         [string]$Level = 'INFO'
     )
     
@@ -1665,7 +1665,8 @@ function Remove-Bloatware {
         Write-Log "PERFORMANCE: Processed $($newlyInstalledApps.Count)/$($currentInstalledApps.Count) apps (${efficiencyGain}% reduction in processing)" 'INFO'
 
         # Create detailed removal log for audit trail
-        $removalAuditPath = Join-Path $global:TempFolder 'bloatware_removed_$(Get-Date -Format "yyyyMMdd_HHmmss").json'
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $removalAuditPath = Join-Path $global:TempFolder "bloatware_removed_$timestamp.json"
         $auditData = @{
             Timestamp          = (Get-Date).ToString('o')
             ProcessingMode     = "Diff-Based"
