@@ -510,6 +510,12 @@ function Write-TaskProgress {
     
     Write-Progress -Activity $Activity -Status $Status -PercentComplete $PercentComplete
     Write-Log "$Activity - $Status ($PercentComplete%)" 'PROGRESS'
+    
+    # Clear progress bar when complete
+    if ($PercentComplete -ge 100) {
+        Start-Sleep -Milliseconds 500  # Brief pause to show completion
+        Write-Progress -Activity $Activity -Completed
+    }
 }
 
 # ================================================================
@@ -747,7 +753,7 @@ function Install-WindowsUpdatesCompatible {
         
                 # Install updates
                 try {
-                    Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -ErrorAction Stop
+                    Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction Stop
                     Write-Log "Windows Updates installation completed successfully." 'SUCCESS'
                     Write-TaskProgress "Windows Updates completed" 100
                     return $true
@@ -868,37 +874,49 @@ function Get-ExtensiveSystemInventory {
     Write-Log 'Collecting installed Winget applications...' 'INFO'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         try {
-            $wingetOutput = winget list --accept-source-agreements 2>$null
+            # Use UTF8 encoding and better error handling for winget
+            $wingetOutput = cmd /c "chcp 65001 >nul && winget list --accept-source-agreements 2>nul"
             if ($wingetOutput -and $wingetOutput.Count -gt 0) {
                 $apps = @()
                 $headerFound = $false
                 
                 foreach ($line in $wingetOutput) {
+                    # Clean up encoding issues
+                    $cleanLine = $line -replace 'ΓÇª', '…' -replace '[^\x20-\x7E\x09\x0A\x0D\u00A0-\uFFFF]', ''
+                    
                     if (-not $headerFound) {
-                        if ($line -match '^Name\s+' -or $line -match '^-+\s+') {
+                        if ($cleanLine -match '^Name\s+' -or $cleanLine -match '^-+\s+') {
                             $headerFound = $true
                         }
                         continue
                     }
                     
-                    if ($line -match '^-+' -or $line.Trim() -eq '' -or $line -match '^\s*$') {
+                    if ($cleanLine -match '^-+' -or $cleanLine.Trim() -eq '' -or $cleanLine -match '^\s*$') {
                         continue
                     }
                     
-                    if ($line -match '\S') {
+                    if ($cleanLine -match '\S') {
                         try {
-                            $parts = $line -split '\s{2,}' | Where-Object { $_.Trim() -ne '' }
+                            # More robust parsing that handles truncated names
+                            $parts = $cleanLine -split '\s{2,}' | Where-Object { $_.Trim() -ne '' }
                             if ($parts.Count -ge 1) {
-                                $apps += @{
-                                    Name    = $parts[0].Trim()
-                                    Id      = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
-                                    Version = if ($parts.Count -gt 2) { $parts[2].Trim() } else { "" }
-                                    Source  = if ($parts.Count -gt 3) { $parts[3].Trim() } else { "" }
+                                $appName = $parts[0].Trim()
+                                # Skip if name contains encoding artifacts or is too short
+                                if ($appName.Length -gt 1 -and $appName -notmatch '^[ΓÇ\s]+') {
+                                    $apps += @{
+                                        Name    = $appName
+                                        Id      = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
+                                        Version = if ($parts.Count -gt 2) { $parts[2].Trim() } else { "" }
+                                        Source  = if ($parts.Count -gt 3) { $parts[3].Trim() } else { "" }
+                                    }
                                 }
                             }
                         }
                         catch {
-                            Write-Log "[Inventory] Failed to parse winget line: $line" 'WARN'
+                            # Only log if line seems meaningful (not encoding artifacts)
+                            if ($cleanLine.Length -gt 10 -and $cleanLine -notmatch '^[ΓÇ\s]+') {
+                                Write-Log "[Inventory] Failed to parse winget line (encoding issue): $($cleanLine.Substring(0, [Math]::Min(50, $cleanLine.Length)))..." 'WARN'
+                            }
                         }
                     }
                 }
@@ -969,6 +987,9 @@ function Get-ExtensiveSystemInventory {
     }
 
     Write-TaskProgress "System inventory completed" 100
+    # Clear any lingering progress bars
+    Write-Progress -Activity "System inventory completed" -Completed
+    Write-Progress -Activity " " -Completed  # Extra cleanup for console buffer
     Write-Log "[END] Extensive System Inventory (JSON Format)" 'INFO'
 }
 
@@ -1654,7 +1675,7 @@ function Install-EssentialApps {
         $progressPercent = [math]::Round(($currentAppIndex / $totalApps) * 100, 1)
 
         # Console progress bar with percent
-        Write-TaskProgress -TaskName "Installing Essential Apps" -CurrentItem $currentAppIndex -TotalItems $totalApps -ItemName "$($app.Name) ($progressPercent%)"
+        Write-TaskProgress "Installing Essential Apps" $progressPercent "$($app.Name) ($currentAppIndex/$totalApps)"
 
         # Log and host message with percent
         Write-Host "[$progressPercent%] Installing: $($app.Name) ($currentAppIndex/$totalApps)" -ForegroundColor Cyan
@@ -2108,8 +2129,8 @@ function Protect-SystemRestore {
         # Enhanced compatibility check for System Restore availability
         $restoreAvailable = $false
         try {
-            # Try to get restore points to test availability
-            $existingRestorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
+            # Try to get restore points to test availability (Windows PowerShell compatibility)
+            $existingRestorePoints = Invoke-WindowsPowerShellCommand -Command "Get-ComputerRestorePoint" -ErrorAction SilentlyContinue
             $restoreAvailable = $true
             Write-Log "System Restore is available. Found $($existingRestorePoints.Count) existing restore points." 'INFO'
         }
@@ -2153,14 +2174,15 @@ function Protect-SystemRestore {
         Write-Log "Creating system restore point: $restorePointName" 'INFO'
 
         try {
-            # Use Checkpoint-Computer for PowerShell 7+ compatibility
-            Checkpoint-Computer -Description $restorePointName -RestorePointType "MODIFY_SETTINGS"
+            # Use Windows PowerShell compatibility for Checkpoint-Computer
+            $command = "Checkpoint-Computer -Description '$restorePointName' -RestorePointType 'MODIFY_SETTINGS' -Confirm:`$false"
+            Invoke-WindowsPowerShellCommand -Command $command
             Write-Host "✓ System restore point created successfully" -ForegroundColor Green
             Write-Log "System restore point created: $restorePointName" 'INFO'
 
-            # Verify the restore point was created
+            # Verify the restore point was created using Windows PowerShell
             Start-Sleep -Seconds 2
-            $newRestorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
+            $newRestorePoints = Invoke-WindowsPowerShellCommand -Command "Get-ComputerRestorePoint" -ErrorAction SilentlyContinue
             $latestPoint = $newRestorePoints | Sort-Object CreationTime -Descending | Select-Object -First 1
 
             if ($latestPoint -and $latestPoint.Description.Contains("Maintenance Script")) {
@@ -2191,7 +2213,7 @@ function Protect-SystemRestore {
 
         # Disk space management for restore points
         try {
-            $diskSpace = Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='$systemDrive'" -ErrorAction SilentlyContinue
+            $diskSpace = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$systemDrive'" -ErrorAction SilentlyContinue
             if ($diskSpace) {
                 $freeSpaceGB = [math]::Round($diskSpace.FreeSpace / 1GB, 2)
                 $totalSpaceGB = [math]::Round($diskSpace.Size / 1GB, 2)
@@ -2295,7 +2317,7 @@ function Install-WindowsUpdatesCompatible {
                 Write-Host "Installing $($availableUpdates.Count) Windows updates..." -ForegroundColor Cyan
 
                 # Install updates with progress tracking
-                $installResult = Install-WindowsUpdate -AcceptAll -AutoReboot:$false -ErrorAction SilentlyContinue
+                $installResult = Install-WindowsUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction SilentlyContinue
                 
                 if ($installResult) {
                     $successfulUpdates = $installResult | Where-Object { $_.Result -eq 'Installed' }
@@ -2394,7 +2416,7 @@ function Clear-TempFiles {
         $locationsProcessed++
         $progressPercent = [math]::Round(($locationsProcessed / $totalLocations) * 100, 1)
         
-        Write-TaskProgress -TaskName "Cleaning Temp Files" -CurrentItem $locationsProcessed -TotalItems $totalLocations -ItemName "$($location.Name) ($progressPercent%)"
+        Write-TaskProgress -Activity "Cleaning Temp Files" -CurrentStep $locationsProcessed -TotalSteps $totalLocations -Status "$($location.Name) ($locationsProcessed/$totalLocations)" -FileBased:$false
         Write-Host "[$progressPercent%] Cleaning: $($location.Name) ($locationsProcessed/$totalLocations)" -ForegroundColor Cyan
 
         try {
@@ -2491,6 +2513,9 @@ function Clear-TempFiles {
     }
 
     # Summary
+    Write-TaskProgress -Activity "Cleaning Temp Files" -CurrentStep $totalLocations -TotalSteps $totalLocations -Status "Cleanup completed" -FileBased:$false
+    Write-Progress -Activity "Cleaning Temp Files" -Completed
+    
     Write-Log "[TempCleanup] CLEANUP SUMMARY:" 'INFO'
     Write-Log "- Total files deleted: $totalFilesDeleted" 'INFO'
     Write-Log "- Total disk space freed: $([math]::Round($totalSizeFreed, 2)) MB" 'INFO'
