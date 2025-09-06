@@ -2464,38 +2464,83 @@ function Protect-SystemRestore {
         try {
             # Use Windows PowerShell compatibility for Checkpoint-Computer
             $command = "Checkpoint-Computer -Description '$restorePointName' -RestorePointType 'MODIFY_SETTINGS' -Confirm:`$false"
-            Invoke-WindowsPowerShellCommand -Command $command
-            Write-Host "✓ System restore point created successfully" -ForegroundColor Green
-            Write-Log "System restore point created: $restorePointName" 'INFO'
+            $commandResult = Invoke-WindowsPowerShellCommand -Command $command
+            
+            # Check if the command executed successfully
+            if ($commandResult -or $LASTEXITCODE -eq 0) {
+                Write-Host "✓ System restore point created successfully" -ForegroundColor Green
+                Write-Log "System restore point created: $restorePointName" 'INFO'
+            } else {
+                throw "Checkpoint-Computer command did not execute successfully"
+            }
 
             # Verify the restore point was created using Windows PowerShell
             Start-Sleep -Seconds 2
-            $newRestorePoints = Invoke-WindowsPowerShellCommand -Command "Get-ComputerRestorePoint" -ErrorAction SilentlyContinue
-            $latestPoint = $newRestorePoints | Sort-Object CreationTime -Descending | Select-Object -First 1
-
-            if ($latestPoint -and $latestPoint.Description.Contains("Maintenance Script")) {
-                Write-Log "Restore point verification successful. Latest point: $($latestPoint.Description)" 'INFO'
-            }
-            else {
-                Write-Log "Could not verify restore point creation" 'WARN'
+            try {
+                $newRestorePoints = Invoke-WindowsPowerShellCommand -Command "Get-ComputerRestorePoint" -ErrorAction SilentlyContinue
+                
+                if ($newRestorePoints -and $newRestorePoints.Count -gt 0) {
+                    $latestPoint = $newRestorePoints | Sort-Object CreationTime -Descending | Select-Object -First 1
+                    
+                    if ($latestPoint -and $latestPoint.Description -and $latestPoint.Description.Contains("Maintenance Script")) {
+                        Write-Log "Restore point verification successful. Latest point: $($latestPoint.Description)" 'INFO'
+                    } else {
+                        Write-Log "Latest restore point found but not from maintenance script: $($latestPoint.Description)" 'WARN'
+                    }
+                } else {
+                    Write-Log "No restore points found during verification" 'WARN'
+                }
+            } catch {
+                Write-Log "Could not verify restore point creation: $_" 'WARN'
             }
         }
         catch {
             Write-Log "Failed to create system restore point: $_" 'ERROR'
             Write-Host "✗ Failed to create system restore point: $_" -ForegroundColor Red
 
-            # Try alternative method using COM object for older compatibility
+            # Try alternative method using WMI for older compatibility
             try {
-                Write-Log "Attempting restore point creation using COM interface..." 'INFO'
-                $SRClass = [System.Activator]::CreateInstance([System.Type]::GetTypeFromProgID("SystemRestore.SystemRestoreManager"))
-                if ($SRClass) {
-                    $SRClass.CreateRestorePoint($restorePointName, 0, 100)
-                    Write-Host "✓ System restore point created via COM interface" -ForegroundColor Green
-                    Write-Log "System restore point created via COM interface: $restorePointName" 'INFO'
+                Write-Log "Attempting restore point creation using WMI interface..." 'INFO'
+                
+                # Create restore point using WMI method
+                $restorePointResult = Invoke-WindowsPowerShellCommand -Command @"
+try {
+    `$systemRestore = Get-WmiObject -Class SystemRestore -Namespace root\default -List
+    if (`$systemRestore) {
+        `$result = `$systemRestore.CreateRestorePoint('$restorePointName', 0, 100)
+        Write-Output "RestorePointResult:`$(`$result.ReturnValue)"
+    } else {
+        Write-Output "SystemRestore WMI class not available"
+    }
+} catch {
+    Write-Output "WMI Error:`$(`$_.Exception.Message)"
+}
+"@
+                
+                if ($restorePointResult -and $restorePointResult -match "RestorePointResult:0") {
+                    Write-Host "✓ System restore point created via WMI interface" -ForegroundColor Green
+                    Write-Log "System restore point created via WMI interface: $restorePointName" 'INFO'
+                } else {
+                    Write-Log "WMI restore point creation result: $restorePointResult" 'WARN'
+                    
+                    # Final fallback: try using VSSAdmin
+                    Write-Log "Attempting restore point creation using VSSAdmin..." 'INFO'
+                    try {
+                        $vssResult = Start-Process -FilePath "vssadmin" -ArgumentList "create shadow /for=C:" -Wait -PassThru -WindowStyle Hidden
+                        if ($vssResult.ExitCode -eq 0) {
+                            Write-Host "✓ Shadow copy created as restore point alternative" -ForegroundColor Green
+                            Write-Log "Shadow copy created successfully" 'INFO'
+                        } else {
+                            Write-Log "VSSAdmin failed with exit code: $($vssResult.ExitCode)" 'WARN'
+                        }
+                    } catch {
+                        Write-Log "VSSAdmin restore point creation failed: $_" 'ERROR'
+                    }
                 }
             }
             catch {
-                Write-Log "COM interface restore point creation also failed: $_" 'ERROR'
+                Write-Log "Alternative restore point creation methods failed: $_" 'ERROR'
+                Write-Host "✗ All restore point creation methods failed" -ForegroundColor Red
             }
         }
 

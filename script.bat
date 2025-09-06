@@ -80,16 +80,15 @@ IF %ERRORLEVEL% EQU 0 (
 ) ELSE (
     SET "LOG_TIMESTAMP=%DATE% %TIME%"
     CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task not found. Creating..."
-    REM /IT removed for SYSTEM compatibility. If you need interactive, run as user.
+    REM Create scheduled task with proper escaping
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "cmd.exe /c \"\"%SCRIPT_DIR%script.bat\"\"" ^
+        /TR "%SCRIPT_DIR%script.bat" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
-        /Z ^
         /F >schtasks_create.log 2>&1
     IF !ERRORLEVEL! EQU 0 (
         SET "LOG_TIMESTAMP=%DATE% %TIME%"
@@ -106,7 +105,33 @@ IF %ERRORLEVEL% EQU 0 (
     ) ELSE (
         SET "LOG_TIMESTAMP=%DATE% %TIME%"
         CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] Failed to create monthly scheduled task. See schtasks_create.log for details."
-        TYPE schtasks_create.log
+        REM Display the actual error for debugging
+        IF EXIST schtasks_create.log (
+            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] Scheduled task creation error details:"
+            TYPE schtasks_create.log
+        ) ELSE (
+            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] No error log file created."
+        )
+        
+        REM Try alternative approach with current user instead of SYSTEM
+        SET "LOG_TIMESTAMP=%DATE% %TIME%"
+        CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Attempting to create task under current user account..."
+        schtasks /Create ^
+            /SC MONTHLY ^
+            /MO 1 ^
+            /TN "%TASK_NAME%" ^
+            /TR "%SCRIPT_DIR%script.bat" ^
+            /ST 01:00 ^
+            /RL HIGHEST ^
+            /F >schtasks_create_user.log 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "LOG_TIMESTAMP=%DATE% %TIME%"
+            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task created successfully under current user."
+        ) ELSE (
+            SET "LOG_TIMESTAMP=%DATE% %TIME%"
+            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [WARN] Failed to create scheduled task under current user as well."
+            IF EXIST schtasks_create_user.log TYPE schtasks_create_user.log
+        )
     )
 )
 
