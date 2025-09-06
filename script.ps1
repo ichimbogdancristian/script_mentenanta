@@ -435,7 +435,8 @@ function Use-AllScriptTasks {
             
             if ($result) {
                 Write-ActionLog -Action "Task completed successfully" -Details "$taskName | Duration: ${duration}s | Result: $result" -Category "Task Execution" -Status 'SUCCESS'
-            } else {
+            }
+            else {
                 Write-ActionLog -Action "Task completed with issues" -Details "$taskName | Duration: ${duration}s | Result: $result" -Category "Task Execution" -Status 'FAILURE'
             }
             
@@ -694,7 +695,7 @@ function Invoke-LoggedCommand {
     try {
         $processArgs = @{
             FilePath = $FilePath
-            Wait = $Wait
+            Wait     = $Wait
             PassThru = $PassThru
         }
         
