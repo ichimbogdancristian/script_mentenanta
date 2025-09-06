@@ -212,12 +212,17 @@ The PowerShell script (`script.ps1`) MUST be organized into clearly defined, log
 - **Helper Functions**: Place immediately after the main function they support
 - **Reporting Functions**: Place in Section 7 (reports, analytics, metrics)
 
-#### **🚨 Mandatory Compliance:**
-- **EVERY code change** MUST respect the section structure
-- **NEW functions** MUST be placed in the appropriate section
-- **REFACTORING** MUST maintain or improve the organization
-- **NO mixing** of unrelated functions within sections
-- **SECTION headers** MUST be preserved and updated as needed
+
+#### **�️ Control Flow Preservation Rule (NEW):**
+
+**Before removing any `if` or `try` statements, the agent MUST:**
+1. **Analyze the intended logic and context of the block.**
+2. **Attempt to restore or complete the block (e.g., add missing `catch`/`finally` for `try`, or close/open `if` as needed).**
+3. **Preserve the original error handling and control flow whenever possible.**
+4. **Only remove a block if it is truly orphaned, irrecoverable, and cannot be restored to meaningful logic.**
+5. **Document the reasoning for any removal of such blocks.**
+
+This applies to all structural/diagnostic fixes and is MANDATORY for all code changes.
 
 ### **Benefits of Structured Organization:**
 ✅ **Enhanced Maintainability**: Easy to locate and update related functionality  
@@ -290,15 +295,49 @@ The PowerShell script (`script.ps1`) MUST be organized into clearly defined, log
 4. **AFTER each code change**: Run `get_errors` tool again to verify no new issues
 5. **BEFORE completion**: Final `get_errors` check on ALL modified files
 
+
 #### **Enhanced Context Analysis for Complex Issues (MANDATORY)**
-When diagnostic errors involve structural problems (missing brackets, orphaned code, function boundaries):
+When diagnostic errors involve structural problems (missing brackets, orphaned code, function boundaries, or broken `if`/`try` blocks):
 
 **🔍 REQUIRED CONTEXT INVESTIGATION:**
-1. **Function Scope Analysis**: Use `read_file` to examine the COMPLETE function from start to end
+1. **Function and Block Scope Analysis**: Use `read_file` to examine the COMPLETE function and any enclosing `if`/`try`/loop blocks from start to end
 2. **Structural Mapping**: Identify function boundaries, nested blocks, and proper indentation
 3. **Orphaned Code Detection**: Look for code floating outside proper function/block contexts
-4. **Cross-Reference Checking**: Verify that variables, parameters, and return values are properly scoped
-5. **Integration Verification**: Ensure orphaned code segments are properly integrated or removed
+4. **Control Flow Restoration**: Attempt to restore or complete any broken `if`/`try`/loop blocks before considering removal
+5. **Variable Analysis**: Check for unused variables and understand their intended purpose before removal
+6. **Cross-Reference Checking**: Verify that variables, parameters, and return values are properly scoped
+7. **Integration Verification**: Ensure orphaned code segments are properly integrated or removed
+
+#### **⚠️ Control Flow Preservation Rule (NEW):**
+
+**Before removing any `if` or `try` statements, the agent MUST:**
+1. **Analyze the intended logic and context of the block.**
+2. **Attempt to restore or complete the block (e.g., add missing `catch`/`finally` for `try`, or close/open `if` as needed).**
+3. **Preserve the original error handling and control flow whenever possible.**
+4. **Only remove a block if it is truly orphaned, irrecoverable, and cannot be restored to meaningful logic.**
+5. **Document the reasoning for any removal of such blocks.**
+
+This applies to all structural/diagnostic fixes and is MANDATORY for all code changes.
+
+**🔧 SYSTEMATIC RESOLUTION WORKFLOW:**
+
+**Step 1: Structural Analysis and Restoration**
+- Identify missing `catch`/`finally` blocks for orphaned `try` statements
+- Complete broken `if`/`else`/`elseif` conditional logic
+- Restore function boundaries and proper brace matching
+- Fix control flow interruptions
+
+**Step 2: Variable and Usage Analysis**  
+- Identify unused variables and understand their original intent
+- Check variable scoping and accessibility
+- Restore proper variable integration or remove if truly redundant
+- Ensure consistent indentation and code structure
+
+**Step 3: Syntax and Technical Fixes**
+- Address parsing errors and syntax issues
+- Resolve type conflicts and parameter mismatches
+- Apply PSScriptAnalyzer recommendations
+- Final validation and testing
 
 #### **🚨 CRITICAL: Orphaned Code Prevention Protocol (MANDATORY)**
 **⚠️ ABSOLUTE REQUIREMENT**: AI agents MUST NEVER leave orphaned code blocks floating outside proper function/context boundaries.
@@ -316,12 +355,14 @@ When diagnostic errors involve structural problems (missing brackets, orphaned c
 - **Disconnected Logic**: Code that doesn't belong to any parent function or block
 - **Remnant Code**: Left-over fragments from previous edits
 
-**🔧 ORPHANED CODE RESOLUTION STEPS:**
-1. **Identify Origin**: Determine what function the orphaned code should belong to
-2. **Integration**: Move orphaned code into appropriate function context
-3. **Validation**: Verify the code makes sense in its new location
-4. **Testing**: Ensure integration doesn't break functionality
-5. **Cleanup**: Remove any truly redundant orphaned fragments
+
+**🔧 ORPHANED/BROKEN BLOCK RESOLUTION STEPS:**
+1. **Identify Origin**: Determine what function or control block (`if`, `try`, etc.) the orphaned or broken code should belong to
+2. **Restoration**: Attempt to restore the block by adding missing braces, `catch`/`finally`, or completing the logic
+3. **Integration**: Move code into the appropriate context if possible
+4. **Validation**: Verify the code makes sense in its new or restored location
+5. **Testing**: Ensure integration doesn't break functionality
+6. **Cleanup**: Only remove blocks if truly irrecoverable, and document the reason
 
 **🚫 ZERO TOLERANCE POLICY:**
 - **NO orphaned code is EVER acceptable**
@@ -378,14 +419,23 @@ grep_search -query "^\s*[{}]\s*$" -isRegexp true -includePattern "script.ps1"
 semantic_search -query "function boundaries missing brackets orphaned code"
 ```
 
-#### **Diagnostic Categories to Address (ALL REQUIRED)**
-- ✅ **PowerShell Script Analysis**: PSScriptAnalyzer warnings and errors
-- ✅ **Syntax Errors**: Parsing issues, missing brackets, unmatched quotes
-- ✅ **Structural Issues**: Orphaned code, incomplete functions, malformed blocks
-- ✅ **Best Practice Violations**: Code quality, security, performance issues
-- ✅ **Variable Conflicts**: Automatic variables like `$error`, `$input`, `$host`
-- ✅ **Function Standards**: Approved verbs, parameter validation, error handling
-- ✅ **Security Concerns**: Execution policies, credential handling, unsafe operations
+#### **MANDATORY Diagnostic Resolution Priority Order**
+
+**Phase 1: Structural and Logic Issues (HIGHEST PRIORITY)**
+1. **Try/Catch/Finally Blocks**: Analyze orphaned `try` statements and restore missing `catch`/`finally` blocks - understand the intended error handling logic and restore complete functionality
+2. **If/Else/ElseIf Blocks**: Complete broken conditional logic by analyzing the intended flow and restoring missing `else`/`elseif` clauses with proper braces
+3. **Function Boundaries**: Ensure all functions have proper opening/closing braces and complete structure
+4. **Control Flow Restoration**: Understand and restore the intended program flow and error handling logic rather than removing incomplete blocks
+
+**Phase 2: Code Quality and Usage Issues (MEDIUM PRIORITY)**
+5. **Unused Variables**: Identify variables that are declared but never used, understand their intended purpose, and either integrate them properly or remove if truly redundant
+6. **Variable Scope**: Ensure variables are properly scoped within functions and blocks
+7. **Indentation**: Fix inconsistent indentation that affects readability and structure - ensure proper nesting and visual code organization
+
+**Phase 3: Syntax and Technical Issues (LOWER PRIORITY)**
+8. **Syntax Errors**: Address parsing errors, missing semicolons, incorrect operators
+9. **Type Mismatches**: Resolve parameter type conflicts and casting issues
+10. **Best Practices**: PSScriptAnalyzer warnings and code style improvements
 
 #### **MANDATORY Tools Usage**
 ```powershell
