@@ -536,23 +536,17 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
 )
 
 REM -----------------------------------------------------------------------------
-REM Self-Update Mechanism - Update ONLY script.bat (as requested by user)
+REM Self-Update Mechanism - Deferred Update (prevents execution conflicts)
 REM -----------------------------------------------------------------------------
 SET "NEW_SCRIPT_BAT=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.bat"
 SET "CURRENT_SCRIPT_BAT=%SCRIPT_PATH%"
+SET "SELF_UPDATE_NEEDED=NO"
 
 IF EXIST "%NEW_SCRIPT_BAT%" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Found new script.bat in extracted repository."
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Copying ONLY script.bat (not script.ps1) as requested."
-    COPY /Y "%NEW_SCRIPT_BAT%" "%CURRENT_SCRIPT_BAT%" >nul 2>&1
-    IF %ERRORLEVEL% EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] script.bat overwritten successfully."
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] script.ps1 will be used from extracted folder: %SCRIPT_DIR%%EXTRACT_FOLDER%"
-    ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [ERROR] Failed to overwrite script.bat!"
-        pause
-        EXIT /B 6
-    )
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Self-update will be performed AFTER PowerShell script execution."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] This prevents execution conflicts during script update."
+    SET "SELF_UPDATE_NEEDED=YES"
 ) ELSE (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] No new script.bat found in extracted repository."
 )
@@ -737,19 +731,30 @@ IF "!PS7_AVAILABLE!"=="YES" (
 
 IF !LAUNCH_RESULT! EQU 0 (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell script execution completed successfully."
-) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script execution failed with error code: !LAUNCH_RESULT!"
-    pause
-)
+    
+    REM -----------------------------------------------------------------------------
+    REM Deferred Self-Update - Perform after PowerShell execution completes
+    REM -----------------------------------------------------------------------------
+    IF "!SELF_UPDATE_NEEDED!"=="YES" (
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Performing deferred self-update..."
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Copying ONLY script.bat (not script.ps1) as requested."
+        COPY /Y "%NEW_SCRIPT_BAT%" "%CURRENT_SCRIPT_BAT%" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "[%TIME%] [INFO] script.bat updated successfully."
+        ) ELSE (
+            CALL :LOG_MESSAGE "[%TIME%] [WARN] Failed to update script.bat, but continuing..."
+        )
+    )
+    
     CALL :LOG_MESSAGE "[%TIME%] [INFO] This launcher will close automatically in 10 seconds..."
     FOR /L %%i IN (10,-1,1) DO (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Closing in %%i seconds..."
         timeout /t 1 /nobreak >nul
     )
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Batch launcher completed successfully. Window will now close."
-    EXIT
+    
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Failed to launch PowerShell script."
+    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script execution failed with error code: !LAUNCH_RESULT!"
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] Please check the PowerShell script path and permissions."
     pause
 )
