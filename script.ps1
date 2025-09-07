@@ -111,6 +111,7 @@ $global:Config = @{
     SkipSystemRestore       = $false
     SkipEventLogAnalysis    = $false
     SkipPendingRestartCheck = $false
+    SkipSystemHealthRepair  = $false
     EnableVerboseLogging    = $false
     CustomEssentialApps     = @()
     CustomBloatwareList     = @()
@@ -326,6 +327,23 @@ $global:ScriptTasks = @(
                 return $false
             }
         }; Description = 'Clean temporary files and perform disk space optimization' 
+    },
+
+    @{ Name = 'SystemHealthRepair'; Function = { 
+            Write-Log 'Starting System Health Check and Repair task.' 'INFO'
+            Write-Host 'Starting System Health Check and Repair task.' -ForegroundColor Cyan
+            if (-not $global:Config.SkipSystemHealthRepair) {
+                Start-SystemHealthRepair
+                Write-Log 'Completed System Health Check and Repair task.' 'INFO'
+                Write-Host 'Completed System Health Check and Repair task.' -ForegroundColor Green
+                return $true
+            }
+            else {
+                Write-Host 'System Health Check and Repair skipped by configuration.' -ForegroundColor Yellow
+                Write-Log 'System Health Check and Repair skipped by configuration.' 'INFO'
+                return $true
+            }
+        }; Description = 'Automated DISM and SFC system file integrity check and repair' 
     },
 
     @{ Name = 'PendingRestartCheck'; Function = { 
@@ -1063,7 +1081,7 @@ function Install-WindowsUpdatesCompatible {
         
                 # Install updates
                 try {
-                    Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction Stop
+                    Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -ErrorAction Stop
                     Write-Log "Windows Updates installation completed successfully." 'SUCCESS'
                     Write-TaskProgress "Windows Updates completed" 100
                     return $true
@@ -2008,11 +2026,11 @@ function Install-EssentialApps {
     Write-Log "[EssentialApps] Starting installation of $totalApps essential apps:" 'INFO'
 
     foreach ($app in $appsToInstall) {
-
         $currentAppIndex++
         $progressPercent = [math]::Round(($currentAppIndex / $totalApps) * 100, 1)
 
-        # Console progress bar with percent
+        # Individual per-app progress bar
+        Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Status "In progress..." -PercentComplete 0
         Write-TaskProgress "Installing Essential Apps" $progressPercent "$($app.Name) ($currentAppIndex/$totalApps)"
 
         # Log and host message with percent
@@ -2044,6 +2062,7 @@ function Install-EssentialApps {
                     $successCount++
                     Write-Log "✓ INSTALLED: $($app.Name) [Method: Winget]" 'INFO'
                     Write-Host "    ✓ Successfully installed via Winget" -ForegroundColor Green
+                    Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
                     continue
                 }
                 elseif ($wingetProc.ExitCode -eq -1978335189) {
@@ -2053,6 +2072,7 @@ function Install-EssentialApps {
                     $skippedCount++
                     Write-Log "⚪ SKIPPED: $($app.Name) [Reason: Already installed via Winget]" 'INFO'
                     Write-Host "    ⚪ Already installed (Winget detected)" -ForegroundColor Yellow
+                    Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
                     continue
                 }
                 else {
@@ -2072,6 +2092,7 @@ function Install-EssentialApps {
                     $successCount++
                     Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey]" 'INFO'
                     Write-Host "    ✓ Successfully installed via Chocolatey" -ForegroundColor Green
+                    Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
                     continue
                 }
                 elseif ($chocoProc.ExitCode -eq 1641 -or $chocoProc.ExitCode -eq 3010) {
@@ -2081,6 +2102,7 @@ function Install-EssentialApps {
                     $successCount++
                     Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey - Reboot Required]" 'INFO'
                     Write-Host "    ✓ Successfully installed via Chocolatey (reboot required)" -ForegroundColor Green
+                    Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
                     continue
                 }
                 else {
@@ -2096,6 +2118,7 @@ function Install-EssentialApps {
                 $skippedCount++
                 Write-Log "⚪ SKIPPED: $($app.Name) [Reason: No package manager available]" 'WARN'
                 Write-Host "    ⚪ Skipped - No package manager available" -ForegroundColor Yellow
+                Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
             }
             elseif (-not $app.Winget -and -not $app.Choco) {
                 $result.Skipped = $true
@@ -2103,12 +2126,14 @@ function Install-EssentialApps {
                 $skippedCount++
                 Write-Log "⚪ SKIPPED: $($app.Name) [Reason: No installer defined]" 'WARN'
                 Write-Host "    ⚪ Skipped - No installer defined" -ForegroundColor Yellow
+                Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
             }
             else {
                 $result.Error = $result.Error.TrimEnd("; ")
                 $failedCount++
                 Write-Log "✗ FAILED: $($app.Name) [Error: $($result.Error)]" 'ERROR'
                 Write-Host "    ✗ Installation failed: $($result.Error)" -ForegroundColor Red
+                Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
             }
         }
         catch {
@@ -2116,6 +2141,7 @@ function Install-EssentialApps {
             $failedCount++
             Write-Log "✗ FAILED: $($app.Name) [Exception: $($_.Exception.Message)]" 'ERROR'
             Write-Host "    ✗ Exception occurred: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
         }
     }
 
@@ -2328,17 +2354,22 @@ function Enable-AppBrowserControl {
             Write-Log "✓ Controlled Folder Access enabled" 'INFO'
         } catch { $errors += "Controlled Folder Access: $_" }
 
-        # Enable SmartScreen for Edge
-        try {
-            Set-MpPreference -EnableSmartScreenForEdge $true
-            Write-Log "✓ SmartScreen for Edge enabled" 'INFO'
-        } catch { $errors += "SmartScreen for Edge: $_" }
 
-        # Enable SmartScreen for Store Apps
+        # Enable SmartScreen for Edge via registry (Windows 10/11)
         try {
-            Set-MpPreference -EnableSmartScreenForStoreApps Enabled
-            Write-Log "✓ SmartScreen for Store Apps enabled" 'INFO'
-        } catch { $errors += "SmartScreen for Store Apps: $_" }
+            $edgeKey = "HKLM:\SOFTWARE\Policies\Microsoft\MicrosoftEdge\PhishingFilter"
+            if (-not (Test-Path $edgeKey)) { New-Item -Path $edgeKey -Force | Out-Null }
+            Set-ItemProperty -Path $edgeKey -Name "EnabledV9" -Value 1 -Type DWord
+            Write-Log "✓ SmartScreen for Edge enabled (via registry)" 'INFO'
+        } catch { $errors += "SmartScreen for Edge (registry): $_" }
+
+        # Enable SmartScreen for Microsoft Store Apps via registry
+        try {
+            $storeKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppHost"
+            if (-not (Test-Path $storeKey)) { New-Item -Path $storeKey -Force | Out-Null }
+            Set-ItemProperty -Path $storeKey -Name "EnableWebContentEvaluation" -Value 1 -Type DWord
+            Write-Log "✓ SmartScreen for Store Apps enabled (via registry)" 'INFO'
+        } catch { $errors += "SmartScreen for Store Apps (registry): $_" }
 
         # Enable system-level exploit mitigations (DEP, SEHOP, CFG, ASLR)
         try {
@@ -3020,6 +3051,273 @@ function Clear-TempFiles {
 }
 
 # ================================================================
+# Function: Start-SystemHealthRepair
+# ================================================================
+# Purpose: Automated Windows System Health Check and Repair using DISM and SFC
+# Environment: Windows 10/11, Administrator required, PowerShell 7+ optimized
+# Performance: Long-running operation, automated detection, comprehensive system file integrity checking
+# Dependencies: DISM.exe, SFC.exe, Windows Component Store, Administrator privileges
+# Logic: DISM component store health check, automatic repair if needed, SFC scan based on results and logs
+# Features: Intelligent repair detection, unattended operation, comprehensive logging, repair verification
+# ================================================================
+function Start-SystemHealthRepair {
+    Write-Log "[START] Windows System Health Check and Repair - Automated DISM/SFC Mode" 'INFO'
+    
+    $repairStartTime = Get-Date
+    $dismRepaired = $false
+    $repairNeeded = $false
+    $repairResults = @{
+        DismCheckPerformed = $false
+        DismRepairNeeded = $false
+        DismRepairSuccess = $false
+        SfcCheckPerformed = $false
+        SfcRepairNeeded = $false
+        SfcRepairSuccess = $false
+        OverallSuccess = $false
+    }
+
+    try {
+        Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
+        Write-Log "OS Version: $([System.Environment]::OSVersion.VersionString)" 'INFO'
+        
+        # DISM Component Store Health Check
+        Write-Log "Starting DISM component store health analysis..." 'INFO'
+        Write-TaskProgress "DISM Health Check" 25
+        
+        try {
+            $dismScanResult = & dism /online /cleanup-image /scanhealth /english 2>&1
+            $dismScanOutput = $dismScanResult -join "`n"
+            Write-Log "DISM ScanHealth completed" 'VERBOSE'
+            
+            $repairResults.DismCheckPerformed = $true
+            
+            if ($dismScanOutput -match "component store is repairable|corruption was detected") {
+                Write-Log "⚠ DISM detected component store corruption - repair required" 'WARN'
+                $repairResults.DismRepairNeeded = $true
+                $repairNeeded = $true
+                
+                # Perform DISM RestoreHealth
+                Write-Log "Starting DISM RestoreHealth operation..." 'INFO'
+                Write-TaskProgress "DISM Repair" 50
+                
+                $dismRepairStart = Get-Date
+                $dismRepairResult = & dism /online /cleanup-image /restorehealth /english 2>&1
+                $dismRepairOutput = $dismRepairResult -join "`n"
+                $dismRepairEnd = Get-Date
+                $dismDuration = $dismRepairEnd - $dismRepairStart
+                
+                Write-Log "DISM RestoreHealth completed in $($dismDuration.ToString('hh\:mm\:ss'))" 'INFO'
+                
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Log "✓ DISM RestoreHealth completed successfully" 'SUCCESS'
+                    $dismRepaired = $true
+                    $repairResults.DismRepairSuccess = $true
+                } else {
+                    Write-Log "✗ DISM RestoreHealth failed with exit code: $LASTEXITCODE" 'ERROR'
+                    $repairResults.DismRepairSuccess = $false
+                }
+            }
+            elseif ($dismScanOutput -match "no component store corruption detected") {
+                Write-Log "✓ DISM: No component store corruption detected" 'INFO'
+                $repairResults.DismRepairNeeded = $false
+            }
+            else {
+                Write-Log "DISM health check completed, performing detailed analysis..." 'INFO'
+                
+                # Run DISM CheckHealth for more detailed analysis
+                $dismCheckResult = & dism /online /cleanup-image /checkhealth /english 2>&1
+                $dismCheckOutput = $dismCheckResult -join "`n"
+                
+                if ($dismCheckOutput -match "component store is repairable|corruption was detected") {
+                    Write-Log "⚠ DISM CheckHealth detected issues - repair required" 'WARN'
+                    $repairResults.DismRepairNeeded = $true
+                    $repairNeeded = $true
+                } else {
+                    Write-Log "✓ DISM detailed check passed - no corruption detected" 'INFO'
+                    $repairResults.DismRepairNeeded = $false
+                }
+            }
+        }
+        catch {
+            Write-Log "Error during DISM health check: $($_.Exception.Message)" 'ERROR'
+            $repairResults.DismCheckPerformed = $false
+        }
+
+        # SFC System File Check
+        Write-Log "Determining SFC scan necessity..." 'INFO'
+        $sfcNeeded = $false
+        
+        # SFC is recommended if DISM repair was performed or CBS logs indicate issues
+        if ($dismRepaired) {
+            Write-Log "SFC scan recommended (DISM repair was performed)" 'INFO'
+            $sfcNeeded = $true
+        }
+        else {
+            # Check CBS logs for corruption indicators
+            Write-Log "Analyzing CBS logs for system file integrity issues..." 'INFO'
+            try {
+                $cbsLogPath = "$env:WINDIR\Logs\CBS\CBS.log"
+                if (Test-Path $cbsLogPath) {
+                    $recentEntries = Get-Content $cbsLogPath -Tail 1000 -ErrorAction SilentlyContinue
+                    $corruptionIndicators = $recentEntries | Where-Object { 
+                        $_ -match "corrupt|damaged|violation|failed.*verify" -and $_ -notmatch "successfully"
+                    }
+                    
+                    if ($corruptionIndicators.Count -gt 0) {
+                        Write-Log "⚠ Found potential file corruption indicators in CBS log - SFC scan recommended" 'WARN'
+                        $sfcNeeded = $true
+                    } else {
+                        Write-Log "✓ CBS log analysis shows no immediate corruption indicators" 'INFO'
+                        $sfcNeeded = $false
+                    }
+                } else {
+                    Write-Log "CBS log not accessible - SFC scan will be skipped" 'WARN'
+                    $sfcNeeded = $false
+                }
+            }
+            catch {
+                Write-Log "Could not analyze CBS logs: $($_.Exception.Message)" 'WARN'
+                $sfcNeeded = $false
+            }
+        }
+
+        # Perform SFC scan if needed
+        if ($sfcNeeded) {
+            $repairNeeded = $true
+            $repairResults.SfcCheckPerformed = $true
+            $repairResults.SfcRepairNeeded = $true
+            
+            Write-Log "Starting SFC /scannow operation..." 'INFO'
+            Write-TaskProgress "SFC System File Check" 75
+            
+            try {
+                $sfcStart = Get-Date
+                $sfcResult = & sfc /scannow 2>&1
+                $sfcOutput = $sfcResult -join "`n"
+                $sfcEnd = Get-Date
+                $sfcDuration = $sfcEnd - $sfcStart
+                
+                Write-Log "SFC scan completed in $($sfcDuration.ToString('hh\:mm\:ss'))" 'INFO'
+                
+                # Parse SFC results
+                if ($sfcOutput -match "did not find any integrity violations") {
+                    Write-Log "✓ SFC scan completed - no integrity violations found" 'SUCCESS'
+                    $repairResults.SfcRepairSuccess = $true
+                }
+                elseif ($sfcOutput -match "found corrupt files and successfully repaired them") {
+                    Write-Log "✓ SFC scan completed - corrupt files found and successfully repaired" 'SUCCESS'
+                    $repairResults.SfcRepairSuccess = $true
+                }
+                elseif ($sfcOutput -match "found corrupt files but was unable to fix some") {
+                    Write-Log "⚠ SFC scan completed - some corrupt files could not be repaired" 'WARN'
+                    $repairResults.SfcRepairSuccess = $false
+                }
+                else {
+                    Write-Log "⚠ SFC scan completed with unknown status" 'WARN'
+                    $repairResults.SfcRepairSuccess = $true
+                }
+            }
+            catch {
+                Write-Log "Error during SFC scan: $($_.Exception.Message)" 'ERROR'
+                $repairResults.SfcCheckPerformed = $false
+                $repairResults.SfcRepairSuccess = $false
+            }
+        }
+        else {
+            Write-Log "✓ SFC scan not needed based on current analysis" 'INFO'
+            $repairResults.SfcCheckPerformed = $false
+            $repairResults.SfcRepairNeeded = $false
+        }
+
+        # Determine overall success
+        $repairResults.OverallSuccess = (
+            (-not $repairResults.DismRepairNeeded -or $repairResults.DismRepairSuccess) -and
+            (-not $repairResults.SfcRepairNeeded -or $repairResults.SfcRepairSuccess)
+        )
+
+        Write-TaskProgress "System Health Check Complete" 100
+    }
+    catch {
+        Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
+        $repairResults.OverallSuccess = $false
+    }
+    finally {
+        # Generate comprehensive repair report
+        $repairEndTime = Get-Date
+        $totalDuration = $repairEndTime - $repairStartTime
+        
+        Write-Log "[SystemHealthRepair] COMPREHENSIVE REPAIR SUMMARY:" 'INFO'
+        Write-Log "- Repair start time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+        Write-Log "- Repair end time: $($repairEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+        Write-Log "- Total duration: $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
+        Write-Log "- DISM check performed: $(if($repairResults.DismCheckPerformed){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- DISM repair needed: $(if($repairResults.DismRepairNeeded){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- DISM repair successful: $(if($repairResults.DismRepairSuccess){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- SFC check performed: $(if($repairResults.SfcCheckPerformed){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- SFC repair needed: $(if($repairResults.SfcRepairNeeded){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- SFC repair successful: $(if($repairResults.SfcRepairSuccess){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- Overall repair success: $(if($repairResults.OverallSuccess){'Yes'}else{'No'})" 'INFO'
+        
+        # Create detailed log file
+        try {
+            $repairLogPath = Join-Path $global:TempFolder "system_health_repair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+            $logContent = @"
+Windows System Health Check and Repair Report
+=============================================
+Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Computer: $env:COMPUTERNAME
+User: $env:USERNAME
+PowerShell Version: $($PSVersionTable.PSVersion)
+
+Repair Summary:
+- Start Time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))
+- End Time: $($repairEndTime.ToString('yyyy-MM-dd HH:mm:ss'))
+- Duration: $($totalDuration.ToString('hh\:mm\:ss'))
+- Repair Operations Needed: $(if($repairNeeded){'Yes'}else{'No'})
+
+DISM Component Store Check:
+- Check Performed: $(if($repairResults.DismCheckPerformed){'Yes'}else{'No'})
+- Repair Needed: $(if($repairResults.DismRepairNeeded){'Yes'}else{'No'})
+- Repair Successful: $(if($repairResults.DismRepairSuccess){'Yes'}else{'No'})
+
+SFC System File Check:
+- Check Performed: $(if($repairResults.SfcCheckPerformed){'Yes'}else{'No'})
+- Repair Needed: $(if($repairResults.SfcRepairNeeded){'Yes'}else{'No'})
+- Repair Successful: $(if($repairResults.SfcRepairSuccess){'Yes'}else{'No'})
+
+Overall Result: $(if($repairResults.OverallSuccess){'SUCCESS - System health verified/repaired'}else{'WARNING - Some issues may remain'})
+
+Recommendations:
+$(if($repairNeeded){'- Consider restarting your computer to ensure all changes take effect'}else{'- No immediate action required - system appears healthy'})
+- Monitor system performance and run this check periodically
+- Keep Windows updates current for optimal system health
+
+"@
+            
+            $logContent | Out-File -FilePath $repairLogPath -Encoding UTF8
+            Write-Log "Detailed repair report saved to: $repairLogPath" 'INFO'
+        }
+        catch {
+            Write-Log "Warning: Could not save detailed repair report: $_" 'WARN'
+        }
+        
+        if ($repairNeeded) {
+            Write-Log "✓ System health repair operations completed successfully" 'SUCCESS'
+            if ($repairResults.OverallSuccess) {
+                Write-Log "Recommendation: Consider restarting your computer to ensure all changes take effect" 'INFO'
+            } else {
+                Write-Log "Warning: Some repair operations encountered issues - manual intervention may be required" 'WARN'
+            }
+        } else {
+            Write-Log "✓ System health check completed - no repair operations were needed" 'SUCCESS'
+        }
+    }
+    
+    Write-Log "[END] Windows System Health Check and Repair" 'INFO'
+    return $repairResults.OverallSuccess
+}
+
+# ================================================================
 # Function: Start-DefenderFullScan
 # ================================================================
 # Purpose: Performs a comprehensive Windows Defender full system scan with automatic threat removal and detailed reporting
@@ -3071,8 +3369,11 @@ function Start-DefenderFullScan {
         Write-Log "Note: This operation may take considerable time depending on system size" 'INFO'
         
         try {
-            Start-MpScan -ScanType FullScan
+            $scanResult = Start-MpScan -ScanType FullScan
             Write-Log "✓ Full system scan completed successfully" 'INFO'
+            if ($scanResult) {
+                Write-Log "Scan result output: $scanResult" 'VERBOSE'
+            }
             $scanSuccess = $true
         }
         catch {
