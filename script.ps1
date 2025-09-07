@@ -3725,7 +3725,7 @@ Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] PowerShell Main
 Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] Returning control to script.bat (if applicable)"
 Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] ============================================================"
 
-# Interactive closure prompt for console environments
+# Interactive closure prompt for console environments with 60s countdown and auto-cleanup
 if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host
     Write-Host "✅ Maintenance script completed successfully!" -ForegroundColor Green
@@ -3733,5 +3733,41 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host "⏱️  Total time: $totalExecutionTime" -ForegroundColor Cyan
     Write-Host "📄 Reports available in: $PSScriptRoot" -ForegroundColor Cyan
     Write-Host
-    Read-Host -Prompt 'Press Enter to close this window...'
+    Write-Host "Press any key to keep this window open, or wait 60 seconds to auto-cleanup and close..." -ForegroundColor Yellow
+
+    $repoFolder = $PSScriptRoot
+    $countdown = 60
+    $abort = $false
+
+    # Use .NET Console for non-blocking key detection
+    [void][System.Console]::TreatControlCAsInput = $true
+    for ($i = $countdown; $i -ge 1; $i--) {
+        Write-Host ("\rClosing in $i seconds... Press any key to abort.") -NoNewline
+        Start-Sleep -Milliseconds 1000
+        if ([System.Console]::KeyAvailable) {
+            $null = [System.Console]::ReadKey($true)
+            $abort = $true
+            break
+        }
+    }
+    Write-Host ""
+    if (-not $abort) {
+        Write-Host "No key pressed. Removing repository folder and closing window..." -ForegroundColor Red
+        try {
+            Set-Location -Path ([System.IO.Path]::GetPathRoot($repoFolder))
+            Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "Repository folder removed: $repoFolder" -ForegroundColor Red
+        } catch {
+            Write-Host "Failed to remove repository folder: $_" -ForegroundColor Red
+        }
+        # Close the terminal window (works for most hosts)
+        if ($Host.Name -eq 'ConsoleHost') {
+            Stop-Process -Id $PID -Force
+        } elseif ($Host.UI.RawUI.WindowTitle) {
+            exit
+        }
+    } else {
+        Write-Host "Cleanup aborted by user. Window will remain open." -ForegroundColor Green
+        Read-Host -Prompt 'Press Enter to close this window...'
+    }
 }
