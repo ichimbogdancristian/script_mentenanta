@@ -3019,6 +3019,184 @@ function Clear-TempFiles {
     Write-Log "[END] Comprehensive Temporary Files Cleanup" 'INFO'
 }
 
+# ================================================================
+# Function: Start-DefenderFullScan
+# ================================================================
+# Purpose: Performs a comprehensive Windows Defender full system scan with automatic threat removal and detailed reporting
+# Environment: Windows 10/11, Administrator required, Windows Defender enabled, PowerShell 7+ optimized
+# Performance: Long-running operation (may take hours), progress tracking, comprehensive threat detection and cleanup
+# Dependencies: Windows Defender Antivirus, Get-MpComputerStatus, Start-MpScan, Get-MpThreat, Remove-MpThreat
+# Logic: Defender status verification, signature updates, full system scan, threat detection, automatic cleanup, detailed reporting
+# Features: Real-time status monitoring, automatic threat removal, scan history tracking, comprehensive logging and reporting
+# ================================================================
+function Start-DefenderFullScan {
+    Write-Log "[START] Windows Defender Full System Scan with Automatic Threat Cleanup" 'INFO'
+    
+    $scanStartTime = Get-Date
+    $scanSuccess = $false
+    $threatsFound = @()
+    $cleanupSuccess = $true
+    
+    try {
+        # Check Windows Defender status
+        Write-Log "Checking Windows Defender status..." 'INFO'
+        try {
+            $defenderStatus = Get-MpComputerStatus
+            if (-not $defenderStatus.AntivirusEnabled) {
+                Write-Log "Windows Defender Antivirus is not enabled. Skipping scan." 'WARN'
+                return $false
+            }
+            if (-not $defenderStatus.RealTimeProtectionEnabled) {
+                Write-Log "Warning: Real-time protection is disabled" 'WARN'
+            }
+            Write-Log "✓ Windows Defender is enabled and available" 'INFO'
+        }
+        catch {
+            Write-Log "Error checking Windows Defender status: $_. Skipping scan." 'WARN'
+            return $false
+        }
+
+        # Update Windows Defender signatures
+        Write-Log "Updating Windows Defender signatures..." 'INFO'
+        try {
+            Update-MpSignature
+            Write-Log "✓ Defender signatures updated successfully" 'INFO'
+        }
+        catch {
+            Write-Log "Warning: Failed to update signatures - $_" 'WARN'
+        }
+
+        # Start full system scan
+        Write-Log "Starting Windows Defender full system scan..." 'INFO'
+        Write-Log "Note: This operation may take considerable time depending on system size" 'INFO'
+        
+        try {
+            $scanResult = Start-MpScan -ScanType FullScan
+            Write-Log "✓ Full system scan completed successfully" 'INFO'
+            $scanSuccess = $true
+        }
+        catch {
+            Write-Log "✗ Defender scan failed: $_" 'ERROR'
+            return $false
+        }
+
+        # Get scan results and threat information
+        Write-Log "Analyzing scan results..." 'INFO'
+        try {
+            $threatsFound = Get-MpThreat
+            $scanHistory = Get-MpScanHistory | Select-Object -First 1
+            
+            if ($scanHistory) {
+                Write-Log "Last scan completed: $($scanHistory.StartTime)" 'INFO'
+                Write-Log "Scan type: $($scanHistory.ScanType)" 'INFO'
+                Write-Log "Scan result: $($scanHistory.Result)" 'INFO'
+            }
+            
+            if ($threatsFound.Count -gt 0) {
+                Write-Log "⚠ THREATS DETECTED: $($threatsFound.Count) threats found" 'WARN'
+                foreach ($threat in $threatsFound) {
+                    Write-Log "- Threat: $($threat.ThreatName) | Location: $($threat.Resources -join ', ')" 'WARN'
+                }
+            } else {
+                Write-Log "✓ No threats detected - system is clean" 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Error retrieving scan results: $_" 'WARN'
+        }
+
+        # Automatic threat cleanup if threats were found
+        if ($threatsFound.Count -gt 0) {
+            Write-Log "Initiating automatic threat cleanup..." 'INFO'
+            try {
+                Remove-MpThreat -All
+                Write-Log "✓ All detected threats have been automatically removed" 'INFO'
+                
+                # Verify cleanup success
+                Start-Sleep -Seconds 3
+                $remainingThreats = Get-MpThreat
+                
+                if ($remainingThreats.Count -eq 0) {
+                    Write-Log "✓ Threat cleanup verification successful - no threats remain" 'INFO'
+                    $cleanupSuccess = $true
+                } else {
+                    Write-Log "⚠ Warning: $($remainingThreats.Count) threats still remain after cleanup" 'WARN'
+                    $cleanupSuccess = $false
+                }
+            }
+            catch {
+                Write-Log "✗ Error during automatic threat cleanup: $_" 'ERROR'
+                $cleanupSuccess = $false
+            }
+        }
+
+        # Generate comprehensive scan report
+        $scanEndTime = Get-Date
+        $scanDuration = $scanEndTime - $scanStartTime
+        
+        Write-Log "[DefenderScan] COMPREHENSIVE SCAN SUMMARY:" 'INFO'
+        Write-Log "- Scan start time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+        Write-Log "- Scan end time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+        Write-Log "- Total scan duration: $($scanDuration.ToString('hh\:mm\:ss'))" 'INFO'
+        Write-Log "- Scan successful: $(if($scanSuccess){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- Threats detected: $($threatsFound.Count)" 'INFO'
+        Write-Log "- Automatic cleanup successful: $(if($cleanupSuccess){'Yes'}else{'No'})" 'INFO'
+        
+        # Create detailed log file in temp folder
+        try {
+            $scanLogPath = Join-Path $global:TempFolder "defender_scan_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+            $logContent = @"
+Windows Defender Full Scan Report
+==================================
+Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Computer: $env:COMPUTERNAME
+User: $env:USERNAME
+PowerShell Version: $($PSVersionTable.PSVersion)
+
+Scan Details:
+- Start Time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))
+- End Time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))
+- Duration: $($scanDuration.ToString('hh\:mm\:ss'))
+- Scan Type: Full System Scan
+- Scan Successful: $(if($scanSuccess){'Yes'}else{'No'})
+- Threats Found: $($threatsFound.Count)
+- Cleanup Successful: $(if($cleanupSuccess){'Yes'}else{'No'})
+
+"@
+            
+            if ($threatsFound.Count -gt 0) {
+                $logContent += "Detected Threats:`n"
+                foreach ($threat in $threatsFound) {
+                    $logContent += "- $($threat.ThreatName): $($threat.Resources -join ', ')`n"
+                }
+                $logContent += "`n"
+            }
+            
+            $logContent += "Defender Status:`n"
+            if ($defenderStatus) {
+                $logContent += "- Antivirus Enabled: $($defenderStatus.AntivirusEnabled)`n"
+                $logContent += "- Real-time Protection: $($defenderStatus.RealTimeProtectionEnabled)`n"
+                $logContent += "- Last Signature Update: $($defenderStatus.AntivirusSignatureLastUpdated)`n"
+            }
+            
+            $logContent | Out-File -FilePath $scanLogPath -Encoding UTF8
+            Write-Log "Detailed scan report saved to: $scanLogPath" 'INFO'
+        }
+        catch {
+            Write-Log "Warning: Could not save detailed scan report: $_" 'WARN'
+        }
+
+        return $scanSuccess
+    }
+    catch {
+        Write-Log "Unexpected error during Defender scan: $_" 'ERROR'
+        return $false
+    }
+    finally {
+        Write-Log "[END] Windows Defender Full System Scan" 'INFO'
+    }
+}
+
 # ===============================
 # SECTION 7: REPORTING & ANALYTICS
 # ===============================
@@ -3636,6 +3814,11 @@ $global:ScriptTasks = @(
         Name        = 'TempCleanup'; 
         Function    = { Clear-TempFiles }; 
         Description = 'Clean temporary files and browser caches' 
+    },
+    @{ 
+        Name        = 'DefenderScan'; 
+        Function    = { Start-DefenderFullScan }; 
+        Description = 'Windows Defender full system scan with automatic threat cleanup' 
     }
 )
 
