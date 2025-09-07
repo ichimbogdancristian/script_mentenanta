@@ -2303,6 +2303,116 @@ function Install-EssentialApps {
 # - System maintenance and optimization utilities
 
 # ================================================================
+# Function: Enable-AppBrowserControl
+# ================================================================
+# Purpose: Enables Windows App & Browser Control features (SmartScreen, Network Protection, Controlled Folder Access, Exploit Protection)
+# Environment: Windows 10/11, Administrator required, Defender Antivirus enabled, PowerShell 7+ optimized
+# Performance: Fast, idempotent, minimal overhead
+# Dependencies: Microsoft Defender Antivirus, Set-MpPreference, Set-ProcessMitigation
+# Logic: Enables SmartScreen, Network Protection, Controlled Folder Access, and system-level exploit mitigations
+# Features: Unified App & Browser Control hardening, error handling, action logging
+# ================================================================
+function Enable-AppBrowserControl {
+    Write-Log "[START] Enabling App & Browser Control (SmartScreen, Network Protection, Controlled Folder Access, Exploit Protection)" 'INFO'
+    $errors = @()
+    try {
+        # Enable Network Protection
+        try {
+            Set-MpPreference -EnableNetworkProtection Enabled
+            Write-Log "✓ Network Protection enabled" 'INFO'
+        } catch { $errors += "Network Protection: $_" }
+
+        # Enable Controlled Folder Access
+        try {
+            Set-MpPreference -EnableControlledFolderAccess Enabled
+            Write-Log "✓ Controlled Folder Access enabled" 'INFO'
+        } catch { $errors += "Controlled Folder Access: $_" }
+
+        # Enable SmartScreen for Edge
+        try {
+            Set-MpPreference -EnableSmartScreenForEdge $true
+            Write-Log "✓ SmartScreen for Edge enabled" 'INFO'
+        } catch { $errors += "SmartScreen for Edge: $_" }
+
+        # Enable SmartScreen for Store Apps
+        try {
+            Set-MpPreference -EnableSmartScreenForStoreApps Enabled
+            Write-Log "✓ SmartScreen for Store Apps enabled" 'INFO'
+        } catch { $errors += "SmartScreen for Store Apps: $_" }
+
+        # Enable system-level exploit mitigations (DEP, SEHOP, CFG, ASLR)
+        try {
+            Set-ProcessMitigation -System -Enable DEP, SEHOP, CFG, ForceRelocateImages, BottomUp, HighEntropy
+            Write-Log "✓ System-level exploit mitigations enabled (DEP, SEHOP, CFG, ASLR)" 'INFO'
+        } catch { $errors += "Exploit Mitigations: $_" }
+    }
+    catch {
+        $errors += "General error: $_"
+    }
+    if ($errors.Count -gt 0) {
+        Write-Log "App & Browser Control: Some settings failed: $($errors -join '; ')" 'WARN'
+    }
+    Write-Log "[END] Enabling App & Browser Control" 'INFO'
+}
+# ================================================================
+# Function: Disable-SpotlightMeetNowNewsLocation
+# ================================================================
+# Purpose: Disables Windows Spotlight, Meet Now, News and Interests, Widgets, and Location services for privacy and taskbar declutter
+# Environment: Windows 10/11, Administrator required, registry/service modification access
+# Performance: Fast registry and service changes, minimal overhead
+# Dependencies: Registry access, service control
+# Logic: Sets registry keys and disables services for all features in one call
+# Features: Disables Spotlight, Meet Now, News/Interests, Widgets, and Location
+# ================================================================
+function Disable-SpotlightMeetNowNewsLocation {
+    Write-Log "[START] Disabling Spotlight, Meet Now, News/Interests, Widgets, and Location" 'INFO'
+    try {
+        # Disable Windows Spotlight (lock screen, background, suggestions)
+        $spotlightReg = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
+        if (-not (Test-Path $spotlightReg)) { New-Item -Path $spotlightReg -Force | Out-Null }
+        Set-ItemProperty -Path $spotlightReg -Name "DisableWindowsSpotlightFeatures" -Value 1 -Force
+        Set-ItemProperty -Path $spotlightReg -Name "DisableWindowsSpotlightOnActionCenter" -Value 1 -Force
+        Set-ItemProperty -Path $spotlightReg -Name "DisableWindowsSpotlightOnSettings" -Value 1 -Force
+        Set-ItemProperty -Path $spotlightReg -Name "DisableWindowsSpotlightWindowsWelcomeExperience" -Value 1 -Force
+        Set-ItemProperty -Path $spotlightReg -Name "DisableWindowsSpotlightOnLockScreen" -Value 1 -Force
+        Write-Log "Windows Spotlight disabled via registry." 'INFO'
+
+        # Remove Meet Now from taskbar
+        $meetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+        if (-not (Test-Path $meetNowReg)) { New-Item -Path $meetNowReg -Force | Out-Null }
+        Set-ItemProperty -Path $meetNowReg -Name "HideSCAMeetNow" -Value 1 -Force
+        Write-Log "Meet Now icon removed from taskbar." 'INFO'
+
+        # Remove News and Interests (Windows 10)
+        $feedsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
+        if (-not (Test-Path $feedsReg)) { New-Item -Path $feedsReg -Force | Out-Null }
+        Set-ItemProperty -Path $feedsReg -Name "ShellFeedsTaskbarViewMode" -Value 2 -Force
+        Write-Log "News and Interests removed from taskbar (Windows 10)." 'INFO'
+
+        # Remove Widgets (Windows 11)
+        $widgetsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+        if (-not (Test-Path $widgetsReg)) { New-Item -Path $widgetsReg -Force | Out-Null }
+        Set-ItemProperty -Path $widgetsReg -Name "TaskbarDa" -Value 0 -Force
+        Write-Log "Widgets removed from taskbar (Windows 11)." 'INFO'
+
+        # Disable Location services
+        $locationReg = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location"
+        if (-not (Test-Path $locationReg)) { New-Item -Path $locationReg -Force | Out-Null }
+        Set-ItemProperty -Path $locationReg -Name "Value" -Value "Deny" -Force
+        Write-Log "Location services disabled via registry." 'INFO'
+        try {
+            Stop-Service -Name lfsvc -Force -ErrorAction SilentlyContinue
+            Set-Service -Name lfsvc -StartupType Disabled -ErrorAction SilentlyContinue
+            Write-Log "Location service stopped and disabled." 'INFO'
+        } catch { Write-Log "Failed to stop/disable location service: $_" 'WARN' }
+    }
+    catch {
+        Write-Log "Error disabling Spotlight/Meet Now/News/Location: $_" 'ERROR'
+    }
+    Write-Log "[END] Disabling Spotlight, Meet Now, News/Interests, Widgets, and Location" 'INFO'
+}
+
+# ================================================================
 # Function: Disable-Telemetry
 # ================================================================
 # Purpose: Comprehensive disabling of Windows telemetry, privacy-invasive features, and browser tracking with optimization
@@ -3506,6 +3616,16 @@ $global:ScriptTasks = @(
         Name        = 'TelemetryDisable'; 
         Function    = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log "Telemetry disable skipped via config" 'INFO'; $true } }; 
         Description = 'Disable Windows telemetry and privacy features' 
+    },
+    @{ 
+        Name        = 'SpotlightMeetNowNewsLocation'; 
+        Function    = { Disable-SpotlightMeetNowNewsLocation }; 
+        Description = 'Disable Windows Spotlight, Meet Now, News/Interests, Widgets, and Location services' 
+    },
+    @{ 
+        Name        = 'AppBrowserControl'; 
+        Function    = { Enable-AppBrowserControl }; 
+        Description = 'Enable App & Browser Control (SmartScreen, Network Protection, Controlled Folder Access, Exploit Protection)' 
     },
     @{ 
         Name        = 'SystemRestore'; 
