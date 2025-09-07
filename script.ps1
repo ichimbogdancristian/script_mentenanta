@@ -11,7 +11,6 @@
 # ===============================
 
 #Requires -Version 7.0
-#Requires -RunAsAdministrator
 
 using namespace System.Collections.Generic
 using namespace System.Collections.Concurrent
@@ -3473,10 +3472,9 @@ $(if($repairNeeded){'- Consider restarting your computer to ensure all changes t
     $totalRepairDuration = $repairEndTime - $repairStartTime
     Write-Log "System health repair completed in $($totalRepairDuration.ToString('hh\:mm\:ss'))" 'INFO'
     Write-Log "Repair operations needed: $repairNeeded" 'INFO'
-}
     
-Write-Log "[END] Windows System Health Check and Repair" 'INFO'
-return $repairResults.OverallSuccess
+    Write-Log "[END] Windows System Health Check and Repair" 'INFO'
+    return $repairResults.OverallSuccess
 }
 
 # ================================================================

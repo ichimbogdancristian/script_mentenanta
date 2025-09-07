@@ -491,6 +491,46 @@ get_errors -filePaths ["all", "modified", "files.ps1"]
 - 🚫 **NO "TODO: fix later" - fix immediately**  
 - 🚫 **NO ignoring warnings - address or document why they're acceptable**
 - 🚫 **NO completion without final diagnostic verification**
+- 🚫 **NO unused variables allowed - ALL must have functionality restored**
+- 🚫 **NO assumptions about "false positives" - verify and fix every unused variable diagnostic**
+
+#### **🔧 MANDATORY UNUSED VARIABLE RESOLUTION PROCESS**
+When VSCode diagnostics show "The variable 'X' is assigned but never used":
+
+**STEP 1: IMMEDIATE ANALYSIS (REQUIRED)**
+- Determine variable's intended purpose from name and context
+- Check surrounding code logic and function purpose
+- Identify where the variable SHOULD be used
+
+**STEP 2: FUNCTIONALITY RESTORATION (MANDATORY)**
+- **Performance Variables** → Add to timing logs and metrics reporting
+- **Status/Result Variables** → Include in return objects and conditional logic  
+- **Configuration Variables** → Apply to script behavior and log in reports
+- **System Information Variables** → Add to system inventory and reporting functions
+- **Calculation Results** → Use in reports, logs, or decision-making logic
+- **File/Path Variables** → Use for validation, cleanup, or reporting operations
+
+**STEP 3: VERIFICATION (REQUIRED)**
+- Run `get_errors` again to confirm variable is now used
+- Ensure restored functionality makes logical sense
+- Verify integration doesn't break existing code
+
+**EXAMPLE RESTORATION PATTERNS:**
+```powershell
+# ❌ WRONG - Unused variable
+$processResult = Start-Process "app.exe"
+# Variable never referenced again
+
+# ✅ CORRECT - Restored functionality  
+$processResult = Start-Process "app.exe"
+Write-Log "Process execution result: $($processResult.ExitCode)" 'INFO'
+$global:SystemMetrics.ProcessExecutions += @{
+    Name = "app.exe"
+    ExitCode = $processResult.ExitCode
+    Timestamp = Get-Date
+}
+return @{ Success = ($processResult.ExitCode -eq 0); Details = $processResult }
+```
 
 #### **Diagnostic Panel Access (For Reference)**
 - **Primary**: Use `get_errors` tool (automated)
@@ -540,13 +580,22 @@ Every code change MUST include:
 2. 📋 CONTEXT-ANALYSIS: If errors found, read COMPLETE function/block contexts
 3. 🗺️ STRUCTURAL-MAPPING: Map function boundaries, nested blocks, orphaned code
 4. 🛡️ ORPHANED-CODE-SCAN: Identify any floating code outside proper contexts
-5. ✏️ EDIT: Make code changes with full structural understanding
-6. 🔍 MID-CHECK: get_errors on modified files
-7. 🔧 FIX: Resolve any new issues immediately with context awareness
-8. 🧹 ORPHANED-CODE-CLEANUP: Ensure no floating code fragments remain
-9. 🔍 FINAL-CHECK: get_errors on all modified files
-10. ✅ COMPLETE: Only when zero errors/warnings remain AND no orphaned code
+5. 🔧 UNUSED-VARIABLE-SCAN: Identify all unused variables and plan restoration
+6. ✏️ EDIT: Make code changes with full structural understanding
+7. 🔍 MID-CHECK: get_errors on modified files
+8. 🔧 FIX: Resolve any new issues immediately with context awareness
+9. 🔨 UNUSED-VARIABLE-RESTORATION: Restore functionality for ALL unused variables
+10. 🧹 ORPHANED-CODE-CLEANUP: Ensure no floating code fragments remain
+11. 🔍 FINAL-CHECK: get_errors on all modified files
+12. ✅ COMPLETE: Only when zero errors/warnings remain AND no orphaned code AND no unused variables
 ```
+
+#### **🚨 CRITICAL: Unused Variable Resolution is BLOCKING**
+- **MANDATORY**: Every unused variable MUST have its functionality restored
+- **NO EXCEPTIONS**: Variables cannot be deleted unless proven redundant
+- **ANALYSIS REQUIRED**: Understand variable's intended purpose before action
+- **INTEGRATION MANDATORY**: Variables must be integrated into logging, reporting, or conditional logic
+- **VERIFICATION REQUIRED**: Confirm variable usage resolves diagnostic warnings
 
 #### **Enhanced Contextual Analysis Workflow (MANDATORY FOR STRUCTURAL ISSUES)**
 When dealing with complex syntax or structural errors:
@@ -585,6 +634,9 @@ When dealing with complex syntax or structural errors:
 - [ ] Performance considerations addressed
 - [ ] **NO ORPHANED CODE**: All code fragments properly scoped within functions
 - [ ] **CLEAN BOUNDARIES**: All function and block boundaries intact and complete
+- [ ] **NO UNUSED VARIABLES**: All assigned variables have functionality restored and integrated
+- [ ] **VARIABLE USAGE VERIFIED**: Confirmed through `get_errors` that all unused variable warnings resolved
+- [ ] **FUNCTIONALITY RESTORED**: All variables integrated into logging, reporting, conditional logic, or return objects
 
 #### **Documentation of Fixes**
 When resolving diagnostics, document:

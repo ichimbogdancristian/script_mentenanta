@@ -71,15 +71,34 @@ CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting maintenance script..."
 CALL :LOG_MESSAGE "[%TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME%"
 
 REM -----------------------------------------------------------------------------
-REM Admin Privilege Check
-REM Relaunches itself with admin rights if not already running as Administrator.
+REM Enhanced Admin Privilege Check
+REM Uses multiple methods to ensure reliable administrator detection and proper elevation.
 REM -----------------------------------------------------------------------------
+REM Method 1: NET SESSION (traditional approach)
 NET SESSION >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
+SET "NET_SESSION_RESULT=%ERRORLEVEL%"
+
+REM Method 2: PowerShell admin check (more reliable)
+FOR /F "tokens=*" %%i IN ('powershell -Command "([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)" 2^>nul') DO SET PS_ADMIN_CHECK=%%i
+
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] NET SESSION result: %NET_SESSION_RESULT%"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] PowerShell admin check: %PS_ADMIN_CHECK%"
+
+REM Consider admin if either method confirms admin privileges
+SET "IS_ADMIN=false"
+IF %NET_SESSION_RESULT% EQU 0 SET "IS_ADMIN=true"
+IF "%PS_ADMIN_CHECK%"=="True" SET "IS_ADMIN=true"
+
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Final admin status: %IS_ADMIN%"
+
+IF "%IS_ADMIN%"=="false" (
     CALL :LOG_MESSAGE "[%TIME%] [WARN] Not running as Administrator. Relaunching with admin rights..."
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Attempting elevation using PowerShell Start-Process..."
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
     EXIT /B 0
 )
+
+CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Administrator privileges confirmed"
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Version Check
@@ -731,10 +750,12 @@ IF NOT EXIST "!PS1_PATH!" (
 
 IF "!PS7_AVAILABLE!"=="YES" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell 7 environment..."
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: pwsh.exe"
     pwsh.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
     SET "LAUNCH_RESULT=!ERRORLEVEL!"
 ) ELSE (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using Windows PowerShell environment..."
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: powershell.exe"
     powershell.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
     SET "LAUNCH_RESULT=!ERRORLEVEL!"
 )
