@@ -272,16 +272,26 @@ REM ----------------------------------------------------------------------------
 REM 1. Windows Package Manager (Winget) - Foundation package manager
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Windows Package Manager (winget)..."
+REM Improved Winget detection: check both version and path
 winget --version >nul 2>&1
-IF !ERRORLEVEL! NEQ 0 (
+SET "WINGET_FOUND=0"
+IF !ERRORLEVEL! EQU 0 (
+    SET "WINGET_FOUND=1"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Winget detected via version check."
+) ELSE (
+    where winget >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        SET "WINGET_FOUND=1"
+        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Winget detected via PATH (where command)."
+    )
+)
+
+IF !WINGET_FOUND! EQU 0 (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget not found, downloading from official Microsoft source..."
-    
     REM Download latest App Installer from Microsoft Store
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=!TEMP!\Microsoft.DesktopAppInstaller.msixbundle"
-    
     powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message; exit 1 }"
-    
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Winget package..."
         powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
