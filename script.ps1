@@ -494,7 +494,7 @@ function Write-Log {
         [string]$Level = 'INFO'
     )
     
-    $timestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
+    $timestamp = Get-Date -Format 'HH:mm:ss'
     $logEntry = "[$timestamp] [$Level] $Message"
     
     # Write to file with enhanced error handling
