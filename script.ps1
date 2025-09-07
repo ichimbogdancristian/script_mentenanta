@@ -795,7 +795,8 @@ function Invoke-WindowsPowerShellCommand {
         # Build the full command with error action
         $fullCommand = if ($ErrorAction -eq "SilentlyContinue") {
             "$Command -ErrorAction SilentlyContinue 2>`$null"
-        } else {
+        }
+        else {
             $Command
         }
         
@@ -2346,13 +2347,15 @@ function Enable-AppBrowserControl {
         try {
             Set-MpPreference -EnableNetworkProtection Enabled
             Write-Log "✓ Network Protection enabled" 'INFO'
-        } catch { $errors += "Network Protection: $_" }
+        }
+        catch { $errors += "Network Protection: $_" }
 
         # Enable Controlled Folder Access
         try {
             Set-MpPreference -EnableControlledFolderAccess Enabled
             Write-Log "✓ Controlled Folder Access enabled" 'INFO'
-        } catch { $errors += "Controlled Folder Access: $_" }
+        }
+        catch { $errors += "Controlled Folder Access: $_" }
 
 
         # Enable SmartScreen for Edge via registry (Windows 10/11)
@@ -2361,7 +2364,8 @@ function Enable-AppBrowserControl {
             if (-not (Test-Path $edgeKey)) { New-Item -Path $edgeKey -Force | Out-Null }
             Set-ItemProperty -Path $edgeKey -Name "EnabledV9" -Value 1 -Type DWord
             Write-Log "✓ SmartScreen for Edge enabled (via registry)" 'INFO'
-        } catch { $errors += "SmartScreen for Edge (registry): $_" }
+        }
+        catch { $errors += "SmartScreen for Edge (registry): $_" }
 
         # Enable SmartScreen for Microsoft Store Apps via registry
         try {
@@ -2369,13 +2373,15 @@ function Enable-AppBrowserControl {
             if (-not (Test-Path $storeKey)) { New-Item -Path $storeKey -Force | Out-Null }
             Set-ItemProperty -Path $storeKey -Name "EnableWebContentEvaluation" -Value 1 -Type DWord
             Write-Log "✓ SmartScreen for Store Apps enabled (via registry)" 'INFO'
-        } catch { $errors += "SmartScreen for Store Apps (registry): $_" }
+        }
+        catch { $errors += "SmartScreen for Store Apps (registry): $_" }
 
         # Enable system-level exploit mitigations (DEP, SEHOP, CFG, ASLR)
         try {
             Set-ProcessMitigation -System -Enable DEP, SEHOP, CFG, ForceRelocateImages, BottomUp, HighEntropy
             Write-Log "✓ System-level exploit mitigations enabled (DEP, SEHOP, CFG, ASLR)" 'INFO'
-        } catch { $errors += "Exploit Mitigations: $_" }
+        }
+        catch { $errors += "Exploit Mitigations: $_" }
     }
     catch {
         $errors += "General error: $_"
@@ -2409,33 +2415,115 @@ function Disable-SpotlightMeetNowNewsLocation {
         Write-Log "Windows Spotlight disabled via registry." 'INFO'
 
         # Remove Meet Now from taskbar
-        $meetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
-        if (-not (Test-Path $meetNowReg)) { New-Item -Path $meetNowReg -Force | Out-Null }
-        Set-ItemProperty -Path $meetNowReg -Name "HideSCAMeetNow" -Value 1 -Force
-        Write-Log "Meet Now icon removed from taskbar." 'INFO'
+        try {
+            $meetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+            if (-not (Test-Path $meetNowReg)) { 
+                New-Item -Path $meetNowReg -Force | Out-Null 
+            }
+            Set-ItemProperty -Path $meetNowReg -Name "HideSCAMeetNow" -Value 1 -Force -ErrorAction Stop
+            Write-Log "Meet Now icon removed from taskbar." 'INFO'
+        }
+        catch {
+            Write-Log "Warning: Could not modify Meet Now setting: $($_.Exception.Message)" 'WARN'
+            # Try alternative registry path
+            try {
+                $altMeetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+                if (-not (Test-Path $altMeetNowReg)) { 
+                    New-Item -Path $altMeetNowReg -Force | Out-Null 
+                }
+                Set-ItemProperty -Path $altMeetNowReg -Name "TaskbarMn" -Value 0 -Force -ErrorAction Stop
+                Write-Log "Meet Now disabled via alternative registry path." 'INFO'
+            }
+            catch {
+                Write-Log "Unable to disable Meet Now via registry. Feature may not be available on this system." 'WARN'
+            }
+        }
 
         # Remove News and Interests (Windows 10)
-        $feedsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
-        if (-not (Test-Path $feedsReg)) { New-Item -Path $feedsReg -Force | Out-Null }
-        Set-ItemProperty -Path $feedsReg -Name "ShellFeedsTaskbarViewMode" -Value 2 -Force
-        Write-Log "News and Interests removed from taskbar (Windows 10)." 'INFO'
+        try {
+            $feedsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
+            if (-not (Test-Path $feedsReg)) { 
+                New-Item -Path $feedsReg -Force | Out-Null 
+            }
+            Set-ItemProperty -Path $feedsReg -Name "ShellFeedsTaskbarViewMode" -Value 2 -Force -ErrorAction Stop
+            Write-Log "News and Interests removed from taskbar (Windows 10)." 'INFO'
+        }
+        catch {
+            Write-Log "Warning: Could not modify News and Interests setting: $($_.Exception.Message)" 'WARN'
+            # Try alternative registry path
+            try {
+                $altFeedsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+                if (-not (Test-Path $altFeedsReg)) { 
+                    New-Item -Path $altFeedsReg -Force | Out-Null 
+                }
+                Set-ItemProperty -Path $altFeedsReg -Name "TaskbarDa" -Value 0 -Force -ErrorAction Stop
+                Write-Log "News and Interests disabled via alternative registry path." 'INFO'
+            }
+            catch {
+                Write-Log "Unable to disable News and Interests via registry. May require manual configuration." 'WARN'
+            }
+        }
 
         # Remove Widgets (Windows 11)
-        $widgetsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
-        if (-not (Test-Path $widgetsReg)) { New-Item -Path $widgetsReg -Force | Out-Null }
-        Set-ItemProperty -Path $widgetsReg -Name "TaskbarDa" -Value 0 -Force
-        Write-Log "Widgets removed from taskbar (Windows 11)." 'INFO'
+        try {
+            $widgetsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+            if (-not (Test-Path $widgetsReg)) { 
+                New-Item -Path $widgetsReg -Force | Out-Null 
+            }
+            Set-ItemProperty -Path $widgetsReg -Name "TaskbarDa" -Value 0 -Force -ErrorAction Stop
+            Write-Log "Widgets removed from taskbar (Windows 11)." 'INFO'
+        }
+        catch {
+            Write-Log "Warning: Could not modify Widgets setting: $($_.Exception.Message)" 'WARN'
+            # Try alternative approaches for widgets
+            try {
+                # Try via Group Policy registry path
+                $widgetsPolicyReg = "HKCU:\Software\Policies\Microsoft\Windows\WindowsFeeds"
+                if (-not (Test-Path $widgetsPolicyReg)) { 
+                    New-Item -Path $widgetsPolicyReg -Force | Out-Null 
+                }
+                Set-ItemProperty -Path $widgetsPolicyReg -Name "EnableFeeds" -Value 0 -Force -ErrorAction Stop
+                Write-Log "Widgets disabled via Group Policy registry path." 'INFO'
+            }
+            catch {
+                Write-Log "Unable to disable Widgets via registry. May require manual configuration or different Windows version." 'WARN'
+            }
+        }
 
         # Disable Location services
-        $locationReg = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location"
-        if (-not (Test-Path $locationReg)) { New-Item -Path $locationReg -Force | Out-Null }
-        Set-ItemProperty -Path $locationReg -Name "Value" -Value "Deny" -Force
-        Write-Log "Location services disabled via registry." 'INFO'
+        try {
+            $locationReg = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location"
+            if (-not (Test-Path $locationReg)) { 
+                New-Item -Path $locationReg -Force | Out-Null 
+            }
+            Set-ItemProperty -Path $locationReg -Name "Value" -Value "Deny" -Force -ErrorAction Stop
+            Write-Log "Location services disabled via registry." 'INFO'
+        }
+        catch {
+            Write-Log "Warning: Could not modify location services registry: $($_.Exception.Message)" 'WARN'
+            # Try user-level location settings
+            try {
+                $userLocationReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location"
+                if (-not (Test-Path $userLocationReg)) { 
+                    New-Item -Path $userLocationReg -Force | Out-Null 
+                }
+                Set-ItemProperty -Path $userLocationReg -Name "Value" -Value "Deny" -Force -ErrorAction Stop
+                Write-Log "Location services disabled via user registry." 'INFO'
+            }
+            catch {
+                Write-Log "Unable to disable location services via registry. May require administrator privileges." 'WARN'
+            }
+        }
+        
+        # Stop and disable location service
         try {
             Stop-Service -Name lfsvc -Force -ErrorAction SilentlyContinue
             Set-Service -Name lfsvc -StartupType Disabled -ErrorAction SilentlyContinue
             Write-Log "Location service stopped and disabled." 'INFO'
-        } catch { Write-Log "Failed to stop/disable location service: $_" 'WARN' }
+        } 
+        catch { 
+            Write-Log "Failed to stop/disable location service: $_" 'WARN' 
+        }
     }
     catch {
         Write-Log "Error disabling Spotlight/Meet Now/News/Location: $_" 'ERROR'
@@ -2661,7 +2749,8 @@ function Protect-SystemRestore {
             if ($commandResult -or $LASTEXITCODE -eq 0) {
                 Write-Host "✓ System restore point created successfully" -ForegroundColor Green
                 Write-Log "System restore point created: $restorePointName" 'INFO'
-            } else {
+            }
+            else {
                 throw "Checkpoint-Computer command did not execute successfully"
             }
 
@@ -2675,13 +2764,16 @@ function Protect-SystemRestore {
                     
                     if ($latestPoint -and $latestPoint.Description -and $latestPoint.Description.Contains("Maintenance Script")) {
                         Write-Log "Restore point verification successful. Latest point: $($latestPoint.Description)" 'INFO'
-                    } else {
+                    }
+                    else {
                         Write-Log "Latest restore point found but not from maintenance script: $($latestPoint.Description)" 'WARN'
                     }
-                } else {
+                }
+                else {
                     Write-Log "No restore points found during verification" 'WARN'
                 }
-            } catch {
+            }
+            catch {
                 Write-Log "Could not verify restore point creation: $_" 'WARN'
             }
         }
@@ -2711,7 +2803,8 @@ try {
                 if ($restorePointResult -and $restorePointResult -match "RestorePointResult:0") {
                     Write-Host "✓ System restore point created via WMI interface" -ForegroundColor Green
                     Write-Log "System restore point created via WMI interface: $restorePointName" 'INFO'
-                } else {
+                }
+                else {
                     Write-Log "WMI restore point creation result: $restorePointResult" 'WARN'
                     
                     # Final fallback: try using VSSAdmin
@@ -2721,10 +2814,12 @@ try {
                         if ($vssResult.ExitCode -eq 0) {
                             Write-Host "✓ Shadow copy created as restore point alternative" -ForegroundColor Green
                             Write-Log "Shadow copy created successfully" 'INFO'
-                        } else {
+                        }
+                        else {
                             Write-Log "VSSAdmin failed with exit code: $($vssResult.ExitCode)" 'WARN'
                         }
-                    } catch {
+                    }
+                    catch {
                         Write-Log "VSSAdmin restore point creation failed: $_" 'ERROR'
                     }
                 }
@@ -2788,8 +2883,7 @@ function Install-WindowsUpdatesCompatible {
     Write-Log "[START] Windows Updates Installation (Enhanced Compatibility)" 'INFO'
 
     # Check for Administrator privileges
-    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-    if (-not $isAdmin) {
+    if (-not $IsAdmin) {
         Write-Log "Administrator privileges required for Windows Updates. Skipping..." 'WARN'
         return
     }
@@ -3068,200 +3162,260 @@ function Start-SystemHealthRepair {
     $repairNeeded = $false
     $repairResults = @{
         DismCheckPerformed = $false
-        DismRepairNeeded = $false
-        DismRepairSuccess = $false
-        SfcCheckPerformed = $false
-        SfcRepairNeeded = $false
-        SfcRepairSuccess = $false
-        OverallSuccess = $false
+        DismRepairNeeded   = $false
+        DismRepairSuccess  = $false
+        SfcCheckPerformed  = $false
+        SfcRepairNeeded    = $false
+        SfcRepairSuccess   = $false
+        OverallSuccess     = $false
     }
 
     try {
         Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
         Write-Log "OS Version: $([System.Environment]::OSVersion.VersionString)" 'INFO'
         
-        # DISM Component Store Health Check
+        # Progress: 5% - Initializing DISM check
         Write-Log "Starting DISM component store health analysis..." 'INFO'
-        Write-TaskProgress "DISM Health Check" 25
+        Write-Progress -Activity "System Health Repair" -Status "Initializing DISM health check..." -PercentComplete 5
         
         try {
+            # Progress: 8% - Running DISM ScanHealth
+            Write-Progress -Activity "System Health Repair" -Status "Running DISM ScanHealth..." -PercentComplete 8
             $dismScanResult = & dism /online /cleanup-image /scanhealth /english 2>&1
+            
+            # Progress: 12% - Processing DISM results
+            Write-Progress -Activity "System Health Repair" -Status "Processing DISM scan results..." -PercentComplete 12
             $dismScanOutput = $dismScanResult -join "`n"
             Write-Log "DISM ScanHealth completed" 'VERBOSE'
             
+            # Progress: 15% - Analyzing component store
+            Write-Progress -Activity "System Health Repair" -Status "Analyzing component store health..." -PercentComplete 15
             $repairResults.DismCheckPerformed = $true
             
             if ($dismScanOutput -match "component store is repairable|corruption was detected") {
+                # Progress: 18% - Corruption detected
+                Write-Progress -Activity "System Health Repair" -Status "Corruption detected, preparing repair..." -PercentComplete 18
                 Write-Log "⚠ DISM detected component store corruption - repair required" 'WARN'
                 $repairResults.DismRepairNeeded = $true
                 $repairNeeded = $true
                 
-                # Perform DISM RestoreHealth
+                # Progress: 20% - Starting DISM RestoreHealth
+                Write-Progress -Activity "System Health Repair" -Status "Starting DISM RestoreHealth..." -PercentComplete 20
                 Write-Log "Starting DISM RestoreHealth operation..." 'INFO'
-                Write-TaskProgress "DISM Repair" 50
                 
+                # Progress: 25% - Running RestoreHealth
+                Write-Progress -Activity "System Health Repair" -Status "Running DISM RestoreHealth (this may take a while)..." -PercentComplete 25
                 $dismRepairStart = Get-Date
                 $dismRepairResult = & dism /online /cleanup-image /restorehealth /english 2>&1
+                
+                # Progress: 45% - Processing repair results
+                Write-Progress -Activity "System Health Repair" -Status "Processing DISM repair results..." -PercentComplete 45
                 $dismRepairOutput = $dismRepairResult -join "`n"
                 $dismRepairEnd = Get-Date
                 $dismDuration = $dismRepairEnd - $dismRepairStart
                 
+                # Progress: 48% - Verifying repair success
+                Write-Progress -Activity "System Health Repair" -Status "Verifying DISM repair success..." -PercentComplete 48
                 Write-Log "DISM RestoreHealth completed in $($dismDuration.ToString('hh\:mm\:ss'))" 'INFO'
-                
+                Write-Log "DISM RestoreHealth output: $dismRepairOutput" 'VERBOSE'
                 if ($LASTEXITCODE -eq 0) {
                     Write-Log "✓ DISM RestoreHealth completed successfully" 'SUCCESS'
                     $dismRepaired = $true
                     $repairResults.DismRepairSuccess = $true
-                } else {
+                }
+                else {
                     Write-Log "✗ DISM RestoreHealth failed with exit code: $LASTEXITCODE" 'ERROR'
                     $repairResults.DismRepairSuccess = $false
                 }
             }
-            elseif ($dismScanOutput -match "no component store corruption detected") {
-                Write-Log "✓ DISM: No component store corruption detected" 'INFO'
-                $repairResults.DismRepairNeeded = $false
-            }
-            else {
-                Write-Log "DISM health check completed, performing detailed analysis..." 'INFO'
-                
-                # Run DISM CheckHealth for more detailed analysis
-                $dismCheckResult = & dism /online /cleanup-image /checkhealth /english 2>&1
-                $dismCheckOutput = $dismCheckResult -join "`n"
-                
-                if ($dismCheckOutput -match "component store is repairable|corruption was detected") {
-                    Write-Log "⚠ DISM CheckHealth detected issues - repair required" 'WARN'
-                    $repairResults.DismRepairNeeded = $true
-                    $repairNeeded = $true
-                } else {
-                    Write-Log "✓ DISM detailed check passed - no corruption detected" 'INFO'
-                    $repairResults.DismRepairNeeded = $false
-                }
-            }
         }
         catch {
-            Write-Log "Error during DISM health check: $($_.Exception.Message)" 'ERROR'
+            Write-Log "DISM ScanHealth operation failed: $_" 'ERROR'
             $repairResults.DismCheckPerformed = $false
         }
-
-        # SFC System File Check
-        Write-Log "Determining SFC scan necessity..." 'INFO'
-        $sfcNeeded = $false
         
-        # SFC is recommended if DISM repair was performed or CBS logs indicate issues
-        if ($dismRepaired) {
-            Write-Log "SFC scan recommended (DISM repair was performed)" 'INFO'
-            $sfcNeeded = $true
+        if ($dismScanOutput -match "no component store corruption detected") {
+            # Progress: 18% - No corruption detected
+            Write-Progress -Activity "System Health Repair" -Status "No corruption detected..." -PercentComplete 18
+            Write-Log "✓ DISM: No component store corruption detected" 'INFO'
+            $repairResults.DismRepairNeeded = $false
         }
         else {
-            # Check CBS logs for corruption indicators
-            Write-Log "Analyzing CBS logs for system file integrity issues..." 'INFO'
-            try {
-                $cbsLogPath = "$env:WINDIR\Logs\CBS\CBS.log"
-                if (Test-Path $cbsLogPath) {
-                    $recentEntries = Get-Content $cbsLogPath -Tail 1000 -ErrorAction SilentlyContinue
-                    $corruptionIndicators = $recentEntries | Where-Object { 
-                        $_ -match "corrupt|damaged|violation|failed.*verify" -and $_ -notmatch "successfully"
-                    }
-                    
-                    if ($corruptionIndicators.Count -gt 0) {
-                        Write-Log "⚠ Found potential file corruption indicators in CBS log - SFC scan recommended" 'WARN'
-                        $sfcNeeded = $true
-                    } else {
-                        Write-Log "✓ CBS log analysis shows no immediate corruption indicators" 'INFO'
-                        $sfcNeeded = $false
-                    }
-                } else {
-                    Write-Log "CBS log not accessible - SFC scan will be skipped" 'WARN'
+            # Progress: 18% - Detailed analysis needed
+            Write-Progress -Activity "System Health Repair" -Status "Running detailed DISM analysis..." -PercentComplete 18
+            Write-Log "DISM health check completed, performing detailed analysis..." 'INFO'
+                
+            # Progress: 22% - Running CheckHealth
+            Write-Progress -Activity "System Health Repair" -Status "Running DISM CheckHealth..." -PercentComplete 22
+            # Run DISM CheckHealth for more detailed analysis
+            $dismCheckResult = & dism /online /cleanup-image /checkhealth /english 2>&1
+                
+            # Progress: 25% - Processing CheckHealth results
+            Write-Progress -Activity "System Health Repair" -Status "Processing CheckHealth results..." -PercentComplete 25
+            $dismCheckOutput = $dismCheckResult -join "`n"
+                
+            if ($dismCheckOutput -match "component store is repairable|corruption was detected") {
+                Write-Log "⚠ DISM CheckHealth detected issues - repair required" 'WARN'
+                $repairResults.DismRepairNeeded = $true
+                $repairNeeded = $true
+            }
+            else {
+                Write-Log "✓ DISM detailed check passed - no corruption detected" 'INFO'
+                $repairResults.DismRepairNeeded = $false
+            }
+        }
+    }
+    catch {
+        Write-Log "Error during DISM health check: $($_.Exception.Message)" 'ERROR'
+        $repairResults.DismCheckPerformed = $false
+    }
+
+    # SFC System File Check
+    # Progress: 50% - Determining SFC necessity
+    Write-Progress -Activity "System Health Repair" -Status "Determining if SFC scan is needed..." -PercentComplete 50
+    Write-Log "Determining SFC scan necessity..." 'INFO'
+    $sfcNeeded = $false
+    # SFC is recommended if DISM repair was performed or CBS logs indicate issues
+    if ($dismRepaired) {
+        # Progress: 52% - SFC recommended
+        Write-Progress -Activity "System Health Repair" -Status "SFC scan recommended after DISM repair..." -PercentComplete 52
+        Write-Log "SFC scan recommended (DISM repair was performed)" 'INFO'
+        $sfcNeeded = $true
+    }
+    else {
+        # Progress: 52% - Analyzing CBS logs
+        Write-Progress -Activity "System Health Repair" -Status "Analyzing CBS logs..." -PercentComplete 52
+        # Check CBS logs for corruption indicators
+        Write-Log "Analyzing CBS logs for system file integrity issues..." 'INFO'
+        try {
+            # Progress: 55% - Reading CBS log
+            Write-Progress -Activity "System Health Repair" -Status "Reading CBS log file..." -PercentComplete 55
+            $cbsLogPath = "$env:WINDIR\Logs\CBS\CBS.log"
+            if (Test-Path $cbsLogPath) {
+                # Progress: 58% - Processing log entries
+                Write-Progress -Activity "System Health Repair" -Status "Processing log entries..." -PercentComplete 58
+                $recentEntries = Get-Content $cbsLogPath -Tail 1000 -ErrorAction SilentlyContinue
+                $corruptionIndicators = $recentEntries | Where-Object { 
+                    $_ -match "corrupt|damaged|violation|failed.*verify" -and $_ -notmatch "successfully"
+                }
+                if ($corruptionIndicators.Count -gt 0) {
+                    Write-Log "⚠ Found potential file corruption indicators in CBS log - SFC scan recommended" 'WARN'
+                    $sfcNeeded = $true
+                }
+                else {
+                    Write-Log "✓ CBS log analysis shows no immediate corruption indicators" 'INFO'
                     $sfcNeeded = $false
                 }
             }
-            catch {
-                Write-Log "Could not analyze CBS logs: $($_.Exception.Message)" 'WARN'
+            else {
+                Write-Log "CBS log not accessible - SFC scan will be skipped" 'WARN'
                 $sfcNeeded = $false
             }
         }
+        catch {
+            Write-Log "Could not analyze CBS logs: $($_.Exception.Message)" 'WARN'
+            $sfcNeeded = $false
+        }
+    }
 
-        # Perform SFC scan if needed
-        if ($sfcNeeded) {
-            $repairNeeded = $true
-            $repairResults.SfcCheckPerformed = $true
-            $repairResults.SfcRepairNeeded = $true
+    # Perform SFC scan if needed
+    if ($sfcNeeded) {
+        $repairNeeded = $true
+        $repairResults.SfcCheckPerformed = $true
+        $repairResults.SfcRepairNeeded = $true
             
-            Write-Log "Starting SFC /scannow operation..." 'INFO'
-            Write-TaskProgress "SFC System File Check" 75
+        # Progress: 60% - Preparing SFC scan
+        Write-Progress -Activity "System Health Repair" -Status "Preparing SFC scan..." -PercentComplete 60
+        Write-Log "Starting SFC /scannow operation..." 'INFO'
             
-            try {
-                $sfcStart = Get-Date
-                $sfcResult = & sfc /scannow 2>&1
-                $sfcOutput = $sfcResult -join "`n"
-                $sfcEnd = Get-Date
-                $sfcDuration = $sfcEnd - $sfcStart
+        # Progress: 65% - Running SFC scan
+        Write-Progress -Activity "System Health Repair" -Status "Running SFC /scannow (this may take a while)..." -PercentComplete 65
+        try {
+            $sfcStart = Get-Date
+            $sfcResult = & sfc /scannow 2>&1
                 
-                Write-Log "SFC scan completed in $($sfcDuration.ToString('hh\:mm\:ss'))" 'INFO'
+            # Progress: 85% - Processing SFC results
+            Write-Progress -Activity "System Health Repair" -Status "Processing SFC scan results..." -PercentComplete 85
+            $sfcOutput = $sfcResult -join "`n"
+            $sfcEnd = Get-Date
+            $sfcDuration = $sfcEnd - $sfcStart
                 
-                # Parse SFC results
-                if ($sfcOutput -match "did not find any integrity violations") {
-                    Write-Log "✓ SFC scan completed - no integrity violations found" 'SUCCESS'
-                    $repairResults.SfcRepairSuccess = $true
-                }
-                elseif ($sfcOutput -match "found corrupt files and successfully repaired them") {
-                    Write-Log "✓ SFC scan completed - corrupt files found and successfully repaired" 'SUCCESS'
-                    $repairResults.SfcRepairSuccess = $true
-                }
-                elseif ($sfcOutput -match "found corrupt files but was unable to fix some") {
-                    Write-Log "⚠ SFC scan completed - some corrupt files could not be repaired" 'WARN'
-                    $repairResults.SfcRepairSuccess = $false
-                }
-                else {
-                    Write-Log "⚠ SFC scan completed with unknown status" 'WARN'
-                    $repairResults.SfcRepairSuccess = $true
-                }
+            # Progress: 88% - Analyzing SFC results
+            Write-Progress -Activity "System Health Repair" -Status "Analyzing SFC results..." -PercentComplete 88
+            Write-Log "SFC scan completed in $($sfcDuration.ToString('hh\:mm\:ss'))" 'INFO'
+            # Parse SFC results
+            if ($sfcOutput -match "did not find any integrity violations") {
+                Write-Log "✓ SFC scan completed - no integrity violations found" 'SUCCESS'
+                $repairResults.SfcRepairSuccess = $true
             }
-            catch {
-                Write-Log "Error during SFC scan: $($_.Exception.Message)" 'ERROR'
-                $repairResults.SfcCheckPerformed = $false
+            elseif ($sfcOutput -match "found corrupt files and successfully repaired them") {
+                Write-Log "✓ SFC scan completed - corrupt files found and successfully repaired" 'SUCCESS'
+                $repairResults.SfcRepairSuccess = $true
+            }
+            elseif ($sfcOutput -match "found corrupt files but was unable to fix some") {
+                Write-Log "⚠ SFC scan completed - some corrupt files could not be repaired" 'WARN'
                 $repairResults.SfcRepairSuccess = $false
             }
+            else {
+                Write-Log "⚠ SFC scan completed with unknown status" 'WARN'
+                $repairResults.SfcRepairSuccess = $true
+            }
         }
-        else {
-            Write-Log "✓ SFC scan not needed based on current analysis" 'INFO'
+        catch {
+            Write-Log "Error during SFC scan: $($_.Exception.Message)" 'ERROR'
             $repairResults.SfcCheckPerformed = $false
-            $repairResults.SfcRepairNeeded = $false
+            $repairResults.SfcRepairSuccess = $false
         }
-
-        # Determine overall success
-        $repairResults.OverallSuccess = (
-            (-not $repairResults.DismRepairNeeded -or $repairResults.DismRepairSuccess) -and
-            (-not $repairResults.SfcRepairNeeded -or $repairResults.SfcRepairSuccess)
-        )
-
-        Write-TaskProgress "System Health Check Complete" 100
     }
-    catch {
-        Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
-        $repairResults.OverallSuccess = $false
+    else {
+        # Progress: 60% - SFC not needed
+        Write-Progress -Activity "System Health Repair" -Status "SFC scan not needed..." -PercentComplete 60
+        Write-Log "✓ SFC scan not needed based on current analysis" 'INFO'
+        $repairResults.SfcCheckPerformed = $false
+        $repairResults.SfcRepairNeeded = $false
     }
-    finally {
-        # Generate comprehensive repair report
-        $repairEndTime = Get-Date
-        $totalDuration = $repairEndTime - $repairStartTime
+
+    # Progress: 90% - Determining overall success
+    Write-Progress -Activity "System Health Repair" -Status "Determining overall success..." -PercentComplete 90
+    # Determine overall success
+    $repairResults.OverallSuccess = (
+        (-not $repairResults.DismRepairNeeded -or $repairResults.DismRepairSuccess) -and
+        (-not $repairResults.SfcRepairNeeded -or $repairResults.SfcRepairSuccess)
+    )
+
+    # Progress: 95% - Preparing final report
+    Write-Progress -Activity "System Health Repair" -Status "Preparing final report..." -PercentComplete 95
+
+    # Progress: 100% - Operation complete
+    Write-Progress -Activity "System Health Repair" -Status "System health repair complete!" -PercentComplete 100
+    Start-Sleep -Milliseconds 500  # Brief pause to show completion
+    Write-Progress -Activity "System Health Repair" -Completed
+}
+catch {
+    Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
+    $repairResults.OverallSuccess = $false
+}
+finally {
+    # Generate comprehensive repair report
+    $repairEndTime = Get-Date
+    $totalDuration = $repairEndTime - $repairStartTime
         
-        Write-Log "[SystemHealthRepair] COMPREHENSIVE REPAIR SUMMARY:" 'INFO'
-        Write-Log "- Repair start time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-        Write-Log "- Repair end time: $($repairEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-        Write-Log "- Total duration: $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
-        Write-Log "- DISM check performed: $(if($repairResults.DismCheckPerformed){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- DISM repair needed: $(if($repairResults.DismRepairNeeded){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- DISM repair successful: $(if($repairResults.DismRepairSuccess){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- SFC check performed: $(if($repairResults.SfcCheckPerformed){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- SFC repair needed: $(if($repairResults.SfcRepairNeeded){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- SFC repair successful: $(if($repairResults.SfcRepairSuccess){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- Overall repair success: $(if($repairResults.OverallSuccess){'Yes'}else{'No'})" 'INFO'
+    Write-Log "[SystemHealthRepair] COMPREHENSIVE REPAIR SUMMARY:" 'INFO'
+    Write-Log "- Repair start time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+    Write-Log "- Repair end time: $($repairEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+    Write-Log "- Total duration: $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
+    Write-Log "- DISM check performed: $(if($repairResults.DismCheckPerformed){'Yes'}else{'No'})" 'INFO'
+    Write-Log "- DISM repair needed: $(if($repairResults.DismRepairNeeded){'Yes'}else{'No'})" 'INFO'
+    Write-Log "- DISM repair successful: $(if($repairResults.DismRepairSuccess){'Yes'}else{'No'})" 'INFO'
+    Write-Log "- SFC check performed: $(if($repairResults.SfcCheckPerformed){'Yes'}else{'No'})" 'INFO'
+    Write-Log "- SFC repair needed: $(if($repairResults.SfcRepairNeeded){'Yes'}else{'No'})" 'INFO'
+    Write-Log "- SFC repair successful: $(if($repairResults.SfcRepairSuccess){'Yes'}else{'No'})" 'INFO'
+    Write-Log "- Overall repair success: $(if($repairResults.OverallSuccess){'Yes'}else{'No'})" 'INFO'
         
-        # Create detailed log file
-        try {
-            $repairLogPath = Join-Path $global:TempFolder "system_health_repair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-            $logContent = @"
+    # Create detailed log file
+    try {
+        $repairLogPath = Join-Path $global:TempFolder "system_health_repair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        $logContent = @"
 Windows System Health Check and Repair Report
 =============================================
 Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
@@ -3294,27 +3448,35 @@ $(if($repairNeeded){'- Consider restarting your computer to ensure all changes t
 
 "@
             
-            $logContent | Out-File -FilePath $repairLogPath -Encoding UTF8
-            Write-Log "Detailed repair report saved to: $repairLogPath" 'INFO'
-        }
-        catch {
-            Write-Log "Warning: Could not save detailed repair report: $_" 'WARN'
-        }
+        $logContent | Out-File -FilePath $repairLogPath -Encoding UTF8
+        Write-Log "Detailed repair report saved to: $repairLogPath" 'INFO'
+    }
+    catch {
+        Write-Log "Warning: Could not save detailed repair report: $_" 'WARN'
+    }
         
-        if ($repairNeeded) {
-            Write-Log "✓ System health repair operations completed successfully" 'SUCCESS'
-            if ($repairResults.OverallSuccess) {
-                Write-Log "Recommendation: Consider restarting your computer to ensure all changes take effect" 'INFO'
-            } else {
-                Write-Log "Warning: Some repair operations encountered issues - manual intervention may be required" 'WARN'
-            }
-        } else {
-            Write-Log "✓ System health check completed - no repair operations were needed" 'SUCCESS'
+    if ($repairNeeded) {
+        Write-Log "✓ System health repair operations completed successfully" 'SUCCESS'
+        if ($repairResults.OverallSuccess) {
+            Write-Log "Recommendation: Consider restarting your computer to ensure all changes take effect" 'INFO'
+        }
+        else {
+            Write-Log "Warning: Some repair operations encountered issues - manual intervention may be required" 'WARN'
         }
     }
+    else {
+        Write-Log "✓ System health check completed - no repair operations were needed" 'SUCCESS'
+    }
     
-    Write-Log "[END] Windows System Health Check and Repair" 'INFO'
-    return $repairResults.OverallSuccess
+    # Calculate total repair duration and log performance metrics
+    $repairEndTime = Get-Date
+    $totalRepairDuration = $repairEndTime - $repairStartTime
+    Write-Log "System health repair completed in $($totalRepairDuration.ToString('hh\:mm\:ss'))" 'INFO'
+    Write-Log "Repair operations needed: $repairNeeded" 'INFO'
+}
+    
+Write-Log "[END] Windows System Health Check and Repair" 'INFO'
+return $repairResults.OverallSuccess
 }
 
 # ================================================================
@@ -3336,11 +3498,18 @@ function Start-DefenderFullScan {
     $cleanupSuccess = $true
     
     try {
-        # Check Windows Defender status
+        # Progress: 5% - Checking Defender status
+        Write-Progress -Activity "Defender Full Scan" -Status "Checking Defender status..." -PercentComplete 5
         Write-Log "Checking Windows Defender status..." 'INFO'
         try {
+            # Progress: 8% - Getting computer status
+            Write-Progress -Activity "Defender Full Scan" -Status "Getting Defender computer status..." -PercentComplete 8
             $defenderStatus = Get-MpComputerStatus
+            
+            # Progress: 10% - Validating antivirus status
+            Write-Progress -Activity "Defender Full Scan" -Status "Validating antivirus status..." -PercentComplete 10
             if (-not $defenderStatus.AntivirusEnabled) {
+                Write-Progress -Activity "Defender Full Scan" -Completed
                 Write-Log "Windows Defender Antivirus is not enabled. Skipping scan." 'WARN'
                 return $false
             }
@@ -3350,26 +3519,38 @@ function Start-DefenderFullScan {
             Write-Log "✓ Windows Defender is enabled and available" 'INFO'
         }
         catch {
+            Write-Progress -Activity "Defender Full Scan" -Completed
             Write-Log "Error checking Windows Defender status: $_. Skipping scan." 'WARN'
             return $false
         }
 
-        # Update Windows Defender signatures
+        # Progress: 12% - Preparing signature update
+        Write-Progress -Activity "Defender Full Scan" -Status "Preparing signature update..." -PercentComplete 12
         Write-Log "Updating Windows Defender signatures..." 'INFO'
         try {
+            # Progress: 15% - Updating signatures
+            Write-Progress -Activity "Defender Full Scan" -Status "Downloading and installing latest signatures..." -PercentComplete 15
             Update-MpSignature
+            # Progress: 18% - Verifying signature update
+            Write-Progress -Activity "Defender Full Scan" -Status "Verifying signature update..." -PercentComplete 18
             Write-Log "✓ Defender signatures updated successfully" 'INFO'
         }
         catch {
             Write-Log "Warning: Failed to update signatures - $_" 'WARN'
         }
 
-        # Start full system scan
+        # Progress: 20% - Preparing full scan
+        Write-Progress -Activity "Defender Full Scan" -Status "Preparing full system scan..." -PercentComplete 20
         Write-Log "Starting Windows Defender full system scan..." 'INFO'
         Write-Log "Note: This operation may take considerable time depending on system size" 'INFO'
         
         try {
+            # Progress: 25% - Initiating scan
+            Write-Progress -Activity "Defender Full Scan" -Status "Initiating full system scan..." -PercentComplete 25
             $scanResult = Start-MpScan -ScanType FullScan
+            
+            # Progress: 70% - Scan completed, processing results
+            Write-Progress -Activity "Defender Full Scan" -Status "Scan completed, processing results..." -PercentComplete 70
             Write-Log "✓ Full system scan completed successfully" 'INFO'
             if ($scanResult) {
                 Write-Log "Scan result output: $scanResult" 'VERBOSE'
@@ -3377,16 +3558,25 @@ function Start-DefenderFullScan {
             $scanSuccess = $true
         }
         catch {
+            Write-Progress -Activity "Defender Full Scan" -Completed
             Write-Log "✗ Defender scan failed: $_" 'ERROR'
             return $false
         }
 
-        # Get scan results and threat information
+        # Progress: 72% - Getting threat information
+        Write-Progress -Activity "Defender Full Scan" -Status "Getting threat information..." -PercentComplete 72
         Write-Log "Analyzing scan results..." 'INFO'
         try {
+            # Progress: 74% - Retrieving detected threats
+            Write-Progress -Activity "Defender Full Scan" -Status "Retrieving detected threats..." -PercentComplete 74
             $threatsFound = Get-MpThreat
+            
+            # Progress: 76% - Getting scan history
+            Write-Progress -Activity "Defender Full Scan" -Status "Getting scan history..." -PercentComplete 76
             $scanHistory = Get-MpScanHistory | Select-Object -First 1
             
+            # Progress: 78% - Analyzing scan results
+            Write-Progress -Activity "Defender Full Scan" -Status "Analyzing scan results..." -PercentComplete 78
             if ($scanHistory) {
                 Write-Log "Last scan completed: $($scanHistory.StartTime)" 'INFO'
                 Write-Log "Scan type: $($scanHistory.ScanType)" 'INFO'
@@ -3408,15 +3598,22 @@ function Start-DefenderFullScan {
 
         # Automatic threat cleanup if threats were found
         if ($threatsFound.Count -gt 0) {
+            # Progress: 82% - Preparing threat cleanup
+            Write-Progress -Activity "Defender Full Scan" -Status "Preparing threat cleanup..." -PercentComplete 82
             Write-Log "Initiating automatic threat cleanup..." 'INFO'
             try {
+                # Progress: 85% - Removing threats
+                Write-Progress -Activity "Defender Full Scan" -Status "Removing detected threats..." -PercentComplete 85
                 Remove-MpThreat -All
                 Write-Log "✓ All detected threats have been automatically removed" 'INFO'
                 
-                # Verify cleanup success
+                # Progress: 88% - Verifying cleanup
+                Write-Progress -Activity "Defender Full Scan" -Status "Verifying threat cleanup..." -PercentComplete 88
                 Start-Sleep -Seconds 3
                 $remainingThreats = Get-MpThreat
                 
+                # Progress: 90% - Cleanup verification complete
+                Write-Progress -Activity "Defender Full Scan" -Status "Cleanup verification complete..." -PercentComplete 90
                 if ($remainingThreats.Count -eq 0) {
                     Write-Log "✓ Threat cleanup verification successful - no threats remain" 'INFO'
                     $cleanupSuccess = $true
@@ -3431,10 +3628,14 @@ function Start-DefenderFullScan {
             }
         }
 
+        # Progress: 92% - Preparing scan report
+        Write-Progress -Activity "Defender Full Scan" -Status "Preparing scan report..." -PercentComplete 92
         # Generate comprehensive scan report
         $scanEndTime = Get-Date
         $scanDuration = $scanEndTime - $scanStartTime
         
+        # Progress: 94% - Generating summary
+        Write-Progress -Activity "Defender Full Scan" -Status "Generating scan summary..." -PercentComplete 94
         Write-Log "[DefenderScan] COMPREHENSIVE SCAN SUMMARY:" 'INFO'
         Write-Log "- Scan start time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
         Write-Log "- Scan end time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
@@ -3443,6 +3644,8 @@ function Start-DefenderFullScan {
         Write-Log "- Threats detected: $($threatsFound.Count)" 'INFO'
         Write-Log "- Automatic cleanup successful: $(if($cleanupSuccess){'Yes'}else{'No'})" 'INFO'
         
+        # Progress: 96% - Creating detailed log
+        Write-Progress -Activity "Defender Full Scan" -Status "Creating detailed log file..." -PercentComplete 96
         # Create detailed log file in temp folder
         try {
             $scanLogPath = Join-Path $global:TempFolder "defender_scan_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -3480,12 +3683,20 @@ Scan Details:
                 $logContent += "- Last Signature Update: $($defenderStatus.AntivirusSignatureLastUpdated)`n"
             }
             
+            # Progress: 98% - Saving log file
+            Write-Progress -Activity "Defender Full Scan" -Status "Saving detailed log file..." -PercentComplete 98
             $logContent | Out-File -FilePath $scanLogPath -Encoding UTF8
             Write-Log "Detailed scan report saved to: $scanLogPath" 'INFO'
         }
         catch {
             Write-Log "Warning: Could not save detailed scan report: $_" 'WARN'
         }
+        
+        # Progress: 100% - Complete
+        Write-Progress -Activity "Defender Full Scan" -Status "Scan operation complete!" -PercentComplete 100
+        Start-Sleep -Milliseconds 500  # Brief pause to show completion
+        # Clear progress bar
+        Write-Progress -Activity "Defender Full Scan" -Completed
 
         return $scanSuccess
     }

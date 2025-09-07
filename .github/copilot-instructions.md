@@ -288,6 +288,43 @@ This applies to all structural/diagnostic fixes and is MANDATORY for all code ch
 ### **AUTOMATIC DIAGNOSTICS CHECKING (OBLIGATORY)**
 **⚠️ CRITICAL REQUIREMENT**: Every AI agent MUST automatically check and resolve ALL VSCode diagnostics before completing any code changes. This is NOT optional.
 
+### **⚠️ UNUSED VARIABLE RESTORATION PROTOCOL (MANDATORY)**
+**🔧 CRITICAL REQUIREMENT**: AI agents MUST NEVER leave unused variables in the script. Instead, determine their intended meaning and restore their functionality.
+
+#### **Unused Variable Detection and Restoration Process:**
+1. **DETECTION**: Before any code changes, scan for variables that are assigned but never used
+2. **ANALYSIS**: Determine the intended purpose of each unused variable based on:
+   - Variable name and context
+   - Surrounding code logic
+   - Function purpose and expected outputs
+   - Similar patterns elsewhere in the script
+3. **RESTORATION**: Restore the variable's intended functionality by:
+   - Adding proper logging/reporting usage
+   - Including in return values or output objects
+   - Using in conditional logic where appropriate
+   - Adding to system inventory or reports
+4. **DOCUMENTATION**: Document the restoration reasoning
+
+#### **Common Unused Variable Patterns and Restorations:**
+- **System Information Variables**: Add to reporting/logging functions
+- **Timing Variables**: Use for performance metrics and logging  
+- **Status Variables**: Include in return objects and conditional logic
+- **Configuration Variables**: Apply to script behavior and report in logs
+- **Calculation Results**: Use in reports, logs, or decision making
+- **File/Path Variables**: Use for validation, reporting, or cleanup operations
+
+#### **Examples of Variable Restoration:**
+```powershell
+# ❌ WRONG - Unused variable
+$installationResult = Install-SomeApp
+# Variable never used again
+
+# ✅ CORRECT - Restored functionality
+$installationResult = Install-SomeApp
+Write-Log "Installation result: $installationResult" 'INFO'
+return @{ Success = $installationResult.Success; Details = $installationResult }
+```
+
 #### **Pre-Code Change Protocol (MANDATORY STEPS)**
 1. **BEFORE making ANY code changes**: Run `get_errors` tool on target files
 2. **CONTEXT ANALYSIS**: When syntax/structural errors are found, examine the ENTIRE function or code block for complete understanding
