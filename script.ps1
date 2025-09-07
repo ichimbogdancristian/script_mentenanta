@@ -3071,7 +3071,7 @@ function Start-DefenderFullScan {
         Write-Log "Note: This operation may take considerable time depending on system size" 'INFO'
         
         try {
-            $scanResult = Start-MpScan -ScanType FullScan
+            Start-MpScan -ScanType FullScan
             Write-Log "✓ Full system scan completed successfully" 'INFO'
             $scanSuccess = $true
         }
@@ -3923,7 +3923,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     $abort = $false
 
     # Use .NET Console for non-blocking key detection
-    [void][System.Console]::TreatControlCAsInput = $true
+    [System.Console]::TreatControlCAsInput = $true
     for ($i = $countdown; $i -ge 1; $i--) {
         Write-Host ("\rClosing in $i seconds... Press any key to abort.") -NoNewline
         Start-Sleep -Milliseconds 1000
