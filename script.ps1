@@ -1247,8 +1247,66 @@ function Get-ExtensiveSystemInventory {
                     
                     if ($cleanLine -match '\S' -and $cleanLine.Length -gt 3) {
                         try {
-                            # More robust parsing that handles truncated names
+                            # Robust parsing for winget output with multiple strategies
+                            $appName = ""
+                            $appId = ""
+                            $appVersion = ""
+                            $appSource = ""
+                            
+                            # Strategy 1: Try 2+ spaces split (original format)
                             $parts = $cleanLine -split '\s{2,}' | Where-Object { $_.Trim() -ne '' }
+                            
+                            # Strategy 2: If insufficient parts, try single space split with position-based parsing
+                            if ($parts.Count -lt 2) {
+                                $spaceParts = $cleanLine.Trim() -split '\s+' | Where-Object { $_.Trim() -ne '' }
+                                
+                                # Typical winget format: "AppName Version Id Source" or variations
+                                # Look for package ID pattern (contains dots or specific patterns)
+                                if ($spaceParts.Count -ge 2) {
+                                    $idIndex = -1
+                                    for ($i = 0; $i -lt $spaceParts.Count; $i++) {
+                                        if ($spaceParts[$i] -match '\.' -and $spaceParts[$i] -notmatch '^\d+\.\d+' -or
+                                            $spaceParts[$i] -match '^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*' -or
+                                            $spaceParts[$i] -eq 'winget' -or $spaceParts[$i] -eq 'msstore') {
+                                            $idIndex = $i
+                                            break
+                                        }
+                                    }
+                                    
+                                    if ($idIndex -gt 0) {
+                                        # Reconstruct name from parts before ID
+                                        $appName = ($spaceParts[0..($idIndex-1)] -join ' ').Trim()
+                                        $appId = $spaceParts[$idIndex].Trim()
+                                        
+                                        # Look for version (numeric pattern before ID)
+                                        if ($idIndex -gt 1 -and $spaceParts[$idIndex-1] -match '^\d+[\.\d]*') {
+                                            $appVersion = $spaceParts[$idIndex-1].Trim()
+                                            $appName = ($spaceParts[0..($idIndex-2)] -join ' ').Trim()
+                                        }
+                                        
+                                        # Source is typically last or after ID
+                                        if ($idIndex + 1 -lt $spaceParts.Count) {
+                                            $appSource = $spaceParts[$idIndex + 1].Trim()
+                                        }
+                                        
+                                        $parts = @($appName, $appId, $appVersion, $appSource)
+                                    }
+                                    else {
+                                        # Fallback: assume first part is name, try to find version pattern
+                                        $appName = $spaceParts[0]
+                                        for ($i = 1; $i -lt $spaceParts.Count; $i++) {
+                                            if ($spaceParts[$i] -match '^\d+[\.\d]*' -and -not $appVersion) {
+                                                $appVersion = $spaceParts[$i]
+                                            }
+                                            elseif (-not $appId -and $spaceParts[$i] -ne $appVersion) {
+                                                $appId = $spaceParts[$i]
+                                            }
+                                        }
+                                        $parts = @($appName, $appId, $appVersion, "")
+                                    }
+                                }
+                            }
+                            
                             if ($parts.Count -ge 1) {
                                 $appName = $parts[0].Trim()
                                 # Enhanced validation for meaningful app names
@@ -1256,22 +1314,22 @@ function Get-ExtensiveSystemInventory {
                                     $appName -notmatch '^[ΓÇ\s…]+$' -and 
                                     $appName -notmatch '^\.\.\.$' -and
                                     $appName -match '[a-zA-Z0-9]') {
-                                    $apps += @{
+                                    
+                                    $appHash = @{
                                         Name    = $appName
                                         Id      = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
                                         Version = if ($parts.Count -gt 2) { $parts[2].Trim() } else { "" }
                                         Source  = if ($parts.Count -gt 3) { $parts[3].Trim() } else { "" }
                                     }
+                                    
+                                    $apps += $appHash
+                                    Write-LogFile "[Inventory] Parsed: $($appHash.Name) | $($appHash.Id) | $($appHash.Version) | $($appHash.Source)"
                                 }
                             }
                         }
                         catch {
-                            # More selective logging - only for lines that seem genuinely problematic
-                            if ($cleanLine.Length -gt 20 -and 
-                                $cleanLine -notmatch '^[ΓÇ\s…]+$' -and 
-                                $cleanLine -match '[a-zA-Z]{3,}') {
-                                Write-Log "[Inventory] Failed to parse winget line: $($cleanLine.Substring(0, [Math]::Min(40, $cleanLine.Length)))..." 'VERBOSE'
-                            }
+                            # Enhanced error logging for debugging
+                            Write-Log "[Inventory] Failed to parse winget line: $($cleanLine.Substring(0, [Math]::Min(40, $cleanLine.Length)))... Error: $_" 'VERBOSE'
                         }
                     }
                 }
@@ -3384,11 +3442,30 @@ function Start-SystemHealthRepair {
 
     # Progress: 95% - Preparing final report
     Write-Progress -Activity "System Health Repair" -Status "Preparing final report..." -PercentComplete 95
+    
+    # Calculate total operation time and log summary
+    $repairEndTime = Get-Date
+    $totalDuration = $repairEndTime - $repairStartTime
+    
+    # Log comprehensive repair summary
+    Write-Log "[SUMMARY] System Health Repair completed in $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
+    Write-Log "[SUMMARY] Repair needed: $repairNeeded | Overall success: $($repairResults.OverallSuccess)" 'INFO'
+    Write-Log "[SUMMARY] DISM repair: needed=$($repairResults.DismRepairNeeded), success=$($repairResults.DismRepairSuccess)" 'INFO'
+    Write-Log "[SUMMARY] SFC repair: needed=$($repairResults.SfcRepairNeeded), success=$($repairResults.SfcRepairSuccess)" 'INFO'
+    
+    # Add timing and repair status to results object
+    $repairResults.TotalDuration = $totalDuration
+    $repairResults.RepairNeeded = $repairNeeded
+    $repairResults.StartTime = $repairStartTime
+    $repairResults.EndTime = $repairEndTime
 
     # Progress: 100% - Operation complete
     Write-Progress -Activity "System Health Repair" -Status "System health repair complete!" -PercentComplete 100
     Start-Sleep -Milliseconds 500  # Brief pause to show completion
     Write-Progress -Activity "System Health Repair" -Completed
+    
+    # Return comprehensive results for reporting and analytics
+    return $repairResults
 }
 catch {
     Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
