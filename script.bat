@@ -536,16 +536,18 @@ IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
 )
 
 REM -----------------------------------------------------------------------------
-REM Self-Update Mechanism - Update script.bat if a newer version is available
+REM Self-Update Mechanism - Update ONLY script.bat (as requested by user)
 REM -----------------------------------------------------------------------------
 SET "NEW_SCRIPT_BAT=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.bat"
 SET "CURRENT_SCRIPT_BAT=%SCRIPT_PATH%"
 
 IF EXIST "%NEW_SCRIPT_BAT%" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found new script.bat in extracted repository. Overwriting current script..."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found new script.bat in extracted repository."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Copying ONLY script.bat (not script.ps1) as requested."
     COPY /Y "%NEW_SCRIPT_BAT%" "%CURRENT_SCRIPT_BAT%" >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] script.bat overwritten successfully."
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] script.ps1 will be used from extracted folder: %SCRIPT_DIR%%EXTRACT_FOLDER%"
     ) ELSE (
         CALL :LOG_MESSAGE "[%TIME%] [ERROR] Failed to overwrite script.bat!"
         pause
@@ -583,7 +585,7 @@ IF !ERRORLEVEL! EQU 0 (
 
 REM -----------------------------------------------------------------------------
 REM Smart PowerShell Script Path Detection (Location-Agnostic)
-REM Uses environment-based path detection similar to script.ps1
+REM Handles scenario where script.bat is updated but script.ps1 remains in extracted folder
 REM -----------------------------------------------------------------------------
 SET "PS1_PATH="
 SET "PS1_FOUND=NO"
@@ -592,24 +594,24 @@ CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting PowerShell script path detection..."
 CALL :LOG_MESSAGE "[%TIME%] [DEBUG] SCRIPT_DIR: %SCRIPT_DIR%"
 CALL :LOG_MESSAGE "[%TIME%] [DEBUG] EXTRACT_FOLDER: %EXTRACT_FOLDER%"
 
-REM Priority 1: Check current directory first (same location as script.bat)
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking Priority 1: %SCRIPT_DIR%script.ps1"
-IF EXIST "%SCRIPT_DIR%script.ps1" (
-    SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
-    SET "PS1_FOUND=YES"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in current directory: %SCRIPT_DIR%"
-    GOTO :PS1_DETECTION_COMPLETE
-)
-
-REM Priority 2: Check extracted folder (GitHub download)
-IF "!PS1_FOUND!"=="NO" (
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking Priority 2: %SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
+REM Priority 1: Check extracted folder first (most likely location after GitHub download)
+IF DEFINED EXTRACT_FOLDER (
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking Priority 1: %SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
     IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1" (
         SET "PS1_PATH=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
         SET "PS1_FOUND=YES"
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in extracted folder: %SCRIPT_DIR%%EXTRACT_FOLDER%\"
         GOTO :PS1_DETECTION_COMPLETE
     )
+)
+
+REM Priority 2: Check current directory (if script.ps1 exists locally)
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking Priority 2: %SCRIPT_DIR%script.ps1"
+IF EXIST "%SCRIPT_DIR%script.ps1" (
+    SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
+    SET "PS1_FOUND=YES"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in current directory: %SCRIPT_DIR%"
+    GOTO :PS1_DETECTION_COMPLETE
 )
 
 REM Priority 3: Search for script.ps1 in subdirectories
@@ -631,10 +633,8 @@ REM Final check: If still not found, show detailed diagnostics
 IF "!PS1_FOUND!"=="NO" (
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script (script.ps1) not found in any location!"
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Searched locations:"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] 1. Current directory: %SCRIPT_DIR%"
-    IF DEFINED EXTRACT_FOLDER (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] 2. Extracted folder: %SCRIPT_DIR%!EXTRACT_FOLDER!\"
-    )
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] 1. Extracted folder: %SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] 2. Current directory: %SCRIPT_DIR%script.ps1"
     CALL :LOG_MESSAGE "[%TIME%] [INFO] 3. All subdirectories under: %SCRIPT_DIR%"
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of current directory:"
     DIR "%SCRIPT_DIR%" /B
@@ -642,7 +642,11 @@ IF "!PS1_FOUND!"=="NO" (
         IF EXIST "%SCRIPT_DIR%!EXTRACT_FOLDER!" (
             CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
             DIR "%SCRIPT_DIR%!EXTRACT_FOLDER!" /B
+        ) ELSE (
+            CALL :LOG_MESSAGE "[%TIME%] [ERROR] Extracted folder does not exist: %SCRIPT_DIR%!EXTRACT_FOLDER!"
         )
+    ) ELSE (
+        CALL :LOG_MESSAGE "[%TIME%] [ERROR] EXTRACT_FOLDER variable is not defined!"
     )
     pause
     EXIT /B 4
