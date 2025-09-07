@@ -98,7 +98,7 @@ IF "%IS_ADMIN%"=="false" (
     EXIT /B 0
 )
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Administrator privileges confirmed"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Administrator privileges confirmed"
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Version Check
