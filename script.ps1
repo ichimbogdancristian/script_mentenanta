@@ -3464,14 +3464,12 @@ function Start-SystemHealthRepair {
     Start-Sleep -Milliseconds 500  # Brief pause to show completion
     Write-Progress -Activity "System Health Repair" -Completed
     
-    # Return comprehensive results for reporting and analytics
-    return $repairResults
-}
-catch {
-    Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
-    $repairResults.OverallSuccess = $false
-}
-finally {
+    } # End of main try block
+    catch {
+        Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
+        $repairResults.OverallSuccess = $false
+    }
+    finally {
     # Generate comprehensive repair report
     $repairEndTime = Get-Date
     $totalDuration = $repairEndTime - $repairStartTime
