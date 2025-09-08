@@ -120,9 +120,14 @@ $global:Config = @{
 # Global variables for task execution and results tracking
 $global:TaskResults = @{}
 $global:SystemInventory = $null
-$global:TempFolder = $PSScriptRoot
+$global:TempFolder = Join-Path $PSScriptRoot 'temp_files'
 $global:BloatwareList = @()
 $global:EssentialApps = @()
+
+# Create temp directory if it doesn't exist (early initialization)
+if (-not (Test-Path $global:TempFolder)) {
+    New-Item -Path $global:TempFolder -ItemType Directory -Force | Out-Null
+}
 
 # ================================================================
 # Global Task Array - Centralized Task Definitions
@@ -646,6 +651,121 @@ function Write-TaskProgress {
         Start-Sleep -Milliseconds 500  # Brief pause to show completion
         Write-Progress -Activity $Activity -Completed
     }
+}
+
+# ================================================================
+# Function: Write-ActionProgress
+# ================================================================
+# Purpose: Modular progress bar system for individual actions with auto-cleanup
+# Environment: Windows PowerShell console, supports individual action tracking
+# Logic: Creates separate progress bars for each action type with automatic cleanup
+# Performance: Lightweight, non-blocking, visual feedback for granular operations
+# Dependencies: Write-Progress cmdlet, console capabilities
+# ================================================================
+function Write-ActionProgress {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ActionType,  # 'Installing', 'Uninstalling', 'Removing', 'Updating', 'Scanning', 'Cleaning'
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ItemName,    # Name of the item being processed
+        
+        [Parameter(Mandatory = $true)]
+        [int]$PercentComplete, # 0-100
+        
+        [string]$Status = "Processing...",  # Additional status text
+        
+        [int]$CurrentItem = 0,  # Current item number
+        
+        [int]$TotalItems = 0,   # Total items to process
+        
+        [switch]$Completed      # Mark as completed and cleanup
+    )
+    
+    # Generate unique activity ID based on action type and item
+    $activityId = ($ActionType + $ItemName).GetHashCode()
+    if ($activityId -lt 0) { $activityId = -$activityId }
+    
+    # Build activity title
+    $activityTitle = "$ActionType`: $ItemName"
+    if ($TotalItems -gt 0 -and $CurrentItem -gt 0) {
+        $activityTitle += " ($CurrentItem/$TotalItems)"
+    }
+    
+    # Build status message
+    $statusMessage = $Status
+    if ($PercentComplete -ge 0 -and $PercentComplete -le 100) {
+        $statusMessage = "$Status ($PercentComplete%)"
+    }
+    
+    if ($Completed) {
+        # Clear the progress bar
+        Write-Progress -Id $activityId -Activity $activityTitle -Completed
+        # Also log completion
+        Write-Log "✓ $ActionType completed: $ItemName" 'INFO'
+    }
+    else {
+        # Show progress bar
+        Write-Progress -Id $activityId -Activity $activityTitle -Status $statusMessage -PercentComplete $PercentComplete
+        
+        # Log verbose progress for file logging
+        if ($TotalItems -gt 0 -and $CurrentItem -gt 0) {
+            Write-Log "$ActionType progress: $ItemName ($CurrentItem/$TotalItems) - $PercentComplete%" 'VERBOSE'
+        }
+        else {
+            Write-Log "$ActionType progress: $ItemName - $PercentComplete%" 'VERBOSE'
+        }
+    }
+}
+
+# ================================================================
+# Function: Start-ActionProgressSequence
+# ================================================================
+# Purpose: Manages a sequence of actions with individual progress tracking
+# Environment: Windows PowerShell console, handles multiple concurrent progress bars
+# Logic: Orchestrates multiple action progress bars for complex operations
+# Performance: Efficient progress management for sequential operations
+# Dependencies: Write-ActionProgress function
+# ================================================================
+function Start-ActionProgressSequence {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SequenceName,  # Overall sequence name
+        
+        [Parameter(Mandatory = $true)]
+        [array]$Actions,        # Array of actions to perform
+        
+        [scriptblock]$ActionProcessor # Script block to process each action
+    )
+    
+    $totalActions = $Actions.Count
+    $currentAction = 0
+    
+    # Main sequence progress bar
+    $sequenceId = $SequenceName.GetHashCode()
+    if ($sequenceId -lt 0) { $sequenceId = -$sequenceId }
+    
+    Write-Progress -Id $sequenceId -Activity $SequenceName -Status "Starting..." -PercentComplete 0
+    
+    foreach ($action in $Actions) {
+        $currentAction++
+        $sequenceProgress = [math]::Round(($currentAction / $totalActions) * 100, 1)
+        
+        # Update main sequence progress
+        Write-Progress -Id $sequenceId -Activity $SequenceName -Status "Processing action $currentAction of $totalActions" -PercentComplete $sequenceProgress
+        
+        # Execute the action with individual progress tracking
+        if ($ActionProcessor) {
+            & $ActionProcessor $action $currentAction $totalActions
+        }
+        
+        # Small delay to show completion
+        Start-Sleep -Milliseconds 100
+    }
+    
+    # Complete the sequence
+    Write-Progress -Id $sequenceId -Activity $SequenceName -Completed
+    Write-Log "✓ $SequenceName sequence completed: $totalActions actions processed" 'SUCCESS'
 }
 
 # ================================================================
@@ -1400,9 +1520,8 @@ function Get-ExtensiveSystemInventory {
     }
 
     Write-TaskProgress "System inventory completed" 100
-    # Clear any lingering progress bars
-    Write-Progress -Activity "System inventory completed" -Completed
-    Write-Progress -Activity " " -Completed  # Extra cleanup for console buffer
+    # Clear any lingering progress bars using new modular system
+    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Inventory" -PercentComplete 100 -Status "System inventory completed" -Completed
     Write-Log "[END] Extensive System Inventory (JSON Format)" 'INFO'
 }
 
@@ -1510,18 +1629,27 @@ function Remove-Bloatware {
         $newlyInstalledApps = $currentInstalledApps
     }
 
-    # Early exit if no newly installed apps
+    # Early exit if no newly installed apps, but provide comprehensive fallback for first run
     if ($newlyInstalledApps.Count -eq 0) {
-        Write-Log "No newly installed apps detected since last run. Skipping bloatware removal." 'INFO'
-        # Update previous list for next run
-        Copy-Item $currentListPath $previousListPath -Force
-        return
+        Write-Log "No newly installed apps detected since last run." 'INFO'
+        
+        # Fallback: If this is likely the first run or no previous data exists, process ALL apps
+        if (-not (Test-Path $previousListPath) -or $currentInstalledApps.Count -gt 0) {
+            Write-Log "Enabling comprehensive scan mode - processing all currently installed apps for bloatware detection" 'INFO'
+            $newlyInstalledApps = $currentInstalledApps
+        } else {
+            Write-Log "Skipping bloatware removal - no new apps and previous scan data exists." 'INFO'
+            # Update previous list for next run
+            Copy-Item $currentListPath $previousListPath -Force
+            return
+        }
     }
 
     # ================================================================
     # STEP 3: Build optimized lookup for ONLY newly installed apps
     # ================================================================
     Write-Log "Building optimized lookup for $($newlyInstalledApps.Count) newly installed apps..." 'INFO'
+    Write-Log "Total bloatware patterns to check: $($global:BloatwareList.Count)" 'INFO'
     $installedApps = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     # Filter inventory to only include newly installed apps
@@ -1568,6 +1696,9 @@ function Remove-Bloatware {
     foreach ($item in $global:BloatwareList) {
         [void]$bloatwareHashSet.Add($item)
     }
+    
+    Write-Log "Created bloatware lookup with $($bloatwareHashSet.Count) patterns" 'INFO'
+    Write-Log "Apps available for analysis: $($installedApps.Keys.Count)" 'INFO'
 
     # Direct lookup phase (O(1) performance)
     foreach ($installedKey in $installedApps.Keys) {
@@ -1579,9 +1710,13 @@ function Remove-Bloatware {
                 })
         }
     }
+    
+    Write-Log "Direct matches found: $($bloatwareMatches.Count)" 'INFO'
 
     # Pattern matching phase (only if needed)
     if ($bloatwareMatches.Count -eq 0) {
+        Write-Log "No direct matches found, starting pattern matching phase..." 'INFO'
+        $patternMatchCount = 0
         foreach ($bloatApp in $global:BloatwareList) {
             $trimmedBloat = $bloatApp.Trim()
             foreach ($installedKey in $installedApps.Keys) {
@@ -1593,15 +1728,21 @@ function Remove-Bloatware {
                             InstalledApp  = $installedApps[$installedKey]
                             MatchType     = 'Pattern'
                         })
+                    $patternMatchCount++
                     break
                 }
             }
         }
+        Write-Log "Pattern matches found: $patternMatchCount" 'INFO'
     }
 
     # Early exit if no bloatware found
     if ($bloatwareMatches.Count -eq 0) {
-        Write-Log "[END] Ultra-Enhanced Bloatware Removal - No bloatware detected" 'INFO'
+        Write-Log "[END] Ultra-Enhanced Bloatware Removal - No bloatware detected from $($installedApps.Keys.Count) analyzed apps" 'INFO'
+        Write-Log "Sample installed apps: $(@($installedApps.Keys) | Select-Object -First 10 | Join-String -Separator ', ')" 'VERBOSE'
+        
+        # Update previous list for next run
+        Copy-Item $currentListPath $previousListPath -Force
         return
     }
 
@@ -1633,12 +1774,16 @@ function Remove-Bloatware {
 
     # Thread-safe collections for results
     $removedApps = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+    $script:bloatwareRemovalCount = 0
+    $script:bloatwareFailedCount = 0
 
-    # Ultra-parallel removal with optimized error handling
-    $bloatwareMatches | ForEach-Object -Parallel {
-        $match = $_
-        $capabilities = $using:toolCapabilities
-
+    # Use the new modular progress system for bloatware removal
+    Start-ActionProgressSequence -SequenceName "Bloatware Removal" -Actions $bloatwareMatches -ActionProcessor {
+        param($match, $currentIndex, $totalApps)
+        
+        # Individual bloatware removal progress
+        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Preparing removal..." -CurrentItem $currentIndex -TotalItems $totalApps
+        
         $result = @{
             Success    = $false
             AppName    = $match.BloatwareName
@@ -1651,180 +1796,172 @@ function Remove-Bloatware {
             $appType = $app.Type
             $appData = $app.Data
 
+            # 25% progress - Identifying removal method
+            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 25 -Status "Identifying removal method..." -CurrentItem $currentIndex -TotalItems $totalApps
+
             # Optimized removal by type priority
             switch ($appType) {
                 'AppX' {
-                    if ($capabilities.AppX -and $appData.PackageFullName) {
+                    if ($toolCapabilities.AppX -and $appData.PackageFullName) {
+                        # 50% progress - Starting AppX removal
+                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 50 -Status "Removing AppX package..." -CurrentItem $currentIndex -TotalItems $totalApps
+                        
                         try {
                             Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
 
+                            # 75% progress - Verifying removal
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 75 -Status "Verifying AppX removal..." -CurrentItem $currentIndex -TotalItems $totalApps
+                            
                             # Verify removal
                             $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
                             if (-not $remainingPackage) {
                                 $result.Success = $true
                                 $result.Method = "AppX"
                                 $result.ActualName = $appData.Name
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX: $($appData.Name)]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
                             }
                             else {
+                                # Try advanced removal
                                 $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
-                                if (-not $success) { throw "AppX compatibility removal failed" }
+                                if ($success) {
+                                    $result.Success = $true
+                                    $result.Method = "AppX (Advanced)"
+                                    $result.ActualName = $appData.Name
+                                    $script:bloatwareRemovalCount++
+                                    Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX Advanced: $($appData.Name)]" 'INFO'
+                                    Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX (Advanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                    return
+                                }
                             }
-                            $result.Success = $true
-                            $result.Method = "AppX"
-                            $result.ActualName = $appData.Name
                         }
-                        catch { }
+                        catch {
+                            Write-Log "AppX removal failed for $($match.BloatwareName): $_" 'WARN'
+                        }
                     }
                 }
+                
                 'Winget' {
-                    if ($capabilities.Winget -and $appData.Id) {
+                    if ($toolCapabilities.Winget -and $appData.Id) {
+                        # 50% progress - Starting Winget removal
+                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 50 -Status "Removing via Winget..." -CurrentItem $currentIndex -TotalItems $totalApps
+                        
                         try {
-                            $proc = Start-Process -FilePath "winget" -ArgumentList @(
-                                "uninstall", "--id", $appData.Id, "--exact", "--silent", 
-                                "--accept-source-agreements", "--force", "--disable-interactivity"
-                            ) -WindowStyle Hidden -Wait -PassThru
-
-                            if ($proc.ExitCode -eq 0) {
+                            $uninstallArgs = @("uninstall", "--id", $appData.Id, "--silent", "--accept-source-agreements", "--disable-interactivity")
+                            $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
+                            
+                            # 75% progress - Verifying removal
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 75 -Status "Verifying Winget removal..." -CurrentItem $currentIndex -TotalItems $totalApps
+                            
+                            if ($wingetProc.ExitCode -eq 0) {
                                 $result.Success = $true
                                 $result.Method = "Winget"
                                 $result.ActualName = $appData.Name
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Winget: $($appData.Name)]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Winget" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
                             }
                         }
-                        catch { }
+                        catch {
+                            Write-Log "Winget removal failed for $($match.BloatwareName): $_" 'WARN'
+                        }
                     }
                 }
-                'Chocolatey' {
-                    if ($capabilities.Chocolatey -and $appData.Name) {
+                
+                'Choco' {
+                    if ($toolCapabilities.Chocolatey -and $appData.Name) {
+                        # 50% progress - Starting Chocolatey removal
+                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 50 -Status "Removing via Chocolatey..." -CurrentItem $currentIndex -TotalItems $totalApps
+                        
                         try {
-                            $proc = Start-Process -FilePath "choco" -ArgumentList @(
-                                "uninstall", $appData.Name, "-y", "--remove-dependencies", 
-                                "--limit-output", "--no-progress"
-                            ) -WindowStyle Hidden -Wait -PassThru
-
-                            if ($proc.ExitCode -eq 0) {
+                            $chocoArgs = @("uninstall", $appData.Name, "-y", "--remove-dependencies")
+                            $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                            
+                            # 75% progress - Verifying removal
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 75 -Status "Verifying Chocolatey removal..." -CurrentItem $currentIndex -TotalItems $totalApps
+                            
+                            if ($chocoProc.ExitCode -eq 0) {
                                 $result.Success = $true
                                 $result.Method = "Chocolatey"
                                 $result.ActualName = $appData.Name
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Chocolatey: $($appData.Name)]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Chocolatey" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
                             }
                         }
-                        catch { }
-                    }
-                }
-                'Registry' {
-                    if ($appData.UninstallString -and $appData.UninstallString -match '\.exe') {
-                        try {
-                            $uninstallCmd = $appData.UninstallString -replace '"', ''
-                            $proc = Start-Process -FilePath $uninstallCmd -ArgumentList "/S" -Wait -WindowStyle Hidden -PassThru
-
-                            if ($proc.ExitCode -eq 0) {
-                                $result.Success = $true
-                                $result.Method = "Registry"
-                                $result.ActualName = $appData.DisplayName
-                            }
+                        catch {
+                            Write-Log "Chocolatey removal failed for $($match.BloatwareName): $_" 'WARN'
                         }
-                        catch { }
                     }
                 }
             }
 
-            # Fast AppX fallback if primary method failed
-            if (-not $result.Success -and $capabilities.AppX) {
-                try {
-                    $packages = Get-AppxPackage -Name "*$($match.BloatwareName)*" -AllUsers -ErrorAction SilentlyContinue
-                    foreach ($pkg in $packages | Select-Object -First 1) {
-                        Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
-
-                        # Verify removal
-                        $verifyPackage = Get-AppxPackage -PackageFullName $pkg.PackageFullName -ErrorAction SilentlyContinue
-                        if (-not $verifyPackage) {
-                            $result.Success = $true
-                            $result.Method = "AppX Fallback"
-                            $result.ActualName = $pkg.Name
-                            break
-                        }
-                    }
-                }
-                catch { }
+            # If no method succeeded
+            if (-not $result.Success) {
+                $script:bloatwareFailedCount++
+                Write-Log "✗ FAILED: $($match.BloatwareName) - No successful removal method" 'WARN'
+                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal failed" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
             }
         }
-        catch { }
-
-        return $result
-
-    } -ThrottleLimit 8 | Where-Object { $_.Success } | ForEach-Object {
-        [void]$removedApps.Add([PSCustomObject]$_)
+        catch {
+            $script:bloatwareFailedCount++
+            Write-Log "✗ EXCEPTION: $($match.BloatwareName) - $_" 'ERROR'
+            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal exception" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+        }
+        
+        # Add successful results to removedApps collection for reporting
+        if ($result.Success) {
+            [void]$removedApps.Add([PSCustomObject]@{
+                AppName    = $result.AppName
+                ActualName = $result.ActualName
+                Method     = $result.Method
+                Success    = $result.Success
+            })
+        }
     }
-
-    # Convert to array for processing
+    
+    # ================================================================
+    # STEP 4: Display Results and Summary
+    # ================================================================
+    # Convert removedApps to array for processing and detailed reporting
     $removedArray = @($removedApps)
-
-    # ================================================================
-    # ENHANCED ACTION-ONLY LOGGING: Every removed app with diff context
-    # ================================================================
-    if ($removedArray.Count -gt 0) {
-        Write-Log "=== BLOATWARE REMOVAL RESULTS (DIFF-BASED PROCESSING) ===" 'INFO'
+    
+    if ($script:bloatwareRemovalCount -gt 0) {
+        Write-Log "=== BLOATWARE REMOVAL RESULTS ===" 'INFO'
         Write-Host "=== BLOATWARE REMOVAL RESULTS ===" -ForegroundColor Yellow
-
-        # Individual app removals - one line per app with enhanced details
-        foreach ($removed in $removedArray) {
-            $logMsg = "✓ REMOVED: $($removed.ActualName) [Method: $($removed.Method)]"
-            Write-Log $logMsg 'INFO'
-            Write-Host $logMsg -ForegroundColor Green
-        }
-
-        # Enhanced summary with diff context
-        $appNames = ($removedArray | ForEach-Object { $_.ActualName } | Sort-Object -Unique) -join ', '
-        Write-Log "DIFF-BASED REMOVAL SUMMARY: $($removedArray.Count) bloatware apps removed from $($newlyInstalledApps.Count) newly detected apps" 'INFO'
-        Write-Log "Removed apps: $appNames" 'INFO'
-
-        # Method breakdown with statistics
-        $methodGroups = $removedArray | Group-Object Method
-        $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
-        Write-Log "Removal methods used: $methodSummary" 'INFO'
-
-        # Performance metrics for diff-based processing
-        $efficiencyGain = if ($currentInstalledApps.Count -gt 0) { 
-            [math]::Round((1 - ($newlyInstalledApps.Count / $currentInstalledApps.Count)) * 100, 1) 
-        }
-        else { 0 }
-        Write-Log "PERFORMANCE: Processed $($newlyInstalledApps.Count)/$($currentInstalledApps.Count) apps (${efficiencyGain}% reduction in processing)" 'INFO'
-
-        # Create detailed removal log for audit trail
-        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-        $removalAuditPath = Join-Path $global:TempFolder "bloatware_removed_$timestamp.json"
-        $auditData = @{
-            Timestamp          = (Get-Date).ToString('o')
-            ProcessingMode     = "Diff-Based"
-            TotalCurrentApps   = $currentInstalledApps.Count
-            NewlyInstalledApps = $newlyInstalledApps.Count
-            BloatwareRemoved   = $removedArray.Count
-            EfficiencyGain     = "${efficiencyGain}%"
-            RemovedApps        = $removedArray | ForEach-Object { 
-                @{
-                    Name         = $_.ActualName
-                    Method       = $_.Method
-                    OriginalName = $_.AppName
-                }
+        Write-Log "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" 'INFO'
+        Write-Host "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" -ForegroundColor Green
+        
+        # Log detailed removal information using restored $removedApps data
+        if ($removedArray.Count -gt 0) {
+            Write-Log "DETAILED REMOVAL BREAKDOWN:" 'INFO'
+            foreach ($removed in $removedArray) {
+                Write-Log "  → $($removed.ActualName) [Method: $($removed.Method)]" 'INFO'
             }
-            MethodBreakdown    = $methodGroups | ForEach-Object { 
-                @{
-                    Method = $_.Name
-                    Count  = $_.Count
-                }
-            }
+            
+            # Method breakdown statistics
+            $methodGroups = $removedArray | Group-Object Method
+            $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
+            Write-Log "Removal methods used: $methodSummary" 'INFO'
         }
-        $auditData | ConvertTo-Json -Depth 4 | Out-File $removalAuditPath -Encoding UTF8
-        Write-Log "Detailed removal audit saved to: $removalAuditPath" 'VERBOSE'
-
+        
+        if ($script:bloatwareFailedCount -gt 0) {
+            Write-Log "✗ Failed to remove $script:bloatwareFailedCount apps" 'WARN'
+            Write-Host "✗ Failed to remove $script:bloatwareFailedCount apps" -ForegroundColor Yellow
+        }
     }
     else {
-        if ($newlyInstalledApps.Count -eq 0) {
-            Write-Log "DIFF-BASED PROCESSING: No newly installed apps detected since last run - no bloatware removal needed" 'INFO'
-            Write-Host "✓ No newly installed apps detected - system clean" -ForegroundColor Green
+        if ($bloatwareMatches.Count -eq 0) {
+            Write-Log "✓ No bloatware detected - system clean" 'INFO'
+            Write-Host "✓ No bloatware detected - system clean" -ForegroundColor Green
         }
         else {
-            Write-Log "DIFF-BASED PROCESSING: $($newlyInstalledApps.Count) newly installed apps checked, no bloatware found" 'INFO'
-            Write-Host "✓ $($newlyInstalledApps.Count) newly installed apps checked - no bloatware detected" -ForegroundColor Green
+            Write-Log "✗ No bloatware apps were successfully removed" 'WARN'
+            Write-Host "✗ No bloatware apps were successfully removed" -ForegroundColor Yellow
         }
     }
 
@@ -2076,25 +2213,24 @@ function Install-EssentialApps {
 
     $totalApps = $appsToInstall.Count
     $currentAppIndex = 0
-    $successCount = 0
-    $failedCount = 0
-    $skippedCount = 0
+    $script:successCount = 0
+    $script:failedCount = 0
+    $script:skippedCount = 0
 
     # ACTION-ONLY LOGGING: Enhanced logging for each app installation
     Write-Log "[EssentialApps] Starting installation of $totalApps essential apps:" 'INFO'
+    Write-Log "[EssentialApps] App processing will start from index: $currentAppIndex" 'INFO'
 
-    foreach ($app in $appsToInstall) {
-        $currentAppIndex++
-        $progressPercent = [math]::Round(($currentAppIndex / $totalApps) * 100, 1)
-
-        # Individual per-app progress bar
-        Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Status "In progress..." -PercentComplete 0
-        Write-TaskProgress "Installing Essential Apps" $progressPercent "$($app.Name) ($currentAppIndex/$totalApps)"
-
-        # Log and host message with percent
-        Write-Host "[$progressPercent%] Installing: $($app.Name) ($currentAppIndex/$totalApps)" -ForegroundColor Cyan
-        Write-Log "[$progressPercent%][$currentAppIndex/$totalApps] Processing: $($app.Name)..." 'INFO'
-
+    # Use the new modular progress system
+    Start-ActionProgressSequence -SequenceName "Essential Apps Installation" -Actions $appsToInstall -ActionProcessor {
+        param($app, $currentIndex, $totalApps)
+        
+        # Update global app index tracking for statistics
+        $script:currentAppIndex = $currentIndex
+        
+        # Individual app installation progress
+        Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 0 -Status "Preparing installation..." -CurrentItem $currentIndex -TotalItems $totalApps
+        
         $result = [PSCustomObject]@{
             AppName    = $app.Name
             Success    = $false
@@ -2105,34 +2241,105 @@ function Install-EssentialApps {
         }
 
         try {
-            # Try Winget first (preferred method)
+            # Try Winget first (25% progress)
             if ($app.Winget -and $wingetAvailable) {
-                Write-Host "  → Trying Winget installation for $($app.Name)..." -ForegroundColor Cyan
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 25 -Status "Trying Winget installation..." -CurrentItem $currentIndex -TotalItems $totalApps
+                
                 $wingetArgs = @(
                     "install", "--id", $app.Winget,
                     "--accept-source-agreements", "--accept-package-agreements", 
                     "--silent", "-e", "--disable-interactivity", "--force"
                 )
+                
+                # 50% progress during Winget execution
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 50 -Status "Running Winget installer..." -CurrentItem $currentIndex -TotalItems $totalApps
+                
                 $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
+                
+                # 75% progress - analyzing results
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 75 -Status "Analyzing installation results..." -CurrentItem $currentIndex -TotalItems $totalApps
+                
                 if ($wingetProc.ExitCode -eq 0) {
                     $result.Success = $true
                     $result.Method = "winget"
-                    $successCount++
+                    $script:successCount++
                     Write-Log "✓ INSTALLED: $($app.Name) [Method: Winget]" 'INFO'
                     Write-Host "    ✓ Successfully installed via Winget" -ForegroundColor Green
-                    Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
-                    continue
+                    Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation completed successfully" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                    return
                 }
                 elseif ($wingetProc.ExitCode -eq -1978335189) {
                     # App already installed
                     $result.Skipped = $true
                     $result.SkipReason = "already installed (winget)"
-                    $skippedCount++
+                    $script:skippedCount++
                     Write-Log "⚪ SKIPPED: $($app.Name) [Reason: Already installed via Winget]" 'INFO'
                     Write-Host "    ⚪ Already installed (Winget detected)" -ForegroundColor Yellow
-                    Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
-                    continue
+                    Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Already installed" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                    return
                 }
+                else {
+                    Write-Log "⚠ Winget failed for $($app.Name) (Exit code: $($wingetProc.ExitCode)). Trying Chocolatey..." 'WARN'
+                    Write-Host "    ⚠ Winget failed, trying Chocolatey..." -ForegroundColor Yellow
+                }
+            }
+
+            # Try Chocolatey as fallback (75% progress)
+            if ($app.Choco -and $chocoAvailable -and -not $result.Success) {
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 75 -Status "Trying Chocolatey installation..." -CurrentItem $currentIndex -TotalItems $totalApps
+                
+                # 85% progress during Choco execution
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 85 -Status "Running Chocolatey installer..." -CurrentItem $currentIndex -TotalItems $totalApps
+                
+                $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--ignore-checksums")
+                $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                
+                # 95% progress - analyzing results
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 95 -Status "Analyzing Chocolatey results..." -CurrentItem $currentIndex -TotalItems $totalApps
+                
+                if ($chocoProc.ExitCode -eq 0) {
+                    $result.Success = $true
+                    $result.Method = "chocolatey"
+                    $script:successCount++
+                    Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey]" 'INFO'
+                    Write-Host "    ✓ Successfully installed via Chocolatey" -ForegroundColor Green
+                    Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation completed successfully" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                    return
+                }
+                elseif ($chocoProc.ExitCode -eq 1641 -or $chocoProc.ExitCode -eq 3010) {
+                    # Success with reboot required
+                    $result.Success = $true
+                    $result.Method = "chocolatey (reboot required)"
+                    $script:successCount++
+                    Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey - Reboot Required]" 'INFO'
+                    Write-Host "    ✓ Successfully installed via Chocolatey (reboot required)" -ForegroundColor Green
+                    Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation completed (reboot required)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                    return
+                }
+                else {
+                    $result.Error = "Chocolatey failed (Exit code: $($chocoProc.ExitCode))"
+                    Write-Log "✗ Chocolatey failed for $($app.Name) (Exit code: $($chocoProc.ExitCode))" 'WARN'
+                    Write-Host "    ✗ Chocolatey installation failed" -ForegroundColor Red
+                }
+            }
+
+            # If both methods failed
+            if (-not $result.Success -and -not $result.Skipped) {
+                $result.Error = "Both Winget and Chocolatey failed or unavailable"
+                $script:failedCount++
+                Write-Log "✗ FAILED: $($app.Name) [Reason: Both installation methods failed]" 'ERROR'
+                Write-Host "    ✗ Installation failed with all methods" -ForegroundColor Red
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation failed" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+            }
+        }
+        catch {
+            $result.Error = $_.Exception.Message
+            $script:failedCount++
+            Write-Log "✗ EXCEPTION: $($app.Name) [Error: $_]" 'ERROR'
+            Write-Host "    ✗ Installation exception: $_" -ForegroundColor Red
+            Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation error" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+        }
+    }
                 else {
                     $result.Error += "winget failed (exit: $($wingetProc.ExitCode)); "
                     Write-Host "    ✗ Winget failed (exit code: $($wingetProc.ExitCode))" -ForegroundColor Red
@@ -2150,7 +2357,6 @@ function Install-EssentialApps {
                     $successCount++
                     Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey]" 'INFO'
                     Write-Host "    ✓ Successfully installed via Chocolatey" -ForegroundColor Green
-                    Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
                     continue
                 }
                 elseif ($chocoProc.ExitCode -eq 1641 -or $chocoProc.ExitCode -eq 3010) {
@@ -2160,48 +2366,12 @@ function Install-EssentialApps {
                     $successCount++
                     Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey - Reboot Required]" 'INFO'
                     Write-Host "    ✓ Successfully installed via Chocolatey (reboot required)" -ForegroundColor Green
-                    Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
                     continue
-                }
-                else {
-                    $result.Error += "choco failed (exit: $($chocoProc.ExitCode))"
-                    Write-Host "    ✗ Chocolatey failed (exit code: $($chocoProc.ExitCode))" -ForegroundColor Red
-                }
-            }
-
-            # No installation method succeeded
-            if (-not $wingetAvailable -and -not $chocoAvailable) {
-                $result.Skipped = $true
-                $result.SkipReason = "no package manager available"
-                $skippedCount++
-                Write-Log "⚪ SKIPPED: $($app.Name) [Reason: No package manager available]" 'WARN'
-                Write-Host "    ⚪ Skipped - No package manager available" -ForegroundColor Yellow
-                Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
-            }
-            elseif (-not $app.Winget -and -not $app.Choco) {
-                $result.Skipped = $true
-                $result.SkipReason = "no installer defined"
-                $skippedCount++
-                Write-Log "⚪ SKIPPED: $($app.Name) [Reason: No installer defined]" 'WARN'
-                Write-Host "    ⚪ Skipped - No installer defined" -ForegroundColor Yellow
-                Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
-            }
-            else {
-                $result.Error = $result.Error.TrimEnd("; ")
-                $failedCount++
-                Write-Log "✗ FAILED: $($app.Name) [Error: $($result.Error)]" 'ERROR'
-                Write-Host "    ✗ Installation failed: $($result.Error)" -ForegroundColor Red
-                Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
-            }
-        }
-        catch {
-            $result.Error = "Exception: $($_.Exception.Message)"
-            $failedCount++
-            Write-Log "✗ FAILED: $($app.Name) [Exception: $($_.Exception.Message)]" 'ERROR'
-            Write-Host "    ✗ Exception occurred: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Progress -Activity "Installing $($app.Name) ($currentAppIndex/$totalApps)" -Completed
-        }
     }
+
+    # Final summary with the new script scope variables
+    Write-Log "[EssentialApps] Installation Summary: Success=$script:successCount, Failed=$script:failedCount, Skipped=$script:skippedCount" 'INFO'
+    Write-Log "[EssentialApps] Final app index processed: $script:currentAppIndex/$totalApps" 'INFO'
 
     # Enhanced Office detection with parallel checking
     Write-Log "Checking for existing office suite installations..." 'INFO'
@@ -3286,7 +3456,7 @@ function Clear-TempFiles {
 
     # Summary
     Write-TaskProgress -Activity "Cleaning Temp Files" -CurrentStep $totalLocations -TotalSteps $totalLocations -Status "Cleanup completed" -FileBased:$false
-    Write-Progress -Activity "Cleaning Temp Files" -Completed
+    Write-ActionProgress -ActionType "Cleaning" -ItemName "Temp Files" -PercentComplete 100 -Status "Cleanup completed" -Completed
     
     Write-Log "[TempCleanup] CLEANUP SUMMARY:" 'INFO'
     Write-Log "- Total files deleted: $totalFilesDeleted" 'INFO'
@@ -3330,46 +3500,46 @@ function Start-SystemHealthRepair {
         
         # Progress: 5% - Initializing DISM check
         Write-Log "Starting DISM component store health analysis..." 'INFO'
-        Write-Progress -Activity "System Health Repair" -Status "Initializing DISM health check..." -PercentComplete 5
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 5 -Status "Initializing DISM health check..."
         
         try {
             # Progress: 8% - Running DISM ScanHealth
-            Write-Progress -Activity "System Health Repair" -Status "Running DISM ScanHealth..." -PercentComplete 8
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 8 -Status "Running DISM ScanHealth..."
             $dismScanResult = & dism /online /cleanup-image /scanhealth /english 2>&1
             
             # Progress: 12% - Processing DISM results
-            Write-Progress -Activity "System Health Repair" -Status "Processing DISM scan results..." -PercentComplete 12
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 12 -Status "Processing DISM scan results..."
             $dismScanOutput = $dismScanResult -join "`n"
             Write-Log "DISM ScanHealth completed" 'VERBOSE'
             
             # Progress: 15% - Analyzing component store
-            Write-Progress -Activity "System Health Repair" -Status "Analyzing component store health..." -PercentComplete 15
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 15 -Status "Analyzing component store health..."
             $repairResults.DismCheckPerformed = $true
             
             if ($dismScanOutput -match "component store is repairable|corruption was detected") {
                 # Progress: 18% - Corruption detected
-                Write-Progress -Activity "System Health Repair" -Status "Corruption detected, preparing repair..." -PercentComplete 18
+                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 18 -Status "Corruption detected, preparing repair..."
                 Write-Log "⚠ DISM detected component store corruption - repair required" 'WARN'
                 $repairResults.DismRepairNeeded = $true
                 $repairNeeded = $true
                 
                 # Progress: 20% - Starting DISM RestoreHealth
-                Write-Progress -Activity "System Health Repair" -Status "Starting DISM RestoreHealth..." -PercentComplete 20
+                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 20 -Status "Starting DISM RestoreHealth..."
                 Write-Log "Starting DISM RestoreHealth operation..." 'INFO'
                 
                 # Progress: 25% - Running RestoreHealth
-                Write-Progress -Activity "System Health Repair" -Status "Running DISM RestoreHealth (this may take a while)..." -PercentComplete 25
+                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 25 -Status "Running DISM RestoreHealth (this may take a while)..."
                 $dismRepairStart = Get-Date
                 $dismRepairResult = & dism /online /cleanup-image /restorehealth /english 2>&1
                 
                 # Progress: 45% - Processing repair results
-                Write-Progress -Activity "System Health Repair" -Status "Processing DISM repair results..." -PercentComplete 45
+                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 45 -Status "Processing DISM repair results..."
                 $dismRepairOutput = $dismRepairResult -join "`n"
                 $dismRepairEnd = Get-Date
                 $dismDuration = $dismRepairEnd - $dismRepairStart
                 
                 # Progress: 48% - Verifying repair success
-                Write-Progress -Activity "System Health Repair" -Status "Verifying DISM repair success..." -PercentComplete 48
+                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 48 -Status "Verifying DISM repair success..."
                 Write-Log "DISM RestoreHealth completed in $($dismDuration.ToString('hh\:mm\:ss'))" 'INFO'
                 Write-Log "DISM RestoreHealth output: $dismRepairOutput" 'VERBOSE'
                 if ($LASTEXITCODE -eq 0) {
@@ -3390,22 +3560,22 @@ function Start-SystemHealthRepair {
         
         if ($dismScanOutput -match "no component store corruption detected") {
             # Progress: 18% - No corruption detected
-            Write-Progress -Activity "System Health Repair" -Status "No corruption detected..." -PercentComplete 18
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 18 -Status "No corruption detected..."
             Write-Log "✓ DISM: No component store corruption detected" 'INFO'
             $repairResults.DismRepairNeeded = $false
         }
         else {
             # Progress: 18% - Detailed analysis needed
-            Write-Progress -Activity "System Health Repair" -Status "Running detailed DISM analysis..." -PercentComplete 18
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 18 -Status "Running detailed DISM analysis..."
             Write-Log "DISM health check completed, performing detailed analysis..." 'INFO'
                 
             # Progress: 22% - Running CheckHealth
-            Write-Progress -Activity "System Health Repair" -Status "Running DISM CheckHealth..." -PercentComplete 22
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 22 -Status "Running DISM CheckHealth..."
             # Run DISM CheckHealth for more detailed analysis
             $dismCheckResult = & dism /online /cleanup-image /checkhealth /english 2>&1
                 
             # Progress: 25% - Processing CheckHealth results
-            Write-Progress -Activity "System Health Repair" -Status "Processing CheckHealth results..." -PercentComplete 25
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 25 -Status "Processing CheckHealth results..."
             $dismCheckOutput = $dismCheckResult -join "`n"
                 
             if ($dismCheckOutput -match "component store is repairable|corruption was detected") {
@@ -3426,28 +3596,28 @@ function Start-SystemHealthRepair {
 
     # SFC System File Check
     # Progress: 50% - Determining SFC necessity
-    Write-Progress -Activity "System Health Repair" -Status "Determining if SFC scan is needed..." -PercentComplete 50
+    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 50 -Status "Determining if SFC scan is needed..."
     Write-Log "Determining SFC scan necessity..." 'INFO'
     $sfcNeeded = $false
     # SFC is recommended if DISM repair was performed or CBS logs indicate issues
     if ($dismRepaired) {
         # Progress: 52% - SFC recommended
-        Write-Progress -Activity "System Health Repair" -Status "SFC scan recommended after DISM repair..." -PercentComplete 52
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 52 -Status "SFC scan recommended after DISM repair..."
         Write-Log "SFC scan recommended (DISM repair was performed)" 'INFO'
         $sfcNeeded = $true
     }
     else {
         # Progress: 52% - Analyzing CBS logs
-        Write-Progress -Activity "System Health Repair" -Status "Analyzing CBS logs..." -PercentComplete 52
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 52 -Status "Analyzing CBS logs..."
         # Check CBS logs for corruption indicators
         Write-Log "Analyzing CBS logs for system file integrity issues..." 'INFO'
         try {
             # Progress: 55% - Reading CBS log
-            Write-Progress -Activity "System Health Repair" -Status "Reading CBS log file..." -PercentComplete 55
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 55 -Status "Reading CBS log file..."
             $cbsLogPath = "$env:WINDIR\Logs\CBS\CBS.log"
             if (Test-Path $cbsLogPath) {
                 # Progress: 58% - Processing log entries
-                Write-Progress -Activity "System Health Repair" -Status "Processing log entries..." -PercentComplete 58
+                Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 58 -Status "Processing log entries..."
                 $recentEntries = Get-Content $cbsLogPath -Tail 1000 -ErrorAction SilentlyContinue
                 $corruptionIndicators = $recentEntries | Where-Object { 
                     $_ -match "corrupt|damaged|violation|failed.*verify" -and $_ -notmatch "successfully"
@@ -3479,23 +3649,23 @@ function Start-SystemHealthRepair {
         $repairResults.SfcRepairNeeded = $true
             
         # Progress: 60% - Preparing SFC scan
-        Write-Progress -Activity "System Health Repair" -Status "Preparing SFC scan..." -PercentComplete 60
+        Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 60 -Status "Preparing SFC scan..."
         Write-Log "Starting SFC /scannow operation..." 'INFO'
             
         # Progress: 65% - Running SFC scan
-        Write-Progress -Activity "System Health Repair" -Status "Running SFC /scannow (this may take a while)..." -PercentComplete 65
+        Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 65 -Status "Running SFC /scannow (this may take a while)..."
         try {
             $sfcStart = Get-Date
             $sfcResult = & sfc /scannow 2>&1
                 
             # Progress: 85% - Processing SFC results
-            Write-Progress -Activity "System Health Repair" -Status "Processing SFC scan results..." -PercentComplete 85
+            Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 85 -Status "Processing SFC scan results..."
             $sfcOutput = $sfcResult -join "`n"
             $sfcEnd = Get-Date
             $sfcDuration = $sfcEnd - $sfcStart
                 
             # Progress: 88% - Analyzing SFC results
-            Write-Progress -Activity "System Health Repair" -Status "Analyzing SFC results..." -PercentComplete 88
+            Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 88 -Status "Analyzing SFC results..."
             Write-Log "SFC scan completed in $($sfcDuration.ToString('hh\:mm\:ss'))" 'INFO'
             # Parse SFC results
             if ($sfcOutput -match "did not find any integrity violations") {
@@ -3523,14 +3693,14 @@ function Start-SystemHealthRepair {
     }
     else {
         # Progress: 60% - SFC not needed
-        Write-Progress -Activity "System Health Repair" -Status "SFC scan not needed..." -PercentComplete 60
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 60 -Status "SFC scan not needed..."
         Write-Log "✓ SFC scan not needed based on current analysis" 'INFO'
         $repairResults.SfcCheckPerformed = $false
         $repairResults.SfcRepairNeeded = $false
     }
 
     # Progress: 90% - Determining overall success
-    Write-Progress -Activity "System Health Repair" -Status "Determining overall success..." -PercentComplete 90
+    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 90 -Status "Determining overall success..."
     # Determine overall success
     $repairResults.OverallSuccess = (
         (-not $repairResults.DismRepairNeeded -or $repairResults.DismRepairSuccess) -and
@@ -3538,7 +3708,7 @@ function Start-SystemHealthRepair {
     )
 
     # Progress: 95% - Preparing final report
-    Write-Progress -Activity "System Health Repair" -Status "Preparing final report..." -PercentComplete 95
+    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 95 -Status "Preparing final report..."
     
     # Calculate total operation time and log summary
     $repairEndTime = Get-Date
@@ -3557,9 +3727,7 @@ function Start-SystemHealthRepair {
     $repairResults.EndTime = $repairEndTime
 
     # Progress: 100% - Operation complete
-    Write-Progress -Activity "System Health Repair" -Status "System health repair complete!" -PercentComplete 100
-    Start-Sleep -Milliseconds 500  # Brief pause to show completion
-    Write-Progress -Activity "System Health Repair" -Completed
+    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 100 -Status "System health repair complete!" -Completed
     
     } # End of main try block
     catch {
@@ -3669,17 +3837,17 @@ function Start-DefenderFullScan {
     
     try {
         # Progress: 5% - Checking Defender status
-        Write-Progress -Activity "Defender Full Scan" -Status "Checking Defender status..." -PercentComplete 5
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 5 -Status "Checking Defender status..."
         Write-Log "Checking Windows Defender status..." 'INFO'
         try {
             # Progress: 8% - Getting computer status
-            Write-Progress -Activity "Defender Full Scan" -Status "Getting Defender computer status..." -PercentComplete 8
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 8 -Status "Getting Defender computer status..."
             $defenderStatus = Get-MpComputerStatus
             
             # Progress: 10% - Validating antivirus status
-            Write-Progress -Activity "Defender Full Scan" -Status "Validating antivirus status..." -PercentComplete 10
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 10 -Status "Validating antivirus status..."
             if (-not $defenderStatus.AntivirusEnabled) {
-                Write-Progress -Activity "Defender Full Scan" -Completed
+                Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 100 -Status "Defender not enabled" -Completed
                 Write-Log "Windows Defender Antivirus is not enabled. Skipping scan." 'WARN'
                 return $false
             }
@@ -3689,20 +3857,20 @@ function Start-DefenderFullScan {
             Write-Log "✓ Windows Defender is enabled and available" 'INFO'
         }
         catch {
-            Write-Progress -Activity "Defender Full Scan" -Completed
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 100 -Status "Error checking status" -Completed
             Write-Log "Error checking Windows Defender status: $_. Skipping scan." 'WARN'
             return $false
         }
 
         # Progress: 12% - Preparing signature update
-        Write-Progress -Activity "Defender Full Scan" -Status "Preparing signature update..." -PercentComplete 12
+        Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 12 -Status "Preparing signature update..."
         Write-Log "Updating Windows Defender signatures..." 'INFO'
         try {
             # Progress: 15% - Updating signatures
-            Write-Progress -Activity "Defender Full Scan" -Status "Downloading and installing latest signatures..." -PercentComplete 15
+            Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 15 -Status "Downloading and installing latest signatures..."
             Update-MpSignature
             # Progress: 18% - Verifying signature update
-            Write-Progress -Activity "Defender Full Scan" -Status "Verifying signature update..." -PercentComplete 18
+            Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 18 -Status "Verifying signature update..."
             Write-Log "✓ Defender signatures updated successfully" 'INFO'
         }
         catch {
@@ -3710,17 +3878,17 @@ function Start-DefenderFullScan {
         }
 
         # Progress: 20% - Preparing full scan
-        Write-Progress -Activity "Defender Full Scan" -Status "Preparing full system scan..." -PercentComplete 20
+        Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 20 -Status "Preparing full system scan..."
         Write-Log "Starting Windows Defender full system scan..." 'INFO'
         Write-Log "Note: This operation may take considerable time depending on system size" 'INFO'
         
         try {
             # Progress: 25% - Initiating scan
-            Write-Progress -Activity "Defender Full Scan" -Status "Initiating full system scan..." -PercentComplete 25
+            Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 25 -Status "Initiating full system scan..."
             $scanResult = Start-MpScan -ScanType FullScan
             
             # Progress: 70% - Scan completed, processing results
-            Write-Progress -Activity "Defender Full Scan" -Status "Scan completed, processing results..." -PercentComplete 70
+            Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 70 -Status "Scan completed, processing results..."
             Write-Log "✓ Full system scan completed successfully" 'INFO'
             if ($scanResult) {
                 Write-Log "Scan result output: $scanResult" 'VERBOSE'
@@ -3728,25 +3896,25 @@ function Start-DefenderFullScan {
             $scanSuccess = $true
         }
         catch {
-            Write-Progress -Activity "Defender Full Scan" -Completed
+            Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 100 -Status "Scan failed" -Completed
             Write-Log "✗ Defender scan failed: $_" 'ERROR'
             return $false
         }
 
         # Progress: 72% - Getting threat information
-        Write-Progress -Activity "Defender Full Scan" -Status "Getting threat information..." -PercentComplete 72
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 72 -Status "Getting threat information..."
         Write-Log "Analyzing scan results..." 'INFO'
         try {
             # Progress: 74% - Retrieving detected threats
-            Write-Progress -Activity "Defender Full Scan" -Status "Retrieving detected threats..." -PercentComplete 74
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 74 -Status "Retrieving detected threats..."
             $threatsFound = Get-MpThreat
             
             # Progress: 76% - Getting scan history
-            Write-Progress -Activity "Defender Full Scan" -Status "Getting scan history..." -PercentComplete 76
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 76 -Status "Getting scan history..."
             $scanHistory = Get-MpScanHistory | Select-Object -First 1
             
             # Progress: 78% - Analyzing scan results
-            Write-Progress -Activity "Defender Full Scan" -Status "Analyzing scan results..." -PercentComplete 78
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 78 -Status "Analyzing scan results..."
             if ($scanHistory) {
                 Write-Log "Last scan completed: $($scanHistory.StartTime)" 'INFO'
                 Write-Log "Scan type: $($scanHistory.ScanType)" 'INFO'
@@ -3769,21 +3937,21 @@ function Start-DefenderFullScan {
         # Automatic threat cleanup if threats were found
         if ($threatsFound.Count -gt 0) {
             # Progress: 82% - Preparing threat cleanup
-            Write-Progress -Activity "Defender Full Scan" -Status "Preparing threat cleanup..." -PercentComplete 82
+            Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 82 -Status "Preparing threat cleanup..."
             Write-Log "Initiating automatic threat cleanup..." 'INFO'
             try {
                 # Progress: 85% - Removing threats
-                Write-Progress -Activity "Defender Full Scan" -Status "Removing detected threats..." -PercentComplete 85
+                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 85 -Status "Removing detected threats..."
                 Remove-MpThreat -All
                 Write-Log "✓ All detected threats have been automatically removed" 'INFO'
                 
                 # Progress: 88% - Verifying cleanup
-                Write-Progress -Activity "Defender Full Scan" -Status "Verifying threat cleanup..." -PercentComplete 88
+                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 88 -Status "Verifying threat cleanup..."
                 Start-Sleep -Seconds 3
                 $remainingThreats = Get-MpThreat
                 
                 # Progress: 90% - Cleanup verification complete
-                Write-Progress -Activity "Defender Full Scan" -Status "Cleanup verification complete..." -PercentComplete 90
+                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 90 -Status "Cleanup verification complete..."
                 if ($remainingThreats.Count -eq 0) {
                     Write-Log "✓ Threat cleanup verification successful - no threats remain" 'INFO'
                     $cleanupSuccess = $true
@@ -3799,13 +3967,13 @@ function Start-DefenderFullScan {
         }
 
         # Progress: 92% - Preparing scan report
-        Write-Progress -Activity "Defender Full Scan" -Status "Preparing scan report..." -PercentComplete 92
+        Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 92 -Status "Preparing scan report..."
         # Generate comprehensive scan report
         $scanEndTime = Get-Date
         $scanDuration = $scanEndTime - $scanStartTime
         
         # Progress: 94% - Generating summary
-        Write-Progress -Activity "Defender Full Scan" -Status "Generating scan summary..." -PercentComplete 94
+        Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 94 -Status "Generating scan summary..."
         Write-Log "[DefenderScan] COMPREHENSIVE SCAN SUMMARY:" 'INFO'
         Write-Log "- Scan start time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
         Write-Log "- Scan end time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
@@ -3815,7 +3983,7 @@ function Start-DefenderFullScan {
         Write-Log "- Automatic cleanup successful: $(if($cleanupSuccess){'Yes'}else{'No'})" 'INFO'
         
         # Progress: 96% - Creating detailed log
-        Write-Progress -Activity "Defender Full Scan" -Status "Creating detailed log file..." -PercentComplete 96
+        Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 96 -Status "Creating detailed log file..."
         # Create detailed log file in temp folder
         try {
             $scanLogPath = Join-Path $global:TempFolder "defender_scan_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -3854,7 +4022,7 @@ Scan Details:
             }
             
             # Progress: 98% - Saving log file
-            Write-Progress -Activity "Defender Full Scan" -Status "Saving detailed log file..." -PercentComplete 98
+            Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 98 -Status "Saving detailed log file..."
             $logContent | Out-File -FilePath $scanLogPath -Encoding UTF8
             Write-Log "Detailed scan report saved to: $scanLogPath" 'INFO'
         }
@@ -3863,10 +4031,7 @@ Scan Details:
         }
         
         # Progress: 100% - Complete
-        Write-Progress -Activity "Defender Full Scan" -Status "Scan operation complete!" -PercentComplete 100
-        Start-Sleep -Milliseconds 500  # Brief pause to show completion
-        # Clear progress bar
-        Write-Progress -Activity "Defender Full Scan" -Completed
+        Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 100 -Status "Scan operation complete!" -Completed
 
         return $scanSuccess
     }
