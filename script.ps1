@@ -257,13 +257,13 @@ $global:ScriptTasks = @(
     },
 
     @{ Name = 'TaskbarOptimization'; Function = { 
-            Write-Log 'Starting Taskbar Optimization task.' 'INFO'
-            Write-Host 'Starting Taskbar Optimization task.' -ForegroundColor Cyan
-            Optimize-Taskbar
-            Write-Log 'Completed Taskbar Optimization task.' 'INFO'
-            Write-Host 'Completed Taskbar Optimization task.' -ForegroundColor Green
+            Write-Log 'Starting Taskbar and Desktop UI Optimization task.' 'INFO'
+            Write-Host 'Starting Taskbar and Desktop UI Optimization task.' -ForegroundColor Cyan
+            Optimize-TaskbarAndDesktopUI
+            Write-Log 'Completed Taskbar and Desktop UI Optimization task.' 'INFO'
+            Write-Host 'Completed Taskbar and Desktop UI Optimization task.' -ForegroundColor Green
             return $true
-        }; Description = 'Optimize taskbar layout and disable web search in Start menu' 
+        }; Description = 'Hide search box, disable Task View/Chat, remove Spotlight icons, optimize taskbar and desktop UI for Windows 10/11' 
     },
 
     @{ Name = 'DesktopBackground'; Function = { 
@@ -2586,6 +2586,103 @@ function Disable-SpotlightMeetNowNewsLocation {
         Write-Log "Error disabling Spotlight/Meet Now/News/Location: $_" 'ERROR'
     }
     Write-Log "[END] Disabling Spotlight, Meet Now, News/Interests, Widgets, and Location" 'INFO'
+}
+
+# ================================================================
+# Function: Optimize-TaskbarAndDesktopUI
+# ================================================================
+# Purpose: Hides search box, disables Task View, disables Chat, removes 'Learn more about this picture' icon, and sets theme for Windows 10/11
+# Environment: Windows 10/11, Administrator required, registry modification access
+# Performance: Fast registry changes, minimal overhead
+# Dependencies: Registry access, PowerShell Set-ItemProperty, Remove-Item, theme management
+# Logic: Sets registry keys and removes icons for all features in one call
+# Features: Hides search box, disables Task View, disables Chat, removes Spotlight desktop icon, sets theme
+# ================================================================
+function Optimize-TaskbarAndDesktopUI {
+    Write-Log "[START] Optimizing Taskbar and Desktop UI (Search, Task View, Chat, Widgets, Spotlight, Theme)" 'INFO'
+    try {
+        # Hide Search Box (Windows 10/11)
+        $explorerReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"
+        if (-not (Test-Path $explorerReg)) { New-Item -Path $explorerReg -Force | Out-Null }
+        Set-ItemProperty -Path $explorerReg -Name "SearchboxTaskbarMode" -Value 0 -Force
+        Write-Log "Search box hidden from taskbar." 'INFO'
+
+        # Hide Task View button (Windows 10/11)
+        $advReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+        if (-not (Test-Path $advReg)) { New-Item -Path $advReg -Force | Out-Null }
+        Set-ItemProperty -Path $advReg -Name "ShowTaskViewButton" -Value 0 -Force
+        Write-Log "Task View button hidden from taskbar." 'INFO'
+
+        # Hide Chat (Windows 11)
+        try {
+            Set-ItemProperty -Path $advReg -Name "TaskbarMn" -Value 0 -Force
+            Write-Log "Chat (Meet Now) hidden from taskbar." 'INFO'
+        } catch {
+            Write-Log "Could not hide Chat/Meet Now: $($_.Exception.Message)" 'WARN'
+        }
+
+        # Remove 'Learn more about this picture' (Spotlight desktop icon)
+        try {
+            $desktopPath = [Environment]::GetFolderPath('Desktop')
+            $iconPattern = "Learn more about this picture*.lnk"
+            $iconFiles = Get-ChildItem -Path $desktopPath -Filter $iconPattern -ErrorAction SilentlyContinue
+            foreach ($icon in $iconFiles) {
+                Remove-Item $icon.FullName -Force -ErrorAction SilentlyContinue
+                Write-Log "Removed desktop icon: $($icon.FullName)" 'INFO'
+            }
+            
+            # Also check for other Spotlight-related desktop shortcuts
+            $spotlightPatterns = @("*Spotlight*", "*Windows Spotlight*", "*Learn more*")
+            foreach ($pattern in $spotlightPatterns) {
+                $spotlightFiles = Get-ChildItem -Path $desktopPath -Filter $pattern -ErrorAction SilentlyContinue
+                foreach ($file in $spotlightFiles) {
+                    if ($file.Extension -eq '.lnk' -or $file.Extension -eq '.url') {
+                        Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
+                        Write-Log "Removed spotlight-related desktop icon: $($file.FullName)" 'INFO'
+                    }
+                }
+            }
+        } catch {
+            Write-Log "Could not remove 'Learn more about this picture' icon: $($_.Exception.Message)" 'WARN'
+        }
+
+        # Set theme (Light or Dark, default: Light)
+        try {
+            $themeReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            if (-not (Test-Path $themeReg)) { New-Item -Path $themeReg -Force | Out-Null }
+            Set-ItemProperty -Path $themeReg -Name "AppsUseLightTheme" -Value 1 -Force
+            Set-ItemProperty -Path $themeReg -Name "SystemUsesLightTheme" -Value 1 -Force
+            Write-Log "Set Windows theme to Light." 'INFO'
+        } catch {
+            Write-Log "Could not set Windows theme: $($_.Exception.Message)" 'WARN'
+        }
+
+        # Additional Taskbar optimizations for Windows 11
+        try {
+            # Hide Widgets button (Windows 11)
+            Set-ItemProperty -Path $advReg -Name "TaskbarDa" -Value 0 -Force -ErrorAction SilentlyContinue
+            Write-Log "Widgets button hidden from taskbar (Windows 11)." 'INFO'
+            
+            # Set taskbar alignment to left (Windows 11)
+            Set-ItemProperty -Path $advReg -Name "TaskbarAl" -Value 0 -Force -ErrorAction SilentlyContinue
+            Write-Log "Taskbar alignment set to left (Windows 11)." 'INFO'
+        } catch {
+            Write-Log "Could not apply Windows 11 specific taskbar settings: $($_.Exception.Message)" 'WARN'
+        }
+
+        # Refresh Explorer to apply changes
+        try {
+            Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+            Start-Process explorer.exe
+            Write-Log "Restarted Explorer to apply UI changes." 'INFO'
+        } catch {
+            Write-Log "Could not restart Explorer: $($_.Exception.Message)" 'WARN'
+        }
+    } catch {
+        Write-Log "Error optimizing Taskbar/Desktop UI: $($_.Exception.Message)" 'ERROR'
+    }
+    Write-Log "[END] Optimizing Taskbar and Desktop UI" 'INFO'
 }
 
 # ================================================================
