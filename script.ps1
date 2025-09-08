@@ -3621,6 +3621,51 @@ function Enable-AppBrowserControl {
         try {
             Set-MpPreference -EnableControlledFolderAccess Enabled
             Write-Log "✓ Controlled Folder Access enabled" 'INFO'
+            
+            # Add current script directory and PowerShell executables to exclusions
+            try {
+                $scriptDir = $PSScriptRoot
+                $tempDir = $global:TempFolder
+                
+                # Add script directory to allowed apps/folders
+                Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.ps1" -ErrorAction SilentlyContinue
+                Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.bat" -ErrorAction SilentlyContinue
+                
+                # Add PowerShell executables to allowed applications
+                $powershellPaths = @(
+                    "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe",
+                    "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+                )
+                
+                # Add PowerShell 7+ if available
+                $ps7Paths = @(
+                    "$env:ProgramFiles\PowerShell\7\pwsh.exe",
+                    "$env:ProgramFiles(x86)\PowerShell\7\pwsh.exe"
+                )
+                
+                foreach ($path in ($powershellPaths + $ps7Paths)) {
+                    if (Test-Path $path) {
+                        Add-MpPreference -ControlledFolderAccessAllowedApplications $path -ErrorAction SilentlyContinue
+                        Write-Log "✓ Added PowerShell executable to Controlled Folder Access exclusions: $path" 'INFO'
+                    }
+                }
+                
+                # Add maintenance script paths
+                if (Test-Path $scriptDir) {
+                    Add-MpPreference -ControlledFolderAccessProtectedFolders $scriptDir -ErrorAction SilentlyContinue
+                    Write-Log "✓ Added script directory to Controlled Folder Access protected folders: $scriptDir" 'INFO'
+                }
+                
+                if (Test-Path $tempDir) {
+                    Add-MpPreference -ControlledFolderAccessAllowedApplications $tempDir -ErrorAction SilentlyContinue
+                    Write-Log "✓ Added temp directory to Controlled Folder Access exclusions: $tempDir" 'INFO'
+                }
+                
+                Write-Log "✓ Maintenance script exclusions added to Controlled Folder Access" 'INFO'
+            }
+            catch {
+                Write-Log "Warning: Could not add script exclusions to Controlled Folder Access: $_" 'WARN'
+            }
         }
         catch { $errors += "Controlled Folder Access: $_" }
 
@@ -3810,86 +3855,160 @@ function Disable-SpotlightMeetNowNewsLocation {
 # ================================================================
 function Optimize-TaskbarAndDesktopUI {
     Write-Log "[START] Optimizing Taskbar and Desktop UI (Search, Task View, Chat, Widgets, Spotlight, Theme)" 'INFO'
+    
+    # Detect Windows version for compatibility
+    $windowsVersion = [System.Environment]::OSVersion.Version
+    $isWindows11 = $windowsVersion.Build -ge 22000
+    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
+    
+    Write-Log "Detected OS: Windows $(if($isWindows11){'11'}elseif($isWindows10){'10'}else{'Unknown'}) (Build: $($windowsVersion.Build))" 'INFO'
+    
     try {
         # Hide Search Box (Windows 10/11)
         $explorerReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"
         if (-not (Test-Path $explorerReg)) { New-Item -Path $explorerReg -Force | Out-Null }
         Set-ItemProperty -Path $explorerReg -Name "SearchboxTaskbarMode" -Value 0 -Force
-        Write-Log "Search box hidden from taskbar." 'INFO'
+        Write-Log "✓ Search box hidden from taskbar" 'INFO'
 
         # Hide Task View button (Windows 10/11)
         $advReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
         if (-not (Test-Path $advReg)) { New-Item -Path $advReg -Force | Out-Null }
         Set-ItemProperty -Path $advReg -Name "ShowTaskViewButton" -Value 0 -Force
-        Write-Log "Task View button hidden from taskbar." 'INFO'
+        Write-Log "✓ Task View button hidden from taskbar" 'INFO'
 
-        # Hide Chat (Windows 11)
-        try {
-            Set-ItemProperty -Path $advReg -Name "TaskbarMn" -Value 0 -Force
-            Write-Log "Chat (Meet Now) hidden from taskbar." 'INFO'
-        }
-        catch {
-            Write-Log "Could not hide Chat/Meet Now: $($_.Exception.Message)" 'WARN'
-        }
-
-        # Remove 'Learn more about this picture' (Spotlight desktop icon)
-        try {
-            $desktopPath = [Environment]::GetFolderPath('Desktop')
-            $iconPattern = "Learn more about this picture*.lnk"
-            $iconFiles = Get-ChildItem -Path $desktopPath -Filter $iconPattern -ErrorAction SilentlyContinue
-            foreach ($icon in $iconFiles) {
-                Remove-Item $icon.FullName -Force -ErrorAction SilentlyContinue
-                Write-Log "Removed desktop icon: $($icon.FullName)" 'INFO'
+        # Windows 10 specific tweaks
+        if ($isWindows10) {
+            # Hide People button (Windows 10)
+            try {
+                Set-ItemProperty -Path $advReg -Name "PeopleBand" -Value 0 -Force -ErrorAction SilentlyContinue
+                Write-Log "✓ People button hidden from taskbar (Windows 10)" 'INFO'
+            }
+            catch {
+                Write-Log "Could not hide People button: $($_.Exception.Message)" 'WARN'
             }
             
-            # Also check for other Spotlight-related desktop shortcuts
-            $spotlightPatterns = @("*Spotlight*", "*Windows Spotlight*", "*Learn more*")
+            # Hide Meet Now button (Windows 10 specific location)
+            try {
+                $meetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+                if (-not (Test-Path $meetNowReg)) { New-Item -Path $meetNowReg -Force | Out-Null }
+                Set-ItemProperty -Path $meetNowReg -Name "HideSCAMeetNow" -Value 1 -Force
+                Write-Log "✓ Meet Now button hidden from taskbar (Windows 10)" 'INFO'
+            }
+            catch {
+                Write-Log "Could not hide Meet Now button: $($_.Exception.Message)" 'WARN'
+            }
+            
+            # Disable News and Interests (Windows 10)
+            try {
+                $newsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
+                if (-not (Test-Path $newsReg)) { New-Item -Path $newsReg -Force | Out-Null }
+                Set-ItemProperty -Path $newsReg -Name "ShellFeedsTaskbarViewMode" -Value 2 -Force
+                Write-Log "✓ News and Interests disabled (Windows 10)" 'INFO'
+            }
+            catch {
+                Write-Log "Could not disable News and Interests: $($_.Exception.Message)" 'WARN'
+            }
+        }
+
+        # Windows 11 specific tweaks
+        if ($isWindows11) {
+            # Hide Chat (Teams) button (Windows 11)
+            try {
+                Set-ItemProperty -Path $advReg -Name "TaskbarMn" -Value 0 -Force
+                Write-Log "✓ Chat (Teams) button hidden from taskbar (Windows 11)" 'INFO'
+            }
+            catch {
+                Write-Log "Could not hide Chat button: $($_.Exception.Message)" 'WARN'
+            }
+            
+            # Hide Widgets button (Windows 11)
+            try {
+                Set-ItemProperty -Path $advReg -Name "TaskbarDa" -Value 0 -Force
+                Write-Log "✓ Widgets button hidden from taskbar (Windows 11)" 'INFO'
+            }
+            catch {
+                Write-Log "Could not hide Widgets button: $($_.Exception.Message)" 'WARN'
+            }
+            
+            # Set taskbar alignment to left (Windows 11)
+            try {
+                Set-ItemProperty -Path $advReg -Name "TaskbarAl" -Value 0 -Force
+                Write-Log "✓ Taskbar alignment set to left (Windows 11)" 'INFO'
+            }
+            catch {
+                Write-Log "Could not set taskbar alignment: $($_.Exception.Message)" 'WARN'
+            }
+        }
+
+        # Remove 'Learn more about this picture' and other Spotlight desktop icons (Windows 10/11)
+        try {
+            $desktopPath = [Environment]::GetFolderPath('Desktop')
+            $spotlightPatterns = @(
+                "Learn more about this picture*.lnk",
+                "*Spotlight*.lnk",
+                "*Windows Spotlight*.lnk", 
+                "*Learn more*.lnk",
+                "*Windows tips*.lnk"
+            )
+            
+            $removedCount = 0
             foreach ($pattern in $spotlightPatterns) {
-                $spotlightFiles = Get-ChildItem -Path $desktopPath -Filter $pattern -ErrorAction SilentlyContinue
-                foreach ($file in $spotlightFiles) {
-                    if ($file.Extension -eq '.lnk' -or $file.Extension -eq '.url') {
-                        Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
-                        Write-Log "Removed spotlight-related desktop icon: $($file.FullName)" 'INFO'
-                    }
+                $iconFiles = Get-ChildItem -Path $desktopPath -Filter $pattern -ErrorAction SilentlyContinue
+                foreach ($icon in $iconFiles) {
+                    Remove-Item $icon.FullName -Force -ErrorAction SilentlyContinue
+                    Write-Log "✓ Removed desktop icon: $($icon.Name)" 'INFO'
+                    $removedCount++
                 }
+            }
+            
+            if ($removedCount -eq 0) {
+                Write-Log "No Spotlight desktop icons found to remove" 'INFO'
+            } else {
+                Write-Log "✓ Removed $removedCount Spotlight-related desktop icons" 'INFO'
             }
         }
         catch {
-            Write-Log "Could not remove 'Learn more about this picture' icon: $($_.Exception.Message)" 'WARN'
+            Write-Log "Could not remove Spotlight desktop icons: $($_.Exception.Message)" 'WARN'
         }
 
-        # Set theme (Light or Dark, default: Light)
+        # Set theme (Light theme for better visibility)
         try {
             $themeReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
             if (-not (Test-Path $themeReg)) { New-Item -Path $themeReg -Force | Out-Null }
             Set-ItemProperty -Path $themeReg -Name "AppsUseLightTheme" -Value 1 -Force
             Set-ItemProperty -Path $themeReg -Name "SystemUsesLightTheme" -Value 1 -Force
-            Write-Log "Set Windows theme to Light." 'INFO'
+            Write-Log "✓ Windows theme set to Light mode" 'INFO'
         }
         catch {
             Write-Log "Could not set Windows theme: $($_.Exception.Message)" 'WARN'
         }
 
-        # Additional Taskbar optimizations for Windows 11
+        # Additional Windows 10/11 compatible optimizations
         try {
-            # Hide Widgets button (Windows 11)
-            Set-ItemProperty -Path $advReg -Name "TaskbarDa" -Value 0 -Force -ErrorAction SilentlyContinue
-            Write-Log "Widgets button hidden from taskbar (Windows 11)." 'INFO'
+            # Disable Windows tips and suggestions
+            $contentReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+            if (-not (Test-Path $contentReg)) { New-Item -Path $contentReg -Force | Out-Null }
+            Set-ItemProperty -Path $contentReg -Name "SoftLandingEnabled" -Value 0 -Force
+            Set-ItemProperty -Path $contentReg -Name "SystemPaneSuggestionsEnabled" -Value 0 -Force
+            Set-ItemProperty -Path $contentReg -Name "SubscribedContent-338388Enabled" -Value 0 -Force
+            Write-Log "✓ Windows tips and suggestions disabled" 'INFO'
             
-            # Set taskbar alignment to left (Windows 11)
-            Set-ItemProperty -Path $advReg -Name "TaskbarAl" -Value 0 -Force -ErrorAction SilentlyContinue
-            Write-Log "Taskbar alignment set to left (Windows 11)." 'INFO'
+            # Hide recently added apps in Start Menu
+            Set-ItemProperty -Path $advReg -Name "Start_TrackDocs" -Value 0 -Force -ErrorAction SilentlyContinue
+            Write-Log "✓ Recently added apps tracking disabled" 'INFO'
         }
         catch {
-            Write-Log "Could not apply Windows 11 specific taskbar settings: $($_.Exception.Message)" 'WARN'
+            Write-Log "Could not apply additional optimizations: $($_.Exception.Message)" 'WARN'
         }
 
         # Refresh Explorer to apply changes
         try {
+            Write-Log "Restarting Explorer to apply UI changes..." 'INFO'
             Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
+            Start-Sleep -Seconds 3
             Start-Process explorer.exe
-            Write-Log "Restarted Explorer to apply UI changes." 'INFO'
+            Start-Sleep -Seconds 2
+            Write-Log "✓ Explorer restarted successfully" 'INFO'
         }
         catch {
             Write-Log "Could not restart Explorer: $($_.Exception.Message)" 'WARN'
@@ -3898,6 +4017,9 @@ function Optimize-TaskbarAndDesktopUI {
     catch {
         Write-Log "Error optimizing Taskbar/Desktop UI: $($_.Exception.Message)" 'ERROR'
     }
+    
+    Write-Log "[END] Taskbar and Desktop UI optimization completed" 'INFO'
+}
     Write-Log "[END] Optimizing Taskbar and Desktop UI" 'INFO'
 }
 
