@@ -356,8 +356,16 @@ $global:ScriptTasks = @(
             if (-not $global:Config.SkipPendingRestartCheck) {
                 try {
                     $pendingRestart = $false
+                    $restartReason = "System maintenance operations"
                 
-                    # Check multiple indicators for pending restart
+                    # Check global Windows Updates reboot requirement first
+                    if ($global:SystemSettings.Reboot.Required -eq $true) {
+                        $pendingRestart = $true
+                        $restartReason = "Windows Updates installation ($($global:SystemSettings.Reboot.Source))"
+                        Write-Log "Pending restart detected from Windows Updates at $($global:SystemSettings.Reboot.Timestamp)" 'INFO'
+                    }
+                
+                    # Check multiple registry indicators for pending restart
                     $registryKeys = @(
                         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
                         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
@@ -368,32 +376,19 @@ $global:ScriptTasks = @(
                         if (Test-Path $key) {
                             $pendingRestart = $true
                             Write-Log "Pending restart detected: $key" 'INFO'
+                            if ($restartReason -eq "System maintenance operations") {
+                                $restartReason = "Registry pending operations"
+                            }
                             break
                         }
                     }
                 
                     if ($pendingRestart) {
                         Write-Host '⚠️  SYSTEM RESTART REQUIRED' -ForegroundColor Yellow
-                        Write-Host 'Windows maintenance operations require a system restart to complete.' -ForegroundColor Yellow
-                        Write-Host 'Starting 120-second countdown. Press Ctrl+C to abort restart.' -ForegroundColor Yellow
-                    
-                        for ($i = 120; $i -gt 0; $i--) {
-                            Write-Host "🔄 Restart in $i seconds... (Ctrl+C to abort)" -ForegroundColor Yellow
-                            Start-Sleep -Seconds 1
-                        }
-                    
-                        Write-Host '🔄 Initiating system restart...' -ForegroundColor Green
-                        try {
-                            Start-Process -FilePath "shutdown.exe" -ArgumentList "/r", "/t", "10", "/c", "System restart required to complete maintenance operations" -NoNewWindow
-                            Write-Log 'System restart initiated successfully.' 'INFO'
-                            return $true
-                        }
-                        catch {
-                            Write-Log "Failed to initiate system restart: $_" 'ERROR'
-                            Write-Host "❌ Failed to initiate restart: $_" -ForegroundColor Red
-                            Write-Host 'Please restart your system manually.' -ForegroundColor Yellow
-                            return $false
-                        }
+                        Write-Host "Reason: $restartReason" -ForegroundColor Yellow
+                        Write-Host '📋 Restart will be handled at the end of the script.' -ForegroundColor Green
+                        Write-Log "Restart requirement detected: $restartReason. Restart will be handled at script completion." 'INFO'
+                        return $true
                     }
                     else {
                         Write-Host '✓ No pending restart required' -ForegroundColor Green
@@ -412,7 +407,7 @@ $global:ScriptTasks = @(
                 Write-Host 'Pending restart check skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Check for pending system restarts with 120-second countdown and abort option' 
+        }; Description = 'Check for pending restart requirements without initiating restart (restart handled at script end)' 
     }
 )
 
@@ -541,6 +536,11 @@ $global:SystemSettings = @{
         UpdateInterval  = 100  # Progress update every 100ms
         RefreshRate     = 10      # 10 updates per second
         ActivityTimeout = 30  # 30 seconds for activity timeouts
+    }
+    Reboot = @{
+        Required = $false     # Track if reboot is required
+        Source = $null        # Track what triggered the reboot requirement
+        Timestamp = $null     # When the reboot requirement was detected
     }
 }
 
@@ -2090,6 +2090,50 @@ function Remove-AppxProvisionedPackageCompatible {
 }
 
 # ================================================================
+# Function: Invoke-WindowsUpdateWithSuppressionHelpers
+# ================================================================
+# Purpose: Helper function to completely suppress Windows Update prompts and handle reboot detection
+# Environment: PowerShell job isolation, environment variable control
+# Logic: Uses job isolation and environment controls to prevent interactive prompts
+# Performance: Isolated execution prevents UI blocking and prompt interference
+# Dependencies: PSWindowsUpdate module, job management capabilities
+# ================================================================
+function Invoke-WindowsUpdateWithSuppressionHelpers {
+    try {
+        # Set environment variables to suppress PSWindowsUpdate prompts
+        $env:PSWINDOWSUPDATE_REBOOT = "Never"
+        $env:SUPPRESSPROMPTS = "True"
+        
+        # Use PowerShell job to isolate the update process
+        $updateJob = Start-Job -ScriptBlock {
+            # Import module in job context
+            Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
+            
+            # Install updates with comprehensive suppression
+            Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -Verbose:$false 2>$null
+        }
+        
+        # Wait for job completion with timeout
+        $timeout = $global:SystemSettings.Timeouts.Updates
+        $installResult = $updateJob | Wait-Job -Timeout $timeout | Receive-Job -ErrorAction SilentlyContinue
+        
+        # Clean up job
+        $updateJob | Remove-Job -Force -ErrorAction SilentlyContinue
+        
+        return $installResult
+    }
+    catch {
+        Write-Log "Windows Update job execution failed: $_" 'ERROR'
+        return $null
+    }
+    finally {
+        # Clean up environment variables
+        Remove-Item -Path 'env:PSWINDOWSUPDATE_REBOOT' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:SUPPRESSPROMPTS' -ErrorAction SilentlyContinue
+    }
+}
+
+# ================================================================
 # Function: Install-WindowsUpdatesCompatible
 # ================================================================
 # Purpose: Windows Update management with PowerShell 7 native support and comprehensive error handling
@@ -2148,10 +2192,56 @@ function Install-WindowsUpdatesCompatible {
                 Write-Log "Found $updateCount available updates (Total size: $totalSizeMB MB)." 'INFO'
                 Write-TaskProgress "Installing $updateCount Windows Updates" 75
         
-                # Install updates
+                # Install updates with comprehensive reboot suppression
                 try {
-                    Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -ErrorAction Stop
-                    Write-Log "Windows Updates installation completed successfully." 'SUCCESS'
+                    # Use helper function to suppress all prompts
+                    $installResult = Invoke-WindowsUpdateWithSuppressionHelpers
+                    
+                    # Check if reboot is required after installation
+                    $rebootRequired = $false
+                    try {
+                        # Check multiple indicators for reboot requirement
+                        $rebootKeys = @(
+                            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
+                            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"
+                        )
+                        
+                        foreach ($key in $rebootKeys) {
+                            if (Test-Path $key) {
+                                $rebootRequired = $true
+                                break
+                            }
+                        }
+                        
+                        # Also check if Get-WindowsUpdateRebootStatus exists and indicates reboot
+                        if (Get-Command Get-WindowsUpdateRebootStatus -ErrorAction SilentlyContinue) {
+                            $rebootStatus = Get-WindowsUpdateRebootStatus -ErrorAction SilentlyContinue
+                            if ($rebootStatus -and $rebootStatus.RebootRequired) {
+                                $rebootRequired = $true
+                            }
+                        }
+                        
+                        # Check the installation result for reboot indicators
+                        if ($installResult -and $installResult.RebootRequired) {
+                            $rebootRequired = $true
+                        }
+                    }
+                    catch {
+                        Write-Log "Could not check reboot status: $_" 'WARN'
+                    }
+                    
+                    # Set global reboot tracking if required
+                    if ($rebootRequired) {
+                        $global:SystemSettings.Reboot.Required = $true
+                        $global:SystemSettings.Reboot.Source = "Windows Updates"
+                        $global:SystemSettings.Reboot.Timestamp = Get-Date
+                        Write-Log "Windows Updates installed successfully. System restart will be handled at the end of the script." 'INFO'
+                        Write-Host "⚠️  Windows Updates installed - restart will be prompted at the end." -ForegroundColor Yellow
+                    }
+                    else {
+                        Write-Log "Windows Updates installed successfully. No restart required." 'SUCCESS'
+                    }
+                    
                     Write-TaskProgress "Windows Updates completed" 100
                     return $true
                 }
@@ -5682,85 +5772,178 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host "⏱️  Total time: $totalExecutionTime" -ForegroundColor Cyan
     Write-Host "📄 Reports available in: $PSScriptRoot" -ForegroundColor Cyan
     Write-Host
-    Write-Host "Press any key to keep this window open, or wait 60 seconds to auto-cleanup and close..." -ForegroundColor Yellow
 
-    $repoFolder = $PSScriptRoot
-    $countdown = 60
-    $abort = $false
-
-    # Enhanced countdown with accurate timing and reliable key detection
-    for ($i = $countdown; $i -ge 1; $i--) {
-        # Display countdown with carriage return for overwrite
-        Write-Host "`rClosing in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
+    # Check if Windows Update reboot is required
+    $rebootRequired = $false
+    $rebootReason = ""
+    
+    # Check global Windows Updates reboot requirement first
+    if ($global:SystemSettings.Reboot.Required -eq $true) {
+        $rebootRequired = $true
+        $rebootReason = "Windows Updates installation ($($global:SystemSettings.Reboot.Source))"
+        Write-Host "⚠️  SYSTEM RESTART REQUIRED" -ForegroundColor Yellow
+        Write-Host "Reason: $rebootReason" -ForegroundColor Yellow
+        Write-Host "📋 All maintenance tasks have been completed." -ForegroundColor Green
+    }
+    
+    # Also check registry-based reboot indicators
+    if (-not $rebootRequired) {
+        $registryKeys = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+            "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations"
+        )
         
-        # Check for key press every 100ms for 1 second (10 checks total)
-        for ($j = 0; $j -lt 10; $j++) {
-            Start-Sleep -Milliseconds 100
-            if ([System.Console]::KeyAvailable) {
-                $null = [System.Console]::ReadKey($true)
-                $abort = $true
+        foreach ($key in $registryKeys) {
+            if (Test-Path $key) {
+                $rebootRequired = $true
+                $rebootReason = "System maintenance operations"
+                Write-Host "⚠️  SYSTEM RESTART REQUIRED" -ForegroundColor Yellow
+                Write-Host "Reason: Registry pending operations detected" -ForegroundColor Yellow
                 break
             }
         }
-        
-        if ($abort) { break }
     }
     
-    Write-Host ""  # New line after countdown
-    
-    if (-not $abort) {
-        Write-Host "No key pressed. Removing repository folder and closing window..." -ForegroundColor Red
-        try {
-            # Navigate to parent directory before removing repository folder
-            $parentPath = Split-Path -Path $repoFolder -Parent
-            if (Test-Path -Path $parentPath) {
-                Set-Location -Path $parentPath
-                Write-Host "Changed directory to: $parentPath" -ForegroundColor Yellow
+    if ($rebootRequired) {
+        # Handle reboot scenario
+        Write-Host "Starting 60-second countdown for automatic restart. Press any key to abort." -ForegroundColor Yellow
+        Write-Host "This restart will complete the installation and apply all changes." -ForegroundColor Cyan
+        Write-Host
+
+        $countdown = 60
+        $abort = $false
+
+        # Reboot countdown with key detection
+        for ($i = $countdown; $i -ge 1; $i--) {
+            Write-Host "`r🔄 Automatic restart in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
+            
+            # Check for key press every 100ms for 1 second (10 checks total)
+            for ($j = 0; $j -lt 10; $j++) {
+                Start-Sleep -Milliseconds 100
+                if ([System.Console]::KeyAvailable) {
+                    $null = [System.Console]::ReadKey($true)
+                    $abort = $true
+                    break
+                }
             }
             
-            # Remove repository folder with enhanced error handling
-            if (Test-Path -Path $repoFolder) {
-                Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
-                Write-Host "Repository folder removed: $repoFolder" -ForegroundColor Green
-            }
-            else {
-                Write-Host "Repository folder not found: $repoFolder" -ForegroundColor Yellow
-            }
-        }
-        catch {
-            Write-Host "Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
+            if ($abort) { break }
         }
         
-        # Enhanced window closure with multiple strategies
-        Write-Host "Closing terminal window..." -ForegroundColor Red
-        Start-Sleep -Milliseconds 500  # Brief pause for user to see message
+        Write-Host ""  # New line after countdown
         
-        try {
-            # Strategy 1: Force close current PowerShell process (most reliable)
-            if ($Host.Name -eq 'ConsoleHost') {
+        if (-not $abort) {
+            Write-Host "🔄 Initiating system restart..." -ForegroundColor Green
+            Write-Host "Your system will restart automatically to complete the updates." -ForegroundColor Cyan
+            try {
+                Start-Process -FilePath "shutdown.exe" -ArgumentList "/r", "/t", "10", "/c", "$rebootReason" -NoNewWindow
+                Write-Log 'System restart initiated successfully from final closure.' 'INFO'
+                
+                # Clear the global reboot flag since we're restarting
+                $global:SystemSettings.Reboot.Required = $false
+                $global:SystemSettings.Reboot.Source = $null
+                $global:SystemSettings.Reboot.Timestamp = $null
+                
+                Write-Host "System restart initiated. Closing in 5 seconds..." -ForegroundColor Green
+                Start-Sleep -Seconds 5
                 [System.Environment]::Exit(0)
             }
-            # Strategy 2: Use Stop-Process for ConsoleHost
-            elseif ($Host.Name -eq 'ConsoleHost') {
-                Stop-Process -Id $PID -Force
-            }
-            # Strategy 3: Standard exit for other hosts
-            else {
-                exit 0
+            catch {
+                Write-Host "❌ Failed to initiate restart: $_" -ForegroundColor Red
+                Write-Host "Please restart your system manually to complete the updates." -ForegroundColor Yellow
+                Read-Host -Prompt 'Press Enter to close this window...'
             }
         }
-        catch {
-            # Fallback: Try alternative closure methods
-            try {
-                Stop-Process -Id $PID -Force
-            }
-            catch {
-                exit 0
-            }
+        else {
+            Write-Host "`rRestart aborted by user." -ForegroundColor Green
+            Write-Host "⚠️  Important: Your system still requires a restart to complete Windows Updates." -ForegroundColor Yellow
+            Write-Host "Please restart manually when convenient to apply all changes." -ForegroundColor Yellow
+            Read-Host -Prompt 'Press Enter to close this window...'
         }
     }
     else {
-        Write-Host "`rCleanup aborted by user. Window will remain open." -ForegroundColor Green
-        Read-Host -Prompt 'Press Enter to close this window...'
+        # Handle normal cleanup scenario (no reboot required)
+        Write-Host "Press any key to keep this window open, or wait 60 seconds to auto-cleanup and close..." -ForegroundColor Yellow
+
+        $repoFolder = $PSScriptRoot
+        $countdown = 60
+        $abort = $false
+
+        # Enhanced countdown with accurate timing and reliable key detection
+        for ($i = $countdown; $i -ge 1; $i--) {
+            # Display countdown with carriage return for overwrite
+            Write-Host "`rClosing in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
+            
+            # Check for key press every 100ms for 1 second (10 checks total)
+            for ($j = 0; $j -lt 10; $j++) {
+                Start-Sleep -Milliseconds 100
+                if ([System.Console]::KeyAvailable) {
+                    $null = [System.Console]::ReadKey($true)
+                    $abort = $true
+                    break
+                }
+            }
+            
+            if ($abort) { break }
+        }
+        
+        Write-Host ""  # New line after countdown
+        
+        if (-not $abort) {
+            Write-Host "No key pressed. Removing repository folder and closing window..." -ForegroundColor Red
+            try {
+                # Navigate to parent directory before removing repository folder
+                $parentPath = Split-Path -Path $repoFolder -Parent
+                if (Test-Path -Path $parentPath) {
+                    Set-Location -Path $parentPath
+                    Write-Host "Changed directory to: $parentPath" -ForegroundColor Yellow
+                }
+                
+                # Remove repository folder with enhanced error handling
+                if (Test-Path -Path $repoFolder) {
+                    Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
+                    Write-Host "Repository folder removed: $repoFolder" -ForegroundColor Green
+                }
+                else {
+                    Write-Host "Repository folder not found: $repoFolder" -ForegroundColor Yellow
+                }
+            }
+            catch {
+                Write-Host "Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
+            }
+            
+            # Enhanced window closure with multiple strategies
+            Write-Host "Closing terminal window..." -ForegroundColor Red
+            Start-Sleep -Milliseconds 500  # Brief pause for user to see message
+            
+            try {
+                # Strategy 1: Force close current PowerShell process (most reliable)
+                if ($Host.Name -eq 'ConsoleHost') {
+                    [System.Environment]::Exit(0)
+                }
+                # Strategy 2: Use Stop-Process for ConsoleHost
+                elseif ($Host.Name -eq 'ConsoleHost') {
+                    Stop-Process -Id $PID -Force
+                }
+                # Strategy 3: Standard exit for other hosts
+                else {
+                    exit 0
+                }
+            }
+            catch {
+                # Fallback: Try alternative closure methods
+                try {
+                    Stop-Process -Id $PID -Force
+                }
+                catch {
+                    exit 0
+                }
+            }
+        }
+        else {
+            Write-Host "`rCleanup aborted by user. Window will remain open." -ForegroundColor Green
+            Read-Host -Prompt 'Press Enter to close this window...'
+        }
     }
 }
