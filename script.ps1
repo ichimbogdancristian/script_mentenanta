@@ -537,9 +537,9 @@ $global:SystemSettings = @{
         RefreshRate     = 10      # 10 updates per second
         ActivityTimeout = 30  # 30 seconds for activity timeouts
     }
-    Reboot = @{
-        Required = $false     # Track if reboot is required
-        Source = $null        # Track what triggered the reboot requirement
+    Reboot   = @{
+        Required  = $false     # Track if reboot is required
+        Source    = $null        # Track what triggered the reboot requirement
         Timestamp = $null     # When the reboot requirement was detected
     }
 }
@@ -2482,7 +2482,7 @@ function Get-ExtensiveSystemInventory {
                                     }
                                     
                                     $apps += $appHash
-                                    Write-LogFile "[Inventory] Parsed: $($appHash.Name) | $($appHash.Id) | $($appHash.Version) | $($appHash.Source)"
+                                    Write-Log "[Inventory] Parsed: $($appHash.Name) | $($appHash.Id) | $($appHash.Version) | $($appHash.Source)" 'VERBOSE'
                                 }
                             }
                         }
@@ -5898,24 +5898,62 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
                 if (Test-Path -Path $parentPath) {
                     Set-Location -Path $parentPath
                     Write-Host "Changed directory to: $parentPath" -ForegroundColor Yellow
+                    
+                    # Allow time for directory change to take effect
+                    Start-Sleep -Milliseconds 500
                 }
                 
-                # Remove repository folder with enhanced error handling
+                # Force garbage collection to release any file handles
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                [System.GC]::Collect()
+                
+                # Additional delay to ensure all handles are released
+                Start-Sleep -Seconds 1
+                
+                # Remove repository folder with enhanced error handling and multiple attempts
                 if (Test-Path -Path $repoFolder) {
-                    Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
-                    Write-Host "Repository folder removed: $repoFolder" -ForegroundColor Green
+                    Write-Host "Attempting to remove repository folder: $repoFolder" -ForegroundColor Yellow
+                    
+                    # First attempt: Standard removal
+                    try {
+                        Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
+                        Write-Host "✓ Repository folder removed successfully: $repoFolder" -ForegroundColor Green
+                    }
+                    catch {
+                        Write-Host "First removal attempt failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                        
+                        # Second attempt: Use robocopy for stubborn folders
+                        try {
+                            Write-Host "Attempting alternative removal method..." -ForegroundColor Yellow
+                            $tempEmptyDir = Join-Path $parentPath "temp_empty_$(Get-Random)"
+                            New-Item -Path $tempEmptyDir -ItemType Directory -Force | Out-Null
+                            
+                            # Use robocopy to mirror empty directory (effectively deleting)
+                            $robocopyResult = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$repoFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
+                            
+                            # Clean up temp directory and try final removal
+                            Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
+                            Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
+                            Write-Host "✓ Repository folder removed using alternative method: $repoFolder" -ForegroundColor Green
+                        }
+                        catch {
+                            Write-Host "❌ Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
+                            Write-Host "⚠️  Manual removal may be required: $repoFolder" -ForegroundColor Yellow
+                        }
+                    }
                 }
                 else {
                     Write-Host "Repository folder not found: $repoFolder" -ForegroundColor Yellow
                 }
             }
             catch {
-                Write-Host "Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "❌ Unexpected error during cleanup: $($_.Exception.Message)" -ForegroundColor Red
             }
             
             # Enhanced window closure with multiple strategies
-            Write-Host "Closing terminal window..." -ForegroundColor Red
-            Start-Sleep -Milliseconds 500  # Brief pause for user to see message
+            Write-Host "Closing terminal window in 3 seconds..." -ForegroundColor Red
+            Start-Sleep -Seconds 3  # Give user time to see the results
             
             try {
                 # Strategy 1: Force close current PowerShell process (most reliable)
