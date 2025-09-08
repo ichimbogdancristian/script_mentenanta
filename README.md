@@ -1,10 +1,15 @@
 ## Project Structure & Refactoring (2025 Edition)
 
 ### Key Updates (2025)
+- **Code Defragmentation Completed**: Implemented modular architecture with reusable utility functions
+- **Section 1.5 Added**: Centralized configuration and constants management
+- **Reusable Utilities**: 8+ new utility functions for common patterns (diff processing, package management, app detection)
+- **Categorized App Lists**: Organized bloatware and essential apps into logical categories for better maintainability
+- **Standardized Package Management**: Unified wrapper functions for Winget/Chocolatey operations with timeout protection
 - Legacy self-update logic fully removed from both scripts
 - All logging now uses robust timestamping (LOG_TIMESTAMP)
 - script.bat: Only handles environment, dependencies, repo update, and launching
-- script.ps1: Only handles maintenance, reporting, and analytics
+- script.ps1: Only handles maintenance, reporting, and analytics with enhanced modular architecture
 - No redundant admin, version, or dependency checks in script.ps1
 - All status messages are current and relevant; no legacy or comparison messages
 
@@ -39,11 +44,22 @@ This maintenance script provides an enterprise-grade solution for Windows system
 - **System Health Checks**: Pre/post operation system state comparisons
 - **Action Logging**: Detailed tracking of all performed operations with timestamps
 
-### ⚙️ **Modular Architecture**
+### ⚙️ **Modular Architecture (2025 Enhanced)**
 - **Task-Based Structure**: $global:ScriptTasks array with standardized task definitions
-- **Configuration System**: Granular controls for each maintenance operation
+- **Centralized Configuration**: Section 1.5 with categorized app lists and settings
+- **Reusable Utilities**: 8+ defragmented utility functions for common operations
 - **Environment Awareness**: Auto-detection of system capabilities and requirements
 - **Conditional Execution**: Smart dependency tracking and prerequisite validation
+
+### 🔧 **Reusable Utility Functions (New)**
+- **Compare-InstallationDiff**: Generic diff-based comparison for app installations
+- **Get-StandardizedAppInventory**: Unified app inventory across multiple sources
+- **Invoke-PackageManagerCommand**: Standardized package manager operations
+- **Start-ProgressTrackedOperation**: Consistent progress tracking templates
+- **Find-AppInstallations**: Universal app detection with pattern matching
+- **Remove-AppsByPattern**: Batch app removal with safety checks
+- **Install-AppsByCategory**: Category-based app installation system
+- **Test-CommandAvailable**: Efficient command availability detection
 
 ## 🔧 **Core Maintenance Capabilities**
 
@@ -124,6 +140,29 @@ script_mentenanta/
 - **⚡ Performance**: script.ps1 focuses purely on maintenance without setup overhead
 - **🔄 Maintainability**: Clear responsibility boundaries for easier development
 - **📈 Scalability**: Easy to extend either environment setup or maintenance features
+
+### 🏗️ **Enhanced Code Structure (2025)**
+
+#### **📂 Modular Section Architecture**
+```powershell
+# Section 1: Script Header & Metadata
+# Section 1.5: Configuration & Constants ← NEW
+# Section 2: Core Infrastructure  
+# Section 3: System Utilities ← ENHANCED with reusable functions
+# Section 4: Bloatware Management
+# Section 5: Essential Apps Management
+# Section 6: System Maintenance Tasks
+# Section 7: Reporting & Analytics
+# Section 8: Script Execution & Initialization
+```
+
+#### **🔧 New Reusable Functions Architecture**
+- **Centralized Configuration**: All app lists, settings, and constants in Section 1.5
+- **Standardized Package Management**: Unified `Invoke-PackageManagerCommand` wrapper
+- **Generic Diff Processing**: `Compare-InstallationDiff` for any installation comparison
+- **Universal App Detection**: `Find-AppInstallations` across all sources
+- **Batch Operations**: `Remove-AppsByPattern` and `Install-AppsByCategory`
+- **Progress Templates**: `Start-ProgressTrackedOperation` for consistent UX
 
 ## 🚀 **Quick Start**
 
@@ -488,11 +527,57 @@ All keys are optional. The script intelligently handles missing configurations.
 - **Modular logging functions** for different output needs
 - **Comprehensive documentation** and clear code structure
 
+## 📄 **Enhanced Output Files (2025 Edition)**
+
+### **📊 Primary Reports**
+- **`maintenance_report.txt`** - Human-readable comprehensive report with execution summary
+- **`maintenance_report.json`** - Structured JSON report for programmatic analysis
+- **`maintenance.log`** - Clean timestamped operational logs
+
+### **📁 System Analysis Files**
+- **`inventory.json`** - Complete system state and app inventory
+- **`temp_lists_summary.txt`** - Summary of all temporary analysis files
+
+### **📦 Categorized App Lists (New)**
+- **`bloatware.json`** - Categorized bloatware lists with statistics:
+  ```json
+  {
+    "Categories": {
+      "OEMBloatware": ["Acer.AcerPowerManagement", ...],
+      "GamingSocial": ["king.com.CandyCrush", ...],
+      "MicrosoftBloatware": ["Microsoft.3DBuilder", ...],
+      "XboxGaming": ["Microsoft.XboxApp", ...],
+      "SecurityBloatware": ["Avast.AvastFreeAntivirus", ...]
+    },
+    "UnifiedList": [...],
+    "TotalCount": 150
+  }
+  ```
+- **`essential_apps.json`** - Categorized essential apps with metadata:
+  ```json
+  {
+    "Categories": {
+      "WebBrowsers": [{"Name": "Google Chrome", "Winget": "Google.Chrome", ...}],
+      "DocumentTools": [{"Name": "Adobe Acrobat Reader", ...}],
+      "FileManagers": [{"Name": "Total Commander", ...}],
+      "SystemTools": [{"Name": "PowerShell 7", ...}]
+    },
+    "UnifiedList": [...],
+    "TotalCount": 13
+  }
+  ```
+
+### **🔍 Analysis Files**
+- **`*_diff*.json`** - Before/after comparison files for app operations
+- **`*_audit*.json`** - Detailed audit trails for compliance and debugging
+
 ## Troubleshooting
 - **Check `maintenance.log`** for clean, timestamped operational logs without progress noise.
 - **Review `maintenance_report.txt`** for the unified enhanced report with comprehensive system information, execution metrics, and performance data.
 - **Examine `inventory.json`** for comprehensive system state information.
-- **Check temp list files** (JSON format) for bloatware/essential app operation details.
+- **Check categorized app lists** (`bloatware.json`, `essential_apps.json`) for organized app categories and statistics.
+- **Review diff files** (`*_diff*.json`) for before/after comparison analysis.
+- **Check temp list summary** (`temp_lists_summary.txt`) for overview of all analysis files.
 - **Ensure PowerShell 7.5.2+** is installed for optimal performance (script will auto-fallback if needed).
 - **Verify all dependencies** are installed and up to date.
 
