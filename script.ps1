@@ -4769,35 +4769,74 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     $countdown = 60
     $abort = $false
 
-    # Use .NET Console for non-blocking key detection
-    [System.Console]::TreatControlCAsInput = $true
+    # Enhanced countdown with accurate timing and reliable key detection
     for ($i = $countdown; $i -ge 1; $i--) {
-        Write-Host ("\rClosing in $i seconds... Press any key to abort.") -NoNewline
-        Start-Sleep -Milliseconds 1000
-        if ([System.Console]::KeyAvailable) {
-            $null = [System.Console]::ReadKey($true)
-            $abort = $true
-            break
+        # Display countdown with carriage return for overwrite
+        Write-Host "`rClosing in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
+        
+        # Check for key press every 100ms for 1 second (10 checks total)
+        for ($j = 0; $j -lt 10; $j++) {
+            Start-Sleep -Milliseconds 100
+            if ([System.Console]::KeyAvailable) {
+                $null = [System.Console]::ReadKey($true)
+                $abort = $true
+                break
+            }
         }
+        
+        if ($abort) { break }
     }
-    Write-Host ""
+    
+    Write-Host ""  # New line after countdown
+    
     if (-not $abort) {
         Write-Host "No key pressed. Removing repository folder and closing window..." -ForegroundColor Red
         try {
-            Set-Location -Path ([System.IO.Path]::GetPathRoot($repoFolder))
-            Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Host "Repository folder removed: $repoFolder" -ForegroundColor Red
+            # Navigate to parent directory before removing repository folder
+            $parentPath = Split-Path -Path $repoFolder -Parent
+            if (Test-Path -Path $parentPath) {
+                Set-Location -Path $parentPath
+                Write-Host "Changed directory to: $parentPath" -ForegroundColor Yellow
+            }
+            
+            # Remove repository folder with enhanced error handling
+            if (Test-Path -Path $repoFolder) {
+                Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
+                Write-Host "Repository folder removed: $repoFolder" -ForegroundColor Green
+            } else {
+                Write-Host "Repository folder not found: $repoFolder" -ForegroundColor Yellow
+            }
         } catch {
-            Write-Host "Failed to remove repository folder: $_" -ForegroundColor Red
+            Write-Host "Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
         }
-        # Close the terminal window (works for most hosts)
-        if ($Host.Name -eq 'ConsoleHost') {
-            Stop-Process -Id $PID -Force
-        } elseif ($Host.UI.RawUI.WindowTitle) {
-            exit
+        
+        # Enhanced window closure with multiple strategies
+        Write-Host "Closing terminal window..." -ForegroundColor Red
+        Start-Sleep -Milliseconds 500  # Brief pause for user to see message
+        
+        try {
+            # Strategy 1: Force close current PowerShell process (most reliable)
+            if ($Host.Name -eq 'ConsoleHost') {
+                [System.Environment]::Exit(0)
+            }
+            # Strategy 2: Use Stop-Process for ConsoleHost
+            elseif ($Host.Name -eq 'ConsoleHost') {
+                Stop-Process -Id $PID -Force
+            }
+            # Strategy 3: Standard exit for other hosts
+            else {
+                exit 0
+            }
+        } catch {
+            # Fallback: Try alternative closure methods
+            try {
+                Stop-Process -Id $PID -Force
+            } catch {
+                exit 0
+            }
         }
     } else {
-        Write-Host "Cleanup aborted by user. Window will remain open." -ForegroundColor Green
+        Write-Host "`rCleanup aborted by user. Window will remain open." -ForegroundColor Green
         Read-Host -Prompt 'Press Enter to close this window...'
     }
 }
