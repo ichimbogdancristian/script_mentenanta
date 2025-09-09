@@ -4932,15 +4932,15 @@ function Start-SystemHealthRepair {
     # Progress: 100% - Operation complete
     Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 100 -Status "System health repair complete!" -Completed
     
-} # End of main try block
-catch {
-    Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
-    $repairResults.OverallSuccess = $false
-}
-finally {
-    # Generate comprehensive repair report
-    $repairEndTime = Get-Date
-    $totalDuration = $repairEndTime - $repairStartTime
+    } # End of main try block
+    catch {
+        Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
+        $repairResults.OverallSuccess = $false
+    }
+    finally {
+        # Generate comprehensive repair report
+        $repairEndTime = Get-Date
+        $totalDuration = $repairEndTime - $repairStartTime
         
     Write-Log "[SystemHealthRepair] COMPREHENSIVE REPAIR SUMMARY:" 'INFO'
     Write-Log "- Repair start time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
