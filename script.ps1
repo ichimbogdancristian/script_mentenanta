@@ -167,23 +167,6 @@ $global:ScriptTasks = @(
         }; Description = 'Collect comprehensive system information for analysis and reporting' 
     },
 
-    @{ Name = 'EventLogAnalysis'; Function = { 
-            Write-Log 'Starting Event Log Analysis task.' 'INFO'
-            Write-Host 'Starting Event Log Analysis task.' -ForegroundColor Cyan
-            if (-not $global:Config.SkipEventLogAnalysis) { 
-                Get-EventLogAnalysis
-                Write-Log 'Completed Event Log Analysis task.' 'INFO'
-                Write-Host 'Completed Event Log Analysis task.' -ForegroundColor Green
-                return $true
-            }
-            else { 
-                Write-Log 'Event Log Analysis skipped by configuration.' 'INFO'
-                Write-Host 'Event Log Analysis skipped by configuration.' -ForegroundColor Yellow
-                return $false
-            } 
-        }; Description = 'Analyze Event Viewer and CBS logs for system errors (last 96 hours)' 
-    },
-
     @{ Name = 'RemoveBloatware'; Function = { 
             Write-Log 'Starting Bloatware Removal task.' 'INFO'
             Write-Host 'Starting Bloatware Removal task.' -ForegroundColor Cyan
@@ -4475,6 +4458,419 @@ try {
 }
 
 # ================================================================
+# Function: Clear-OldRestorePoints
+# ================================================================
+# Purpose: Clean up old system restore points while keeping a minimum of 5 recent restore points for safety
+# Environment: Windows 10/11, Administrator privileges required, System Restore feature enabled
+# Performance: Fast enumeration and selective removal, intelligent size calculation, comprehensive logging
+# Dependencies: Administrator privileges, System Restore feature availability, Get-ComputerRestorePoint cmdlet
+# Logic: Enumerates restore points, keeps 5 most recent, removes older ones with detailed logging and space calculation
+# Features: Safety minimum (5 points), space tracking, detailed logging, error handling, restore point analysis
+# ================================================================
+function Clear-OldRestorePoints {
+    Write-Log "[START] System Restore Points Cleanup - Keep Minimum 5 Recent Points" 'INFO'
+    
+    try {
+        # Check if we have administrator privileges
+        if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+            Write-Log "Administrator privileges required for restore point cleanup. Skipping..." 'WARN'
+            return $false
+        }
+        
+        Write-Log "Enumerating system restore points..." 'INFO'
+        
+        # Get all restore points sorted by creation time (newest first)
+        $allRestorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Sort-Object CreationTime -Descending
+        
+        if (-not $allRestorePoints) {
+            Write-Log "No system restore points found on this system" 'INFO'
+            return $true
+        }
+        
+        $totalPoints = $allRestorePoints.Count
+        Write-Log "Found $totalPoints restore points on system" 'INFO'
+        
+        # Log details of all restore points for audit trail
+        Write-Log "=== RESTORE POINTS AUDIT ===" 'INFO'
+        $pointIndex = 1
+        foreach ($point in $allRestorePoints) {
+            $pointDate = $point.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
+            $pointType = $point.RestorePointType
+            $pointDescription = $point.Description
+            Write-Log "[$pointIndex] Created: $pointDate | Type: $pointType | Description: $pointDescription" 'INFO'
+            $pointIndex++
+        }
+        Write-Log "=== END RESTORE POINTS AUDIT ===" 'INFO'
+        
+        # Keep minimum of 5 restore points for safety
+        $minimumKeep = 5
+        
+        if ($totalPoints -le $minimumKeep) {
+            Write-Log "Current restore point count ($totalPoints) is at or below safety minimum ($minimumKeep). No cleanup needed." 'INFO'
+            return $true
+        }
+        
+        # Identify points to remove (all except the 5 most recent)
+        $pointsToKeep = $allRestorePoints | Select-Object -First $minimumKeep
+        $pointsToRemove = $allRestorePoints | Select-Object -Skip $minimumKeep
+        
+        $removeCount = $pointsToRemove.Count
+        Write-Log "Cleanup plan: Keep $minimumKeep most recent points, remove $removeCount older points" 'INFO'
+        
+        # Log points that will be kept
+        Write-Log "=== RESTORE POINTS TO KEEP ===" 'INFO'
+        $keepIndex = 1
+        foreach ($point in $pointsToKeep) {
+            $pointDate = $point.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
+            $pointDescription = $point.Description
+            Write-Log "[$keepIndex] KEEPING: $pointDate | $pointDescription" 'INFO'
+            $keepIndex++
+        }
+        
+        # Log points that will be removed
+        Write-Log "=== RESTORE POINTS TO REMOVE ===" 'INFO'
+        $removeIndex = 1
+        foreach ($point in $pointsToRemove) {
+            $pointDate = $point.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
+            $pointDescription = $point.Description
+            Write-Log "[$removeIndex] REMOVING: $pointDate | $pointDescription" 'INFO'
+            $removeIndex++
+        }
+        Write-Log "=== END CLEANUP PLAN ===" 'INFO'
+        
+        # Estimate disk space before cleanup
+        $systemDrive = $env:SystemDrive
+        $diskBefore = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$systemDrive'" -ErrorAction SilentlyContinue
+        if ($diskBefore) {
+            $freeSpaceBeforeGB = [math]::Round($diskBefore.FreeSpace / 1GB, 2)
+            Write-Log "Disk space before cleanup: $freeSpaceBeforeGB GB free" 'INFO'
+        }
+        
+        # Perform cleanup with detailed logging
+        $removedCount = 0
+        $failedCount = 0
+        
+        Write-Log "Starting restore point removal process..." 'INFO'
+        
+        foreach ($point in $pointsToRemove) {
+            $pointDate = $point.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
+            $pointDescription = $point.Description
+            
+            try {
+                Write-Log "Removing restore point: $pointDate | $pointDescription" 'INFO'
+                Remove-ComputerRestorePoint -RestorePoint $point -ErrorAction Stop
+                $removedCount++
+                Write-Log "✓ Successfully removed restore point: $pointDate" 'INFO'
+            }
+            catch {
+                $failedCount++
+                Write-Log "✗ Failed to remove restore point: $pointDate | Error: $_" 'ERROR'
+            }
+        }
+        
+        # Calculate disk space after cleanup
+        Start-Sleep -Seconds 2  # Allow filesystem to update
+        $diskAfter = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$systemDrive'" -ErrorAction SilentlyContinue
+        if ($diskAfter) {
+            $freeSpaceAfterGB = [math]::Round($diskAfter.FreeSpace / 1GB, 2)
+            $spaceFreedGB = [math]::Round($freeSpaceAfterGB - $freeSpaceBeforeGB, 2)
+            Write-Log "Disk space after cleanup: $freeSpaceAfterGB GB free" 'INFO'
+            if ($spaceFreedGB -gt 0) {
+                Write-Log "✓ Disk space freed by cleanup: $spaceFreedGB GB" 'INFO'
+            }
+        }
+        
+        # Final summary
+        Write-Log "=== RESTORE POINT CLEANUP SUMMARY ===" 'INFO'
+        Write-Log "Original count: $totalPoints restore points" 'INFO'
+        Write-Log "Target count: $minimumKeep restore points (safety minimum)" 'INFO'
+        Write-Log "Successfully removed: $removedCount restore points" 'INFO'
+        Write-Log "Failed to remove: $failedCount restore points" 'INFO'
+        Write-Log "Final count: $($totalPoints - $removedCount) restore points" 'INFO'
+        if ($diskAfter -and $spaceFreedGB -gt 0) {
+            Write-Log "Disk space recovered: $spaceFreedGB GB" 'INFO'
+        }
+        Write-Log "=== END CLEANUP SUMMARY ===" 'INFO'
+        
+        # Return success if we removed at least some points or if no removal was needed
+        $success = ($removedCount -gt 0) -or ($removeCount -eq 0)
+        
+        if ($success) {
+            Write-Log "Restore point cleanup completed successfully" 'INFO'
+        }
+        else {
+            Write-Log "Restore point cleanup completed with errors - no points were removed" 'WARN'
+        }
+        
+        return $success
+    }
+    catch {
+        Write-Log "Unexpected error during restore point cleanup: $_" 'ERROR'
+        return $false
+    }
+    finally {
+        Write-Log "[END] System Restore Points Cleanup" 'INFO'
+    }
+}
+
+# ================================================================
+# Function: Get-EventLogAnalysis
+# ================================================================
+# Purpose: Parse and analyze CBS logs and Event Viewer errors from the last 96 hours in human-readable format
+# Environment: Windows 10/11, file system access to log directories, Event Log service availability
+# Performance: Optimized log parsing with time filtering, efficient error categorization, structured output
+# Dependencies: CBS log file access, Event Viewer access, file system permissions, Get-WinEvent cmdlet
+# Logic: Time-based filtering (96 hours), error categorization, human-readable formatting, comprehensive logging
+# Features: Multiple log source analysis, error categorization, time filtering, detailed reporting, maintenance log integration
+# ================================================================
+function Get-EventLogAnalysis {
+    Write-Log "[START] Event Log and CBS Analysis - Last 96 Hours" 'INFO'
+    
+    try {
+        # Calculate time range - last 96 hours
+        $hoursBack = 96
+        $startTime = (Get-Date).AddHours(-$hoursBack)
+        Write-Log "Analyzing logs from $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) to present (last $hoursBack hours)" 'INFO'
+        
+        $errorSummary = @{
+            CBSErrors = @()
+            SystemErrors = @()
+            ApplicationErrors = @()
+            SecurityErrors = @()
+            TotalErrors = 0
+            AnalysisTime = Get-Date
+        }
+        
+        # PART 1: CBS Log Analysis
+        Write-Log "=== CBS LOG ANALYSIS ===" 'INFO'
+        Write-Log "Analyzing Component-Based Servicing (CBS) logs..." 'INFO'
+        
+        try {
+            $cbsLogPath = "$env:WINDIR\Logs\CBS\CBS.log"
+            
+            if (Test-Path $cbsLogPath) {
+                Write-Log "Reading CBS log file: $cbsLogPath" 'INFO'
+                
+                # Read CBS log and filter by time range
+                $cbsLogContent = Get-Content $cbsLogPath -ErrorAction SilentlyContinue
+                $cbsErrors = @()
+                
+                foreach ($line in $cbsLogContent) {
+                    # Parse CBS log timestamp and content
+                    if ($line -match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}') {
+                        try {
+                            $timestampStr = $line.Substring(0, 19)
+                            $timestamp = [DateTime]::ParseExact($timestampStr, 'yyyy-MM-dd HH:mm:ss', $null)
+                            
+                            if ($timestamp -ge $startTime) {
+                                # Look for error indicators in CBS logs
+                                if ($line -match 'Error|Failed|Corrupt|Cannot|Unable|Exception|Failure') {
+                                    $cbsErrors += @{
+                                        Timestamp = $timestamp
+                                        Message = $line.Substring(20).Trim()
+                                        Type = "CBS Error"
+                                    }
+                                }
+                            }
+                        }
+                        catch {
+                            # Skip lines with invalid timestamps
+                            continue
+                        }
+                    }
+                }
+                
+                $errorSummary.CBSErrors = $cbsErrors
+                Write-Log "Found $($cbsErrors.Count) CBS errors in the last $hoursBack hours" 'INFO'
+                
+                # Log top 10 CBS errors for maintenance log
+                if ($cbsErrors.Count -gt 0) {
+                    Write-Log "=== TOP CBS ERRORS ===" 'INFO'
+                    $topCBSErrors = $cbsErrors | Sort-Object Timestamp -Descending | Select-Object -First 10
+                    foreach ($error in $topCBSErrors) {
+                        Write-Log "[CBS] $($error.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - $($error.Message)" 'WARN'
+                    }
+                }
+                else {
+                    Write-Log "✓ No CBS errors found in the specified time range" 'INFO'
+                }
+            }
+            else {
+                Write-Log "CBS log file not found: $cbsLogPath" 'WARN'
+            }
+        }
+        catch {
+            Write-Log "Error analyzing CBS logs: $_" 'ERROR'
+        }
+        
+        # PART 2: System Event Log Analysis
+        Write-Log "=== SYSTEM EVENT LOG ANALYSIS ===" 'INFO'
+        Write-Log "Analyzing System Event Log for errors..." 'INFO'
+        
+        try {
+            $systemErrors = Get-WinEvent -FilterHashtable @{
+                LogName = 'System'
+                Level = 1, 2  # Critical and Error levels
+                StartTime = $startTime
+            } -ErrorAction SilentlyContinue | Select-Object -First 50
+            
+            if ($systemErrors) {
+                $parsedSystemErrors = @()
+                foreach ($event in $systemErrors) {
+                    $parsedSystemErrors += @{
+                        Timestamp = $event.TimeCreated
+                        EventID = $event.Id
+                        Source = $event.ProviderName
+                        Level = if ($event.Level -eq 1) { "Critical" } else { "Error" }
+                        Message = $event.Message.Split("`n")[0].Trim()  # First line only
+                    }
+                }
+                
+                $errorSummary.SystemErrors = $parsedSystemErrors
+                Write-Log "Found $($parsedSystemErrors.Count) system errors in the last $hoursBack hours" 'INFO'
+                
+                # Log top 10 system errors
+                Write-Log "=== TOP SYSTEM ERRORS ===" 'INFO'
+                $topSystemErrors = $parsedSystemErrors | Sort-Object Timestamp -Descending | Select-Object -First 10
+                foreach ($error in $topSystemErrors) {
+                    Write-Log "[SYSTEM] $($error.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($error.EventID) ($($error.Level)) - $($error.Source): $($error.Message)" 'WARN'
+                }
+            }
+            else {
+                Write-Log "✓ No critical system errors found in the specified time range" 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Error analyzing System Event Log: $_" 'ERROR'
+        }
+        
+        # PART 3: Application Event Log Analysis
+        Write-Log "=== APPLICATION EVENT LOG ANALYSIS ===" 'INFO'
+        Write-Log "Analyzing Application Event Log for errors..." 'INFO'
+        
+        try {
+            $appErrors = Get-WinEvent -FilterHashtable @{
+                LogName = 'Application'
+                Level = 1, 2  # Critical and Error levels
+                StartTime = $startTime
+            } -ErrorAction SilentlyContinue | Select-Object -First 30
+            
+            if ($appErrors) {
+                $parsedAppErrors = @()
+                foreach ($event in $appErrors) {
+                    $parsedAppErrors += @{
+                        Timestamp = $event.TimeCreated
+                        EventID = $event.Id
+                        Source = $event.ProviderName
+                        Level = if ($event.Level -eq 1) { "Critical" } else { "Error" }
+                        Message = $event.Message.Split("`n")[0].Trim()  # First line only
+                    }
+                }
+                
+                $errorSummary.ApplicationErrors = $parsedAppErrors
+                Write-Log "Found $($parsedAppErrors.Count) application errors in the last $hoursBack hours" 'INFO'
+                
+                # Log top 10 application errors
+                Write-Log "=== TOP APPLICATION ERRORS ===" 'INFO'
+                $topAppErrors = $parsedAppErrors | Sort-Object Timestamp -Descending | Select-Object -First 10
+                foreach ($error in $topAppErrors) {
+                    Write-Log "[APPLICATION] $($error.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($error.EventID) ($($error.Level)) - $($error.Source): $($error.Message)" 'WARN'
+                }
+            }
+            else {
+                Write-Log "✓ No critical application errors found in the specified time range" 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Error analyzing Application Event Log: $_" 'ERROR'
+        }
+        
+        # PART 4: Security Event Log Analysis (Critical Only)
+        Write-Log "=== SECURITY EVENT LOG ANALYSIS ===" 'INFO'
+        Write-Log "Analyzing Security Event Log for critical issues..." 'INFO'
+        
+        try {
+            $securityErrors = Get-WinEvent -FilterHashtable @{
+                LogName = 'Security'
+                Level = 1  # Critical level only
+                StartTime = $startTime
+            } -ErrorAction SilentlyContinue | Select-Object -First 20
+            
+            if ($securityErrors) {
+                $parsedSecurityErrors = @()
+                foreach ($event in $securityErrors) {
+                    $parsedSecurityErrors += @{
+                        Timestamp = $event.TimeCreated
+                        EventID = $event.Id
+                        Source = $event.ProviderName
+                        Level = "Critical"
+                        Message = $event.Message.Split("`n")[0].Trim()  # First line only
+                    }
+                }
+                
+                $errorSummary.SecurityErrors = $parsedSecurityErrors
+                Write-Log "Found $($parsedSecurityErrors.Count) critical security events in the last $hoursBack hours" 'INFO'
+                
+                # Log all security errors (should be rare)
+                if ($parsedSecurityErrors.Count -gt 0) {
+                    Write-Log "=== CRITICAL SECURITY EVENTS ===" 'INFO'
+                    foreach ($error in $parsedSecurityErrors) {
+                        Write-Log "[SECURITY] $($error.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($error.EventID) (Critical) - $($error.Source): $($error.Message)" 'ERROR'
+                    }
+                }
+            }
+            else {
+                Write-Log "✓ No critical security events found in the specified time range" 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Error analyzing Security Event Log: $_" 'ERROR'
+        }
+        
+        # PART 5: Summary and Analysis
+        $errorSummary.TotalErrors = $errorSummary.CBSErrors.Count + $errorSummary.SystemErrors.Count + $errorSummary.ApplicationErrors.Count + $errorSummary.SecurityErrors.Count
+        
+        Write-Log "=== EVENT LOG ANALYSIS SUMMARY ===" 'INFO'
+        Write-Log "Analysis period: Last $hoursBack hours ($($startTime.ToString('yyyy-MM-dd HH:mm:ss')) to $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss')))" 'INFO'
+        Write-Log "CBS errors found: $($errorSummary.CBSErrors.Count)" 'INFO'
+        Write-Log "System errors found: $($errorSummary.SystemErrors.Count)" 'INFO'
+        Write-Log "Application errors found: $($errorSummary.ApplicationErrors.Count)" 'INFO'
+        Write-Log "Security critical events found: $($errorSummary.SecurityErrors.Count)" 'INFO'
+        Write-Log "Total errors/events analyzed: $($errorSummary.TotalErrors)" 'INFO'
+        
+        # Save detailed analysis to temp folder for reporting
+        try {
+            $analysisPath = Join-Path $global:TempFolder 'event_log_analysis.json'
+            $errorSummary | ConvertTo-Json -Depth 5 | Out-File -FilePath $analysisPath -Encoding UTF8
+            Write-Log "Detailed event log analysis saved to: $analysisPath" 'INFO'
+        }
+        catch {
+            Write-Log "Failed to save detailed analysis: $_" 'WARN'
+        }
+        
+        # Health assessment
+        if ($errorSummary.TotalErrors -eq 0) {
+            Write-Log "✓ System appears healthy - no significant errors found in recent logs" 'INFO'
+        }
+        elseif ($errorSummary.TotalErrors -le 10) {
+            Write-Log "⚠ Minor issues detected - review errors above for potential concerns" 'WARN'
+        }
+        else {
+            Write-Log "⚠ Multiple errors detected - system may require attention" 'WARN'
+        }
+        
+        return $true
+    }
+    catch {
+        Write-Log "Unexpected error during event log analysis: $_" 'ERROR'
+        return $false
+    }
+    finally {
+        Write-Log "[END] Event Log and CBS Analysis" 'INFO'
+    }
+}
+
+# ================================================================
 # Function: Install-WindowsUpdatesCompatible
 # ================================================================
 # Purpose: PowerShell 5.1 compatible Windows Updates installation with enhanced error handling and progress tracking
@@ -5115,229 +5511,876 @@ $(if($repairNeeded){'- Consider restarting your computer to ensure all changes t
 # ================================================================
 # Function: Start-DefenderFullScan
 # ================================================================
-# Purpose: Performs a comprehensive Windows Defender full system scan with automatic threat removal and detailed reporting
+# Purpose: Performs a comprehensive Windows Defender full system scan with automatic threat removal and extensive detailed logging
 # Environment: Windows 10/11, Administrator required, Windows Defender enabled, PowerShell 7+ optimized
 # Performance: Long-running operation (may take hours), progress tracking, comprehensive threat detection and cleanup
 # Dependencies: Windows Defender Antivirus, Get-MpComputerStatus, Start-MpScan, Get-MpThreat, Remove-MpThreat
-# Logic: Defender status verification, signature updates, full system scan, threat detection, automatic cleanup, detailed reporting
-# Features: Real-time status monitoring, automatic threat removal, scan history tracking, comprehensive logging and reporting
+# Logic: Defender status verification, signature updates, full system scan, threat detection, automatic cleanup, extensive detailed reporting
+# Features: Real-time status monitoring, automatic threat removal, scan history tracking, comprehensive logging with detailed configuration analysis
 # ================================================================
 function Start-DefenderFullScan {
-    Write-Log "[START] Windows Defender Full System Scan with Automatic Threat Cleanup" 'INFO'
+    Write-Log "[START] Windows Defender Full System Scan with Automatic Threat Cleanup - Enhanced Logging Mode" 'INFO'
     
     $scanStartTime = Get-Date
     $scanSuccess = $false
     $threatsFound = @()
     $cleanupSuccess = $true
+    $detailedLogData = @{}
     
     try {
-        # Progress: 5% - Checking Defender status
-        Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 5 -Status "Checking Defender status..."
-        Write-Log "Checking Windows Defender status..." 'INFO'
+        # Progress: 3% - Collecting comprehensive Defender configuration
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Configuration" -PercentComplete 3 -Status "Collecting comprehensive Defender configuration..."
+        Write-Log "[DefenderConfig] Collecting comprehensive Windows Defender configuration..." 'INFO'
+        
+        try {
+            # Progress: 5% - Getting detailed Defender preferences
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Configuration" -PercentComplete 5 -Status "Getting detailed Defender preferences..."
+            $defenderPrefs = Get-MpPreference
+            Write-Log "[DefenderConfig] Defender preferences collected successfully" 'INFO'
+            Write-Log "[DefenderConfig] Exclusion Paths: $($defenderPrefs.ExclusionPath.Count) paths configured" 'INFO'
+            Write-Log "[DefenderConfig] Exclusion Extensions: $($defenderPrefs.ExclusionExtension.Count) extensions configured" 'INFO'
+            Write-Log "[DefenderConfig] Exclusion Processes: $($defenderPrefs.ExclusionProcess.Count) processes configured" 'INFO'
+            Write-Log "[DefenderConfig] Real-time Scan Direction: $($defenderPrefs.RealTimeScanDirection)" 'INFO'
+            Write-Log "[DefenderConfig] Scan Archive Max Size: $($defenderPrefs.ScanArchiveMaxSize) MB" 'INFO'
+            Write-Log "[DefenderConfig] Scan Archive Max Depth: $($defenderPrefs.ScanArchiveMaxDepth)" 'INFO'
+            Write-Log "[DefenderConfig] Cloud Block Level: $($defenderPrefs.CloudBlockLevel)" 'INFO'
+            Write-Log "[DefenderConfig] Cloud Extended Timeout: $($defenderPrefs.CloudExtendedTimeout) seconds" 'INFO'
+            $detailedLogData.Preferences = $defenderPrefs
+        }
+        catch {
+            Write-Log "[DefenderConfig] Warning: Could not retrieve Defender preferences - $_" 'WARN'
+        }
+
+        # Progress: 7% - Checking Defender status
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 7 -Status "Checking comprehensive Defender status..."
+        Write-Log "[DefenderStatus] Performing comprehensive Windows Defender status analysis..." 'INFO'
         try {
             # Progress: 8% - Getting computer status
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 8 -Status "Getting Defender computer status..."
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 8 -Status "Getting detailed computer status..."
             $defenderStatus = Get-MpComputerStatus
             
+            # Enhanced status logging
+            Write-Log "[DefenderStatus] === COMPREHENSIVE DEFENDER STATUS ===" 'INFO'
+            Write-Log "[DefenderStatus] Antivirus Enabled: $($defenderStatus.AntivirusEnabled)" 'INFO'
+            Write-Log "[DefenderStatus] AMService Enabled: $($defenderStatus.AMServiceEnabled)" 'INFO'
+            Write-Log "[DefenderStatus] Antispyware Enabled: $($defenderStatus.AntispywareEnabled)" 'INFO'
+            Write-Log "[DefenderStatus] Real-time Protection Enabled: $($defenderStatus.RealTimeProtectionEnabled)" 'INFO'
+            Write-Log "[DefenderStatus] On Access Protection Enabled: $($defenderStatus.OnAccessProtectionEnabled)" 'INFO'
+            Write-Log "[DefenderStatus] IO AV Protection Enabled: $($defenderStatus.IoavProtectionEnabled)" 'INFO'
+            Write-Log "[DefenderStatus] Network Inspection System Enabled: $($defenderStatus.NISEnabled)" 'INFO'
+            Write-Log "[DefenderStatus] Behavior Monitor Enabled: $($defenderStatus.BehaviorMonitorEnabled)" 'INFO'
+            Write-Log "[DefenderStatus] Antivirus Signature Version: $($defenderStatus.AntivirusSignatureVersion)" 'INFO'
+            Write-Log "[DefenderStatus] Antivirus Signature Last Updated: $($defenderStatus.AntivirusSignatureLastUpdated)" 'INFO'
+            Write-Log "[DefenderStatus] Antispyware Signature Version: $($defenderStatus.AntispywareSignatureVersion)" 'INFO'
+            Write-Log "[DefenderStatus] Antispyware Signature Last Updated: $($defenderStatus.AntispywareSignatureLastUpdated)" 'INFO'
+            Write-Log "[DefenderStatus] NIS Signature Version: $($defenderStatus.NISSignatureVersion)" 'INFO'
+            Write-Log "[DefenderStatus] NIS Signature Last Updated: $($defenderStatus.NISSignatureLastUpdated)" 'INFO'
+            Write-Log "[DefenderStatus] Quick Scan Start Time: $($defenderStatus.QuickScanStartTime)" 'INFO'
+            Write-Log "[DefenderStatus] Quick Scan End Time: $($defenderStatus.QuickScanEndTime)" 'INFO'
+            Write-Log "[DefenderStatus] Full Scan Start Time: $($defenderStatus.FullScanStartTime)" 'INFO'
+            Write-Log "[DefenderStatus] Full Scan End Time: $($defenderStatus.FullScanEndTime)" 'INFO'
+            Write-Log "[DefenderStatus] Quick Scan Age: $($defenderStatus.QuickScanAge) days" 'INFO'
+            Write-Log "[DefenderStatus] Full Scan Age: $($defenderStatus.FullScanAge) days" 'INFO'
+            Write-Log "[DefenderStatus] Antivirus Signature Age: $($defenderStatus.AntivirusSignatureAge) days" 'INFO'
+            $detailedLogData.Status = $defenderStatus
+            
             # Progress: 10% - Validating antivirus status
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 10 -Status "Validating antivirus status..."
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 10 -Status "Validating comprehensive antivirus status..."
             if (-not $defenderStatus.AntivirusEnabled) {
                 Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 100 -Status "Defender not enabled" -Completed
-                Write-Log "Windows Defender Antivirus is not enabled. Skipping scan." 'WARN'
+                Write-Log "[DefenderStatus] ✗ Windows Defender Antivirus is not enabled. Skipping scan." 'WARN'
                 return $false
             }
             if (-not $defenderStatus.RealTimeProtectionEnabled) {
-                Write-Log "Warning: Real-time protection is disabled" 'WARN'
+                Write-Log "[DefenderStatus] ⚠ Warning: Real-time protection is disabled" 'WARN'
             }
-            Write-Log "✓ Windows Defender is enabled and available" 'INFO'
+            if (-not $defenderStatus.BehaviorMonitorEnabled) {
+                Write-Log "[DefenderStatus] ⚠ Warning: Behavior monitor is disabled" 'WARN'
+            }
+            if ($defenderStatus.AntivirusSignatureAge -gt 7) {
+                Write-Log "[DefenderStatus] ⚠ Warning: Antivirus signatures are $($defenderStatus.AntivirusSignatureAge) days old" 'WARN'
+            }
+            Write-Log "[DefenderStatus] ✓ Windows Defender is enabled and operational" 'INFO'
         }
         catch {
             Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 100 -Status "Error checking status" -Completed
-            Write-Log "Error checking Windows Defender status: $_. Skipping scan." 'WARN'
+            Write-Log "[DefenderStatus] ✗ Error checking Windows Defender status: $_. Skipping scan." 'WARN'
             return $false
         }
 
-        # Progress: 12% - Preparing signature update
-        Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 12 -Status "Preparing signature update..."
-        Write-Log "Updating Windows Defender signatures..." 'INFO'
+        # Progress: 12% - Checking scan history before signature update
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan History" -PercentComplete 12 -Status "Analyzing previous scan history..."
+        Write-Log "[ScanHistory] Analyzing previous scan history for reference..." 'INFO'
+        try {
+            $scanHistory = Get-MpScanHistory | Select-Object -First 5
+            if ($scanHistory) {
+                Write-Log "[ScanHistory] === RECENT SCAN HISTORY ===" 'INFO'
+                foreach ($scan in $scanHistory) {
+                    Write-Log "[ScanHistory] Scan Type: $($scan.ScanType) | Start: $($scan.StartTime) | End: $($scan.EndTime) | Result: $($scan.Result)" 'INFO'
+                    if ($scan.ScanParameters) {
+                        Write-Log "[ScanHistory] Parameters: $($scan.ScanParameters)" 'INFO'
+                    }
+                }
+                $detailedLogData.ScanHistory = $scanHistory
+            } else {
+                Write-Log "[ScanHistory] No previous scan history found" 'INFO'
+            }
+        }
+        catch {
+            Write-Log "[ScanHistory] Warning: Could not retrieve scan history - $_" 'WARN'
+        }
+
+        # Progress: 14% - Preparing signature update with detailed logging
+        Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 14 -Status "Preparing signature update with detailed analysis..."
+        Write-Log "[SignatureUpdate] === SIGNATURE UPDATE PROCESS ===" 'INFO'
+        Write-Log "[SignatureUpdate] Current signature versions before update:" 'INFO'
+        Write-Log "[SignatureUpdate] - Antivirus: $($defenderStatus.AntivirusSignatureVersion) (Age: $($defenderStatus.AntivirusSignatureAge) days)" 'INFO'
+        Write-Log "[SignatureUpdate] - Antispyware: $($defenderStatus.AntispywareSignatureVersion) (Age: $($defenderStatus.AntispywareSignatureAge) days)" 'INFO'
+        Write-Log "[SignatureUpdate] - NIS: $($defenderStatus.NISSignatureVersion) (Age: $($defenderStatus.NISSignatureAge) days)" 'INFO'
+        
         try {
             # Progress: 15% - Updating signatures
             Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 15 -Status "Downloading and installing latest signatures..."
+            $updateStartTime = Get-Date
             Update-MpSignature
+            $updateEndTime = Get-Date
+            $updateDuration = $updateEndTime - $updateStartTime
+            
             # Progress: 18% - Verifying signature update
             Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 18 -Status "Verifying signature update..."
-            Write-Log "✓ Defender signatures updated successfully" 'INFO'
+            $updatedStatus = Get-MpComputerStatus
+            Write-Log "[SignatureUpdate] ✓ Signature update completed in $($updateDuration.TotalSeconds) seconds" 'INFO'
+            Write-Log "[SignatureUpdate] Updated signature versions:" 'INFO'
+            Write-Log "[SignatureUpdate] - Antivirus: $($updatedStatus.AntivirusSignatureVersion) (Updated: $($updatedStatus.AntivirusSignatureLastUpdated))" 'INFO'
+            Write-Log "[SignatureUpdate] - Antispyware: $($updatedStatus.AntispywareSignatureVersion) (Updated: $($updatedStatus.AntispywareSignatureLastUpdated))" 'INFO'
+            Write-Log "[SignatureUpdate] - NIS: $($updatedStatus.NISSignatureVersion) (Updated: $($updatedStatus.NISSignatureLastUpdated))" 'INFO'
+            $detailedLogData.SignatureUpdate = @{
+                Duration = $updateDuration
+                OldVersions = @{
+                    Antivirus = $defenderStatus.AntivirusSignatureVersion
+                    Antispyware = $defenderStatus.AntispywareSignatureVersion
+                    NIS = $defenderStatus.NISSignatureVersion
+                }
+                NewVersions = @{
+                    Antivirus = $updatedStatus.AntivirusSignatureVersion
+                    Antispyware = $updatedStatus.AntispywareSignatureVersion
+                    NIS = $updatedStatus.NISSignatureVersion
+                }
+            }
         }
         catch {
-            Write-Log "Warning: Failed to update signatures - $_" 'WARN'
+            Write-Log "[SignatureUpdate] ⚠ Warning: Failed to update signatures - $_" 'WARN'
         }
 
-        # Progress: 20% - Preparing full scan
-        Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 20 -Status "Preparing full system scan..."
-        Write-Log "Starting Windows Defender full system scan..." 'INFO'
-        Write-Log "Note: This operation may take considerable time depending on system size" 'INFO'
+        # Progress: 20% - Preparing full scan with enhanced logging
+        Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 20 -Status "Preparing comprehensive full system scan..."
+        Write-Log "[ScanPreparation] === FULL SYSTEM SCAN PREPARATION ===" 'INFO'
+        Write-Log "[ScanPreparation] Scan Type: Full System Scan" 'INFO'
+        Write-Log "[ScanPreparation] Computer Name: $env:COMPUTERNAME" 'INFO'
+        Write-Log "[ScanPreparation] User Context: $env:USERNAME" 'INFO'
+        Write-Log "[ScanPreparation] PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
+        Write-Log "[ScanPreparation] OS Version: $([System.Environment]::OSVersion.VersionString)" 'INFO'
+        Write-Log "[ScanPreparation] Total System Memory: $([math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)) GB" 'INFO'
+        
+        # Get system drive information
+        try {
+            $systemDrive = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $env:SystemDrive }
+            if ($systemDrive) {
+                $totalSize = [math]::Round($systemDrive.Size / 1GB, 2)
+                $freeSpace = [math]::Round($systemDrive.FreeSpace / 1GB, 2)
+                $usedSpace = $totalSize - $freeSpace
+                Write-Log "[ScanPreparation] System Drive ($($systemDrive.DeviceID)) - Total: ${totalSize} GB, Used: ${usedSpace} GB, Free: ${freeSpace} GB" 'INFO'
+                $detailedLogData.SystemInfo = @{
+                    TotalMemoryGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+                    SystemDriveTotalGB = $totalSize
+                    SystemDriveUsedGB = $usedSpace
+                    SystemDriveFreeGB = $freeSpace
+                }
+            }
+        }
+        catch {
+            Write-Log "[ScanPreparation] Warning: Could not retrieve system drive information - $_" 'WARN'
+        }
+        
+        Write-Log "[ScanPreparation] Note: This operation may take considerable time depending on system size and data volume" 'INFO'
+        Write-Log "[ScanPreparation] Estimated scan time: Large systems may require 2-4 hours or more" 'INFO'
         
         try {
             # Progress: 25% - Initiating scan
-            Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 25 -Status "Initiating full system scan..."
-            $scanResult = Start-MpScan -ScanType FullScan
+            Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 25 -Status "Initiating comprehensive full system scan..."
+            Write-Log "[ScanExecution] === FULL SYSTEM SCAN EXECUTION ===" 'INFO'
+            Write-Log "[ScanExecution] Initiating scan at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" 'INFO'
+            
+            # Monitor scan progress (this will run in background)
+            $scanJob = Start-Job -ScriptBlock {
+                try {
+                    $result = Start-MpScan -ScanType FullScan
+                    return $result
+                }
+                catch {
+                    return "ERROR: $_"
+                }
+            }
+            
+            # Monitor scan progress with detailed logging
+            $progressCounter = 25
+            $lastProgressUpdate = Get-Date
+            $scanTimeoutMinutes = 240  # 4 hours maximum
+            $scanStartTimeForTimeout = Get-Date
+            
+            Write-Log "[ScanExecution] Monitoring scan progress (Job ID: $($scanJob.Id))..." 'INFO'
+            Write-Log "[ScanExecution] Maximum scan timeout: $scanTimeoutMinutes minutes" 'INFO'
+            
+            while ($scanJob.State -eq 'Running') {
+                $currentTime = Get-Date
+                $elapsedTime = $currentTime - $scanStartTime
+                $timeoutElapsed = $currentTime - $scanStartTimeForTimeout
+                
+                # Update progress every 2 minutes and log every 10 minutes
+                if (($currentTime - $lastProgressUpdate).TotalMinutes -ge 2) {
+                    $progressCounter = [math]::Min($progressCounter + 2, 68)  # Cap at 68% until scan completes
+                    Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete $progressCounter -Status "Scan in progress... ($($elapsedTime.ToString('hh\:mm\:ss')) elapsed)"
+                    
+                    # Detailed logging every 10 minutes
+                    if (($currentTime - $lastProgressUpdate).TotalMinutes -ge 10 -or $progressCounter -eq 27) {
+                        Write-Log "[ScanExecution] Scan progress update: $($elapsedTime.ToString('hh\:mm\:ss')) elapsed, scan continuing..." 'INFO'
+                        
+                        # Get current threat count during scan
+                        try {
+                            $currentThreats = Get-MpThreat
+                            Write-Log "[ScanExecution] Current threats detected during scan: $($currentThreats.Count)" 'INFO'
+                        }
+                        catch {
+                            Write-Log "[ScanExecution] Could not check current threat status during scan" 'VERBOSE'
+                        }
+                        $lastProgressUpdate = $currentTime
+                    }
+                }
+                
+                # Check for timeout
+                if ($timeoutElapsed.TotalMinutes -gt $scanTimeoutMinutes) {
+                    Write-Log "[ScanExecution] ⚠ Scan timeout reached ($scanTimeoutMinutes minutes). Stopping scan job..." 'WARN'
+                    Stop-Job -Job $scanJob
+                    Remove-Job -Job $scanJob
+                    throw "Scan timeout reached after $scanTimeoutMinutes minutes"
+                }
+                
+                Start-Sleep -Seconds 30
+            }
+            
+            # Get scan results
+            $scanResult = Receive-Job -Job $scanJob
+            Remove-Job -Job $scanJob
             
             # Progress: 70% - Scan completed, processing results
             Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 70 -Status "Scan completed, processing results..."
-            Write-Log "✓ Full system scan completed successfully" 'INFO'
-            if ($scanResult) {
-                Write-Log "Scan result output: $scanResult" 'VERBOSE'
+            $scanExecutionTime = Get-Date - $scanStartTime
+            Write-Log "[ScanExecution] ✓ Full system scan completed successfully" 'INFO'
+            Write-Log "[ScanExecution] Total scan execution time: $($scanExecutionTime.ToString('hh\:mm\:ss'))" 'INFO'
+            if ($scanResult -and $scanResult -ne "ERROR") {
+                Write-Log "[ScanExecution] Scan result output: $scanResult" 'INFO'
+            } elseif ($scanResult -like "ERROR:*") {
+                Write-Log "[ScanExecution] ⚠ Scan completed with error: $($scanResult.Substring(6))" 'WARN'
             }
             $scanSuccess = $true
+            $detailedLogData.ScanExecution = @{
+                Duration = $scanExecutionTime
+                Result = $scanResult
+                JobId = $scanJob.Id
+            }
         }
         catch {
             Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 100 -Status "Scan failed" -Completed
-            Write-Log "✗ Defender scan failed: $_" 'ERROR'
+            Write-Log "[ScanExecution] ✗ Defender scan failed: $_" 'ERROR'
             return $false
         }
 
-        # Progress: 72% - Getting threat information
-        Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 72 -Status "Getting threat information..."
-        Write-Log "Analyzing scan results..." 'INFO'
+        # Progress: 72% - Comprehensive threat analysis
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "Threat Analysis" -PercentComplete 72 -Status "Performing comprehensive threat analysis..."
+        Write-Log "[ThreatAnalysis] === COMPREHENSIVE THREAT ANALYSIS ===" 'INFO'
         try {
-            # Progress: 74% - Retrieving detected threats
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 74 -Status "Retrieving detected threats..."
+            # Progress: 74% - Retrieving detected threats with detailed analysis
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Threat Analysis" -PercentComplete 74 -Status "Retrieving and analyzing detected threats..."
             $threatsFound = Get-MpThreat
             
-            # Progress: 76% - Getting scan history
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 76 -Status "Getting scan history..."
-            $scanHistory = Get-MpScanHistory | Select-Object -First 1
-            
-            # Progress: 78% - Analyzing scan results
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 78 -Status "Analyzing scan results..."
-            if ($scanHistory) {
-                Write-Log "Last scan completed: $($scanHistory.StartTime)" 'INFO'
-                Write-Log "Scan type: $($scanHistory.ScanType)" 'INFO'
-                Write-Log "Scan result: $($scanHistory.Result)" 'INFO'
-            }
-            
+            # Enhanced threat analysis
             if ($threatsFound.Count -gt 0) {
-                Write-Log "⚠ THREATS DETECTED: $($threatsFound.Count) threats found" 'WARN'
+                Write-Log "[ThreatAnalysis] ⚠ THREATS DETECTED: $($threatsFound.Count) threats found" 'WARN'
+                Write-Log "[ThreatAnalysis] === DETAILED THREAT INFORMATION ===" 'WARN'
+                
+                $threatCategories = @{}
+                $threatSeverities = @{}
+                
                 foreach ($threat in $threatsFound) {
-                    Write-Log "- Threat: $($threat.ThreatName) | Location: $($threat.Resources -join ', ')" 'WARN'
+                    # Detailed threat logging
+                    Write-Log "[ThreatAnalysis] --- THREAT DETAILS ---" 'WARN'
+                    Write-Log "[ThreatAnalysis] Threat Name: $($threat.ThreatName)" 'WARN'
+                    Write-Log "[ThreatAnalysis] Threat ID: $($threat.ThreatID)" 'WARN'
+                    Write-Log "[ThreatAnalysis] Severity ID: $($threat.SeverityID)" 'WARN'
+                    Write-Log "[ThreatAnalysis] Category ID: $($threat.CategoryID)" 'WARN'
+                    Write-Log "[ThreatAnalysis] Type ID: $($threat.TypeID)" 'WARN'
+                    Write-Log "[ThreatAnalysis] Detection Time: $($threat.InitialDetectionTime)" 'WARN'
+                    Write-Log "[ThreatAnalysis] Last Detection Time: $($threat.LastThreatStatusChangeTime)" 'WARN'
+                    Write-Log "[ThreatAnalysis] Current Threat Status: $($threat.CurrentThreatExecutionStatus)" 'WARN'
+                    Write-Log "[ThreatAnalysis] Threat Status ID: $($threat.ThreatStatusID)" 'WARN'
+                    
+                    # Process affected resources
+                    if ($threat.Resources -and $threat.Resources.Count -gt 0) {
+                        Write-Log "[ThreatAnalysis] Affected Resources ($($threat.Resources.Count)):" 'WARN'
+                        foreach ($resource in $threat.Resources) {
+                            Write-Log "[ThreatAnalysis] - Resource: $resource" 'WARN'
+                            
+                            # Analyze resource type and provide additional context
+                            if (Test-Path $resource -ErrorAction SilentlyContinue) {
+                                try {
+                                    $resourceInfo = Get-Item $resource -ErrorAction SilentlyContinue
+                                    if ($resourceInfo) {
+                                        Write-Log "[ThreatAnalysis]   * File Size: $($resourceInfo.Length) bytes" 'WARN'
+                                        Write-Log "[ThreatAnalysis]   * Creation Time: $($resourceInfo.CreationTime)" 'WARN'
+                                        Write-Log "[ThreatAnalysis]   * Last Write Time: $($resourceInfo.LastWriteTime)" 'WARN'
+                                        Write-Log "[ThreatAnalysis]   * Attributes: $($resourceInfo.Attributes)" 'WARN'
+                                    }
+                                }
+                                catch {
+                                    Write-Log "[ThreatAnalysis]   * Could not get file details: $_" 'WARN'
+                                }
+                            }
+                        }
+                    } else {
+                        Write-Log "[ThreatAnalysis] No specific resources identified for this threat" 'WARN'
+                    }
+                    
+                    # Categorize threats for summary
+                    $severityName = switch ($threat.SeverityID) {
+                        1 { "Low" }
+                        2 { "Medium" }
+                        3 { "High" }
+                        4 { "Severe" }
+                        5 { "Critical" }
+                        default { "Unknown ($($threat.SeverityID))" }
+                    }
+                    
+                    $categoryName = switch ($threat.CategoryID) {
+                        1 { "Adware" }
+                        2 { "Spyware" }
+                        3 { "Password Stealer" }
+                        4 { "Trojan Downloader" }
+                        5 { "Worm" }
+                        6 { "Backdoor" }
+                        7 { "Remote Access Trojan" }
+                        8 { "Trojan" }
+                        9 { "Email Flooder" }
+                        10 { "Keylogger" }
+                        11 { "Dialer" }
+                        12 { "Monitoring Software" }
+                        13 { "Browser Modifier" }
+                        14 { "Cookie" }
+                        15 { "Browser Plugin" }
+                        16 { "AOL Exploit" }
+                        17 { "Nuker" }
+                        18 { "Security Disabler" }
+                        19 { "Joke Program" }
+                        20 { "Hostile ActiveX Control" }
+                        21 { "Software Bundler" }
+                        22 { "Stealth Modifier" }
+                        23 { "Settings Modifier" }
+                        24 { "Toolbar" }
+                        25 { "Remote Control Software" }
+                        26 { "Trojan FTP" }
+                        27 { "Potential Unwanted Software" }
+                        28 { "ICQ Exploit" }
+                        29 { "Trojan Telnet" }
+                        30 { "Exploit" }
+                        31 { "File Sharing Program" }
+                        32 { "Malware Creation Tool" }
+                        33 { "Remote Control Software" }
+                        34 { "Tool" }
+                        36 { "Trojan Denial of Service" }
+                        37 { "Trojan Dropper" }
+                        38 { "Trojan Mass Mailer" }
+                        39 { "Trojan Monitoring Software" }
+                        40 { "Trojan Proxy Server" }
+                        42 { "Virus" }
+                        43 { "Known" }
+                        44 { "Unknown" }
+                        45 { "SPP" }
+                        46 { "Behavior" }
+                        47 { "Vulnerability" }
+                        48 { "Policy" }
+                        default { "Unknown Category ($($threat.CategoryID))" }
+                    }
+                    
+                    Write-Log "[ThreatAnalysis] Severity: $severityName | Category: $categoryName" 'WARN'
+                    
+                    # Update counters for summary
+                    if ($threatSeverities.ContainsKey($severityName)) {
+                        $threatSeverities[$severityName]++
+                    } else {
+                        $threatSeverities[$severityName] = 1
+                    }
+                    
+                    if ($threatCategories.ContainsKey($categoryName)) {
+                        $threatCategories[$categoryName]++
+                    } else {
+                        $threatCategories[$categoryName] = 1
+                    }
+                }
+                
+                # Threat summary
+                Write-Log "[ThreatAnalysis] === THREAT SUMMARY BY SEVERITY ===" 'WARN'
+                foreach ($severity in $threatSeverities.GetEnumerator() | Sort-Object Name) {
+                    Write-Log "[ThreatAnalysis] $($severity.Key): $($severity.Value) threats" 'WARN'
+                }
+                
+                Write-Log "[ThreatAnalysis] === THREAT SUMMARY BY CATEGORY ===" 'WARN'
+                foreach ($category in $threatCategories.GetEnumerator() | Sort-Object Name) {
+                    Write-Log "[ThreatAnalysis] $($category.Key): $($category.Value) threats" 'WARN'
+                }
+                
+                $detailedLogData.ThreatAnalysis = @{
+                    TotalThreats = $threatsFound.Count
+                    BySeverity = $threatSeverities
+                    ByCategory = $threatCategories
+                    DetailedThreats = $threatsFound
                 }
             }
             else {
-                Write-Log "✓ No threats detected - system is clean" 'INFO'
-            }
-        }
-        catch {
-            Write-Log "Error retrieving scan results: $_" 'WARN'
-        }
-
-        # Automatic threat cleanup if threats were found
-        if ($threatsFound.Count -gt 0) {
-            # Progress: 82% - Preparing threat cleanup
-            Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 82 -Status "Preparing threat cleanup..."
-            Write-Log "Initiating automatic threat cleanup..." 'INFO'
-            try {
-                # Progress: 85% - Removing threats
-                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 85 -Status "Removing detected threats..."
-                Remove-MpThreat -All
-                Write-Log "✓ All detected threats have been automatically removed" 'INFO'
-                
-                # Progress: 88% - Verifying cleanup
-                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 88 -Status "Verifying threat cleanup..."
-                Start-Sleep -Seconds 3
-                $remainingThreats = Get-MpThreat
-                
-                # Progress: 90% - Cleanup verification complete
-                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 90 -Status "Cleanup verification complete..."
-                if ($remainingThreats.Count -eq 0) {
-                    Write-Log "✓ Threat cleanup verification successful - no threats remain" 'INFO'
-                    $cleanupSuccess = $true
+                Write-Log "[ThreatAnalysis] ✓ No threats detected - system is clean" 'INFO'
+                $detailedLogData.ThreatAnalysis = @{
+                    TotalThreats = 0
+                    SystemStatus = "Clean"
                 }
-                else {
-                    Write-Log "⚠ Warning: $($remainingThreats.Count) threats still remain after cleanup" 'WARN'
-                    $cleanupSuccess = $false
+            }
+
+            # Progress: 76% - Getting comprehensive scan history
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 76 -Status "Getting comprehensive scan history..."
+            $completeScanHistory = Get-MpScanHistory | Select-Object -First 1
+            
+            # Progress: 78% - Analyzing final scan results
+            Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 78 -Status "Analyzing comprehensive scan results..."
+            if ($completeScanHistory) {
+                Write-Log "[ScanResults] === COMPREHENSIVE SCAN COMPLETION DETAILS ===" 'INFO'
+                Write-Log "[ScanResults] Last scan completed: $($completeScanHistory.StartTime)" 'INFO'
+                Write-Log "[ScanResults] Scan end time: $($completeScanHistory.EndTime)" 'INFO'
+                Write-Log "[ScanResults] Scan type: $($completeScanHistory.ScanType)" 'INFO'
+                Write-Log "[ScanResults] Scan result: $($completeScanHistory.Result)" 'INFO'
+                if ($completeScanHistory.ScanParameters) {
+                    Write-Log "[ScanResults] Scan parameters: $($completeScanHistory.ScanParameters)" 'INFO'
+                }
+                
+                # Calculate scan duration from history if available
+                if ($completeScanHistory.StartTime -and $completeScanHistory.EndTime) {
+                    $historicalScanDuration = $completeScanHistory.EndTime - $completeScanHistory.StartTime
+                    Write-Log "[ScanResults] Historical scan duration: $($historicalScanDuration.ToString('hh\:mm\:ss'))" 'INFO'
+                }
+                
+                $detailedLogData.FinalScanHistory = $completeScanHistory
+            }
+            
+            # Check quarantine status
+            try {
+                Write-Log "[QuarantineAnalysis] === QUARANTINE STATUS ANALYSIS ===" 'INFO'
+                $quarantineItems = Get-MpQuarantineItem -ErrorAction SilentlyContinue
+                if ($quarantineItems) {
+                    Write-Log "[QuarantineAnalysis] Quarantine contains $($quarantineItems.Count) items" 'INFO'
+                    foreach ($item in $quarantineItems | Select-Object -First 10) { # Limit to first 10 for logging
+                        Write-Log "[QuarantineAnalysis] - Quarantined: $($item.FileName) | Threat: $($item.ThreatName) | Date: $($item.QuarantineTime)" 'INFO'
+                    }
+                    if ($quarantineItems.Count -gt 10) {
+                        Write-Log "[QuarantineAnalysis] ... and $($quarantineItems.Count - 10) more items" 'INFO'
+                    }
+                    $detailedLogData.QuarantineStatus = @{
+                        ItemCount = $quarantineItems.Count
+                        Items = $quarantineItems
+                    }
+                } else {
+                    Write-Log "[QuarantineAnalysis] Quarantine is empty" 'INFO'
+                    $detailedLogData.QuarantineStatus = @{ ItemCount = 0 }
                 }
             }
             catch {
-                Write-Log "✗ Error during automatic threat cleanup: $_" 'ERROR'
+                Write-Log "[QuarantineAnalysis] Warning: Could not retrieve quarantine information - $_" 'WARN'
+            }
+            
+        }
+        catch {
+            Write-Log "[ThreatAnalysis] ✗ Error retrieving scan results: $_" 'WARN'
+        }
+
+        # Enhanced automatic threat cleanup with comprehensive logging
+        if ($threatsFound.Count -gt 0) {
+            # Progress: 82% - Preparing comprehensive threat cleanup
+            Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 82 -Status "Preparing comprehensive threat cleanup..."
+            Write-Log "[ThreatCleanup] === COMPREHENSIVE THREAT CLEANUP PROCESS ===" 'INFO'
+            Write-Log "[ThreatCleanup] Initiating automatic cleanup for $($threatsFound.Count) detected threats..." 'INFO'
+            
+            # Log pre-cleanup quarantine status
+            try {
+                $preCleanupQuarantine = Get-MpQuarantineItem -ErrorAction SilentlyContinue
+                $preCleanupQuarantineCount = if ($preCleanupQuarantine) { $preCleanupQuarantine.Count } else { 0 }
+                Write-Log "[ThreatCleanup] Pre-cleanup quarantine items: $preCleanupQuarantineCount" 'INFO'
+            }
+            catch {
+                Write-Log "[ThreatCleanup] Could not check pre-cleanup quarantine status" 'WARN'
+                $preCleanupQuarantineCount = 0
+            }
+            
+            try {
+                # Progress: 85% - Executing threat removal
+                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 85 -Status "Executing comprehensive threat removal..."
+                Write-Log "[ThreatCleanup] Executing Remove-MpThreat -All command..." 'INFO'
+                $cleanupStartTime = Get-Date
+                Remove-MpThreat -All
+                $cleanupEndTime = Get-Date
+                $cleanupDuration = $cleanupEndTime - $cleanupStartTime
+                Write-Log "[ThreatCleanup] ✓ Threat removal command completed in $($cleanupDuration.TotalSeconds) seconds" 'INFO'
+                
+                # Progress: 88% - Comprehensive cleanup verification
+                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 88 -Status "Performing comprehensive cleanup verification..."
+                Write-Log "[ThreatCleanup] Performing comprehensive cleanup verification..." 'INFO'
+                Start-Sleep -Seconds 5  # Allow more time for cleanup to complete
+                
+                # Multiple verification checks
+                Write-Log "[ThreatCleanup] === CLEANUP VERIFICATION PROCESS ===" 'INFO'
+                
+                # Check 1: Remaining threats
+                $remainingThreats = Get-MpThreat
+                Write-Log "[ThreatCleanup] Verification Check 1 - Remaining threats: $($remainingThreats.Count)" 'INFO'
+                
+                # Check 2: Updated quarantine status
+                try {
+                    $postCleanupQuarantine = Get-MpQuarantineItem -ErrorAction SilentlyContinue
+                    $postCleanupQuarantineCount = if ($postCleanupQuarantine) { $postCleanupQuarantine.Count } else { 0 }
+                    $quarantineIncrease = $postCleanupQuarantineCount - $preCleanupQuarantineCount
+                    Write-Log "[ThreatCleanup] Verification Check 2 - Post-cleanup quarantine items: $postCleanupQuarantineCount (+$quarantineIncrease)" 'INFO'
+                    
+                    if ($quarantineIncrease -gt 0) {
+                        Write-Log "[ThreatCleanup] ✓ $quarantineIncrease new items moved to quarantine" 'INFO'
+                        # Log details of newly quarantined items
+                        if ($postCleanupQuarantine) {
+                            $newQuarantineItems = $postCleanupQuarantine | Sort-Object QuarantineTime -Descending | Select-Object -First $quarantineIncrease
+                            Write-Log "[ThreatCleanup] Newly quarantined items:" 'INFO'
+                            foreach ($item in $newQuarantineItems) {
+                                Write-Log "[ThreatCleanup] - $($item.FileName) | Threat: $($item.ThreatName) | Time: $($item.QuarantineTime)" 'INFO'
+                            }
+                        }
+                    }
+                }
+                catch {
+                    Write-Log "[ThreatCleanup] Warning: Could not verify quarantine status after cleanup - $_" 'WARN'
+                }
+                
+                # Check 3: Updated Defender status
+                try {
+                    $postCleanupStatus = Get-MpComputerStatus
+                    Write-Log "[ThreatCleanup] Verification Check 3 - Updated Defender status retrieved" 'INFO'
+                    Write-Log "[ThreatCleanup] Last Quick Scan: $($postCleanupStatus.QuickScanEndTime)" 'INFO'
+                    Write-Log "[ThreatCleanup] Last Full Scan: $($postCleanupStatus.FullScanEndTime)" 'INFO'
+                }
+                catch {
+                    Write-Log "[ThreatCleanup] Warning: Could not get updated Defender status" 'WARN'
+                }
+
+                # Progress: 90% - Final cleanup verification
+                Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 90 -Status "Completing final cleanup verification..."
+                if ($remainingThreats.Count -eq 0) {
+                    Write-Log "[ThreatCleanup] ✓ CLEANUP SUCCESSFUL: No threats remain on the system" 'INFO'
+                    Write-Log "[ThreatCleanup] All $($threatsFound.Count) detected threats have been successfully removed" 'INFO'
+                    $cleanupSuccess = $true
+                }
+                else {
+                    Write-Log "[ThreatCleanup] ⚠ PARTIAL CLEANUP: $($remainingThreats.Count) threats still remain after cleanup" 'WARN'
+                    Write-Log "[ThreatCleanup] Remaining threats may require manual intervention" 'WARN'
+                    foreach ($remainingThreat in $remainingThreats) {
+                        Write-Log "[ThreatCleanup] Remaining: $($remainingThreat.ThreatName) | Status: $($remainingThreat.CurrentThreatExecutionStatus)" 'WARN'
+                    }
+                    $cleanupSuccess = $false
+                }
+                
+                $detailedLogData.ThreatCleanup = @{
+                    Duration = $cleanupDuration
+                    OriginalThreatCount = $threatsFound.Count
+                    RemainingThreatCount = $remainingThreats.Count
+                    QuarantineIncrease = $quarantineIncrease
+                    CleanupSuccess = $cleanupSuccess
+                }
+            }
+            catch {
+                Write-Log "[ThreatCleanup] ✗ Error during automatic threat cleanup: $_" 'ERROR'
+                Write-Log "[ThreatCleanup] Threat cleanup failed - manual intervention may be required" 'ERROR'
                 $cleanupSuccess = $false
             }
         }
+        else {
+            Write-Log "[ThreatCleanup] No threats detected - cleanup not required" 'INFO'
+            $detailedLogData.ThreatCleanup = @{
+                Required = $false
+                OriginalThreatCount = 0
+            }
+        }
 
-        # Progress: 92% - Preparing scan report
-        Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 92 -Status "Preparing scan report..."
-        # Generate comprehensive scan report
+        # Progress: 92% - Preparing comprehensive scan report
+        Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 92 -Status "Preparing comprehensive scan report..."
+        Write-Log "[ScanReport] === COMPREHENSIVE SCAN REPORT GENERATION ===" 'INFO'
+        
+        # Generate comprehensive scan report with enhanced details
         $scanEndTime = Get-Date
         $scanDuration = $scanEndTime - $scanStartTime
         
-        # Progress: 94% - Generating summary
-        Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 94 -Status "Generating scan summary..."
-        Write-Log "[DefenderScan] COMPREHENSIVE SCAN SUMMARY:" 'INFO'
-        Write-Log "- Scan start time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-        Write-Log "- Scan end time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-        Write-Log "- Total scan duration: $($scanDuration.ToString('hh\:mm\:ss'))" 'INFO'
-        Write-Log "- Scan successful: $(if($scanSuccess){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- Threats detected: $($threatsFound.Count)" 'INFO'
-        Write-Log "- Automatic cleanup successful: $(if($cleanupSuccess){'Yes'}else{'No'})" 'INFO'
+        # Progress: 94% - Generating detailed summary
+        Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 94 -Status "Generating detailed scan summary..."
+        Write-Log "[ScanReport] === COMPREHENSIVE DEFENDER SCAN SUMMARY ===" 'INFO'
+        Write-Log "[ScanReport] ================================" 'INFO'
+        Write-Log "[ScanReport] Computer: $env:COMPUTERNAME" 'INFO'
+        Write-Log "[ScanReport] User: $env:USERNAME" 'INFO'
+        Write-Log "[ScanReport] PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
+        Write-Log "[ScanReport] Scan start time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+        Write-Log "[ScanReport] Scan end time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+        Write-Log "[ScanReport] Total scan duration: $($scanDuration.ToString('hh\:mm\:ss'))" 'INFO'
+        Write-Log "[ScanReport] Scan successful: $(if($scanSuccess){'Yes'}else{'No'})" 'INFO'
+        Write-Log "[ScanReport] Threats detected: $($threatsFound.Count)" 'INFO'
+        Write-Log "[ScanReport] Automatic cleanup required: $(if($threatsFound.Count -gt 0){'Yes'}else{'No'})" 'INFO'
+        Write-Log "[ScanReport] Automatic cleanup successful: $(if($cleanupSuccess){'Yes'}else{'No'})" 'INFO'
+        Write-Log "[ScanReport] System status: $(if($threatsFound.Count -eq 0){'Clean'}elseif($cleanupSuccess){'Cleaned'}else{'Requires Attention'})" 'INFO'
+        Write-Log "[ScanReport] ================================" 'INFO'
         
-        # Progress: 96% - Creating detailed log
-        Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 96 -Status "Creating detailed log file..."
-        # Create detailed log file in temp folder
+        # Add performance metrics
+        if ($detailedLogData.SystemInfo) {
+            Write-Log "[ScanReport] System Performance Context:" 'INFO'
+            Write-Log "[ScanReport] - Total Memory: $($detailedLogData.SystemInfo.TotalMemoryGB) GB" 'INFO'
+            Write-Log "[ScanReport] - System Drive Used: $($detailedLogData.SystemInfo.SystemDriveUsedGB) GB / $($detailedLogData.SystemInfo.SystemDriveTotalGB) GB" 'INFO'
+        }
+        
+        # Progress: 96% - Creating enhanced detailed log file
+        Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 96 -Status "Creating enhanced detailed log file..."
+        # Create comprehensive detailed log file in temp folder
         try {
-            $scanLogPath = Join-Path $global:TempFolder "defender_scan_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+            $scanLogPath = Join-Path $global:TempFolder "defender_comprehensive_scan_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
             $logContent = @"
-Windows Defender Full Scan Report
-==================================
+Windows Defender Comprehensive Full Scan Report
+==============================================
 Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Computer: $env:COMPUTERNAME
 User: $env:USERNAME
 PowerShell Version: $($PSVersionTable.PSVersion)
+OS Version: $([System.Environment]::OSVersion.VersionString)
 
-Scan Details:
-- Start Time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))
-- End Time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))
-- Duration: $($scanDuration.ToString('hh\:mm\:ss'))
-- Scan Type: Full System Scan
-- Scan Successful: $(if($scanSuccess){'Yes'}else{'No'})
-- Threats Found: $($threatsFound.Count)
-- Cleanup Successful: $(if($cleanupSuccess){'Yes'}else{'No'})
+=== SCAN EXECUTION DETAILS ===
+Start Time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))
+End Time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))
+Total Duration: $($scanDuration.ToString('hh\:mm\:ss'))
+Scan Type: Full System Scan
+Scan Successful: $(if($scanSuccess){'Yes'}else{'No'})
 
+=== SYSTEM INFORMATION ===
+"@
+            
+            if ($detailedLogData.SystemInfo) {
+                $logContent += @"
+Total Physical Memory: $($detailedLogData.SystemInfo.TotalMemoryGB) GB
+System Drive Total Space: $($detailedLogData.SystemInfo.SystemDriveTotalGB) GB
+System Drive Used Space: $($detailedLogData.SystemInfo.SystemDriveUsedGB) GB
+System Drive Free Space: $($detailedLogData.SystemInfo.SystemDriveFreeGB) GB
+
+"@
+            }
+            
+            $logContent += @"
+=== DEFENDER STATUS ANALYSIS ===
+"@
+            
+            if ($detailedLogData.Status) {
+                $status = $detailedLogData.Status
+                $logContent += @"
+Antivirus Enabled: $($status.AntivirusEnabled)
+Real-time Protection: $($status.RealTimeProtectionEnabled)
+Behavior Monitor: $($status.BehaviorMonitorEnabled)
+Network Inspection System: $($status.NISEnabled)
+Antivirus Signature Version: $($status.AntivirusSignatureVersion)
+Antivirus Signature Age: $($status.AntivirusSignatureAge) days
+Last Full Scan: $($status.FullScanEndTime)
+Full Scan Age: $($status.FullScanAge) days
+
+"@
+            }
+            
+            if ($detailedLogData.SignatureUpdate) {
+                $sigUpdate = $detailedLogData.SignatureUpdate
+                $logContent += @"
+=== SIGNATURE UPDATE DETAILS ===
+Update Duration: $($sigUpdate.Duration.TotalSeconds) seconds
+Previous Antivirus Version: $($sigUpdate.OldVersions.Antivirus)
+Updated Antivirus Version: $($sigUpdate.NewVersions.Antivirus)
+Previous NIS Version: $($sigUpdate.OldVersions.NIS)
+Updated NIS Version: $($sigUpdate.NewVersions.NIS)
+
+"@
+            }
+            
+            $logContent += @"
+=== THREAT ANALYSIS RESULTS ===
+Total Threats Detected: $($threatsFound.Count)
 "@
             
             if ($threatsFound.Count -gt 0) {
-                $logContent += "Detected Threats:`n"
-                foreach ($threat in $threatsFound) {
-                    $logContent += "- $($threat.ThreatName): $($threat.Resources -join ', ')`n"
+                $logContent += "Cleanup Required: Yes`nCleanup Successful: $(if($cleanupSuccess){'Yes'}else{'No'})`n`n"
+                
+                if ($detailedLogData.ThreatAnalysis.BySeverity) {
+                    $logContent += "Threats by Severity:`n"
+                    foreach ($severity in $detailedLogData.ThreatAnalysis.BySeverity.GetEnumerator() | Sort-Object Name) {
+                        $logContent += "- $($severity.Key): $($severity.Value) threats`n"
+                    }
+                    $logContent += "`n"
                 }
-                $logContent += "`n"
+                
+                if ($detailedLogData.ThreatAnalysis.ByCategory) {
+                    $logContent += "Threats by Category:`n"
+                    foreach ($category in $detailedLogData.ThreatAnalysis.ByCategory.GetEnumerator() | Sort-Object Name) {
+                        $logContent += "- $($category.Key): $($category.Value) threats`n"
+                    }
+                    $logContent += "`n"
+                }
+                
+                $logContent += "Detailed Threat Information:`n"
+                foreach ($threat in $threatsFound) {
+                    $logContent += "---`n"
+                    $logContent += "Threat Name: $($threat.ThreatName)`n"
+                    $logContent += "Threat ID: $($threat.ThreatID)`n"
+                    $logContent += "Severity ID: $($threat.SeverityID)`n"
+                    $logContent += "Category ID: $($threat.CategoryID)`n"
+                    $logContent += "Detection Time: $($threat.InitialDetectionTime)`n"
+                    $logContent += "Status: $($threat.CurrentThreatExecutionStatus)`n"
+                    if ($threat.Resources) {
+                        $logContent += "Affected Resources:`n"
+                        foreach ($resource in $threat.Resources) {
+                            $logContent += "- $resource`n"
+                        }
+                    }
+                    $logContent += "`n"
+                }
+            }
+            else {
+                $logContent += "System Status: Clean - No threats detected`n`n"
             }
             
-            $logContent += "Defender Status:`n"
-            if ($defenderStatus) {
-                $logContent += "- Antivirus Enabled: $($defenderStatus.AntivirusEnabled)`n"
-                $logContent += "- Real-time Protection: $($defenderStatus.RealTimeProtectionEnabled)`n"
-                $logContent += "- Last Signature Update: $($defenderStatus.AntivirusSignatureLastUpdated)`n"
+            if ($detailedLogData.QuarantineStatus) {
+                $logContent += @"
+=== QUARANTINE STATUS ===
+Total Quarantined Items: $($detailedLogData.QuarantineStatus.ItemCount)
+
+"@
+                if ($detailedLogData.QuarantineStatus.ItemCount -gt 0 -and $detailedLogData.QuarantineStatus.Items) {
+                    $logContent += "Recent Quarantine Items (Last 10):`n"
+                    foreach ($item in ($detailedLogData.QuarantineStatus.Items | Sort-Object QuarantineTime -Descending | Select-Object -First 10)) {
+                        $logContent += "- $($item.FileName) | Threat: $($item.ThreatName) | Date: $($item.QuarantineTime)`n"
+                    }
+                    $logContent += "`n"
+                }
             }
             
-            # Progress: 98% - Saving log file
-            Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 98 -Status "Saving detailed log file..."
+            if ($detailedLogData.Preferences) {
+                $prefs = $detailedLogData.Preferences
+                $logContent += @"
+=== DEFENDER CONFIGURATION ===
+Exclusion Paths: $($prefs.ExclusionPath.Count) configured
+Exclusion Extensions: $($prefs.ExclusionExtension.Count) configured
+Exclusion Processes: $($prefs.ExclusionProcess.Count) configured
+Real-time Scan Direction: $($prefs.RealTimeScanDirection)
+Cloud Block Level: $($prefs.CloudBlockLevel)
+Cloud Extended Timeout: $($prefs.CloudExtendedTimeout) seconds
+Archive Max Size: $($prefs.ScanArchiveMaxSize) MB
+Archive Max Depth: $($prefs.ScanArchiveMaxDepth)
+
+"@
+            }
+            
+            $logContent += @"
+=== SCAN PERFORMANCE METRICS ===
+Total Execution Time: $($scanDuration.ToString('hh\:mm\:ss'))
+"@
+            
+            if ($detailedLogData.ScanExecution) {
+                $exec = $detailedLogData.ScanExecution
+                $logContent += @"
+Scan Job Duration: $($exec.Duration.ToString('hh\:mm\:ss'))
+Scan Job ID: $($exec.JobId)
+Scan Result: $($exec.Result)
+
+"@
+            }
+            
+            if ($detailedLogData.ThreatCleanup -and $detailedLogData.ThreatCleanup.Duration) {
+                $cleanup = $detailedLogData.ThreatCleanup
+                $logContent += @"
+Cleanup Duration: $($cleanup.Duration.TotalSeconds) seconds
+Original Threat Count: $($cleanup.OriginalThreatCount)
+Remaining Threat Count: $($cleanup.RemainingThreatCount)
+Quarantine Items Added: $($cleanup.QuarantineIncrease)
+
+"@
+            }
+            
+            $logContent += @"
+=== RECOMMENDATIONS ===
+"@
+            
+            if ($threatsFound.Count -eq 0) {
+                $logContent += "- System is clean and secure`n"
+                $logContent += "- Continue regular maintenance and scans`n"
+            }
+            elseif ($cleanupSuccess) {
+                $logContent += "- Threats successfully cleaned and quarantined`n"
+                $logContent += "- Monitor system for any unusual behavior`n"
+                $logContent += "- Consider running another scan in 24-48 hours`n"
+            }
+            else {
+                $logContent += "- Manual threat removal may be required`n"
+                $logContent += "- Review quarantine and remaining threats`n"
+                $logContent += "- Consider professional assistance if needed`n"
+            }
+            
+            if ($defenderStatus -and $defenderStatus.AntivirusSignatureAge -gt 7) {
+                $logContent += "- Update antivirus signatures more frequently`n"
+            }
+            
+            if ($defenderStatus -and -not $defenderStatus.RealTimeProtectionEnabled) {
+                $logContent += "- Enable real-time protection for better security`n"
+            }
+            
+            $logContent += "`n=== END OF REPORT ===`n"
+            
+            # Progress: 98% - Saving comprehensive log file
+            Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 98 -Status "Saving comprehensive detailed log file..."
             $logContent | Out-File -FilePath $scanLogPath -Encoding UTF8
-            Write-Log "Detailed scan report saved to: $scanLogPath" 'INFO'
+            Write-Log "[ScanReport] ✓ Comprehensive detailed scan report saved to: $scanLogPath" 'INFO'
+            Write-Log "[ScanReport] Report contains $($logContent.Split("`n").Count) lines of detailed analysis" 'INFO'
         }
         catch {
-            Write-Log "Warning: Could not save detailed scan report: $_" 'WARN'
+            Write-Log "[ScanReport] ⚠ Warning: Could not save comprehensive detailed scan report: $_" 'WARN'
         }
         
         # Progress: 100% - Complete
-        Write-ActionProgress -ActionType "Reporting" -ItemName "Scan Report" -PercentComplete 100 -Status "Scan operation complete!" -Completed
+        Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 100 -Status "Comprehensive scan operation complete!" -Completed
 
         return $scanSuccess
     }
     catch {
-        Write-Log "Unexpected error during Defender scan: $_" 'ERROR'
+        Write-Log "[DefenderScan] ✗ Unexpected error during comprehensive Defender scan: $_" 'ERROR'
+        Write-Log "[DefenderScan] Error details: $($_.Exception.Message)" 'ERROR'
+        Write-Log "[DefenderScan] Error occurred at: $($_.ScriptStackTrace)" 'ERROR'
         return $false
     }
     finally {
-        Write-Log "[END] Windows Defender Full System Scan" 'INFO'
+        $finalEndTime = Get-Date
+        $totalDuration = $finalEndTime - $scanStartTime
+        Write-Log "[DefenderScan] === SCAN OPERATION COMPLETED ===" 'INFO'
+        Write-Log "[DefenderScan] Total operation duration: $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
+        Write-Log "[DefenderScan] Scan result: $(if($scanSuccess){'SUCCESS'}else{'FAILED'})" 'INFO'
+        if ($threatsFound.Count -gt 0) {
+            Write-Log "[DefenderScan] Threats found: $($threatsFound.Count)" 'INFO'
+            Write-Log "[DefenderScan] Cleanup status: $(if($cleanupSuccess){'SUCCESS'}else{'REQUIRES ATTENTION'})" 'INFO'
+        }
+        Write-Log "[END] Windows Defender Comprehensive Full System Scan - Enhanced Logging Complete" 'INFO'
     }
 }
 
@@ -5772,6 +6815,7 @@ $global:Config = @{
     SkipWindowsUpdates      = $false
     SkipTelemetryDisable    = $false
     SkipSystemRestore       = $false
+    SkipRestorePointCleanup = $false
     SkipEventLogAnalysis    = $false
     SkipSecurityHardening   = $false
     SkipTaskbarOptimization = $false
@@ -5792,6 +6836,7 @@ if (Test-Path $configPath) {
         if ($config.SkipWindowsUpdates) { $global:Config.SkipWindowsUpdates = $config.SkipWindowsUpdates }
         if ($config.SkipTelemetryDisable) { $global:Config.SkipTelemetryDisable = $config.SkipTelemetryDisable }
         if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
+        if ($config.SkipRestorePointCleanup) { $global:Config.SkipRestorePointCleanup = $config.SkipRestorePointCleanup }
         if ($config.SkipEventLogAnalysis) { $global:Config.SkipEventLogAnalysis = $config.SkipEventLogAnalysis }
         if ($config.SkipSecurityHardening) { $global:Config.SkipSecurityHardening = $config.SkipSecurityHardening }
         if ($config.SkipTaskbarOptimization) { $global:Config.SkipTaskbarOptimization = $config.SkipTaskbarOptimization }
@@ -5914,6 +6959,16 @@ $global:ScriptTasks = @(
         Name        = 'SystemRestore'; 
         Function    = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log "System restore skipped via config" 'INFO'; $true } }; 
         Description = 'Create system restore point and enable protection' 
+    },
+    @{ 
+        Name        = 'RestorePointCleanup'; 
+        Function    = { if (-not $global:Config.SkipRestorePointCleanup) { Clear-OldRestorePoints } else { Write-Log "Restore point cleanup skipped via config" 'INFO'; $true } }; 
+        Description = 'Clean old system restore points while keeping minimum 5 recent points' 
+    },
+    @{ 
+        Name        = 'EventLogAnalysis'; 
+        Function    = { if (-not $global:Config.SkipEventLogAnalysis) { Get-EventLogAnalysis } else { Write-Log "Event log analysis skipped via config" 'INFO'; $true } }; 
+        Description = 'Analyze Event Viewer and CBS logs for system errors (last 96 hours)' 
     },
     @{ 
         Name        = 'TempCleanup'; 
