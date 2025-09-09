@@ -4633,12 +4633,12 @@ function Get-EventLogAnalysis {
         Write-Log "Analyzing logs from $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) to present (last $hoursBack hours)" 'INFO'
         
         $errorSummary = @{
-            CBSErrors = @()
-            SystemErrors = @()
+            CBSErrors         = @()
+            SystemErrors      = @()
             ApplicationErrors = @()
-            SecurityErrors = @()
-            TotalErrors = 0
-            AnalysisTime = Get-Date
+            SecurityErrors    = @()
+            TotalErrors       = 0
+            AnalysisTime      = Get-Date
         }
         
         # PART 1: CBS Log Analysis
@@ -4667,8 +4667,8 @@ function Get-EventLogAnalysis {
                                 if ($line -match 'Error|Failed|Corrupt|Cannot|Unable|Exception|Failure') {
                                     $cbsErrors += @{
                                         Timestamp = $timestamp
-                                        Message = $line.Substring(20).Trim()
-                                        Type = "CBS Error"
+                                        Message   = $line.Substring(20).Trim()
+                                        Type      = "CBS Error"
                                     }
                                 }
                             }
@@ -4687,8 +4687,8 @@ function Get-EventLogAnalysis {
                 if ($cbsErrors.Count -gt 0) {
                     Write-Log "=== TOP CBS ERRORS ===" 'INFO'
                     $topCBSErrors = $cbsErrors | Sort-Object Timestamp -Descending | Select-Object -First 10
-                    foreach ($error in $topCBSErrors) {
-                        Write-Log "[CBS] $($error.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - $($error.Message)" 'WARN'
+                    foreach ($cbsError in $topCBSErrors) {
+                        Write-Log "[CBS] $($cbsError.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - $($cbsError.Message)" 'WARN'
                     }
                 }
                 else {
@@ -4709,20 +4709,20 @@ function Get-EventLogAnalysis {
         
         try {
             $systemErrors = Get-WinEvent -FilterHashtable @{
-                LogName = 'System'
-                Level = 1, 2  # Critical and Error levels
+                LogName   = 'System'
+                Level     = 1, 2  # Critical and Error levels
                 StartTime = $startTime
             } -ErrorAction SilentlyContinue | Select-Object -First 50
             
             if ($systemErrors) {
                 $parsedSystemErrors = @()
-                foreach ($event in $systemErrors) {
+                foreach ($systemEvent in $systemErrors) {
                     $parsedSystemErrors += @{
-                        Timestamp = $event.TimeCreated
-                        EventID = $event.Id
-                        Source = $event.ProviderName
-                        Level = if ($event.Level -eq 1) { "Critical" } else { "Error" }
-                        Message = $event.Message.Split("`n")[0].Trim()  # First line only
+                        Timestamp = $systemEvent.TimeCreated
+                        EventID   = $systemEvent.Id
+                        Source    = $systemEvent.ProviderName
+                        Level     = if ($systemEvent.Level -eq 1) { "Critical" } else { "Error" }
+                        Message   = $systemEvent.Message.Split("`n")[0].Trim()  # First line only
                     }
                 }
                 
@@ -4732,8 +4732,8 @@ function Get-EventLogAnalysis {
                 # Log top 10 system errors
                 Write-Log "=== TOP SYSTEM ERRORS ===" 'INFO'
                 $topSystemErrors = $parsedSystemErrors | Sort-Object Timestamp -Descending | Select-Object -First 10
-                foreach ($error in $topSystemErrors) {
-                    Write-Log "[SYSTEM] $($error.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($error.EventID) ($($error.Level)) - $($error.Source): $($error.Message)" 'WARN'
+                foreach ($systemError in $topSystemErrors) {
+                    Write-Log "[SYSTEM] $($systemError.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($systemError.EventID) ($($systemError.Level)) - $($systemError.Source): $($systemError.Message)" 'WARN'
                 }
             }
             else {
@@ -4750,20 +4750,20 @@ function Get-EventLogAnalysis {
         
         try {
             $appErrors = Get-WinEvent -FilterHashtable @{
-                LogName = 'Application'
-                Level = 1, 2  # Critical and Error levels
+                LogName   = 'Application'
+                Level     = 1, 2  # Critical and Error levels
                 StartTime = $startTime
             } -ErrorAction SilentlyContinue | Select-Object -First 30
             
             if ($appErrors) {
                 $parsedAppErrors = @()
-                foreach ($event in $appErrors) {
+                foreach ($logEvent in $appErrors) {
                     $parsedAppErrors += @{
-                        Timestamp = $event.TimeCreated
-                        EventID = $event.Id
-                        Source = $event.ProviderName
-                        Level = if ($event.Level -eq 1) { "Critical" } else { "Error" }
-                        Message = $event.Message.Split("`n")[0].Trim()  # First line only
+                        Timestamp = $logEvent.TimeCreated
+                        EventID   = $logEvent.Id
+                        Source    = $logEvent.ProviderName
+                        Level     = if ($logEvent.Level -eq 1) { "Critical" } else { "Error" }
+                        Message   = $logEvent.Message.Split("`n")[0].Trim()  # First line only
                     }
                 }
                 
@@ -4773,8 +4773,8 @@ function Get-EventLogAnalysis {
                 # Log top 10 application errors
                 Write-Log "=== TOP APPLICATION ERRORS ===" 'INFO'
                 $topAppErrors = $parsedAppErrors | Sort-Object Timestamp -Descending | Select-Object -First 10
-                foreach ($error in $topAppErrors) {
-                    Write-Log "[APPLICATION] $($error.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($error.EventID) ($($error.Level)) - $($error.Source): $($error.Message)" 'WARN'
+                foreach ($appError in $topAppErrors) {
+                    Write-Log "[APPLICATION] $($appError.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($appError.EventID) ($($appError.Level)) - $($appError.Source): $($appError.Message)" 'WARN'
                 }
             }
             else {
@@ -4791,20 +4791,20 @@ function Get-EventLogAnalysis {
         
         try {
             $securityErrors = Get-WinEvent -FilterHashtable @{
-                LogName = 'Security'
-                Level = 1  # Critical level only
+                LogName   = 'Security'
+                Level     = 1  # Critical level only
                 StartTime = $startTime
             } -ErrorAction SilentlyContinue | Select-Object -First 20
             
             if ($securityErrors) {
                 $parsedSecurityErrors = @()
-                foreach ($event in $securityErrors) {
+                foreach ($logEvent in $securityErrors) {
                     $parsedSecurityErrors += @{
-                        Timestamp = $event.TimeCreated
-                        EventID = $event.Id
-                        Source = $event.ProviderName
-                        Level = "Critical"
-                        Message = $event.Message.Split("`n")[0].Trim()  # First line only
+                        Timestamp = $logEvent.TimeCreated
+                        EventID   = $logEvent.Id
+                        Source    = $logEvent.ProviderName
+                        Level     = "Critical"
+                        Message   = $logEvent.Message.Split("`n")[0].Trim()  # First line only
                     }
                 }
                 
@@ -4814,8 +4814,8 @@ function Get-EventLogAnalysis {
                 # Log all security errors (should be rare)
                 if ($parsedSecurityErrors.Count -gt 0) {
                     Write-Log "=== CRITICAL SECURITY EVENTS ===" 'INFO'
-                    foreach ($error in $parsedSecurityErrors) {
-                        Write-Log "[SECURITY] $($error.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($error.EventID) (Critical) - $($error.Source): $($error.Message)" 'ERROR'
+                    foreach ($securityError in $parsedSecurityErrors) {
+                        Write-Log "[SECURITY] $($securityError.Timestamp.ToString('yyyy-MM-dd HH:mm:ss')) - Event ID $($securityError.EventID) (Critical) - $($securityError.Source): $($securityError.Message)" 'ERROR'
                     }
                 }
             }
@@ -5622,7 +5622,8 @@ function Start-DefenderFullScan {
                     }
                 }
                 $detailedLogData.ScanHistory = $scanHistory
-            } else {
+            }
+            else {
                 Write-Log "[ScanHistory] No previous scan history found" 'INFO'
             }
         }
@@ -5655,16 +5656,16 @@ function Start-DefenderFullScan {
             Write-Log "[SignatureUpdate] - Antispyware: $($updatedStatus.AntispywareSignatureVersion) (Updated: $($updatedStatus.AntispywareSignatureLastUpdated))" 'INFO'
             Write-Log "[SignatureUpdate] - NIS: $($updatedStatus.NISSignatureVersion) (Updated: $($updatedStatus.NISSignatureLastUpdated))" 'INFO'
             $detailedLogData.SignatureUpdate = @{
-                Duration = $updateDuration
+                Duration    = $updateDuration
                 OldVersions = @{
-                    Antivirus = $defenderStatus.AntivirusSignatureVersion
+                    Antivirus   = $defenderStatus.AntivirusSignatureVersion
                     Antispyware = $defenderStatus.AntispywareSignatureVersion
-                    NIS = $defenderStatus.NISSignatureVersion
+                    NIS         = $defenderStatus.NISSignatureVersion
                 }
                 NewVersions = @{
-                    Antivirus = $updatedStatus.AntivirusSignatureVersion
+                    Antivirus   = $updatedStatus.AntivirusSignatureVersion
                     Antispyware = $updatedStatus.AntispywareSignatureVersion
-                    NIS = $updatedStatus.NISSignatureVersion
+                    NIS         = $updatedStatus.NISSignatureVersion
                 }
             }
         }
@@ -5691,10 +5692,10 @@ function Start-DefenderFullScan {
                 $usedSpace = $totalSize - $freeSpace
                 Write-Log "[ScanPreparation] System Drive ($($systemDrive.DeviceID)) - Total: ${totalSize} GB, Used: ${usedSpace} GB, Free: ${freeSpace} GB" 'INFO'
                 $detailedLogData.SystemInfo = @{
-                    TotalMemoryGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+                    TotalMemoryGB      = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
                     SystemDriveTotalGB = $totalSize
-                    SystemDriveUsedGB = $usedSpace
-                    SystemDriveFreeGB = $freeSpace
+                    SystemDriveUsedGB  = $usedSpace
+                    SystemDriveFreeGB  = $freeSpace
                 }
             }
         }
@@ -5779,14 +5780,15 @@ function Start-DefenderFullScan {
             Write-Log "[ScanExecution] Total scan execution time: $($scanExecutionTime.ToString('hh\:mm\:ss'))" 'INFO'
             if ($scanResult -and $scanResult -ne "ERROR") {
                 Write-Log "[ScanExecution] Scan result output: $scanResult" 'INFO'
-            } elseif ($scanResult -like "ERROR:*") {
+            }
+            elseif ($scanResult -like "ERROR:*") {
                 Write-Log "[ScanExecution] ⚠ Scan completed with error: $($scanResult.Substring(6))" 'WARN'
             }
             $scanSuccess = $true
             $detailedLogData.ScanExecution = @{
                 Duration = $scanExecutionTime
-                Result = $scanResult
-                JobId = $scanJob.Id
+                Result   = $scanResult
+                JobId    = $scanJob.Id
             }
         }
         catch {
@@ -5846,7 +5848,8 @@ function Start-DefenderFullScan {
                                 }
                             }
                         }
-                    } else {
+                    }
+                    else {
                         Write-Log "[ThreatAnalysis] No specific resources identified for this threat" 'WARN'
                     }
                     
@@ -5915,13 +5918,15 @@ function Start-DefenderFullScan {
                     # Update counters for summary
                     if ($threatSeverities.ContainsKey($severityName)) {
                         $threatSeverities[$severityName]++
-                    } else {
+                    }
+                    else {
                         $threatSeverities[$severityName] = 1
                     }
                     
                     if ($threatCategories.ContainsKey($categoryName)) {
                         $threatCategories[$categoryName]++
-                    } else {
+                    }
+                    else {
                         $threatCategories[$categoryName] = 1
                     }
                 }
@@ -5938,9 +5943,9 @@ function Start-DefenderFullScan {
                 }
                 
                 $detailedLogData.ThreatAnalysis = @{
-                    TotalThreats = $threatsFound.Count
-                    BySeverity = $threatSeverities
-                    ByCategory = $threatCategories
+                    TotalThreats    = $threatsFound.Count
+                    BySeverity      = $threatSeverities
+                    ByCategory      = $threatCategories
                     DetailedThreats = $threatsFound
                 }
             }
@@ -5983,7 +5988,8 @@ function Start-DefenderFullScan {
                 $quarantineItems = Get-MpQuarantineItem -ErrorAction SilentlyContinue
                 if ($quarantineItems) {
                     Write-Log "[QuarantineAnalysis] Quarantine contains $($quarantineItems.Count) items" 'INFO'
-                    foreach ($item in $quarantineItems | Select-Object -First 10) { # Limit to first 10 for logging
+                    foreach ($item in $quarantineItems | Select-Object -First 10) {
+                        # Limit to first 10 for logging
                         Write-Log "[QuarantineAnalysis] - Quarantined: $($item.FileName) | Threat: $($item.ThreatName) | Date: $($item.QuarantineTime)" 'INFO'
                     }
                     if ($quarantineItems.Count -gt 10) {
@@ -5991,9 +5997,10 @@ function Start-DefenderFullScan {
                     }
                     $detailedLogData.QuarantineStatus = @{
                         ItemCount = $quarantineItems.Count
-                        Items = $quarantineItems
+                        Items     = $quarantineItems
                     }
-                } else {
+                }
+                else {
                     Write-Log "[QuarantineAnalysis] Quarantine is empty" 'INFO'
                     $detailedLogData.QuarantineStatus = @{ ItemCount = 0 }
                 }
@@ -6098,11 +6105,11 @@ function Start-DefenderFullScan {
                 }
                 
                 $detailedLogData.ThreatCleanup = @{
-                    Duration = $cleanupDuration
-                    OriginalThreatCount = $threatsFound.Count
+                    Duration             = $cleanupDuration
+                    OriginalThreatCount  = $threatsFound.Count
                     RemainingThreatCount = $remainingThreats.Count
-                    QuarantineIncrease = $quarantineIncrease
-                    CleanupSuccess = $cleanupSuccess
+                    QuarantineIncrease   = $quarantineIncrease
+                    CleanupSuccess       = $cleanupSuccess
                 }
             }
             catch {
@@ -6114,7 +6121,7 @@ function Start-DefenderFullScan {
         else {
             Write-Log "[ThreatCleanup] No threats detected - cleanup not required" 'INFO'
             $detailedLogData.ThreatCleanup = @{
-                Required = $false
+                Required            = $false
                 OriginalThreatCount = 0
             }
         }
