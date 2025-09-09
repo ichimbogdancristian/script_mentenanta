@@ -4020,8 +4020,6 @@ function Optimize-TaskbarAndDesktopUI {
     
     Write-Log "[END] Taskbar and Desktop UI optimization completed" 'INFO'
 }
-    Write-Log "[END] Optimizing Taskbar and Desktop UI" 'INFO'
-}
 
 # ================================================================
 # Function: Disable-Telemetry
@@ -6053,6 +6051,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
                             
                             # Use robocopy to mirror empty directory (effectively deleting)
                             $robocopyResult = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$repoFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
+                            Write-Host "Robocopy cleanup exit code: $($robocopyResult.ExitCode)" -ForegroundColor Yellow
                             
                             # Clean up temp directory and try final removal
                             Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
