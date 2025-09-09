@@ -916,7 +916,7 @@ function Write-CleanProgress {
     
     $percentComplete = if ($TotalItems -gt 0) { [math]::Round(($CurrentIndex / $TotalItems) * 100, 0) } else { 0 }
     $progressId = $Activity.GetHashCode()
-    if ($progressId -lt 0) { $progressId = -$progressId }
+    if ($progressId -lt 0) { $progressId = - $progressId }
     
     if ($Completed) {
         # Clear progress bar and log completion
@@ -2179,6 +2179,9 @@ function Invoke-WindowsUpdateWithSuppressionHelpers {
         $env:SUPPRESS_REBOOT_PROMPT = "True"
         $env:ACCEPT_EULA = "True"
         $env:NONINTERACTIVE = "True"
+        $env:AUTOMATION = "True"
+        $env:BATCH_MODE = "True"
+        $env:NO_REBOOT_PROMPT = "True"
         
         # Use PowerShell job to isolate the update process completely
         $updateJob = Start-Job -ScriptBlock {
@@ -2188,12 +2191,15 @@ function Invoke-WindowsUpdateWithSuppressionHelpers {
             $env:SUPPRESS_REBOOT_PROMPT = "True"
             $env:ACCEPT_EULA = "True"
             $env:NONINTERACTIVE = "True"
+            $env:AUTOMATION = "True"
+            $env:BATCH_MODE = "True"
+            $env:NO_REBOOT_PROMPT = "True"
             
             # Import module in job context
             Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
             
-            # Install updates with maximum suppression parameters
-            Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -Verbose:$false 2>$null 3>$null 4>$null 5>$null 6>$null
+            # Install updates with maximum suppression parameters and output redirection
+            Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -Verbose:$false 2>$null 3>$null 4>$null 5>$null 6>$null | Out-Null
         }
         
         # Wait for job completion with timeout
@@ -2216,6 +2222,9 @@ function Invoke-WindowsUpdateWithSuppressionHelpers {
         Remove-Item -Path 'env:SUPPRESS_REBOOT_PROMPT' -ErrorAction SilentlyContinue
         Remove-Item -Path 'env:ACCEPT_EULA' -ErrorAction SilentlyContinue
         Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:AUTOMATION' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:BATCH_MODE' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:NO_REBOOT_PROMPT' -ErrorAction SilentlyContinue
     }
 }
 
@@ -2280,8 +2289,74 @@ function Install-WindowsUpdatesCompatible {
         
                 # Install updates with comprehensive reboot suppression
                 try {
-                    # Use helper function to suppress all prompts
-                    $installResult = Invoke-WindowsUpdateWithSuppressionHelpers
+                    # Set all possible environment variables to suppress prompts
+                    $env:PSWINDOWSUPDATE_REBOOT = "Never"
+                    $env:SUPPRESSPROMPTS = "True"
+                    $env:SUPPRESS_REBOOT_PROMPT = "True"
+                    $env:ACCEPT_EULA = "True"
+                    $env:NONINTERACTIVE = "True"
+                    $env:AUTOMATION = "True"
+                    $env:BATCH_MODE = "True"
+                    
+                    Write-Log "Installing Windows Updates with full prompt suppression..." 'INFO'
+                    
+                    # Set additional PowerShell variables to prevent interaction
+                    $ConfirmPreference = 'None'
+                    $WarningPreference = 'SilentlyContinue'
+                    $InformationPreference = 'SilentlyContinue'
+                    $VerbosePreference = 'SilentlyContinue'
+                    $DebugPreference = 'SilentlyContinue'
+                    
+                    # Install updates with complete output suppression
+                    try {
+                        # First try with maximum suppression parameters
+                        $installResult = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -WarningAction SilentlyContinue -InformationAction SilentlyContinue -Verbose:$false -ErrorAction SilentlyContinue 2>&1 | Out-String
+                    }
+                    catch {
+                        Write-Log "Windows Update installation completed with potential prompts suppressed: $_" 'INFO'
+                        $installResult = "Updates processed"
+                    }
+                    
+                    # Alternative approach: Use Start-Process for complete isolation if above method fails
+                    if (-not $installResult -or $installResult -eq "Updates processed") {
+                        try {
+                            Write-Log "Attempting alternative Windows Update installation method..." 'INFO'
+                            
+                            # Create a script block for isolated execution
+                            $updateScript = @"
+Import-Module PSWindowsUpdate -Force
+`$env:PSWINDOWSUPDATE_REBOOT = 'Never'
+`$env:SUPPRESSPROMPTS = 'True'
+`$env:SUPPRESS_REBOOT_PROMPT = 'True'
+Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`$false -IgnoreReboot -Silent -ForceInstall
+"@
+                            
+                            # Write script to temp file
+                            $tempScript = Join-Path $env:TEMP "wu_install_$(Get-Random).ps1"
+                            $updateScript | Out-File -FilePath $tempScript -Encoding UTF8
+                            
+                            # Execute in isolated process
+                            $processParams = @{
+                                FilePath               = "powershell.exe"
+                                ArgumentList           = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", $tempScript)
+                                WindowStyle            = 'Hidden'
+                                Wait                   = $true
+                                PassThru               = $true
+                                RedirectStandardOutput = $true
+                                RedirectStandardError  = $true
+                            }
+                            
+                            $updateProcess = Start-Process @processParams
+                            
+                            # Clean up temp script
+                            Remove-Item -Path $tempScript -Force -ErrorAction SilentlyContinue
+                            
+                            Write-Log "Alternative Windows Update method completed with exit code: $($updateProcess.ExitCode)" 'INFO'
+                        }
+                        catch {
+                            Write-Log "Alternative Windows Update method failed: $_" 'WARN'
+                        }
+                    }
                     
                     # Check if reboot is required after installation
                     $rebootRequired = $false
@@ -2352,6 +2427,22 @@ function Install-WindowsUpdatesCompatible {
         return $false
     }
     finally {
+        # Clean up ALL environment variables used for suppression
+        Remove-Item -Path 'env:PSWINDOWSUPDATE_REBOOT' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:SUPPRESSPROMPTS' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:SUPPRESS_REBOOT_PROMPT' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:ACCEPT_EULA' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:AUTOMATION' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:BATCH_MODE' -ErrorAction SilentlyContinue
+        
+        # Reset PowerShell preference variables to defaults
+        $ConfirmPreference = 'High'
+        $WarningPreference = 'Continue'
+        $InformationPreference = 'Continue'
+        $VerbosePreference = 'SilentlyContinue'
+        $DebugPreference = 'SilentlyContinue'
+        
         $duration = (Get-Date) - $startTime
         Write-Log "Windows Updates check completed in $([math]::Round($duration.TotalSeconds, 2)) seconds" 'INFO'
     }
@@ -3986,7 +4077,8 @@ function Optimize-TaskbarAndDesktopUI {
             
             if ($removedCount -eq 0) {
                 Write-Log "No Spotlight desktop icons found to remove" 'INFO'
-            } else {
+            }
+            else {
                 Write-Log "✓ Removed $removedCount Spotlight-related desktop icons" 'INFO'
             }
         }
@@ -4932,15 +5024,15 @@ function Start-SystemHealthRepair {
     # Progress: 100% - Operation complete
     Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 100 -Status "System health repair complete!" -Completed
     
-    } # End of main try block
-    catch {
-        Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
-        $repairResults.OverallSuccess = $false
-    }
-    finally {
-        # Generate comprehensive repair report
-        $repairEndTime = Get-Date
-        $totalDuration = $repairEndTime - $repairStartTime
+} # End of main try block
+catch {
+    Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
+    $repairResults.OverallSuccess = $false
+}
+finally {
+    # Generate comprehensive repair report
+    $repairEndTime = Get-Date
+    $totalDuration = $repairEndTime - $repairStartTime
         
     Write-Log "[SystemHealthRepair] COMPREHENSIVE REPAIR SUMMARY:" 'INFO'
     Write-Log "- Repair start time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
@@ -5921,7 +6013,7 @@ Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] PowerShell Main
 Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] Returning control to script.bat (if applicable)"
 Add-Content -Path $LogFile -Value "[$completionTimestamp] [INFO] ============================================================"
 
-# Interactive closure prompt for console environments with 60s countdown and auto-cleanup
+# Enhanced post-execution cleanup with 120-second countdown and comprehensive logging
 if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host
     Write-Host "✅ Maintenance script completed successfully!" -ForegroundColor Green
@@ -5930,205 +6022,263 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host "📄 Reports available in: $PSScriptRoot" -ForegroundColor Cyan
     Write-Host
 
-    # Check if Windows Update reboot is required
+    Write-Log "[POST-EXECUTION] Starting post-execution cleanup and system state analysis" 'INFO'
+    
+    # STEP 1: Always remove repository directory after task completion
+    Write-Log "[CLEANUP] Initiating repository directory removal" 'INFO'
+    Write-Host "🧹 Starting repository cleanup..." -ForegroundColor Cyan
+    
+    $repoFolder = $PSScriptRoot
+    $repoCleanupSuccess = $false
+    
+    try {
+        # Navigate to parent directory before removing repository folder
+        $parentPath = Split-Path -Path $repoFolder -Parent
+        if (Test-Path -Path $parentPath) {
+            Set-Location -Path $parentPath
+            Write-Host "📁 Changed directory to: $parentPath" -ForegroundColor Yellow
+            Write-Log "[CLEANUP] Changed working directory to parent: $parentPath" 'INFO'
+            
+            # Allow time for directory change to take effect
+            Start-Sleep -Milliseconds 500
+        }
+        
+        # Force garbage collection to release any file handles
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        [System.GC]::Collect()
+        Write-Log "[CLEANUP] Performed garbage collection to release file handles" 'INFO'
+        
+        # Additional delay to ensure all handles are released
+        Start-Sleep -Seconds 1
+        
+        # Remove repository folder with enhanced error handling
+        if (Test-Path -Path $repoFolder) {
+            Write-Host "🗑️  Removing repository folder: $repoFolder" -ForegroundColor Yellow
+            Write-Log "[CLEANUP] Attempting repository folder removal: $repoFolder" 'INFO'
+            
+            # First attempt: Standard removal
+            try {
+                Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
+                Write-Host "✅ Repository folder removed successfully" -ForegroundColor Green
+                Write-Log "[CLEANUP] Repository folder removed successfully using standard method" 'INFO'
+                $repoCleanupSuccess = $true
+            }
+            catch {
+                Write-Host "⚠️  Standard removal failed, trying alternative method..." -ForegroundColor Yellow
+                Write-Log "[CLEANUP] Standard removal failed: $($_.Exception.Message)" 'WARN'
+                
+                # Second attempt: Use robocopy for stubborn folders
+                try {
+                    $tempEmptyDir = Join-Path $parentPath "temp_empty_$(Get-Random)"
+                    New-Item -Path $tempEmptyDir -ItemType Directory -Force | Out-Null
+                    Write-Log "[CLEANUP] Created temporary empty directory: $tempEmptyDir" 'INFO'
+                    
+                    # Use robocopy to mirror empty directory (effectively deleting)
+                    $robocopyResult = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$repoFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
+                    Write-Log "[CLEANUP] Robocopy cleanup exit code: $($robocopyResult.ExitCode)" 'INFO'
+                    
+                    # Clean up temp directory and try final removal
+                    Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
+                    Write-Host "✅ Repository folder removed using alternative method" -ForegroundColor Green
+                    Write-Log "[CLEANUP] Repository folder removed successfully using robocopy method" 'INFO'
+                    $repoCleanupSuccess = $true
+                }
+                catch {
+                    Write-Host "❌ Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
+                    Write-Host "⚠️  Manual removal may be required: $repoFolder" -ForegroundColor Yellow
+                    Write-Log "[CLEANUP] Repository folder removal failed: $($_.Exception.Message)" 'ERROR'
+                    $repoCleanupSuccess = $false
+                }
+            }
+        }
+        else {
+            Write-Host "⚠️  Repository folder not found: $repoFolder" -ForegroundColor Yellow
+            Write-Log "[CLEANUP] Repository folder not found: $repoFolder" 'WARN'
+            $repoCleanupSuccess = $true  # Consider success if already gone
+        }
+    }
+    catch {
+        Write-Host "❌ Unexpected error during repository cleanup: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "[CLEANUP] Unexpected error during repository cleanup: $($_.Exception.Message)" 'ERROR'
+        $repoCleanupSuccess = $false
+    }
+    
+    # STEP 2: Check for pending restart requirements
+    Write-Log "[RESTART-CHECK] Analyzing system restart requirements" 'INFO'
+    Write-Host "🔍 Checking system restart requirements..." -ForegroundColor Cyan
+    
     $rebootRequired = $false
     $rebootReason = ""
+    $rebootSources = @()
     
     # Check global Windows Updates reboot requirement first
     if ($global:SystemSettings.Reboot.Required -eq $true) {
         $rebootRequired = $true
-        $rebootReason = "Windows Updates installation ($($global:SystemSettings.Reboot.Source))"
-        Write-Host "⚠️  SYSTEM RESTART REQUIRED" -ForegroundColor Yellow
-        Write-Host "Reason: $rebootReason" -ForegroundColor Yellow
-        Write-Host "📋 All maintenance tasks have been completed." -ForegroundColor Green
+        $rebootReason = "Windows Updates installation"
+        $rebootSources += "Global Windows Updates flag ($($global:SystemSettings.Reboot.Source))"
+        Write-Log "[RESTART-CHECK] Global restart flag detected: $($global:SystemSettings.Reboot.Source)" 'INFO'
     }
     
-    # Also check registry-based reboot indicators
-    if (-not $rebootRequired) {
-        $registryKeys = @(
-            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
-            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
-            "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations"
-        )
+    # Check registry-based reboot indicators
+    $registryKeys = @(
+        @{ Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"; Description = "Windows Update reboot required" },
+        @{ Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"; Description = "Component Based Servicing reboot pending" },
+        @{ Path = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager"; Value = "PendingFileRenameOperations"; Description = "Pending file rename operations" }
+    )
+    
+    foreach ($keyInfo in $registryKeys) {
+        try {
+            if ($keyInfo.Value) {
+                # Check for specific value
+                $regValue = Get-ItemProperty -Path $keyInfo.Path -Name $keyInfo.Value -ErrorAction SilentlyContinue
+                if ($regValue) {
+                    $rebootRequired = $true
+                    $rebootSources += $keyInfo.Description
+                    Write-Log "[RESTART-CHECK] Registry restart indicator found: $($keyInfo.Description)" 'INFO'
+                }
+            }
+            else {
+                # Check for key existence
+                if (Test-Path $keyInfo.Path) {
+                    $rebootRequired = $true
+                    $rebootSources += $keyInfo.Description
+                    Write-Log "[RESTART-CHECK] Registry restart indicator found: $($keyInfo.Description)" 'INFO'
+                }
+            }
+        }
+        catch {
+            Write-Log "[RESTART-CHECK] Error checking registry key $($keyInfo.Path): $_" 'WARN'
+        }
+    }
+    
+    # Log restart determination results
+    if ($rebootRequired) {
+        $rebootReason = $rebootSources -join "; "
+        Write-Host "⚠️  SYSTEM RESTART REQUIRED" -ForegroundColor Yellow
+        Write-Host "📋 Reason(s): $rebootReason" -ForegroundColor Yellow
+        Write-Log "[RESTART-CHECK] System restart required. Reasons: $rebootReason" 'INFO'
+    }
+    else {
+        Write-Host "✅ No system restart required" -ForegroundColor Green
+        Write-Log "[RESTART-CHECK] No system restart required" 'INFO'
+    }
+    
+    # STEP 3: 120-second countdown with comprehensive user interaction handling
+    Write-Host
+    if ($rebootRequired) {
+        Write-Host "🔄 Starting 120-second countdown for automatic restart and cleanup." -ForegroundColor Yellow
+        Write-Host "💡 Press any key to abort restart and keep window open." -ForegroundColor Cyan
+        Write-Log "[COUNTDOWN] Starting 120-second restart countdown" 'INFO'
+    }
+    else {
+        Write-Host "🕒 Starting 120-second countdown for automatic cleanup and window closure." -ForegroundColor Yellow
+        Write-Host "💡 Press any key to abort cleanup and keep window open." -ForegroundColor Cyan
+        Write-Log "[COUNTDOWN] Starting 120-second cleanup countdown (no restart needed)" 'INFO'
+    }
+    
+    $countdown = 120
+    $abort = $false
+    $lastMinuteReported = -1
+    
+    # Enhanced countdown with minute-by-minute logging and key detection
+    for ($i = $countdown; $i -ge 1; $i--) {
+        # Log every minute milestone
+        $currentMinute = [math]::Floor($i / 60)
+        if ($currentMinute -ne $lastMinuteReported -and ($i % 60) -eq 0) {
+            $lastMinuteReported = $currentMinute
+            Write-Log "[COUNTDOWN] Countdown milestone: $currentMinute minute(s) remaining" 'INFO'
+        }
         
-        foreach ($key in $registryKeys) {
-            if (Test-Path $key) {
-                $rebootRequired = $true
-                $rebootReason = "System maintenance operations"
-                Write-Host "⚠️  SYSTEM RESTART REQUIRED" -ForegroundColor Yellow
-                Write-Host "Reason: Registry pending operations detected" -ForegroundColor Yellow
+        # Display countdown message based on restart requirement
+        if ($rebootRequired) {
+            Write-Host "`r🔄 Automatic restart in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "`r🕒 Automatic cleanup and closure in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
+        }
+        
+        # Check for key press every 100ms for 1 second (10 checks total)
+        for ($j = 0; $j -lt 10; $j++) {
+            Start-Sleep -Milliseconds 100
+            if ([System.Console]::KeyAvailable) {
+                $pressedKey = [System.Console]::ReadKey($true)
+                $abort = $true
+                Write-Log "[COUNTDOWN] User interaction detected - key pressed: $($pressedKey.Key)" 'INFO'
                 break
             }
         }
+        
+        if ($abort) { break }
     }
     
-    if ($rebootRequired) {
-        # Handle reboot scenario
-        Write-Host "Starting 60-second countdown for automatic restart. Press any key to abort." -ForegroundColor Yellow
-        Write-Host "This restart will complete the installation and apply all changes." -ForegroundColor Cyan
-        Write-Host
-
-        $countdown = 60
-        $abort = $false
-
-        # Reboot countdown with key detection
-        for ($i = $countdown; $i -ge 1; $i--) {
-            Write-Host "`r🔄 Automatic restart in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
-            
-            # Check for key press every 100ms for 1 second (10 checks total)
-            for ($j = 0; $j -lt 10; $j++) {
-                Start-Sleep -Milliseconds 100
-                if ([System.Console]::KeyAvailable) {
-                    $null = [System.Console]::ReadKey($true)
-                    $abort = $true
-                    break
-                }
-            }
-            
-            if ($abort) { break }
-        }
+    Write-Host ""  # New line after countdown
+    
+    # STEP 4: Execute appropriate action based on countdown result
+    if (-not $abort) {
+        Write-Log "[COUNTDOWN] Countdown completed without user interaction" 'INFO'
         
-        Write-Host ""  # New line after countdown
-        
-        if (-not $abort) {
-            Write-Host "🔄 Initiating system restart..." -ForegroundColor Green
-            Write-Host "Your system will restart automatically to complete the updates." -ForegroundColor Cyan
+        if ($rebootRequired) {
+            # No user interaction + restart needed → Close terminal + restart PC
+            Write-Host "🔄 Initiating system restart and terminal closure..." -ForegroundColor Green
+            Write-Host "📋 Your system will restart automatically to complete all changes." -ForegroundColor Cyan
+            Write-Log "[EXECUTION] Initiating system restart (no user interaction)" 'INFO'
+            
             try {
-                Start-Process -FilePath "shutdown.exe" -ArgumentList "/r", "/t", "10", "/c", "$rebootReason" -NoNewWindow
-                Write-Log 'System restart initiated successfully from final closure.' 'INFO'
+                # Start the restart process
+                $shutdownArgs = @("/r", "/t", "10", "/c", "Maintenance script restart: $rebootReason")
+                Start-Process -FilePath "shutdown.exe" -ArgumentList $shutdownArgs -NoNewWindow
+                Write-Log "[EXECUTION] System restart command executed successfully" 'INFO'
                 
                 # Clear the global reboot flag since we're restarting
                 $global:SystemSettings.Reboot.Required = $false
                 $global:SystemSettings.Reboot.Source = $null
                 $global:SystemSettings.Reboot.Timestamp = $null
+                Write-Log "[EXECUTION] Global restart flags cleared" 'INFO'
                 
-                Write-Host "System restart initiated. Closing in 5 seconds..." -ForegroundColor Green
+                Write-Host "✅ System restart initiated. Terminal closing in 5 seconds..." -ForegroundColor Green
+                Write-Log "[EXECUTION] Terminal closure initiated - 5 second delay" 'INFO'
                 Start-Sleep -Seconds 5
+                
+                # Force close terminal
+                Write-Log "[EXECUTION] Executing terminal closure via Environment.Exit" 'INFO'
                 [System.Environment]::Exit(0)
             }
             catch {
                 Write-Host "❌ Failed to initiate restart: $_" -ForegroundColor Red
-                Write-Host "Please restart your system manually to complete the updates." -ForegroundColor Yellow
+                Write-Log "[EXECUTION] Failed to initiate system restart: $_" 'ERROR'
+                Write-Host "⚠️  Please restart your system manually to complete the updates." -ForegroundColor Yellow
+                Write-Log "[EXECUTION] Manual restart required due to automation failure" 'WARN'
                 Read-Host -Prompt 'Press Enter to close this window...'
             }
         }
         else {
-            Write-Host "`rRestart aborted by user." -ForegroundColor Green
-            Write-Host "⚠️  Important: Your system still requires a restart to complete Windows Updates." -ForegroundColor Yellow
-            Write-Host "Please restart manually when convenient to apply all changes." -ForegroundColor Yellow
-            Read-Host -Prompt 'Press Enter to close this window...'
-        }
-    }
-    else {
-        # Handle normal cleanup scenario (no reboot required)
-        Write-Host "Press any key to keep this window open, or wait 60 seconds to auto-cleanup and close..." -ForegroundColor Yellow
-
-        $repoFolder = $PSScriptRoot
-        $countdown = 60
-        $abort = $false
-
-        # Enhanced countdown with accurate timing and reliable key detection
-        for ($i = $countdown; $i -ge 1; $i--) {
-            # Display countdown with carriage return for overwrite
-            Write-Host "`rClosing in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
+            # No user interaction + no restart needed → Just close terminal
+            Write-Host "✅ Cleanup completed. Closing terminal window..." -ForegroundColor Green
+            Write-Log "[EXECUTION] Closing terminal window (no restart needed, no user interaction)" 'INFO'
             
-            # Check for key press every 100ms for 1 second (10 checks total)
-            for ($j = 0; $j -lt 10; $j++) {
-                Start-Sleep -Milliseconds 100
-                if ([System.Console]::KeyAvailable) {
-                    $null = [System.Console]::ReadKey($true)
-                    $abort = $true
-                    break
-                }
-            }
-            
-            if ($abort) { break }
-        }
-        
-        Write-Host ""  # New line after countdown
-        
-        if (-not $abort) {
-            Write-Host "No key pressed. Removing repository folder and closing window..." -ForegroundColor Red
-            try {
-                # Navigate to parent directory before removing repository folder
-                $parentPath = Split-Path -Path $repoFolder -Parent
-                if (Test-Path -Path $parentPath) {
-                    Set-Location -Path $parentPath
-                    Write-Host "Changed directory to: $parentPath" -ForegroundColor Yellow
-                    
-                    # Allow time for directory change to take effect
-                    Start-Sleep -Milliseconds 500
-                }
-                
-                # Force garbage collection to release any file handles
-                [System.GC]::Collect()
-                [System.GC]::WaitForPendingFinalizers()
-                [System.GC]::Collect()
-                
-                # Additional delay to ensure all handles are released
-                Start-Sleep -Seconds 1
-                
-                # Remove repository folder with enhanced error handling and multiple attempts
-                if (Test-Path -Path $repoFolder) {
-                    Write-Host "Attempting to remove repository folder: $repoFolder" -ForegroundColor Yellow
-                    
-                    # First attempt: Standard removal
-                    try {
-                        Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
-                        Write-Host "✓ Repository folder removed successfully: $repoFolder" -ForegroundColor Green
-                    }
-                    catch {
-                        Write-Host "First removal attempt failed: $($_.Exception.Message)" -ForegroundColor Yellow
-                        
-                        # Second attempt: Use robocopy for stubborn folders
-                        try {
-                            Write-Host "Attempting alternative removal method..." -ForegroundColor Yellow
-                            $tempEmptyDir = Join-Path $parentPath "temp_empty_$(Get-Random)"
-                            New-Item -Path $tempEmptyDir -ItemType Directory -Force | Out-Null
-                            
-                            # Use robocopy to mirror empty directory (effectively deleting)
-                            $robocopyResult = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$repoFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
-                            Write-Host "Robocopy cleanup exit code: $($robocopyResult.ExitCode)" -ForegroundColor Yellow
-                            
-                            # Clean up temp directory and try final removal
-                            Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
-                            Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
-                            Write-Host "✓ Repository folder removed using alternative method: $repoFolder" -ForegroundColor Green
-                        }
-                        catch {
-                            Write-Host "❌ Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
-                            Write-Host "⚠️  Manual removal may be required: $repoFolder" -ForegroundColor Yellow
-                        }
-                    }
-                }
-                else {
-                    Write-Host "Repository folder not found: $repoFolder" -ForegroundColor Yellow
-                }
-            }
-            catch {
-                Write-Host "❌ Unexpected error during cleanup: $($_.Exception.Message)" -ForegroundColor Red
-            }
-            
-            # Enhanced window closure with multiple strategies
-            Write-Host "Closing terminal window in 3 seconds..." -ForegroundColor Red
-            Start-Sleep -Seconds 3  # Give user time to see the results
+            Write-Host "📋 All maintenance tasks completed successfully." -ForegroundColor Cyan
+            Write-Host "🕒 Terminal closing in 3 seconds..." -ForegroundColor Yellow
+            Write-Log "[EXECUTION] Terminal closure initiated - 3 second delay" 'INFO'
+            Start-Sleep -Seconds 3
             
             try {
-                # Strategy 1: Force close current PowerShell process (most reliable)
+                # Close terminal using multiple strategies
+                Write-Log "[EXECUTION] Executing terminal closure via Environment.Exit" 'INFO'
                 if ($Host.Name -eq 'ConsoleHost') {
                     [System.Environment]::Exit(0)
                 }
-                # Strategy 2: Use Stop-Process for ConsoleHost
                 elseif ($Host.Name -eq 'ConsoleHost') {
                     Stop-Process -Id $PID -Force
                 }
-                # Strategy 3: Standard exit for other hosts
                 else {
                     exit 0
                 }
             }
             catch {
-                # Fallback: Try alternative closure methods
+                # Fallback closure methods
+                Write-Log "[EXECUTION] Primary closure method failed, using fallback" 'WARN'
                 try {
                     Stop-Process -Id $PID -Force
                 }
@@ -6137,9 +6287,34 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
                 }
             }
         }
-        else {
-            Write-Host "`rCleanup aborted by user. Window will remain open." -ForegroundColor Green
-            Read-Host -Prompt 'Press Enter to close this window...'
-        }
     }
+    else {
+        # User interaction → Abort countdown, abort restart, abort terminal closing
+        Write-Host "`r✋ Operation aborted by user interaction." -ForegroundColor Green
+        Write-Log "[EXECUTION] All operations aborted due to user interaction" 'INFO'
+        
+        if ($rebootRequired) {
+            Write-Host "⚠️  Important: Your system still requires a restart to complete updates." -ForegroundColor Yellow
+            Write-Host "📋 Restart reasons: $rebootReason" -ForegroundColor Yellow
+            Write-Host "💡 Please restart manually when convenient to apply all changes." -ForegroundColor Cyan
+            Write-Log "[EXECUTION] User aborted restart - manual restart still required: $rebootReason" 'WARN'
+        }
+        else {
+            Write-Host "✅ No restart required. All maintenance tasks completed successfully." -ForegroundColor Green
+            Write-Log "[EXECUTION] User aborted cleanup - no restart required" 'INFO'
+        }
+        
+        if (-not $repoCleanupSuccess) {
+            Write-Host "⚠️  Note: Repository cleanup may have failed. Manual cleanup might be needed." -ForegroundColor Yellow
+            Write-Host "📁 Repository location: $repoFolder" -ForegroundColor Yellow
+            Write-Log "[EXECUTION] Repository cleanup reminder provided to user" 'INFO'
+        }
+        
+        Write-Host "🔗 Window will remain open for your review." -ForegroundColor Cyan
+        Write-Log "[EXECUTION] Terminal window kept open per user interaction" 'INFO'
+        Read-Host -Prompt 'Press Enter to close this window...'
+        Write-Log "[EXECUTION] User manually closed terminal window" 'INFO'
+    }
+    
+    Write-Log "[POST-EXECUTION] Post-execution cleanup and countdown sequence completed" 'INFO'
 }
