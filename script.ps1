@@ -2173,17 +2173,27 @@ function Remove-AppxProvisionedPackageCompatible {
 # ================================================================
 function Invoke-WindowsUpdateWithSuppressionHelpers {
     try {
-        # Set environment variables to suppress PSWindowsUpdate prompts
+        # Set comprehensive environment variables to suppress ALL PSWindowsUpdate prompts
         $env:PSWINDOWSUPDATE_REBOOT = "Never"
         $env:SUPPRESSPROMPTS = "True"
+        $env:SUPPRESS_REBOOT_PROMPT = "True"
+        $env:ACCEPT_EULA = "True"
+        $env:NONINTERACTIVE = "True"
         
-        # Use PowerShell job to isolate the update process
+        # Use PowerShell job to isolate the update process completely
         $updateJob = Start-Job -ScriptBlock {
+            # Set suppression variables in job context too
+            $env:PSWINDOWSUPDATE_REBOOT = "Never"
+            $env:SUPPRESSPROMPTS = "True"
+            $env:SUPPRESS_REBOOT_PROMPT = "True"
+            $env:ACCEPT_EULA = "True"
+            $env:NONINTERACTIVE = "True"
+            
             # Import module in job context
             Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
             
-            # Install updates with comprehensive suppression
-            Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -Verbose:$false 2>$null
+            # Install updates with maximum suppression parameters
+            Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -Verbose:$false 2>$null 3>$null 4>$null 5>$null 6>$null
         }
         
         # Wait for job completion with timeout
@@ -2200,9 +2210,12 @@ function Invoke-WindowsUpdateWithSuppressionHelpers {
         return $null
     }
     finally {
-        # Clean up environment variables
+        # Clean up ALL environment variables used for suppression
         Remove-Item -Path 'env:PSWINDOWSUPDATE_REBOOT' -ErrorAction SilentlyContinue
         Remove-Item -Path 'env:SUPPRESSPROMPTS' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:SUPPRESS_REBOOT_PROMPT' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:ACCEPT_EULA' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
     }
 }
 
@@ -3423,41 +3436,8 @@ function Install-EssentialApps {
             Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation error" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
         }
     }
-    else {
-        $result.Error += "winget failed (exit: $($wingetProc.ExitCode)); "
-        Write-Host "    ✗ Winget failed (exit code: $($wingetProc.ExitCode))" -ForegroundColor Red
-    }
-}
 
-# Try Chocolatey as fallback
-if (-not $result.Success -and $app.Choco -and $chocoAvailable) {
-    Write-Host "  → Trying Chocolatey installation for $($app.Name)..." -ForegroundColor Cyan
-    $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--limit-output")
-    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-    if ($chocoProc.ExitCode -eq 0) {
-        $result.Success = $true
-        $result.Method = "choco"
-        $successCount++
-        Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey]" 'INFO'
-        Write-Host "    ✓ Successfully installed via Chocolatey" -ForegroundColor Green
-        continue
-    }
-    elseif ($chocoProc.ExitCode -eq 1641 -or $chocoProc.ExitCode -eq 3010) {
-        # Success with reboot required
-        $result.Success = $true
-        $result.Method = "choco (reboot required)"
-        $successCount++
-        Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey - Reboot Required]" 'INFO'
-        Write-Host "    ✓ Successfully installed via Chocolatey (reboot required)" -ForegroundColor Green
-        continue
-    }
-
-    # Final summary with the new script scope variables
-    Write-Log "[EssentialApps] Installation Summary: Success=$script:successCount, Failed=$script:failedCount, Skipped=$script:skippedCount" 'INFO'
-    Write-Log "[EssentialApps] Final app index processed: $script:currentAppIndex/$totalApps" 'INFO'
-
-    # Enhanced Office detection with parallel checking
-    Write-Log "Checking for existing office suite installations..." 'INFO'
+    # Final installation summary
     $officeDetectionJob = Start-Job -ScriptBlock {
         # Check registry keys in parallel
         $registryJob = Start-Job -ScriptBlock {
@@ -4467,8 +4447,22 @@ function Install-WindowsUpdatesCompatible {
                 Write-Log "Found $($availableUpdates.Count) available updates" 'INFO'
                 Write-Host "Installing $($availableUpdates.Count) Windows updates..." -ForegroundColor Cyan
 
-                # Install updates with progress tracking
-                $installResult = Install-WindowsUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -ErrorAction SilentlyContinue
+                # Set environment variables for suppression before installation
+                $env:PSWINDOWSUPDATE_REBOOT = "Never"
+                $env:SUPPRESSPROMPTS = "True"
+                $env:SUPPRESS_REBOOT_PROMPT = "True"
+                $env:ACCEPT_EULA = "True"
+                $env:NONINTERACTIVE = "True"
+
+                # Install updates with comprehensive suppression
+                $installResult = Install-WindowsUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -ErrorAction SilentlyContinue
+                
+                # Clean up environment variables immediately after
+                Remove-Item -Path 'env:PSWINDOWSUPDATE_REBOOT' -ErrorAction SilentlyContinue
+                Remove-Item -Path 'env:SUPPRESSPROMPTS' -ErrorAction SilentlyContinue
+                Remove-Item -Path 'env:SUPPRESS_REBOOT_PROMPT' -ErrorAction SilentlyContinue
+                Remove-Item -Path 'env:ACCEPT_EULA' -ErrorAction SilentlyContinue
+                Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
                 
                 if ($installResult) {
                     $successfulUpdates = $installResult | Where-Object { $_.Result -eq 'Installed' }
