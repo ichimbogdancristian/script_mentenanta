@@ -8,6 +8,7 @@
 # Dependencies: Winget, Chocolatey, AppX, DISM, Registry access, Windows Capabilities
 # Architecture: Two-tier launcher→orchestrator design with standardized task coordination
 # Performance: Parallel processing, HashSet optimizations, native PowerShell 7 operations
+# Progress Tracking: Clean visual progress bars with minimal logging noise (v2025.1)
 # ===============================
 
 #Requires -Version 7.0
@@ -794,14 +795,19 @@ function Write-TaskProgress {
         [string]$Status = "Processing..."
     )
     
+    # Show visual progress bar in console
     Write-Progress -Activity $Activity -Status $Status -PercentComplete $PercentComplete
-    Write-Log "$Activity - $Status ($PercentComplete%)" 'PROGRESS'
     
-    # Clear progress bar when complete
-    if ($PercentComplete -ge 100) {
+    # Only log start and completion to reduce noise
+    if ($PercentComplete -eq 0) {
+        Write-Log "⏳ $Activity - $Status" 'INFO'
+    }
+    elseif ($PercentComplete -ge 100) {
+        Write-Log "✓ $Activity - Completed" 'INFO'
         Start-Sleep -Milliseconds 500  # Brief pause to show completion
         Write-Progress -Activity $Activity -Completed
     }
+    # Skip intermediate percentage logging - progress bar provides visual feedback
 }
 
 # ================================================================
@@ -852,19 +858,86 @@ function Write-ActionProgress {
     if ($Completed) {
         # Clear the progress bar
         Write-Progress -Id $activityId -Activity $activityTitle -Completed
-        # Also log completion
-        Write-Log "✓ $ActionType completed: $ItemName" 'INFO'
-    }
-    else {
-        # Show progress bar
-        Write-Progress -Id $activityId -Activity $activityTitle -Status $statusMessage -PercentComplete $PercentComplete
-        
-        # Log verbose progress for file logging
+        # Log completion without clutter
         if ($TotalItems -gt 0 -and $CurrentItem -gt 0) {
-            Write-Log "$ActionType progress: $ItemName ($CurrentItem/$TotalItems) - $PercentComplete%" 'VERBOSE'
+            Write-Log "✓ $ActionType completed: $ItemName ($CurrentItem/$TotalItems)" 'INFO'
         }
         else {
-            Write-Log "$ActionType progress: $ItemName - $PercentComplete%" 'VERBOSE'
+            Write-Log "✓ $ActionType completed: $ItemName" 'INFO'
+        }
+    }
+    else {
+        # Show progress bar in console only
+        Write-Progress -Id $activityId -Activity $activityTitle -Status $statusMessage -PercentComplete $PercentComplete
+        
+        # Only log meaningful progress milestones to avoid clutter
+        # Log start (0%) and major milestones, but not every percentage update
+        if ($PercentComplete -eq 0) {
+            if ($TotalItems -gt 0 -and $CurrentItem -gt 0) {
+                Write-Log "⏳ $ActionType started: $ItemName ($CurrentItem/$TotalItems)" 'INFO'
+            }
+            else {
+                Write-Log "⏳ $ActionType started: $ItemName" 'INFO'
+            }
+        }
+        # Skip intermediate percentage logging to reduce console noise
+        # Progress bars provide visual feedback, no need for verbose percentage logs
+    }
+}
+
+# ================================================================
+# Function: Write-CleanProgress
+# ================================================================
+# Purpose: Clean, professional progress tracking with minimal logging noise
+# Environment: Windows PowerShell console, focuses on visual feedback over verbose logging
+# Logic: Shows visual progress bars while logging only meaningful state changes
+# Performance: Lightweight, reduces log file clutter, provides clear user feedback
+# Dependencies: Write-Progress cmdlet, console capabilities
+# Features: Smart logging that avoids percentage spam, clean visual indicators
+# ================================================================
+function Write-CleanProgress {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Activity,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$CurrentItem,
+        
+        [Parameter(Mandatory = $true)]
+        [int]$CurrentIndex,
+        
+        [Parameter(Mandatory = $true)]
+        [int]$TotalItems,
+        
+        [string]$Status = "Processing",
+        
+        [switch]$Completed
+    )
+    
+    $percentComplete = if ($TotalItems -gt 0) { [math]::Round(($CurrentIndex / $TotalItems) * 100, 0) } else { 0 }
+    $progressId = $Activity.GetHashCode()
+    if ($progressId -lt 0) { $progressId = -$progressId }
+    
+    if ($Completed) {
+        # Clear progress bar and log completion
+        Write-Progress -Id $progressId -Activity $Activity -Completed
+        Write-Log "✅ $Activity completed: All $TotalItems items processed" 'INFO'
+    }
+    else {
+        # Show clean progress bar with item info
+        $progressActivity = "$Activity ($CurrentIndex/$TotalItems)"
+        $progressStatus = "$Status`: $CurrentItem"
+        
+        Write-Progress -Id $progressId -Activity $progressActivity -Status $progressStatus -PercentComplete $percentComplete
+        
+        # Log only when starting new items, not every percentage update
+        if ($CurrentIndex -eq 1) {
+            Write-Log "🚀 $Activity started: Processing $TotalItems items" 'INFO'
+        }
+        
+        # Log every 10th item or significant milestones to track progress without spam
+        if ($CurrentIndex % 10 -eq 0 -or $CurrentIndex -eq $TotalItems) {
+            Write-Log "📊 $Activity progress: $CurrentIndex/$TotalItems items completed ($percentComplete%)" 'INFO'
         }
     }
 }
@@ -2836,21 +2909,15 @@ function Remove-Bloatware {
             $appType = $app.Type
             $appData = $app.Data
 
-            # 25% progress - Identifying removal method
-            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 25 -Status "Identifying removal method..." -CurrentItem $currentIndex -TotalItems $totalApps
+            # Start removal process with single progress update
+            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Removing $appType package..." -CurrentItem $currentIndex -TotalItems $totalApps
 
             # Optimized removal by type priority
             switch ($appType) {
                 'AppX' {
                     if ($toolCapabilities.AppX -and $appData.PackageFullName) {
-                        # 50% progress - Starting AppX removal
-                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 50 -Status "Removing AppX package..." -CurrentItem $currentIndex -TotalItems $totalApps
-                        
                         try {
                             Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
-
-                            # 75% progress - Verifying removal
-                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 75 -Status "Verifying AppX removal..." -CurrentItem $currentIndex -TotalItems $totalApps
                             
                             # Verify removal
                             $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
@@ -2885,15 +2952,9 @@ function Remove-Bloatware {
                 
                 'Winget' {
                     if ($toolCapabilities.Winget -and $appData.Id) {
-                        # 50% progress - Starting Winget removal
-                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 50 -Status "Removing via Winget..." -CurrentItem $currentIndex -TotalItems $totalApps
-                        
                         try {
                             $uninstallArgs = @("uninstall", "--id", $appData.Id, "--silent", "--accept-source-agreements", "--disable-interactivity")
                             $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
-                            
-                            # 75% progress - Verifying removal
-                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 75 -Status "Verifying Winget removal..." -CurrentItem $currentIndex -TotalItems $totalApps
                             
                             if ($wingetProc.ExitCode -eq 0) {
                                 $result.Success = $true
@@ -2913,15 +2974,9 @@ function Remove-Bloatware {
                 
                 'Choco' {
                     if ($toolCapabilities.Chocolatey -and $appData.Name) {
-                        # 50% progress - Starting Chocolatey removal
-                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 50 -Status "Removing via Chocolatey..." -CurrentItem $currentIndex -TotalItems $totalApps
-                        
                         try {
                             $chocoArgs = @("uninstall", $appData.Name, "-y", "--remove-dependencies")
                             $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                            
-                            # 75% progress - Verifying removal
-                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 75 -Status "Verifying Chocolatey removal..." -CurrentItem $currentIndex -TotalItems $totalApps
                             
                             if ($chocoProc.ExitCode -eq 0) {
                                 $result.Success = $true
@@ -3281,9 +3336,9 @@ function Install-EssentialApps {
         }
 
         try {
-            # Try Winget first (25% progress)
+            # Try Winget first - Start installation attempt
             if ($app.Winget -and $wingetAvailable) {
-                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 25 -Status "Trying Winget installation..." -CurrentItem $currentIndex -TotalItems $totalApps
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 0 -Status "Installing via Winget..." -CurrentItem $currentIndex -TotalItems $totalApps
                 
                 $wingetArgs = @(
                     "install", "--id", $app.Winget,
@@ -3291,13 +3346,7 @@ function Install-EssentialApps {
                     "--silent", "-e", "--disable-interactivity", "--force"
                 )
                 
-                # 50% progress during Winget execution
-                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 50 -Status "Running Winget installer..." -CurrentItem $currentIndex -TotalItems $totalApps
-                
                 $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
-                
-                # 75% progress - analyzing results
-                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 75 -Status "Analyzing installation results..." -CurrentItem $currentIndex -TotalItems $totalApps
                 
                 if ($wingetProc.ExitCode -eq 0) {
                     $result.Success = $true
@@ -3324,18 +3373,12 @@ function Install-EssentialApps {
                 }
             }
 
-            # Try Chocolatey as fallback (75% progress)
+            # Try Chocolatey as fallback
             if ($app.Choco -and $chocoAvailable -and -not $result.Success) {
-                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 75 -Status "Trying Chocolatey installation..." -CurrentItem $currentIndex -TotalItems $totalApps
-                
-                # 85% progress during Choco execution
-                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 85 -Status "Running Chocolatey installer..." -CurrentItem $currentIndex -TotalItems $totalApps
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 50 -Status "Installing via Chocolatey..." -CurrentItem $currentIndex -TotalItems $totalApps
                 
                 $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--ignore-checksums")
                 $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                
-                # 95% progress - analyzing results
-                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 95 -Status "Analyzing Chocolatey results..." -CurrentItem $currentIndex -TotalItems $totalApps
                 
                 if ($chocoProc.ExitCode -eq 0) {
                     $result.Success = $true
