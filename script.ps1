@@ -1130,6 +1130,167 @@ function Test-CommandAvailable {
 }
 
 # ================================================================
+# Function: Test-RegistryAccess
+# ================================================================
+# Purpose: Test registry access permissions and provide diagnostic information
+# Environment: Windows 10/11, requires registry path to test
+# Performance: Fast permission checking, minimal system overhead
+# Dependencies: Windows Registry access
+# Logic: Attempts registry operations to validate permissions, provides detailed error information
+# Features: Permission validation, access diagnostics, fallback path suggestions
+# ================================================================
+function Test-RegistryAccess {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RegistryPath,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$TestValueName = "TestAccess",
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$CreatePath
+    )
+    
+    try {
+        # Test if path exists or can be created
+        if (-not (Test-Path $RegistryPath)) {
+            if ($CreatePath) {
+                New-Item -Path $RegistryPath -Force -ErrorAction Stop | Out-Null
+                Write-LogFile "Created registry path: $RegistryPath"
+            } else {
+                return @{
+                    Success = $false
+                    Error = "Registry path does not exist: $RegistryPath"
+                    Suggestion = "Consider using -CreatePath switch or check path spelling"
+                }
+            }
+        }
+        
+        # Test write access by setting a temporary value
+        Set-ItemProperty -Path $RegistryPath -Name $TestValueName -Value "Test" -Force -ErrorAction Stop
+        
+        # Test read access and verify the value
+        $testValue = Get-ItemProperty -Path $RegistryPath -Name $TestValueName -ErrorAction Stop
+        
+        # Verify the test value was read correctly
+        if ($testValue.$TestValueName -ne "Test") {
+            throw "Registry read verification failed - value mismatch"
+        }
+        
+        # Clean up test value
+        Remove-ItemProperty -Path $RegistryPath -Name $TestValueName -Force -ErrorAction SilentlyContinue
+        
+        return @{
+            Success = $true
+            Error = $null
+            Message = "Full registry access confirmed for: $RegistryPath"
+        }
+    }
+    catch [System.UnauthorizedAccessException] {
+        return @{
+            Success = $false
+            Error = "Unauthorized access to registry path: $RegistryPath"
+            Suggestion = "Try running as administrator or check registry permissions"
+            ErrorType = "UnauthorizedAccess"
+        }
+    }
+    catch [System.Security.SecurityException] {
+        return @{
+            Success = $false
+            Error = "Security exception accessing registry path: $RegistryPath"
+            Suggestion = "Registry path may be protected by Group Policy or system security"
+            ErrorType = "SecurityException"
+        }
+    }
+    catch {
+        return @{
+            Success = $false
+            Error = "Registry access error: $($_.Exception.Message)"
+            Suggestion = "Check registry path format and Windows version compatibility"
+            ErrorType = "GeneralError"
+        }
+    }
+}
+
+# ================================================================
+# Function: Set-RegistryValueSafely
+# ================================================================
+# Purpose: Safely set registry values with comprehensive error handling and fallback options
+# Environment: Windows 10/11, requires registry path and value details
+# Performance: Optimized registry operations with permission checking
+# Dependencies: Test-RegistryAccess function, Windows Registry access
+# Logic: Pre-validates access, attempts registry modification, provides detailed error reporting
+# Features: Permission validation, multiple registry types, detailed error diagnostics, fallback suggestions
+# ================================================================
+function Set-RegistryValueSafely {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RegistryPath,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ValueName,
+        
+        [Parameter(Mandatory = $true)]
+        [object]$Value,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$ValueType = "DWord",
+        
+        [Parameter(Mandatory = $false)]
+        [array]$FallbackPaths = @(),
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Description = "Registry value"
+    )
+    
+    # Test access first
+    $accessTest = Test-RegistryAccess -RegistryPath $RegistryPath -CreatePath
+    
+    if (-not $accessTest.Success) {
+        Write-LogFile "Registry access failed for ${RegistryPath}: $($accessTest.Error)"
+        
+        # Try fallback paths if provided
+        foreach ($fallbackPath in $FallbackPaths) {
+            Write-LogFile "Attempting fallback registry path: $fallbackPath"
+            $fallbackTest = Test-RegistryAccess -RegistryPath $fallbackPath -CreatePath
+            
+            if ($fallbackTest.Success) {
+                try {
+                    Set-ItemProperty -Path $fallbackPath -Name $ValueName -Value $Value -Type $ValueType -Force -ErrorAction Stop
+                    Write-Log "$Description set successfully via fallback path: $fallbackPath" 'INFO'
+                    return @{ Success = $true; Path = $fallbackPath; Method = "Fallback" }
+                }
+                catch {
+                    Write-LogFile "Fallback path also failed: $($_.Exception.Message)"
+                    continue
+                }
+            }
+        }
+        
+        return @{ 
+            Success = $false; 
+            Error = $accessTest.Error; 
+            Suggestion = $accessTest.Suggestion 
+        }
+    }
+    
+    # Primary path access confirmed, proceed with setting value
+    try {
+        Set-ItemProperty -Path $RegistryPath -Name $ValueName -Value $Value -Type $ValueType -Force -ErrorAction Stop
+        Write-Log "$Description set successfully: $RegistryPath\$ValueName = $Value" 'INFO'
+        return @{ Success = $true; Path = $RegistryPath; Method = "Primary" }
+    }
+    catch {
+        Write-Log "Failed to set $Description via registry: $($_.Exception.Message)" 'WARN'
+        return @{ 
+            Success = $false; 
+            Error = $_.Exception.Message; 
+            Suggestion = "Registry modification may require different approach or manual configuration" 
+        }
+    }
+}
+
+# ================================================================
 # Function: Compare-InstallationDiff
 # ================================================================
 # Purpose: Generic diff-based comparison for app installations with standardized processing logic
@@ -3709,14 +3870,17 @@ function Enable-AppBrowserControl {
     try {
         # Enable Network Protection
         try {
-            Set-MpPreference -EnableNetworkProtection Enabled
+            Set-MpPreference -EnableNetworkProtection Enabled -ErrorAction Stop
             Write-Log "✓ Network Protection enabled" 'INFO'
         }
-        catch { $errors += "Network Protection: $_" }
+        catch { 
+            $errors += "Network Protection: $($_.Exception.Message)"
+            Write-Log "✗ Failed to enable Network Protection: $($_.Exception.Message)" 'WARN'
+        }
 
         # Enable Controlled Folder Access
         try {
-            Set-MpPreference -EnableControlledFolderAccess Enabled
+            Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
             Write-Log "✓ Controlled Folder Access enabled" 'INFO'
             
             # Add current script directory and PowerShell executables to exclusions
@@ -3771,19 +3935,25 @@ function Enable-AppBrowserControl {
         try {
             $edgeKey = "HKLM:\SOFTWARE\Policies\Microsoft\MicrosoftEdge\PhishingFilter"
             if (-not (Test-Path $edgeKey)) { New-Item -Path $edgeKey -Force | Out-Null }
-            Set-ItemProperty -Path $edgeKey -Name "EnabledV9" -Value 1 -Type DWord
+            Set-ItemProperty -Path $edgeKey -Name "EnabledV9" -Value 1 -Type DWord -ErrorAction Stop
             Write-Log "✓ SmartScreen for Edge enabled (via registry)" 'INFO'
         }
-        catch { $errors += "SmartScreen for Edge (registry): $_" }
+        catch { 
+            $errors += "SmartScreen for Edge (registry): $($_.Exception.Message)"
+            Write-Log "✗ Failed to enable SmartScreen for Edge: $($_.Exception.Message)" 'WARN'
+        }
 
         # Enable SmartScreen for Microsoft Store Apps via registry
         try {
             $storeKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppHost"
             if (-not (Test-Path $storeKey)) { New-Item -Path $storeKey -Force | Out-Null }
-            Set-ItemProperty -Path $storeKey -Name "EnableWebContentEvaluation" -Value 1 -Type DWord
+            Set-ItemProperty -Path $storeKey -Name "EnableWebContentEvaluation" -Value 1 -Type DWord -ErrorAction Stop
             Write-Log "✓ SmartScreen for Store Apps enabled (via registry)" 'INFO'
         }
-        catch { $errors += "SmartScreen for Store Apps (registry): $_" }
+        catch { 
+            $errors += "SmartScreen for Store Apps (registry): $($_.Exception.Message)"
+            Write-Log "✗ Failed to enable SmartScreen for Store Apps: $($_.Exception.Message)" 'WARN'
+        }
 
         # Enable system-level exploit mitigations (DEP, SEHOP, CFG, ASLR)
         try {
@@ -3849,53 +4019,76 @@ function Disable-SpotlightMeetNowNewsLocation {
         }
 
         # Remove News and Interests (Windows 10)
-        try {
-            $feedsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
-            if (-not (Test-Path $feedsReg)) { 
-                New-Item -Path $feedsReg -Force | Out-Null 
+        $newsResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
+                                              -ValueName "ShellFeedsTaskbarViewMode" `
+                                              -Value 2 `
+                                              -ValueType "DWord" `
+                                              -FallbackPaths @(
+                                                  "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+                                                  "HKCU:\Software\Policies\Microsoft\Windows\Windows Feeds",
+                                                  "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
+                                              ) `
+                                              -Description "News and Interests disable setting"
+        
+        if ($newsResult.Success) {
+            Write-Log "News and Interests removed from taskbar successfully." 'INFO'
+        } else {
+            Write-Log "Warning: Could not disable News and Interests: $($newsResult.Error)" 'WARN'
+            if ($newsResult.Suggestion) {
+                Write-LogFile "Suggestion: $($newsResult.Suggestion)"
             }
-            Set-ItemProperty -Path $feedsReg -Name "ShellFeedsTaskbarViewMode" -Value 2 -Force -ErrorAction Stop
-            Write-Log "News and Interests removed from taskbar (Windows 10)." 'INFO'
-        }
-        catch {
-            Write-Log "Warning: Could not modify News and Interests setting: $($_.Exception.Message)" 'WARN'
-            # Try alternative registry path
+            
+            # Additional fallback: Try to disable via TaskbarDa in Explorer Advanced
             try {
-                $altFeedsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
-                if (-not (Test-Path $altFeedsReg)) { 
-                    New-Item -Path $altFeedsReg -Force | Out-Null 
+                $taskbarDaResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+                                                          -ValueName "TaskbarDa" `
+                                                          -Value 0 `
+                                                          -ValueType "DWord" `
+                                                          -Description "TaskbarDa (News and Interests alternative)"
+                if ($taskbarDaResult.Success) {
+                    Write-Log "News and Interests disabled via TaskbarDa setting." 'INFO'
                 }
-                Set-ItemProperty -Path $altFeedsReg -Name "TaskbarDa" -Value 0 -Force -ErrorAction Stop
-                Write-Log "News and Interests disabled via alternative registry path." 'INFO'
             }
             catch {
-                Write-Log "Unable to disable News and Interests via registry. May require manual configuration." 'WARN'
+                Write-LogFile "TaskbarDa fallback also failed: $($_.Exception.Message)"
             }
         }
 
         # Remove Widgets (Windows 11)
-        try {
-            $widgetsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
-            if (-not (Test-Path $widgetsReg)) { 
-                New-Item -Path $widgetsReg -Force | Out-Null 
+        $widgetsResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+                                                 -ValueName "TaskbarDa" `
+                                                 -Value 0 `
+                                                 -ValueType "DWord" `
+                                                 -FallbackPaths @(
+                                                     "HKCU:\Software\Microsoft\Windows\CurrentVersion\WebExperience",
+                                                     "HKCU:\Software\Policies\Microsoft\Windows\WindowsFeeds",
+                                                     "HKCU:\Software\Policies\Microsoft\Dsh",
+                                                     "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
+                                                 ) `
+                                                 -Description "Widgets disable setting"
+        
+        if ($widgetsResult.Success) {
+            Write-Log "Widgets removed from taskbar successfully." 'INFO'
+        } else {
+            Write-Log "Warning: Could not disable Widgets: $($widgetsResult.Error)" 'WARN'
+            if ($widgetsResult.Suggestion) {
+                Write-LogFile "Suggestion: $($widgetsResult.Suggestion)"
             }
-            Set-ItemProperty -Path $widgetsReg -Name "TaskbarDa" -Value 0 -Force -ErrorAction Stop
-            Write-Log "Widgets removed from taskbar (Windows 11)." 'INFO'
-        }
-        catch {
-            Write-Log "Warning: Could not modify Widgets setting: $($_.Exception.Message)" 'WARN'
-            # Try alternative approaches for widgets
+            
+            # Additional fallback: Try WebExperience approach
             try {
-                # Try via Group Policy registry path
-                $widgetsPolicyReg = "HKCU:\Software\Policies\Microsoft\Windows\WindowsFeeds"
-                if (-not (Test-Path $widgetsPolicyReg)) { 
-                    New-Item -Path $widgetsPolicyReg -Force | Out-Null 
+                $webExpResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\WebExperience" `
+                                                       -ValueName "TaskbarWebButtonIsDisabled" `
+                                                       -Value 1 `
+                                                       -ValueType "DWord" `
+                                                       -Description "WebExperience Widgets disable"
+                if ($webExpResult.Success) {
+                    Write-Log "Widgets disabled via WebExperience setting." 'INFO'
                 }
-                Set-ItemProperty -Path $widgetsPolicyReg -Name "EnableFeeds" -Value 0 -Force -ErrorAction Stop
-                Write-Log "Widgets disabled via Group Policy registry path." 'INFO'
             }
             catch {
-                Write-Log "Unable to disable Widgets via registry. May require manual configuration or different Windows version." 'WARN'
+                Write-LogFile "WebExperience fallback also failed: $($_.Exception.Message)"
+                Write-Log "Note: If Widgets/News persist, they may be controlled by Group Policy or require manual taskbar customization." 'INFO'
             }
         }
 
@@ -5612,7 +5805,7 @@ function Start-DefenderFullScan {
         Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan History" -PercentComplete 12 -Status "Analyzing previous scan history..."
         Write-Log "[ScanHistory] Analyzing previous scan history for reference..." 'INFO'
         try {
-            $scanHistory = Get-MpScanHistory | Select-Object -First 5
+            $scanHistory = Get-MpScanHistory -ErrorAction Stop | Select-Object -First 5
             if ($scanHistory) {
                 Write-Log "[ScanHistory] === RECENT SCAN HISTORY ===" 'INFO'
                 foreach ($scan in $scanHistory) {
@@ -5624,11 +5817,14 @@ function Start-DefenderFullScan {
                 $detailedLogData.ScanHistory = $scanHistory
             }
             else {
-                Write-Log "[ScanHistory] No previous scan history found" 'INFO'
+                Write-Log "[ScanHistory] No previous scan history found." 'INFO'
             }
         }
+        catch [System.Management.Automation.CommandNotFoundException] {
+            Write-Log "[ScanHistory] Warning: 'Get-MpScanHistory' command not available on this system. Skipping history check." 'WARN'
+        }
         catch {
-            Write-Log "[ScanHistory] Warning: Could not retrieve scan history - $_" 'WARN'
+            Write-Log "[ScanHistory] Warning: Could not retrieve scan history - $($_.Exception.Message)" 'WARN'
         }
 
         # Progress: 14% - Preparing signature update with detailed logging
@@ -5959,7 +6155,13 @@ function Start-DefenderFullScan {
 
             # Progress: 76% - Getting comprehensive scan history
             Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 76 -Status "Getting comprehensive scan history..."
-            $completeScanHistory = Get-MpScanHistory | Select-Object -First 1
+            try {
+                $completeScanHistory = Get-MpScanHistory -ErrorAction Stop | Select-Object -First 1
+            }
+            catch {
+                $completeScanHistory = $null
+                Write-Log "[ScanResults] Warning: Could not retrieve final scan history." 'WARN'
+            }
             
             # Progress: 78% - Analyzing final scan results
             Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 78 -Status "Analyzing comprehensive scan results..."
