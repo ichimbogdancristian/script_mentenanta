@@ -28,13 +28,38 @@ SET "LOG_TIMESTAMP=%DATE% %TIME%"
 REM Usage: !LOG_TIMESTAMP! (if delayed expansion) or %LOG_TIMESTAMP% (if not)
 
 REM -----------------------------------------------------------------------------
-REM Basic Environment Setup
+REM Universal Path Detection & Environment Setup (Location-Agnostic)
+REM Works from any directory, any user, any computer - completely portable
 REM -----------------------------------------------------------------------------
 SET "TASK_NAME=ScriptMentenantaMonthly"
 SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
+
+REM Core path detection - works from anywhere
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
-SET "LOG_FILE=%SCRIPT_DIR%maintenance.log"
+SET "SCRIPT_NAME=%~nx0"
+
+REM Working directory - always use the directory where script.bat is located
+SET "WORKING_DIR=%SCRIPT_DIR%"
+SET "LOG_FILE=%WORKING_DIR%maintenance.log"
+
+REM Repository settings
+SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
+SET "ZIP_FILE=%WORKING_DIR%script_mentenanta-main.zip"
+SET "EXTRACT_FOLDER=script_mentenanta-main"
+SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
+
+REM PowerShell script paths - check both current directory and extracted folder
+SET "PS1_PATH="
+IF EXIST "%WORKING_DIR%script.ps1" (
+    SET "PS1_PATH=%WORKING_DIR%script.ps1"
+) ELSE IF EXIST "%EXTRACTED_PATH%\script.ps1" (
+    SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
+)
+
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working Directory: %WORKING_DIR%"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Script Path: %SCRIPT_PATH%"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Log File: %LOG_FILE%"
 
 REM -----------------------------------------------------------------------------
 REM Robust Script Path Detection for Scheduled Tasks
@@ -474,17 +499,31 @@ IF "%RESTART_NEEDED%"=="YES" (
 )
 
 REM -----------------------------------------------------------------------------
-REM -----------------------------------------------------------------------------
-REM Forced Repository Download - Always download fresh from GitHub
-REM Clean up existing files and download latest version as requested
+REM Universal Repository Management - Location-Agnostic Download & Update
+REM Works from any directory, downloads to current script location
 REM -----------------------------------------------------------------------------
 :SKIP_SELF_UPDATE
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading latest repository from GitHub (forced fresh download)..."
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading latest repository from GitHub to current location..."
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Working directory: %WORKING_DIR%"
 
-SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
-SET "ZIP_FILE=%TEMP%\script_mentenanta.zip"
-SET "EXTRACT_FOLDER=script_mentenanta-main"
+REM Clean up existing files
+IF EXIST "%ZIP_FILE%" (
+    DEL "%ZIP_FILE%" >nul 2>&1
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Removed existing ZIP file"
+)
+
+IF EXIST "%EXTRACTED_PATH%" (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Removing existing repository folder..."
+    RMDIR /S /Q "%EXTRACTED_PATH%" >nul 2>&1
+    IF EXIST "%EXTRACTED_PATH%" (
+        powershell -ExecutionPolicy Bypass -Command "try { if(Test-Path '%EXTRACTED_PATH%') { Remove-Item -Path '%EXTRACTED_PATH%' -Recurse -Force } } catch { Write-Warning 'Could not remove existing folder' }"
+    )
+)
+
+REM Download repository
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading from: %REPO_URL%"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Saving to: %ZIP_FILE%"
 
 powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $webClient = New-Object System.Net.WebClient; $webClient.DownloadFile('%REPO_URL%', '%ZIP_FILE%'); Write-Host '[INFO] Repository downloaded successfully' } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
 
@@ -495,79 +534,61 @@ IF !ERRORLEVEL! NEQ 0 (
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Download failed - ZIP file not created."
+    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Download failed - ZIP file not created at: %ZIP_FILE%"
     pause
     EXIT /B 3
 )
-
 REM -----------------------------------------------------------------------------
-REM Repository Cleanup - Remove existing folder if it exists
+REM Universal Repository Extraction - Extract to working directory
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Checking for existing repository folder..."
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Extracting repository to: %WORKING_DIR%"
 
-REM Check for existing extraction folder
-IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Existing repository folder found. Removing for clean extraction..."
-    RMDIR /S /Q "%SCRIPT_DIR%%EXTRACT_FOLDER%" >nul 2>&1
-    IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
-        CALL :LOG_MESSAGE "[%TIME%] [WARN] Could not remove existing folder completely. Attempting forced removal..."
-        powershell -ExecutionPolicy Bypass -Command "try { if(Test-Path '%SCRIPT_DIR%%EXTRACT_FOLDER%') { Remove-Item -Path '%SCRIPT_DIR%%EXTRACT_FOLDER%' -Recurse -Force; Write-Host '[INFO] Existing folder removed successfully' } } catch { Write-Host '[WARN] Failed to remove existing folder:' $_.Exception.Message }"
-    ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Existing repository folder removed successfully."
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] No existing repository folder found. Proceeding with clean extraction."
-)
-
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Extracting repository to clean folder..."
-
-REM Simple, reliable extraction with PowerShell 5 compatible code
-powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; if(Test-Path '%ZIP_FILE%') { [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%~dp0'); Write-Host '[INFO] Repository extracted successfully.' } else { Write-Host '[ERROR] ZIP file not found at %ZIP_FILE%'; exit 1 } } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
+powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; if(Test-Path '%ZIP_FILE%') { [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host '[INFO] Repository extracted successfully.' } else { Write-Host '[ERROR] ZIP file not found at %ZIP_FILE%'; exit 1 } } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] Repository extraction failed."
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Please check if the ZIP file is valid and not corrupted."
     pause
     EXIT /B 3
 )
 
-REM Clean up ZIP file after extraction
+REM Clean up ZIP file
 DEL /F /Q "%ZIP_FILE%" >nul 2>&1
 
-REM Verify extraction success
+REM Verify extraction and update PowerShell script path
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying repository extraction..."
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Looking for folder: %SCRIPT_DIR%%EXTRACT_FOLDER%"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Looking for extracted folder: %EXTRACTED_PATH%"
 
-REM List all folders in current directory for debugging
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of script directory:"
-DIR "%SCRIPT_DIR%" /AD /B
-
-IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Extraction successful - folder exists."
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
-    DIR "%SCRIPT_DIR%%EXTRACT_FOLDER%" /B
-) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] ✗ Extraction failed - expected folder not found."
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Checking for alternative folder names..."
+IF EXIST "%EXTRACTED_PATH%" (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Repository extraction successful"
     
-    REM Check for common GitHub zip extraction patterns
-    IF EXIST "%SCRIPT_DIR%script_mentenanta-main" (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Found: script_mentenanta-main folder"
-        SET "EXTRACT_FOLDER=script_mentenanta-main"
-    ) ELSE IF EXIST "%SCRIPT_DIR%script_mentenanta-master" (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Found: script_mentenanta-master folder"
-        SET "EXTRACT_FOLDER=script_mentenanta-master"
+    REM Update PowerShell script path to extracted version
+    IF EXIST "%EXTRACTED_PATH%\script.ps1" (
+        SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found script.ps1 in extracted folder"
     ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [ERROR] No valid extraction folder found."
+        CALL :LOG_MESSAGE "[%TIME%] [ERROR] ✗ script.ps1 not found in extracted folder"
+    )
+    
+) ELSE (
+    CALL :LOG_MESSAGE "[%TIME%] [ERROR] ✗ Extraction failed - expected folder not found"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Available folders in working directory:"
+    DIR "%WORKING_DIR%" /AD /B
+    
+    REM Try alternative folder names
+    IF EXIST "%WORKING_DIR%script_mentenanta-master" (
+        SET "EXTRACT_FOLDER=script_mentenanta-master"
+        SET "EXTRACTED_PATH=%WORKING_DIR%script_mentenanta-master"
+        SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found alternative folder: script_mentenanta-master"
+    ) ELSE (
+        CALL :LOG_MESSAGE "[%TIME%] [ERROR] Could not find any valid extracted folder"
         pause
         EXIT /B 3
     )
-)
-
 REM -----------------------------------------------------------------------------
-REM Self-Update Mechanism - Deferred Update (prevents execution conflicts)
+REM Self-Update Mechanism - Using dynamic paths
 REM -----------------------------------------------------------------------------
-SET "NEW_SCRIPT_BAT=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.bat"
+SET "NEW_SCRIPT_BAT=%EXTRACTED_PATH%\script.bat"
 SET "CURRENT_SCRIPT_BAT=%SCRIPT_PATH%"
 SET "SELF_UPDATE_NEEDED=NO"
 
@@ -576,21 +597,6 @@ IF EXIST "%NEW_SCRIPT_BAT%" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Self-update will be performed AFTER PowerShell script execution."
     CALL :LOG_MESSAGE "[%TIME%] [INFO] This prevents execution conflicts during script update."
     SET "SELF_UPDATE_NEEDED=YES"
-) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] No new script.bat found in extracted repository."
-)
-
-REM Check if extraction worked
-IF NOT EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%" (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Extraction failed - folder not found: %SCRIPT_DIR%%EXTRACT_FOLDER%"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Available folders:"
-    DIR "%SCRIPT_DIR%" /AD /B
-    pause
-    EXIT /B 3
-)
-
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Repository extracted to clean folder: %SCRIPT_DIR%%EXTRACT_FOLDER%"
-
 REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Final Verification
 REM -----------------------------------------------------------------------------
@@ -608,94 +614,48 @@ IF !ERRORLEVEL! EQU 0 (
 
 REM -----------------------------------------------------------------------------
 REM Smart PowerShell Script Path Detection (Location-Agnostic)
-REM Handles scenario where script.bat is updated but script.ps1 remains in extracted folder
 REM -----------------------------------------------------------------------------
-SET "PS1_PATH="
-SET "PS1_FOUND=NO"
-
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting PowerShell script path detection..."
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] SCRIPT_DIR: %SCRIPT_DIR%"
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] EXTRACT_FOLDER: %EXTRACT_FOLDER%"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working directory: %WORKING_DIR%"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Extracted path: %EXTRACTED_PATH%"
 
-REM Priority 1: Check extracted folder first (most likely location after GitHub download)
-IF DEFINED EXTRACT_FOLDER (
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking Priority 1: %SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
-    IF EXIST "%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1" (
-        SET "PS1_PATH=%SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
-        SET "PS1_FOUND=YES"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in extracted folder: %SCRIPT_DIR%%EXTRACT_FOLDER%\"
+REM Priority 1: Use the path already set during extraction
+IF DEFINED PS1_PATH (
+    IF EXIST "%PS1_PATH%" (
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Using PowerShell script: %PS1_PATH%"
         GOTO :PS1_DETECTION_COMPLETE
     )
 )
 
 REM Priority 2: Check current directory (if script.ps1 exists locally)
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking Priority 2: %SCRIPT_DIR%script.ps1"
-IF EXIST "%SCRIPT_DIR%script.ps1" (
-    SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
-    SET "PS1_FOUND=YES"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in current directory: %SCRIPT_DIR%"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking current directory: %WORKING_DIR%script.ps1"
+IF EXIST "%WORKING_DIR%script.ps1" (
+    SET "PS1_PATH=%WORKING_DIR%script.ps1"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found script.ps1 in current directory"
     GOTO :PS1_DETECTION_COMPLETE
 )
 
-REM Priority 3: Search for script.ps1 in subdirectories
-IF "!PS1_FOUND!"=="NO" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Searching for script.ps1 in subdirectories..."
-    FOR /R "%SCRIPT_DIR%" %%F IN (script.ps1) DO (
-        IF EXIST "%%F" (
-            SET "PS1_PATH=%%F"
-            SET "PS1_FOUND=YES"
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 at: %%F"
-            GOTO :PS1_DETECTION_COMPLETE
-        )
-    )
 )
 
 :PS1_DETECTION_COMPLETE
 
 REM Final check: If still not found, show detailed diagnostics
-IF "!PS1_FOUND!"=="NO" (
+IF NOT DEFINED PS1_PATH (
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script (script.ps1) not found in any location!"
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Searched locations:"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] 1. Extracted folder: %SCRIPT_DIR%%EXTRACT_FOLDER%\script.ps1"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] 2. Current directory: %SCRIPT_DIR%script.ps1"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] 3. All subdirectories under: %SCRIPT_DIR%"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of current directory:"
-    DIR "%SCRIPT_DIR%" /B
-    IF DEFINED EXTRACT_FOLDER (
-        IF EXIST "%SCRIPT_DIR%!EXTRACT_FOLDER!" (
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
-            DIR "%SCRIPT_DIR%!EXTRACT_FOLDER!" /B
-        ) ELSE (
-            CALL :LOG_MESSAGE "[%TIME%] [ERROR] Extracted folder does not exist: %SCRIPT_DIR%!EXTRACT_FOLDER!"
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [ERROR] EXTRACT_FOLDER variable is not defined!"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] 1. Extracted folder: %EXTRACTED_PATH%\script.ps1"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] 2. Current directory: %WORKING_DIR%script.ps1"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of working directory:"
+    DIR "%WORKING_DIR%" /B
+    IF EXIST "%EXTRACTED_PATH%" (
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
+        DIR "%EXTRACTED_PATH%" /B
     )
-    pause
-    EXIT /B 4
-) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [SUCCESS] PowerShell script found successfully!"
-)
-
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell script: !PS1_PATH!"
-
-REM Debug: Verify the PS1_PATH variable is actually set
-IF "!PS1_PATH!"=="" (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PS1_PATH variable is empty! Attempting emergency path detection..."
-    REM Emergency fallback - check current directory again
-    IF EXIST "%SCRIPT_DIR%script.ps1" (
-        SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Emergency fallback found: %SCRIPT_DIR%script.ps1"
-    ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [ERROR] Emergency fallback failed - no script.ps1 found in %SCRIPT_DIR%"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of script directory:"
-        DIR "%SCRIPT_DIR%" /B
-        pause
-        EXIT /B 4
-    )
-)
-
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Final PowerShell script path: !PS1_PATH!"
+CALL :LOG_MESSAGE "[%TIME%] [SUCCESS] PowerShell script found successfully!"
+REM -----------------------------------------------------------------------------
+REM Launch PowerShell Script
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Final PowerShell script path: %PS1_PATH%"
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Launching PowerShell maintenance script..."
 
 REM Test PowerShell availability before launching
@@ -707,70 +667,37 @@ IF !ERRORLEVEL! NEQ 0 (
 )
 
 REM Final check that PS1_PATH is not empty before execution
-IF "!PS1_PATH!"=="" (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PS1_PATH is still empty before execution! Attempting emergency recovery..."
-    
-    REM Emergency Recovery: Try all possible locations
-    IF EXIST "%SCRIPT_DIR%script.ps1" (
-        SET "PS1_PATH=%SCRIPT_DIR%script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [RECOVERY] Emergency recovery successful: %SCRIPT_DIR%script.ps1"
-    ) ELSE IF EXIST "%SCRIPT_DIR%script_mentenanta-main\script.ps1" (
-        SET "PS1_PATH=%SCRIPT_DIR%script_mentenanta-main\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [RECOVERY] Emergency recovery successful: %SCRIPT_DIR%script_mentenanta-main\script.ps1"
-    ) ELSE IF EXIST "%SCRIPT_DIR%script_mentenanta-master\script.ps1" (
-        SET "PS1_PATH=%SCRIPT_DIR%script_mentenanta-master\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [RECOVERY] Emergency recovery successful: %SCRIPT_DIR%script_mentenanta-master\script.ps1"
-    ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [FATAL] Emergency recovery failed! No script.ps1 found anywhere!"
-        CALL :LOG_MESSAGE "[%TIME%] [FATAL] Searched:"
-        CALL :LOG_MESSAGE "[%TIME%] [FATAL] 1. %SCRIPT_DIR%script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [FATAL] 2. %SCRIPT_DIR%script_mentenanta-main\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [FATAL] 3. %SCRIPT_DIR%script_mentenanta-master\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [FATAL] Contents of script directory:"
-        DIR "%SCRIPT_DIR%" /B
-        pause
-        EXIT /B 4
-    )
-)
-
-REM Final validation that PS1_PATH is now set
-IF "!PS1_PATH!"=="" (
-    CALL :LOG_MESSAGE "[%TIME%] [FATAL] PS1_PATH is STILL empty after emergency recovery!"
+IF NOT DEFINED PS1_PATH (
+    CALL :LOG_MESSAGE "[%TIME%] [FATAL] PS1_PATH is empty before execution!"
+    CALL :LOG_MESSAGE "[%TIME%] [FATAL] Cannot proceed without PowerShell script!"
     pause
-    EXIT /B 4
-)
-
-CALL :LOG_MESSAGE "[%TIME%] [INFO] About to execute: !PS1_PATH!"
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying file exists: !PS1_PATH!"
-IF NOT EXIST "!PS1_PATH!" (
-    CALL :LOG_MESSAGE "[%TIME%] [FATAL] PowerShell script file does not exist: !PS1_PATH!"
-    pause
-    EXIT /B 4
-)
-
-IF "!PS7_AVAILABLE!"=="YES" (
+CALL :LOG_MESSAGE "[%TIME%] [INFO] About to execute: %PS1_PATH%"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying file exists: %PS1_PATH%"
+IF NOT EXIST "%PS1_PATH%" (
+    CALL :LOG_MESSAGE "[%TIME%] [FATAL] PowerShell script file does not exist: %PS1_PATH%"
+IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell 7 environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: pwsh.exe"
-    pwsh.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
-    SET "LAUNCH_RESULT=!ERRORLEVEL!"
+    pwsh.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
+    SET "LAUNCH_RESULT=%ERRORLEVEL%"
 ) ELSE (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using Windows PowerShell environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: powershell.exe"
-    powershell.exe -ExecutionPolicy Bypass -File "!PS1_PATH!"
-    SET "LAUNCH_RESULT=!ERRORLEVEL!"
+    powershell.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
+    SET "LAUNCH_RESULT=%ERRORLEVEL%"
 )
 
-IF !LAUNCH_RESULT! EQU 0 (
+IF %LAUNCH_RESULT% EQU 0 (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell script execution completed successfully."
     
     REM -----------------------------------------------------------------------------
     REM Deferred Self-Update - Perform after PowerShell execution completes
     REM -----------------------------------------------------------------------------
-    IF "!SELF_UPDATE_NEEDED!"=="YES" (
+    IF "%SELF_UPDATE_NEEDED%"=="YES" (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Performing deferred self-update..."
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Copying ONLY script.bat (not script.ps1) as requested."
         COPY /Y "%NEW_SCRIPT_BAT%" "%CURRENT_SCRIPT_BAT%" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
+        IF %ERRORLEVEL% EQU 0 (
             CALL :LOG_MESSAGE "[%TIME%] [INFO] script.bat updated successfully."
         ) ELSE (
             CALL :LOG_MESSAGE "[%TIME%] [WARN] Failed to update script.bat, but continuing..."
@@ -785,7 +712,7 @@ IF !LAUNCH_RESULT! EQU 0 (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Batch launcher completed successfully. Window will now close."
     
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script execution failed with error code: !LAUNCH_RESULT!"
+    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script execution failed with error code: %LAUNCH_RESULT%"
     CALL :LOG_MESSAGE "[%TIME%] [ERROR] Please check the PowerShell script path and permissions."
     pause
 )
