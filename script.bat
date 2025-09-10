@@ -22,9 +22,10 @@ EXIT /B
 
 :MAIN_SCRIPT
 REM -----------------------------------------------------------------------------
-REM Enhanced Logging System with Automatic Timestamps
+REM Robust Timestamp Function for Logging
 REM -----------------------------------------------------------------------------
-REM LOG_MESSAGE function automatically generates timestamps - no manual setting needed
+SET "LOG_TIMESTAMP=%DATE% %TIME%"
+REM Usage: !LOG_TIMESTAMP! (if delayed expansion) or %LOG_TIMESTAMP% (if not)
 
 REM -----------------------------------------------------------------------------
 REM Universal Path Detection & Environment Setup (Location-Agnostic)
@@ -89,7 +90,7 @@ IF "%1"=="PS7_RESTART" (
 )
 
 REM Check if this is a restart after script.bat self-update
-REM Repository management and launcher logic updated for 2025 portability
+REM (Legacy self-update logic removed)
 
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting maintenance script..."
 CALL :LOG_MESSAGE "[%TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME%"
@@ -149,13 +150,16 @@ REM ----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup
 REM Ensures a monthly scheduled task is created to run this script as admin.
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[INFO] Checking for monthly scheduled task '%TASK_NAME%'..."
+SET "LOG_TIMESTAMP=%DATE% %TIME%"
+CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Checking for monthly scheduled task '%TASK_NAME%'..."
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
-    CALL :LOG_MESSAGE "[INFO] Monthly scheduled task already exists. Skipping creation."
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task already exists. Skipping creation."
 ) ELSE (
-    CALL :LOG_MESSAGE "[INFO] Monthly scheduled task not found. Creating..."
-    CALL :LOG_MESSAGE "[DEBUG] Using script path for task: %SCHEDULED_TASK_SCRIPT_PATH%"
+    SET "LOG_TIMESTAMP=%DATE% %TIME%"
+    CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task not found. Creating..."
+    CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [DEBUG] Using script path for task: %SCHEDULED_TASK_SCRIPT_PATH%"
     REM Create scheduled task with proper escaping
     schtasks /Create ^
         /SC MONTHLY ^
@@ -167,22 +171,26 @@ IF %ERRORLEVEL% EQU 0 (
         /RU SYSTEM ^
         /F >schtasks_create.log 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[INFO] Monthly scheduled task created successfully."
+        SET "LOG_TIMESTAMP=%DATE% %TIME%"
+        CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task created successfully."
         schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "[INFO] Task verification successful."
+            SET "LOG_TIMESTAMP=%DATE% %TIME%"
+            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Task verification successful."
             FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
-                CALL :LOG_MESSAGE "[INFO] Next scheduled run: %%i"
+                SET "LOG_TIMESTAMP=%DATE% %TIME%"
+                CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Next scheduled run: %%i"
             )
         )
     ) ELSE (
-        CALL :LOG_MESSAGE "[ERROR] Failed to create monthly scheduled task. See schtasks_create.log for details."
+        SET "LOG_TIMESTAMP=%DATE% %TIME%"
+        CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] Failed to create monthly scheduled task. See schtasks_create.log for details."
         REM Display the actual error for debugging
         IF EXIST schtasks_create.log (
-            CALL :LOG_MESSAGE "[ERROR] Scheduled task creation error details:"
+            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] Scheduled task creation error details:"
             TYPE schtasks_create.log
         ) ELSE (
-            CALL :LOG_MESSAGE "[ERROR] No error log file created."
+            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] No error log file created."
         )
         
         REM Try alternative approach with current user instead of SYSTEM
@@ -307,52 +315,50 @@ CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting dependency installation with optimiz
 REM -----------------------------------------------------------------------------
 REM 1. Windows Package Manager (Winget) - Foundation package manager
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[INFO] Installing Windows Package Manager (winget)..."
-REM Simplified Winget detection - skip problematic version check for now
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Windows Package Manager (winget)..."
+REM Improved Winget detection: check both version and path
+winget --version >nul 2>&1
 SET "WINGET_FOUND=0"
-
-REM Try PATH detection first (safer)
-where winget >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "WINGET_FOUND=1"
-    CALL :LOG_MESSAGE "[DEBUG] Winget detected via PATH (where command)."
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Winget detected via version check."
 ) ELSE (
-    CALL :LOG_MESSAGE "[DEBUG] Winget not found in PATH, attempting installation..."
-    SET "WINGET_FOUND=1"
-    CALL :LOG_MESSAGE "[DEBUG] Winget detected via PATH (where command)."
-) ELSE (
-    CALL :LOG_MESSAGE "[DEBUG] Winget not found in PATH, attempting installation..."
+    where winget >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        SET "WINGET_FOUND=1"
+        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Winget detected via PATH (where command)."
+    )
 )
 
 IF !WINGET_FOUND! EQU 0 (
-    CALL :LOG_MESSAGE "[INFO] Winget not found, downloading from official Microsoft source..."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget not found, downloading from official Microsoft source..."
     REM Download latest App Installer from Microsoft Store
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=!TEMP!\Microsoft.DesktopAppInstaller.msixbundle"
     powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message; exit 1 }"
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[INFO] Installing Winget package..."
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Winget package..."
         powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "[INFO] Winget installation completed successfully."
+            CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget installation completed successfully."
         ) ELSE (
-            CALL :LOG_MESSAGE "[WARN] Winget installation failed, but continuing..."
+            CALL :LOG_MESSAGE "[%TIME%] [WARN] Winget installation failed, but continuing..."
         )
         DEL /F /Q "!WINGET_FILE!" >nul 2>&1
     ) ELSE (
-        CALL :LOG_MESSAGE "[WARN] Winget download failed, but continuing..."
+        CALL :LOG_MESSAGE "[%TIME%] [WARN] Winget download failed, but continuing..."
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[INFO] Winget is already available."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget is already available."
 )
 
 REM -----------------------------------------------------------------------------
 REM 2. PowerShell 7 - Modern PowerShell environment
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[INFO] Installing PowerShell 7..."
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing PowerShell 7..."
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[INFO] PowerShell 7 not found, downloading from official Microsoft source..."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 not found, downloading from official Microsoft source..."
     
     REM Set download URL for PowerShell 7.5.2 (no fallback)
     SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2.msi"
@@ -365,31 +371,31 @@ IF !ERRORLEVEL! NEQ 0 (
     )
     
     REM Download PowerShell 7.5.2
-    CALL :LOG_MESSAGE "[INFO] Downloading PowerShell 7.5.2..."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading PowerShell 7.5.2..."
     powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host '[INFO] PowerShell 7.5.2 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.2 download failed:' $_.Exception.Message; exit 1 }"
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[INFO] Installing PowerShell 7..."
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing PowerShell 7..."
         msiexec /i "!PS7_INSTALLER!" /quiet /norestart
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "[INFO] PowerShell 7 installed successfully."
+            CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 installed successfully."
             REM Refresh PATH environment variable for current session
             FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "PATH=%%B"
             REM Add common PowerShell 7 installation paths to current session
             IF EXIST "%ProgramFiles%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
             IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
-            CALL :LOG_MESSAGE "[INFO] PowerShell 7 installation completed. Restarting script to use new PowerShell..."
+            CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 installation completed. Restarting script to use new PowerShell..."
             REM Restart the script to use newly installed PowerShell 7
             START "" "%~f0" PS7_RESTART
             EXIT /B 0
         ) ELSE (
-            CALL :LOG_MESSAGE "[WARN] PowerShell 7 installation failed."
+            CALL :LOG_MESSAGE "[%TIME%] [WARN] PowerShell 7 installation failed."
         )
         DEL /F /Q "!PS7_INSTALLER!" >nul 2>&1
     )
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "[INFO] PowerShell 7 already available: %PS7_VERSION%"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 already available: %PS7_VERSION%"
 )
 
 :SKIP_PS7_INSTALL
@@ -397,13 +403,13 @@ IF !ERRORLEVEL! NEQ 0 (
 REM -----------------------------------------------------------------------------
 REM 3. NuGet PackageProvider - Automatic installation with multiple methods
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[INFO] Installing NuGet PackageProvider with automatic confirmation..."
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing NuGet PackageProvider with automatic confirmation..."
 
 REM Method 1: Direct bootstrap with automatic Y response
 ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Method 1 failed, trying direct download...' } } else { Write-Host '[INFO] NuGet PackageProvider already available' } }"
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[INFO] Trying alternative NuGet installation method..."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Trying alternative NuGet installation method..."
     REM Method 2: Direct download and install (fallback)
     powershell -ExecutionPolicy Bypass -Command "& { try { $nugetUrl = 'https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll'; $nugetPath = Join-Path $env:ProgramFiles 'PackageManagement\ProviderAssemblies\nuget\2.8.5.208\Microsoft.PackageManagement.NuGetProvider.dll'; $nugetDir = Split-Path $nugetPath; if (-not (Test-Path $nugetDir)) { New-Item -ItemType Directory -Path $nugetDir -Force | Out-Null }; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath -UseBasicParsing; Write-Host '[INFO] NuGet PackageProvider downloaded and installed manually' } catch { Write-Host '[WARN] Direct download also failed:' $_.Exception.Message } }"
 )
@@ -496,6 +502,7 @@ REM ----------------------------------------------------------------------------
 REM Universal Repository Management - Location-Agnostic Download & Update
 REM Works from any directory, downloads to current script location
 REM -----------------------------------------------------------------------------
+:SKIP_SELF_UPDATE
 
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading latest repository from GitHub to current location..."
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Working directory: %WORKING_DIR%"
@@ -578,8 +585,6 @@ IF EXIST "%EXTRACTED_PATH%" (
         pause
         EXIT /B 3
     )
-)
-
 REM -----------------------------------------------------------------------------
 REM Self-Update Mechanism - Using dynamic paths
 REM -----------------------------------------------------------------------------
@@ -592,9 +597,6 @@ IF EXIST "%NEW_SCRIPT_BAT%" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Self-update will be performed AFTER PowerShell script execution."
     CALL :LOG_MESSAGE "[%TIME%] [INFO] This prevents execution conflicts during script update."
     SET "SELF_UPDATE_NEEDED=YES"
-) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] No new script.bat found in extracted repository."
-)
 REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Final Verification
 REM -----------------------------------------------------------------------------
@@ -649,12 +651,7 @@ IF NOT DEFINED PS1_PATH (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
         DIR "%EXTRACTED_PATH%" /B
     )
-    pause
-    EXIT /B 4
-)
-
 CALL :LOG_MESSAGE "[%TIME%] [SUCCESS] PowerShell script found successfully!"
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell script: %PS1_PATH%"
 REM -----------------------------------------------------------------------------
 REM Launch PowerShell Script
 REM -----------------------------------------------------------------------------
@@ -674,17 +671,10 @@ IF NOT DEFINED PS1_PATH (
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] PS1_PATH is empty before execution!"
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] Cannot proceed without PowerShell script!"
     pause
-    EXIT /B 6
-)
-
 CALL :LOG_MESSAGE "[%TIME%] [INFO] About to execute: %PS1_PATH%"
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying file exists: %PS1_PATH%"
 IF NOT EXIST "%PS1_PATH%" (
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] PowerShell script file does not exist: %PS1_PATH%"
-    pause
-    EXIT /B 7
-)
-
 IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell 7 environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: pwsh.exe"
@@ -694,8 +684,6 @@ IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using Windows PowerShell environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: powershell.exe"
     powershell.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
-    SET "LAUNCH_RESULT=%ERRORLEVEL%"
-)
     SET "LAUNCH_RESULT=%ERRORLEVEL%"
 )
 
