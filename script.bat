@@ -49,16 +49,19 @@ SET "ZIP_FILE=%WORKING_DIR%script_mentenanta-main.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 
-REM PowerShell script paths - intelligent detection for any execution context
+# PowerShell script paths - intelligent detection for any execution context
 SET "PS1_PATH="
 REM Priority 1: Check if we're already in a repo directory (current directory has script.ps1)
 IF EXIST "%WORKING_DIR%script.ps1" (
     SET "PS1_PATH=%WORKING_DIR%script.ps1"
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Found script.ps1 in current directory - using local version"
-) ELSE (
-    REM Priority 2: Will be set after repository extraction
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] No local script.ps1 found - will download repository"
+    GOTO :INITIAL_PS1_CHECK_COMPLETE
 )
+
+REM Priority 2: Will be set after repository extraction
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] No local script.ps1 found - will download repository"
+
+:INITIAL_PS1_CHECK_COMPLETE
 
 CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working Directory: %WORKING_DIR%"
 CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Script Path: %SCRIPT_PATH%"
@@ -74,17 +77,21 @@ REM Priority 1: Use current executing script path (most reliable)
 IF EXIST "%SCRIPT_PATH%" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Scheduled task will use current script path: %SCRIPT_PATH%"
-) ELSE (
-    REM Priority 2: Look for script.bat in current directory
-    IF EXIST "%SCRIPT_DIR%script.bat" (
-        SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
-        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Scheduled task will use directory script: %SCRIPT_DIR%script.bat"
-    ) ELSE (
-        REM Priority 3: Use script path as fallback (should not happen)
-        SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-        CALL :LOG_MESSAGE "[%TIME%] [WARN] Using fallback script path for scheduled task: %SCRIPT_PATH%"
-    )
+    GOTO :SCHEDULED_TASK_PATH_COMPLETE
 )
+
+REM Priority 2: Look for script.bat in current directory
+IF EXIST "%SCRIPT_DIR%script.bat" (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Scheduled task will use directory script: %SCRIPT_DIR%script.bat"
+    GOTO :SCHEDULED_TASK_PATH_COMPLETE
+)
+
+REM Priority 3: Use script path as fallback (should not happen)
+SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
+CALL :LOG_MESSAGE "[%TIME%] [WARN] Using fallback script path for scheduled task: %SCRIPT_PATH%"
+
+:SCHEDULED_TASK_PATH_COMPLETE
 
 REM Check if this is a restart after PowerShell 7 installation
 IF "%1"=="PS7_RESTART" (
@@ -654,6 +661,14 @@ IF EXIST "%WORKING_DIR%script.ps1" (
     GOTO :PS1_DETECTION_COMPLETE
 )
 
+REM Priority 3: Check extracted folder (if repo was updated)
+IF DEFINED EXTRACTED_PATH (
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking extracted folder: %EXTRACTED_PATH%\script.ps1"
+    IF EXIST "%EXTRACTED_PATH%\script.ps1" (
+        SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found script.ps1 in extracted folder"
+        GOTO :PS1_DETECTION_COMPLETE
+    )
 )
 
 :PS1_DETECTION_COMPLETE
@@ -670,7 +685,11 @@ IF NOT DEFINED PS1_PATH (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
         DIR "%EXTRACTED_PATH%" /B
     )
-CALL :LOG_MESSAGE "[%TIME%] [SUCCESS] PowerShell script found successfully!"
+    pause
+    EXIT /B 7
+) ELSE (
+    CALL :LOG_MESSAGE "[%TIME%] [SUCCESS] PowerShell script found successfully!"
+)
 REM -----------------------------------------------------------------------------
 REM Launch PowerShell Script
 REM -----------------------------------------------------------------------------
