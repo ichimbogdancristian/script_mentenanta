@@ -4672,8 +4672,18 @@ function Clear-OldRestorePoints {
         
         Write-Log "Enumerating system restore points..." 'INFO'
         
-        # Get all restore points sorted by creation time (newest first)
-        $allRestorePoints = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Sort-Object CreationTime -Descending
+        try {
+            # Get all restore points sorted by creation time (newest first)
+            $allRestorePoints = Get-ComputerRestorePoint -ErrorAction Stop | Sort-Object CreationTime -Descending
+        }
+        catch [System.Management.Automation.CommandNotFoundException] {
+            Write-Log "Warning: 'Get-ComputerRestorePoint' command not available on this system. System Restore may be disabled or not supported. Skipping cleanup." 'WARN'
+            return $true # Not a failure, just not applicable.
+        }
+        catch {
+            Write-Log "Unexpected error during restore point cleanup: $($_.Exception.Message)" 'ERROR'
+            return $false
+        }
         
         if (-not $allRestorePoints) {
             Write-Log "No system restore points found on this system" 'INFO'
