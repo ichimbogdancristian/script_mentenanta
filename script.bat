@@ -43,18 +43,21 @@ REM Working directory - always use the directory where script.bat is located
 SET "WORKING_DIR=%SCRIPT_DIR%"
 SET "LOG_FILE=%WORKING_DIR%maintenance.log"
 
-REM Repository settings
+REM Repository settings - optimized for any location execution
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 SET "ZIP_FILE=%WORKING_DIR%script_mentenanta-main.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 
-REM PowerShell script paths - check both current directory and extracted folder
+REM PowerShell script paths - intelligent detection for any execution context
 SET "PS1_PATH="
+REM Priority 1: Check if we're already in a repo directory (current directory has script.ps1)
 IF EXIST "%WORKING_DIR%script.ps1" (
     SET "PS1_PATH=%WORKING_DIR%script.ps1"
-) ELSE IF EXIST "%EXTRACTED_PATH%\script.ps1" (
-    SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Found script.ps1 in current directory - using local version"
+) ELSE (
+    REM Priority 2: Will be set after repository extraction
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] No local script.ps1 found - will download repository"
 )
 
 CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working Directory: %WORKING_DIR%"
@@ -504,6 +507,15 @@ REM Works from any directory, downloads to current script location
 REM -----------------------------------------------------------------------------
 :SKIP_SELF_UPDATE
 
+REM Check if we need to download repository or use local files
+IF DEFINED PS1_PATH (
+    IF EXIST "%PS1_PATH%" (
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Using local script.ps1 file: %PS1_PATH%"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Skipping repository download - local files available"
+        GOTO :PS1_DETECTION_COMPLETE
+    )
+)
+
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading latest repository from GitHub to current location..."
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Working directory: %WORKING_DIR%"
 
@@ -567,6 +579,8 @@ IF EXIST "%EXTRACTED_PATH%" (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found script.ps1 in extracted folder"
     ) ELSE (
         CALL :LOG_MESSAGE "[%TIME%] [ERROR] ✗ script.ps1 not found in extracted folder"
+        pause
+        EXIT /B 3
     )
     
 ) ELSE (
@@ -585,6 +599,7 @@ IF EXIST "%EXTRACTED_PATH%" (
         pause
         EXIT /B 3
     )
+)
 REM -----------------------------------------------------------------------------
 REM Self-Update Mechanism - Using dynamic paths
 REM -----------------------------------------------------------------------------
@@ -597,6 +612,7 @@ IF EXIST "%NEW_SCRIPT_BAT%" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Self-update will be performed AFTER PowerShell script execution."
     CALL :LOG_MESSAGE "[%TIME%] [INFO] This prevents execution conflicts during script update."
     SET "SELF_UPDATE_NEEDED=YES"
+)
 REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Final Verification
 REM -----------------------------------------------------------------------------
@@ -671,10 +687,16 @@ IF NOT DEFINED PS1_PATH (
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] PS1_PATH is empty before execution!"
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] Cannot proceed without PowerShell script!"
     pause
+    EXIT /B 5
+)
+
 CALL :LOG_MESSAGE "[%TIME%] [INFO] About to execute: %PS1_PATH%"
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying file exists: %PS1_PATH%"
 IF NOT EXIST "%PS1_PATH%" (
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] PowerShell script file does not exist: %PS1_PATH%"
+    pause
+    EXIT /B 6
+)
 IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell 7 environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: pwsh.exe"
