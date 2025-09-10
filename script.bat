@@ -15,17 +15,27 @@ REM Usage: CALL :LOG_MESSAGE "message"
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
 :LOG_MESSAGE
+REM Enhanced logging function with automatic timestamp detection
+REM If message doesn't start with timestamp, prepend current timestamp
+SET "MESSAGE=%~1"
 SET "LOG_TIMESTAMP=%DATE% %TIME%"
-ECHO %~1
-ECHO %~1 >> "%LOG_FILE%" 2>nul
+ECHO %MESSAGE% | FINDSTR /B /C:"[" >nul
+IF %ERRORLEVEL% EQU 0 (
+    REM Message already has timestamp format - use as-is
+    ECHO %MESSAGE%
+    ECHO %MESSAGE% >> "%LOG_FILE%" 2>nul
+) ELSE (
+    REM No timestamp detected - add automatic timestamp
+    ECHO [%LOG_TIMESTAMP%] %MESSAGE%
+    ECHO [%LOG_TIMESTAMP%] %MESSAGE% >> "%LOG_FILE%" 2>nul
+)
 EXIT /B
 
 :MAIN_SCRIPT
 REM -----------------------------------------------------------------------------
-REM Robust Timestamp Function for Logging
+REM Enhanced Logging System with Automatic Timestamps
 REM -----------------------------------------------------------------------------
-SET "LOG_TIMESTAMP=%DATE% %TIME%"
-REM Usage: !LOG_TIMESTAMP! (if delayed expansion) or %LOG_TIMESTAMP% (if not)
+REM LOG_MESSAGE function automatically generates timestamps - no manual setting needed
 
 REM -----------------------------------------------------------------------------
 REM Universal Path Detection & Environment Setup (Location-Agnostic)
@@ -90,7 +100,7 @@ IF "%1"=="PS7_RESTART" (
 )
 
 REM Check if this is a restart after script.bat self-update
-REM (Legacy self-update logic removed)
+REM Repository management and launcher logic updated for 2025 portability
 
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting maintenance script..."
 CALL :LOG_MESSAGE "[%TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME%"
@@ -150,16 +160,13 @@ REM ----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup
 REM Ensures a monthly scheduled task is created to run this script as admin.
 REM -----------------------------------------------------------------------------
-SET "LOG_TIMESTAMP=%DATE% %TIME%"
-CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Checking for monthly scheduled task '%TASK_NAME%'..."
+CALL :LOG_MESSAGE "[INFO] Checking for monthly scheduled task '%TASK_NAME%'..."
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
-    SET "LOG_TIMESTAMP=%DATE% %TIME%"
-    CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task already exists. Skipping creation."
+    CALL :LOG_MESSAGE "[INFO] Monthly scheduled task already exists. Skipping creation."
 ) ELSE (
-    SET "LOG_TIMESTAMP=%DATE% %TIME%"
-    CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task not found. Creating..."
-    CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [DEBUG] Using script path for task: %SCHEDULED_TASK_SCRIPT_PATH%"
+    CALL :LOG_MESSAGE "[INFO] Monthly scheduled task not found. Creating..."
+    CALL :LOG_MESSAGE "[DEBUG] Using script path for task: %SCHEDULED_TASK_SCRIPT_PATH%"
     REM Create scheduled task with proper escaping
     schtasks /Create ^
         /SC MONTHLY ^
@@ -171,26 +178,22 @@ IF %ERRORLEVEL% EQU 0 (
         /RU SYSTEM ^
         /F >schtasks_create.log 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        SET "LOG_TIMESTAMP=%DATE% %TIME%"
-        CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Monthly scheduled task created successfully."
+        CALL :LOG_MESSAGE "[INFO] Monthly scheduled task created successfully."
         schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            SET "LOG_TIMESTAMP=%DATE% %TIME%"
-            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Task verification successful."
+            CALL :LOG_MESSAGE "[INFO] Task verification successful."
             FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
-                SET "LOG_TIMESTAMP=%DATE% %TIME%"
-                CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Next scheduled run: %%i"
+                CALL :LOG_MESSAGE "[INFO] Next scheduled run: %%i"
             )
         )
     ) ELSE (
-        SET "LOG_TIMESTAMP=%DATE% %TIME%"
-        CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] Failed to create monthly scheduled task. See schtasks_create.log for details."
+        CALL :LOG_MESSAGE "[ERROR] Failed to create monthly scheduled task. See schtasks_create.log for details."
         REM Display the actual error for debugging
         IF EXIST schtasks_create.log (
-            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] Scheduled task creation error details:"
+            CALL :LOG_MESSAGE "[ERROR] Scheduled task creation error details:"
             TYPE schtasks_create.log
         ) ELSE (
-            CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [ERROR] No error log file created."
+            CALL :LOG_MESSAGE "[ERROR] No error log file created."
         )
         
         REM Try alternative approach with current user instead of SYSTEM
@@ -502,7 +505,6 @@ REM ----------------------------------------------------------------------------
 REM Universal Repository Management - Location-Agnostic Download & Update
 REM Works from any directory, downloads to current script location
 REM -----------------------------------------------------------------------------
-:SKIP_SELF_UPDATE
 
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading latest repository from GitHub to current location..."
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Working directory: %WORKING_DIR%"
@@ -585,6 +587,8 @@ IF EXIST "%EXTRACTED_PATH%" (
         pause
         EXIT /B 3
     )
+)
+
 REM -----------------------------------------------------------------------------
 REM Self-Update Mechanism - Using dynamic paths
 REM -----------------------------------------------------------------------------
@@ -597,6 +601,9 @@ IF EXIST "%NEW_SCRIPT_BAT%" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Self-update will be performed AFTER PowerShell script execution."
     CALL :LOG_MESSAGE "[%TIME%] [INFO] This prevents execution conflicts during script update."
     SET "SELF_UPDATE_NEEDED=YES"
+) ELSE (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] No new script.bat found in extracted repository."
+)
 REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Final Verification
 REM -----------------------------------------------------------------------------
@@ -651,7 +658,12 @@ IF NOT DEFINED PS1_PATH (
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
         DIR "%EXTRACTED_PATH%" /B
     )
+    pause
+    EXIT /B 4
+)
+
 CALL :LOG_MESSAGE "[%TIME%] [SUCCESS] PowerShell script found successfully!"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell script: %PS1_PATH%"
 REM -----------------------------------------------------------------------------
 REM Launch PowerShell Script
 REM -----------------------------------------------------------------------------
@@ -671,10 +683,17 @@ IF NOT DEFINED PS1_PATH (
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] PS1_PATH is empty before execution!"
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] Cannot proceed without PowerShell script!"
     pause
+    EXIT /B 6
+)
+
 CALL :LOG_MESSAGE "[%TIME%] [INFO] About to execute: %PS1_PATH%"
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying file exists: %PS1_PATH%"
 IF NOT EXIST "%PS1_PATH%" (
     CALL :LOG_MESSAGE "[%TIME%] [FATAL] PowerShell script file does not exist: %PS1_PATH%"
+    pause
+    EXIT /B 7
+)
+
 IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell 7 environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: pwsh.exe"
@@ -684,6 +703,8 @@ IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using Windows PowerShell environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: powershell.exe"
     powershell.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
+    SET "LAUNCH_RESULT=%ERRORLEVEL%"
+)
     SET "LAUNCH_RESULT=%ERRORLEVEL%"
 )
 
