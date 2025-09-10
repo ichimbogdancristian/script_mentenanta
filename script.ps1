@@ -121,7 +121,7 @@ $global:Config = @{
 # Global variables for task execution and results tracking
 $global:TaskResults = @{}
 $global:SystemInventory = $null
-$global:TempFolder = Join-Path $PSScriptRoot 'temp_files'
+$global:TempFolder = Join-Path $WorkingDirectory 'temp_files'
 $global:BloatwareList = @()
 $global:EssentialApps = @()
 
@@ -2463,7 +2463,7 @@ function Get-ExtensiveSystemInventory {
     Write-Log 'Starting Extensive System Inventory (JSON Format).' 'INFO'
     Write-TaskProgress "Collecting system inventory" 10
     
-    $inventoryFolder = $PSScriptRoot
+    $inventoryFolder = $WorkingDirectory
     if (-not (Test-Path $inventoryFolder)) { 
         New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null 
     }
@@ -3721,7 +3721,7 @@ function Enable-AppBrowserControl {
             
             # Add current script directory and PowerShell executables to exclusions
             try {
-                $scriptDir = $PSScriptRoot
+                $scriptDir = $WorkingDirectory
                 $tempDir = $global:TempFolder
                 
                 # Add script directory to allowed apps/folders
@@ -6699,7 +6699,7 @@ function Write-UnifiedMaintenanceReport {
 
     # Generate report paths
     $jsonReportPath = Join-Path $global:TempFolder 'maintenance_report.json'
-    $textReportPath = Join-Path $PSScriptRoot 'maintenance_report.txt'
+    $textReportPath = Join-Path $WorkingDirectory 'maintenance_report.txt'
 
     # Write structured JSON report
     try {
@@ -6805,7 +6805,7 @@ function Write-UnifiedMaintenanceReport {
 # ================================================================
 
 # Global variables initialization
-$global:TempFolder = Join-Path $PSScriptRoot 'temp_files'
+$global:TempFolder = Join-Path $WorkingDirectory 'temp_files'
 $global:SystemInventory = $null
 $global:TaskResults = @{}
 
@@ -6815,7 +6815,7 @@ if (-not (Test-Path $global:TempFolder)) {
 }
 
 # Configuration management with defaults
-$configPath = Join-Path $PSScriptRoot "config.json"
+$configPath = Join-Path $WorkingDirectory "config.json"
 $global:Config = @{
     SkipBloatwareRemoval    = $false
     SkipEssentialApps       = $false
@@ -7081,7 +7081,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host "✅ Maintenance script completed successfully!" -ForegroundColor Green
     Write-Host "📊 Tasks: $totalCount | ✅ Success: $successCount | ❌ Failed: $failCount" -ForegroundColor Cyan
     Write-Host "⏱️  Total time: $totalExecutionTime" -ForegroundColor Cyan
-    Write-Host "📄 Reports available in: $PSScriptRoot" -ForegroundColor Cyan
+    Write-Host "📄 Reports available in: $WorkingDirectory" -ForegroundColor Cyan
     Write-Host
 
     Write-Log "[POST-EXECUTION] Starting post-execution cleanup and system state analysis" 'INFO'
@@ -7090,7 +7090,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Log "[CLEANUP] Initiating repository directory removal" 'INFO'
     Write-Host "🧹 Starting repository cleanup..." -ForegroundColor Cyan
     
-    $repoFolder = $PSScriptRoot
+    $repoFolder = $ScriptDir
     $repoCleanupSuccess = $false
     
     try {
