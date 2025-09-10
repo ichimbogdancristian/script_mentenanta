@@ -15,20 +15,9 @@ REM Usage: CALL :LOG_MESSAGE "message"
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
 :LOG_MESSAGE
-REM Enhanced logging function with automatic timestamp detection
-REM If message doesn't start with timestamp, prepend current timestamp
-SET "MESSAGE=%~1"
 SET "LOG_TIMESTAMP=%DATE% %TIME%"
-ECHO %MESSAGE% | FINDSTR /B /C:"[" >nul
-IF %ERRORLEVEL% EQU 0 (
-    REM Message already has timestamp format - use as-is
-    ECHO %MESSAGE%
-    ECHO %MESSAGE% >> "%LOG_FILE%" 2>nul
-) ELSE (
-    REM No timestamp detected - add automatic timestamp
-    ECHO [%LOG_TIMESTAMP%] %MESSAGE%
-    ECHO [%LOG_TIMESTAMP%] %MESSAGE% >> "%LOG_FILE%" 2>nul
-)
+ECHO %~1
+ECHO %~1 >> "%LOG_FILE%" 2>nul
 EXIT /B
 
 :MAIN_SCRIPT
@@ -318,50 +307,52 @@ CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting dependency installation with optimiz
 REM -----------------------------------------------------------------------------
 REM 1. Windows Package Manager (Winget) - Foundation package manager
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Windows Package Manager (winget)..."
-REM Improved Winget detection: check both version and path
-winget --version >nul 2>&1
+CALL :LOG_MESSAGE "[INFO] Installing Windows Package Manager (winget)..."
+REM Simplified Winget detection - skip problematic version check for now
 SET "WINGET_FOUND=0"
+
+REM Try PATH detection first (safer)
+where winget >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "WINGET_FOUND=1"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Winget detected via version check."
+    CALL :LOG_MESSAGE "[DEBUG] Winget detected via PATH (where command)."
 ) ELSE (
-    where winget >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        SET "WINGET_FOUND=1"
-        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Winget detected via PATH (where command)."
-    )
+    CALL :LOG_MESSAGE "[DEBUG] Winget not found in PATH, attempting installation..."
+    SET "WINGET_FOUND=1"
+    CALL :LOG_MESSAGE "[DEBUG] Winget detected via PATH (where command)."
+) ELSE (
+    CALL :LOG_MESSAGE "[DEBUG] Winget not found in PATH, attempting installation..."
 )
 
 IF !WINGET_FOUND! EQU 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget not found, downloading from official Microsoft source..."
+    CALL :LOG_MESSAGE "[INFO] Winget not found, downloading from official Microsoft source..."
     REM Download latest App Installer from Microsoft Store
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=!TEMP!\Microsoft.DesktopAppInstaller.msixbundle"
     powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message; exit 1 }"
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Winget package..."
+        CALL :LOG_MESSAGE "[INFO] Installing Winget package..."
         powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget installation completed successfully."
+            CALL :LOG_MESSAGE "[INFO] Winget installation completed successfully."
         ) ELSE (
-            CALL :LOG_MESSAGE "[%TIME%] [WARN] Winget installation failed, but continuing..."
+            CALL :LOG_MESSAGE "[WARN] Winget installation failed, but continuing..."
         )
         DEL /F /Q "!WINGET_FILE!" >nul 2>&1
     ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [WARN] Winget download failed, but continuing..."
+        CALL :LOG_MESSAGE "[WARN] Winget download failed, but continuing..."
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget is already available."
+    CALL :LOG_MESSAGE "[INFO] Winget is already available."
 )
 
 REM -----------------------------------------------------------------------------
 REM 2. PowerShell 7 - Modern PowerShell environment
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing PowerShell 7..."
+CALL :LOG_MESSAGE "[INFO] Installing PowerShell 7..."
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 not found, downloading from official Microsoft source..."
+    CALL :LOG_MESSAGE "[INFO] PowerShell 7 not found, downloading from official Microsoft source..."
     
     REM Set download URL for PowerShell 7.5.2 (no fallback)
     SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2.msi"
@@ -374,31 +365,31 @@ IF !ERRORLEVEL! NEQ 0 (
     )
     
     REM Download PowerShell 7.5.2
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading PowerShell 7.5.2..."
+    CALL :LOG_MESSAGE "[INFO] Downloading PowerShell 7.5.2..."
     powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host '[INFO] PowerShell 7.5.2 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.2 download failed:' $_.Exception.Message; exit 1 }"
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing PowerShell 7..."
+        CALL :LOG_MESSAGE "[INFO] Installing PowerShell 7..."
         msiexec /i "!PS7_INSTALLER!" /quiet /norestart
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 installed successfully."
+            CALL :LOG_MESSAGE "[INFO] PowerShell 7 installed successfully."
             REM Refresh PATH environment variable for current session
             FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "PATH=%%B"
             REM Add common PowerShell 7 installation paths to current session
             IF EXIST "%ProgramFiles%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
             IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 installation completed. Restarting script to use new PowerShell..."
+            CALL :LOG_MESSAGE "[INFO] PowerShell 7 installation completed. Restarting script to use new PowerShell..."
             REM Restart the script to use newly installed PowerShell 7
             START "" "%~f0" PS7_RESTART
             EXIT /B 0
         ) ELSE (
-            CALL :LOG_MESSAGE "[%TIME%] [WARN] PowerShell 7 installation failed."
+            CALL :LOG_MESSAGE "[WARN] PowerShell 7 installation failed."
         )
         DEL /F /Q "!PS7_INSTALLER!" >nul 2>&1
     )
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 already available: %PS7_VERSION%"
+    CALL :LOG_MESSAGE "[INFO] PowerShell 7 already available: %PS7_VERSION%"
 )
 
 :SKIP_PS7_INSTALL
@@ -406,13 +397,13 @@ IF !ERRORLEVEL! NEQ 0 (
 REM -----------------------------------------------------------------------------
 REM 3. NuGet PackageProvider - Automatic installation with multiple methods
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing NuGet PackageProvider with automatic confirmation..."
+CALL :LOG_MESSAGE "[INFO] Installing NuGet PackageProvider with automatic confirmation..."
 
 REM Method 1: Direct bootstrap with automatic Y response
 ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Method 1 failed, trying direct download...' } } else { Write-Host '[INFO] NuGet PackageProvider already available' } }"
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Trying alternative NuGet installation method..."
+    CALL :LOG_MESSAGE "[INFO] Trying alternative NuGet installation method..."
     REM Method 2: Direct download and install (fallback)
     powershell -ExecutionPolicy Bypass -Command "& { try { $nugetUrl = 'https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll'; $nugetPath = Join-Path $env:ProgramFiles 'PackageManagement\ProviderAssemblies\nuget\2.8.5.208\Microsoft.PackageManagement.NuGetProvider.dll'; $nugetDir = Split-Path $nugetPath; if (-not (Test-Path $nugetDir)) { New-Item -ItemType Directory -Path $nugetDir -Force | Out-Null }; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath -UseBasicParsing; Write-Host '[INFO] NuGet PackageProvider downloaded and installed manually' } catch { Write-Host '[WARN] Direct download also failed:' $_.Exception.Message } }"
 )
