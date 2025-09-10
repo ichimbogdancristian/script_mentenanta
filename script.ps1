@@ -3873,7 +3873,11 @@ function Enable-AppBrowserControl {
             Set-MpPreference -EnableNetworkProtection Enabled -ErrorAction Stop
             Write-Log "✓ Network Protection enabled" 'INFO'
         }
-        catch { 
+        catch [System.UnauthorizedAccessException] {
+            $errors += "Network Protection: Permission denied. Please run as Administrator."
+            Write-Log "✗ Failed to enable Network Protection: Permission denied. Ensure the script is run with Administrator privileges." 'ERROR'
+        }
+        catch {
             $errors += "Network Protection: $($_.Exception.Message)"
             Write-Log "✗ Failed to enable Network Protection: $($_.Exception.Message)" 'WARN'
         }
@@ -3928,8 +3932,14 @@ function Enable-AppBrowserControl {
                 Write-Log "Warning: Could not add script exclusions to Controlled Folder Access: $_" 'WARN'
             }
         }
-        catch { $errors += "Controlled Folder Access: $_" }
-
+        catch [System.UnauthorizedAccessException] {
+            $errors += "Controlled Folder Access: Permission denied. Please run as Administrator."
+            Write-Log "✗ Failed to enable Controlled Folder Access: Permission denied. Ensure the script is run with Administrator privileges." 'ERROR'
+        }
+        catch {
+            $errors += "Controlled Folder Access: $($_.Exception.Message)"
+            Write-Log "✗ Failed to enable Controlled Folder Access: $($_.Exception.Message)" 'WARN'
+        }
 
         # Enable SmartScreen for Edge via registry (Windows 10/11)
         try {
@@ -3960,7 +3970,10 @@ function Enable-AppBrowserControl {
             Set-ProcessMitigation -System -Enable DEP, SEHOP, CFG, ForceRelocateImages, BottomUp, HighEntropy
             Write-Log "✓ System-level exploit mitigations enabled (DEP, SEHOP, CFG, ASLR)" 'INFO'
         }
-        catch { $errors += "Exploit Mitigations: $_" }
+        catch {
+            $errors += "Exploit Mitigations: $($_.Exception.Message)"
+            Write-Log "✗ Failed to enable Exploit Mitigations: $($_.Exception.Message)" 'WARN'
+        }
     }
     catch {
         $errors += "General error: $_"
