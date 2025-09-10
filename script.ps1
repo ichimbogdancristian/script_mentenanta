@@ -5378,20 +5378,20 @@ function Clear-TempFiles {
 # ================================================================
 # Function: Start-SystemHealthRepair
 # ================================================================
-# Purpose: Automated Windows System Health Check and Repair using DISM and SFC
-# Environment: Windows 10/11, Administrator required, PowerShell 7+ optimized
-# Performance: Long-running operation, automated detection, comprehensive system file integrity checking
-# Dependencies: DISM.exe, SFC.exe, Windows Component Store, Administrator privileges
-# Logic: DISM component store health check, automatic repair if needed, SFC scan based on results and logs
-# Features: Intelligent repair detection, unattended operation, comprehensive logging, repair verification
+# Purpose: Performs a comprehensive system health check and repair using DISM and SFC.
+# Environment: Requires administrator privileges.
+# Performance: This is a long-running operation involving intensive disk I/O.
+# Dependencies: DISM.exe, SFC.exe.
+# Logic: 
+#   1. Executes DISM to check and repair the Windows component store.
+#   2. If corruption is found and repaired, or if CBS logs indicate issues, it runs SFC.
+#   3. Provides detailed progress tracking and generates a summary report.
+# Features: Robust error handling, detailed logging, and structured result output.
 # ================================================================
 function Start-SystemHealthRepair {
-    Write-Log "[START] Windows System Health Check and Repair - Automated DISM/SFC Mode" 'INFO'
-    
+    Write-Log "[START] Windows System Health Check and Repair" 'INFO'
     $repairStartTime = Get-Date
-    $dismRepaired = $false
-    $repairNeeded = $false
-    $repairResults = @{
+    $results = @{
         DismCheckPerformed = $false
         DismRepairNeeded   = $false
         DismRepairSuccess  = $false
@@ -5399,329 +5399,115 @@ function Start-SystemHealthRepair {
         SfcRepairNeeded    = $false
         SfcRepairSuccess   = $false
         OverallSuccess     = $false
+        RepairNeeded       = $false
+        StartTime          = $repairStartTime
+        EndTime            = $null
+        TotalDuration      = $null
     }
 
     try {
-        Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
-        Write-Log "OS Version: $([System.Environment]::OSVersion.VersionString)" 'INFO'
-        
-        # Progress: 5% - Initializing DISM check
+        # Phase 1: DISM Health Check and Repair
         Write-Log "Starting DISM component store health analysis..." 'INFO'
         Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 5 -Status "Initializing DISM health check..."
-        
-        try {
-            # Progress: 8% - Running DISM ScanHealth
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 8 -Status "Running DISM ScanHealth..."
-            $dismScanResult = & dism /online /cleanup-image /scanhealth /english 2>&1
-            
-            # Progress: 12% - Processing DISM results
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 12 -Status "Processing DISM scan results..."
-            $dismScanOutput = $dismScanResult -join "`n"
-            Write-Log "DISM ScanHealth completed" 'VERBOSE'
-            
-            # Progress: 15% - Analyzing component store
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 15 -Status "Analyzing component store health..."
-            $repairResults.DismCheckPerformed = $true
-            
-            if ($dismScanOutput -match "component store is repairable|corruption was detected") {
-                # Progress: 18% - Corruption detected
-                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 18 -Status "Corruption detected, preparing repair..."
-                Write-Log "⚠ DISM detected component store corruption - repair required" 'WARN'
-                $repairResults.DismRepairNeeded = $true
-                $repairNeeded = $true
-                
-                # Progress: 20% - Starting DISM RestoreHealth
-                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 20 -Status "Starting DISM RestoreHealth..."
-                Write-Log "Starting DISM RestoreHealth operation..." 'INFO'
-                
-                # Progress: 25% - Running RestoreHealth
-                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 25 -Status "Running DISM RestoreHealth (this may take a while)..."
-                $dismRepairStart = Get-Date
-                $dismRepairResult = & dism /online /cleanup-image /restorehealth /english 2>&1
-                
-                # Progress: 45% - Processing repair results
-                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 45 -Status "Processing DISM repair results..."
-                $dismRepairOutput = $dismRepairResult -join "`n"
-                $dismRepairEnd = Get-Date
-                $dismDuration = $dismRepairEnd - $dismRepairStart
-                
-                # Progress: 48% - Verifying repair success
-                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 48 -Status "Verifying DISM repair success..."
-                Write-Log "DISM RestoreHealth completed in $($dismDuration.ToString('hh\:mm\:ss'))" 'INFO'
-                Write-Log "DISM RestoreHealth output: $dismRepairOutput" 'VERBOSE'
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Log "✓ DISM RestoreHealth completed successfully" 'SUCCESS'
-                    $dismRepaired = $true
-                    $repairResults.DismRepairSuccess = $true
-                }
-                else {
-                    Write-Log "✗ DISM RestoreHealth failed with exit code: $LASTEXITCODE" 'ERROR'
-                    $repairResults.DismRepairSuccess = $false
-                }
-            }
-        }
-        catch {
-            Write-Log "DISM ScanHealth operation failed: $_" 'ERROR'
-            $repairResults.DismCheckPerformed = $false
-        }
-        
-        if ($dismScanOutput -match "no component store corruption detected") {
-            # Progress: 18% - No corruption detected
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 18 -Status "No corruption detected..."
-            Write-Log "✓ DISM: No component store corruption detected" 'INFO'
-            $repairResults.DismRepairNeeded = $false
-        }
-        else {
-            # Progress: 18% - Detailed analysis needed
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 18 -Status "Running detailed DISM analysis..."
-            Write-Log "DISM health check completed, performing detailed analysis..." 'INFO'
-                
-            # Progress: 22% - Running CheckHealth
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 22 -Status "Running DISM CheckHealth..."
-            # Run DISM CheckHealth for more detailed analysis
-            $dismCheckResult = & dism /online /cleanup-image /checkhealth /english 2>&1
-                
-            # Progress: 25% - Processing CheckHealth results
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 25 -Status "Processing CheckHealth results..."
-            $dismCheckOutput = $dismCheckResult -join "`n"
-                
-            if ($dismCheckOutput -match "component store is repairable|corruption was detected") {
-                Write-Log "⚠ DISM CheckHealth detected issues - repair required" 'WARN'
-                $repairResults.DismRepairNeeded = $true
-                $repairNeeded = $true
-            }
-            else {
-                Write-Log "✓ DISM detailed check passed - no corruption detected" 'INFO'
-                $repairResults.DismRepairNeeded = $false
-            }
-        }
-    }
-    catch {
-        Write-Log "Error during DISM health check: $($_.Exception.Message)" 'ERROR'
-        $repairResults.DismCheckPerformed = $false
-    }
 
-    # SFC System File Check
-    # Progress: 50% - Determining SFC necessity
-    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 50 -Status "Determining if SFC scan is needed..."
-    Write-Log "Determining SFC scan necessity..." 'INFO'
-    $sfcNeeded = $false
-    # SFC is recommended if DISM repair was performed or CBS logs indicate issues
-    if ($dismRepaired) {
-        # Progress: 52% - SFC recommended
-        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 52 -Status "SFC scan recommended after DISM repair..."
-        Write-Log "SFC scan recommended (DISM repair was performed)" 'INFO'
-        $sfcNeeded = $true
-    }
-    else {
-        # Progress: 52% - Analyzing CBS logs
-        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 52 -Status "Analyzing CBS logs..."
-        # Check CBS logs for corruption indicators
-        Write-Log "Analyzing CBS logs for system file integrity issues..." 'INFO'
         try {
-            # Progress: 55% - Reading CBS log
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 55 -Status "Reading CBS log file..."
+            $dismScanResult = & dism /online /cleanup-image /scanhealth /english 2>&1
+            $dismScanOutput = $dismScanResult -join "`n"
+            $results.DismCheckPerformed = $true
+            Write-Log "DISM ScanHealth output: $dismScanOutput" 'VERBOSE'
+
+            if ($dismScanOutput -match "component store is repairable|corruption was detected") {
+                Write-Log "DISM detected component store corruption. Attempting repair..." 'WARN'
+                $results.DismRepairNeeded = $true
+                $results.RepairNeeded = $true
+                
+                Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 20 -Status "Running DISM RestoreHealth..."
+                $dismRepairResult = & dism /online /cleanup-image /restorehealth /english 2>&1
+                $dismRepairOutput = $dismRepairResult -join "`n"
+                Write-Log "DISM RestoreHealth output: $dismRepairOutput" 'VERBOSE'
+
+                if ($LASTEXITCODE -eq 0 -and $dismRepairOutput -match "The restore operation completed successfully") {
+                    Write-Log "DISM RestoreHealth completed successfully." 'SUCCESS'
+                    $results.DismRepairSuccess = $true
+                } else {
+                    Write-Log "DISM RestoreHealth failed. Exit Code: $LASTEXITCODE" 'ERROR'
+                    $results.DismRepairSuccess = $false
+                }
+            } else {
+                Write-Log "DISM found no component store corruption." 'INFO'
+            }
+        } catch {
+            Write-Log "An error occurred during the DISM operation: $($_.Exception.Message)" 'ERROR'
+        }
+
+        # Phase 2: SFC System File Check
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 50 -Status "Determining if SFC scan is needed..."
+        $sfcNeeded = $results.DismRepairSuccess # Run SFC if DISM made repairs
+
+        if (!$sfcNeeded) {
+            # Fallback: Check CBS logs if DISM wasn't needed or failed
             $cbsLogPath = "$env:WINDIR\Logs\CBS\CBS.log"
             if (Test-Path $cbsLogPath) {
-                # Progress: 58% - Processing log entries
-                Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 58 -Status "Processing log entries..."
-                $recentEntries = Get-Content $cbsLogPath -Tail 1000 -ErrorAction SilentlyContinue
-                $corruptionIndicators = $recentEntries | Where-Object { 
-                    $_ -match "corrupt|damaged|violation|failed.*verify" -and $_ -notmatch "successfully"
-                }
-                if ($corruptionIndicators.Count -gt 0) {
-                    Write-Log "⚠ Found potential file corruption indicators in CBS log - SFC scan recommended" 'WARN'
+                if (Select-String -Path $cbsLogPath -Pattern "corrupt|damaged|violation" -Quiet -SimpleMatch) {
+                    Write-Log "Corruption indicators found in CBS log. SFC scan is recommended." 'WARN'
                     $sfcNeeded = $true
                 }
-                else {
-                    Write-Log "✓ CBS log analysis shows no immediate corruption indicators" 'INFO'
-                    $sfcNeeded = $false
+            }
+        }
+
+        if ($sfcNeeded) {
+            $results.SfcCheckPerformed = $true
+            $results.SfcRepairNeeded = $true
+            $results.RepairNeeded = $true
+            Write-Log "Starting SFC /scannow operation..." 'INFO'
+            Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 65 -Status "Running SFC /scannow..."
+
+            try {
+                $sfcResult = & sfc /scannow 2>&1
+                $sfcOutput = $sfcResult -join "`n"
+                Write-Log "SFC scan output: $sfcOutput" 'VERBOSE'
+
+                if ($sfcOutput -match "did not find any integrity violations|found corrupt files and successfully repaired them") {
+                    Write-Log "SFC scan completed successfully." 'SUCCESS'
+                    $results.SfcRepairSuccess = $true
+                } else {
+                    Write-Log "SFC scan found issues that could not be fully repaired." 'WARN'
+                    $results.SfcRepairSuccess = $false
                 }
+            } catch {
+                Write-Log "An error occurred during the SFC scan: $($_.Exception.Message)" 'ERROR'
+                $results.SfcRepairSuccess = $false
             }
-            else {
-                Write-Log "CBS log not accessible - SFC scan will be skipped" 'WARN'
-                $sfcNeeded = $false
-            }
+        } else {
+            Write-Log "SFC scan not needed based on current analysis." 'INFO'
         }
-        catch {
-            Write-Log "Could not analyze CBS logs: $($_.Exception.Message)" 'WARN'
-            $sfcNeeded = $false
-        }
-    }
 
-    # Perform SFC scan if needed
-    if ($sfcNeeded) {
-        $repairNeeded = $true
-        $repairResults.SfcCheckPerformed = $true
-        $repairResults.SfcRepairNeeded = $true
-            
-        # Progress: 60% - Preparing SFC scan
-        Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 60 -Status "Preparing SFC scan..."
-        Write-Log "Starting SFC /scannow operation..." 'INFO'
-            
-        # Progress: 65% - Running SFC scan
-        Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 65 -Status "Running SFC /scannow (this may take a while)..."
-        try {
-            $sfcStart = Get-Date
-            $sfcResult = & sfc /scannow 2>&1
-                
-            # Progress: 85% - Processing SFC results
-            Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 85 -Status "Processing SFC scan results..."
-            $sfcOutput = $sfcResult -join "`n"
-            $sfcEnd = Get-Date
-            $sfcDuration = $sfcEnd - $sfcStart
-                
-            # Progress: 88% - Analyzing SFC results
-            Write-ActionProgress -ActionType "Repairing" -ItemName "System Files" -PercentComplete 88 -Status "Analyzing SFC results..."
-            Write-Log "SFC scan completed in $($sfcDuration.ToString('hh\:mm\:ss'))" 'INFO'
-            # Parse SFC results
-            if ($sfcOutput -match "did not find any integrity violations") {
-                Write-Log "✓ SFC scan completed - no integrity violations found" 'SUCCESS'
-                $repairResults.SfcRepairSuccess = $true
-            }
-            elseif ($sfcOutput -match "found corrupt files and successfully repaired them") {
-                Write-Log "✓ SFC scan completed - corrupt files found and successfully repaired" 'SUCCESS'
-                $repairResults.SfcRepairSuccess = $true
-            }
-            elseif ($sfcOutput -match "found corrupt files but was unable to fix some") {
-                Write-Log "⚠ SFC scan completed - some corrupt files could not be repaired" 'WARN'
-                $repairResults.SfcRepairSuccess = $false
-            }
-            else {
-                Write-Log "⚠ SFC scan completed with unknown status" 'WARN'
-                $repairResults.SfcRepairSuccess = $true
-            }
-        }
-        catch {
-            Write-Log "Error during SFC scan: $($_.Exception.Message)" 'ERROR'
-            $repairResults.SfcCheckPerformed = $false
-            $repairResults.SfcRepairSuccess = $false
-        }
-    }
-    else {
-        # Progress: 60% - SFC not needed
-        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Files" -PercentComplete 60 -Status "SFC scan not needed..."
-        Write-Log "✓ SFC scan not needed based on current analysis" 'INFO'
-        $repairResults.SfcCheckPerformed = $false
-        $repairResults.SfcRepairNeeded = $false
-    }
-
-    # Progress: 90% - Determining overall success
-    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 90 -Status "Determining overall success..."
-    # Determine overall success
-    $repairResults.OverallSuccess = (
-        (-not $repairResults.DismRepairNeeded -or $repairResults.DismRepairSuccess) -and
-        (-not $repairResults.SfcRepairNeeded -or $repairResults.SfcRepairSuccess)
-    )
-
-    # Progress: 95% - Preparing final report
-    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 95 -Status "Preparing final report..."
-    
-    # Calculate total operation time and log summary
-    $repairEndTime = Get-Date
-    $totalDuration = $repairEndTime - $repairStartTime
-    
-    # Log comprehensive repair summary
-    Write-Log "[SUMMARY] System Health Repair completed in $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
-    Write-Log "[SUMMARY] Repair needed: $repairNeeded | Overall success: $($repairResults.OverallSuccess)" 'INFO'
-    Write-Log "[SUMMARY] DISM repair: needed=$($repairResults.DismRepairNeeded), success=$($repairResults.DismRepairSuccess)" 'INFO'
-    Write-Log "[SUMMARY] SFC repair: needed=$($repairResults.SfcRepairNeeded), success=$($repairResults.SfcRepairSuccess)" 'INFO'
-    
-    # Add timing and repair status to results object
-    $repairResults.TotalDuration = $totalDuration
-    $repairResults.RepairNeeded = $repairNeeded
-    $repairResults.StartTime = $repairStartTime
-    $repairResults.EndTime = $repairEndTime
-
-    # Progress: 100% - Operation complete
-    Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 100 -Status "System health repair complete!" -Completed
-    
-    } # End of main try block
+        # Phase 3: Finalize and Report
+        $results.OverallSuccess = (-not $results.DismRepairNeeded -or $results.DismRepairSuccess) -and (-not $results.SfcRepairNeeded -or $results.SfcRepairSuccess)
+        Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 100 -Status "System health repair complete!" -Completed
+    } 
     catch {
-        Write-Log "Unexpected error during system health repair: $($_.Exception.Message)" 'ERROR'
-        $repairResults.OverallSuccess = $false
-    }
+        Write-Log "An unexpected error occurred during the system health repair process: $($_.Exception.Message)" 'ERROR'
+        $results.OverallSuccess = $false
+    } 
     finally {
-        # Generate comprehensive repair report
         $repairEndTime = Get-Date
         $totalDuration = $repairEndTime - $repairStartTime
-            
-        Write-Log "[SystemHealthRepair] COMPREHENSIVE REPAIR SUMMARY:" 'INFO'
-        Write-Log "- Repair start time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-        Write-Log "- Repair end time: $($repairEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-        Write-Log "- Total duration: $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
-        Write-Log "- DISM check performed: $(if($repairResults.DismCheckPerformed){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- DISM repair needed: $(if($repairResults.DismRepairNeeded){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- DISM repair successful: $(if($repairResults.DismRepairSuccess){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- SFC check performed: $(if($repairResults.SfcCheckPerformed){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- SFC repair needed: $(if($repairResults.SfcRepairNeeded){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- SFC repair successful: $(if($repairResults.SfcRepairSuccess){'Yes'}else{'No'})" 'INFO'
-        Write-Log "- Overall repair success: $(if($repairResults.OverallSuccess){'Yes'}else{'No'})" 'INFO'
-            
-        # Create detailed log file
-        try {
-            $repairLogPath = Join-Path $global:TempFolder "system_health_repair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-            $logContent = @"
-Windows System Health Check and Repair Report
-=============================================
-Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Computer: $env:COMPUTERNAME
-User: $env:USERNAME
-PowerShell Version: $($PSVersionTable.PSVersion)
+        $results.EndTime = $repairEndTime
+        $results.TotalDuration = $totalDuration
 
-Repair Summary:
-- Start Time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))
-- End Time: $($repairEndTime.ToString('yyyy-MM-dd HH:mm:ss'))
-- Duration: $($totalDuration.ToString('hh\:mm\:ss'))
-- Repair Operations Needed: $(if($repairNeeded){'Yes'}else{'No'})
-
-DISM Component Store Check:
-- Check Performed: $(if($repairResults.DismCheckPerformed){'Yes'}else{'No'})
-- Repair Needed: $(if($repairResults.DismRepairNeeded){'Yes'}else{'No'})
-- Repair Successful: $(if($repairResults.DismRepairSuccess){'Yes'}else{'No'})
-
-SFC System File Check:
-- Check Performed: $(if($repairResults.SfcCheckPerformed){'Yes'}else{'No'})
-- Repair Needed: $(if($repairResults.SfcRepairNeeded){'Yes'}else{'No'})
-- Repair Successful: $(if($repairResults.SfcRepairSuccess){'Yes'}else{'No'})
-
-Overall Result: $(if($repairResults.OverallSuccess){'SUCCESS - System health verified/repaired'}else{'WARNING - Some issues may remain'})
-
-Recommendations:
-$(if($repairNeeded){'- Consider restarting your computer to ensure all changes take effect'}else{'- No immediate action required - system appears healthy'})
-- Monitor system performance and run this check periodically
-- Keep Windows updates current for optimal system health
-
-"@
-            
-        $logContent | Out-File -FilePath $repairLogPath -Encoding UTF8
-        Write-Log "Detailed repair report saved to: $repairLogPath" 'INFO'
-    }
-    catch {
-        Write-Log "Warning: Could not save detailed repair report: $_" 'WARN'
-    }
+        Write-Log "[SUMMARY] System Health Repair completed in $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
+        Write-Log "[SUMMARY] Overall Success: $($results.OverallSuccess)" 'INFO'
+        Write-Log "[SUMMARY] DISM: Needed=$($results.DismRepairNeeded), Success=$($results.DismRepairSuccess)" 'INFO'
+        Write-Log "[SUMMARY] SFC: Needed=$($results.SfcRepairNeeded), Success=$($results.SfcRepairSuccess)" 'INFO'
         
-    if ($repairNeeded) {
-        Write-Log "✓ System health repair operations completed successfully" 'SUCCESS'
-        if ($repairResults.OverallSuccess) {
-            Write-Log "Recommendation: Consider restarting your computer to ensure all changes take effect" 'INFO'
-        }
-        else {
-            Write-Log "Warning: Some repair operations encountered issues - manual intervention may be required" 'WARN'
+        # Add results to global metrics if available
+        if ($global:ScriptMetrics) {
+            $global:ScriptMetrics.SystemHealthRepair = $results
         }
     }
-    else {
-        Write-Log "✓ System health check completed - no repair operations were needed" 'SUCCESS'
-    }
-    
-    # Calculate total repair duration and log performance metrics
-    $repairEndTime = Get-Date
-    $totalRepairDuration = $repairEndTime - $repairStartTime
-    Write-Log "System health repair completed in $($totalRepairDuration.ToString('hh\:mm\:ss'))" 'INFO'
-    Write-Log "Repair operations needed: $repairNeeded" 'INFO'
-    
-    Write-Log "[END] Windows System Health Check and Repair" 'INFO'
-    return $repairResults.OverallSuccess
+
+    return $results.OverallSuccess
 }
 
 # ================================================================
