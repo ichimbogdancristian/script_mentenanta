@@ -460,35 +460,38 @@ IF !ERRORLEVEL! NEQ 0 (
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Dependency installation phase completed with optimized order."
 
 REM -----------------------------------------------------------------------------
-REM System Restart Detection - Simplified
+REM System Restart Detection - Refined for Windows Updates Only
+REM Only restart if Windows Update has installed updates requiring a reboot
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Checking for pending system restarts..."
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Checking for pending Windows Update restarts..."
 SET "RESTART_NEEDED=NO"
 
-REM Check Windows Update reboot flag
+REM Only check Windows Update reboot flag - this is the authoritative source
+REM This key is only present if Windows Update has installed updates that require a reboot
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Windows Update restart requirement detected."
+) ELSE (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] No Windows Update restart requirement found."
+)
 
-REM Check Component Based Servicing reboot flag
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
-
-REM Check pending file operations
-REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
-IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+REM Additional check: Verify if any specific Windows Updates are pending restart
+powershell -ExecutionPolicy Bypass -Command "try { $updates = Get-HotFix | Where-Object { $_.InstalledOn -gt (Get-Date).AddDays(-1) }; if ($updates) { $rebootPending = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -ErrorAction SilentlyContinue; if ($rebootPending) { Write-Host 'CONFIRMED_UPDATE_RESTART_PENDING'; exit 1 } } Write-Host 'NO_UPDATE_RESTART_PENDING'; exit 0 } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 0 }" >nul 2>&1
+IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
 
 IF "%RESTART_NEEDED%"=="YES" (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] System restart is pending. Creating startup task..."
+    CALL :LOG_MESSAGE "[%TIME%] [WARN] System restart required due to Windows Updates. Creating startup task..."
     schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
         schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
     )
     schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Startup task created. Restarting system in 15 seconds..."
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Startup task created. Restarting system in 15 seconds for Windows Update completion..."
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Press Ctrl+C to cancel restart."
         timeout /t 15
-        shutdown /r /t 5 /c "System restart required for maintenance continuation"
+        shutdown /r /t 5 /c "System restart required for Windows Update completion"
         EXIT /B 0
     ) ELSE (
         CALL :LOG_MESSAGE "[%TIME%] [WARN] Failed to create startup task. Continuing without restart..."
@@ -498,7 +501,7 @@ IF "%RESTART_NEEDED%"=="YES" (
         CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Error level: !ERRORLEVEL!"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] No pending restart detected. Continuing..."
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] No Windows Update restart required. Continuing with maintenance script..."
 )
 
 REM -----------------------------------------------------------------------------
