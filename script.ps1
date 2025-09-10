@@ -5429,23 +5429,23 @@ function Start-SystemHealthRepair {
         # Generate comprehensive repair report
         $repairEndTime = Get-Date
         $totalDuration = $repairEndTime - $repairStartTime
-        
-    Write-Log "[SystemHealthRepair] COMPREHENSIVE REPAIR SUMMARY:" 'INFO'
-    Write-Log "- Repair start time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-    Write-Log "- Repair end time: $($repairEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-    Write-Log "- Total duration: $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
-    Write-Log "- DISM check performed: $(if($repairResults.DismCheckPerformed){'Yes'}else{'No'})" 'INFO'
-    Write-Log "- DISM repair needed: $(if($repairResults.DismRepairNeeded){'Yes'}else{'No'})" 'INFO'
-    Write-Log "- DISM repair successful: $(if($repairResults.DismRepairSuccess){'Yes'}else{'No'})" 'INFO'
-    Write-Log "- SFC check performed: $(if($repairResults.SfcCheckPerformed){'Yes'}else{'No'})" 'INFO'
-    Write-Log "- SFC repair needed: $(if($repairResults.SfcRepairNeeded){'Yes'}else{'No'})" 'INFO'
-    Write-Log "- SFC repair successful: $(if($repairResults.SfcRepairSuccess){'Yes'}else{'No'})" 'INFO'
-    Write-Log "- Overall repair success: $(if($repairResults.OverallSuccess){'Yes'}else{'No'})" 'INFO'
-        
-    # Create detailed log file
-    try {
-        $repairLogPath = Join-Path $global:TempFolder "system_health_repair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-        $logContent = @"
+            
+        Write-Log "[SystemHealthRepair] COMPREHENSIVE REPAIR SUMMARY:" 'INFO'
+        Write-Log "- Repair start time: $($repairStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+        Write-Log "- Repair end time: $($repairEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+        Write-Log "- Total duration: $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
+        Write-Log "- DISM check performed: $(if($repairResults.DismCheckPerformed){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- DISM repair needed: $(if($repairResults.DismRepairNeeded){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- DISM repair successful: $(if($repairResults.DismRepairSuccess){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- SFC check performed: $(if($repairResults.SfcCheckPerformed){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- SFC repair needed: $(if($repairResults.SfcRepairNeeded){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- SFC repair successful: $(if($repairResults.SfcRepairSuccess){'Yes'}else{'No'})" 'INFO'
+        Write-Log "- Overall repair success: $(if($repairResults.OverallSuccess){'Yes'}else{'No'})" 'INFO'
+            
+        # Create detailed log file
+        try {
+            $repairLogPath = Join-Path $global:TempFolder "system_health_repair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+            $logContent = @"
 Windows System Health Check and Repair Report
 =============================================
 Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
