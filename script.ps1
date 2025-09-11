@@ -561,45 +561,45 @@ $global:PackageManagers = @{
 
 # Multi-source bloatware detection configuration with priority-based scanning
 $global:BloatwareDetectionSources = @{
-    Software = @{
-        Enabled = $true
-        Sources = @('AppX', 'Winget', 'Chocolatey', 'Registry', 'ProvisionedAppX')
-        Priority = 1
+    Software    = @{
+        Enabled     = $true
+        Sources     = @('AppX', 'Winget', 'Chocolatey', 'Registry', 'ProvisionedAppX')
+        Priority    = 1
         Description = 'Traditional software package detection methods'
     }
-    System = @{
-        Enabled = $true
-        Sources = @('WindowsFeatures', 'Services', 'ScheduledTasks')
-        Priority = 2
+    System      = @{
+        Enabled     = $true
+        Sources     = @('WindowsFeatures', 'Services', 'ScheduledTasks')
+        Priority    = 2
         Description = 'System-level bloatware components detection'
     }
     Integration = @{
-        Enabled = $true  
-        Sources = @('StartMenu', 'BrowserExtensions', 'ContextMenu', 'StartupPrograms')
-        Priority = 3
+        Enabled     = $true  
+        Sources     = @('StartMenu', 'BrowserExtensions', 'ContextMenu', 'StartupPrograms')
+        Priority    = 3
         Description = 'User interface and integration bloatware detection'
     }
 }
 
 # System-level bloatware patterns for enhanced detection
 $global:SystemBloatwarePatterns = @{
-    WindowsFeatures = @(
+    WindowsFeatures   = @(
         'XPS-Foundation-XPS-Viewer', 'FaxServicesClientPackage', 'WorkFolders-Client', 
         'IIS-*', 'LegacyComponents', 'MediaFeatures-WindowsMediaPlayer', 
         'WindowsMediaPlayer', 'Internet-Explorer-Optional-*', 'MicrosoftWindowsPowerShellV2*'
     )
-    Services = @(
+    Services          = @(
         'XblAuthManager', 'XblGameSave', 'XboxGipSvc', 'XboxNetApiSvc', 
         'DiagTrack', 'dmwappushservice', 'lfsvc', 'MapsBroker',
         'RetailDemo', 'Fax', 'WerSvc', 'TrkWks', 'WMPNetworkSvc'
     )
-    ScheduledTasks = @(
+    ScheduledTasks    = @(
         'Microsoft\Windows\Application Experience\*', 'Microsoft\Windows\Customer Experience Improvement Program\*',
         'Microsoft\Windows\Feedback\*', 'Microsoft\Windows\Windows Error Reporting\*',
         'Microsoft\Windows\Maps\*', 'Microsoft\Windows\CloudExperienceHost\*',
         'Adobe*', 'Microsoft\Office\*', 'Microsoft\XblGameSave\*'
     )
-    StartMenu = @(
+    StartMenu         = @(
         '*Xbox*', '*Solitaire*', '*Candy Crush*', '*Bubble Witch*', '*March of Empires*',
         '*Hidden City*', '*Asphalt*', '*World of Tanks*', '*Minecraft*', '*Mixed Reality*'
     )
@@ -607,10 +607,10 @@ $global:SystemBloatwarePatterns = @{
         'Adobe*', 'McAfee*', 'Norton*', 'Avast*', 'AVG*', 'Office365*', 
         'Skype*', 'Java*', 'Silverlight*', 'Acrobat*'
     )
-    ContextMenu = @(
+    ContextMenu       = @(
         'Adobe*', 'Office*', 'Skype*', 'OneDrive*', 'WinRAR*', '7-Zip*'
     )
-    StartupPrograms = @(
+    StartupPrograms   = @(
         'Adobe*', 'McAfee*', 'Norton*', 'Avast*', 'AVG*', 'Spotify*',
         'Skype*', 'Steam*', 'Origin*', 'uTorrent*', 'Acrobat*'
     )
@@ -618,10 +618,10 @@ $global:SystemBloatwarePatterns = @{
 
 # Bloatware detection cache configuration
 $global:BloatwareDetectionCache = @{
-    Enabled = $true
+    Enabled      = $true
     CacheTimeout = (New-TimeSpan -Minutes 15)
-    LastScan = $null
-    Data = @{}
+    LastScan     = $null
+    Data         = @{}
     MaxCacheSize = 50MB
 }
 
@@ -2844,7 +2844,7 @@ function Get-OptimizedSystemInventory {
     
     # Build structured inventory object with enhanced data
     $inventory = [ordered]@{
-        metadata           = [ordered]@{
+        metadata            = [ordered]@{
             generatedOn   = (Get-Date).ToString('o')
             scriptVersion = '2.0.0'  # Updated version for new optimized system
             hostname      = $env:COMPUTERNAME
@@ -2853,14 +2853,14 @@ function Get-OptimizedSystemInventory {
             cacheEnabled  = $UseCache.IsPresent
             fullScan      = $ForceFullScan.IsPresent
         }
-        system             = @{}
-        appx               = @()
-        winget             = @()
-        choco              = @()
-        registry_uninstall = @()
-        services           = @()
-        scheduled_tasks    = @()
-        drivers            = @()
+        system              = @{}
+        appx                = @()
+        winget              = @()
+        choco               = @()
+        registry_uninstall  = @()
+        services            = @()
+        scheduled_tasks     = @()
+        drivers             = @()
         bloatware_detection = @{}
     }
     
@@ -3282,15 +3282,15 @@ function Get-WindowsFeaturesBloatware {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($feature.FeatureName -like $pattern) {
                     $found += [PSCustomObject]@{
-                        Name         = $feature.FeatureName
-                        DisplayName  = $feature.DisplayName
-                        Version      = $null
-                        Source       = 'WindowsFeature'
-                        FeatureName  = $feature.FeatureName
-                        State        = $feature.State
+                        Name            = $feature.FeatureName
+                        DisplayName     = $feature.DisplayName
+                        Version         = $null
+                        Source          = 'WindowsFeature'
+                        FeatureName     = $feature.FeatureName
+                        State           = $feature.State
                         RestartRequired = $feature.RestartRequired
-                        Context      = $Context
-                        Type         = 'WindowsFeatures'
+                        Context         = $Context
+                        Type            = 'WindowsFeatures'
                     }
                     Write-Log "[WINDOWS FEATURE BLOATWARE] $($feature.FeatureName) ($($feature.DisplayName))" 'INFO'
                     break
@@ -3301,9 +3301,9 @@ function Get-WindowsFeaturesBloatware {
         # Cache results
         if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
             $cacheEntry = @{
-                Data = $found
+                Data       = $found
                 ExpiryTime = (Get-Date).Add($global:BloatwareDetectionCache.CacheTimeout)
-                Context = $Context
+                Context    = $Context
             }
             $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
         }
@@ -3370,16 +3370,16 @@ function Get-ServicesBloatware {
                         $pathName = if ($serviceWMI) { $serviceWMI.PathName } else { 'Unknown' }
                         
                         $found += [PSCustomObject]@{
-                            Name         = $service.Name
-                            DisplayName  = $service.DisplayName
-                            Version      = $null
-                            Source       = 'Service'
-                            ServiceName  = $service.Name
-                            Status       = $service.Status
-                            StartType    = $startMode
-                            PathName     = $pathName
-                            Context      = $Context
-                            Type         = 'Services'
+                            Name        = $service.Name
+                            DisplayName = $service.DisplayName
+                            Version     = $null
+                            Source      = 'Service'
+                            ServiceName = $service.Name
+                            Status      = $service.Status
+                            StartType   = $startMode
+                            PathName    = $pathName
+                            Context     = $Context
+                            Type        = 'Services'
                         }
                         Write-Log "[SERVICE BLOATWARE] $($service.Name) ($($service.DisplayName)) - Status: $($service.Status), StartMode: $startMode" 'INFO'
                         break
@@ -3394,9 +3394,9 @@ function Get-ServicesBloatware {
         # Cache results
         if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
             $cacheEntry = @{
-                Data = $found
+                Data       = $found
                 ExpiryTime = (Get-Date).Add($global:BloatwareDetectionCache.CacheTimeout)
-                Context = $Context
+                Context    = $Context
             }
             $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
         }
@@ -3463,17 +3463,17 @@ function Get-ScheduledTasksBloatware {
                         $taskInfo = Get-ScheduledTaskInfo -TaskName $task.TaskName -TaskPath $task.TaskPath -ErrorAction SilentlyContinue
                         
                         $found += [PSCustomObject]@{
-                            Name         = $task.TaskName
-                            DisplayName  = $task.TaskName
-                            Version      = $null
-                            Source       = 'ScheduledTask'
-                            TaskName     = $task.TaskName
-                            TaskPath     = $task.TaskPath
-                            State        = $task.State
-                            LastRunTime  = if ($taskInfo) { $taskInfo.LastRunTime } else { $null }
-                            NextRunTime  = if ($taskInfo) { $taskInfo.NextRunTime } else { $null }
-                            Context      = $Context
-                            Type         = 'ScheduledTasks'
+                            Name        = $task.TaskName
+                            DisplayName = $task.TaskName
+                            Version     = $null
+                            Source      = 'ScheduledTask'
+                            TaskName    = $task.TaskName
+                            TaskPath    = $task.TaskPath
+                            State       = $task.State
+                            LastRunTime = if ($taskInfo) { $taskInfo.LastRunTime } else { $null }
+                            NextRunTime = if ($taskInfo) { $taskInfo.NextRunTime } else { $null }
+                            Context     = $Context
+                            Type        = 'ScheduledTasks'
                         }
                         Write-Log "[SCHEDULED TASK BLOATWARE] $taskPath - State: $($task.State)" 'INFO'
                         break
@@ -3488,9 +3488,9 @@ function Get-ScheduledTasksBloatware {
         # Cache results
         if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
             $cacheEntry = @{
-                Data = $found
+                Data       = $found
                 ExpiryTime = (Get-Date).Add($global:BloatwareDetectionCache.CacheTimeout)
-                Context = $Context
+                Context    = $Context
             }
             $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
         }
@@ -3593,9 +3593,9 @@ function Get-StartMenuBloatware {
         # Cache results
         if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
             $cacheEntry = @{
-                Data = $found
+                Data       = $found
                 ExpiryTime = (Get-Date).Add($global:BloatwareDetectionCache.CacheTimeout)
-                Context = $Context
+                Context    = $Context
             }
             $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
         }
@@ -3987,7 +3987,7 @@ function Remove-Bloatware {
 
         # Enhanced detection summary
         $enhancedDetectionCount = $windowsFeaturesBloatware.Count + $servicesBloatware.Count + 
-                                 $scheduledTasksBloatware.Count + $startMenuBloatware.Count
+        $scheduledTasksBloatware.Count + $startMenuBloatware.Count
         Write-Log "[ENHANCED DETECTION SUMMARY] Found $enhancedDetectionCount additional system-level bloatware items" 'SUCCESS'
     }
     catch {
@@ -3995,375 +3995,375 @@ function Remove-Bloatware {
     }
 
     # Early exit if no bloatware found
-if ($bloatwareMatches.Count -eq 0) {
-    Write-Log "[END] Ultra-Enhanced Bloatware Removal - No bloatware detected from $($installedApps.Keys.Count) analyzed apps (plus registry/provisioned)" 'INFO'
-    Write-Log "Sample installed apps: $(@($installedApps.Keys) | Select-Object -First 10 | Join-String -Separator ', ')" 'VERBOSE'
-    # Update previous list for next run
-    Copy-Item $currentListPath $previousListPath -Force
-    return
-}
+    if ($bloatwareMatches.Count -eq 0) {
+        Write-Log "[END] Ultra-Enhanced Bloatware Removal - No bloatware detected from $($installedApps.Keys.Count) analyzed apps (plus registry/provisioned)" 'INFO'
+        Write-Log "Sample installed apps: $(@($installedApps.Keys) | Select-Object -First 10 | Join-String -Separator ', ')" 'VERBOSE'
+        # Update previous list for next run
+        Copy-Item $currentListPath $previousListPath -Force
+        return
+    }
 
-# Cached tool availability detection
-$toolCapabilities = @{
-    AppX       = $false
-    Winget     = $false
-    Chocolatey = $false
-}
+    # Cached tool availability detection
+    $toolCapabilities = @{
+        AppX       = $false
+        Winget     = $false
+        Chocolatey = $false
+    }
 
-# Fast native AppX detection for PS7.5+
-try {
-    $null = Get-AppxPackage -Name "NonExistent*" -ErrorAction SilentlyContinue
-    $toolCapabilities.AppX = $true
-}
-catch {
-    # Test if Appx module is available
+    # Fast native AppX detection for PS7.5+
     try {
-        $toolCapabilities.AppX = $null -ne (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue)
+        $null = Get-AppxPackage -Name "NonExistent*" -ErrorAction SilentlyContinue
+        $toolCapabilities.AppX = $true
     }
-    catch { 
-        $toolCapabilities.AppX = $false
+    catch {
+        # Test if Appx module is available
+        try {
+            $toolCapabilities.AppX = $null -ne (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue)
+        }
+        catch { 
+            $toolCapabilities.AppX = $false
+        }
     }
-}
 
-# Cache command availability
-$toolCapabilities.Winget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
-$toolCapabilities.Chocolatey = $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
+    # Cache command availability
+    $toolCapabilities.Winget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
+    $toolCapabilities.Chocolatey = $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
 
-# Thread-safe collections for results
-$removedApps = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
-$script:bloatwareRemovalCount = 0
-$script:bloatwareFailedCount = 0
+    # Thread-safe collections for results
+    $removedApps = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+    $script:bloatwareRemovalCount = 0
+    $script:bloatwareFailedCount = 0
 
-# Use the new modular progress system for bloatware removal
-Start-ActionProgressSequence -SequenceName "Bloatware Removal" -Actions $bloatwareMatches -ActionProcessor {
-    param($match, $currentIndex, $totalApps)
+    # Use the new modular progress system for bloatware removal
+    Start-ActionProgressSequence -SequenceName "Bloatware Removal" -Actions $bloatwareMatches -ActionProcessor {
+        param($match, $currentIndex, $totalApps)
         
-    # Individual bloatware removal progress
-    Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Preparing removal..." -CurrentItem $currentIndex -TotalItems $totalApps
+        # Individual bloatware removal progress
+        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Preparing removal..." -CurrentItem $currentIndex -TotalItems $totalApps
         
-    $result = @{
-        Success    = $false
-        AppName    = $match.BloatwareName
-        ActualName = ""
-        Method     = ""
-    }
+        $result = @{
+            Success    = $false
+            AppName    = $match.BloatwareName
+            ActualName = ""
+            Method     = ""
+        }
 
-    try {
-        $app = $match.InstalledApp
-        $appType = $app.Type
-        $appData = $app.Data
+        try {
+            $app = $match.InstalledApp
+            $appType = $app.Type
+            $appData = $app.Data
 
-        # Start removal process with single progress update
-        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Removing $appType package..." -CurrentItem $currentIndex -TotalItems $totalApps
+            # Start removal process with single progress update
+            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Removing $appType package..." -CurrentItem $currentIndex -TotalItems $totalApps
 
-        # Optimized removal by type priority
-        switch ($appType) {
-            'AppX' {
-                if ($toolCapabilities.AppX -and $appData.PackageFullName) {
-                    try {
-                        Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+            # Optimized removal by type priority
+            switch ($appType) {
+                'AppX' {
+                    if ($toolCapabilities.AppX -and $appData.PackageFullName) {
+                        try {
+                            Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
                             
-                        # Verify removal
-                        $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
-                        if (-not $remainingPackage) {
-                            $result.Success = $true
-                            $result.Method = "AppX"
-                            $result.ActualName = $appData.Name
-                            $script:bloatwareRemovalCount++
-                            Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX: $($appData.Name)]" 'INFO'
-                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                            return
-                        }
-                        else {
-                            # Try advanced removal
-                            $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
-                            if ($success) {
+                            # Verify removal
+                            $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
+                            if (-not $remainingPackage) {
                                 $result.Success = $true
-                                $result.Method = "AppX (Advanced)"
+                                $result.Method = "AppX"
                                 $result.ActualName = $appData.Name
                                 $script:bloatwareRemovalCount++
-                                Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX Advanced: $($appData.Name)]" 'INFO'
-                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX (Advanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX: $($appData.Name)]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
+                            }
+                            else {
+                                # Try advanced removal
+                                $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
+                                if ($success) {
+                                    $result.Success = $true
+                                    $result.Method = "AppX (Advanced)"
+                                    $result.ActualName = $appData.Name
+                                    $script:bloatwareRemovalCount++
+                                    Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX Advanced: $($appData.Name)]" 'INFO'
+                                    Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX (Advanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                    return
+                                }
+                            }
+                        }
+                        catch {
+                            Write-Log "AppX removal failed for $($match.BloatwareName): $_" 'WARN'
+                        }
+                    }
+                }
+                
+                'Winget' {
+                    if ($toolCapabilities.Winget -and $appData.Id) {
+                        try {
+                            $uninstallArgs = @("uninstall", "--id", $appData.Id, "--silent", "--accept-source-agreements", "--disable-interactivity")
+                            $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
+                            
+                            if ($wingetProc.ExitCode -eq 0) {
+                                $result.Success = $true
+                                $result.Method = "Winget"
+                                $result.ActualName = $appData.Name
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Winget: $($appData.Name)]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Winget" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
+                            }
+                        }
+                        catch {
+                            Write-Log "Winget removal failed for $($match.BloatwareName): $_" 'WARN'
+                        }
+                    }
+                }
+                
+                'Choco' {
+                    if ($toolCapabilities.Chocolatey -and $appData.Name) {
+                        try {
+                            $chocoArgs = @("uninstall", $appData.Name, "-y", "--remove-dependencies")
+                            $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                            
+                            if ($chocoProc.ExitCode -eq 0) {
+                                $result.Success = $true
+                                $result.Method = "Chocolatey"
+                                $result.ActualName = $appData.Name
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Chocolatey: $($appData.Name)]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Chocolatey" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
+                            }
+                        }
+                        catch {
+                            Write-Log "Chocolatey removal failed for $($match.BloatwareName): $_" 'WARN'
+                        }
+                    }
+                }
+            
+                # Enhanced bloatware types handling
+                'WindowsFeature' {
+                    try {
+                        $featureName = $appData.FeatureName
+                        Write-Log "Disabling Windows Feature: $featureName" 'INFO'
+                        $disableResult = Disable-WindowsOptionalFeature -FeatureName $featureName -Online -NoRestart -ErrorAction SilentlyContinue
+                        if ($disableResult -and $disableResult.RestartNeeded -eq $false) {
+                            $result.Success = $true
+                            $result.Method = "WindowsFeature"
+                            $result.ActualName = $featureName
+                            $script:bloatwareRemovalCount++
+                            Write-Log "✓ DISABLED: $($match.BloatwareName) [Windows Feature: $featureName]" 'INFO'
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully disabled Windows Feature" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                            return
+                        }
+                    }
+                    catch {
+                        Write-Log "Windows Feature disable failed for $($match.BloatwareName): $_" 'WARN'
+                    }
+                }
+            
+                'Service' {
+                    try {
+                        $serviceName = $appData.ServiceName
+                        Write-Log "Stopping and disabling service: $serviceName" 'INFO'
+                    
+                        # Stop the service first
+                        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+                    
+                        # Disable the service
+                        Set-Service -Name $serviceName -StartupType Disabled -ErrorAction SilentlyContinue
+                    
+                        # Verify the service is stopped and disabled
+                        $serviceCheck = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+                        if ($serviceCheck -and $serviceCheck.Status -eq 'Stopped') {
+                            $result.Success = $true
+                            $result.Method = "Service"
+                            $result.ActualName = $serviceName
+                            $script:bloatwareRemovalCount++
+                            Write-Log "✓ DISABLED: $($match.BloatwareName) [Service: $serviceName]" 'INFO'
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully disabled service" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                            return
+                        }
+                    }
+                    catch {
+                        Write-Log "Service disable failed for $($match.BloatwareName): $_" 'WARN'
+                    }
+                }
+            
+                'ScheduledTask' {
+                    try {
+                        $taskName = $appData.TaskName
+                        $taskPath = $appData.TaskPath
+                        Write-Log "Disabling scheduled task: $taskPath$taskName" 'INFO'
+                    
+                        # Disable the scheduled task
+                        Disable-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
+                    
+                        # Verify the task is disabled
+                        $taskCheck = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
+                        if ($taskCheck -and $taskCheck.State -eq 'Disabled') {
+                            $result.Success = $true
+                            $result.Method = "ScheduledTask"
+                            $result.ActualName = "$taskPath$taskName"
+                            $script:bloatwareRemovalCount++
+                            Write-Log "✓ DISABLED: $($match.BloatwareName) [Scheduled Task: $taskPath$taskName]" 'INFO'
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully disabled scheduled task" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                            return
+                        }
+                    }
+                    catch {
+                        Write-Log "Scheduled Task disable failed for $($match.BloatwareName): $_" 'WARN'
+                    }
+                }
+            
+                'StartMenuShortcut' {
+                    try {
+                        $shortcutPath = $appData.ShortcutPath
+                        Write-Log "Removing Start Menu shortcut: $shortcutPath" 'INFO'
+                    
+                        # Remove the shortcut file
+                        if (Test-Path $shortcutPath) {
+                            Remove-Item -Path $shortcutPath -Force -ErrorAction SilentlyContinue
+                        
+                            # Verify removal
+                            if (-not (Test-Path $shortcutPath)) {
+                                $result.Success = $true
+                                $result.Method = "StartMenuShortcut"
+                                $result.ActualName = $shortcutPath
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Start Menu Shortcut: $shortcutPath]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed shortcut" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
                                 return
                             }
                         }
                     }
                     catch {
-                        Write-Log "AppX removal failed for $($match.BloatwareName): $_" 'WARN'
+                        Write-Log "Start Menu shortcut removal failed for $($match.BloatwareName): $_" 'WARN'
                     }
                 }
             }
-                
-            'Winget' {
-                if ($toolCapabilities.Winget -and $appData.Id) {
-                    try {
-                        $uninstallArgs = @("uninstall", "--id", $appData.Id, "--silent", "--accept-source-agreements", "--disable-interactivity")
-                        $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
-                            
-                        if ($wingetProc.ExitCode -eq 0) {
-                            $result.Success = $true
-                            $result.Method = "Winget"
-                            $result.ActualName = $appData.Name
-                            $script:bloatwareRemovalCount++
-                            Write-Log "✓ REMOVED: $($match.BloatwareName) [Winget: $($appData.Name)]" 'INFO'
-                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Winget" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                            return
-                        }
-                    }
-                    catch {
-                        Write-Log "Winget removal failed for $($match.BloatwareName): $_" 'WARN'
-                    }
-                }
-            }
-                
-            'Choco' {
-                if ($toolCapabilities.Chocolatey -and $appData.Name) {
-                    try {
-                        $chocoArgs = @("uninstall", $appData.Name, "-y", "--remove-dependencies")
-                        $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                            
-                        if ($chocoProc.ExitCode -eq 0) {
-                            $result.Success = $true
-                            $result.Method = "Chocolatey"
-                            $result.ActualName = $appData.Name
-                            $script:bloatwareRemovalCount++
-                            Write-Log "✓ REMOVED: $($match.BloatwareName) [Chocolatey: $($appData.Name)]" 'INFO'
-                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Chocolatey" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                            return
-                        }
-                    }
-                    catch {
-                        Write-Log "Chocolatey removal failed for $($match.BloatwareName): $_" 'WARN'
-                    }
-                }
-            }
-            
-            # Enhanced bloatware types handling
-            'WindowsFeature' {
-                try {
-                    $featureName = $appData.FeatureName
-                    Write-Log "Disabling Windows Feature: $featureName" 'INFO'
-                    $disableResult = Disable-WindowsOptionalFeature -FeatureName $featureName -Online -NoRestart -ErrorAction SilentlyContinue
-                    if ($disableResult -and $disableResult.RestartNeeded -eq $false) {
-                        $result.Success = $true
-                        $result.Method = "WindowsFeature"
-                        $result.ActualName = $featureName
-                        $script:bloatwareRemovalCount++
-                        Write-Log "✓ DISABLED: $($match.BloatwareName) [Windows Feature: $featureName]" 'INFO'
-                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully disabled Windows Feature" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                        return
-                    }
-                }
-                catch {
-                    Write-Log "Windows Feature disable failed for $($match.BloatwareName): $_" 'WARN'
-                }
-            }
-            
-            'Service' {
-                try {
-                    $serviceName = $appData.ServiceName
-                    Write-Log "Stopping and disabling service: $serviceName" 'INFO'
-                    
-                    # Stop the service first
-                    Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-                    
-                    # Disable the service
-                    Set-Service -Name $serviceName -StartupType Disabled -ErrorAction SilentlyContinue
-                    
-                    # Verify the service is stopped and disabled
-                    $serviceCheck = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-                    if ($serviceCheck -and $serviceCheck.Status -eq 'Stopped') {
-                        $result.Success = $true
-                        $result.Method = "Service"
-                        $result.ActualName = $serviceName
-                        $script:bloatwareRemovalCount++
-                        Write-Log "✓ DISABLED: $($match.BloatwareName) [Service: $serviceName]" 'INFO'
-                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully disabled service" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                        return
-                    }
-                }
-                catch {
-                    Write-Log "Service disable failed for $($match.BloatwareName): $_" 'WARN'
-                }
-            }
-            
-            'ScheduledTask' {
-                try {
-                    $taskName = $appData.TaskName
-                    $taskPath = $appData.TaskPath
-                    Write-Log "Disabling scheduled task: $taskPath$taskName" 'INFO'
-                    
-                    # Disable the scheduled task
-                    Disable-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
-                    
-                    # Verify the task is disabled
-                    $taskCheck = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
-                    if ($taskCheck -and $taskCheck.State -eq 'Disabled') {
-                        $result.Success = $true
-                        $result.Method = "ScheduledTask"
-                        $result.ActualName = "$taskPath$taskName"
-                        $script:bloatwareRemovalCount++
-                        Write-Log "✓ DISABLED: $($match.BloatwareName) [Scheduled Task: $taskPath$taskName]" 'INFO'
-                        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully disabled scheduled task" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                        return
-                    }
-                }
-                catch {
-                    Write-Log "Scheduled Task disable failed for $($match.BloatwareName): $_" 'WARN'
-                }
-            }
-            
-            'StartMenuShortcut' {
-                try {
-                    $shortcutPath = $appData.ShortcutPath
-                    Write-Log "Removing Start Menu shortcut: $shortcutPath" 'INFO'
-                    
-                    # Remove the shortcut file
-                    if (Test-Path $shortcutPath) {
-                        Remove-Item -Path $shortcutPath -Force -ErrorAction SilentlyContinue
-                        
-                        # Verify removal
-                        if (-not (Test-Path $shortcutPath)) {
-                            $result.Success = $true
-                            $result.Method = "StartMenuShortcut"
-                            $result.ActualName = $shortcutPath
-                            $script:bloatwareRemovalCount++
-                            Write-Log "✓ REMOVED: $($match.BloatwareName) [Start Menu Shortcut: $shortcutPath]" 'INFO'
-                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed shortcut" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                            return
-                        }
-                    }
-                }
-                catch {
-                    Write-Log "Start Menu shortcut removal failed for $($match.BloatwareName): $_" 'WARN'
-                }
-            }
-        }
 
-        # If no method succeeded
-        if (-not $result.Success) {
+            # If no method succeeded
+            if (-not $result.Success) {
+                $script:bloatwareFailedCount++
+                Write-Log "✗ FAILED: $($match.BloatwareName) - No successful removal method" 'WARN'
+                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal failed" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+            }
+        }
+        catch {
             $script:bloatwareFailedCount++
-            Write-Log "✗ FAILED: $($match.BloatwareName) - No successful removal method" 'WARN'
-            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal failed" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+            Write-Log "✗ EXCEPTION: $($match.BloatwareName) - $_" 'ERROR'
+            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal exception" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+        }
+        
+        # Add successful results to removedApps collection for reporting
+        if ($result.Success) {
+            [void]$removedApps.Add([PSCustomObject]@{
+                    AppName    = $result.AppName
+                    ActualName = $result.ActualName
+                    Method     = $result.Method
+                    Success    = $result.Success
+                })
         }
     }
-    catch {
-        $script:bloatwareFailedCount++
-        Write-Log "✗ EXCEPTION: $($match.BloatwareName) - $_" 'ERROR'
-        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal exception" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-    }
-        
-    # Add successful results to removedApps collection for reporting
-    if ($result.Success) {
-        [void]$removedApps.Add([PSCustomObject]@{
-                AppName    = $result.AppName
-                ActualName = $result.ActualName
-                Method     = $result.Method
-                Success    = $result.Success
-            })
-    }
-}
     
-# ================================================================
-# STEP 4: Display Results and Summary
-# ================================================================
-# Convert removedApps to array for processing and detailed reporting
-$removedArray = @($removedApps)
+    # ================================================================
+    # STEP 4: Display Results and Summary
+    # ================================================================
+    # Convert removedApps to array for processing and detailed reporting
+    $removedArray = @($removedApps)
     
-if ($script:bloatwareRemovalCount -gt 0) {
-    Write-Log "=== BLOATWARE REMOVAL RESULTS ===" 'INFO'
-    Write-Host "=== BLOATWARE REMOVAL RESULTS ===" -ForegroundColor Yellow
-    Write-Log "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" 'INFO'
-    Write-Host "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" -ForegroundColor Green
+    if ($script:bloatwareRemovalCount -gt 0) {
+        Write-Log "=== BLOATWARE REMOVAL RESULTS ===" 'INFO'
+        Write-Host "=== BLOATWARE REMOVAL RESULTS ===" -ForegroundColor Yellow
+        Write-Log "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" 'INFO'
+        Write-Host "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" -ForegroundColor Green
         
-    # Log detailed removal information using restored $removedApps data
-    if ($removedArray.Count -gt 0) {
-        Write-Log "DETAILED REMOVAL BREAKDOWN:" 'INFO'
-        foreach ($removed in $removedArray) {
-            Write-Log "  → $($removed.ActualName) [Method: $($removed.Method)]" 'INFO'
-        }
+        # Log detailed removal information using restored $removedApps data
+        if ($removedArray.Count -gt 0) {
+            Write-Log "DETAILED REMOVAL BREAKDOWN:" 'INFO'
+            foreach ($removed in $removedArray) {
+                Write-Log "  → $($removed.ActualName) [Method: $($removed.Method)]" 'INFO'
+            }
             
-        # Method breakdown statistics
-        $methodGroups = $removedArray | Group-Object Method
-        $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
-        Write-Log "Removal methods used: $methodSummary" 'INFO'
-    }
+            # Method breakdown statistics
+            $methodGroups = $removedArray | Group-Object Method
+            $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
+            Write-Log "Removal methods used: $methodSummary" 'INFO'
+        }
         
-    if ($script:bloatwareFailedCount -gt 0) {
-        Write-Log "✗ Failed to remove $script:bloatwareFailedCount apps" 'WARN'
-        Write-Host "✗ Failed to remove $script:bloatwareFailedCount apps" -ForegroundColor Yellow
-    }
-}
-else {
-    if ($bloatwareMatches.Count -eq 0) {
-        Write-Log "✓ No bloatware detected - system clean" 'INFO'
-        Write-Host "✓ No bloatware detected - system clean" -ForegroundColor Green
+        if ($script:bloatwareFailedCount -gt 0) {
+            Write-Log "✗ Failed to remove $script:bloatwareFailedCount apps" 'WARN'
+            Write-Host "✗ Failed to remove $script:bloatwareFailedCount apps" -ForegroundColor Yellow
+        }
     }
     else {
-        Write-Log "✗ No bloatware apps were successfully removed" 'WARN'
-        Write-Host "✗ No bloatware apps were successfully removed" -ForegroundColor Yellow
+        if ($bloatwareMatches.Count -eq 0) {
+            Write-Log "✓ No bloatware detected - system clean" 'INFO'
+            Write-Host "✓ No bloatware detected - system clean" -ForegroundColor Green
+        }
+        else {
+            Write-Log "✗ No bloatware apps were successfully removed" 'WARN'
+            Write-Host "✗ No bloatware apps were successfully removed" -ForegroundColor Yellow
+        }
     }
-}
 
-# Ultra-fast registry cleanup to prevent reinstallation
-$registryKeys = @(
-    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
-    'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent',
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
-)
+    # Ultra-fast registry cleanup to prevent reinstallation
+    $registryKeys = @(
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+    )
 
 
-$registryKeys | ForEach-Object -Parallel {
-    $regKey = $_
+    $registryKeys | ForEach-Object -Parallel {
+        $regKey = $_
+        try {
+            if (-not (Test-Path $regKey)) { 
+                New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null 
+            }
+
+            $settings = @{
+                'SilentInstalledAppsEnabled'   = 0
+                'ContentDeliveryAllowed'       = 0
+                'OemPreInstalledAppsEnabled'   = 0
+                'PreInstalledAppsEnabled'      = 0
+                'SubscribedContentEnabled'     = 0
+                'SystemPaneSuggestionsEnabled' = 0
+                'SoftLandingEnabled'           = 0
+            }
+
+            foreach ($setting in $settings.GetEnumerator()) {
+                Set-ItemProperty -Path $regKey -Name $setting.Key -Value $setting.Value -ErrorAction SilentlyContinue
+            }
+        }
+        catch { }
+        # End try/catch for registry key
+    } -ThrottleLimit 3 | Out-Null # End ForEach-Object -Parallel
+
+    # ================================================================
+    # STEP 4: Update previous installed apps list for next diff operation
+    # ================================================================
     try {
-        if (-not (Test-Path $regKey)) { 
-            New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null 
+        # Update the previous list with current list for next run
+        Copy-Item $currentListPath $previousListPath -Force
+        Write-Log "Updated previous installed apps list for next diff operation" 'INFO'
+
+        # Create summary report of diff-based processing
+        $diffSummary = @{
+            TotalCurrentApps   = $currentInstalledApps.Count
+            NewlyInstalledApps = $newlyInstalledApps.Count
+            BloatwareRemoved   = if ($removedArray) { $removedArray.Count } else { 0 }
+            ProcessingMode     = "Diff-Based (Optimized)"
+            LastRun            = (Get-Date).ToString('o')
         }
 
-        $settings = @{
-            'SilentInstalledAppsEnabled'   = 0
-            'ContentDeliveryAllowed'       = 0
-            'OemPreInstalledAppsEnabled'   = 0
-            'PreInstalledAppsEnabled'      = 0
-            'SubscribedContentEnabled'     = 0
-            'SystemPaneSuggestionsEnabled' = 0
-            'SoftLandingEnabled'           = 0
-        }
-
-        foreach ($setting in $settings.GetEnumerator()) {
-            Set-ItemProperty -Path $regKey -Name $setting.Key -Value $setting.Value -ErrorAction SilentlyContinue
-        }
+        $diffSummaryPath = Join-Path $global:TempFolder 'bloatware_diff_summary.json'
+        $diffSummary | ConvertTo-Json -Depth 3 | Out-File $diffSummaryPath -Encoding UTF8
+        Write-Log "Diff-based processing summary saved to $diffSummaryPath" 'INFO'
     }
-    catch { }
-    # End try/catch for registry key
-} -ThrottleLimit 3 | Out-Null # End ForEach-Object -Parallel
-
-# ================================================================
-# STEP 4: Update previous installed apps list for next diff operation
-# ================================================================
-try {
-    # Update the previous list with current list for next run
-    Copy-Item $currentListPath $previousListPath -Force
-    Write-Log "Updated previous installed apps list for next diff operation" 'INFO'
-
-    # Create summary report of diff-based processing
-    $diffSummary = @{
-        TotalCurrentApps   = $currentInstalledApps.Count
-        NewlyInstalledApps = $newlyInstalledApps.Count
-        BloatwareRemoved   = if ($removedArray) { $removedArray.Count } else { 0 }
-        ProcessingMode     = "Diff-Based (Optimized)"
-        LastRun            = (Get-Date).ToString('o')
+    catch {
+        Write-Log "Failed to update previous list for diff operation: $_" 'WARN'
     }
 
-    $diffSummaryPath = Join-Path $global:TempFolder 'bloatware_diff_summary.json'
-    $diffSummary | ConvertTo-Json -Depth 3 | Out-File $diffSummaryPath -Encoding UTF8
-    Write-Log "Diff-based processing summary saved to $diffSummaryPath" 'INFO'
-}
-catch {
-    Write-Log "Failed to update previous list for diff operation: $_" 'WARN'
-}
-
-Write-Log "[END] Ultra-Enhanced Bloatware Removal - Diff-Based Processing Complete" 'INFO'
+    Write-Log "[END] Ultra-Enhanced Bloatware Removal - Diff-Based Processing Complete" 'INFO'
 }
 
 # ===============================
