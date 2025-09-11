@@ -49,7 +49,7 @@ SET "ZIP_FILE=%WORKING_DIR%script_mentenanta-main.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 
-# PowerShell script paths - intelligent detection for any execution context
+REM PowerShell script paths - intelligent detection for any execution context
 SET "PS1_PATH="
 REM Priority 1: Check if we're already in a repo directory (current directory has script.ps1)
 IF EXIST "%WORKING_DIR%script.ps1" (

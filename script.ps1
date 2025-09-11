@@ -3653,7 +3653,7 @@ function Get-ComprehensiveBloatwareInventory {
                             Write-Log "Executing $functionName..." 'INFO'
                             $sourceResults = & $functionName -Context "${Context} - ${source}" -UseCache:$UseCache
                             $results[$sourceType][$source] = $sourceResults
-                            Write-Log "Completed $functionName: $($sourceResults.Count) items found" 'INFO'
+                            Write-Log "Completed ${functionName}: $($sourceResults.Count) items found" 'INFO'
                         }
                         else {
                             Write-Log "Function $functionName not found, skipping..." 'WARN'
