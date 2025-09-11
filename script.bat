@@ -518,16 +518,28 @@ REM ----------------------------------------------------------------------------
 :SKIP_SELF_UPDATE
 
 REM Check if we need to download repository or use local files
+REM Enhanced check: Look for script.ps1 in current directory first
+IF EXIST "%WORKING_DIR%script.ps1" (
+    SET "PS1_PATH=%WORKING_DIR%script.ps1"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found local script.ps1 file: %PS1_PATH%"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Skipping repository download - local files available"
+    GOTO :PS1_DETECTION_COMPLETE
+)
+
+REM Fallback: Check if PS1_PATH was set earlier and file exists
 IF DEFINED PS1_PATH (
     IF EXIST "%PS1_PATH%" (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Using local script.ps1 file: %PS1_PATH%"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Using previously detected script.ps1 file: %PS1_PATH%"
         CALL :LOG_MESSAGE "[%TIME%] [INFO] Skipping repository download - local files available"
         GOTO :PS1_DETECTION_COMPLETE
     )
 )
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading latest repository from GitHub to current location..."
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Working directory: %WORKING_DIR%"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Local script.ps1 not found - downloading repository from GitHub..."
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working directory: %WORKING_DIR%"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checked for: %WORKING_DIR%script.ps1"
+CALL :LOG_MESSAGE "[%TIME%] [DEBUG] PS1_PATH variable: %PS1_PATH%"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading to: %WORKING_DIR%"
 
 REM Clean up existing files
 IF EXIST "%ZIP_FILE%" (
