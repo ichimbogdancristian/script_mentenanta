@@ -3993,9 +3993,8 @@ function Remove-Bloatware {
     catch {
         Write-Log "Error during enhanced bloatware detection: $_" 'WARN'
     }
-}
 
-# Early exit if no bloatware found
+    # Early exit if no bloatware found
 if ($bloatwareMatches.Count -eq 0) {
     Write-Log "[END] Ultra-Enhanced Bloatware Removal - No bloatware detected from $($installedApps.Keys.Count) analyzed apps (plus registry/provisioned)" 'INFO'
     Write-Log "Sample installed apps: $(@($installedApps.Keys) | Select-Object -First 10 | Join-String -Separator ', ')" 'VERBOSE'
@@ -4365,7 +4364,7 @@ catch {
 }
 
 Write-Log "[END] Ultra-Enhanced Bloatware Removal - Diff-Based Processing Complete" 'INFO'
-
+}
 
 # ===============================
 # SECTION 5: ESSENTIAL APPS MANAGEMENT
