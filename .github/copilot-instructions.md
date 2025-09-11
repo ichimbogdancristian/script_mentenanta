@@ -543,13 +543,113 @@ get_errors -filePaths ["path/to/modified/file.ps1"]
 get_errors -filePaths ["all", "modified", "files.ps1"]
 ```
 
+#### **🔍 AUTOMATIC DIAGNOSTIC SEARCH AND RESOLUTION PROTOCOLS (MANDATORY)**
+
+**⚠️ CRITICAL REQUIREMENT**: AI agents MUST automatically detect and resolve specific diagnostic patterns using proactive search strategies.
+
+##### **1. PSScriptAnalyzer Violations - Automatic Detection and Resolution**
+
+**🔧 PSAvoidDefaultValueSwitchParameter (AUTOMATIC FIX)**
+- **Search Pattern**: `grep_search -query "\[switch\][^=]*= *\$true|\[switch\][^=]*= *\$false" -isRegexp true`
+- **Detection**: Switch parameters with default boolean values
+- **Auto-Resolution Process**:
+  1. Remove default value from parameter declaration
+  2. Add conditional logic inside function: `if (-not $PSBoundParameters.ContainsKey('ParameterName')) { $ParameterName = $defaultValue }`
+  3. Preserve exact original behavior through internal logic
+- **Validation**: Confirm `get_errors` shows no PSAvoidDefaultValueSwitchParameter warnings
+
+**Example Auto-Fix Pattern**:
+```powershell
+# ❌ DETECTED VIOLATION
+[switch]$UseCache = $true,
+[switch]$IncludeDetection = $true
+
+# ✅ AUTOMATIC RESOLUTION
+[switch]$UseCache,
+[switch]$IncludeDetection,
+# Inside function body:
+if (-not $PSBoundParameters.ContainsKey('UseCache')) { $UseCache = $true }
+if (-not $PSBoundParameters.ContainsKey('IncludeDetection')) { $IncludeDetection = $true }
+```
+
+**🔧 Variable Delimiter Issues (AUTOMATIC FIX)**
+- **Search Pattern**: `grep_search -query "\"[^\"]*\$[a-zA-Z_][a-zA-Z0-9_]*:[^$\"{}]*\"" -isRegexp true`
+- **Detection**: Variables followed by colons in string interpolation without proper delimitation
+- **Auto-Resolution Process**:
+  1. Identify variable references like `$variable:` in double-quoted strings
+  2. Replace with `${variable}:` for proper delimitation
+  3. Verify parser can correctly interpret the string expansion
+- **Validation**: Confirm no "Variable reference is not valid" PowerShell errors
+
+**Example Auto-Fix Pattern**:
+```powershell
+# ❌ DETECTED VIOLATION
+-Context "$Context - $source"
+
+# ✅ AUTOMATIC RESOLUTION  
+-Context "${Context} - ${source}"
+```
+
+##### **2. Proactive Diagnostic Scanning (MANDATORY WORKFLOW)**
+
+**🔍 Pre-Code Change Scanning Protocol**:
+```powershell
+# REQUIRED: Comprehensive diagnostic scan before ANY changes
+get_errors -filePaths ["target_file.ps1"]
+grep_search -query "PSAvoidDefaultValueSwitchParameter|Variable reference is not valid" -isRegexp false
+grep_search -query "\[switch\][^=]*= *\$" -isRegexp true  # Detect switch defaults
+grep_search -query "\$[a-zA-Z_][a-zA-Z0-9_]*:" -isRegexp true  # Variable delimiter issues
+```
+
+**� Automatic Resolution Execution**:
+1. **DETECT**: Run diagnostic search patterns automatically
+2. **CLASSIFY**: Identify specific violation types (switch defaults, variable delimiters, etc.)
+3. **RESOLVE**: Apply appropriate auto-fix patterns
+4. **VERIFY**: Run `get_errors` to confirm resolution
+5. **DOCUMENT**: Log what was fixed and why
+
+##### **3. Common Diagnostic Patterns - Auto-Detection Matrix**
+
+| Diagnostic Code | Search Pattern | Auto-Fix Strategy |
+|----------------|---------------|-------------------|
+| **PSAvoidDefaultValueSwitchParameter** | `\[switch\][^=]*= *\$` | Remove defaults, add internal conditionals |
+| **Variable Delimiter Error** | `\$[a-zA-Z_][a-zA-Z0-9_]*:` in strings | Replace with `${variable}:` syntax |
+| **PSAvoidUsingPositionalParameters** | Function calls with multiple unnamed params | Add parameter names explicitly |
+| **PSUseDeclaredVarsMoreThanAssignments** | Variables assigned but never used | Restore functionality via logging/reporting |
+
+**🚨 Mandatory Auto-Detection Triggers**:
+- **BEFORE**: Every code modification session
+- **DURING**: After each significant change 
+- **AFTER**: Final validation before completion
+- **ON ERROR**: Immediate automatic scanning when `get_errors` shows issues
+
+##### **4. Advanced Diagnostic Resolution (CRITICAL PATTERNS)**
+
+**🔍 Structural Issue Detection**:
+```powershell
+# Detect orphaned code outside functions
+grep_search -query "^\s*\$[^=]*=|^\s*[A-Z][a-zA-Z]+-" -isRegexp true
+# Detect incomplete blocks
+grep_search -query "^\s*try\s*{|^\s*if\s*\(" -isRegexp true
+# Detect function boundaries
+grep_search -query "^function|^}$" -isRegexp true
+```
+
+**🛠️ Resolution Priorities (ENFORCED ORDER)**:
+1. **Syntax Errors** (highest priority - blocks execution)
+2. **PSScriptAnalyzer Violations** (code quality and best practices)
+3. **Unused Variables** (restore functionality, never delete)
+4. **Structural Issues** (orphaned code, incomplete blocks)
+5. **Style Warnings** (consistency and maintainability)
+
 #### **Zero-Tolerance Policy**
-- 🚫 **NO code changes are complete until ALL diagnostics are resolved**
+- �🚫 **NO code changes are complete until ALL diagnostics are resolved**
 - 🚫 **NO "TODO: fix later" - fix immediately**  
 - 🚫 **NO ignoring warnings - address or document why they're acceptable**
 - 🚫 **NO completion without final diagnostic verification**
 - 🚫 **NO unused variables allowed - ALL must have functionality restored**
 - 🚫 **NO assumptions about "false positives" - verify and fix every unused variable diagnostic**
+- 🚫 **NO manual diagnostic checking - use AUTOMATIC search patterns**
 
 #### **🔧 MANDATORY UNUSED VARIABLE RESOLUTION PROCESS**
 When VSCode diagnostics show "The variable 'X' is assigned but never used":
@@ -634,17 +734,23 @@ Every code change MUST include:
 #### **Every Code Edit Session MUST Follow This Pattern:**
 ```
 1. 🔍 PRE-CHECK: get_errors on target files
-2. 📋 CONTEXT-ANALYSIS: If errors found, read COMPLETE function/block contexts
-3. 🗺️ STRUCTURAL-MAPPING: Map function boundaries, nested blocks, orphaned code
-4. 🛡️ ORPHANED-CODE-SCAN: Identify any floating code outside proper contexts
-5. 🔧 UNUSED-VARIABLE-SCAN: Identify all unused variables and plan restoration
-6. ✏️ EDIT: Make code changes with full structural understanding
-7. 🔍 MID-CHECK: get_errors on modified files
-8. 🔧 FIX: Resolve any new issues immediately with context awareness
-9. 🔨 UNUSED-VARIABLE-RESTORATION: Restore functionality for ALL unused variables
-10. 🧹 ORPHANED-CODE-CLEANUP: Ensure no floating code fragments remain
-11. 🔍 FINAL-CHECK: get_errors on all modified files
-12. ✅ COMPLETE: Only when zero errors/warnings remain AND no orphaned code AND no unused variables
+2. � AUTO-DIAGNOSTIC-SCAN: Run automatic detection patterns for known violations
+   - grep_search for PSAvoidDefaultValueSwitchParameter patterns
+   - grep_search for variable delimiter issues  
+   - grep_search for common PSScriptAnalyzer violations
+3. �📋 CONTEXT-ANALYSIS: If errors found, read COMPLETE function/block contexts
+4. 🗺️ STRUCTURAL-MAPPING: Map function boundaries, nested blocks, orphaned code
+5. 🛡️ ORPHANED-CODE-SCAN: Identify any floating code outside proper contexts
+6. 🔧 UNUSED-VARIABLE-SCAN: Identify all unused variables and plan restoration
+7. 🤖 AUTO-FIX-EXECUTION: Apply automatic resolution patterns where applicable
+8. ✏️ EDIT: Make code changes with full structural understanding
+9. 🔍 MID-CHECK: get_errors on modified files
+10. 🔧 FIX: Resolve any new issues immediately with context awareness
+11. 🔨 UNUSED-VARIABLE-RESTORATION: Restore functionality for ALL unused variables
+12. 🧹 ORPHANED-CODE-CLEANUP: Ensure no floating code fragments remain
+13. 🔎 AUTO-VERIFY: Re-run diagnostic search patterns to confirm resolution
+14. 🔍 FINAL-CHECK: get_errors on all modified files
+15. ✅ COMPLETE: Only when zero errors/warnings remain AND no orphaned code AND no unused variables
 ```
 
 #### **🚨 CRITICAL: Unused Variable Resolution is BLOCKING**
@@ -702,7 +808,29 @@ When resolving diagnostics, document:
 - **How it was fixed**: Specific changes made
 - **Prevention**: How to avoid similar issues
 
-### **Examples of Enhanced Diagnostic Checking with Context Analysis**
+### **Examples of Enhanced Diagnostic Checking with Automatic Resolution**
+
+#### **✅ CORRECT Workflow with Automatic PSScriptAnalyzer Fixes:**
+```
+Agent: "I need to resolve PSAvoidDefaultValueSwitchParameter violations"
+1. get_errors -filePaths ["script.ps1"]  # PRE-CHECK
+2. grep_search -query "\[switch\][^=]*= *\$true|\[switch\][^=]*= *\$false" -isRegexp true  # AUTO-DETECT
+3. [Identifies switch parameters with default values at lines 2800-2803]
+4. [Automatically applies fix pattern: remove defaults, add internal conditionals]
+5. get_errors -filePaths ["script.ps1"]  # VERIFY-FIX
+6. "PSScriptAnalyzer violations resolved - zero diagnostics remaining"
+```
+
+#### **✅ CORRECT Workflow with Variable Delimiter Auto-Fix:**
+```
+Agent: "I need to fix variable reference delimiter issues"
+1. get_errors -filePaths ["script.ps1"]  # PRE-CHECK
+2. grep_search -query "\"[^\"]*\$[a-zA-Z_][a-zA-Z0-9_]*:[^$\"{}]*\"" -isRegexp true  # AUTO-DETECT
+3. [Identifies variable delimiter issue: "$Context - $source" at line 3640]
+4. [Automatically applies fix: replace with "${Context} - ${source}"]
+5. get_errors -filePaths ["script.ps1"]  # VERIFY-FIX
+6. "Variable delimiter issue resolved - zero diagnostics remaining"
+```
 
 #### **✅ CORRECT Workflow for Simple Changes:**
 ```
@@ -804,6 +932,50 @@ get_errors -filePaths ["c:\\path\\to\\script.ps1"]
 
 # REQUIRED before completing work:
 get_errors -filePaths ["all_modified_files.ps1"]
+```
+
+### **🔍 Quick Reference: Automatic Diagnostic Resolution Commands**
+
+#### **Mandatory Pre-Code Analysis (Run EVERY TIME):**
+```powershell
+# Check current diagnostics
+get_errors -filePaths ["script.ps1"]
+
+# Scan for switch parameter violations  
+grep_search -query "\[switch\][^=]*= *\$true|\[switch\][^=]*= *\$false" -isRegexp true
+
+# Scan for variable delimiter issues
+grep_search -query "\"[^\"]*\$[a-zA-Z_][a-zA-Z0-9_]*:[^$\"{}]*\"" -isRegexp true
+
+# Scan for unused variables pattern
+grep_search -query "PSUseDeclaredVarsMoreThanAssignments|assigned but never used" -isRegexp false
+
+# Scan for orphaned code
+grep_search -query "^\s*\$[^=]*=|^\s*[A-Z][a-zA-Z]+-" -isRegexp true
+```
+
+#### **Common Auto-Fix Patterns:**
+```powershell
+# PSAvoidDefaultValueSwitchParameter Fix:
+# BEFORE: [switch]$Param = $true
+# AFTER:  [switch]$Param + internal: if (-not $PSBoundParameters.ContainsKey('Param')) { $Param = $true }
+
+# Variable Delimiter Fix:  
+# BEFORE: "$variable: text"
+# AFTER:  "${variable}: text"
+
+# Unused Variable Fix:
+# BEFORE: $result = Get-Something  # Never used
+# AFTER:  $result = Get-Something; Write-Log "Result: $result" 'INFO'
+```
+
+#### **Verification Commands (Run After Fixes):**
+```powershell
+# Verify all diagnostics resolved
+get_errors -filePaths ["script.ps1"]
+
+# Re-scan for any remaining patterns
+grep_search -query "PSAvoidDefaultValueSwitchParameter|Variable reference is not valid" -isRegexp false
 ```
 
 ### **Success Criteria for Code Changes**
