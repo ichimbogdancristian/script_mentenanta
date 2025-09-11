@@ -441,17 +441,16 @@ $global:AppCategories = @{
         'Microsoft.BingSports', 'Microsoft.BingTravel', 'Microsoft.BingWeather', 'Microsoft.MSN',
         'Microsoft.GetHelp', 'Microsoft.Getstarted', 'Microsoft.HelpAndTips', 'Microsoft.WindowsTips',
         'Microsoft.MicrosoftOfficeHub', 'Microsoft.MicrosoftPowerBIForWindows', 'Microsoft.Office.OneNote', 
-        'Microsoft.Office.Sway', 'Microsoft.OneConnect', 'Microsoft.People', 'Microsoft.ScreenSketch',
-        'Microsoft.StickyNotes', 'Microsoft.Whiteboard', 'Microsoft.MicrosoftSolitaireCollection',
-        'Microsoft.WindowsFeedback', 'Microsoft.WindowsFeedbackHub', 'Microsoft.WindowsMaps', 'Microsoft.WindowsReadingList',
-        'Microsoft.WindowsSoundRecorder', 'Microsoft.SoundRecorder', 'Microsoft.NetworkSpeedTest', 'Microsoft.News',
+        'Microsoft.Office.Sway', 'Microsoft.OneConnect', 'Microsoft.StickyNotes', 'Microsoft.Whiteboard', 
+        'Microsoft.MicrosoftSolitaireCollection', 'Microsoft.WindowsFeedback', 'Microsoft.WindowsFeedbackHub', 
+        'Microsoft.WindowsReadingList', 'Microsoft.NetworkSpeedTest', 'Microsoft.News',
         'Microsoft.PowerAutomateDesktop', 'Microsoft.ToDo', 'Microsoft.Wallet', 'Microsoft.MinecraftUWP', 
         'Microsoft.MixedReality.Portal', 'Microsoft.MinecraftEducationEdition'
     )
     XboxGaming         = @(
         'Microsoft.Xbox.TCUI', 'Microsoft.XboxApp', 'Microsoft.XboxGameOverlay', 'Microsoft.XboxGamingOverlay', 
         'Microsoft.XboxIdentityProvider', 'Microsoft.XboxSpeechToTextOverlay', 'Microsoft.GamingApp', 
-        'Microsoft.GamingServices', 'Microsoft.XboxGameCallableUI'
+        'Microsoft.XboxGameCallableUI'
     )
     SecurityBloatware  = @(
         'Avast.AvastFreeAntivirus', 'AVG.AVGAntiVirusFree', 'Avira.Avira', 
@@ -486,6 +485,11 @@ $global:EssentialCategories = @{
     )
     Communication = @(
         @{ Name = 'Mozilla Thunderbird'; Winget = 'Mozilla.Thunderbird'; Choco = 'thunderbird'; Category = 'Email' }
+    )
+    RemoteAccess  = @(
+        @{ Name = 'TeamViewer'; Winget = 'TeamViewer.TeamViewer'; Choco = 'teamviewer'; Category = 'RemoteDesktop' },
+        @{ Name = 'RustDesk'; Winget = 'RustDesk.RustDesk'; Choco = 'rustdesk'; Category = 'RemoteDesktop' },
+        @{ Name = 'UltraViewer'; Winget = 'DucFabulous.UltraViewer'; Choco = 'ultraviewer'; Category = 'RemoteDesktop' }
     )
 }
 
@@ -3797,6 +3801,15 @@ function Install-EssentialApps {
         Write-Host "⚪ LibreOffice installation skipped - Office suite already detected" -ForegroundColor Yellow
     }
 
+    # BROWSER EXTENSION CONFIGURATION
+    # Configure Firefox with uBlock Origin if Firefox was installed or is present
+    try {
+        Set-FirefoxuBlockOrigin
+    }
+    catch {
+        Write-Log "Warning: Firefox uBlock Origin configuration encountered an error: $_" 'WARN'
+    }
+
     # ENHANCED SUMMARY AND PERFORMANCE REPORTING
     Write-Log "[EssentialApps] INSTALLATION SUMMARY - DIFF-BASED MODE:" 'INFO'
     Write-Log "- Required apps: $($newlyRequiredApps.Count) (${efficiencyGain}% reduction from $($currentEssentialApps.Count) total requirements)" 'INFO'
@@ -3843,6 +3856,125 @@ function Install-EssentialApps {
     Write-Log "Essential apps list updated for next diff comparison" 'VERBOSE'
 
     Write-Log "[END] Install Essential Apps" 'INFO'
+}
+
+# ================================================================
+# Function: Set-FirefoxuBlockOrigin
+# ================================================================
+# Purpose: Configure Firefox with uBlock Origin extension using Mozilla ExtensionSettings policy
+# Environment: Windows 10/11, Firefox installation required, Administrator privileges recommended
+# Performance: Fast, configuration-based, no external downloads required
+# Dependencies: Firefox installation, registry access
+# Logic: Uses Mozilla ExtensionSettings policy via Windows registry to force-install uBlock Origin
+# Features: Enterprise-grade extension deployment, automatic uBlock Origin installation, error handling
+# ================================================================
+function Set-FirefoxuBlockOrigin {
+    Write-Log "[START] Configuring Firefox with uBlock Origin extension" 'INFO'
+    
+    try {
+        # Check if Firefox is installed
+        $firefoxPaths = @(
+            "${env:ProgramFiles}\Mozilla Firefox\firefox.exe",
+            "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe"
+        )
+        
+        $firefoxInstalled = $false
+        $firefoxPath = $null
+        
+        foreach ($path in $firefoxPaths) {
+            if (Test-Path $path) {
+                $firefoxInstalled = $true
+                $firefoxPath = $path
+                Write-Log "✓ Firefox detected at: $path" 'INFO'
+                break
+            }
+        }
+        
+        if (-not $firefoxInstalled) {
+            Write-Log "⚪ SKIPPED: Firefox not detected. uBlock Origin configuration skipped." 'INFO'
+            Write-Host "⚪ Firefox not detected - uBlock Origin configuration skipped" -ForegroundColor Yellow
+            return
+        }
+        
+        # Create Firefox ExtensionSettings policy via registry
+        Write-Log "Configuring Firefox ExtensionSettings policy for uBlock Origin..." 'INFO'
+        
+        # Firefox policy registry path
+        $policyPath = "HKLM:\SOFTWARE\Policies\Mozilla\Firefox"
+        
+        # Create policy registry structure
+        if (-not (Test-Path $policyPath)) {
+            New-Item -Path $policyPath -Force | Out-Null
+            Write-Log "✓ Created Firefox policy registry path" 'INFO'
+        }
+        
+        # Configure ExtensionSettings for uBlock Origin
+        $uBlockConfig = @{
+            "uBlock0@raymondhill.net" = @{
+                "installation_mode" = "force_installed"
+                "install_url" = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+                "updates_disabled" = $false
+                "default_area" = "navbar"
+            }
+        } | ConvertTo-Json -Depth 3 -Compress
+        
+        # Set ExtensionSettings registry value
+        Set-ItemProperty -Path $policyPath -Name "ExtensionSettings" -Value $uBlockConfig -Type String -Force
+        Write-Log "✓ Firefox ExtensionSettings policy configured for uBlock Origin" 'INFO'
+        
+        # Also configure via policies.json for comprehensive coverage
+        $firefoxInstallDir = Split-Path $firefoxPath -Parent
+        $distributionDir = Join-Path $firefoxInstallDir "distribution"
+        
+        if (-not (Test-Path $distributionDir)) {
+            New-Item -Path $distributionDir -ItemType Directory -Force | Out-Null
+            Write-Log "✓ Created Firefox distribution directory" 'INFO'
+        }
+        
+        $policiesJsonPath = Join-Path $distributionDir "policies.json"
+        $policiesConfig = @{
+            "policies" = @{
+                "ExtensionSettings" = @{
+                    "uBlock0@raymondhill.net" = @{
+                        "installation_mode" = "force_installed"
+                        "install_url" = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+                        "updates_disabled" = $false
+                        "default_area" = "navbar"
+                    }
+                }
+            }
+        }
+        
+        $policiesConfig | ConvertTo-Json -Depth 4 | Out-File -FilePath $policiesJsonPath -Encoding UTF8 -Force
+        Write-Log "✓ Firefox policies.json created with uBlock Origin configuration" 'INFO'
+        
+        # Set appropriate permissions on policies.json
+        if (Test-Path $policiesJsonPath) {
+            $acl = Get-Acl $policiesJsonPath
+            $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("Users", "ReadAndExecute", "Allow")
+            $acl.SetAccessRule($accessRule)
+            Set-Acl -Path $policiesJsonPath -AclObject $acl
+            Write-Log "✓ Set appropriate permissions on policies.json" 'INFO'
+        }
+        
+        Write-Log "✓ SUCCESS: Firefox configured with uBlock Origin via ExtensionSettings policy" 'INFO'
+        Write-Host "✓ Firefox configured with uBlock Origin extension" -ForegroundColor Green
+        
+        # Log configuration details
+        Write-Log "Configuration details:" 'VERBOSE'
+        Write-Log "- Registry path: $policyPath" 'VERBOSE'
+        Write-Log "- Policies.json path: $policiesJsonPath" 'VERBOSE'
+        Write-Log "- Extension ID: uBlock0@raymondhill.net" 'VERBOSE'
+        Write-Log "- Installation mode: force_installed" 'VERBOSE'
+        Write-Log "- Install URL: https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi" 'VERBOSE'
+        
+    }
+    catch {
+        Write-Log "✗ FAILED: Firefox uBlock Origin configuration failed: $($_.Exception.Message)" 'ERROR'
+        Write-Host "✗ Firefox uBlock Origin configuration failed: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    
+    Write-Log "[END] Configure Firefox with uBlock Origin" 'INFO'
 }
 
 # ===============================
