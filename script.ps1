@@ -1109,6 +1109,60 @@ function Invoke-LoggedCommand {
 # ================================================================
 
 # ================================================================
+# Function: Get-RegistryUninstallBloatware
+# ================================================================
+# Purpose: Discover installed bloatware by scanning registry uninstall keys (both 32/64-bit)
+# Environment: Windows 10/11, requires registry read access
+# Performance: Fast registry enumeration, minimal overhead
+# Dependencies: Windows Registry access
+# Logic: Scans HKLM uninstall keys, matches against bloatware patterns, returns standardized app objects
+# Features: Detects legacy/OEM/Win32 bloatware, logs all matches, supports integration with main detection pipeline
+# ================================================================
+function Get-RegistryUninstallBloatware {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$BloatwarePatterns,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "Registry Uninstall Scan"
+    )
+    Write-Log "[START] Registry uninstall key scan for bloatware" 'INFO'
+    $found = @()
+    $uninstallPaths = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($path in $uninstallPaths) {
+        try {
+            $keys = Get-ChildItem -Path $path -ErrorAction SilentlyContinue
+            foreach ($key in $keys) {
+                $props = Get-ItemProperty -Path $key.PSPath -ErrorAction SilentlyContinue
+                $displayName = $props.DisplayName
+                if ([string]::IsNullOrWhiteSpace($displayName)) { continue }
+                foreach ($pattern in $BloatwarePatterns) {
+                    if ($displayName -like "*$pattern*") {
+                        $found += [PSCustomObject]@{
+                            Name         = $displayName
+                            DisplayName  = $displayName
+                            Version      = $props.DisplayVersion
+                            Source       = 'Registry'
+                            UninstallKey = $key.PSChildName
+                            Context      = $Context
+                        }
+                        Write-Log "[REGISTRY BLOATWARE] $displayName (Version: $($props.DisplayVersion))" 'INFO'
+                        break
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Log "Failed to scan registry uninstall path: $path - $_" 'WARN'
+        }
+    }
+    Write-Log "[END] Registry uninstall key scan: $($found.Count) bloatware apps found" 'INFO'
+    return $found
+}
+
+# ================================================================
 # Function: Test-CommandAvailable
 # ================================================================
 # Purpose: Check if a command/executable is available in the system PATH
@@ -1161,10 +1215,11 @@ function Test-RegistryAccess {
             if ($CreatePath) {
                 New-Item -Path $RegistryPath -Force -ErrorAction Stop | Out-Null
                 Write-LogFile "Created registry path: $RegistryPath"
-            } else {
+            }
+            else {
                 return @{
-                    Success = $false
-                    Error = "Registry path does not exist: $RegistryPath"
+                    Success    = $false
+                    Error      = "Registry path does not exist: $RegistryPath"
                     Suggestion = "Consider using -CreatePath switch or check path spelling"
                 }
             }
@@ -1186,32 +1241,32 @@ function Test-RegistryAccess {
         
         return @{
             Success = $true
-            Error = $null
+            Error   = $null
             Message = "Full registry access confirmed for: $RegistryPath"
         }
     }
     catch [System.UnauthorizedAccessException] {
         return @{
-            Success = $false
-            Error = "Unauthorized access to registry path: $RegistryPath"
+            Success    = $false
+            Error      = "Unauthorized access to registry path: $RegistryPath"
             Suggestion = "Try running as administrator or check registry permissions"
-            ErrorType = "UnauthorizedAccess"
+            ErrorType  = "UnauthorizedAccess"
         }
     }
     catch [System.Security.SecurityException] {
         return @{
-            Success = $false
-            Error = "Security exception accessing registry path: $RegistryPath"
+            Success    = $false
+            Error      = "Security exception accessing registry path: $RegistryPath"
             Suggestion = "Registry path may be protected by Group Policy or system security"
-            ErrorType = "SecurityException"
+            ErrorType  = "SecurityException"
         }
     }
     catch {
         return @{
-            Success = $false
-            Error = "Registry access error: $($_.Exception.Message)"
+            Success    = $false
+            Error      = "Registry access error: $($_.Exception.Message)"
             Suggestion = "Check registry path format and Windows version compatibility"
-            ErrorType = "GeneralError"
+            ErrorType  = "GeneralError"
         }
     }
 }
@@ -1272,8 +1327,8 @@ function Set-RegistryValueSafely {
         }
         
         return @{ 
-            Success = $false; 
-            Error = $accessTest.Error; 
+            Success    = $false; 
+            Error      = $accessTest.Error; 
             Suggestion = $accessTest.Suggestion 
         }
     }
@@ -1287,8 +1342,8 @@ function Set-RegistryValueSafely {
     catch {
         Write-Log "Failed to set $Description via registry: $($_.Exception.Message)" 'WARN'
         return @{ 
-            Success = $false; 
-            Error = $_.Exception.Message; 
+            Success    = $false; 
+            Error      = $_.Exception.Message; 
             Suggestion = "Registry modification may require different approach or manual configuration" 
         }
     }
@@ -2269,6 +2324,49 @@ function Get-AppxProvisionedPackageCompatible {
 }
 
 # ================================================================
+# Function: Get-ProvisionedAppxBloatware
+# ================================================================
+# Purpose: Discover bloatware in provisioned AppX packages (pre-installed for new users)
+# Environment: Windows 10/11, requires DISM module and registry access
+# Performance: Fast, minimal overhead
+# Dependencies: Get-AppxProvisionedPackageCompatible
+# Logic: Scans provisioned AppX packages, matches against bloatware patterns, returns standardized app objects
+# Features: Detects pre-installed/provisioned bloatware, logs all matches, supports integration with main detection pipeline
+# ================================================================
+function Get-ProvisionedAppxBloatware {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$BloatwarePatterns,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "Provisioned AppX Scan"
+    )
+    Write-Log "[START] Provisioned AppX scan for bloatware" 'INFO'
+    $found = @()
+    $provisioned = Get-AppxProvisionedPackageCompatible -Online
+    foreach ($pkg in $provisioned) {
+        $displayName = $pkg.DisplayName
+        $packageName = $pkg.PackageName
+        if ([string]::IsNullOrWhiteSpace($displayName) -and [string]::IsNullOrWhiteSpace($packageName)) { continue }
+        foreach ($pattern in $BloatwarePatterns) {
+            if ($displayName -like "*$pattern*" -or $packageName -like "*$pattern*") {
+                $found += [PSCustomObject]@{
+                    Name        = $displayName
+                    DisplayName = $displayName
+                    Version     = ''
+                    Source      = 'ProvisionedAppX'
+                    PackageName = $packageName
+                    Context     = $Context
+                }
+                Write-Log "[PROVISIONED BLOATWARE] $displayName ($packageName)" 'INFO'
+                break
+            }
+        }
+    }
+    Write-Log "[END] Provisioned AppX scan: $($found.Count) bloatware apps found" 'INFO'
+    return $found
+}
+
+# ================================================================
 # Function: Remove-AppxProvisionedPackageCompatible
 # ================================================================
 # Purpose: Removes provisioned AppX packages from system image to prevent future user installations
@@ -3101,275 +3199,299 @@ function Remove-Bloatware {
         Write-Log "Pattern matches found: $patternMatchCount" 'INFO'
     }
 
-    # Early exit if no bloatware found
-    if ($bloatwareMatches.Count -eq 0) {
-        Write-Log "[END] Ultra-Enhanced Bloatware Removal - No bloatware detected from $($installedApps.Keys.Count) analyzed apps" 'INFO'
-        Write-Log "Sample installed apps: $(@($installedApps.Keys) | Select-Object -First 10 | Join-String -Separator ', ')" 'VERBOSE'
-        
-        # Update previous list for next run
-        Copy-Item $currentListPath $previousListPath -Force
-        return
+    # --- New: Registry uninstall key bloatware discovery ---
+    $registryBloatware = Get-RegistryUninstallBloatware -BloatwarePatterns $global:BloatwareList
+    foreach ($reg in $registryBloatware) {
+        $bloatwareMatches.Add([PSCustomObject]@{
+                BloatwareName = $reg.Name
+                InstalledApp  = $reg
+                MatchType     = 'RegistryUninstall'
+            })
     }
+    Write-Log "Registry uninstall bloatware matches: $($registryBloatware.Count)" 'INFO'
 
-    # Cached tool availability detection
-    $toolCapabilities = @{
-        AppX       = $false
-        Winget     = $false
-        Chocolatey = $false
+    # --- New: Provisioned AppX bloatware discovery ---
+    $provisionedBloatware = Get-ProvisionedAppxBloatware -BloatwarePatterns $global:BloatwareList
+    foreach ($prov in $provisionedBloatware) {
+        $bloatwareMatches.Add([PSCustomObject]@{
+                BloatwareName = $prov.Name
+                InstalledApp  = $prov
+                MatchType     = 'ProvisionedAppX'
+            })
     }
+    Write-Log "Provisioned AppX bloatware matches: $($provisionedBloatware.Count)" 'INFO'
+}
 
-    # Fast native AppX detection for PS7.5+
+# Early exit if no bloatware found
+if ($bloatwareMatches.Count -eq 0) {
+    Write-Log "[END] Ultra-Enhanced Bloatware Removal - No bloatware detected from $($installedApps.Keys.Count) analyzed apps (plus registry/provisioned)" 'INFO'
+    Write-Log "Sample installed apps: $(@($installedApps.Keys) | Select-Object -First 10 | Join-String -Separator ', ')" 'VERBOSE'
+    # Update previous list for next run
+    Copy-Item $currentListPath $previousListPath -Force
+    return
+}
+
+# Cached tool availability detection
+$toolCapabilities = @{
+    AppX       = $false
+    Winget     = $false
+    Chocolatey = $false
+}
+
+# Fast native AppX detection for PS7.5+
+try {
+    $null = Get-AppxPackage -Name "NonExistent*" -ErrorAction SilentlyContinue
+    $toolCapabilities.AppX = $true
+}
+catch {
+    # Test if Appx module is available
     try {
-        $null = Get-AppxPackage -Name "NonExistent*" -ErrorAction SilentlyContinue
-        $toolCapabilities.AppX = $true
+        $toolCapabilities.AppX = $null -ne (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue)
+    }
+    catch { 
+        $toolCapabilities.AppX = $false
+    }
+}
+
+# Cache command availability
+$toolCapabilities.Winget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
+$toolCapabilities.Chocolatey = $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
+
+# Thread-safe collections for results
+$removedApps = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+$script:bloatwareRemovalCount = 0
+$script:bloatwareFailedCount = 0
+
+# Use the new modular progress system for bloatware removal
+Start-ActionProgressSequence -SequenceName "Bloatware Removal" -Actions $bloatwareMatches -ActionProcessor {
+    param($match, $currentIndex, $totalApps)
+        
+    # Individual bloatware removal progress
+    Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Preparing removal..." -CurrentItem $currentIndex -TotalItems $totalApps
+        
+    $result = @{
+        Success    = $false
+        AppName    = $match.BloatwareName
+        ActualName = ""
+        Method     = ""
+    }
+
+    try {
+        $app = $match.InstalledApp
+        $appType = $app.Type
+        $appData = $app.Data
+
+        # Start removal process with single progress update
+        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Removing $appType package..." -CurrentItem $currentIndex -TotalItems $totalApps
+
+        # Optimized removal by type priority
+        switch ($appType) {
+            'AppX' {
+                if ($toolCapabilities.AppX -and $appData.PackageFullName) {
+                    try {
+                        Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                            
+                        # Verify removal
+                        $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
+                        if (-not $remainingPackage) {
+                            $result.Success = $true
+                            $result.Method = "AppX"
+                            $result.ActualName = $appData.Name
+                            $script:bloatwareRemovalCount++
+                            Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX: $($appData.Name)]" 'INFO'
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                            return
+                        }
+                        else {
+                            # Try advanced removal
+                            $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
+                            if ($success) {
+                                $result.Success = $true
+                                $result.Method = "AppX (Advanced)"
+                                $result.ActualName = $appData.Name
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX Advanced: $($appData.Name)]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX (Advanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
+                            }
+                        }
+                    }
+                    catch {
+                        Write-Log "AppX removal failed for $($match.BloatwareName): $_" 'WARN'
+                    }
+                }
+            }
+                
+            'Winget' {
+                if ($toolCapabilities.Winget -and $appData.Id) {
+                    try {
+                        $uninstallArgs = @("uninstall", "--id", $appData.Id, "--silent", "--accept-source-agreements", "--disable-interactivity")
+                        $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
+                            
+                        if ($wingetProc.ExitCode -eq 0) {
+                            $result.Success = $true
+                            $result.Method = "Winget"
+                            $result.ActualName = $appData.Name
+                            $script:bloatwareRemovalCount++
+                            Write-Log "✓ REMOVED: $($match.BloatwareName) [Winget: $($appData.Name)]" 'INFO'
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Winget" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                            return
+                        }
+                    }
+                    catch {
+                        Write-Log "Winget removal failed for $($match.BloatwareName): $_" 'WARN'
+                    }
+                }
+            }
+                
+            'Choco' {
+                if ($toolCapabilities.Chocolatey -and $appData.Name) {
+                    try {
+                        $chocoArgs = @("uninstall", $appData.Name, "-y", "--remove-dependencies")
+                        $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                            
+                        if ($chocoProc.ExitCode -eq 0) {
+                            $result.Success = $true
+                            $result.Method = "Chocolatey"
+                            $result.ActualName = $appData.Name
+                            $script:bloatwareRemovalCount++
+                            Write-Log "✓ REMOVED: $($match.BloatwareName) [Chocolatey: $($appData.Name)]" 'INFO'
+                            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Chocolatey" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                            return
+                        }
+                    }
+                    catch {
+                        Write-Log "Chocolatey removal failed for $($match.BloatwareName): $_" 'WARN'
+                    }
+                }
+            }
+        }
+
+        # If no method succeeded
+        if (-not $result.Success) {
+            $script:bloatwareFailedCount++
+            Write-Log "✗ FAILED: $($match.BloatwareName) - No successful removal method" 'WARN'
+            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal failed" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+        }
     }
     catch {
-        # Test if Appx module is available
-        try {
-            $toolCapabilities.AppX = $null -ne (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue)
-        }
-        catch { 
-            $toolCapabilities.AppX = $false
-        }
+        $script:bloatwareFailedCount++
+        Write-Log "✗ EXCEPTION: $($match.BloatwareName) - $_" 'ERROR'
+        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal exception" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
     }
-
-    # Cache command availability
-    $toolCapabilities.Winget = $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
-    $toolCapabilities.Chocolatey = $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
-
-    # Thread-safe collections for results
-    $removedApps = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
-    $script:bloatwareRemovalCount = 0
-    $script:bloatwareFailedCount = 0
-
-    # Use the new modular progress system for bloatware removal
-    Start-ActionProgressSequence -SequenceName "Bloatware Removal" -Actions $bloatwareMatches -ActionProcessor {
-        param($match, $currentIndex, $totalApps)
         
-        # Individual bloatware removal progress
-        Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Preparing removal..." -CurrentItem $currentIndex -TotalItems $totalApps
-        
-        $result = @{
-            Success    = $false
-            AppName    = $match.BloatwareName
-            ActualName = ""
-            Method     = ""
-        }
-
-        try {
-            $app = $match.InstalledApp
-            $appType = $app.Type
-            $appData = $app.Data
-
-            # Start removal process with single progress update
-            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Removing $appType package..." -CurrentItem $currentIndex -TotalItems $totalApps
-
-            # Optimized removal by type priority
-            switch ($appType) {
-                'AppX' {
-                    if ($toolCapabilities.AppX -and $appData.PackageFullName) {
-                        try {
-                            Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
-                            
-                            # Verify removal
-                            $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
-                            if (-not $remainingPackage) {
-                                $result.Success = $true
-                                $result.Method = "AppX"
-                                $result.ActualName = $appData.Name
-                                $script:bloatwareRemovalCount++
-                                Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX: $($appData.Name)]" 'INFO'
-                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                                return
-                            }
-                            else {
-                                # Try advanced removal
-                                $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
-                                if ($success) {
-                                    $result.Success = $true
-                                    $result.Method = "AppX (Advanced)"
-                                    $result.ActualName = $appData.Name
-                                    $script:bloatwareRemovalCount++
-                                    Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX Advanced: $($appData.Name)]" 'INFO'
-                                    Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX (Advanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                                    return
-                                }
-                            }
-                        }
-                        catch {
-                            Write-Log "AppX removal failed for $($match.BloatwareName): $_" 'WARN'
-                        }
-                    }
-                }
-                
-                'Winget' {
-                    if ($toolCapabilities.Winget -and $appData.Id) {
-                        try {
-                            $uninstallArgs = @("uninstall", "--id", $appData.Id, "--silent", "--accept-source-agreements", "--disable-interactivity")
-                            $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
-                            
-                            if ($wingetProc.ExitCode -eq 0) {
-                                $result.Success = $true
-                                $result.Method = "Winget"
-                                $result.ActualName = $appData.Name
-                                $script:bloatwareRemovalCount++
-                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Winget: $($appData.Name)]" 'INFO'
-                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Winget" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                                return
-                            }
-                        }
-                        catch {
-                            Write-Log "Winget removal failed for $($match.BloatwareName): $_" 'WARN'
-                        }
-                    }
-                }
-                
-                'Choco' {
-                    if ($toolCapabilities.Chocolatey -and $appData.Name) {
-                        try {
-                            $chocoArgs = @("uninstall", $appData.Name, "-y", "--remove-dependencies")
-                            $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                            
-                            if ($chocoProc.ExitCode -eq 0) {
-                                $result.Success = $true
-                                $result.Method = "Chocolatey"
-                                $result.ActualName = $appData.Name
-                                $script:bloatwareRemovalCount++
-                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Chocolatey: $($appData.Name)]" 'INFO'
-                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Chocolatey" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                                return
-                            }
-                        }
-                        catch {
-                            Write-Log "Chocolatey removal failed for $($match.BloatwareName): $_" 'WARN'
-                        }
-                    }
-                }
-            }
-
-            # If no method succeeded
-            if (-not $result.Success) {
-                $script:bloatwareFailedCount++
-                Write-Log "✗ FAILED: $($match.BloatwareName) - No successful removal method" 'WARN'
-                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal failed" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-            }
-        }
-        catch {
-            $script:bloatwareFailedCount++
-            Write-Log "✗ EXCEPTION: $($match.BloatwareName) - $_" 'ERROR'
-            Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal exception" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-        }
-        
-        # Add successful results to removedApps collection for reporting
-        if ($result.Success) {
-            [void]$removedApps.Add([PSCustomObject]@{
-                    AppName    = $result.AppName
-                    ActualName = $result.ActualName
-                    Method     = $result.Method
-                    Success    = $result.Success
-                })
-        }
+    # Add successful results to removedApps collection for reporting
+    if ($result.Success) {
+        [void]$removedApps.Add([PSCustomObject]@{
+                AppName    = $result.AppName
+                ActualName = $result.ActualName
+                Method     = $result.Method
+                Success    = $result.Success
+            })
     }
+}
     
-    # ================================================================
-    # STEP 4: Display Results and Summary
-    # ================================================================
-    # Convert removedApps to array for processing and detailed reporting
-    $removedArray = @($removedApps)
+# ================================================================
+# STEP 4: Display Results and Summary
+# ================================================================
+# Convert removedApps to array for processing and detailed reporting
+$removedArray = @($removedApps)
     
-    if ($script:bloatwareRemovalCount -gt 0) {
-        Write-Log "=== BLOATWARE REMOVAL RESULTS ===" 'INFO'
-        Write-Host "=== BLOATWARE REMOVAL RESULTS ===" -ForegroundColor Yellow
-        Write-Log "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" 'INFO'
-        Write-Host "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" -ForegroundColor Green
+if ($script:bloatwareRemovalCount -gt 0) {
+    Write-Log "=== BLOATWARE REMOVAL RESULTS ===" 'INFO'
+    Write-Host "=== BLOATWARE REMOVAL RESULTS ===" -ForegroundColor Yellow
+    Write-Log "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" 'INFO'
+    Write-Host "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" -ForegroundColor Green
         
-        # Log detailed removal information using restored $removedApps data
-        if ($removedArray.Count -gt 0) {
-            Write-Log "DETAILED REMOVAL BREAKDOWN:" 'INFO'
-            foreach ($removed in $removedArray) {
-                Write-Log "  → $($removed.ActualName) [Method: $($removed.Method)]" 'INFO'
-            }
+    # Log detailed removal information using restored $removedApps data
+    if ($removedArray.Count -gt 0) {
+        Write-Log "DETAILED REMOVAL BREAKDOWN:" 'INFO'
+        foreach ($removed in $removedArray) {
+            Write-Log "  → $($removed.ActualName) [Method: $($removed.Method)]" 'INFO'
+        }
             
-            # Method breakdown statistics
-            $methodGroups = $removedArray | Group-Object Method
-            $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
-            Write-Log "Removal methods used: $methodSummary" 'INFO'
-        }
+        # Method breakdown statistics
+        $methodGroups = $removedArray | Group-Object Method
+        $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
+        Write-Log "Removal methods used: $methodSummary" 'INFO'
+    }
         
-        if ($script:bloatwareFailedCount -gt 0) {
-            Write-Log "✗ Failed to remove $script:bloatwareFailedCount apps" 'WARN'
-            Write-Host "✗ Failed to remove $script:bloatwareFailedCount apps" -ForegroundColor Yellow
-        }
+    if ($script:bloatwareFailedCount -gt 0) {
+        Write-Log "✗ Failed to remove $script:bloatwareFailedCount apps" 'WARN'
+        Write-Host "✗ Failed to remove $script:bloatwareFailedCount apps" -ForegroundColor Yellow
+    }
+}
+else {
+    if ($bloatwareMatches.Count -eq 0) {
+        Write-Log "✓ No bloatware detected - system clean" 'INFO'
+        Write-Host "✓ No bloatware detected - system clean" -ForegroundColor Green
     }
     else {
-        if ($bloatwareMatches.Count -eq 0) {
-            Write-Log "✓ No bloatware detected - system clean" 'INFO'
-            Write-Host "✓ No bloatware detected - system clean" -ForegroundColor Green
-        }
-        else {
-            Write-Log "✗ No bloatware apps were successfully removed" 'WARN'
-            Write-Host "✗ No bloatware apps were successfully removed" -ForegroundColor Yellow
-        }
+        Write-Log "✗ No bloatware apps were successfully removed" 'WARN'
+        Write-Host "✗ No bloatware apps were successfully removed" -ForegroundColor Yellow
     }
-
-    # Ultra-fast registry cleanup to prevent reinstallation
-    $registryKeys = @(
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent',
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
-    )
-
-    $registryKeys | ForEach-Object -Parallel {
-        $regKey = $_
-        try {
-            if (-not (Test-Path $regKey)) { 
-                New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null 
-            }
-
-            $settings = @{
-                'SilentInstalledAppsEnabled'   = 0
-                'ContentDeliveryAllowed'       = 0
-                'OemPreInstalledAppsEnabled'   = 0
-                'PreInstalledAppsEnabled'      = 0
-                'SubscribedContentEnabled'     = 0
-                'SystemPaneSuggestionsEnabled' = 0
-                'SoftLandingEnabled'           = 0
-            }
-
-            foreach ($setting in $settings.GetEnumerator()) {
-                Set-ItemProperty -Path $regKey -Name $setting.Key -Value $setting.Value -ErrorAction SilentlyContinue
-            }
-        }
-        catch { }
-    } -ThrottleLimit 3 | Out-Null
-
-    # ================================================================
-    # STEP 4: Update previous installed apps list for next diff operation
-    # ================================================================
-    try {
-        # Update the previous list with current list for next run
-        Copy-Item $currentListPath $previousListPath -Force
-        Write-Log "Updated previous installed apps list for next diff operation" 'INFO'
-
-        # Create summary report of diff-based processing
-        $diffSummary = @{
-            TotalCurrentApps   = $currentInstalledApps.Count
-            NewlyInstalledApps = $newlyInstalledApps.Count
-            BloatwareRemoved   = if ($removedArray) { $removedArray.Count } else { 0 }
-            ProcessingMode     = "Diff-Based (Optimized)"
-            LastRun            = (Get-Date).ToString('o')
-        }
-
-        $diffSummaryPath = Join-Path $global:TempFolder 'bloatware_diff_summary.json'
-        $diffSummary | ConvertTo-Json -Depth 3 | Out-File $diffSummaryPath -Encoding UTF8
-        Write-Log "Diff-based processing summary saved to $diffSummaryPath" 'INFO'
-    }
-    catch {
-        Write-Log "Failed to update previous list for diff operation: $_" 'WARN'
-    }
-
-    Write-Log "[END] Ultra-Enhanced Bloatware Removal - Diff-Based Processing Complete" 'INFO'
 }
+
+# Ultra-fast registry cleanup to prevent reinstallation
+$registryKeys = @(
+    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager',
+    'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent',
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+)
+
+
+$registryKeys | ForEach-Object -Parallel {
+    $regKey = $_
+    try {
+        if (-not (Test-Path $regKey)) { 
+            New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null 
+        }
+
+        $settings = @{
+            'SilentInstalledAppsEnabled'   = 0
+            'ContentDeliveryAllowed'       = 0
+            'OemPreInstalledAppsEnabled'   = 0
+            'PreInstalledAppsEnabled'      = 0
+            'SubscribedContentEnabled'     = 0
+            'SystemPaneSuggestionsEnabled' = 0
+            'SoftLandingEnabled'           = 0
+        }
+
+        foreach ($setting in $settings.GetEnumerator()) {
+            Set-ItemProperty -Path $regKey -Name $setting.Key -Value $setting.Value -ErrorAction SilentlyContinue
+        }
+    }
+    catch { }
+    # End try/catch for registry key
+} -ThrottleLimit 3 | Out-Null # End ForEach-Object -Parallel
+
+# ================================================================
+# STEP 4: Update previous installed apps list for next diff operation
+# ================================================================
+try {
+    # Update the previous list with current list for next run
+    Copy-Item $currentListPath $previousListPath -Force
+    Write-Log "Updated previous installed apps list for next diff operation" 'INFO'
+
+    # Create summary report of diff-based processing
+    $diffSummary = @{
+        TotalCurrentApps   = $currentInstalledApps.Count
+        NewlyInstalledApps = $newlyInstalledApps.Count
+        BloatwareRemoved   = if ($removedArray) { $removedArray.Count } else { 0 }
+        ProcessingMode     = "Diff-Based (Optimized)"
+        LastRun            = (Get-Date).ToString('o')
+    }
+
+    $diffSummaryPath = Join-Path $global:TempFolder 'bloatware_diff_summary.json'
+    $diffSummary | ConvertTo-Json -Depth 3 | Out-File $diffSummaryPath -Encoding UTF8
+    Write-Log "Diff-based processing summary saved to $diffSummaryPath" 'INFO'
+}
+catch {
+    Write-Log "Failed to update previous list for diff operation: $_" 'WARN'
+}
+
+Write-Log "[END] Ultra-Enhanced Bloatware Removal - Diff-Based Processing Complete" 'INFO'
+
 
 # ===============================
 # SECTION 5: ESSENTIAL APPS MANAGEMENT
@@ -3912,9 +4034,9 @@ function Set-FirefoxuBlockOrigin {
         $uBlockConfig = @{
             "uBlock0@raymondhill.net" = @{
                 "installation_mode" = "force_installed"
-                "install_url" = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
-                "updates_disabled" = $false
-                "default_area" = "navbar"
+                "install_url"       = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+                "updates_disabled"  = $false
+                "default_area"      = "navbar"
             }
         } | ConvertTo-Json -Depth 3 -Compress
         
@@ -3937,9 +4059,9 @@ function Set-FirefoxuBlockOrigin {
                 "ExtensionSettings" = @{
                     "uBlock0@raymondhill.net" = @{
                         "installation_mode" = "force_installed"
-                        "install_url" = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
-                        "updates_disabled" = $false
-                        "default_area" = "navbar"
+                        "install_url"       = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+                        "updates_disabled"  = $false
+                        "default_area"      = "navbar"
                     }
                 }
             }
@@ -4165,19 +4287,20 @@ function Disable-SpotlightMeetNowNewsLocation {
 
         # Remove News and Interests (Windows 10)
         $newsResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-                                              -ValueName "ShellFeedsTaskbarViewMode" `
-                                              -Value 2 `
-                                              -ValueType "DWord" `
-                                              -FallbackPaths @(
-                                                  "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
-                                                  "HKCU:\Software\Policies\Microsoft\Windows\Windows Feeds",
-                                                  "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
-                                              ) `
-                                              -Description "News and Interests disable setting"
+            -ValueName "ShellFeedsTaskbarViewMode" `
+            -Value 2 `
+            -ValueType "DWord" `
+            -FallbackPaths @(
+            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+            "HKCU:\Software\Policies\Microsoft\Windows\Windows Feeds",
+            "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
+        ) `
+            -Description "News and Interests disable setting"
         
         if ($newsResult.Success) {
             Write-Log "News and Interests removed from taskbar successfully." 'INFO'
-        } else {
+        }
+        else {
             Write-Log "Warning: Could not disable News and Interests: $($newsResult.Error)" 'WARN'
             if ($newsResult.Suggestion) {
                 Write-LogFile "Suggestion: $($newsResult.Suggestion)"
@@ -4186,10 +4309,10 @@ function Disable-SpotlightMeetNowNewsLocation {
             # Additional fallback: Try to disable via TaskbarDa in Explorer Advanced
             try {
                 $taskbarDaResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
-                                                          -ValueName "TaskbarDa" `
-                                                          -Value 0 `
-                                                          -ValueType "DWord" `
-                                                          -Description "TaskbarDa (News and Interests alternative)"
+                    -ValueName "TaskbarDa" `
+                    -Value 0 `
+                    -ValueType "DWord" `
+                    -Description "TaskbarDa (News and Interests alternative)"
                 if ($taskbarDaResult.Success) {
                     Write-Log "News and Interests disabled via TaskbarDa setting." 'INFO'
                 }
@@ -4201,20 +4324,21 @@ function Disable-SpotlightMeetNowNewsLocation {
 
         # Remove Widgets (Windows 11)
         $widgetsResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
-                                                 -ValueName "TaskbarDa" `
-                                                 -Value 0 `
-                                                 -ValueType "DWord" `
-                                                 -FallbackPaths @(
-                                                     "HKCU:\Software\Microsoft\Windows\CurrentVersion\WebExperience",
-                                                     "HKCU:\Software\Policies\Microsoft\Windows\WindowsFeeds",
-                                                     "HKCU:\Software\Policies\Microsoft\Dsh",
-                                                     "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
-                                                 ) `
-                                                 -Description "Widgets disable setting"
+            -ValueName "TaskbarDa" `
+            -Value 0 `
+            -ValueType "DWord" `
+            -FallbackPaths @(
+            "HKCU:\Software\Microsoft\Windows\CurrentVersion\WebExperience",
+            "HKCU:\Software\Policies\Microsoft\Windows\WindowsFeeds",
+            "HKCU:\Software\Policies\Microsoft\Dsh",
+            "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
+        ) `
+            -Description "Widgets disable setting"
         
         if ($widgetsResult.Success) {
             Write-Log "Widgets removed from taskbar successfully." 'INFO'
-        } else {
+        }
+        else {
             Write-Log "Warning: Could not disable Widgets: $($widgetsResult.Error)" 'WARN'
             if ($widgetsResult.Suggestion) {
                 Write-LogFile "Suggestion: $($widgetsResult.Suggestion)"
@@ -4223,10 +4347,10 @@ function Disable-SpotlightMeetNowNewsLocation {
             # Additional fallback: Try WebExperience approach
             try {
                 $webExpResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\WebExperience" `
-                                                       -ValueName "TaskbarWebButtonIsDisabled" `
-                                                       -Value 1 `
-                                                       -ValueType "DWord" `
-                                                       -Description "WebExperience Widgets disable"
+                    -ValueName "TaskbarWebButtonIsDisabled" `
+                    -Value 1 `
+                    -ValueType "DWord" `
+                    -Description "WebExperience Widgets disable"
                 if ($webExpResult.Success) {
                     Write-Log "Widgets disabled via WebExperience setting." 'INFO'
                 }
@@ -5561,14 +5685,17 @@ function Start-SystemHealthRepair {
                 if ($LASTEXITCODE -eq 0 -and $dismRepairOutput -match "The restore operation completed successfully") {
                     Write-Log "DISM RestoreHealth completed successfully." 'SUCCESS'
                     $results.DismRepairSuccess = $true
-                } else {
+                }
+                else {
                     Write-Log "DISM RestoreHealth failed. Exit Code: $LASTEXITCODE" 'ERROR'
                     $results.DismRepairSuccess = $false
                 }
-            } else {
+            }
+            else {
                 Write-Log "DISM found no component store corruption." 'INFO'
             }
-        } catch {
+        }
+        catch {
             Write-Log "An error occurred during the DISM operation: $($_.Exception.Message)" 'ERROR'
         }
 
@@ -5602,15 +5729,18 @@ function Start-SystemHealthRepair {
                 if ($sfcOutput -match "did not find any integrity violations|found corrupt files and successfully repaired them") {
                     Write-Log "SFC scan completed successfully." 'SUCCESS'
                     $results.SfcRepairSuccess = $true
-                } else {
+                }
+                else {
                     Write-Log "SFC scan found issues that could not be fully repaired." 'WARN'
                     $results.SfcRepairSuccess = $false
                 }
-            } catch {
+            }
+            catch {
                 Write-Log "An error occurred during the SFC scan: $($_.Exception.Message)" 'ERROR'
                 $results.SfcRepairSuccess = $false
             }
-        } else {
+        }
+        else {
             Write-Log "SFC scan not needed based on current analysis." 'INFO'
         }
 
