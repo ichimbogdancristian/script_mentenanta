@@ -2438,8 +2438,8 @@ function Get-AppxProvisionedPackageCompatible {
 # ================================================================
 function Get-ProvisionedAppxBloatware {
     param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$BloatwarePatterns,
+        [Parameter(Mandatory = $false)]
+        [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
         [string]$Context = "Provisioned AppX Scan",
         [Parameter(Mandatory = $false)]
