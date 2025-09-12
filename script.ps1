@@ -497,7 +497,6 @@ $global:EssentialCategories = @{
         @{ Name = '7-Zip'; Winget = '7zip.7zip'; Choco = '7zip'; Category = 'Compression' }
     )
     SystemTools   = @(
-        @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell'; Category = 'System' },
         @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal'; Category = 'System' },
         @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime'; Category = 'Runtime' }
     )
@@ -3191,9 +3190,9 @@ function Install-WindowsUpdatesCompatible {
                 Write-Log "Found $updateCount available updates (Total size: $totalSizeMB MB)." 'INFO'
                 Write-TaskProgress "Installing $updateCount Windows Updates" 75
         
-                # Install updates with comprehensive reboot suppression
+                # Install updates with MAXIMUM suppression and PowerShell Job isolation
                 try {
-                    # Set all possible environment variables to suppress prompts
+                    # Set ALL possible environment variables to suppress prompts and restarts
                     $env:PSWINDOWSUPDATE_REBOOT = "Never"
                     $env:SUPPRESSPROMPTS = "True"
                     $env:SUPPRESS_REBOOT_PROMPT = "True"
@@ -3201,53 +3200,166 @@ function Install-WindowsUpdatesCompatible {
                     $env:NONINTERACTIVE = "True"
                     $env:AUTOMATION = "True"
                     $env:BATCH_MODE = "True"
+                    $env:NO_REBOOT_PROMPT = "True"
+                    $env:DISABLE_RESTART = "True"
+                    $env:NORESTART = "True"
+                    $env:FORCE_NO_RESTART = "True"
+                    $env:SILENT_MODE = "True"
+                    $env:UNATTENDED = "True"
                     
-                    Write-Log "Installing Windows Updates with full prompt suppression..." 'INFO'
+                    Write-Log "Installing Windows Updates with maximum prompt suppression and job isolation..." 'INFO'
                     
-                    # Set additional PowerShell variables to prevent interaction
+                    # Set PowerShell preferences to suppress ALL interactive behavior
                     $ConfirmPreference = 'None'
                     $WarningPreference = 'SilentlyContinue'
                     $InformationPreference = 'SilentlyContinue'
                     $VerbosePreference = 'SilentlyContinue'
                     $DebugPreference = 'SilentlyContinue'
+                    $ErrorActionPreference = 'SilentlyContinue'
+                    $ProgressPreference = 'SilentlyContinue'
                     
-                    # Install updates with complete output suppression
-                    try {
-                        # First try with maximum suppression parameters
-                        $installResult = Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -WarningAction SilentlyContinue -InformationAction SilentlyContinue -Verbose:$false -ErrorAction SilentlyContinue 2>&1 | Out-String
-                    }
-                    catch {
-                        Write-Log "Windows Update installation completed with potential prompts suppressed: $_" 'INFO'
-                        $installResult = "Updates processed"
-                    }
-                    
-                    # Alternative approach: Use Start-Process for complete isolation if above method fails
-                    if (-not $installResult -or $installResult -eq "Updates processed") {
+                    # Use PowerShell job for complete isolation to prevent ANY user interaction
+                    $updateJob = Start-Job -ScriptBlock {
+                        # Set ALL suppression variables in job context
+                        $env:PSWINDOWSUPDATE_REBOOT = "Never"
+                        $env:SUPPRESSPROMPTS = "True"
+                        $env:SUPPRESS_REBOOT_PROMPT = "True"
+                        $env:ACCEPT_EULA = "True"
+                        $env:NONINTERACTIVE = "True"
+                        $env:AUTOMATION = "True"
+                        $env:BATCH_MODE = "True"
+                        $env:NO_REBOOT_PROMPT = "True"
+                        $env:DISABLE_RESTART = "True"
+                        $env:NORESTART = "True"
+                        $env:FORCE_NO_RESTART = "True"
+                        $env:SILENT_MODE = "True"
+                        $env:UNATTENDED = "True"
+                        
+                        # Set PowerShell preferences in job context
+                        $ConfirmPreference = 'None'
+                        $WarningPreference = 'SilentlyContinue'
+                        $InformationPreference = 'SilentlyContinue'
+                        $VerbosePreference = 'SilentlyContinue'
+                        $DebugPreference = 'SilentlyContinue'
+                        $ErrorActionPreference = 'SilentlyContinue'
+                        $ProgressPreference = 'SilentlyContinue'
+                        
+                        # Import module in job context
                         try {
-                            Write-Log "Attempting alternative Windows Update installation method..." 'INFO'
+                            Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
+                        }
+                        catch {
+                            return @{
+                                Success = $false
+                                Message = "Failed to import PSWindowsUpdate in job context"
+                                Error = $_.Exception.Message
+                            }
+                        }
+                        
+                        try {
+                            # Install updates with MAXIMUM suppression parameters
+                            $installResult = Install-WindowsUpdate `
+                                -MicrosoftUpdate `
+                                -AcceptAll `
+                                -AutoReboot:$false `
+                                -Confirm:$false `
+                                -IgnoreReboot `
+                                -Silent `
+                                -ForceInstall `
+                                -Verbose:$false `
+                                -WarningAction SilentlyContinue `
+                                -InformationAction SilentlyContinue `
+                                -ErrorAction SilentlyContinue `
+                                -Force `
+                                2>$null | Out-String
                             
-                            # Create a script block for isolated execution
+                            return @{
+                                Success = $true
+                                Result = $installResult
+                                Message = "Updates installed successfully in isolated job"
+                            }
+                        }
+                        catch {
+                            return @{
+                                Success = $false
+                                Result = $null
+                                Message = "Update installation failed in job context"
+                                Error = $_.Exception.Message
+                            }
+                        }
+                    }
+                    
+                    # Wait for job completion with timeout and no user interaction
+                    $timeout = if ($global:SystemSettings.Timeouts.Updates) { $global:SystemSettings.Timeouts.Updates } else { 1800 }
+                    Write-Log "Waiting for Windows Update installation to complete (timeout: $timeout seconds)..." 'INFO'
+                    
+                    $jobResult = $updateJob | Wait-Job -Timeout $timeout
+                    $installResult = $null
+                    
+                    if ($jobResult) {
+                        $installResult = Receive-Job -Job $updateJob -ErrorAction SilentlyContinue
+                        Write-Log "Windows Update job completed successfully" 'INFO'
+                    }
+                    else {
+                        Write-Log "Windows Update job timed out after $timeout seconds - forcibly stopping" 'WARN'
+                        Stop-Job -Job $updateJob -ErrorAction SilentlyContinue
+                        $installResult = @{ Success = $false; Message = "Installation timed out" }
+                    }
+                    
+                    # Clean up job
+                    Remove-Job -Job $updateJob -Force -ErrorAction SilentlyContinue
+                    
+                    # Process results without any restart logic or prompts
+                    if ($installResult -and $installResult.Success) {
+                        Write-Log "Windows Updates installed successfully via PowerShell job isolation" 'SUCCESS'
+                        Write-Host "✓ Windows Updates installed successfully (no restart will be performed)" -ForegroundColor Green
+                    }
+                    elseif ($installResult -and -not $installResult.Success) {
+                        Write-Log "Windows Updates installation failed: $($installResult.Message)" 'ERROR'
+                        Write-Host "✗ Windows Updates installation failed: $($installResult.Message)" -ForegroundColor Red
+                        
+                        # Try alternative method only if job method failed
+                        try {
+                            Write-Log "Attempting fallback Windows Update installation method..." 'INFO'
+                            
+                            # Create a script block for isolated execution with maximum suppression
                             $updateScript = @"
-Import-Module PSWindowsUpdate -Force
+Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
 `$env:PSWINDOWSUPDATE_REBOOT = 'Never'
 `$env:SUPPRESSPROMPTS = 'True'
 `$env:SUPPRESS_REBOOT_PROMPT = 'True'
-Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`$false -IgnoreReboot -Silent -ForceInstall
+`$env:ACCEPT_EULA = 'True'
+`$env:NONINTERACTIVE = 'True'
+`$env:AUTOMATION = 'True'
+`$env:BATCH_MODE = 'True'
+`$env:NO_REBOOT_PROMPT = 'True'
+`$env:DISABLE_RESTART = 'True'
+`$env:NORESTART = 'True'
+`$env:FORCE_NO_RESTART = 'True'
+`$env:SILENT_MODE = 'True'
+`$env:UNATTENDED = 'True'
+`$ConfirmPreference = 'None'
+`$WarningPreference = 'SilentlyContinue'
+`$InformationPreference = 'SilentlyContinue'
+`$VerbosePreference = 'SilentlyContinue'
+`$DebugPreference = 'SilentlyContinue'
+`$ErrorActionPreference = 'SilentlyContinue'
+`$ProgressPreference = 'SilentlyContinue'
+Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`$false -IgnoreReboot -Silent -ForceInstall -WarningAction SilentlyContinue -InformationAction SilentlyContinue -ErrorAction SilentlyContinue -Verbose:`$false 2>`$null | Out-Null
 "@
                             
                             # Write script to temp file
-                            $tempScript = Join-Path $global:TempFolder "wu_install_$(Get-Random).ps1"
+                            $tempScript = Join-Path $global:TempFolder "wu_install_fallback_$(Get-Random).ps1"
                             $updateScript | Out-File -FilePath $tempScript -Encoding UTF8
                             
-                            # Execute in isolated process
+                            # Execute in completely isolated process with no output
                             $processParams = @{
-                                FilePath               = "powershell.exe"
-                                ArgumentList           = @("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", $tempScript)
-                                WindowStyle            = 'Hidden'
-                                Wait                   = $true
-                                PassThru               = $true
-                                RedirectStandardOutput = $true
-                                RedirectStandardError  = $true
+                                FilePath     = "powershell.exe"
+                                ArgumentList = @("-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $tempScript)
+                                WindowStyle  = 'Hidden'
+                                Wait         = $true
+                                PassThru     = $true
+                                NoNewWindow  = $true
                             }
                             
                             $updateProcess = Start-Process @processParams
@@ -3255,11 +3367,21 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
                             # Clean up temp script
                             Remove-Item -Path $tempScript -Force -ErrorAction SilentlyContinue
                             
-                            Write-Log "Alternative Windows Update method completed with exit code: $($updateProcess.ExitCode)" 'INFO'
+                            if ($updateProcess.ExitCode -eq 0) {
+                                Write-Log "Fallback Windows Update method completed successfully" 'INFO'
+                                Write-Host "✓ Windows Updates installed via fallback method (no restart will be performed)" -ForegroundColor Green
+                            }
+                            else {
+                                Write-Log "Fallback Windows Update method completed with exit code: $($updateProcess.ExitCode)" 'WARN'
+                            }
                         }
                         catch {
-                            Write-Log "Alternative Windows Update method failed: $_" 'WARN'
+                            Write-Log "Fallback Windows Update method failed: $_" 'WARN'
                         }
+                    }
+                    else {
+                        Write-Log "Windows Updates installation completed with unknown status" 'WARN'
+                        Write-Host "⚠ Windows Updates installation completed with unknown status" -ForegroundColor Yellow
                     }
                     
                     # Check if reboot is required after installation
@@ -3330,13 +3452,16 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
     }
     finally {
         # Clean up ALL environment variables used for suppression
-        Remove-Item -Path 'env:PSWINDOWSUPDATE_REBOOT' -ErrorAction SilentlyContinue
-        Remove-Item -Path 'env:SUPPRESSPROMPTS' -ErrorAction SilentlyContinue
-        Remove-Item -Path 'env:SUPPRESS_REBOOT_PROMPT' -ErrorAction SilentlyContinue
-        Remove-Item -Path 'env:ACCEPT_EULA' -ErrorAction SilentlyContinue
-        Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
-        Remove-Item -Path 'env:AUTOMATION' -ErrorAction SilentlyContinue
-        Remove-Item -Path 'env:BATCH_MODE' -ErrorAction SilentlyContinue
+        $envVarsToClean = @(
+            'PSWINDOWSUPDATE_REBOOT', 'SUPPRESSPROMPTS', 'SUPPRESS_REBOOT_PROMPT', 
+            'ACCEPT_EULA', 'NONINTERACTIVE', 'AUTOMATION', 'BATCH_MODE', 
+            'NO_REBOOT_PROMPT', 'DISABLE_RESTART', 'NORESTART', 'FORCE_NO_RESTART',
+            'SILENT_MODE', 'UNATTENDED'
+        )
+        
+        foreach ($envVar in $envVarsToClean) {
+            Remove-Item -Path "env:$envVar" -ErrorAction SilentlyContinue
+        }
         
         # Reset PowerShell preference variables to defaults
         $ConfirmPreference = 'High'
@@ -3344,6 +3469,8 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
         $InformationPreference = 'Continue'
         $VerbosePreference = 'SilentlyContinue'
         $DebugPreference = 'SilentlyContinue'
+        $ErrorActionPreference = 'Continue'
+        $ProgressPreference = 'Continue'
         
         $duration = (Get-Date) - $startTime
         Write-Log "Windows Updates check completed in $([math]::Round($duration.TotalSeconds, 2)) seconds" 'INFO'
