@@ -731,14 +731,22 @@ IF NOT EXIST "%PS1_PATH%" (
     pause
     EXIT /B 6
 )
+REM Set environment variables for PowerShell script
+SET "WORKING_DIRECTORY=%WORKING_DIR%"
+SET "SCRIPT_LOG_FILE=%LOG_FILE%"
+
 IF "%PS7_AVAILABLE%"=="YES" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell 7 environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: pwsh.exe"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working directory passed: %WORKING_DIRECTORY%"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Log file passed: %SCRIPT_LOG_FILE%"
     pwsh.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
     SET "LAUNCH_RESULT=%ERRORLEVEL%"
 ) ELSE (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Using Windows PowerShell environment..."
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: powershell.exe"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working directory passed: %WORKING_DIRECTORY%"
+    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Log file passed: %SCRIPT_LOG_FILE%"
     powershell.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
     SET "LAUNCH_RESULT=%ERRORLEVEL%"
 )

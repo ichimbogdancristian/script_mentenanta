@@ -79,7 +79,16 @@ $OSArch = switch ($OSArchitecture) {
     default { $OSArchitecture }
 }
 $PSVersion = $PSVersionTable.PSVersion.ToString()
-$WorkingDirectory = Get-Location
+
+# Determine working directory - use batch script's working directory if available
+if ($env:WORKING_DIRECTORY) {
+    $WorkingDirectory = $env:WORKING_DIRECTORY
+    Write-Host "[INFO] Using working directory from batch script: $WorkingDirectory" -ForegroundColor Green
+} else {
+    # Fallback to script directory if no environment variable
+    $WorkingDirectory = Split-Path -Parent $ScriptFullPath
+    Write-Host "[INFO] Using PowerShell script directory as working directory: $WorkingDirectory" -ForegroundColor Yellow
+}
 
 # Log file setup - prioritize parameter, then environment variable, then default
 if ($LogFilePath) {
@@ -564,7 +573,7 @@ $global:PackageManagers = @{
 $global:BloatwareDetectionSources = @{
     Software    = @{
         Enabled     = $true
-        Sources     = @('AppX', 'Winget', 'Chocolatey', 'Registry', 'ProvisionedAppX')
+        Sources     = @('AppX', 'Winget', 'Chocolatey', 'Registry', 'ProvisionedAppx')
         Priority    = 1
         Description = 'Traditional software package detection methods'
     }
@@ -2422,6 +2431,338 @@ function Get-AppxProvisionedPackageCompatible {
     }
     catch {
         Write-Log "Failed to get provisioned AppX packages: $_" 'WARN'
+        return @()
+    }
+}
+
+# ================================================================
+# Function: Get-AppXBloatware
+# ================================================================
+# Purpose: Discover bloatware in AppX packages (Windows Store apps)
+# Environment: Windows 10/11, requires AppX subsystem
+# Performance: Fast, leverages Get-StandardizedAppInventory cache
+# Dependencies: Get-StandardizedAppInventory
+# Logic: Scans AppX packages, matches against bloatware patterns
+# Features: Detects installed AppX bloatware, supports caching
+# ================================================================
+function Get-AppXBloatware {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$BloatwarePatterns = $global:BloatwareList,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "AppX Scan",
+        [Parameter(Mandatory = $false)]
+        [switch]$UseCache
+    )
+    
+    try {
+        $appInventory = Get-StandardizedAppInventory -Context $Context -UseCache:$UseCache
+        $appXApps = $appInventory | Where-Object { $_.Source -eq 'AppX' }
+        
+        $found = @()
+        foreach ($app in $appXApps) {
+            foreach ($pattern in $BloatwarePatterns) {
+                if ($app.Name -like $pattern -or $app.DisplayName -like "*$pattern*") {
+                    $found += [PSCustomObject]@{
+                        Name          = $app.Name
+                        DisplayName   = $app.DisplayName
+                        Version       = $app.Version
+                        Publisher     = $app.Publisher
+                        InstallDate   = $app.InstallDate
+                        Source        = 'AppX'
+                        MatchedPattern = $pattern
+                        Context       = $Context
+                    }
+                }
+            }
+        }
+        
+        return $found
+    }
+    catch {
+        Write-Log "Error in Get-AppXBloatware: $_" 'ERROR'
+        return @()
+    }
+}
+
+# ================================================================
+# Function: Get-WingetBloatware
+# ================================================================
+# Purpose: Discover bloatware in Winget packages
+# Environment: Windows 10/11, requires Winget package manager
+# Performance: Fast, leverages Get-StandardizedAppInventory cache
+# Dependencies: Get-StandardizedAppInventory
+# Logic: Scans Winget packages, matches against bloatware patterns
+# Features: Detects Winget-managed bloatware, supports caching
+# ================================================================
+function Get-WingetBloatware {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$BloatwarePatterns = $global:BloatwareList,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "Winget Scan",
+        [Parameter(Mandatory = $false)]
+        [switch]$UseCache
+    )
+    
+    try {
+        $appInventory = Get-StandardizedAppInventory -Context $Context -UseCache:$UseCache
+        $wingetApps = $appInventory | Where-Object { $_.Source -eq 'Winget' }
+        
+        $found = @()
+        foreach ($app in $wingetApps) {
+            foreach ($pattern in $BloatwarePatterns) {
+                if ($app.Name -like $pattern -or $app.DisplayName -like "*$pattern*") {
+                    $found += [PSCustomObject]@{
+                        Name          = $app.Name
+                        DisplayName   = $app.DisplayName
+                        Version       = $app.Version
+                        Publisher     = $app.Publisher
+                        InstallDate   = $app.InstallDate
+                        Source        = 'Winget'
+                        MatchedPattern = $pattern
+                        Context       = $Context
+                    }
+                }
+            }
+        }
+        
+        return $found
+    }
+    catch {
+        Write-Log "Error in Get-WingetBloatware: $_" 'ERROR'
+        return @()
+    }
+}
+
+# ================================================================
+# Function: Get-ChocolateyBloatware
+# ================================================================
+# Purpose: Discover bloatware in Chocolatey packages
+# Environment: Windows, requires Chocolatey package manager
+# Performance: Fast, leverages Get-StandardizedAppInventory cache
+# Dependencies: Get-StandardizedAppInventory
+# Logic: Scans Chocolatey packages, matches against bloatware patterns
+# Features: Detects Chocolatey-managed bloatware, supports caching
+# ================================================================
+function Get-ChocolateyBloatware {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$BloatwarePatterns = $global:BloatwareList,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "Chocolatey Scan",
+        [Parameter(Mandatory = $false)]
+        [switch]$UseCache
+    )
+    
+    try {
+        $appInventory = Get-StandardizedAppInventory -Context $Context -UseCache:$UseCache
+        $chocoApps = $appInventory | Where-Object { $_.Source -eq 'Chocolatey' }
+        
+        $found = @()
+        foreach ($app in $chocoApps) {
+            foreach ($pattern in $BloatwarePatterns) {
+                if ($app.Name -like $pattern -or $app.DisplayName -like "*$pattern*") {
+                    $found += [PSCustomObject]@{
+                        Name          = $app.Name
+                        DisplayName   = $app.DisplayName
+                        Version       = $app.Version
+                        Publisher     = $app.Publisher
+                        InstallDate   = $app.InstallDate
+                        Source        = 'Chocolatey'
+                        MatchedPattern = $pattern
+                        Context       = $Context
+                    }
+                }
+            }
+        }
+        
+        return $found
+    }
+    catch {
+        Write-Log "Error in Get-ChocolateyBloatware: $_" 'ERROR'
+        return @()
+    }
+}
+
+# ================================================================
+# Function: Get-RegistryBloatware
+# ================================================================
+# Purpose: Discover bloatware in Windows Registry uninstall keys
+# Environment: Windows, requires registry access
+# Performance: Fast, leverages existing registry scan logic
+# Dependencies: Registry access, bloatware pattern matching
+# Logic: Scans registry uninstall keys, matches against bloatware patterns
+# Features: Detects registry-based bloatware installations, comprehensive coverage
+# ================================================================
+function Get-RegistryBloatware {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$BloatwarePatterns = $global:BloatwareList,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "Registry Scan",
+        [Parameter(Mandatory = $false)]
+        [switch]$UseCache
+    )
+    
+    try {
+        $registryPaths = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+        
+        $found = @()
+        foreach ($path in $registryPaths) {
+            $apps = Get-ItemProperty $path -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -and $_.DisplayName -notmatch '^KB[0-9]+' }
+            
+            foreach ($app in $apps) {
+                foreach ($pattern in $BloatwarePatterns) {
+                    if ($app.DisplayName -like "*$pattern*" -or $app.PSChildName -like $pattern) {
+                        $found += [PSCustomObject]@{
+                            Name          = $app.PSChildName
+                            DisplayName   = $app.DisplayName
+                            Version       = $app.DisplayVersion
+                            Publisher     = $app.Publisher
+                            InstallDate   = $app.InstallDate
+                            Source        = 'Registry'
+                            MatchedPattern = $pattern
+                            Context       = $Context
+                        }
+                    }
+                }
+            }
+        }
+        
+        return $found
+    }
+    catch {
+        Write-Log "Error in Get-RegistryBloatware: $_" 'ERROR'
+        return @()
+    }
+}
+
+# ================================================================
+# Function: Get-BrowserExtensionsBloatware
+# ================================================================
+# Purpose: Discover bloatware in browser extensions (Chrome, Edge, Firefox)
+# Environment: Windows, checks browser extension folders
+# Performance: Fast, filesystem-based detection
+# Dependencies: File system access to browser profiles
+# Logic: Scans browser extension directories, matches against bloatware patterns
+# Features: Detects malicious/unwanted browser extensions
+# ================================================================
+function Get-BrowserExtensionsBloatware {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$BloatwarePatterns = $global:BloatwareList,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "Browser Extensions Scan",
+        [Parameter(Mandatory = $false)]
+        [switch]$UseCache
+    )
+    
+    try {
+        # For now, return empty array as this would require complex browser-specific logic
+        # Can be expanded to scan Chrome/Edge/Firefox extension folders
+        Write-Log "Browser extensions bloatware detection not yet implemented" 'INFO'
+        return @()
+    }
+    catch {
+        Write-Log "Error in Get-BrowserExtensionsBloatware: $_" 'ERROR'
+        return @()
+    }
+}
+
+# ================================================================
+# Function: Get-ContextMenuBloatware
+# ================================================================
+# Purpose: Discover bloatware in Windows context menu entries
+# Environment: Windows, requires registry access to context menu keys
+# Performance: Fast, registry-based detection
+# Dependencies: Registry access to context menu keys
+# Logic: Scans context menu registry entries, matches against bloatware patterns
+# Features: Detects unwanted context menu entries added by bloatware
+# ================================================================
+function Get-ContextMenuBloatware {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$BloatwarePatterns = $global:BloatwareList,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "Context Menu Scan",
+        [Parameter(Mandatory = $false)]
+        [switch]$UseCache
+    )
+    
+    try {
+        # For now, return empty array as this would require scanning multiple context menu registry locations
+        # Can be expanded to check HKCR shell context menus
+        Write-Log "Context menu bloatware detection not yet implemented" 'INFO'
+        return @()
+    }
+    catch {
+        Write-Log "Error in Get-ContextMenuBloatware: $_" 'ERROR'
+        return @()
+    }
+}
+
+# ================================================================
+# Function: Get-StartupProgramsBloatware
+# ================================================================
+# Purpose: Discover bloatware in Windows startup programs
+# Environment: Windows, requires registry access to startup keys
+# Performance: Fast, registry and folder-based detection
+# Dependencies: Registry access and filesystem access
+# Logic: Scans startup registry keys and folders, matches against bloatware patterns
+# Features: Detects unwanted startup programs added by bloatware
+# ================================================================
+function Get-StartupProgramsBloatware {
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$BloatwarePatterns = $global:BloatwareList,
+        [Parameter(Mandatory = $false)]
+        [string]$Context = "Startup Programs Scan",
+        [Parameter(Mandatory = $false)]
+        [switch]$UseCache
+    )
+    
+    try {
+        $startupLocations = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
+        )
+        
+        $found = @()
+        foreach ($location in $startupLocations) {
+            $startupItems = Get-ItemProperty $location -ErrorAction SilentlyContinue
+            if ($startupItems) {
+                $startupItems.PSObject.Properties | ForEach-Object {
+                    if ($_.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')) {
+                        foreach ($pattern in $BloatwarePatterns) {
+                            if ($_.Name -like "*$pattern*" -or $_.Value -like "*$pattern*") {
+                                $found += [PSCustomObject]@{
+                                    Name          = $_.Name
+                                    DisplayName   = $_.Name
+                                    Version       = 'Unknown'
+                                    Publisher     = 'Unknown'
+                                    InstallDate   = 'Unknown'
+                                    Source        = 'Startup'
+                                    MatchedPattern = $pattern
+                                    Context       = $Context
+                                    Path          = $_.Value
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return $found
+    }
+    catch {
+        Write-Log "Error in Get-StartupProgramsBloatware: $_" 'ERROR'
         return @()
     }
 }
