@@ -1221,12 +1221,13 @@ function Get-RegistryUninstallBloatware {
                 foreach ($pattern in $BloatwarePatterns) {
                     if ($displayName -like "*$pattern*") {
                         $found += [PSCustomObject]@{
-                            Name         = $displayName
-                            DisplayName  = $displayName
-                            Version      = $props.DisplayVersion
-                            Source       = 'Registry'
-                            UninstallKey = $key.PSChildName
-                            Context      = $Context
+                            Name           = $displayName
+                            DisplayName    = $displayName
+                            Version        = $props.DisplayVersion
+                            UninstallString = $props.UninstallString
+                            Source         = 'Registry'
+                            UninstallKey   = $key.PSChildName
+                            Context        = $Context
                         }
                         Write-Log "[REGISTRY BLOATWARE] $displayName (Version: $($props.DisplayVersion))" 'INFO'
                         break
@@ -4309,7 +4310,10 @@ function Remove-Bloatware {
     foreach ($reg in $registryBloatware) {
         $bloatwareMatches.Add([PSCustomObject]@{
                 BloatwareName = $reg.Name
-                InstalledApp  = $reg
+                InstalledApp  = @{
+                    Type = 'RegistryUninstall'
+                    Data = $reg
+                }
                 MatchType     = 'RegistryUninstall'
             })
     }
@@ -4320,7 +4324,10 @@ function Remove-Bloatware {
     foreach ($prov in $provisionedBloatware) {
         $bloatwareMatches.Add([PSCustomObject]@{
                 BloatwareName = $prov.Name
-                InstalledApp  = $prov
+                InstalledApp  = @{
+                    Type = 'ProvisionedAppX'
+                    Data = $prov
+                }
                 MatchType     = 'ProvisionedAppX'
             })
     }
@@ -4334,7 +4341,10 @@ function Remove-Bloatware {
         foreach ($feature in $windowsFeaturesBloatware) {
             $bloatwareMatches.Add([PSCustomObject]@{
                     BloatwareName = $feature.Name
-                    InstalledApp  = $feature
+                    InstalledApp  = @{
+                        Type = 'WindowsFeature'
+                        Data = $feature
+                    }
                     MatchType     = 'WindowsFeature'
                 })
         }
@@ -4345,7 +4355,10 @@ function Remove-Bloatware {
         foreach ($service in $servicesBloatware) {
             $bloatwareMatches.Add([PSCustomObject]@{
                     BloatwareName = $service.Name
-                    InstalledApp  = $service
+                    InstalledApp  = @{
+                        Type = 'Service'
+                        Data = $service
+                    }
                     MatchType     = 'Service'
                 })
         }
@@ -4356,7 +4369,10 @@ function Remove-Bloatware {
         foreach ($task in $scheduledTasksBloatware) {
             $bloatwareMatches.Add([PSCustomObject]@{
                     BloatwareName = $task.Name
-                    InstalledApp  = $task
+                    InstalledApp  = @{
+                        Type = 'ScheduledTask'
+                        Data = $task
+                    }
                     MatchType     = 'ScheduledTask'
                 })
         }
@@ -4367,7 +4383,10 @@ function Remove-Bloatware {
         foreach ($shortcut in $startMenuBloatware) {
             $bloatwareMatches.Add([PSCustomObject]@{
                     BloatwareName = $shortcut.Name
-                    InstalledApp  = $shortcut
+                    InstalledApp  = @{
+                        Type = 'StartMenuShortcut'
+                        Data = $shortcut
+                    }
                     MatchType     = 'StartMenuShortcut'
                 })
         }
@@ -4447,81 +4466,484 @@ function Remove-Bloatware {
             # Optimized removal by type priority
             switch ($appType) {
                 'AppX' {
-                    if ($toolCapabilities.AppX -and $appData.PackageFullName) {
+                    if ($toolCapabilities.AppX -and ($appData.PackageFullName -or $appData.Name)) {
                         try {
-                            Remove-AppxPackage -Package $appData.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                            $packageName = if ($appData.Name) { $appData.Name } else { ($appData.PackageFullName -split '_')[0] }
+                            $removalSuccess = $false
                             
-                            # Verify removal
-                            $remainingPackage = Get-AppxPackage -PackageFullName $appData.PackageFullName -ErrorAction SilentlyContinue
-                            if (-not $remainingPackage) {
+                            Write-Log "Attempting comprehensive AppX removal for: $packageName" 'INFO'
+                            
+                            # Method 1: Remove all user installations
+                            $userPackages = Get-AppxPackage -Name "*$packageName*" -AllUsers -ErrorAction SilentlyContinue
+                            foreach ($package in $userPackages) {
+                                try {
+                                    Write-Log "Removing user package: $($package.PackageFullName)" 'INFO'
+                                    Remove-AppxPackage -Package $package.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+                                    $removalSuccess = $true
+                                }
+                                catch {
+                                    Write-Log "Failed to remove user package $($package.PackageFullName): $_" 'WARN'
+                                }
+                            }
+                            
+                            # Method 2: Remove provisioned packages (prevents reinstallation for new users)
+                            $provisionedPackages = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*$packageName*" }
+                            foreach ($provPackage in $provisionedPackages) {
+                                try {
+                                    Write-Log "Removing provisioned package: $($provPackage.DisplayName)" 'INFO'
+                                    Remove-AppxProvisionedPackage -Online -PackageName $provPackage.PackageName -ErrorAction SilentlyContinue
+                                    $removalSuccess = $true
+                                }
+                                catch {
+                                    Write-Log "Failed to remove provisioned package $($provPackage.DisplayName): $_" 'WARN'
+                                }
+                            }
+                            
+                            # Method 3: DISM removal for system packages
+                            try {
+                                if (Get-Command dism -ErrorAction SilentlyContinue) {
+                                    Write-Log "Attempting DISM removal for: $packageName" 'INFO'
+                                    $dismOutput = & dism /online /get-provisionedappxpackages | Out-String
+                                    if ($dismOutput -match "PackageName : .*$packageName.*") {
+                                        $matches = [regex]::Matches($dismOutput, "PackageName : (.+?$packageName[^\r\n]+)")
+                                        foreach ($match in $matches) {
+                                            $pkgName = $match.Groups[1].Value.Trim()
+                                            Write-Log "DISM removing: $pkgName" 'INFO'
+                                            & dism /online /remove-provisionedappxpackage /packagename:"$pkgName" 2>$null
+                                            $removalSuccess = $true
+                                        }
+                                    }
+                                }
+                            }
+                            catch {
+                                Write-Log "DISM removal failed: $_" 'WARN'
+                            }
+                            
+                            # Method 4: Registry cleanup (for stubborn entries)
+                            try {
+                                $regPaths = @(
+                                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications",
+                                    "HKCU:\SOFTWARE\Classes\ActivatableClasses\Package"
+                                )
+                                
+                                foreach ($regPath in $regPaths) {
+                                    if (Test-Path $regPath) {
+                                        $regKeys = Get-ChildItem $regPath -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*$packageName*" }
+                                        foreach ($regKey in $regKeys) {
+                                            try {
+                                                Write-Log "Removing registry key: $($regKey.Name)" 'INFO'
+                                                Remove-Item -Path $regKey.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                                                $removalSuccess = $true
+                                            }
+                                            catch {
+                                                Write-Log "Registry removal failed for $($regKey.Name): $_" 'WARN'
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch {
+                                Write-Log "Registry cleanup failed: $_" 'WARN'
+                            }
+                            
+                            # Verify complete removal
+                            $finalCheck = Get-AppxPackage -Name "*$packageName*" -AllUsers -ErrorAction SilentlyContinue
+                            $provisionedCheck = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*$packageName*" }
+                            
+                            if (-not $finalCheck -and -not $provisionedCheck) {
                                 $result.Success = $true
-                                $result.Method = "AppX"
-                                $result.ActualName = $appData.Name
+                                $result.Method = "AppX (Comprehensive)"
+                                $result.ActualName = $packageName
                                 $script:bloatwareRemovalCount++
-                                Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX: $($appData.Name)]" 'INFO'
-                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                Write-Log "✓ COMPLETELY REMOVED: $($match.BloatwareName) [AppX Comprehensive: $packageName]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX (Comprehensive)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
                                 return
                             }
-                            else {
-                                # Try advanced removal
-                                $success = Remove-AppxPackageCompatible -PackageFullName $appData.PackageFullName -AllUsers
-                                if ($success) {
-                                    $result.Success = $true
-                                    $result.Method = "AppX (Advanced)"
-                                    $result.ActualName = $appData.Name
-                                    $script:bloatwareRemovalCount++
-                                    Write-Log "✓ REMOVED: $($match.BloatwareName) [AppX Advanced: $($appData.Name)]" 'INFO'
-                                    Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via AppX (Advanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
-                                    return
-                                }
+                            elseif ($removalSuccess) {
+                                $result.Success = $true
+                                $result.Method = "AppX (Partial)"
+                                $result.ActualName = $packageName
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ PARTIALLY REMOVED: $($match.BloatwareName) [AppX Partial: $packageName] - Some components may remain" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Partially removed via AppX" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
                             }
                         }
                         catch {
-                            Write-Log "AppX removal failed for $($match.BloatwareName): $_" 'WARN'
+                            Write-Log "AppX comprehensive removal failed for $($match.BloatwareName): $_" 'WARN'
                         }
                     }
                 }
                 
                 'Winget' {
-                    if ($toolCapabilities.Winget -and $appData.Id) {
+                    if ($toolCapabilities.Winget -and ($appData.Id -or $appData.Name)) {
                         try {
-                            $uninstallArgs = @("uninstall", "--id", $appData.Id, "--silent", "--accept-source-agreements", "--disable-interactivity")
-                            $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
+                            $removalSuccess = $false
+                            $targetId = if ($appData.Id) { $appData.Id } else { $appData.Name }
                             
-                            if ($wingetProc.ExitCode -eq 0) {
+                            Write-Log "Attempting enhanced Winget removal for: $targetId" 'INFO'
+                            
+                            # Method 1: Standard uninstall with enhanced arguments
+                            try {
+                                $uninstallArgs = @("uninstall", "--id", $targetId, "--silent", "--accept-source-agreements", "--disable-interactivity", "--force")
+                                Write-Log "Winget command: winget $($uninstallArgs -join ' ')" 'INFO'
+                                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\winget_output.txt" -RedirectStandardError "$env:TEMP\winget_error.txt"
+                                
+                                if ($wingetProc.ExitCode -eq 0) {
+                                    $removalSuccess = $true
+                                }
+                                else {
+                                    $errorOutput = Get-Content "$env:TEMP\winget_error.txt" -ErrorAction SilentlyContinue
+                                    Write-Log "Winget removal failed with exit code $($wingetProc.ExitCode): $errorOutput" 'WARN'
+                                }
+                            }
+                            catch {
+                                Write-Log "Standard winget removal failed: $_" 'WARN'
+                            }
+                            
+                            # Method 2: Try with exact name match if ID failed
+                            if (-not $removalSuccess -and $appData.Name -and $appData.Name -ne $targetId) {
+                                try {
+                                    $uninstallArgs = @("uninstall", "--name", $appData.Name, "--silent", "--accept-source-agreements", "--disable-interactivity", "--force")
+                                    Write-Log "Winget name-based command: winget $($uninstallArgs -join ' ')" 'INFO'
+                                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
+                                    
+                                    if ($wingetProc.ExitCode -eq 0) {
+                                        $removalSuccess = $true
+                                    }
+                                }
+                                catch {
+                                    Write-Log "Name-based winget removal failed: $_" 'WARN'
+                                }
+                            }
+                            
+                            # Method 3: Interactive removal as last resort
+                            if (-not $removalSuccess) {
+                                try {
+                                    $uninstallArgs = @("uninstall", "--id", $targetId, "--interactive")
+                                    Write-Log "Attempting interactive winget removal: winget $($uninstallArgs -join ' ')" 'INFO'
+                                    $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
+                                    
+                                    if ($wingetProc.ExitCode -eq 0) {
+                                        $removalSuccess = $true
+                                    }
+                                }
+                                catch {
+                                    Write-Log "Interactive winget removal failed: $_" 'WARN'
+                                }
+                            }
+                            
+                            if ($removalSuccess) {
                                 $result.Success = $true
-                                $result.Method = "Winget"
+                                $result.Method = "Winget (Enhanced)"
                                 $result.ActualName = $appData.Name
                                 $script:bloatwareRemovalCount++
-                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Winget: $($appData.Name)]" 'INFO'
-                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Winget" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Winget Enhanced: $($appData.Name)]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Winget (Enhanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
                                 return
                             }
                         }
                         catch {
-                            Write-Log "Winget removal failed for $($match.BloatwareName): $_" 'WARN'
+                            Write-Log "Winget enhanced removal failed for $($match.BloatwareName): $_" 'WARN'
                         }
                     }
                 }
                 
                 'Choco' {
-                    if ($toolCapabilities.Chocolatey -and $appData.Name) {
+                    if ($toolCapabilities.Chocolatey -and ($appData.Name -or $appData.Id)) {
                         try {
-                            $chocoArgs = @("uninstall", $appData.Name, "-y", "--remove-dependencies")
-                            $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                            $removalSuccess = $false
+                            $targetPackage = if ($appData.Id) { $appData.Id } else { $appData.Name }
                             
-                            if ($chocoProc.ExitCode -eq 0) {
+                            Write-Log "Attempting enhanced Chocolatey removal for: $targetPackage" 'INFO'
+                            
+                            # Method 1: Standard uninstall with enhanced arguments
+                            try {
+                                $chocoArgs = @("uninstall", $targetPackage, "-y", "--ignore-dependencies", "--remove-dependencies", "--force")
+                                Write-Log "Chocolatey command: choco $($chocoArgs -join ' ')" 'INFO'
+                                $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\choco_output.txt" -RedirectStandardError "$env:TEMP\choco_error.txt"
+                                
+                                if ($chocoProc.ExitCode -eq 0) {
+                                    $removalSuccess = $true
+                                }
+                                else {
+                                    $errorOutput = Get-Content "$env:TEMP\choco_error.txt" -ErrorAction SilentlyContinue
+                                    Write-Log "Chocolatey removal failed with exit code $($chocoProc.ExitCode): $errorOutput" 'WARN'
+                                }
+                            }
+                            catch {
+                                Write-Log "Standard chocolatey removal failed: $_" 'WARN'
+                            }
+                            
+                            # Method 2: Try with alternative package name formats
+                            if (-not $removalSuccess -and $appData.Name -and $appData.Name -ne $targetPackage) {
+                                $alternativeNames = @(
+                                    $appData.Name.ToLower().Replace(" ", "-"),
+                                    $appData.Name.ToLower().Replace(" ", "."),
+                                    $appData.Name.ToLower().Replace(" ", ""),
+                                    $appData.Name.Replace(" ", "")
+                                )
+                                
+                                foreach ($altName in $alternativeNames) {
+                                    if ($removalSuccess) { break }
+                                    try {
+                                        $chocoArgs = @("uninstall", $altName, "-y", "--ignore-dependencies", "--force")
+                                        Write-Log "Chocolatey alternative name: choco $($chocoArgs -join ' ')" 'INFO'
+                                        $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                                        
+                                        if ($chocoProc.ExitCode -eq 0) {
+                                            $removalSuccess = $true
+                                            $targetPackage = $altName
+                                            break
+                                        }
+                                    }
+                                    catch {
+                                        Write-Log "Alternative chocolatey removal failed for '$altName': $_" 'WARN'
+                                    }
+                                }
+                            }
+                            
+                            # Method 3: Force removal with all available flags
+                            if (-not $removalSuccess) {
+                                try {
+                                    $chocoArgs = @("uninstall", $targetPackage, "-y", "--force", "--force-dependencies", "--skip-autouninstaller", "--ignore-checksums")
+                                    Write-Log "Chocolatey force removal: choco $($chocoArgs -join ' ')" 'INFO'
+                                    $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
+                                    
+                                    if ($chocoProc.ExitCode -eq 0) {
+                                        $removalSuccess = $true
+                                    }
+                                }
+                                catch {
+                                    Write-Log "Force chocolatey removal failed: $_" 'WARN'
+                                }
+                            }
+                            
+                            if ($removalSuccess) {
                                 $result.Success = $true
-                                $result.Method = "Chocolatey"
-                                $result.ActualName = $appData.Name
+                                $result.Method = "Chocolatey (Enhanced)"
+                                $result.ActualName = $targetPackage
                                 $script:bloatwareRemovalCount++
-                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Chocolatey: $($appData.Name)]" 'INFO'
-                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Chocolatey" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Chocolatey Enhanced: $targetPackage]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Chocolatey (Enhanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
                                 return
                             }
                         }
                         catch {
-                            Write-Log "Chocolatey removal failed for $($match.BloatwareName): $_" 'WARN'
+                            Write-Log "Chocolatey enhanced removal failed for $($match.BloatwareName): $_" 'WARN'
+                        }
+                    }
+                }
+                
+                'RegistryUninstall' {
+                    if ($appData.UninstallString) {
+                        try {
+                            $removalSuccess = $false
+                            $uninstallString = $appData.UninstallString.Trim()
+                            $displayName = if ($appData.DisplayName) { $appData.DisplayName } else { $appData.Name }
+                            
+                            Write-Log "Attempting registry uninstall for: $displayName" 'INFO'
+                            Write-Log "Uninstall command: $uninstallString" 'INFO'
+                            
+                            # Method 1: Parse and execute uninstall string
+                            try {
+                                if ($uninstallString -match '^"([^"]+)"\s*(.*)$') {
+                                    # Quoted executable with arguments
+                                    $executable = $matches[1]
+                                    $arguments = $matches[2].Trim()
+                                }
+                                elseif ($uninstallString -match '^([^"]\S+)\s*(.*)$') {
+                                    # Unquoted executable with arguments  
+                                    $executable = $matches[1]
+                                    $arguments = $matches[2].Trim()
+                                }
+                                else {
+                                    # Treat entire string as executable
+                                    $executable = $uninstallString
+                                    $arguments = ""
+                                }
+                                
+                                # Add silent flags if not present
+                                if ($arguments -notmatch '/S|/silent|/quiet|/q|--silent') {
+                                    if ($executable -match 'msiexec') {
+                                        $arguments += " /quiet /norestart"
+                                    }
+                                    else {
+                                        $arguments += " /S"
+                                    }
+                                }
+                                
+                                Write-Log "Executing: $executable $arguments" 'INFO'
+                                
+                                if (Test-Path $executable) {
+                                    $uninstallProc = Start-Process -FilePath $executable -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
+                                    
+                                    if ($uninstallProc.ExitCode -eq 0) {
+                                        $removalSuccess = $true
+                                    }
+                                    else {
+                                        Write-Log "Registry uninstall failed with exit code: $($uninstallProc.ExitCode)" 'WARN'
+                                    }
+                                }
+                                else {
+                                    Write-Log "Uninstaller not found: $executable" 'WARN'
+                                }
+                            }
+                            catch {
+                                Write-Log "Registry uninstall execution failed: $_" 'WARN'
+                            }
+                            
+                            # Method 2: Try direct command execution if normal parsing failed
+                            if (-not $removalSuccess) {
+                                try {
+                                    Write-Log "Attempting direct command execution: $uninstallString" 'INFO'
+                                    $directProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$uninstallString`"" -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
+                                    
+                                    if ($directProc.ExitCode -eq 0) {
+                                        $removalSuccess = $true
+                                    }
+                                }
+                                catch {
+                                    Write-Log "Direct command execution failed: $_" 'WARN'
+                                }
+                            }
+                            
+                            # Method 3: MSI-specific handling for MSI packages
+                            if (-not $removalSuccess -and $uninstallString -match '\{[A-F0-9-]+\}') {
+                                try {
+                                    $msiCode = [regex]::Match($uninstallString, '\{[A-F0-9-]+\}').Value
+                                    Write-Log "Attempting MSI removal for product code: $msiCode" 'INFO'
+                                    
+                                    $msiArgs = @("/x", $msiCode, "/quiet", "/norestart")
+                                    $msiProc = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
+                                    
+                                    if ($msiProc.ExitCode -eq 0) {
+                                        $removalSuccess = $true
+                                    }
+                                    else {
+                                        Write-Log "MSI removal failed with exit code: $($msiProc.ExitCode)" 'WARN'
+                                    }
+                                }
+                                catch {
+                                    Write-Log "MSI removal failed: $_" 'WARN'
+                                }
+                            }
+                            
+                            if ($removalSuccess) {
+                                $result.Success = $true
+                                $result.Method = "Registry Uninstall (Enhanced)"
+                                $result.ActualName = $displayName
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Registry Enhanced: $displayName]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Registry (Enhanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
+                            }
+                        }
+                        catch {
+                            Write-Log "Registry uninstall enhanced removal failed for $($match.BloatwareName): $_" 'WARN'
+                        }
+                    }
+                }
+                
+                'ProvisionedAppX' {
+                    if ($appData.PackageName -or $appData.DisplayName) {
+                        try {
+                            $removalSuccess = $false
+                            $packageName = if ($appData.PackageName) { $appData.PackageName } else { $appData.DisplayName }
+                            
+                            Write-Log "Attempting provisioned AppX removal for: $packageName" 'INFO'
+                            
+                            # Method 1: Remove provisioned package using PowerShell
+                            try {
+                                $provisionedPackages = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { 
+                                    $_.DisplayName -like "*$packageName*" -or $_.PackageName -like "*$packageName*" 
+                                }
+                                
+                                foreach ($package in $provisionedPackages) {
+                                    Write-Log "Removing provisioned package: $($package.PackageName)" 'INFO'
+                                    Remove-AppxProvisionedPackage -Online -PackageName $package.PackageName -ErrorAction SilentlyContinue
+                                    $removalSuccess = $true
+                                }
+                            }
+                            catch {
+                                Write-Log "PowerShell provisioned package removal failed: $_" 'WARN'
+                            }
+                            
+                            # Method 2: DISM-based removal
+                            if (-not $removalSuccess) {
+                                try {
+                                    if (Get-Command dism -ErrorAction SilentlyContinue) {
+                                        Write-Log "Attempting DISM provisioned package removal for: $packageName" 'INFO'
+                                        $dismOutput = & dism /online /get-provisionedappxpackages | Out-String
+                                        
+                                        if ($dismOutput -match "PackageName : .*$packageName.*") {
+                                            $matches = [regex]::Matches($dismOutput, "PackageName : (.+?$packageName[^\r\n]+)")
+                                            foreach ($match in $matches) {
+                                                $pkgName = $match.Groups[1].Value.Trim()
+                                                Write-Log "DISM removing provisioned package: $pkgName" 'INFO'
+                                                $dismResult = & dism /online /remove-provisionedappxpackage /packagename:"$pkgName" 2>&1
+                                                
+                                                if ($LASTEXITCODE -eq 0) {
+                                                    $removalSuccess = $true
+                                                }
+                                                else {
+                                                    Write-Log "DISM removal failed: $dismResult" 'WARN'
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch {
+                                    Write-Log "DISM provisioned package removal failed: $_" 'WARN'
+                                }
+                            }
+                            
+                            # Method 3: Registry cleanup for provisioned packages
+                            if (-not $removalSuccess) {
+                                try {
+                                    $regPaths = @(
+                                        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Config",
+                                        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned"
+                                    )
+                                    
+                                    foreach ($regPath in $regPaths) {
+                                        if (Test-Path $regPath) {
+                                            $regKeys = Get-ChildItem $regPath -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*$packageName*" }
+                                            foreach ($regKey in $regKeys) {
+                                                try {
+                                                    Write-Log "Removing provisioned registry key: $($regKey.Name)" 'INFO'
+                                                    Remove-Item -Path $regKey.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                                                    $removalSuccess = $true
+                                                }
+                                                catch {
+                                                    Write-Log "Provisioned registry removal failed for $($regKey.Name): $_" 'WARN'
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch {
+                                    Write-Log "Provisioned registry cleanup failed: $_" 'WARN'
+                                }
+                            }
+                            
+                            # Verify removal
+                            $finalCheck = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { 
+                                $_.DisplayName -like "*$packageName*" -or $_.PackageName -like "*$packageName*" 
+                            }
+                            
+                            if (-not $finalCheck -or $removalSuccess) {
+                                $result.Success = $true
+                                $result.Method = "Provisioned AppX (Enhanced)"
+                                $result.ActualName = $packageName
+                                $script:bloatwareRemovalCount++
+                                Write-Log "✓ REMOVED: $($match.BloatwareName) [Provisioned AppX Enhanced: $packageName]" 'INFO'
+                                Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Successfully removed via Provisioned AppX (Enhanced)" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                                return
+                            }
+                        }
+                        catch {
+                            Write-Log "Provisioned AppX enhanced removal failed for $($match.BloatwareName): $_" 'WARN'
                         }
                     }
                 }
