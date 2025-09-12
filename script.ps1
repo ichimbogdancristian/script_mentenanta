@@ -121,6 +121,7 @@ $global:Config = @{
 # Global variables for task execution and results tracking
 $global:TaskResults = @{}
 $global:SystemInventory = $null
+$global:AppInventoryCache = $null
 $global:TempFolder = Join-Path $WorkingDirectory 'temp_files'
 $global:BloatwareList = @()
 $global:EssentialApps = @()
@@ -1520,11 +1521,24 @@ function Get-StandardizedAppInventory {
         [switch]$IncludeDetails,
         
         [Parameter(Mandatory = $false)]
+        [switch]$UseCache,
+        
+        [Parameter(Mandatory = $false)]
         [string]$Context = "System Inventory"
     )
     
     Write-Log "[START] Standardized App Inventory Collection: $Context" 'INFO'
     $startTime = Get-Date
+    
+    # Check cache if UseCache is enabled
+    if ($UseCache -and $global:AppInventoryCache -and $global:AppInventoryCache.Timestamp) {
+        $cacheAge = (Get-Date) - $global:AppInventoryCache.Timestamp
+        if ($cacheAge.TotalMinutes -lt 10) {
+            Write-Log "Using cached app inventory (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes)" 'INFO'
+            return $global:AppInventoryCache.Data
+        }
+    }
+    
     $allApps = @()
     
     try {
@@ -1619,6 +1633,16 @@ function Get-StandardizedAppInventory {
         }
         
         Write-Log "[Inventory] Collected $($inventory.TotalCount) total apps from $($Sources -join ', ')" 'INFO'
+        
+        # Cache the result if UseCache is enabled
+        if ($UseCache) {
+            $global:AppInventoryCache = @{
+                Data = $inventory
+                Timestamp = Get-Date
+            }
+            Write-Log "Cached app inventory for future use" 'INFO'
+        }
+        
         return $inventory
     }
     catch {
