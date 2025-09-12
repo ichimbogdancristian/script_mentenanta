@@ -4505,8 +4505,8 @@ function Remove-Bloatware {
                                     Write-Log "Attempting DISM removal for: $packageName" 'INFO'
                                     $dismOutput = & dism /online /get-provisionedappxpackages | Out-String
                                     if ($dismOutput -match "PackageName : .*$packageName.*") {
-                                        $matches = [regex]::Matches($dismOutput, "PackageName : (.+?$packageName[^\r\n]+)")
-                                        foreach ($match in $matches) {
+                                        $regexMatches = [regex]::Matches($dismOutput, "PackageName : (.+?$packageName[^\r\n]+)")
+                                        foreach ($match in $regexMatches) {
                                             $pkgName = $match.Groups[1].Value.Trim()
                                             Write-Log "DISM removing: $pkgName" 'INFO'
                                             & dism /online /remove-provisionedappxpackage /packagename:"$pkgName" 2>$null
@@ -4877,8 +4877,8 @@ function Remove-Bloatware {
                                         $dismOutput = & dism /online /get-provisionedappxpackages | Out-String
                                         
                                         if ($dismOutput -match "PackageName : .*$packageName.*") {
-                                            $matches = [regex]::Matches($dismOutput, "PackageName : (.+?$packageName[^\r\n]+)")
-                                            foreach ($match in $matches) {
+                                            $regexMatches = [regex]::Matches($dismOutput, "PackageName : (.+?$packageName[^\r\n]+)")
+                                            foreach ($match in $regexMatches) {
                                                 $pkgName = $match.Groups[1].Value.Trim()
                                                 Write-Log "DISM removing provisioned package: $pkgName" 'INFO'
                                                 $dismResult = & dism /online /remove-provisionedappxpackage /packagename:"$pkgName" 2>&1
