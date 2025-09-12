@@ -1,6 +1,6 @@
 ## Project Structure & Refactoring (2025 Edition)
 
-### Key Updates (2025)
+### Key Updates (September 2025)
 - **Code Defragmentation Completed**: Implemented modular architecture with reusable utility functions
 - **Section 1.5 Added**: Centralized configuration and constants management
 - **Reusable Utilities**: 8+ new utility functions for common patterns (diff processing, package management, app detection)
@@ -9,8 +9,11 @@
 - **Universal Path Portability**: Complete location-agnostic architecture for running from any directory/user/computer
 - **Orphaned Code Cleanup**: All legacy, unused, and fragmented code blocks systematically identified and resolved
 - **Structural Integrity**: All IF/ELSE blocks properly closed, complete error handling throughout
+- **Centralized Temporary Files**: All temp files now use repository `temp_files/` folder with comprehensive cleanup
+- **Windows Defender Integration**: Automatic exclusions setup in script.bat prevents Controlled Folder Access blocking
+- **Streamlined Architecture**: Removed redundant standalone scripts, simplified solution to essential components only
 - All logging now uses robust timestamping (LOG_TIMESTAMP)
-- script.bat: Only handles environment, dependencies, repo update, and launching
+- script.bat: Only handles environment, dependencies, repo update, Windows Defender exclusions, and launching
 - script.ps1: Only handles maintenance, reporting, and analytics with enhanced modular architecture
 - No redundant admin, version, or dependency checks in script.ps1
 - All status messages are current and relevant; no legacy or comparison messages
@@ -312,6 +315,7 @@ This applies to all structural/diagnostic fixes and is MANDATORY for all code ch
 1. **🚀 script.bat** - Complete environment preparation
    - Auto-elevation and privilege validation
    - Windows 10/11 compatibility verification  
+   - Windows Defender exclusions setup (folder/process/CFA allowlist)
    - Dependency installation: Winget → PS7 → NuGet → PSWindowsUpdate → Chocolatey
    - Latest repository download and extraction
    - Scheduled task management
@@ -322,7 +326,10 @@ This applies to all structural/diagnostic fixes and is MANDATORY for all code ch
    - ~~NO PowerShell version validation~~ (guaranteed by launcher)
    - ~~NO Windows version checks~~ (guaranteed by launcher)
    - ~~NO dependency installation~~ (handled by launcher)
+   - ~~NO Windows Defender exclusions~~ (handled by launcher)
    - ✅ Core maintenance tasks via `$global:ScriptTasks`
+   - ✅ Centralized temp files in repository `temp_files/` folder
+   - ✅ Comprehensive cleanup at script completion
    - ✅ Graceful degradation for missing dependencies
    - ✅ Comprehensive reporting and analytics
 
@@ -339,6 +346,9 @@ This applies to all structural/diagnostic fixes and is MANDATORY for all code ch
 - **⚡ Enhanced Performance**: Reduced startup overhead in script.ps1
 - **🏗️ Cleaner Architecture**: Launcher handles environment, orchestrator handles maintenance
 - **📋 Better Documentation**: Clear responsibilities and architectural boundaries
+- **📁 Centralized Temporary Files**: All temp files moved to repository `temp_files/` folder with automatic cleanup
+- **🛡️ Windows Defender Integration**: Automatic exclusions in script.bat prevent Controlled Folder Access blocking
+- **🧹 Streamlined Solutions**: Removed redundant standalone scripts, kept only essential components
 
 ## 🚨 MANDATORY VSCode Development and Quality Assurance Protocol
 
@@ -1163,6 +1173,34 @@ Before completing any code changes, verify:
 - **Fragmented Logic**: 0 (all completed)
 - **Legacy References**: 0 (all updated)
 - **Unused Variables**: 0 (all variables serve reporting/system detection purposes)
+
+### **🎯 Latest Improvements (September 2025)**
+
+#### **📁 Centralized Temporary Files Management**
+- **Repository-Based Temp Files**: All temporary files now created in `$global:TempFolder` (repo/temp_files/)
+- **Systematic Migration**: Replaced all `$env:TEMP` references with `$global:TempFolder` throughout script
+- **Comprehensive Cleanup**: Added `Remove-AllTempFiles` function with robocopy fallback for stubborn files
+- **Post-Execution Integration**: Automatic temp cleanup in existing post-execution section
+- **Enhanced Error Handling**: Garbage collection and alternative removal methods for locked files
+
+#### **🛡️ Windows Defender Exclusions (Streamlined Solution)**
+- **Automatic Setup in script.bat**: Lines 157-188 handle all exclusions with admin privileges
+- **Comprehensive Coverage**: Folder exclusions, process exclusions, Controlled Folder Access allowlist
+- **Smart Detection**: Automatic CFA status detection and PowerShell allowlist configuration
+- **No User Intervention**: Fully automated, runs every time script.bat executes
+- **Removed Redundant Components**: Eliminated standalone setup scripts and PowerShell function duplicates
+
+#### **🧹 Solution Simplification**
+- **Removed Unnecessary Files**: Eliminated `setup_defender_exclusions.ps1` and `setup_defender_exclusions.bat`
+- **Removed Duplicate Functions**: Eliminated redundant PowerShell `Set-WindowsDefenderExclusions` function
+- **Simplified Documentation**: Streamlined README section to focus on essential information
+- **Clean Architecture**: Only essential components remain, no redundant functionality
+
+#### **✅ Implementation Results:**
+- **Temp Files**: ✅ 100% centralized to repository folder with automatic cleanup
+- **Windows Defender**: ✅ Automatic exclusions prevent Controlled Folder Access blocking  
+- **Code Quality**: ✅ Zero redundancy, clean architecture, essential components only
+- **User Experience**: ✅ No manual intervention required, fully automated solution
 
 ---
 

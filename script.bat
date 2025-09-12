@@ -157,6 +157,42 @@ IF "%OS_VERSION%"=="" SET OS_VERSION=Unknown
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Detected Windows version: %OS_VERSION%"
 
 REM -----------------------------------------------------------------------------
+REM Windows Defender Exclusions Setup
+REM Adds Windows Defender exclusions for the project folder and executables
+REM to prevent Controlled Folder Access from blocking script execution
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Setting up Windows Defender exclusions for project..."
+
+REM Add folder exclusion for the entire project directory
+powershell -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction Stop; Write-Host 'SUCCESS: Added folder exclusion for %WORKING_DIR%' } catch { Write-Host 'WARNING: Could not add folder exclusion - ' + $_.Exception.Message }" 2>nul
+IF %ERRORLEVEL% EQU 0 (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added Windows Defender folder exclusion: %WORKING_DIR%"
+) ELSE (
+    CALL :LOG_MESSAGE "[%TIME%] [WARN] ⚠ Could not add folder exclusion (may already exist)"
+)
+
+REM Add process exclusions for PowerShell and batch scripts
+powershell -Command "try { Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+powershell -Command "try { Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+powershell -Command "try { Add-MpPreference -ExclusionProcess 'cmd.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+
+REM Check Controlled Folder Access status
+FOR /F "tokens=*" %%i IN ('powershell -Command "try { (Get-MpPreference).EnableControlledFolderAccess } catch { 'Unknown' }" 2^>nul') DO SET CFA_STATUS=%%i
+IF "%CFA_STATUS%"=="1" (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Controlled Folder Access is ENABLED - exclusions are important"
+    REM Add specific app allowlist for PowerShell if CFA is enabled
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Program Files\PowerShell\7\pwsh.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added PowerShell to Controlled Folder Access allowlist"
+) ELSE IF "%CFA_STATUS%"=="0" (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Controlled Folder Access is disabled - no additional exclusions needed"
+) ELSE (
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Could not determine Controlled Folder Access status"
+)
+
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Windows Defender exclusions setup completed"
+
+REM -----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup
 REM Ensures a monthly scheduled task is created to run this script as admin.
 REM -----------------------------------------------------------------------------

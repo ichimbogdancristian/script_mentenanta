@@ -1,6 +1,6 @@
 ## Project Structure & Refactoring (2025 Edition)
 
-### Key Updates (2025)
+### Key Updates (September 2025)
 - **Code Defragmentation Completed**: Implemented modular architecture with reusable utility functions
 - **Section 1.5 Added**: Centralized configuration and constants management
 - **Reusable Utilities**: 8+ new utility functions for common patterns (diff processing, package management, app detection)
@@ -9,9 +9,12 @@
 - **Universal Path Portability**: Complete location-agnostic architecture for running from any directory/user/computer
 - **Orphaned Code Cleanup**: All legacy, unused, and fragmented code blocks systematically identified and resolved
 - **Structural Integrity**: All IF/ELSE blocks properly closed, complete error handling throughout
+- **Centralized Temporary Files**: All temp files now use repository `temp_files/` folder with comprehensive cleanup
+- **Windows Defender Integration**: Automatic exclusions setup prevents Controlled Folder Access blocking
+- **Streamlined Architecture**: Removed redundant standalone scripts, simplified to essential components only
 - All logging now uses robust timestamping (LOG_TIMESTAMP)
-- script.bat: Only handles environment, dependencies, repo update, and launching
-- script.ps1: Only handles maintenance, reporting, and analytics with enhanced modular architecture
+- script.bat: Handles environment, dependencies, repo update, Windows Defender exclusions, and launching
+- script.ps1: Handles maintenance, reporting, and analytics with enhanced modular architecture
 - No redundant admin, version, or dependency checks in script.ps1
 - All status messages are current and relevant; no legacy or comparison messages
 
@@ -89,6 +92,7 @@ This project uses a **launcher → orchestrator** architecture for maximum relia
 #### **🚀 Tier 1: Launcher (script.bat)**
 - **Environment Preparation**: Handles all dependency installation and validation
 - **Auto-Elevation**: Automatic administrator privilege detection and elevation
+- **Windows Defender Setup**: Automatic exclusions to prevent Controlled Folder Access blocking
 - **Dependency Management**: Installs Winget, PowerShell 7, Chocolatey, NuGet, PSWindowsUpdate
 - **Repository Updates**: Downloads and extracts latest version from GitHub
 - **Scheduled Tasks**: Creates monthly maintenance and post-restart continuation tasks
@@ -588,6 +592,17 @@ All keys are optional. The script intelligently handles missing configurations.
 ### **🔍 Analysis Files**
 - **`*_diff*.json`** - Before/after comparison files for app operations
 - **`*_audit*.json`** - Detailed audit trails for compliance and debugging
+
+## 🛡️ Windows Defender & Controlled Folder Access
+
+**The script automatically handles Windows Defender exclusions** - no manual setup required!
+
+- **Automatic Setup**: `script.bat` automatically adds folder/process exclusions with admin privileges
+- **Smart Detection**: Detects Controlled Folder Access and adds PowerShell to allowlist if needed
+- **Self-Resolving**: Prevents "Access denied" and permission errors during execution
+
+**If you encounter blocking issues**, manually add the project folder to Windows Security exclusions:
+- Windows Security → Virus & threat protection → Manage settings → Add exclusions → Folder
 
 ## Troubleshooting
 - **Check `maintenance.log`** for clean, timestamped operational logs without progress noise.
