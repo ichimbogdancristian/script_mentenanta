@@ -7563,7 +7563,11 @@ function Start-DefenderFullScan {
             if ($scanHistory) {
                 Write-Log "[ScanHistory] === RECENT SCAN HISTORY ===" 'INFO'
                 foreach ($scan in $scanHistory) {
-                    Write-Log "[ScanHistory] Scan Type: $($scan.ScanType) | Start: $($scan.StartTime) | End: $($scan.EndTime) | Result: $($scan.Result)" 'INFO'
+                    # Handle potential "-" values in date fields
+                    $startTime = if ($scan.StartTime -and $scan.StartTime -ne "-") { $scan.StartTime } else { "Not available" }
+                    $endTime = if ($scan.EndTime -and $scan.EndTime -ne "-") { $scan.EndTime } else { "Not available" }
+                    
+                    Write-Log "[ScanHistory] Scan Type: $($scan.ScanType) | Start: $startTime | End: $endTime | Result: $($scan.Result)" 'INFO'
                     if ($scan.ScanParameters) {
                         Write-Log "[ScanHistory] Parameters: $($scan.ScanParameters)" 'INFO'
                     }
@@ -7968,8 +7972,9 @@ function Start-DefenderFullScan {
                 if ($quarantineItems) {
                     Write-Log "[QuarantineAnalysis] Quarantine contains $($quarantineItems.Count) items" 'INFO'
                     foreach ($item in $quarantineItems | Select-Object -First 10) {
-                        # Limit to first 10 for logging
-                        Write-Log "[QuarantineAnalysis] - Quarantined: $($item.FileName) | Threat: $($item.ThreatName) | Date: $($item.QuarantineTime)" 'INFO'
+                        # Limit to first 10 for logging and handle potential "-" values in date fields
+                        $quarantineTime = if ($item.QuarantineTime -and $item.QuarantineTime -ne "-") { $item.QuarantineTime } else { "Not available" }
+                        Write-Log "[QuarantineAnalysis] - Quarantined: $($item.FileName) | Threat: $($item.ThreatName) | Date: $quarantineTime" 'INFO'
                     }
                     if ($quarantineItems.Count -gt 10) {
                         Write-Log "[QuarantineAnalysis] ... and $($quarantineItems.Count - 10) more items" 'INFO'
@@ -8047,7 +8052,9 @@ function Start-DefenderFullScan {
                             $newQuarantineItems = $postCleanupQuarantine | Sort-Object QuarantineTime -Descending | Select-Object -First $quarantineIncrease
                             Write-Log "[ThreatCleanup] Newly quarantined items:" 'INFO'
                             foreach ($item in $newQuarantineItems) {
-                                Write-Log "[ThreatCleanup] - $($item.FileName) | Threat: $($item.ThreatName) | Time: $($item.QuarantineTime)" 'INFO'
+                                # Handle potential "-" values in date fields
+                                $quarantineTime = if ($item.QuarantineTime -and $item.QuarantineTime -ne "-") { $item.QuarantineTime } else { "Not available" }
+                                Write-Log "[ThreatCleanup] - $($item.FileName) | Threat: $($item.ThreatName) | Time: $quarantineTime" 'INFO'
                             }
                         }
                     }
@@ -9224,12 +9231,18 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     $lastMinuteReported = -1
     
     # Enhanced countdown with minute-by-minute logging and key detection
+    Write-Log "[COUNTDOWN] Starting countdown loop: $countdown seconds total" 'INFO'
     for ($i = $countdown; $i -ge 1; $i--) {
         # Log every minute milestone
         $currentMinute = [math]::Floor($i / 60)
         if ($currentMinute -ne $lastMinuteReported -and ($i % 60) -eq 0) {
             $lastMinuteReported = $currentMinute
             Write-Log "[COUNTDOWN] Countdown milestone: $currentMinute minute(s) remaining" 'INFO'
+        }
+        
+        # Log every 10 seconds for debugging
+        if ($i -le 10 -or ($i % 10) -eq 0) {
+            Write-Log "[COUNTDOWN] $i seconds remaining..." 'INFO'
         }
         
         # Display countdown message based on restart requirement
@@ -9240,15 +9253,41 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
             Write-Host "`r🕒 Automatic cleanup and closure in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
         }
         
-        # Check for key press every 100ms for 1 second (10 checks total)
-        for ($j = 0; $j -lt 10; $j++) {
-            Start-Sleep -Milliseconds 100
-            if ([System.Console]::KeyAvailable) {
-                $pressedKey = [System.Console]::ReadKey($true)
-                $abort = $true
-                Write-Log "[COUNTDOWN] User interaction detected - key pressed: $($pressedKey.Key)" 'INFO'
-                break
+        # Robust key press detection with proper error handling
+        try {
+            # Use a more reliable approach - check for actual console input buffer
+            $keyPressed = $false
+            
+            # Check multiple times during the 1-second interval
+            for ($k = 0; $k -lt 4; $k++) {
+                Start-Sleep -Milliseconds 250
+                
+                # Only check KeyAvailable if we're in an interactive console
+                if ($Host.UI.RawUI -and $Host.UI.RawUI.KeyAvailable) {
+                    try {
+                        # Actually read the key to confirm it's real
+                        $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                        if ($key) {
+                            $keyPressed = $true
+                            Write-Log "[COUNTDOWN] User interaction detected - key pressed: $($key.Character)" 'INFO'
+                            break
+                        }
+                    }
+                    catch {
+                        # If ReadKey fails, it might be a false positive from KeyAvailable
+                        Write-Log "[COUNTDOWN] False key detection ignored: $_" 'WARN'
+                    }
+                }
             }
+            
+            if ($keyPressed) {
+                $abort = $true
+            }
+        }
+        catch {
+            # Fallback to simple sleep if key detection fails completely
+            Start-Sleep -Seconds 1
+            Write-Log "[COUNTDOWN] Key detection system failed, using fallback timing: $_" 'WARN'
         }
         
         if ($abort) { break }
@@ -9257,8 +9296,9 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host ""  # New line after countdown
     
     # STEP 4: Execute appropriate action based on countdown result
+    Write-Log "[COUNTDOWN] Countdown finished. Abort status: $abort, Reboot required: $rebootRequired" 'INFO'
     if (-not $abort) {
-        Write-Log "[COUNTDOWN] Countdown completed without user interaction" 'INFO'
+        Write-Log "[COUNTDOWN] Countdown completed without user interaction - proceeding with automatic action" 'INFO'
         
         if ($rebootRequired) {
             # No user interaction + restart needed → Close terminal + restart PC
