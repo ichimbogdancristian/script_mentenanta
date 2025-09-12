@@ -6813,9 +6813,9 @@ function Start-DefenderFullScan {
             Write-Log "[SignatureUpdate] ⚠ Warning: Failed to update signatures - $_" 'WARN'
         }
 
-        # Progress: 20% - Preparing full scan with enhanced logging
-        Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 20 -Status "Preparing comprehensive full system scan..."
+        # Preparing full scan with enhanced logging
         Write-Log "[ScanPreparation] === FULL SYSTEM SCAN PREPARATION ===" 'INFO'
+        Write-Host "⚙️ Preparing comprehensive system scan..." -ForegroundColor Yellow
         Write-Log "[ScanPreparation] Scan Type: Full System Scan" 'INFO'
         Write-Log "[ScanPreparation] Computer Name: $env:COMPUTERNAME" 'INFO'
         Write-Log "[ScanPreparation] User Context: $env:USERNAME" 'INFO'
@@ -6847,82 +6847,107 @@ function Start-DefenderFullScan {
         Write-Log "[ScanPreparation] Estimated scan time: Large systems may require 2-4 hours or more" 'INFO'
         
         try {
-            # Progress: 25% - Initiating scan
-            Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 25 -Status "Initiating comprehensive full system scan..."
-            Write-Log "[ScanExecution] === FULL SYSTEM SCAN EXECUTION ===" 'INFO'
-            Write-Log "[ScanExecution] Initiating scan at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" 'INFO'
-            
-            # Monitor scan progress (this will run in background)
+        # Starting full system scan
+        Write-Log "[ScanExecution] === FULL SYSTEM SCAN EXECUTION ===" 'INFO'
+        Write-Log "[ScanExecution] Initiating scan at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" 'INFO'
+        Write-Host "🔍 Starting Windows Defender Full System Scan..." -ForegroundColor Cyan            # Start scan in background with optimized parameters
             $scanJob = Start-Job -ScriptBlock {
                 try {
+                    # Set PowerShell preference to avoid any prompts
+                    $ProgressPreference = 'SilentlyContinue'
+                    $WarningPreference = 'SilentlyContinue'
+                    $VerbosePreference = 'SilentlyContinue'
+                    
+                    # Run the scan
                     $result = Start-MpScan -ScanType FullScan
-                    return $result
+                    return @{
+                        Success = $true
+                        Result = $result
+                        CompletedAt = Get-Date
+                    }
                 }
                 catch {
-                    return "ERROR: $_"
+                    return @{
+                        Success = $false
+                        Error = $_.Exception.Message
+                        CompletedAt = Get-Date
+                    }
                 }
             }
             
-            # Monitor scan progress with detailed logging
+            # Monitor scan progress with optimized non-blocking approach
             $progressCounter = 25
             $lastProgressUpdate = Get-Date
+            $lastLogUpdate = Get-Date
             $scanTimeoutMinutes = 240  # 4 hours maximum
             $scanStartTimeForTimeout = Get-Date
             
             Write-Log "[ScanExecution] Monitoring scan progress (Job ID: $($scanJob.Id))..." 'INFO'
             Write-Log "[ScanExecution] Maximum scan timeout: $scanTimeoutMinutes minutes" 'INFO'
+            Write-Log "[ScanExecution] Scan running in background - no user interaction required" 'INFO'
             
+            # Non-blocking monitoring loop with reduced update frequency
             while ($scanJob.State -eq 'Running') {
                 $currentTime = Get-Date
                 $elapsedTime = $currentTime - $scanStartTime
                 $timeoutElapsed = $currentTime - $scanStartTimeForTimeout
                 
-                # Update progress every 2 minutes and log every 10 minutes
-                if (($currentTime - $lastProgressUpdate).TotalMinutes -ge 2) {
-                    $progressCounter = [math]::Min($progressCounter + 2, 68)  # Cap at 68% until scan completes
-                    Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete $progressCounter -Status "Scan in progress... ($($elapsedTime.ToString('hh\:mm\:ss')) elapsed)"
-                    
-                    # Detailed logging every 10 minutes
-                    if (($currentTime - $lastProgressUpdate).TotalMinutes -ge 10 -or $progressCounter -eq 27) {
-                        Write-Log "[ScanExecution] Scan progress update: $($elapsedTime.ToString('hh\:mm\:ss')) elapsed, scan continuing..." 'INFO'
-                        
-                        # Get current threat count during scan
-                        try {
-                            $currentThreats = Get-MpThreat
-                            Write-Log "[ScanExecution] Current threats detected during scan: $($currentThreats.Count)" 'INFO'
-                        }
-                        catch {
-                            Write-Log "[ScanExecution] Could not check current threat status during scan" 'VERBOSE'
-                        }
-                        $lastProgressUpdate = $currentTime
-                    }
-                }
-                
-                # Check for timeout
+                # Check for timeout first (safety mechanism)
                 if ($timeoutElapsed.TotalMinutes -gt $scanTimeoutMinutes) {
                     Write-Log "[ScanExecution] ⚠ Scan timeout reached ($scanTimeoutMinutes minutes). Stopping scan job..." 'WARN'
-                    Stop-Job -Job $scanJob
-                    Remove-Job -Job $scanJob
+                    try { Stop-Job -Job $scanJob -ErrorAction SilentlyContinue } catch { }
+                    try { Remove-Job -Job $scanJob -Force -ErrorAction SilentlyContinue } catch { }
                     throw "Scan timeout reached after $scanTimeoutMinutes minutes"
                 }
                 
-                Start-Sleep -Seconds 30
+                # Update progress display every 5 minutes (reduced frequency)
+                if (($currentTime - $lastProgressUpdate).TotalMinutes -ge 5) {
+                    $progressCounter = [math]::Min($progressCounter + 5, 68)  # Cap at 68% until scan completes
+                    $elapsedMinutes = [math]::Floor($elapsedTime.TotalMinutes)
+                    Write-Host "⏳ Scan active: $elapsedMinutes minutes elapsed..." -ForegroundColor Cyan
+                    Write-Log "[ScanExecution] Scan progress: $elapsedMinutes minutes elapsed, continuing..." 'INFO'
+                    $lastProgressUpdate = $currentTime
+                }
+                
+                # Detailed logging every 15 minutes (reduced frequency)
+                if (($currentTime - $lastLogUpdate).TotalMinutes -ge 15) {
+                    Write-Log "[ScanExecution] Detailed progress: $($elapsedTime.ToString('hh\:mm\:ss')) elapsed, scan active..." 'INFO'
+                    
+                    # Quick threat check (non-blocking)
+                    try {
+                        $currentThreats = Get-MpThreat -ErrorAction SilentlyContinue
+                        if ($currentThreats) {
+                            Write-Log "[ScanExecution] Threats detected during scan: $($currentThreats.Count)" 'INFO'
+                        }
+                    }
+                    catch {
+                        # Silent error - don't log to avoid noise
+                    }
+                    $lastLogUpdate = $currentTime
+                }
+                
+                # Reduced sleep interval for better responsiveness
+                Start-Sleep -Seconds 10
             }
             
             # Get scan results
             $scanResult = Receive-Job -Job $scanJob
             Remove-Job -Job $scanJob
             
-            # Progress: 70% - Scan completed, processing results
-            Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 70 -Status "Scan completed, processing results..."
+            # Process results
             $scanExecutionTime = Get-Date - $scanStartTime
-            Write-Log "[ScanExecution] ✓ Full system scan completed successfully" 'INFO'
-            Write-Log "[ScanExecution] Total scan execution time: $($scanExecutionTime.ToString('hh\:mm\:ss'))" 'INFO'
-            if ($scanResult -and $scanResult -ne "ERROR") {
-                Write-Log "[ScanExecution] Scan result output: $scanResult" 'INFO'
+            
+            if ($scanResult.Success) {
+                Write-Host "✅ Windows Defender scan completed successfully!" -ForegroundColor Green
+                Write-Log "[ScanExecution] ✓ Full system scan completed successfully" 'INFO'
+                Write-Log "[ScanExecution] Total scan execution time: $($scanExecutionTime.ToString('hh\:mm\:ss'))" 'INFO'
+                if ($scanResult.Result) {
+                    Write-Log "[ScanExecution] Scan result: $($scanResult.Result)" 'INFO'
+                }
             }
-            elseif ($scanResult -like "ERROR:*") {
-                Write-Log "[ScanExecution] ⚠ Scan completed with error: $($scanResult.Substring(6))" 'WARN'
+            else {
+                Write-Host "⚠️ Scan completed with warnings: $($scanResult.Error)" -ForegroundColor Yellow
+                Write-Log "[ScanExecution] ⚠ Scan completed with error: $($scanResult.Error)" 'WARN'
             }
             $scanSuccess = $true
             $detailedLogData.ScanExecution = @{
@@ -6932,17 +6957,15 @@ function Start-DefenderFullScan {
             }
         }
         catch {
-            Write-ActionProgress -ActionType "Scanning" -ItemName "Full System Scan" -PercentComplete 100 -Status "Scan failed" -Completed
+            Write-Host "❌ Windows Defender scan failed: $_" -ForegroundColor Red
             Write-Log "[ScanExecution] ✗ Defender scan failed: $_" 'ERROR'
             return $false
         }
 
-        # Progress: 72% - Comprehensive threat analysis
-        Write-ActionProgress -ActionType "Analyzing" -ItemName "Threat Analysis" -PercentComplete 72 -Status "Performing comprehensive threat analysis..."
+        # Comprehensive threat analysis
         Write-Log "[ThreatAnalysis] === COMPREHENSIVE THREAT ANALYSIS ===" 'INFO'
+        Write-Host "🔍 Analyzing scan results for threats..." -ForegroundColor Yellow
         try {
-            # Progress: 74% - Retrieving detected threats with detailed analysis
-            Write-ActionProgress -ActionType "Analyzing" -ItemName "Threat Analysis" -PercentComplete 74 -Status "Retrieving and analyzing detected threats..."
             $threatsFound = Get-MpThreat
             
             # Enhanced threat analysis
