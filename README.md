@@ -498,6 +498,7 @@ All keys are optional. The script intelligently handles missing configurations.
   "SkipBloatwareRemoval": false,
   "SkipEssentialApps": false,
   "SkipWindowsUpdates": false,
+  "SkipPackageUpdates": false,
   "SkipTelemetryDisable": false,
   "SkipSystemRestore": false,
   "EnableVerboseLogging": false,

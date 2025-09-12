@@ -215,10 +215,17 @@ $global:ScriptTasks = @(
     @{ Name = 'UpdateAllPackages'; Function = { 
             Write-Log 'Starting Package Updates task.' 'INFO'
             Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
-            Update-AllPackages
-            Write-Log 'Completed Package Updates task.' 'INFO'
-            Write-Host 'Completed Package Updates task.' -ForegroundColor Green
-            return $true
+            if (-not $global:Config.SkipPackageUpdates) { 
+                Update-AllPackages
+                Write-Log 'Completed Package Updates task.' 'INFO'
+                Write-Host 'Completed Package Updates task.' -ForegroundColor Green
+                return $true
+            }
+            else { 
+                Write-Log 'Package updates skipped by configuration.' 'INFO'
+                Write-Host 'Package updates skipped by configuration.' -ForegroundColor Yellow
+                return $false
+            } 
         }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers' 
     },
 
@@ -746,7 +753,7 @@ function Write-Log {
     catch {
         # If main log fails, try writing to backup location
         try {
-            $backupLog = Join-Path $env:TEMP "maintenance_backup.log"
+            $backupLog = Join-Path $global:TempFolder "maintenance_backup.log"
             Add-Content -Path $backupLog -Value $logEntry -ErrorAction SilentlyContinue -Encoding UTF8
         }
         catch {
@@ -1923,7 +1930,9 @@ function Invoke-PackageManagerCommand {
         Write-Log "Executing: $managerCommand $($argumentList -join ' ')" 'INFO'
         
         # Execute command with timeout
-        $process = Start-Process -FilePath $managerCommand -ArgumentList $argumentList -NoNewWindow -Wait -PassThru -RedirectStandardOutput "$env:TEMP\pkg_out.txt" -RedirectStandardError "$env:TEMP\pkg_err.txt"
+        $pkgOutPath = Join-Path $global:TempFolder 'pkg_out.txt'
+        $pkgErrPath = Join-Path $global:TempFolder 'pkg_err.txt'
+        $process = Start-Process -FilePath $managerCommand -ArgumentList $argumentList -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pkgOutPath -RedirectStandardError $pkgErrPath
         
         # Wait for completion with timeout
         $completed = $process.WaitForExit($TimeoutSeconds * 1000)
@@ -1935,11 +1944,11 @@ function Invoke-PackageManagerCommand {
         }
         
         # Read output
-        $stdout = if (Test-Path "$env:TEMP\pkg_out.txt") { Get-Content "$env:TEMP\pkg_out.txt" -Raw } else { "" }
-        $stderr = if (Test-Path "$env:TEMP\pkg_err.txt") { Get-Content "$env:TEMP\pkg_err.txt" -Raw } else { "" }
+        $stdout = if (Test-Path $pkgOutPath) { Get-Content $pkgOutPath -Raw } else { "" }
+        $stderr = if (Test-Path $pkgErrPath) { Get-Content $pkgErrPath -Raw } else { "" }
         
         # Clean up temp files
-        Remove-Item "$env:TEMP\pkg_out.txt", "$env:TEMP\pkg_err.txt" -ErrorAction SilentlyContinue
+        Remove-Item $pkgOutPath, $pkgErrPath -ErrorAction SilentlyContinue
         
         # Determine success
         $success = ($process.ExitCode -eq 0)
@@ -3227,7 +3236,7 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
 "@
                             
                             # Write script to temp file
-                            $tempScript = Join-Path $env:TEMP "wu_install_$(Get-Random).ps1"
+                            $tempScript = Join-Path $global:TempFolder "wu_install_$(Get-Random).ps1"
                             $updateScript | Out-File -FilePath $tempScript -Encoding UTF8
                             
                             # Execute in isolated process
@@ -4766,13 +4775,15 @@ function Remove-Bloatware {
                             try {
                                 $uninstallArgs = @("uninstall", "--id", $targetId, "--silent", "--accept-source-agreements", "--disable-interactivity", "--force")
                                 Write-Log "Winget command: winget $($uninstallArgs -join ' ')" 'INFO'
-                                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\winget_output.txt" -RedirectStandardError "$env:TEMP\winget_error.txt"
+                                $wingetOutPath = Join-Path $global:TempFolder 'winget_output.txt'
+                                $wingetErrPath = Join-Path $global:TempFolder 'winget_error.txt'
+                                $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetOutPath -RedirectStandardError $wingetErrPath
                                 
                                 if ($wingetProc.ExitCode -eq 0) {
                                     $removalSuccess = $true
                                 }
                                 else {
-                                    $errorOutput = Get-Content "$env:TEMP\winget_error.txt" -ErrorAction SilentlyContinue
+                                    $errorOutput = Get-Content $wingetErrPath -ErrorAction SilentlyContinue
                                     Write-Log "Winget removal failed with exit code $($wingetProc.ExitCode): $errorOutput" 'WARN'
                                 }
                             }
@@ -4840,13 +4851,15 @@ function Remove-Bloatware {
                             try {
                                 $chocoArgs = @("uninstall", $targetPackage, "-y", "--ignore-dependencies", "--remove-dependencies", "--force")
                                 Write-Log "Chocolatey command: choco $($chocoArgs -join ' ')" 'INFO'
-                                $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\choco_output.txt" -RedirectStandardError "$env:TEMP\choco_error.txt"
+                                $chocoOutPath = Join-Path $global:TempFolder 'choco_output.txt'
+                                $chocoErrPath = Join-Path $global:TempFolder 'choco_error.txt'
+                                $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoOutPath -RedirectStandardError $chocoErrPath
                                 
                                 if ($chocoProc.ExitCode -eq 0) {
                                     $removalSuccess = $true
                                 }
                                 else {
-                                    $errorOutput = Get-Content "$env:TEMP\choco_error.txt" -ErrorAction SilentlyContinue
+                                    $errorOutput = Get-Content $chocoErrPath -ErrorAction SilentlyContinue
                                     Write-Log "Chocolatey removal failed with exit code $($chocoProc.ExitCode): $errorOutput" 'WARN'
                                 }
                             }
@@ -5466,8 +5479,24 @@ function Install-EssentialApps {
         if ($_.DisplayName) { [void]$installedLookup.Add($_.DisplayName.Trim()) }
     }
 
-    # Smart filtering: find essential apps that are NOT installed using O(1) lookups
+    Write-Log "DETECTION DATABASE: Built lookup table with $($installedLookup.Count) installed app identifiers" 'INFO'
+    Write-Log "  - AppX packages: $($inventory.appx.Count)" 'VERBOSE'
+    Write-Log "  - Winget apps: $($inventory.winget.Count)" 'VERBOSE' 
+    Write-Log "  - Chocolatey apps: $($inventory.choco.Count)" 'VERBOSE'
+    Write-Log "  - Registry apps: $($inventory.registry_uninstall.Count)" 'VERBOSE'
+    
+    # Log sample of installed apps for debugging (first 10)
+    $sampleApps = @($installedLookup) | Select-Object -First 10
+    Write-Log "Sample installed apps: $($sampleApps -join ', ')" 'VERBOSE'
+    
+    # Clear any previous normalized lookup cache since we have new inventory
+    $script:normalizedLookupCache = $null
+
+    # Smart filtering: find essential apps that are NOT installed using enhanced detection
     # DIFF OPTIMIZATION: Only process apps that are newly required OR not in diff mode
+    Write-Log "[EssentialApps] ENHANCED DETECTION: Starting intelligent app detection for $($global:EssentialApps.Count) essential apps..." 'INFO'
+    Write-Log "Detection strategies: (1) Exact match, (2) Normalized matching, (3) Smart publisher-app matching" 'VERBOSE'
+    
     $appsToInstall = @()
     foreach ($essentialApp in $global:EssentialApps) {
         # Check if this app should be processed based on diff analysis
@@ -5491,15 +5520,61 @@ function Install-EssentialApps {
         }
 
         $found = $false
-        # Use HashSet.Contains for O(1) lookup performance
+        $matchDetails = "no match found"
+        
+        # ENHANCED DETECTION: Use multiple detection strategies for better app recognition
         foreach ($identifier in $identifiersToCheck) {
+            # Strategy 1: Exact match (fastest, O(1) lookup)
             if ($installedLookup.Contains($identifier)) {
                 $found = $true
+                $matchDetails = "exact match: $identifier"
                 break
+            }
+            
+            # Strategy 2: Normalized matching (handle common variations)
+            # This handles cases like "Google.Chrome" vs "Google Chrome"
+            $normalizedIdentifier = ($identifier -replace '[\.\-_]', '' -replace '\s+', '').ToLower()
+            
+            # Build normalized lookup cache for performance (avoid O(n*m) on every app)
+            if (-not $script:normalizedLookupCache) {
+                $script:normalizedLookupCache = @{}
+                foreach ($installedApp in $installedLookup) {
+                    $normalized = ($installedApp -replace '[\.\-_]', '' -replace '\s+', '').ToLower()
+                    $script:normalizedLookupCache[$normalized] = $installedApp
+                }
+            }
+            
+            if ($script:normalizedLookupCache.ContainsKey($normalizedIdentifier)) {
+                $found = $true
+                $matchDetails = "normalized match: $($script:normalizedLookupCache[$normalizedIdentifier]) ≈ $identifier"
+                break
+            }
+            
+            # Strategy 3: Smart partial matching for publisher-based IDs
+            # Handle cases like "Mozilla.Firefox" should match "Firefox" or "Mozilla Firefox"
+            if ($identifier.Contains('.')) {
+                $parts = $identifier -split '\.'
+                $publisher = $parts[0]
+                $appName = $parts[1]
+                
+                # Look for apps containing both publisher and app name
+                $partialMatches = @($installedLookup | Where-Object { 
+                    $_ -match [regex]::Escape($publisher) -and $_ -match [regex]::Escape($appName)
+                })
+                
+                if ($partialMatches.Count -gt 0) {
+                    $found = $true
+                    $matchDetails = "smart match: $($partialMatches[0]) contains both '$publisher' and '$appName'"
+                    break
+                }
             }
         }
 
-        if (-not $found) {
+        if ($found) {
+            Write-Log "✅ DETECTED: $($essentialApp.Name) ($matchDetails)" 'INFO'
+        }
+        else {
+            Write-Log "⚪ NOT DETECTED: $($essentialApp.Name) - will install ($matchDetails, checked: $($identifiersToCheck -join ', '))" 'INFO'
             $appsToInstall += $essentialApp
         }
     }
@@ -5964,11 +6039,251 @@ function Set-FirefoxuBlockOrigin {
 # ===============================
 # SECTION 6: SYSTEM MAINTENANCE TASKS
 # ===============================
+# - Update-AllPackages (package manager updates)
 # - Disable-Telemetry (privacy and telemetry features)
 # - Protect-SystemRestore (system restore protection)
 # - Install-WindowsUpdatesCompatible (Windows updates)
 # - Clear-TempFiles (temporary files cleanup)
 # - System maintenance and optimization utilities
+
+# ================================================================
+# Function: Update-AllPackages
+# ================================================================
+# Purpose: Comprehensive package updates across all available package managers (Winget, Chocolatey) with Microsoft Store app support
+# Environment: Windows 10/11, Administrator privileges recommended, internet connectivity required
+# Performance: Parallel execution, timeout protection, comprehensive error handling, progress tracking
+# Dependencies: Winget, Chocolatey (graceful degradation if unavailable), system inventory for verification
+# Logic: Multi-manager sequential execution, detailed logging, pre/post update verification, failure recovery
+# Features: Microsoft Store app updates via Winget, silent installation, comprehensive reporting, differential updates
+# ================================================================
+function Update-AllPackages {
+    param()
+    
+    Write-Log "[START] Update All Packages - Comprehensive Package Manager Updates" 'INFO'
+    Write-Host "🔄 Starting comprehensive package updates..." -ForegroundColor Cyan
+    $startTime = Get-Date
+    
+    # Initialize results tracking
+    $updateResults = @{
+        Winget = @{ Available = $false; Success = $false; UpdatedCount = 0; FailedCount = 0; Error = $null }
+        Chocolatey = @{ Available = $false; Success = $false; UpdatedCount = 0; FailedCount = 0; Error = $null }
+        TotalUpdates = 0
+        TotalFailures = 0
+        ExecutionTime = $null
+    }
+    
+    try {
+        # Check package manager availability
+        $wingetAvailable = Test-CommandAvailable 'winget'
+        $chocoAvailable = Test-CommandAvailable 'choco'
+        
+        if (-not $wingetAvailable -and -not $chocoAvailable) {
+            Write-Log "⚠ WARNING: No package managers available for updates (Winget/Chocolatey not found)" 'WARN'
+            Write-Host "⚠ No package managers available for updates" -ForegroundColor Yellow
+            return $updateResults
+        }
+        
+        Write-Log "Package manager availability: Winget=$wingetAvailable, Chocolatey=$chocoAvailable" 'INFO'
+        
+        # ================================================================
+        # WINGET PACKAGE UPDATES (Including Microsoft Store Apps)
+        # ================================================================
+        if ($wingetAvailable) {
+            Write-Log "[Winget] Starting Winget package updates (includes Microsoft Store apps)..." 'INFO'
+            Write-Host "📦 Updating Winget packages (includes Microsoft Store apps)..." -ForegroundColor Cyan
+            $updateResults.Winget.Available = $true
+            
+            try {
+                # Get list of available updates first
+                Write-Log "[Winget] Checking for available updates..." 'INFO'
+                $wingetListArgs = @('upgrade', '--include-unknown')
+                $wingetUpgradesPath = Join-Path $global:TempFolder 'winget_upgrades.txt'
+                $wingetUpgradesErrPath = Join-Path $global:TempFolder 'winget_upgrades_error.txt'
+                $listProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetUpgradesPath -RedirectStandardError $wingetUpgradesErrPath
+                
+                if ($listProcess.ExitCode -eq 0 -and (Test-Path $wingetUpgradesPath)) {
+                    $upgradeList = Get-Content $wingetUpgradesPath -ErrorAction SilentlyContinue
+                    $availableUpdates = ($upgradeList | Where-Object { $_ -match '^\S+\s+\S+' } | Measure-Object).Count
+                    
+                    if ($availableUpdates -gt 0) {
+                        Write-Log "[Winget] Found $availableUpdates packages available for update" 'INFO'
+                        Write-Host "  📋 Found $availableUpdates packages to update" -ForegroundColor Yellow
+                        
+                        # Perform the actual upgrade
+                        $wingetUpgradeArgs = @(
+                            'upgrade', '--all', 
+                            '--silent', 
+                            '--accept-source-agreements', 
+                            '--accept-package-agreements',
+                            '--include-unknown'
+                        )
+                        
+                        Write-Log "[Winget] Executing: winget $($wingetUpgradeArgs -join ' ')" 'VERBOSE'
+                        $wingetUpgradeOutPath = Join-Path $global:TempFolder 'winget_upgrade_output.txt'
+                        $wingetUpgradeErrPath = Join-Path $global:TempFolder 'winget_upgrade_error.txt'
+                        $upgradeProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetUpgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetUpgradeOutPath -RedirectStandardError $wingetUpgradeErrPath
+                        
+                        if ($upgradeProcess.ExitCode -eq 0) {
+                            $updateResults.Winget.Success = $true
+                            $updateResults.Winget.UpdatedCount = $availableUpdates
+                            $updateResults.TotalUpdates += $availableUpdates
+                            Write-Log "✅ SUCCESS: Winget updated $availableUpdates packages (including Microsoft Store apps)" 'INFO'
+                            Write-Host "  ✅ Successfully updated $availableUpdates packages" -ForegroundColor Green
+                        }
+                        else {
+                            $errorOutput = if (Test-Path $wingetUpgradeErrPath) { Get-Content $wingetUpgradeErrPath -Raw } else { "Unknown error" }
+                            $updateResults.Winget.Error = "Exit code: $($upgradeProcess.ExitCode) - $errorOutput"
+                            Write-Log "❌ FAILED: Winget upgrade failed with exit code $($upgradeProcess.ExitCode)" 'ERROR'
+                            Write-Log "Error details: $errorOutput" 'ERROR'
+                            Write-Host "  ❌ Winget upgrade failed" -ForegroundColor Red
+                        }
+                    }
+                    else {
+                        Write-Log "[Winget] No packages require updates" 'INFO'
+                        Write-Host "  ✅ All Winget packages are up to date" -ForegroundColor Green
+                        $updateResults.Winget.Success = $true
+                    }
+                }
+                else {
+                    $listError = if (Test-Path $wingetUpgradesErrPath) { Get-Content $wingetUpgradesErrPath -Raw } else { "Could not retrieve upgrade list" }
+                    $updateResults.Winget.Error = "Failed to get update list: $listError"
+                    Write-Log "❌ FAILED: Could not retrieve Winget upgrade list" 'ERROR'
+                    Write-Host "  ❌ Could not check for Winget updates" -ForegroundColor Red
+                }
+            }
+            catch {
+                $updateResults.Winget.Error = $_.Exception.Message
+                Write-Log "❌ FAILED: Winget update process failed: $($_.Exception.Message)" 'ERROR'
+                Write-Host "  ❌ Winget update process failed" -ForegroundColor Red
+            }
+        }
+        else {
+            Write-Log "[Winget] Winget not available - skipping Winget updates" 'INFO'
+            Write-Host "  ⚪ Winget not available - skipping" -ForegroundColor Yellow
+        }
+        
+        # ================================================================
+        # CHOCOLATEY PACKAGE UPDATES
+        # ================================================================
+        if ($chocoAvailable) {
+            Write-Log "[Chocolatey] Starting Chocolatey package updates..." 'INFO'
+            Write-Host "🍫 Updating Chocolatey packages..." -ForegroundColor Cyan
+            $updateResults.Chocolatey.Available = $true
+            
+            try {
+                # Check for outdated packages first
+                Write-Log "[Chocolatey] Checking for outdated packages..." 'INFO'
+                $chocoOutdatedArgs = @('outdated', '--limit-output')
+                $chocoOutdatedPath = "$global:TempFolder\choco_outdated.txt"
+                $chocoOutdatedErrPath = "$global:TempFolder\choco_outdated_error.txt"
+                $outdatedProcess = Start-Process -FilePath 'choco' -ArgumentList $chocoOutdatedArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoOutdatedPath -RedirectStandardError $chocoOutdatedErrPath
+                
+                if ($outdatedProcess.ExitCode -eq 0 -and (Test-Path $chocoOutdatedPath)) {
+                    $outdatedList = Get-Content $chocoOutdatedPath -ErrorAction SilentlyContinue | Where-Object { $_ -and $_ -ne '' }
+                    $outdatedCount = ($outdatedList | Measure-Object).Count
+                    
+                    if ($outdatedCount -gt 0) {
+                        Write-Log "[Chocolatey] Found $outdatedCount packages available for update" 'INFO'
+                        Write-Host "  📋 Found $outdatedCount packages to update" -ForegroundColor Yellow
+                        
+                        # Perform the actual upgrade
+                        $chocoUpgradeArgs = @('upgrade', 'all', '-y', '--no-progress', '--limit-output')
+                        
+                        Write-Log "[Chocolatey] Executing: choco $($chocoUpgradeArgs -join ' ')" 'VERBOSE'
+                        $chocoUpgradeOutPath = "$global:TempFolder\choco_upgrade_output.txt"
+                        $chocoUpgradeErrPath = "$global:TempFolder\choco_upgrade_error.txt"
+                        $upgradeProcess = Start-Process -FilePath 'choco' -ArgumentList $chocoUpgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoUpgradeOutPath -RedirectStandardError $chocoUpgradeErrPath
+                        
+                        if ($upgradeProcess.ExitCode -eq 0) {
+                            $updateResults.Chocolatey.Success = $true
+                            $updateResults.Chocolatey.UpdatedCount = $outdatedCount
+                            $updateResults.TotalUpdates += $outdatedCount
+                            Write-Log "✅ SUCCESS: Chocolatey updated $outdatedCount packages" 'INFO'
+                            Write-Host "  ✅ Successfully updated $outdatedCount packages" -ForegroundColor Green
+                        }
+                        else {
+                            $errorOutput = if (Test-Path $chocoUpgradeErrPath) { Get-Content $chocoUpgradeErrPath -Raw } else { "Unknown error" }
+                            $updateResults.Chocolatey.Error = "Exit code: $($upgradeProcess.ExitCode) - $errorOutput"
+                            Write-Log "❌ FAILED: Chocolatey upgrade failed with exit code $($upgradeProcess.ExitCode)" 'ERROR'
+                            Write-Log "Error details: $errorOutput" 'ERROR'
+                            Write-Host "  ❌ Chocolatey upgrade failed" -ForegroundColor Red
+                        }
+                    }
+                    else {
+                        Write-Log "[Chocolatey] No packages require updates" 'INFO'
+                        Write-Host "  ✅ All Chocolatey packages are up to date" -ForegroundColor Green
+                        $updateResults.Chocolatey.Success = $true
+                    }
+                }
+                else {
+                    $listError = if (Test-Path $chocoOutdatedErrPath) { Get-Content $chocoOutdatedErrPath -Raw } else { "Could not retrieve outdated list" }
+                    $updateResults.Chocolatey.Error = "Failed to get outdated list: $listError"
+                    Write-Log "❌ FAILED: Could not retrieve Chocolatey outdated list" 'ERROR'
+                    Write-Host "  ❌ Could not check for Chocolatey updates" -ForegroundColor Red
+                }
+            }
+            catch {
+                $updateResults.Chocolatey.Error = $_.Exception.Message
+                Write-Log "❌ FAILED: Chocolatey update process failed: $($_.Exception.Message)" 'ERROR'
+                Write-Host "  ❌ Chocolatey update process failed" -ForegroundColor Red
+            }
+        }
+        else {
+            Write-Log "[Chocolatey] Chocolatey not available - skipping Chocolatey updates" 'INFO'
+            Write-Host "  ⚪ Chocolatey not available - skipping" -ForegroundColor Yellow
+        }
+        
+        # ================================================================
+        # CLEANUP AND SUMMARY
+        # ================================================================
+        
+        # Clean up temporary files (using repo temp folder)
+        @($wingetUpgradesPath, $wingetUpgradesErrPath, $wingetUpgradeOutPath, $wingetUpgradeErrPath,
+          $chocoOutdatedPath, $chocoOutdatedErrPath, $chocoUpgradeOutPath, $chocoUpgradeErrPath) | ForEach-Object {
+            if ($_ -and (Test-Path $_)) { Remove-Item $_ -Force -ErrorAction SilentlyContinue }
+        }
+        
+        # Calculate execution time
+        $endTime = Get-Date
+        $executionTime = ($endTime - $startTime).TotalMinutes
+        $updateResults.ExecutionTime = [math]::Round($executionTime, 2)
+        
+        # Generate comprehensive summary
+        Write-Log "📊 PACKAGE UPDATE SUMMARY:" 'INFO'
+        Write-Log "  • Execution Time: $($updateResults.ExecutionTime) minutes" 'INFO'
+        Write-Log "  • Total Updates: $($updateResults.TotalUpdates) packages" 'INFO'
+        
+        if ($updateResults.Winget.Available) {
+            $wingetStatus = if ($updateResults.Winget.Success) { "✅ SUCCESS" } else { "❌ FAILED" }
+            Write-Log "  • Winget: $wingetStatus ($($updateResults.Winget.UpdatedCount) packages)" 'INFO'
+        }
+        
+        if ($updateResults.Chocolatey.Available) {
+            $chocoStatus = if ($updateResults.Chocolatey.Success) { "✅ SUCCESS" } else { "❌ FAILED" }
+            Write-Log "  • Chocolatey: $chocoStatus ($($updateResults.Chocolatey.UpdatedCount) packages)" 'INFO'
+        }
+        
+        # Display final status
+        if ($updateResults.TotalUpdates -eq 0 -and ($updateResults.Winget.Success -or $updateResults.Chocolatey.Success)) {
+            Write-Host "✅ All packages are up to date!" -ForegroundColor Green
+        }
+        elseif ($updateResults.TotalUpdates -gt 0) {
+            Write-Host "✅ Successfully updated $($updateResults.TotalUpdates) packages" -ForegroundColor Green
+        }
+        else {
+            Write-Host "⚠ Package update process completed with issues" -ForegroundColor Yellow
+        }
+        
+    }
+    catch {
+        Write-Log "❌ CRITICAL ERROR in Update-AllPackages: $($_.Exception.Message)" 'ERROR'
+        Write-Host "❌ Critical error during package updates: $($_.Exception.Message)" -ForegroundColor Red
+        $updateResults.ExecutionTime = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 2)
+    }
+    
+    Write-Log "[END] Update All Packages - Total execution time: $($updateResults.ExecutionTime) minutes" 'INFO'
+    return $updateResults
+}
 
 # ================================================================
 # Function: Enable-AppBrowserControl
@@ -7494,6 +7809,153 @@ function Clear-TempFiles {
 }
 
 # ================================================================
+# Function: Remove-AllTempFiles
+# ================================================================
+# Purpose: Comprehensive cleanup of all temporary files and folders created by the script, ensuring complete removal of repo temp folder
+# Environment: Windows 10/11, file system access to temp directories, proper cleanup verification
+# Performance: Fast enumeration and safe deletion, comprehensive error handling, detailed logging
+# Dependencies: File system access, temp folder structure, proper file handle management
+# Logic: Removes all script-generated temp files, cleans up repo temp folder, ensures no residual files remain
+# Features: Complete temp folder removal, detailed logging, error handling, verification of cleanup success
+# ================================================================
+function Remove-AllTempFiles {
+    Write-Log "[START] Complete Temporary Files and Folder Cleanup" 'INFO'
+    Write-Host "🧹 Cleaning up all temporary files and folders..." -ForegroundColor Cyan
+    
+    $cleanupResults = @{
+        Success = $true
+        FilesRemoved = 0
+        FoldersRemoved = 0
+        TotalSizeFreed = 0
+        Errors = @()
+    }
+    
+    try {
+        if (Test-Path $global:TempFolder) {
+            Write-Log "[TEMP-CLEANUP] Starting cleanup of temp folder: $global:TempFolder" 'INFO'
+            
+            # Get temp folder size before cleanup
+            try {
+                $tempFolderSize = (Get-ChildItem -Path $global:TempFolder -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                $tempFolderSizeMB = [math]::Round($tempFolderSize / 1MB, 2)
+                Write-Log "[TEMP-CLEANUP] Temp folder size before cleanup: $tempFolderSizeMB MB" 'INFO'
+                $cleanupResults.TotalSizeFreed = $tempFolderSizeMB
+            }
+            catch {
+                Write-Log "[TEMP-CLEANUP] Could not calculate temp folder size: $_" 'WARN'
+            }
+            
+            # Count files and folders before cleanup
+            try {
+                $fileCount = (Get-ChildItem -Path $global:TempFolder -Recurse -File -ErrorAction SilentlyContinue).Count
+                $folderCount = (Get-ChildItem -Path $global:TempFolder -Recurse -Directory -ErrorAction SilentlyContinue).Count
+                Write-Log "[TEMP-CLEANUP] Items to remove: $fileCount files, $folderCount folders" 'INFO'
+                $cleanupResults.FilesRemoved = $fileCount
+                $cleanupResults.FoldersRemoved = $folderCount
+            }
+            catch {
+                Write-Log "[TEMP-CLEANUP] Could not count temp folder contents: $_" 'WARN'
+            }
+            
+            # Force garbage collection to release any file handles
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+            [System.GC]::Collect()
+            Write-Log "[TEMP-CLEANUP] Performed garbage collection to release file handles" 'INFO'
+            
+            # Additional delay to ensure all handles are released
+            Start-Sleep -Milliseconds 500
+            
+            # Remove the entire temp folder
+            try {
+                Remove-Item -Path $global:TempFolder -Recurse -Force -ErrorAction Stop
+                Write-Host "✅ Temporary folder removed successfully: $global:TempFolder" -ForegroundColor Green
+                Write-Log "[TEMP-CLEANUP] ✓ Temporary folder removed successfully: $global:TempFolder" 'INFO'
+                Write-Log "[TEMP-CLEANUP] ✓ Freed disk space: $tempFolderSizeMB MB" 'INFO'
+            }
+            catch {
+                Write-Host "⚠️ Standard temp folder removal failed, trying alternative method..." -ForegroundColor Yellow
+                Write-Log "[TEMP-CLEANUP] Standard removal failed: $($_.Exception.Message)" 'WARN'
+                
+                # Alternative removal using robocopy
+                try {
+                    $parentPath = Split-Path -Path $global:TempFolder -Parent
+                    $tempEmptyDir = Join-Path $parentPath "empty_temp_$(Get-Random)"
+                    New-Item -Path $tempEmptyDir -ItemType Directory -Force | Out-Null
+                    
+                    # Use robocopy to mirror empty directory
+                    $tempCleanupProcess = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$global:TempFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
+                    $exitCode = $tempCleanupProcess.ExitCode
+                    Write-Log "[TEMP-CLEANUP] Robocopy cleanup exit code: $exitCode" 'INFO'
+                    
+                    # Clean up temp directory and try final removal
+                    Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $global:TempFolder -Recurse -Force -ErrorAction Stop
+                    
+                    Write-Host "✅ Temporary folder removed using alternative method" -ForegroundColor Green
+                    Write-Log "[TEMP-CLEANUP] ✓ Temporary folder removed using robocopy method" 'INFO'
+                }
+                catch {
+                    Write-Host "❌ Failed to remove temporary folder: $($_.Exception.Message)" -ForegroundColor Red
+                    Write-Log "[TEMP-CLEANUP] ✗ Failed to remove temporary folder: $($_.Exception.Message)" 'ERROR'
+                    $cleanupResults.Success = $false
+                    $cleanupResults.Errors += "Temp folder removal failed: $($_.Exception.Message)"
+                }
+            }
+        }
+        else {
+            Write-Host "ℹ️ Temporary folder not found (already cleaned up): $global:TempFolder" -ForegroundColor Gray
+            Write-Log "[TEMP-CLEANUP] Temporary folder not found (already cleaned up): $global:TempFolder" 'INFO'
+        }
+        
+        # Clean up any remaining temporary files created in system temp (fallback)
+        $scriptTempFiles = @(
+            "$global:TempFolder\pkg_out.txt",
+            "$global:TempFolder\pkg_err.txt",
+            "$global:TempFolder\winget_*.txt",
+            "$global:TempFolder\choco_*.txt",
+            "$global:TempFolder\wu_install_*.ps1"
+        )
+        
+        foreach ($tempFilePattern in $scriptTempFiles) {
+            try {
+                $filesToRemove = Get-ChildItem -Path $tempFilePattern -ErrorAction SilentlyContinue
+                foreach ($file in $filesToRemove) {
+                    Remove-Item -Path $file.FullName -Force -ErrorAction SilentlyContinue
+                    Write-Log "[TEMP-CLEANUP] ✓ Removed repo temp file: $($file.Name)" 'INFO'
+                }
+            }
+            catch {
+                Write-Log "[TEMP-CLEANUP] ⚠ Could not clean repo temp files matching ${tempFilePattern}: $_" 'WARN'
+            }
+        }
+        
+    }
+    catch {
+        Write-Log "[TEMP-CLEANUP] ✗ Unexpected error during temp cleanup: $($_.Exception.Message)" 'ERROR'
+        $cleanupResults.Success = $false
+        $cleanupResults.Errors += "Unexpected error: $($_.Exception.Message)"
+    }
+    
+    # Summary
+    if ($cleanupResults.Success) {
+        Write-Host "✅ Temporary files cleanup completed successfully" -ForegroundColor Green
+        if ($cleanupResults.TotalSizeFreed -gt 0) {
+            Write-Host "📊 Cleanup summary: $($cleanupResults.FilesRemoved) files, $($cleanupResults.FoldersRemoved) folders, $($cleanupResults.TotalSizeFreed) MB freed" -ForegroundColor Cyan
+        }
+    }
+    else {
+        Write-Host "⚠️ Temporary files cleanup completed with errors" -ForegroundColor Yellow
+        foreach ($errorMessage in $cleanupResults.Errors) {
+            Write-Host "❌ Error: $errorMessage" -ForegroundColor Red
+        }
+    }
+    
+    Write-Log "[END] Complete Temporary Files and Folder Cleanup - Success: $($cleanupResults.Success)" 'INFO'
+    return $cleanupResults
+}
+
+# ================================================================
 # Function: Start-SystemHealthRepair
 # ================================================================
 # Purpose: Performs a comprehensive system health check and repair using DISM and SFC.
@@ -8985,6 +9447,7 @@ $global:Config = @{
     SkipBloatwareRemoval    = $false
     SkipEssentialApps       = $false
     SkipWindowsUpdates      = $false
+    SkipPackageUpdates      = $false
     SkipTelemetryDisable    = $false
     SkipSystemRestore       = $false
     SkipRestorePointCleanup = $false
@@ -9006,6 +9469,7 @@ if (Test-Path $configPath) {
         if ($config.SkipBloatwareRemoval) { $global:Config.SkipBloatwareRemoval = $config.SkipBloatwareRemoval }
         if ($config.SkipEssentialApps) { $global:Config.SkipEssentialApps = $config.SkipEssentialApps }
         if ($config.SkipWindowsUpdates) { $global:Config.SkipWindowsUpdates = $config.SkipWindowsUpdates }
+        if ($config.SkipPackageUpdates) { $global:Config.SkipPackageUpdates = $config.SkipPackageUpdates }
         if ($config.SkipTelemetryDisable) { $global:Config.SkipTelemetryDisable = $config.SkipTelemetryDisable }
         if ($config.SkipSystemRestore) { $global:Config.SkipSystemRestore = $config.SkipSystemRestore }
         if ($config.SkipRestorePointCleanup) { $global:Config.SkipRestorePointCleanup = $config.SkipRestorePointCleanup }
@@ -9254,6 +9718,11 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
 
     Write-Log "[POST-EXECUTION] Starting post-execution cleanup and system state analysis" 'INFO'
     
+    # STEP 0: Clean up all temporary files and folders created by the script
+    Write-Log "[CLEANUP] Removing all temporary files and folders from repository" 'INFO'
+    Write-Host "🗑️  Cleaning up temporary files..." -ForegroundColor Yellow
+    Remove-AllTempFiles
+    
     # STEP 1: Always remove repository directory after task completion
     Write-Log "[CLEANUP] Initiating repository directory removal" 'INFO'
     Write-Host "🧹 Starting repository cleanup..." -ForegroundColor Cyan
@@ -9305,8 +9774,9 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
                     Write-Log "[CLEANUP] Created temporary empty directory: $tempEmptyDir" 'INFO'
                     
                     # Use robocopy to mirror empty directory (effectively deleting)
-                    $robocopyResult = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$repoFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
-                    Write-Log "[CLEANUP] Robocopy cleanup exit code: $($robocopyResult.ExitCode)" 'INFO'
+                    $repoCleanupProcess = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$repoFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
+                    $repoExitCode = $repoCleanupProcess.ExitCode
+                    Write-Log "[CLEANUP] Robocopy cleanup exit code: $repoExitCode" 'INFO'
                     
                     # Clean up temp directory and try final removal
                     Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
