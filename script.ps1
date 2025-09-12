@@ -2767,14 +2767,11 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
                     }
                     
                     # Set global reboot tracking if required
+                    # Always unattended: never prompt for reboot, never set global reboot flag
                     if ($rebootRequired) {
-                        $global:SystemSettings.Reboot.Required = $true
-                        $global:SystemSettings.Reboot.Source = "Windows Updates"
-                        $global:SystemSettings.Reboot.Timestamp = Get-Date
-                        Write-Log "Windows Updates installed successfully. System restart will be handled at the end of the script." 'INFO'
-                        Write-Host "⚠️  Windows Updates installed - restart will be prompted at the end." -ForegroundColor Yellow
-                    }
-                    else {
+                        Write-Log "Windows Updates installed successfully. System restart required, but will NOT be performed or prompted (unattended mode)." 'INFO'
+                        Write-Host "✓ Windows Updates installed - restart required, but will NOT be performed automatically (unattended)." -ForegroundColor Yellow
+                    } else {
                         Write-Log "Windows Updates installed successfully. No restart required." 'SUCCESS'
                     }
                     
