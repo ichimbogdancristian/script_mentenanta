@@ -650,6 +650,9 @@ grep_search -query "^function|^}$" -isRegexp true
 - 🚫 **NO unused variables allowed - ALL must have functionality restored**
 - 🚫 **NO assumptions about "false positives" - verify and fix every unused variable diagnostic**
 - 🚫 **NO manual diagnostic checking - use AUTOMATIC search patterns**
+- 🚫 **NO EDITS WITHOUT POST-VERIFICATION**: MANDATORY `get_errors` check after EVERY code modification
+- 🚫 **NO EXCEPTION TO POST-EDIT CHECKING**: Even single-line changes require diagnostics verification
+- 🚫 **NO WORK COMPLETION**: Until post-edit `get_errors` returns completely clean results
 
 #### **🔧 MANDATORY UNUSED VARIABLE RESOLUTION PROCESS**
 When VSCode diagnostics show "The variable 'X' is assigned but never used":
@@ -750,7 +753,9 @@ Every code change MUST include:
 12. 🧹 ORPHANED-CODE-CLEANUP: Ensure no floating code fragments remain
 13. 🔎 AUTO-VERIFY: Re-run diagnostic search patterns to confirm resolution
 14. 🔍 FINAL-CHECK: get_errors on all modified files
-15. ✅ COMPLETE: Only when zero errors/warnings remain AND no orphaned code AND no unused variables
+15. 🚨 MANDATORY POST-EDIT DIAGNOSTICS VERIFICATION: MUST run get_errors after ANY edit completion
+16. 🔄 ITERATIVE COMPLIANCE CHECK: If diagnostics show ANY issues, immediately return to step 9-15
+17. ✅ COMPLETE: Only when zero errors/warnings remain AND no orphaned code AND no unused variables AND post-edit diagnostics are clean
 ```
 
 #### **🚨 CRITICAL: Unused Variable Resolution is BLOCKING**
@@ -788,6 +793,44 @@ When dealing with complex syntax or structural errors:
 5. Remove any floating code fragments outside function contexts
 ```
 
+### **🚨 MANDATORY POST-EDIT DIAGNOSTICS VERIFICATION PROTOCOL**
+
+**⚠️ ABSOLUTE REQUIREMENT**: After EVERY code edit, modification, or file change, AI agents MUST perform comprehensive diagnostics verification. This is NON-NEGOTIABLE.
+
+#### **Required Post-Edit Verification Steps (BLOCKING):**
+
+1. **🔍 IMMEDIATE POST-EDIT CHECK**: Run `get_errors` on all modified files within 30 seconds of completing any edit
+2. **🚫 ZERO TOLERANCE POLICY**: ANY diagnostic error or warning MUST be resolved before declaring work complete
+3. **🔄 ITERATIVE RESOLUTION**: If diagnostics show issues, immediately fix and re-check until clean
+4. **📋 COMPREHENSIVE COVERAGE**: Check ALL files that were modified, not just the primary target file
+5. **🚨 BLOCKING COMPLETION**: NO work session can be marked complete until diagnostics are 100% clean
+
+#### **Mandatory Diagnostic Check Points:**
+- **After each `replace_string_in_file` operation**: Immediate `get_errors` verification
+- **After adding new functions**: Full file diagnostics check
+- **After structural changes**: Complete syntax and logic validation
+- **Before final completion**: Comprehensive `get_errors` on ALL modified files
+- **During iterative fixes**: Continuous diagnostic monitoring
+
+#### **Required Actions When Diagnostics Show Issues:**
+1. **IMMEDIATE HALT**: Stop all other work and focus solely on diagnostic resolution
+2. **ROOT CAUSE ANALYSIS**: Understand WHY the diagnostic appeared
+3. **COMPREHENSIVE FIX**: Resolve the issue with proper context understanding
+4. **RE-VERIFICATION**: Run `get_errors` again to confirm resolution
+5. **ITERATIVE PROCESS**: Repeat until zero diagnostics remain
+
+#### **Documentation Requirements:**
+- **Log every diagnostic found**: Issue type, line number, root cause
+- **Document resolution approach**: How each diagnostic was resolved
+- **Verify resolution success**: Confirm `get_errors` shows clean results
+- **Report completion status**: Only declare complete when diagnostics are clean
+
+#### **Quality Metrics (MANDATORY TRACKING):**
+- **Pre-Edit Diagnostic Count**: Number of issues before starting work
+- **Post-Edit Diagnostic Count**: MUST be zero for completion
+- **Resolution Time**: Time taken to resolve each diagnostic
+- **Verification Attempts**: Number of `get_errors` calls needed
+
 #### **Completion Criteria (ALL REQUIRED)**
 - [ ] `get_errors` returns zero errors on all modified files
 - [ ] All warnings addressed or explicitly justified  
@@ -800,6 +843,9 @@ When dealing with complex syntax or structural errors:
 - [ ] **NO UNUSED VARIABLES**: All assigned variables have functionality restored and integrated
 - [ ] **VARIABLE USAGE VERIFIED**: Confirmed through `get_errors` that all unused variable warnings resolved
 - [ ] **FUNCTIONALITY RESTORED**: All variables integrated into logging, reporting, conditional logic, or return objects
+- [ ] **POST-EDIT DIAGNOSTICS CLEAN**: MANDATORY `get_errors` verification completed after ALL edits
+- [ ] **DIAGNOSTIC RESOLUTION COMPLETE**: All PSScriptAnalyzer warnings and errors resolved via iterative checking
+- [ ] **ZERO TOLERANCE COMPLIANCE**: Final `get_errors` check returns completely clean results
 
 #### **Documentation of Fixes**
 When resolving diagnostics, document:
@@ -807,6 +853,42 @@ When resolving diagnostics, document:
 - **Why it occurred**: Root cause analysis
 - **How it was fixed**: Specific changes made
 - **Prevention**: How to avoid similar issues
+
+#### **🔧 MANDATORY POST-EDIT VERIFICATION EXAMPLES**
+
+**✅ CORRECT Post-Edit Workflow:**
+```
+Agent: "I need to modify a function"
+1. get_errors -filePaths ["script.ps1"]  # PRE-CHECK
+2. replace_string_in_file [makes changes]
+3. get_errors -filePaths ["script.ps1"]  # IMMEDIATE POST-EDIT CHECK (MANDATORY)
+4. [If issues found] Fix immediately and re-check
+5. get_errors -filePaths ["script.ps1"]  # FINAL VERIFICATION (MANDATORY)
+6. "Changes complete - zero diagnostics remaining"
+```
+
+**✅ CORRECT Workflow for Multiple Files:**
+```
+Agent: "I need to update several files"
+1. get_errors -filePaths ["file1.ps1", "file2.ps1"]  # PRE-CHECK
+2. replace_string_in_file [modifies file1.ps1]
+3. get_errors -filePaths ["file1.ps1"]  # POST-EDIT CHECK FOR FILE1 (MANDATORY)
+4. replace_string_in_file [modifies file2.ps1] 
+5. get_errors -filePaths ["file2.ps1"]  # POST-EDIT CHECK FOR FILE2 (MANDATORY)
+6. get_errors -filePaths ["file1.ps1", "file2.ps1"]  # FINAL ALL-FILES CHECK (MANDATORY)
+7. "All changes complete - zero diagnostics on all files"
+```
+
+**❌ INCORRECT Workflow:**
+```
+Agent: "I'll modify the function and check later"
+[Makes changes without diagnostic checking]
+"Changes complete" # ❌ NO - Must check diagnostics immediately after each edit
+
+Agent: "I made several changes, let me check at the end"
+[Multiple edits without intermediate checks]
+get_errors [...] # ❌ NO - Must check after EACH individual edit
+```
 
 ### **Examples of Enhanced Diagnostic Checking with Automatic Resolution**
 
