@@ -1637,7 +1637,7 @@ function Get-StandardizedAppInventory {
         # Cache the result if UseCache is enabled
         if ($UseCache) {
             $global:AppInventoryCache = @{
-                Data = $inventory
+                Data      = $inventory
                 Timestamp = Get-Date
             }
             Write-Log "Cached app inventory for future use" 'INFO'
@@ -2441,9 +2441,24 @@ function Get-ProvisionedAppxBloatware {
         [Parameter(Mandatory = $true)]
         [string[]]$BloatwarePatterns,
         [Parameter(Mandatory = $false)]
-        [string]$Context = "Provisioned AppX Scan"
+        [string]$Context = "Provisioned AppX Scan",
+        [Parameter(Mandatory = $false)]
+        [switch]$UseCache
     )
     Write-Log "[START] Provisioned AppX scan for bloatware" 'INFO'
+    
+    # Check cache first
+    if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
+        $cacheKey = "ProvisionedAppX_$($BloatwarePatterns -join '_')"
+        if ($global:BloatwareDetectionCache.Data.ContainsKey($cacheKey)) {
+            $cacheEntry = $global:BloatwareDetectionCache.Data[$cacheKey]
+            if ((Get-Date) -lt $cacheEntry.ExpiryTime) {
+                Write-Log "Using cached Provisioned AppX data" 'INFO'
+                return $cacheEntry.Data
+            }
+        }
+    }
+    
     $found = @()
     $provisioned = Get-AppxProvisionedPackageCompatible -Online
     foreach ($pkg in $provisioned) {
@@ -2465,6 +2480,17 @@ function Get-ProvisionedAppxBloatware {
             }
         }
     }
+    
+    # Cache results
+    if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
+        $cacheEntry = @{
+            Data       = $found
+            ExpiryTime = (Get-Date).Add($global:BloatwareDetectionCache.CacheTimeout)
+            Context    = $Context
+        }
+        $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
+    }
+    
     Write-Log "[END] Provisioned AppX scan: $($found.Count) bloatware apps found" 'INFO'
     return $found
 }
@@ -3389,7 +3415,7 @@ function Get-ServicesBloatware {
                 if ($service.Name -like $pattern -or $service.DisplayName -like "*$pattern*") {
                     # Get additional service information
                     try {
-                        $serviceWMI = Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
+                        $serviceWMI = Get-CimInstance -ClassName Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
                         $startMode = if ($serviceWMI) { $serviceWMI.StartMode } else { 'Unknown' }
                         $pathName = if ($serviceWMI) { $serviceWMI.PathName } else { 'Unknown' }
                         
@@ -5735,7 +5761,7 @@ function Protect-SystemRestore {
                 # Create restore point using WMI method
                 $restorePointResult = Invoke-WindowsPowerShellCommand -Command @"
 try {
-    `$systemRestore = Get-WmiObject -Class SystemRestore -Namespace root\default -List
+    `$systemRestore = Get-CimClass -ClassName SystemRestore -Namespace root\default
     if (`$systemRestore) {
         `$result = `$systemRestore.CreateRestorePoint('$restorePointName', 0, 100)
         Write-Output "RestorePointResult:`$(`$result.ReturnValue)"
@@ -6871,10 +6897,10 @@ function Start-DefenderFullScan {
         Write-Log "[ScanPreparation] Estimated scan time: Large systems may require 2-4 hours or more" 'INFO'
         
         try {
-        # Starting full system scan
-        Write-Log "[ScanExecution] === FULL SYSTEM SCAN EXECUTION ===" 'INFO'
-        Write-Log "[ScanExecution] Initiating scan at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" 'INFO'
-        Write-Host "🔍 Starting Windows Defender Full System Scan..." -ForegroundColor Cyan            # Start scan in background with optimized parameters
+            # Starting full system scan
+            Write-Log "[ScanExecution] === FULL SYSTEM SCAN EXECUTION ===" 'INFO'
+            Write-Log "[ScanExecution] Initiating scan at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" 'INFO'
+            Write-Host "🔍 Starting Windows Defender Full System Scan..." -ForegroundColor Cyan            # Start scan in background with optimized parameters
             $scanJob = Start-Job -ScriptBlock {
                 try {
                     # Set PowerShell preference to avoid any prompts
@@ -6885,15 +6911,15 @@ function Start-DefenderFullScan {
                     # Run the scan
                     $result = Start-MpScan -ScanType FullScan
                     return @{
-                        Success = $true
-                        Result = $result
+                        Success     = $true
+                        Result      = $result
                         CompletedAt = Get-Date
                     }
                 }
                 catch {
                     return @{
-                        Success = $false
-                        Error = $_.Exception.Message
+                        Success     = $false
+                        Error       = $_.Exception.Message
                         CompletedAt = Get-Date
                     }
                 }
