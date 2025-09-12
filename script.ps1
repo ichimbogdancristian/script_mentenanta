@@ -5559,8 +5559,8 @@ function Install-EssentialApps {
                 
                 # Look for apps containing both publisher and app name
                 $partialMatches = @($installedLookup | Where-Object { 
-                    $_ -match [regex]::Escape($publisher) -and $_ -match [regex]::Escape($appName)
-                })
+                        $_ -match [regex]::Escape($publisher) -and $_ -match [regex]::Escape($appName)
+                    })
                 
                 if ($partialMatches.Count -gt 0) {
                     $found = $true
@@ -6065,9 +6065,9 @@ function Update-AllPackages {
     
     # Initialize results tracking
     $updateResults = @{
-        Winget = @{ Available = $false; Success = $false; UpdatedCount = 0; FailedCount = 0; Error = $null }
-        Chocolatey = @{ Available = $false; Success = $false; UpdatedCount = 0; FailedCount = 0; Error = $null }
-        TotalUpdates = 0
+        Winget        = @{ Available = $false; Success = $false; UpdatedCount = 0; FailedCount = 0; Error = $null }
+        Chocolatey    = @{ Available = $false; Success = $false; UpdatedCount = 0; FailedCount = 0; Error = $null }
+        TotalUpdates  = 0
         TotalFailures = 0
         ExecutionTime = $null
     }
@@ -6239,7 +6239,7 @@ function Update-AllPackages {
         
         # Clean up temporary files (using repo temp folder)
         @($wingetUpgradesPath, $wingetUpgradesErrPath, $wingetUpgradeOutPath, $wingetUpgradeErrPath,
-          $chocoOutdatedPath, $chocoOutdatedErrPath, $chocoUpgradeOutPath, $chocoUpgradeErrPath) | ForEach-Object {
+            $chocoOutdatedPath, $chocoOutdatedErrPath, $chocoUpgradeOutPath, $chocoUpgradeErrPath) | ForEach-Object {
             if ($_ -and (Test-Path $_)) { Remove-Item $_ -Force -ErrorAction SilentlyContinue }
         }
         
@@ -7823,11 +7823,11 @@ function Remove-AllTempFiles {
     Write-Host "🧹 Cleaning up all temporary files and folders..." -ForegroundColor Cyan
     
     $cleanupResults = @{
-        Success = $true
-        FilesRemoved = 0
+        Success        = $true
+        FilesRemoved   = 0
         FoldersRemoved = 0
         TotalSizeFreed = 0
-        Errors = @()
+        Errors         = @()
     }
     
     try {
@@ -7874,6 +7874,7 @@ function Remove-AllTempFiles {
                 Write-Log "[TEMP-CLEANUP] ✓ Freed disk space: $tempFolderSizeMB MB" 'INFO'
             }
             catch {
+                # Alternative cleanup method if standard removal fails
                 Write-Host "⚠️ Standard temp folder removal failed, trying alternative method..." -ForegroundColor Yellow
                 Write-Log "[TEMP-CLEANUP] Standard removal failed: $($_.Exception.Message)" 'WARN'
                 
