@@ -2444,8 +2444,8 @@ function Invoke-WindowsPowerShellCommand {
         }
         
         # Execute command in Windows PowerShell 5.1 context with proper encoding
-        $outputFile = [System.IO.Path]::GetTempFileName()
-        $errorFile = [System.IO.Path]::GetTempFileName()
+        $outputFile = Join-Path $global:TempFolder "ps51_output_$(Get-Random).txt"
+        $errorFile = Join-Path $global:TempFolder "ps51_error_$(Get-Random).txt"
         
         try {
             $process = Start-Process -FilePath "powershell.exe" -ArgumentList "-Command", "& {$fullCommand} | Out-File -FilePath '$outputFile' -Encoding UTF8" -RedirectStandardError $errorFile -Wait -PassThru -WindowStyle Hidden
