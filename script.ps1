@@ -84,7 +84,8 @@ $PSVersion = $PSVersionTable.PSVersion.ToString()
 if ($env:WORKING_DIRECTORY) {
     $WorkingDirectory = $env:WORKING_DIRECTORY
     Write-Host "[INFO] Using working directory from batch script: $WorkingDirectory" -ForegroundColor Green
-} else {
+}
+else {
     # Fallback to script directory if no environment variable
     $WorkingDirectory = Split-Path -Parent $ScriptFullPath
     Write-Host "[INFO] Using PowerShell script directory as working directory: $WorkingDirectory" -ForegroundColor Yellow
@@ -1060,6 +1061,183 @@ function Start-ActionProgressSequence {
 }
 
 # ================================================================
+# Function: Write-SystemSummaryHeader
+# ================================================================
+# Purpose: Writes comprehensive PC summary information to maintenance log at startup
+# Environment: Windows 10/11, PowerShell 7+, requires network connectivity for external IP detection
+# Performance: Efficient network information gathering, cached DNS resolution, optimized system data collection
+# Dependencies: Get-ComputerInfo, Get-NetIPConfiguration, Resolve-DnsName, Invoke-RestMethod for external IP
+# Logic: Collects system identity, network configuration, user context, and connectivity information
+# Features: Comprehensive PC fingerprinting, network topology discovery, external IP detection, DNS configuration analysis
+# ================================================================
+function Write-SystemSummaryHeader {
+    Write-Log "============================================================" 'INFO'
+    Write-Log "SYSTEM SUMMARY - PC INFORMATION" 'INFO'
+    Write-Log "============================================================" 'INFO'
+    
+    try {
+        # Date and Time Information
+        $currentDateTime = Get-Date
+        Write-Log "Date & Time: $($currentDateTime.ToString('dddd, MMMM dd, yyyy - HH:mm:ss zzz'))" 'INFO'
+        Write-Log "Time Zone: $($currentDateTime.ToString('zzz')) - $([System.TimeZoneInfo]::Local.DisplayName)" 'INFO'
+        
+        # System Identity - Using script-level variables for consistency
+        $computerInfo = Get-ComputerInfo -ErrorAction SilentlyContinue
+        
+        Write-Log "Computer Name: $ComputerName" 'INFO'
+        Write-Log "User Name: $CurrentUser" 'INFO'
+        Write-Log "User Domain: $env:USERDOMAIN" 'INFO'
+        Write-Log "Full User: $env:USERDOMAIN\$CurrentUser" 'INFO'
+        Write-Log "OS Version: $OSVersion" 'INFO'
+        Write-Log "OS Architecture: $OSArch" 'INFO'
+        Write-Log "PowerShell Version: $PSVersion" 'INFO'
+        
+        # Administrator privileges check
+        $privilegeStatus = "No"
+        if ($IsAdmin) { $privilegeStatus = "Yes" }
+        Write-Log "Administrator Privileges: $privilegeStatus" 'INFO'
+        
+        # Script execution context
+        Write-Log "Script Path: $ScriptFullPath" 'INFO'
+        Write-Log "Script Directory: $ScriptDir" 'INFO'
+        Write-Log "Script Name: $ScriptName" 'INFO'
+        Write-Log "Script Drive Type: $DriveType" 'INFO'
+        Write-Log "Network Path: $IsNetworkPath" 'INFO'
+        
+        if ($computerInfo) {
+            Write-Log "Manufacturer: $($computerInfo.CsManufacturer)" 'INFO'
+            Write-Log "Model: $($computerInfo.CsModel)" 'INFO'
+            Write-Log "OS Name: $($computerInfo.WindowsProductName)" 'INFO'
+            Write-Log "OS Version: $($computerInfo.WindowsVersion)" 'INFO'
+            Write-Log "OS Build: $($computerInfo.WindowsBuildLabEx)" 'INFO'
+            Write-Log "Total RAM: $([math]::Round($computerInfo.TotalPhysicalMemory / 1GB, 2)) GB" 'INFO'
+            Write-Log "Processor: $($computerInfo.CsProcessors[0].Name)" 'INFO'
+        }
+        
+        # Network Configuration
+        Write-Log "--- NETWORK CONFIGURATION ---" 'INFO'
+        
+        # Get active network adapters with IP addresses
+        $activeAdapters = Get-NetIPConfiguration | Where-Object { 
+            $_.NetAdapter.Status -eq 'Up' -and 
+            $_.IPv4Address -and 
+            $_.IPv4Address.IPAddress -ne '127.0.0.1' 
+        }
+        
+        if ($activeAdapters) {
+            foreach ($adapter in $activeAdapters) {
+                $adapterName = $adapter.NetAdapter.Name
+                $connectionProfile = $adapter.NetProfile.Name
+                $ipAddress = $adapter.IPv4Address.IPAddress
+                $subnetMask = $adapter.IPv4Address.PrefixLength
+                $gateway = $adapter.IPv4DefaultGateway.NextHop
+                $dnsServers = $adapter.DNSServer.ServerAddresses -join ', '
+                
+                Write-Log "Network Adapter: $adapterName" 'INFO'
+                Write-Log "Connection Profile: $connectionProfile" 'INFO'
+                Write-Log "IP Address: $ipAddress/$subnetMask" 'INFO'
+                Write-Log "Default Gateway: $gateway" 'INFO'
+                Write-Log "DNS Servers: $dnsServers" 'INFO'
+                Write-Log "MAC Address: $($adapter.NetAdapter.LinkLayerAddress)" 'INFO'
+                Write-Log "Link Speed: $($adapter.NetAdapter.LinkSpeed)" 'INFO'
+                Write-Log "---" 'INFO'
+            }
+        }
+        else {
+            Write-Log "No active network adapters found" 'WARN'
+        }
+        
+        # External IP Address Detection
+        Write-Log "--- EXTERNAL CONNECTIVITY ---" 'INFO'
+        try {
+            $externalIP = $null
+            $ipServices = @(
+                @{ Name = "ipify.org"; Url = "https://api.ipify.org" },
+                @{ Name = "ip-api.com"; Url = "http://ip-api.com/line/?fields=query" },
+                @{ Name = "httpbin.org"; Url = "https://httpbin.org/ip" }
+            )
+            
+            foreach ($service in $ipServices) {
+                try {
+                    Write-Log "Checking external IP via $($service.Name)..." 'INFO'
+                    
+                    if ($service.Name -eq "httpbin.org") {
+                        $response = Invoke-RestMethod -Uri $service.Url -TimeoutSec 10 -ErrorAction Stop
+                        $externalIP = $response.origin
+                    }
+                    else {
+                        $externalIP = Invoke-RestMethod -Uri $service.Url -TimeoutSec 10 -ErrorAction Stop
+                    }
+                    
+                    if ($externalIP -and $externalIP -match '^\d+\.\d+\.\d+\.\d+$') {
+                        Write-Log "External IP Address: $externalIP (via $($service.Name))" 'INFO'
+                        break
+                    }
+                }
+                catch {
+                    Write-Log "Failed to get external IP from $($service.Name): $($_.Exception.Message)" 'WARN'
+                    continue
+                }
+            }
+            
+            if (-not $externalIP -or $externalIP -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+                Write-Log "External IP Address: Unable to determine (no internet connectivity)" 'WARN'
+            }
+        }
+        catch {
+            Write-Log "External IP Detection Error: $($_.Exception.Message)" 'WARN'
+        }
+        
+        # DNS Configuration Analysis
+        try {
+            Write-Log "--- DNS CONFIGURATION ---" 'INFO'
+            $dnsTestDomains = @("google.com", "microsoft.com", "cloudflare.com")
+            
+            foreach ($domain in $dnsTestDomains) {
+                try {
+                    $dnsResult = Resolve-DnsName -Name $domain -Type A -ErrorAction Stop | Select-Object -First 1
+                    Write-Log "DNS Resolution: $domain -> $($dnsResult.IPAddress)" 'INFO'
+                    break # Only test one successful resolution to avoid spam
+                }
+                catch {
+                    Write-Log "DNS Resolution Failed: $domain - $($_.Exception.Message)" 'WARN'
+                }
+            }
+        }
+        catch {
+            Write-Log "DNS Configuration Error: $($_.Exception.Message)" 'WARN'
+        }
+        
+        # System Security and Status
+        Write-Log "--- SYSTEM STATUS ---" 'INFO'
+        try {
+            $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue
+            if ($osInfo) {
+                $lastBoot = $osInfo.LastBootUpTime
+                $uptime = (Get-Date) - $lastBoot
+                Write-Log "Last Boot: $($lastBoot.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
+                Write-Log "System Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($uptime.Minutes) minutes" 'INFO'
+            }
+            
+            $powerPlan = Get-CimInstance -ClassName Win32_PowerPlan -Namespace "root\cimv2\power" -Filter "IsActive = 'True'" -ErrorAction SilentlyContinue
+            if ($powerPlan) {
+                Write-Log "Active Power Plan: $($powerPlan.ElementName)" 'INFO'
+            }
+        }
+        catch {
+            Write-Log "System Status Error: $($_.Exception.Message)" 'WARN'
+        }
+        
+        Write-Log "============================================================" 'INFO'
+        Write-Log "" 'INFO' # Add spacing before maintenance tasks begin
+    }
+    catch {
+        Write-Log "Error generating system summary: $($_.Exception.Message)" 'ERROR'
+        Write-Log "============================================================" 'INFO'
+    }
+}
+
+# ================================================================
 # Function: Invoke-Task
 # ================================================================
 # Purpose: Enhanced wrapper function for individual task execution with comprehensive logging and timing
@@ -1221,13 +1399,13 @@ function Get-RegistryUninstallBloatware {
                 foreach ($pattern in $BloatwarePatterns) {
                     if ($displayName -like "*$pattern*") {
                         $found += [PSCustomObject]@{
-                            Name           = $displayName
-                            DisplayName    = $displayName
-                            Version        = $props.DisplayVersion
+                            Name            = $displayName
+                            DisplayName     = $displayName
+                            Version         = $props.DisplayVersion
                             UninstallString = $props.UninstallString
-                            Source         = 'Registry'
-                            UninstallKey   = $key.PSChildName
-                            Context        = $Context
+                            Source          = 'Registry'
+                            UninstallKey    = $key.PSChildName
+                            Context         = $Context
                         }
                         Write-Log "[REGISTRY BLOATWARE] $displayName (Version: $($props.DisplayVersion))" 'INFO'
                         break
@@ -2465,14 +2643,14 @@ function Get-AppXBloatware {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like $pattern -or $app.DisplayName -like "*$pattern*") {
                     $found += [PSCustomObject]@{
-                        Name          = $app.Name
-                        DisplayName   = $app.DisplayName
-                        Version       = $app.Version
-                        Publisher     = $app.Publisher
-                        InstallDate   = $app.InstallDate
-                        Source        = 'AppX'
+                        Name           = $app.Name
+                        DisplayName    = $app.DisplayName
+                        Version        = $app.Version
+                        Publisher      = $app.Publisher
+                        InstallDate    = $app.InstallDate
+                        Source         = 'AppX'
                         MatchedPattern = $pattern
-                        Context       = $Context
+                        Context        = $Context
                     }
                 }
             }
@@ -2515,14 +2693,14 @@ function Get-WingetBloatware {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like $pattern -or $app.DisplayName -like "*$pattern*") {
                     $found += [PSCustomObject]@{
-                        Name          = $app.Name
-                        DisplayName   = $app.DisplayName
-                        Version       = $app.Version
-                        Publisher     = $app.Publisher
-                        InstallDate   = $app.InstallDate
-                        Source        = 'Winget'
+                        Name           = $app.Name
+                        DisplayName    = $app.DisplayName
+                        Version        = $app.Version
+                        Publisher      = $app.Publisher
+                        InstallDate    = $app.InstallDate
+                        Source         = 'Winget'
                         MatchedPattern = $pattern
-                        Context       = $Context
+                        Context        = $Context
                     }
                 }
             }
@@ -2565,14 +2743,14 @@ function Get-ChocolateyBloatware {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like $pattern -or $app.DisplayName -like "*$pattern*") {
                     $found += [PSCustomObject]@{
-                        Name          = $app.Name
-                        DisplayName   = $app.DisplayName
-                        Version       = $app.Version
-                        Publisher     = $app.Publisher
-                        InstallDate   = $app.InstallDate
-                        Source        = 'Chocolatey'
+                        Name           = $app.Name
+                        DisplayName    = $app.DisplayName
+                        Version        = $app.Version
+                        Publisher      = $app.Publisher
+                        InstallDate    = $app.InstallDate
+                        Source         = 'Chocolatey'
                         MatchedPattern = $pattern
-                        Context       = $Context
+                        Context        = $Context
                     }
                 }
             }
@@ -2615,20 +2793,20 @@ function Get-RegistryBloatware {
         $found = @()
         foreach ($path in $registryPaths) {
             $apps = Get-ItemProperty $path -ErrorAction SilentlyContinue |
-                Where-Object { $_.DisplayName -and $_.DisplayName -notmatch '^KB[0-9]+' }
+            Where-Object { $_.DisplayName -and $_.DisplayName -notmatch '^KB[0-9]+' }
             
             foreach ($app in $apps) {
                 foreach ($pattern in $BloatwarePatterns) {
                     if ($app.DisplayName -like "*$pattern*" -or $app.PSChildName -like $pattern) {
                         $found += [PSCustomObject]@{
-                            Name          = $app.PSChildName
-                            DisplayName   = $app.DisplayName
-                            Version       = $app.DisplayVersion
-                            Publisher     = $app.Publisher
-                            InstallDate   = $app.InstallDate
-                            Source        = 'Registry'
+                            Name           = $app.PSChildName
+                            DisplayName    = $app.DisplayName
+                            Version        = $app.DisplayVersion
+                            Publisher      = $app.Publisher
+                            InstallDate    = $app.InstallDate
+                            Source         = 'Registry'
                             MatchedPattern = $pattern
-                            Context       = $Context
+                            Context        = $Context
                         }
                     }
                 }
@@ -2743,15 +2921,15 @@ function Get-StartupProgramsBloatware {
                         foreach ($pattern in $BloatwarePatterns) {
                             if ($_.Name -like "*$pattern*" -or $_.Value -like "*$pattern*") {
                                 $found += [PSCustomObject]@{
-                                    Name          = $_.Name
-                                    DisplayName   = $_.Name
-                                    Version       = 'Unknown'
-                                    Publisher     = 'Unknown'
-                                    InstallDate   = 'Unknown'
-                                    Source        = 'Startup'
+                                    Name           = $_.Name
+                                    DisplayName    = $_.Name
+                                    Version        = 'Unknown'
+                                    Publisher      = 'Unknown'
+                                    InstallDate    = 'Unknown'
+                                    Source         = 'Startup'
                                     MatchedPattern = $pattern
-                                    Context       = $Context
-                                    Path          = $_.Value
+                                    Context        = $Context
+                                    Path           = $_.Value
                                 }
                             }
                         }
@@ -3113,7 +3291,8 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
                     if ($rebootRequired) {
                         Write-Log "Windows Updates installed successfully. System restart required, but will NOT be performed or prompted (unattended mode)." 'INFO'
                         Write-Host "✓ Windows Updates installed - restart required, but will NOT be performed automatically (unattended)." -ForegroundColor Yellow
-                    } else {
+                    }
+                    else {
                         Write-Log "Windows Updates installed successfully. No restart required." 'SUCCESS'
                     }
                     
@@ -8983,6 +9162,9 @@ $global:ScriptTasks = @(
 $startTime = Get-Date
 Write-Log "============================================================" 'INFO'
 Write-ActionLog -Action "PowerShell Maintenance Script Starting" -Details "Enhanced logging enabled" -Category "System Startup" -Status 'START'
+
+# Write comprehensive system summary header to log
+Write-SystemSummaryHeader
 Write-ActionLog -Action "Environment Analysis" -Details "Script Path: $PSCommandPath" -Category "System Startup" -Status 'INFO'
 Write-ActionLog -Action "Environment Analysis" -Details "PowerShell Version: $($PSVersionTable.PSVersion)" -Category "System Startup" -Status 'INFO'
 Write-ActionLog -Action "Environment Analysis" -Details "PowerShell Edition: $($PSVersionTable.PSEdition)" -Category "System Startup" -Status 'INFO'
