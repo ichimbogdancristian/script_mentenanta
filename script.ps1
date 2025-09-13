@@ -739,12 +739,14 @@ function Use-AllScriptTasks {
 # Dependencies: Global $LogFile variable, Windows console capabilities, file system access
 # ================================================================
 function Write-Log {
-    Write-Host "[CALL] Write-Log invoked" -ForegroundColor Cyan
     param(
         [string]$Message,
-        [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE')]
+        [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE', 'DEBUG')]
         [string]$Level = 'INFO'
     )
+    
+    # Debug call tracking (moved after param block)
+    Write-Host "[CALL] Write-Log invoked" -ForegroundColor Cyan
     
     $timestamp = Get-Date -Format 'HH:mm:ss'
     $logEntry = "[$timestamp] [$Level] $Message"
@@ -794,15 +796,17 @@ function Write-Log {
 # Dependencies: Write-Log function, timing capabilities, process tracking
 # ================================================================
 function Write-ActionLog {
-    Write-Log "[CALL] Write-ActionLog invoked" 'DEBUG'
-    Write-Host "[CALL] Write-ActionLog invoked" -ForegroundColor Cyan
     param(
         [string]$Action,
         [string]$Details,
         [string]$Category,
-        [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO')]
+        [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO', 'COMPLETE')]
         [string]$Status
     )
+    
+    # Debug call tracking (moved after param block)
+    Write-Log "[CALL] Write-ActionLog invoked" 'DEBUG'
+    Write-Host "[CALL] Write-ActionLog invoked" -ForegroundColor Cyan
     
     # Apply default values for optional parameters
     if (-not $PSBoundParameters.ContainsKey('Details')) { $Details = "" }
@@ -843,7 +847,7 @@ function Write-CommandLog {
         [string]$Command,
         [string[]]$Arguments,
         [string]$Context,
-        [ValidateSet('START', 'SUCCESS', 'FAILURE')]
+        [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO', 'COMPLETE')]
         [string]$Status
     )
     
