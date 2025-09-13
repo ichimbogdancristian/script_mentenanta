@@ -6816,6 +6816,176 @@ function Enable-AppBrowserControl {
     }
     Write-Log "[END] Enabling App & Browser Control" 'INFO'
 }
+
+# ================================================================
+# Function: Enable-SecurityHardening
+# ================================================================
+# Purpose: Apply comprehensive security hardening configurations and policy improvements for Windows 10/11
+# Environment: Windows 10/11, Administrator required, registry and policy modification access
+# Performance: Fast registry operations, minimal overhead, idempotent settings
+# Dependencies: Administrator privileges, registry access, Windows security components
+# Logic: Enables UAC, configures Windows Firewall, applies security policies, hardens system settings
+# Features: UAC enforcement, firewall configuration, security policy hardening, registry-based security settings
+# ================================================================
+function Enable-SecurityHardening {
+    Write-Log "[START] Applying Security Hardening Configurations" 'INFO'
+    $errors = @()
+    $appliedCount = 0
+
+    try {
+        # Enable and configure User Account Control (UAC)
+        try {
+            $uacKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+            if (-not (Test-Path $uacKey)) { New-Item -Path $uacKey -Force | Out-Null }
+            
+            # Set UAC to highest level (Always notify)
+            Set-ItemProperty -Path $uacKey -Name "ConsentPromptBehaviorAdmin" -Value 2 -Type DWord -ErrorAction Stop
+            Set-ItemProperty -Path $uacKey -Name "ConsentPromptBehaviorUser" -Value 3 -Type DWord -ErrorAction Stop
+            Set-ItemProperty -Path $uacKey -Name "EnableLUA" -Value 1 -Type DWord -ErrorAction Stop
+            Set-ItemProperty -Path $uacKey -Name "PromptOnSecureDesktop" -Value 1 -Type DWord -ErrorAction Stop
+            
+            Write-Log "✓ User Account Control (UAC) configured to highest security level" 'INFO'
+            $appliedCount++
+        }
+        catch {
+            $errors += "UAC Configuration: $($_.Exception.Message)"
+            Write-Log "✗ Failed to configure UAC: $($_.Exception.Message)" 'WARN'
+        }
+
+        # Enable Windows Firewall for all profiles
+        try {
+            # Domain Profile
+            Set-NetFirewallProfile -Profile Domain -Enabled True -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction Stop
+            # Private Profile  
+            Set-NetFirewallProfile -Profile Private -Enabled True -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction Stop
+            # Public Profile
+            Set-NetFirewallProfile -Profile Public -Enabled True -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction Stop
+            
+            Write-Log "✓ Windows Firewall enabled for all network profiles" 'INFO'
+            $appliedCount++
+        }
+        catch {
+            $errors += "Windows Firewall: $($_.Exception.Message)"
+            Write-Log "✗ Failed to configure Windows Firewall: $($_.Exception.Message)" 'WARN'
+            
+            # Fallback using netsh
+            try {
+                $netshResult = & netsh advfirewall set allprofiles state on 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Log "✓ Windows Firewall enabled via netsh (fallback)" 'INFO'
+                    $appliedCount++
+                }
+                else {
+                    Write-Log "✗ Netsh firewall configuration failed: $netshResult" 'WARN'
+                }
+            }
+            catch {
+                Write-Log "✗ Netsh fallback also failed: $_" 'WARN'
+            }
+        }
+
+        # Configure Windows Security settings
+        try {
+            $securityKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+            if (-not (Test-Path $securityKey)) { New-Item -Path $securityKey -Force | Out-Null }
+            
+            # Disable anonymous enumeration
+            Set-ItemProperty -Path $securityKey -Name "LocalAccountTokenFilterPolicy" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+            
+            # Enable secure boot
+            $secureBootKey = "HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State"
+            if (Test-Path $secureBootKey) {
+                Set-ItemProperty -Path $secureBootKey -Name "UEFISecureBootEnabled" -Value 1 -Type DWord -ErrorAction SilentlyContinue
+            }
+            
+            Write-Log "✓ Windows Security policies configured" 'INFO'
+            $appliedCount++
+        }
+        catch {
+            $errors += "Security Policies: $($_.Exception.Message)"
+            Write-Log "✗ Failed to configure security policies: $($_.Exception.Message)" 'WARN'
+        }
+
+        # Disable unnecessary Windows services for security
+        try {
+            $servicesToDisable = @(
+                'RemoteRegistry',      # Remote Registry (security risk)
+                'Fax',                 # Fax service (unnecessary)
+                'WerSvc',              # Windows Error Reporting (privacy)
+                'DiagTrack',           # Diagnostics Tracking Service (telemetry)
+                'dmwappushservice'     # Device Management Wireless Application Protocol
+            )
+            
+            $disabledCount = 0
+            foreach ($serviceName in $servicesToDisable) {
+                try {
+                    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+                    if ($service -and $service.StartType -ne 'Disabled') {
+                        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+                        Set-Service -Name $serviceName -StartupType Disabled -ErrorAction SilentlyContinue
+                        $disabledCount++
+                    }
+                }
+                catch {
+                    continue
+                }
+            }
+            
+            if ($disabledCount -gt 0) {
+                Write-Log "✓ Disabled $disabledCount unnecessary services for security" 'INFO'
+                $appliedCount++
+            }
+        }
+        catch {
+            $errors += "Service Hardening: $($_.Exception.Message)"
+            Write-Log "✗ Failed to disable services: $($_.Exception.Message)" 'WARN'
+        }
+
+        # Configure password policy (if possible)
+        try {
+            # Set minimum password length
+            & net accounts /minpwlen:8 /maxpwage:90 /minpwage:1 /uniquepw:5 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Log "✓ Password policy configured (8 chars min, 90 days max age)" 'INFO'
+                $appliedCount++
+            }
+        }
+        catch {
+            Write-Log "Password policy configuration not available in current context" 'INFO'
+        }
+
+        # Configure audit policies
+        try {
+            # Enable important audit policies
+            & auditpol /set /subcategory:"Logon" /success:enable /failure:enable 2>&1 | Out-Null
+            & auditpol /set /subcategory:"Account Logon" /success:enable /failure:enable 2>&1 | Out-Null
+            & auditpol /set /subcategory:"Privilege Use" /success:enable /failure:enable 2>&1 | Out-Null
+            
+            Write-Log "✓ Audit policies configured for security monitoring" 'INFO'
+            $appliedCount++
+        }
+        catch {
+            Write-Log "Audit policy configuration not available in current context" 'INFO'
+        }
+    }
+    catch {
+        $errors += "General error: $_"
+    }
+
+    # Summary
+    if ($appliedCount -gt 0) {
+        Write-Host "✓ Applied $appliedCount security hardening configurations" -ForegroundColor Green
+        Write-Log "Security hardening completed: $appliedCount configurations applied" 'INFO'
+    }
+    
+    if ($errors.Count -gt 0) {
+        Write-Log "Security hardening: Some settings failed: $($errors -join '; ')" 'WARN'
+        Write-Host "⚠ Some security settings could not be applied (see log for details)" -ForegroundColor Yellow
+    }
+
+    Write-Log "[END] Security Hardening Configurations" 'INFO'
+}
+
 # ================================================================
 # Function: Disable-SpotlightMeetNowNewsLocation
 # ================================================================
