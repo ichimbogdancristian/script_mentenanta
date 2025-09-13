@@ -1,3 +1,131 @@
+## 📈 Batch Launcher Flow Map (2025 Edition)
+
+Below is a detailed map of all major labels, subroutines, and logic flow in `script.bat`. This helps with maintainability, debugging, and onboarding new contributors.
+
+### 🗺️ Batch Script Flow Relationships
+
+```
+script.bat
+│
+├─ MAIN_SCRIPT (entry point)
+│   ├─ LOG_MESSAGE (logging subroutine, called throughout)
+│   ├─ Path detection and environment setup
+│   ├─ Admin privilege check (NET SESSION, PowerShell check)
+│   ├─ PowerShell version and Windows version checks
+│   ├─ Scheduled task management
+│   │   ├─ Monthly maintenance task creation
+│   │   └─ Startup task management (removal/creation)
+│   ├─ Smart restart detection (pending updates)
+│   ├─ Dependency management (Winget, PowerShell 7, NuGet, PSGallery, PSWindowsUpdate, Chocolatey)
+│   ├─ Repository management (download, extract, verify)
+│   ├─ Self-update mechanism (deferred)
+│   ├─ PowerShell script path detection
+│   ├─ Launch PowerShell script (pwsh.exe or powershell.exe)
+│   └─ Final cleanup and exit
+│
+├─ LOG_MESSAGE (subroutine)
+│   └─ Used for all logging to console and maintenance.log
+│
+└─ Other labels (internal jumps, e.g. :SKIP_SELF_UPDATE, :INITIAL_PS1_CHECK_COMPLETE, :SCHEDULED_TASK_PATH_COMPLETE, :PS1_DETECTION_COMPLETE)
+  └─ Used for flow control and error handling
+```
+
+**Legend:**
+- Labels indented under another are called by that parent label or logic block.
+- LOG_MESSAGE is a subroutine used for all logging.
+- Internal labels are used for flow control, error handling, and setup.
+
+For a full list of logic and comments, see `.github/copilot-instructions.md`.
+## 📈 Function Call Map (2025 Edition)
+
+Below is a detailed map of all major functions in `script.ps1` and how they are called or referenced within the project. This helps with maintainability, debugging, and onboarding new contributors.
+
+### 🗺️ Function Call Relationships
+
+```
+script.ps1
+│
+├─ Main Execution Flow
+│   ├─ Use-AllScriptTasks
+│   │   └─ (Iterates $global:ScriptTasks array)
+│   │       └─ Each Task: Calls its Function (e.g. RemoveBloatware, InstallEssentialApps, etc.)
+│   ├─ Write-Log, Write-ActionLog, Write-CommandLog, Write-TaskProgress, Write-ActionProgress (used throughout)
+│   ├─ Write-TempListsSummary
+│   └─ Write-UnifiedMaintenanceReport
+│
+├─ RemoveBloatware
+│   ├─ Get-RegistryUninstallBloatware
+│   ├─ Get-AppxPackageCompatible
+│   ├─ Remove-AppxPackageCompatible
+│   ├─ Get-AppxProvisionedPackageCompatible
+│   ├─ Remove-AppxProvisionedPackageCompatible
+│   ├─ Get-WingetBloatware
+│   ├─ Get-ChocolateyBloatware
+│   ├─ Get-RegistryBloatware
+│   ├─ Get-BrowserExtensionsBloatware
+│   ├─ Get-ContextMenuBloatware
+│   ├─ Get-StartupProgramsBloatware
+│   ├─ Get-ProvisionedAppxBloatware
+│   ├─ Remove-AppsByPattern
+│   └─ Compare-InstallationDiff
+│
+├─ InstallEssentialApps
+│   ├─ Install-AppsByCategory
+│   ├─ Invoke-PackageManagerCommand
+│   ├─ Test-CommandAvailable
+│   └─ Find-AppInstallations
+│
+├─ Install-WindowsUpdatesCompatible
+│   ├─ Invoke-WindowsPowerShellCommand
+│   └─ Start-ProgressTrackedOperation
+│
+├─ Disable-Telemetry
+│   └─ Set-RegistryValueSafely
+│
+├─ Protect-SystemRestore
+│   └─ Clear-OldRestorePoints
+│
+├─ System Inventory/Reporting
+│   ├─ Get-StandardizedAppInventory
+│   ├─ Get-ExtensiveSystemInventory
+│   ├─ Get-OptimizedSystemInventory
+│   └─ Write-UnifiedMaintenanceReport
+│
+├─ Utility Functions (used throughout)
+│   ├─ Test-CommandAvailable
+│   ├─ Compare-InstallationDiff
+│   ├─ Invoke-PackageManagerCommand
+│   ├─ Start-ProgressTrackedOperation
+│   ├─ Find-AppInstallations
+│   ├─ Remove-AppsByPattern
+│   └─ Install-AppsByCategory
+│
+├─ Logging/Progress
+│   ├─ Write-Log
+│   ├─ Write-ActionLog
+│   ├─ Write-CommandLog
+│   ├─ Write-TaskProgress
+│   └─ Write-ActionProgress
+│
+├─ Reporting
+│   ├─ Write-TempListsSummary
+│   └─ Write-UnifiedMaintenanceReport
+│
+└─ Other Maintenance/Helper Functions
+  ├─ Clear-TempFiles
+  ├─ Start-DefenderFullScan
+  ├─ Enable-AppBrowserControl
+  ├─ Disable-SpotlightMeetNowNewsLocation
+  ├─ Optimize-TaskbarAndDesktopUI
+  └─ etc.
+```
+
+**Legend:**
+- Functions indented under another are called by that parent function.
+- Utility and logging functions are used throughout the script by many features.
+- The `$global:ScriptTasks` array is the main entry point for all core maintenance tasks.
+
+For a full list of functions and their documentation, see `.github/copilot-instructions.md`.
 ## Project Structure & Refactoring (2025 Edition)
 
 ### Key Updates (2025)

@@ -1,3 +1,93 @@
+## 📈 Function Call Map (2025 Edition)
+
+Below is a detailed map of all major functions in `script.ps1` and how they are called or referenced within the project. This helps with maintainability, debugging, and onboarding new contributors.
+
+### 🗺️ Function Call Relationships
+
+```
+script.ps1
+│
+├─ Main Execution Flow
+│   ├─ Use-AllScriptTasks
+│   │   └─ (Iterates $global:ScriptTasks array)
+│   │       └─ Each Task: Calls its Function (e.g. RemoveBloatware, InstallEssentialApps, etc.)
+│   ├─ Write-Log, Write-ActionLog, Write-CommandLog, Write-TaskProgress, Write-ActionProgress (used throughout)
+│   ├─ Write-TempListsSummary
+│   └─ Write-UnifiedMaintenanceReport
+│
+├─ RemoveBloatware
+│   ├─ Get-RegistryUninstallBloatware
+│   ├─ Get-AppxPackageCompatible
+│   ├─ Remove-AppxPackageCompatible
+│   ├─ Get-AppxProvisionedPackageCompatible
+│   ├─ Remove-AppxProvisionedPackageCompatible
+│   ├─ Get-WingetBloatware
+│   ├─ Get-ChocolateyBloatware
+│   ├─ Get-RegistryBloatware
+│   ├─ Get-BrowserExtensionsBloatware
+│   ├─ Get-ContextMenuBloatware
+│   ├─ Get-StartupProgramsBloatware
+│   ├─ Get-ProvisionedAppxBloatware
+│   ├─ Remove-AppsByPattern
+│   └─ Compare-InstallationDiff
+│
+├─ InstallEssentialApps
+│   ├─ Install-AppsByCategory
+│   ├─ Invoke-PackageManagerCommand
+│   ├─ Test-CommandAvailable
+│   └─ Find-AppInstallations
+│
+├─ Install-WindowsUpdatesCompatible
+│   ├─ Invoke-WindowsPowerShellCommand
+│   └─ Start-ProgressTrackedOperation
+│
+├─ Disable-Telemetry
+│   └─ Set-RegistryValueSafely
+│
+├─ Protect-SystemRestore
+│   └─ Clear-OldRestorePoints
+│
+├─ System Inventory/Reporting
+│   ├─ Get-StandardizedAppInventory
+│   ├─ Get-ExtensiveSystemInventory
+│   ├─ Get-OptimizedSystemInventory
+│   └─ Write-UnifiedMaintenanceReport
+│
+├─ Utility Functions (used throughout)
+│   ├─ Test-CommandAvailable
+│   ├─ Compare-InstallationDiff
+│   ├─ Invoke-PackageManagerCommand
+│   ├─ Start-ProgressTrackedOperation
+│   ├─ Find-AppInstallations
+│   ├─ Remove-AppsByPattern
+│   └─ Install-AppsByCategory
+│
+├─ Logging/Progress
+│   ├─ Write-Log
+│   ├─ Write-ActionLog
+│   ├─ Write-CommandLog
+│   ├─ Write-TaskProgress
+│   └─ Write-ActionProgress
+│
+├─ Reporting
+│   ├─ Write-TempListsSummary
+│   └─ Write-UnifiedMaintenanceReport
+│
+└─ Other Maintenance/Helper Functions
+  ├─ Clear-TempFiles
+  ├─ Start-DefenderFullScan
+  ├─ Enable-AppBrowserControl
+  ├─ Disable-SpotlightMeetNowNewsLocation
+  ├─ Optimize-TaskbarAndDesktopUI
+  └─ etc.
+```
+
+**Legend:**
+- Functions indented under another are called by that parent function.
+- Utility and logging functions are used throughout the script by many features.
+- The `$global:ScriptTasks` array is the main entry point for all core maintenance tasks.
+
+For a full list of functions and their documentation, see the rest of this file.
 ## Project Structure & Refactoring (2025 Edition)
 
 ### Key Updates (2025)
