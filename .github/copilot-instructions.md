@@ -10,12 +10,12 @@ script.ps1
 ├─ Main Execution Flow
 │   ├─ Use-AllScriptTasks
 │   │   └─ (Iterates $global:ScriptTasks array)
-│   │       └─ Each Task: Calls its Function (e.g. RemoveBloatware, InstallEssentialApps, etc.)
+│   │       └─ Each Task: Calls its Function (e.g. Remove-Bloatware, Install-EssentialApps, etc.)
 │   ├─ Write-Log, Write-ActionLog, Write-CommandLog, Write-TaskProgress, Write-ActionProgress (used throughout)
 │   ├─ Write-TempListsSummary
 │   └─ Write-UnifiedMaintenanceReport
 │
-├─ RemoveBloatware
+├─ Remove-Bloatware (Bloatware Management)
 │   ├─ Get-RegistryUninstallBloatware
 │   ├─ Get-AppxPackageCompatible
 │   ├─ Remove-AppxPackageCompatible
@@ -31,55 +31,93 @@ script.ps1
 │   ├─ Remove-AppsByPattern
 │   └─ Compare-InstallationDiff
 │
-├─ InstallEssentialApps
+├─ Install-EssentialApps (Essential Apps Management)
 │   ├─ Install-AppsByCategory
 │   ├─ Invoke-PackageManagerCommand
 │   ├─ Test-CommandAvailable
-│   └─ Find-AppInstallations
+│   ├─ Find-AppInstallations
+│   ├─ Test-EnhancedAppInstallation
+│   ├─ Invoke-EnhancedAppInstallation
+│   ├─ Optimize-OfficeInstallation
+│   └─ Set-AppConfiguration
 │
-├─ Install-WindowsUpdatesCompatible
-│   ├─ Invoke-WindowsPowerShellCommand
-│   └─ Start-ProgressTrackedOperation
+├─ Security & Hardening Functions
+│   ├─ Enable-SecurityHardening
+│   │   ├─ UAC Configuration
+│   │   ├─ Windows Firewall Setup
+│   │   ├─ Security Policy Hardening
+│   │   ├─ Service Hardening
+│   │   └─ Password Policy Configuration
+│   ├─ Enable-AppBrowserControl
+│   │   ├─ Network Protection
+│   │   ├─ Controlled Folder Access
+│   │   ├─ SmartScreen Configuration
+│   │   └─ Exploit Mitigation (Set-ProcessMitigation)
+│   ├─ Start-DefenderFullScan
+│   │   ├─ Comprehensive Threat Analysis
+│   │   ├─ Real-time Progress Tracking
+│   │   └─ Detailed Security Reporting
+│   └─ Disable-Telemetry
+│       └─ Set-RegistryValueSafely
 │
-├─ Disable-Telemetry
-│   └─ Set-RegistryValueSafely
+├─ System Maintenance & Updates
+│   ├─ Install-WindowsUpdatesCompatible
+│   │   ├─ Invoke-WindowsPowerShellCommand
+│   │   └─ Start-ProgressTrackedOperation
+│   ├─ Update-AllPackages
+│   │   ├─ Winget Package Updates
+│   │   ├─ Chocolatey Package Updates
+│   │   └─ Package Manager Command Wrapper
+│   ├─ Clear-TempFiles
+│   │   ├─ System Temp Cleanup
+│   │   ├─ User Profile Cleanup
+│   │   └─ Browser Cache Cleanup
+│   └─ Protect-SystemRestore
+│       ├─ Clear-OldRestorePoints
+│       ├─ Checkpoint-ComputerCompatible
+│       └─ Enable-ComputerRestoreCompatible
 │
-├─ Protect-SystemRestore
-│   └─ Clear-OldRestorePoints
-│
-├─ System Inventory/Reporting
+├─ System Inventory & Analysis
 │   ├─ Get-StandardizedAppInventory
 │   ├─ Get-ExtensiveSystemInventory
 │   ├─ Get-OptimizedSystemInventory
-│   └─ Write-UnifiedMaintenanceReport
+│   ├─ Analyze-SystemHealth
+│   └─ Get-SystemErrorAnalysis
 │
-├─ Utility Functions (used throughout)
-│   ├─ Test-CommandAvailable
-│   ├─ Compare-InstallationDiff
-│   ├─ Invoke-PackageManagerCommand
-│   ├─ Start-ProgressTrackedOperation
-│   ├─ Find-AppInstallations
-│   ├─ Remove-AppsByPattern
-│   └─ Install-AppsByCategory
+├─ Reusable Utility Functions (2025 Defragmented Architecture)
+│   ├─ Test-CommandAvailable (command detection)
+│   ├─ Compare-InstallationDiff (generic diff-based comparison)
+│   ├─ Invoke-PackageManagerCommand (package manager wrapper)
+│   ├─ Start-ProgressTrackedOperation (progress tracking template)
+│   ├─ Find-AppInstallations (universal app detection)
+│   ├─ Remove-AppsByPattern (batch app removal)
+│   ├─ Install-AppsByCategory (category-based installation)
+│   ├─ Invoke-WindowsPowerShellCommand (PS5.1 compatibility)
+│   └─ Test-EnhancedAppInstallation (advanced app detection)
 │
-├─ Logging/Progress
-│   ├─ Write-Log
-│   ├─ Write-ActionLog
-│   ├─ Write-CommandLog
-│   ├─ Write-TaskProgress
-│   └─ Write-ActionProgress
+├─ UI & Desktop Customization
+│   ├─ Optimize-TaskbarAndDesktopUI
+│   ├─ Disable-SpotlightMeetNowNewsLocation
+│   └─ Set-DesktopBackground
 │
-├─ Reporting
-│   ├─ Write-TempListsSummary
-│   └─ Write-UnifiedMaintenanceReport
+├─ Logging & Progress Infrastructure
+│   ├─ Write-Log (unified console/file logging)
+│   ├─ Write-ActionLog (action-specific logging)
+│   ├─ Write-CommandLog (command execution logging)
+│   ├─ Write-TaskProgress (task progress tracking)
+│   └─ Write-ActionProgress (action progress tracking)
 │
-└─ Other Maintenance/Helper Functions
-  ├─ Clear-TempFiles
-  ├─ Start-DefenderFullScan
-  ├─ Enable-AppBrowserControl
-  ├─ Disable-SpotlightMeetNowNewsLocation
-  ├─ Optimize-TaskbarAndDesktopUI
-  └─ etc.
+├─ Reporting & Analytics
+│   ├─ Write-TempListsSummary (temporary files analysis)
+│   ├─ Write-UnifiedMaintenanceReport (comprehensive reporting)
+│   ├─ Performance metrics collection
+│   └─ System health analytics
+│
+└─ Configuration & Initialization
+  ├─ Load-Configuration (config.json processing)
+  ├─ Initialize-GlobalVariables
+  ├─ Set-ExecutionEnvironment
+  └─ Cleanup and finalization processes
 ```
 
 **Legend:**
@@ -88,12 +126,16 @@ script.ps1
 - The `$global:ScriptTasks` array is the main entry point for all core maintenance tasks.
 
 For a full list of functions and their documentation, see the rest of this file.
-## Project Structure & Refactoring (2025 Edition)
+## Project Structure & Refactoring (September 2025 Edition)
 
 ### Key Updates (September 2025)
+- **Security Enhancements Validation**: All 8 security categories validated for Windows 10/11 compatibility
 - **Code Defragmentation Completed**: Implemented modular architecture with reusable utility functions
 - **Section 1.5 Added**: Centralized configuration and constants management
 - **Reusable Utilities**: 8+ new utility functions for common patterns (diff processing, package management, app detection)
+- **Advanced Security Integration**: Enable-SecurityHardening, Enable-AppBrowserControl, Start-DefenderFullScan functions
+- **Sysmon Enterprise Configuration**: MITRE ATT&CK mapped sysmonconfig.xml for advanced threat detection
+- **PowerShell 7.5.2 Optimization**: Enhanced performance and security with backward compatibility
 - **Categorized App Lists**: Organized bloatware and essential apps into logical categories for better maintainability
 - **Standardized Package Management**: Unified wrapper functions for Winget/Chocolatey operations with timeout protection
 - **Universal Path Portability**: Complete location-agnostic architecture for running from any directory/user/computer
@@ -146,6 +188,60 @@ script_mentenanta/
     ├── bloatware.json            # 🗑️ Bloatware Detection Results
     └── essential_apps.json       # 📦 Essential Apps Analysis
 ```
+
+## 🛡️ Security Enhancements (September 2025 - Fully Validated for Windows 10/11)
+
+The script provides **8 comprehensive security enhancement categories**, all validated for cross-version Windows 10/11 compatibility:
+
+### **🔍 Validated Security Features:**
+
+#### **1. 🛡️ Windows Defender Security Suite** ✅ **PRODUCTION READY**
+- **Functions**: `Start-DefenderFullScan`, `Get-MpThreat`, `Get-MpComputerStatus`, `Set-MpPreference`
+- **Capabilities**: Real-time protection, full system scans, threat analysis, quarantine management
+- **Compatibility**: Universal across Windows 10/11, all builds with graceful degradation
+
+#### **2. 🔐 App & Browser Control (SmartScreen Suite)** ✅ **ENTERPRISE READY**
+- **Function**: `Enable-AppBrowserControl`
+- **Features**: Network Protection, Controlled Folder Access, SmartScreen for Apps/Edge, Exploit Protection
+- **Requirements**: Windows 10 build 16299+ (Fall Creators Update), all Windows 11 versions
+- **Implementation**: Uses `Set-MpPreference`, `Set-ProcessMitigation` cmdlets with error handling
+
+#### **3. 🔒 Privacy & Telemetry Protection** ✅ **CROSS-VERSION**
+- **Function**: `Disable-Telemetry`
+- **Coverage**: Registry-based telemetry disabling, service management, data collection policies
+- **Compatibility**: Universal HKLM/HKCU registry paths work across all Windows versions
+
+#### **4. 💾 System Restore & Recovery** ✅ **COMPATIBILITY LAYER**
+- **Functions**: `Protect-SystemRestore`, `Checkpoint-ComputerCompatible`, `Enable-ComputerRestoreCompatible`
+- **Features**: Restore point creation, cleanup, PowerShell 5.1 compatibility wrapper
+- **Fallbacks**: VSSAdmin commands, registry-based System Restore detection
+
+#### **5. 🔄 Windows Update Security** ✅ **MODULE BASED**
+- **Function**: `Install-WindowsUpdatesCompatible`
+- **Features**: PSWindowsUpdate module integration, security patch automation, reboot control
+- **Compatibility**: Graceful degradation when module unavailable
+
+#### **6. 🛡️ Exploit Protection & Mitigation** ✅ **HARDWARE DEPENDENT**
+- **Implementation**: `Enable-AppBrowserControl` → `Set-ProcessMitigation`
+- **Features**: DEP, SEHOP, CFG, ASLR enforcement at system and process level
+- **Requirements**: Windows 10 build 16299+, compatible CPU (Intel Haswell+, AMD Excavator+)
+
+#### **7. ⚕️ System Health & Integrity** ✅ **NATIVE TOOLS**
+- **Functions**: `Analyze-SystemHealth`, DISM operations, SFC integration
+- **Tools**: Native Windows DISM utility, System File Checker, PowerShell DISM module
+- **Compatibility**: Universal Windows utilities, identical behavior across versions
+
+#### **8. 🔐 Advanced Security Hardening** ✅ **COMPREHENSIVE**
+- **Function**: `Enable-SecurityHardening`
+- **Features**: UAC configuration, Windows Firewall setup, security policies, service hardening, password policies
+- **Methods**: Registry-based settings, PowerShell cmdlets with netsh fallbacks
+- **Coverage**: Multi-layered security approach with graceful degradation
+
+### **📊 Advanced Security Integration:**
+- **Sysmon Configuration**: Enterprise-grade `sysmonconfig.xml` with MITRE ATT&CK mapping for Wazuh integration
+- **Windows Defender Exclusions**: Automatic setup in `script.bat` prevents Controlled Folder Access blocking
+- **PowerShell 7.5.2 Security**: Enhanced cmdlets with backward compatibility to PowerShell 5.1
+- **Error Handling**: Comprehensive try/catch blocks ensure script continues despite individual security feature failures
 
 ## Critical Architecture Principles
 

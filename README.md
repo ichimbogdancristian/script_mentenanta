@@ -53,7 +53,7 @@ script.ps1
 │   ├─ Write-TempListsSummary
 │   └─ Write-UnifiedMaintenanceReport
 │
-├─ RemoveBloatware
+├─ Remove-Bloatware (Bloatware Management)
 │   ├─ Get-RegistryUninstallBloatware
 │   ├─ Get-AppxPackageCompatible
 │   ├─ Remove-AppxPackageCompatible
@@ -69,35 +69,66 @@ script.ps1
 │   ├─ Remove-AppsByPattern
 │   └─ Compare-InstallationDiff
 │
-├─ InstallEssentialApps
+├─ Install-EssentialApps (Essential Apps Management)
 │   ├─ Install-AppsByCategory
 │   ├─ Invoke-PackageManagerCommand
 │   ├─ Test-CommandAvailable
-│   └─ Find-AppInstallations
+│   ├─ Find-AppInstallations
+│   ├─ Test-EnhancedAppInstallation
+│   ├─ Invoke-EnhancedAppInstallation
+│   ├─ Optimize-OfficeInstallation
+│   └─ Set-AppConfiguration
 │
-├─ Install-WindowsUpdatesCompatible
-│   ├─ Invoke-WindowsPowerShellCommand
-│   └─ Start-ProgressTrackedOperation
+├─ Security & Hardening Functions
+│   ├─ Enable-SecurityHardening
+│   │   ├─ UAC Configuration
+│   │   ├─ Windows Firewall Setup
+│   │   ├─ Security Policy Hardening
+│   │   ├─ Service Hardening
+│   │   └─ Password Policy Configuration
+│   ├─ Enable-AppBrowserControl
+│   │   ├─ Network Protection
+│   │   ├─ Controlled Folder Access
+│   │   ├─ SmartScreen Configuration
+│   │   └─ Exploit Mitigation (Set-ProcessMitigation)
+│   ├─ Start-DefenderFullScan
+│   │   ├─ Comprehensive Threat Analysis
+│   │   ├─ Real-time Progress Tracking
+│   │   └─ Detailed Security Reporting
+│   └─ Disable-Telemetry
+│       └─ Set-RegistryValueSafely
 │
-├─ Disable-Telemetry
-│   └─ Set-RegistryValueSafely
+├─ System Maintenance & Updates
+│   ├─ Install-WindowsUpdatesCompatible
+│   │   ├─ Invoke-WindowsPowerShellCommand
+│   │   └─ Start-ProgressTrackedOperation
+│   ├─ Update-AllPackages
+│   │   ├─ Winget Package Updates
+│   │   ├─ Chocolatey Package Updates
+│   │   └─ Package Manager Command Wrapper
+│   ├─ Clear-TempFiles
+│   │   ├─ System Temp Cleanup
+│   │   ├─ User Profile Cleanup
+│   │   └─ Browser Cache Cleanup
+│   └─ Protect-SystemRestore
+│       ├─ Clear-OldRestorePoints
+│       ├─ Checkpoint-ComputerCompatible
+│       └─ Enable-ComputerRestoreCompatible
 │
-├─ Protect-SystemRestore
-│   └─ Clear-OldRestorePoints
-│
-├─ System Inventory/Reporting
+├─ System Inventory & Analysis
 │   ├─ Get-StandardizedAppInventory
 │   ├─ Get-ExtensiveSystemInventory
 │   ├─ Get-OptimizedSystemInventory
-│   └─ Write-UnifiedMaintenanceReport
+│   ├─ Analyze-SystemHealth
+│   └─ Get-SystemErrorAnalysis
 │
-├─ Utility Functions (used throughout)
-│   ├─ Test-CommandAvailable
-│   ├─ Compare-InstallationDiff
-│   ├─ Invoke-PackageManagerCommand
-│   ├─ Start-ProgressTrackedOperation
-│   ├─ Find-AppInstallations
-│   ├─ Remove-AppsByPattern
+├─ Reusable Utility Functions (2025 Defragmented Architecture)
+│   ├─ Test-CommandAvailable (command detection)
+│   ├─ Compare-InstallationDiff (generic diff-based comparison)
+│   ├─ Invoke-PackageManagerCommand (package manager wrapper)
+│   ├─ Start-ProgressTrackedOperation (progress tracking template)
+│   ├─ Find-AppInstallations (universal app detection)
+│   ├─ Remove-AppsByPattern (batch app removal)
 │   └─ Install-AppsByCategory
 │
 ├─ Logging/Progress
@@ -147,9 +178,9 @@ For a full list of functions and their documentation, see `.github/copilot-instr
 - All status messages are current and relevant; no legacy or comparison messages
 
 
-# 🚀 Windows Maintenance Script (2025 Edition)
+# 🚀 Windows Maintenance Script (September 2025 Edition)
 
-**Professional-grade Windows 10/11 maintenance automation with parallel processing, modular architecture, and comprehensive system care.**
+**Professional-grade Windows 10/11 maintenance automation with advanced security hardening, PowerShell 7.5.2 optimization, and comprehensive system protection.**
 
 ## 📋 Overview
 
@@ -207,10 +238,84 @@ This maintenance script provides an enterprise-grade solution for Windows system
 ### 🛡️ **Safety & Protection**
 - **Administrator Verification**: Automatic privilege detection and elevation
 - **Protected Component List**: Critical system apps safeguarded from removal
-- **PowerShell 7+ Optimized**: Native PowerShell 7 features with 5.1 fallbacks when needed
+- **PowerShell 7.5.2 Optimized**: Native PowerShell 7 features with 5.1 fallbacks when needed
 - **Comprehensive Error Handling**: Try/catch blocks with detailed error reporting
 - **Automatic System Protection**: Restore points created before major system changes
 - **Execution Policy Management**: Safe handling of PowerShell execution policies
+
+## 🛡️ **Security Enhancements (September 2025)**
+
+### **🔐 Comprehensive Security Suite - 8 Categories (Windows 10/11 Validated)**
+
+#### **1. 🛡️ Windows Defender Security**
+- **Full System Scanning**: Comprehensive threat detection with real-time progress tracking
+- **Threat Analysis**: Advanced malware detection and quarantine management
+- **Real-time Protection**: Enhanced Windows Defender configuration and monitoring
+- **Security Status Reporting**: Detailed security posture assessment and recommendations
+
+#### **2. 🔐 App & Browser Control (SmartScreen)**
+- **Network Protection**: Blocks malicious network connections and phishing sites
+- **Controlled Folder Access**: Ransomware protection for critical system folders
+- **SmartScreen for Applications**: Application reputation checking and unsafe execution blocking
+- **SmartScreen for Microsoft Edge**: Enhanced web browsing security and download protection
+
+#### **3. 🔒 Privacy & Telemetry Protection**
+- **Telemetry Disabling**: Comprehensive Windows data collection limitation
+- **Service Hardening**: Disables unnecessary privacy-invasive system services
+- **Registry Privacy Settings**: Advanced privacy policy configuration via registry
+- **Content Delivery Management**: Stops unwanted app suggestions and advertisements
+
+#### **4. 💾 System Restore & Recovery**
+- **Automated Restore Points**: Creates system snapshots before major changes
+- **Cross-Version Compatibility**: PowerShell 5.1 and 7+ compatibility layers
+- **VSS Integration**: Advanced Volume Shadow Copy Service integration for enhanced recovery
+- **Recovery Verification**: Validates restore point creation and system recoverability
+
+#### **5. 🔄 Security Update Management**
+- **Automated Patch Installation**: Critical security updates with reboot control
+- **PSWindowsUpdate Integration**: Enterprise-grade Windows Update management
+- **Security-First Priority**: Prioritizes security patches over feature updates
+- **Update Verification**: Validates successful security update installation
+
+#### **6. 🛡️ Exploit Protection & Mitigation**
+- **System-Level Mitigations**: DEP, SEHOP, CFG, ASLR enforcement
+- **Process-Level Protection**: Individual application exploit mitigation policies
+- **Hardware Security Features**: Leverages modern CPU security capabilities
+- **Attack Surface Reduction**: Minimizes exposure to common exploit techniques
+
+#### **7. ⚕️ System Health & Integrity**
+- **DISM System Scanning**: Windows image health verification and repair
+- **SFC Integration**: System File Checker automated execution and reporting
+- **Registry Integrity**: Critical registry key validation and protection
+- **Component Store Health**: Windows component store optimization and repair
+
+#### **8. 🔐 Advanced Security Hardening**
+- **UAC Configuration**: User Account Control security level optimization
+- **Windows Firewall**: Multi-profile firewall configuration with security-first defaults
+- **Security Policy Hardening**: Advanced system security policy configuration
+- **Service Security**: Disables unnecessary services that pose security risks
+- **Password Policy**: Enforces strong password requirements and policies
+
+### **🏢 Enterprise Security Features**
+
+#### **📊 Sysmon Integration (MITRE ATT&CK Mapped)**
+- **Advanced Process Monitoring**: Comprehensive process creation and termination tracking
+- **Network Connection Analysis**: Suspicious network activity detection and logging
+- **Registry Surveillance**: Critical registry modification monitoring
+- **File System Monitoring**: Advanced file access and modification detection
+- **Wazuh SIEM Ready**: Optimized configuration for enterprise SIEM integration
+
+#### **🚀 PowerShell 7.5.2 Security Optimizations**
+- **Enhanced Security Cmdlets**: Native PowerShell 7 security improvements
+- **Backward Compatibility**: Graceful fallback to Windows PowerShell 5.1 when needed
+- **Modern API Integration**: Enhanced Windows Defender and security API utilization
+- **Performance Security**: Faster security operations with improved error handling
+
+#### **🎯 Deployment Confidence**
+- **✅ Production Ready**: Validated across mixed Windows 10/11 enterprise environments
+- **✅ Cross-Version Compatibility**: Universal compatibility with graceful degradation
+- **✅ Enterprise Scalable**: Suitable for large-scale deployment with comprehensive logging
+- **✅ Security Compliant**: Meets modern cybersecurity best practices and compliance requirements
 
 ## 📁 **Project Architecture (2025 Edition)**
 
@@ -235,37 +340,40 @@ This project uses a **launcher → orchestrator** architecture for maximum relia
 - **Graceful Degradation**: Handles missing dependencies with fallback strategies
 - **Enhanced Reporting**: Generates detailed maintenance reports and analytics
 
-### 📂 **File Structure**
+### 📂 **File Structure (September 2025)**
 ```
 script_mentenanta/
 ├── script.bat                    # 🚀 Launcher - Dependency & Environment Setup
-├── script.ps1                    # ⚙️ Orchestrator - Maintenance Task Execution
+├── script.ps1                    # ⚙️ Orchestrator - Maintenance Task Execution (PowerShell 7.5.2)
+├── sysmonconfig.xml              # 🛡️ Advanced Sysmon Configuration (MITRE ATT&CK mapped)
 ├── README.md                     # 📖 Project Documentation
 ├── .github/
 │   └── copilot-instructions.md   # 🤖 AI Development Guidelines
 ├── maintenance.log               # 📝 Runtime Log (created by launcher)
-├── maintenance_report.txt        # 📊 Detailed Execution Report
-├── config.json                   # ⚙️ Optional Configuration (auto-created)
+├── maintenance_report.txt        # 📊 Comprehensive Execution Report
+├── config.json                   # ⚙️ Optional User Configuration (auto-created)
 ├── inventory.json                # 📋 System Inventory Export
-└── temp_files/                   # 📁 Temporary Analysis Files
-  ├── bloatware.json            # 🗑️ Bloatware Detection Results
-  └── essential_apps.json       # 📦 Essential Apps Analysis
+└── temp_files/                   # 📁 Centralized Temporary Analysis Files
+    ├── bloatware.json            # 🗑️ Bloatware Detection Results
+    ├── essential_apps.json       # 📦 Essential Apps Analysis
+    └── security_scan_*.json      # 🛡️ Security Scan Results
 ```
 
 ### 🔄 **Enhanced Execution Flow**
 1. **🚀 script.bat** - Environment preparation and validation
    - Checks administrator privileges → auto-elevates if needed
    - Validates Windows 10/11 compatibility
-   - Installs dependencies: Winget → PowerShell 7 → NuGet → PSWindowsUpdate → Chocolatey
+   - Installs dependencies: Winget → PowerShell 7.5.2 → NuGet → PSWindowsUpdate → Chocolatey
    - Downloads latest repository version from GitHub
    - Creates/manages scheduled tasks for recurring maintenance
    - Launches script.ps1 with proper environment
 
-2. **⚙️ script.ps1** - Maintenance orchestration
-   - Comprehensive system inventory collection
+2. **⚙️ script.ps1** - Maintenance orchestration (PowerShell 7.5.2)
+   - Advanced security hardening with 8 validated security categories
+   - Comprehensive system inventory collection with multi-source analysis
    - Executes maintenance tasks via `$global:ScriptTasks` coordination
-   - Parallel processing for high-performance operations
-   - Generates detailed reports and analytics
+   - Parallel processing and modern PowerShell 7.5.2 optimizations
+   - Enhanced reporting with security analysis and threat detection
    - Provides graceful degradation for missing dependencies
 
 ### 💡 **Architecture Benefits**
