@@ -3319,7 +3319,7 @@ function Install-WindowsUpdatesCompatible {
                             return @{
                                 Success = $false
                                 Message = "Failed to import PSWindowsUpdate in job context"
-                                Error = $_.Exception.Message
+                                Error   = $_.Exception.Message
                             }
                         }
                         
@@ -3342,16 +3342,16 @@ function Install-WindowsUpdatesCompatible {
                             
                             return @{
                                 Success = $true
-                                Result = $installResult
+                                Result  = $installResult
                                 Message = "Updates installed successfully in isolated job"
                             }
                         }
                         catch {
                             return @{
                                 Success = $false
-                                Result = $null
+                                Result  = $null
                                 Message = "Update installation failed in job context"
-                                Error = $_.Exception.Message
+                                Error   = $_.Exception.Message
                             }
                         }
                     }
@@ -9434,7 +9434,8 @@ function Write-UnifiedMaintenanceReport {
         # External IP (public)
         try {
             $externalIP = (Invoke-RestMethod -Uri 'https://api.ipify.org?format=text' -TimeoutSec 5)
-        } catch { $externalIP = 'Unavailable' }
+        }
+        catch { $externalIP = 'Unavailable' }
 
         # DNS Servers
         $dnsServers = (Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses } | Select-Object -ExpandProperty ServerAddresses -Unique) -join ', '
