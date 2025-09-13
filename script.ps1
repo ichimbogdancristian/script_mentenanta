@@ -6697,19 +6697,25 @@ function Enable-AppBrowserControl {
             Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
             Write-Log "✓ Controlled Folder Access enabled" 'INFO'
             
-            # Add current script directory and PowerShell executables to exclusions
+            # Add comprehensive exclusions for both interactive and scheduled task execution
             try {
                 $scriptDir = $WorkingDirectory
                 $tempDir = $global:TempFolder
+                $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
                 
-                # Add script directory to allowed apps/folders
+                Write-Log "Configuring Controlled Folder Access for user: $currentUser" 'INFO'
+                
+                # Add script files to allowed applications (critical for scheduled task execution)
                 Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.ps1" -ErrorAction SilentlyContinue
                 Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.bat" -ErrorAction SilentlyContinue
+                Write-Log "✓ Added script files to Controlled Folder Access allowlist" 'INFO'
                 
-                # Add PowerShell executables to allowed applications
+                # Add comprehensive PowerShell executables to allowed applications
                 $powershellPaths = @(
                     "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe",
-                    "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+                    "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe",
+                    "$env:SystemRoot\System32\cmd.exe",
+                    "$env:SystemRoot\System32\schtasks.exe"
                 )
                 
                 # Add PowerShell 7+ if available
@@ -6721,22 +6727,39 @@ function Enable-AppBrowserControl {
                 foreach ($path in ($powershellPaths + $ps7Paths)) {
                     if (Test-Path $path) {
                         Add-MpPreference -ControlledFolderAccessAllowedApplications $path -ErrorAction SilentlyContinue
-                        Write-Log "✓ Added PowerShell executable to Controlled Folder Access exclusions: $path" 'INFO'
+                        Write-Log "✓ Added executable to Controlled Folder Access exclusions: $path" 'INFO'
                     }
                 }
                 
-                # Add maintenance script paths
+                # Add system-level trusted executables for scheduled task context
+                $systemTrustedPaths = @(
+                    "$env:SystemRoot\System32\*",
+                    "$env:SystemRoot\SysWOW64\*"
+                )
+                
+                foreach ($systemPath in $systemTrustedPaths) {
+                    Add-MpPreference -ControlledFolderAccessAllowedApplications $systemPath -ErrorAction SilentlyContinue
+                }
+                Write-Log "✓ Added system trusted paths for scheduled task execution" 'INFO'
+                
+                # Add maintenance script paths and ensure project directory access
                 if (Test-Path $scriptDir) {
+                    # Add as both protected folder and exclusion path
                     Add-MpPreference -ControlledFolderAccessProtectedFolders $scriptDir -ErrorAction SilentlyContinue
+                    Add-MpPreference -ExclusionPath $scriptDir -ErrorAction SilentlyContinue
                     Write-Log "✓ Added script directory to Controlled Folder Access protected folders: $scriptDir" 'INFO'
                 }
                 
                 if (Test-Path $tempDir) {
-                    Add-MpPreference -ControlledFolderAccessAllowedApplications $tempDir -ErrorAction SilentlyContinue
+                    Add-MpPreference -ExclusionPath $tempDir -ErrorAction SilentlyContinue
                     Write-Log "✓ Added temp directory to Controlled Folder Access exclusions: $tempDir" 'INFO'
                 }
                 
-                Write-Log "✓ Maintenance script exclusions added to Controlled Folder Access" 'INFO'
+                # Verify current CFA settings
+                $cfaSettings = Get-MpPreference | Select-Object EnableControlledFolderAccess, ControlledFolderAccessAllowedApplications
+                $allowedAppsCount = if ($cfaSettings.ControlledFolderAccessAllowedApplications) { $cfaSettings.ControlledFolderAccessAllowedApplications.Count } else { 0 }
+                Write-Log "✓ Controlled Folder Access configured with $allowedAppsCount allowed applications" 'INFO'
+                Write-Log "✓ Comprehensive exclusions added for scheduled task execution as SYSTEM" 'INFO'
             }
             catch {
                 Write-Log "Warning: Could not add script exclusions to Controlled Folder Access: $_" 'WARN'
@@ -10048,6 +10071,102 @@ Write-ActionLog -Action "Environment Analysis" -Details "Machine: $([System.Envi
 Write-ActionLog -Action "Environment Analysis" -Details "Temp Folder: $global:TempFolder" -Category "System Startup" -Status 'INFO'
 Write-ActionLog -Action "Configuration Status" -Details "Verbose Logging: $($global:Config.EnableVerboseLogging)" -Category "System Startup" -Status 'INFO'
 Write-ActionLog -Action "Logging Configuration" -Details "Log File: $global:LogFile" -Category "System Startup" -Status 'INFO'
+Write-Log "============================================================" 'INFO'
+
+# ================================================================
+# ENHANCED WINDOWS DEFENDER SETUP FOR SCHEDULED TASK EXECUTION
+# ================================================================
+Write-ActionLog -Action "Windows Defender Setup" -Details "Configuring exclusions for scheduled task execution" -Category "System Security" -Status 'START'
+
+try {
+    # Check current execution context
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $isSystemAccount = $currentUser.Name -eq "NT AUTHORITY\SYSTEM"
+    $contextDescription = if ($isSystemAccount) { "SYSTEM (Scheduled Task)" } else { "User Interactive" }
+    
+    Write-Log "Execution context: $contextDescription" 'INFO'
+    Write-ActionLog -Action "Execution Context Detection" -Details $contextDescription -Category "System Security" -Status 'INFO'
+    
+    # Get current Windows Defender preferences to assess what's already configured
+    $defenderPrefs = Get-MpPreference -ErrorAction SilentlyContinue
+    
+    if ($defenderPrefs) {
+        $cfaStatus = $defenderPrefs.EnableControlledFolderAccess
+        $existingExclusions = if ($defenderPrefs.ExclusionPath) { $defenderPrefs.ExclusionPath.Count } else { 0 }
+        $existingAllowedApps = if ($defenderPrefs.ControlledFolderAccessAllowedApplications) { $defenderPrefs.ControlledFolderAccessAllowedApplications.Count } else { 0 }
+        
+        Write-Log "Controlled Folder Access status: $cfaStatus" 'INFO'
+        Write-Log "Existing exclusion paths: $existingExclusions" 'INFO'
+        Write-Log "Existing allowed applications: $existingAllowedApps" 'INFO'
+        
+        # Add runtime exclusions for scheduled task execution
+        if ($isSystemAccount -or $cfaStatus -eq 1) {
+            Write-Log "Adding enhanced exclusions for scheduled task or CFA environment" 'INFO'
+            
+            # Add script-specific exclusions
+            $scriptDir = Split-Path -Parent $PSCommandPath
+            $currentScript = $PSCommandPath
+            $batchScript = Join-Path $scriptDir "script.bat"
+            
+            # Add file-level exclusions
+            try {
+                Add-MpPreference -ExclusionPath $currentScript -ErrorAction SilentlyContinue
+                Add-MpPreference -ExclusionPath $batchScript -ErrorAction SilentlyContinue
+                Add-MpPreference -ExclusionPath $scriptDir -ErrorAction SilentlyContinue
+                Add-MpPreference -ExclusionPath $global:TempFolder -ErrorAction SilentlyContinue
+                Write-Log "✓ Added file and folder exclusions for maintenance scripts" 'INFO'
+            }
+            catch {
+                Write-Log "Warning: Could not add some file exclusions: $_" 'WARN'
+            }
+            
+            # Add Controlled Folder Access allowlist for system processes
+            if ($cfaStatus -eq 1) {
+                try {
+                    $systemExecutables = @(
+                        "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe",
+                        "$env:SystemRoot\System32\cmd.exe",
+                        "$env:SystemRoot\System32\schtasks.exe",
+                        $currentScript,
+                        $batchScript
+                    )
+                    
+                    foreach ($executable in $systemExecutables) {
+                        if (Test-Path $executable) {
+                            Add-MpPreference -ControlledFolderAccessAllowedApplications $executable -ErrorAction SilentlyContinue
+                        }
+                    }
+                    
+                    # Add PowerShell 7 if available
+                    if (Test-Path "$env:ProgramFiles\PowerShell\7\pwsh.exe") {
+                        Add-MpPreference -ControlledFolderAccessAllowedApplications "$env:ProgramFiles\PowerShell\7\pwsh.exe" -ErrorAction SilentlyContinue
+                    }
+                    
+                    Write-Log "✓ Added Controlled Folder Access allowlist for system executables" 'INFO'
+                }
+                catch {
+                    Write-Log "Warning: Could not add some CFA exclusions: $_" 'WARN'
+                }
+            }
+            
+            Write-ActionLog -Action "Windows Defender Exclusions" -Details "Enhanced exclusions added for scheduled task execution" -Category "System Security" -Status 'SUCCESS'
+        }
+        else {
+            Write-Log "Controlled Folder Access disabled, minimal exclusions needed" 'INFO'
+            Write-ActionLog -Action "Windows Defender Check" -Details "CFA disabled, proceeding with minimal setup" -Category "System Security" -Status 'INFO'
+        }
+    }
+    else {
+        Write-Log "Could not access Windows Defender preferences - may not be available" 'WARN'
+        Write-ActionLog -Action "Windows Defender Check" -Details "Defender preferences not accessible" -Category "System Security" -Status 'WARN'
+    }
+}
+catch {
+    Write-Log "Error during Windows Defender setup: $_" 'WARN'
+    Write-ActionLog -Action "Windows Defender Setup Error" -Details $_.Exception.Message -Category "System Security" -Status 'ERROR'
+}
+
+Write-ActionLog -Action "Windows Defender Setup" -Details "Exclusion configuration completed" -Category "System Security" -Status 'COMPLETE'
 Write-Log "============================================================" 'INFO'
 
 # Execute all maintenance tasks with enhanced logging

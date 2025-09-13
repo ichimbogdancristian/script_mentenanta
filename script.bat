@@ -157,13 +157,14 @@ IF "%OS_VERSION%"=="" SET OS_VERSION=Unknown
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Detected Windows version: %OS_VERSION%"
 
 REM -----------------------------------------------------------------------------
-REM Windows Defender Exclusions Setup
+REM Enhanced Windows Defender Exclusions Setup for Scheduled Tasks
 REM Adds Windows Defender exclusions for the project folder and executables
 REM to prevent Controlled Folder Access from blocking script execution
+REM Enhanced to work for both interactive and scheduled task (SYSTEM) execution
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Setting up Windows Defender exclusions for project..."
 
-REM Add folder exclusion for the entire project directory
+REM Add comprehensive folder exclusions for the entire project directory
 powershell -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction Stop; Write-Host 'SUCCESS: Added folder exclusion for %WORKING_DIR%' } catch { Write-Host 'WARNING: Could not add folder exclusion - ' + $_.Exception.Message }" 2>nul
 IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added Windows Defender folder exclusion: %WORKING_DIR%"
@@ -171,26 +172,48 @@ IF %ERRORLEVEL% EQU 0 (
     CALL :LOG_MESSAGE "[%TIME%] [WARN] ⚠ Could not add folder exclusion (may already exist)"
 )
 
+REM Add script file exclusions (specific file paths for better scheduled task support)
+powershell -Command "try { Add-MpPreference -ExclusionPath '%~f0' -ErrorAction SilentlyContinue; Write-Host 'Added script.bat exclusion' } catch { }" >nul 2>&1
+powershell -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%\script.ps1' -ErrorAction SilentlyContinue; Write-Host 'Added script.ps1 exclusion' } catch { }" >nul 2>&1
+CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added specific script file exclusions"
+
 REM Add process exclusions for PowerShell and batch scripts
 powershell -Command "try { Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
 powershell -Command "try { Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
 powershell -Command "try { Add-MpPreference -ExclusionProcess 'cmd.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+powershell -Command "try { Add-MpPreference -ExclusionProcess 'schtasks.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added process exclusions including scheduled task processes"
 
-REM Check Controlled Folder Access status
+REM Check Controlled Folder Access status and add comprehensive exclusions for scheduled tasks
 FOR /F "tokens=*" %%i IN ('powershell -Command "try { (Get-MpPreference).EnableControlledFolderAccess } catch { 'Unknown' }" 2^>nul') DO SET CFA_STATUS=%%i
 IF "%CFA_STATUS%"=="1" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Controlled Folder Access is ENABLED - exclusions are important"
-    REM Add specific app allowlist for PowerShell if CFA is enabled
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Controlled Folder Access is ENABLED - adding comprehensive exclusions for scheduled tasks"
+    
+    REM Add PowerShell executables to allowed applications (for both interactive and SYSTEM context)
     powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
     powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Program Files\PowerShell\7\pwsh.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added PowerShell to Controlled Folder Access allowlist"
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Windows\System32\cmd.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Windows\System32\schtasks.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+    
+    REM Add the specific script files to allowed applications (critical for scheduled task execution)
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications '%~f0' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications '%WORKING_DIR%\script.ps1' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+    
+    REM Add system-level trusted paths for scheduled task execution context
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Windows\System32\*' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+    
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added comprehensive Controlled Folder Access allowlist for scheduled tasks"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Scheduled tasks running as SYSTEM should now have access"
 ) ELSE IF "%CFA_STATUS%"=="0" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Controlled Folder Access is disabled - no additional exclusions needed"
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Could not determine Controlled Folder Access status"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Could not determine Controlled Folder Access status - adding precautionary exclusions"
+    REM Add exclusions anyway as a precaution
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
+    powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications '%~f0' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
 )
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Windows Defender exclusions setup completed"
+CALL :LOG_MESSAGE "[%TIME%] [INFO] Enhanced Windows Defender exclusions setup completed for scheduled task support"
 
 REM -----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup
