@@ -498,7 +498,8 @@ $global:EssentialCategories = @{
     )
     SystemTools   = @(
         @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal'; Category = 'System' },
-        @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime'; Category = 'Runtime' }
+        @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime'; Category = 'Runtime' },
+        @{ Name = 'Sysmon'; Winget = 'Microsoft.Sysinternals.Sysmon'; Choco = 'sysmon'; Category = 'Security'; ConfigFile = 'sysmonconfig.xml'; RequiresConfig = $true }
     )
     Communication = @(
         @{ Name = 'Mozilla Thunderbird'; Winget = 'Mozilla.Thunderbird'; Choco = 'thunderbird'; Category = 'Email' }
@@ -797,11 +798,16 @@ function Write-ActionLog {
     Write-Host "[CALL] Write-ActionLog invoked" -ForegroundColor Cyan
     param(
         [string]$Action,
-        [string]$Details = "",
-        [string]$Category = "General",
+        [string]$Details,
+        [string]$Category,
         [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO')]
-        [string]$Status = 'INFO'
+        [string]$Status
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('Details')) { $Details = "" }
+    if (-not $PSBoundParameters.ContainsKey('Category')) { $Category = "General" }
+    if (-not $PSBoundParameters.ContainsKey('Status')) { $Status = 'INFO' }
     
     $contextInfo = ""
     if ($Details) {
@@ -835,11 +841,16 @@ function Write-CommandLog {
     Write-Host "[CALL] Write-CommandLog invoked" -ForegroundColor Cyan
     param(
         [string]$Command,
-        [string[]]$Arguments = @(),
-        [string]$Context = "",
+        [string[]]$Arguments,
+        [string]$Context,
         [ValidateSet('START', 'SUCCESS', 'FAILURE')]
-        [string]$Status = 'START'
+        [string]$Status
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('Arguments')) { $Arguments = @() }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "" }
+    if (-not $PSBoundParameters.ContainsKey('Status')) { $Status = 'START' }
     
     $fullCommand = $Command
     if ($Arguments.Count -gt 0) {
@@ -915,14 +926,19 @@ function Write-ActionProgress {
         [Parameter(Mandatory = $true)]
         [int]$PercentComplete, # 0-100
         
-        [string]$Status = "Processing...",  # Additional status text
+        [string]$Status,  # Additional status text
         
-        [int]$CurrentItem = 0,  # Current item number
+        [int]$CurrentItem,  # Current item number
         
-        [int]$TotalItems = 0,   # Total items to process
+        [int]$TotalItems,   # Total items to process
         
         [switch]$Completed      # Mark as completed and cleanup
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('Status')) { $Status = "Processing..." }
+    if (-not $PSBoundParameters.ContainsKey('CurrentItem')) { $CurrentItem = 0 }
+    if (-not $PSBoundParameters.ContainsKey('TotalItems')) { $TotalItems = 0 }
     
     # Generate unique activity ID based on action type and item
     $activityId = ($ActionType + $ItemName).GetHashCode()
@@ -1309,14 +1325,20 @@ function Invoke-LoggedCommand {
     Write-Host "[CALL] Invoke-LoggedCommand invoked" -ForegroundColor Cyan
     param(
         [string]$FilePath,
-        [string[]]$ArgumentList = @(),
-        [string]$Context = "",
+        [string[]]$ArgumentList,
+        [string]$Context,
         [switch]$WindowStyle,
-        [string]$WindowStyleValue = "Hidden",
+        [string]$WindowStyleValue,
         [switch]$Wait,
         [switch]$PassThru,
-        [int]$TimeoutSeconds = 300
+        [int]$TimeoutSeconds
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('ArgumentList')) { $ArgumentList = @() }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "" }
+    if (-not $PSBoundParameters.ContainsKey('WindowStyleValue')) { $WindowStyleValue = "Hidden" }
+    if (-not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 300 }
     
     # Set default values for switch parameters (proper PowerShell practice)
     if (-not $PSBoundParameters.ContainsKey('Wait')) { $Wait = $true }
@@ -1585,14 +1607,19 @@ function Set-RegistryValueSafely {
         [object]$Value,
         
         [Parameter(Mandatory = $false)]
-        [string]$ValueType = "DWord",
+        [string]$ValueType,
         
         [Parameter(Mandatory = $false)]
-        [array]$FallbackPaths = @(),
+        [array]$FallbackPaths,
         
         [Parameter(Mandatory = $false)]
-        [string]$Description = "Registry value"
+        [string]$Description
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('ValueType')) { $ValueType = "DWord" }
+    if (-not $PSBoundParameters.ContainsKey('FallbackPaths')) { $FallbackPaths = @() }
+    if (-not $PSBoundParameters.ContainsKey('Description')) { $Description = "Registry value" }
     
     # Test access first
     $accessTest = Test-RegistryAccess -RegistryPath $RegistryPath -CreatePath
@@ -1662,11 +1689,15 @@ function Compare-InstallationDiff {
         [array]$AfterList,
         
         [Parameter(Mandatory = $false)]
-        [string]$ComparisonType = "Name",
+        [string]$ComparisonType,
         
         [Parameter(Mandatory = $false)]
-        [string]$Context = "App Installation"
+        [string]$Context
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('ComparisonType')) { $ComparisonType = "Name" }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "App Installation" }
     
     Write-Log "[START] Installation Diff Comparison: $Context" 'INFO'
     $startTime = Get-Date
@@ -1740,7 +1771,7 @@ function Get-StandardizedAppInventory {
     Write-Host "[CALL] Get-StandardizedAppInventory invoked" -ForegroundColor Cyan
     param(
         [Parameter(Mandatory = $false)]
-        [string[]]$Sources = @('AppX', 'Winget', 'Chocolatey'),
+        [string[]]$Sources,
         
         [Parameter(Mandatory = $false)]
         [switch]$IncludeDetails,
@@ -1749,8 +1780,12 @@ function Get-StandardizedAppInventory {
         [switch]$UseCache,
         
         [Parameter(Mandatory = $false)]
-        [string]$Context = "System Inventory"
+        [string]$Context
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('Sources')) { $Sources = @('AppX', 'Winget', 'Chocolatey') }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "System Inventory" }
     
     Write-Log "[START] Standardized App Inventory Collection: $Context" 'INFO'
     $startTime = Get-Date
@@ -1902,14 +1937,19 @@ function Invoke-PackageManagerCommand {
         
         [Parameter(Mandatory = $false)]
         [ValidateSet('Winget', 'Chocolatey', 'Auto')]
-        [string]$PreferredManager = 'Auto',
+        [string]$PreferredManager,
         
         [Parameter(Mandatory = $false)]
-        [int]$TimeoutSeconds = 300,
+        [int]$TimeoutSeconds,
         
         [Parameter(Mandatory = $false)]
-        [string]$Context = "Package Operation"
+        [string]$Context
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('PreferredManager')) { $PreferredManager = 'Auto' }
+    if (-not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 300 }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "Package Operation" }
     
     Write-Log "[START] Package Manager Command: $Operation for $PackageId via $PreferredManager" 'INFO'
     $startTime = Get-Date
@@ -2049,11 +2089,15 @@ function Start-ProgressTrackedOperation {
         [string]$ItemName,
         
         [Parameter(Mandatory = $false)]
-        [string]$InitialStatus = "Starting...",
+        [string]$InitialStatus,
         
         [Parameter(Mandatory = $false)]
-        [string]$Context = "Operation"
+        [string]$Context
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('InitialStatus')) { $InitialStatus = "Starting..." }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "Operation" }
     
     $startTime = Get-Date
     $operationId = [System.Guid]::NewGuid().ToString("N")[0..7] -join ""
@@ -2119,14 +2163,18 @@ function Find-AppInstallations {
         [string[]]$SearchPatterns,
         
         [Parameter(Mandatory = $false)]
-        [string[]]$Sources = @('AppX', 'Winget', 'Chocolatey'),
+        [string[]]$Sources,
         
         [Parameter(Mandatory = $false)]
         [switch]$ExactMatch,
         
         [Parameter(Mandatory = $false)]
-        [string]$Context = "App Search"
+        [string]$Context
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('Sources')) { $Sources = @('AppX', 'Winget', 'Chocolatey') }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "App Search" }
     
     # Set default behavior for switches (PSScriptAnalyzer compliant)
     if (-not $PSBoundParameters.ContainsKey('ExactMatch')) { $ExactMatch = $false }
@@ -2198,14 +2246,18 @@ function Remove-AppsByPattern {
         [string[]]$RemovalPatterns,
         
         [Parameter(Mandatory = $false)]
-        [string[]]$SafetyExclusions = @(),
+        [string[]]$SafetyExclusions,
         
         [Parameter(Mandatory = $false)]
         [switch]$WhatIf,
         
         [Parameter(Mandatory = $false)]
-        [string]$Context = "App Removal"
+        [string]$Context
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('SafetyExclusions')) { $SafetyExclusions = @() }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "App Removal" }
     
     # Set default behavior for switches (PSScriptAnalyzer compliant)
     if (-not $PSBoundParameters.ContainsKey('WhatIf')) { $WhatIf = $false }
@@ -2315,6 +2367,104 @@ function Remove-AppsByPattern {
 }
 
 # ================================================================
+# Function: Set-AppConfiguration
+# ================================================================
+# Purpose: Apply post-installation configuration for applications that require it (e.g., Sysmon)
+# Environment: Windows 10/11, requires admin privileges
+# Performance: Fast configuration deployment with error handling
+# Dependencies: Application-specific, Sysmon requires sysmon.exe in PATH
+# Logic: Detects app type and applies appropriate configuration files and settings
+# Features: Supports Sysmon XML configuration, extensible for other apps requiring post-install config
+# ================================================================
+function Set-AppConfiguration {
+    param(
+        [Parameter(Mandatory)]
+        [psobject]$App
+    )
+    
+    Write-Log "Applying configuration for $($App.Name)..." 'INFO'
+    
+    try {
+        # Handle Sysmon configuration
+        if ($App.Name -eq 'Sysmon' -and $App.ConfigFile) {
+            $configPath = Join-Path (Get-Location) $App.ConfigFile
+            
+            if (-not (Test-Path $configPath)) {
+                Write-Log "Sysmon config file not found: $configPath" 'ERROR'
+                return $false
+            }
+            
+            # Check if Sysmon is accessible
+            $sysmonPath = Get-Command 'sysmon.exe' -ErrorAction SilentlyContinue
+            if (-not $sysmonPath) {
+                Write-Log "Sysmon executable not found in PATH. Checking common locations..." 'WARN'
+                
+                # Check common Sysmon installation paths
+                $commonPaths = @(
+                    "${env:ProgramFiles}\Sysmon\sysmon.exe",
+                    "${env:ProgramFiles(x86)}\Sysmon\sysmon.exe",
+                    "${env:SystemRoot}\System32\sysmon.exe",
+                    "${env:SystemRoot}\SysWOW64\sysmon.exe"
+                )
+                
+                $sysmonExe = $null
+                foreach ($path in $commonPaths) {
+                    if (Test-Path $path) {
+                        $sysmonExe = $path
+                        break
+                    }
+                }
+                
+                if (-not $sysmonExe) {
+                    Write-Log "Sysmon executable not found in common locations. Configuration may need manual setup." 'ERROR'
+                    return $false
+                }
+            }
+            else {
+                $sysmonExe = $sysmonPath.Source
+            }
+            
+            Write-Log "Applying Sysmon configuration: $configPath" 'INFO'
+            Write-Log "Using Sysmon executable: $sysmonExe" 'INFO'
+            
+            # Apply the configuration
+            $sysmonArgs = @('-c', $configPath)
+            $sysmonProcess = Start-Process -FilePath $sysmonExe -ArgumentList $sysmonArgs -WindowStyle Hidden -Wait -PassThru
+            
+            if ($sysmonProcess.ExitCode -eq 0) {
+                Write-Log "Sysmon configuration applied successfully" 'INFO'
+                
+                # Verify the configuration was applied
+                $verifyArgs = @('-c')
+                $verifyProcess = Start-Process -FilePath $sysmonExe -ArgumentList $verifyArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput (Join-Path $env:TEMP 'sysmon_config_verify.txt')
+                
+                if ($verifyProcess.ExitCode -eq 0) {
+                    Write-Log "Sysmon configuration verification successful" 'INFO'
+                }
+                else {
+                    Write-Log "Sysmon configuration verification failed (non-critical)" 'WARN'
+                }
+                
+                return $true
+            }
+            else {
+                Write-Log "Sysmon configuration failed with exit code: $($sysmonProcess.ExitCode)" 'ERROR'
+                return $false
+            }
+        }
+        
+        # Add other app configuration handlers here as needed
+        Write-Log "No specific configuration handler for $($App.Name)" 'INFO'
+        return $true
+        
+    }
+    catch {
+        Write-Log "Error applying configuration for $($App.Name): $($_.Exception.Message)" 'ERROR'
+        return $false
+    }
+}
+
+# ================================================================
 # Function: Install-AppsByCategory
 # ================================================================
 # Purpose: Batch app installation with category-based organization and conflict resolution
@@ -2332,17 +2482,22 @@ function Install-AppsByCategory {
         [hashtable]$AppCategories,
         
         [Parameter(Mandatory = $false)]
-        [string[]]$SelectedCategories = @(),
+        [string[]]$SelectedCategories,
         
         [Parameter(Mandatory = $false)]
-        [string]$PreferredManager = 'Auto',
+        [string]$PreferredManager,
         
         [Parameter(Mandatory = $false)]
         [switch]$WhatIf,
         
         [Parameter(Mandatory = $false)]
-        [string]$Context = "App Installation"
+        [string]$Context
     )
+    
+    # Apply default values for optional parameters
+    if (-not $PSBoundParameters.ContainsKey('SelectedCategories')) { $SelectedCategories = @() }
+    if (-not $PSBoundParameters.ContainsKey('PreferredManager')) { $PreferredManager = 'Auto' }
+    if (-not $PSBoundParameters.ContainsKey('Context')) { $Context = "App Installation" }
     
     # Set default behavior for switches (PSScriptAnalyzer compliant)
     if (-not $PSBoundParameters.ContainsKey('WhatIf')) { $WhatIf = $false }
@@ -5859,6 +6014,21 @@ function Install-EssentialApps {
                     $script:successCount++
                     Write-Log "✓ INSTALLED: $($app.Name) [Method: Winget]" 'INFO'
                     Write-Host "    ✓ Successfully installed via Winget" -ForegroundColor Green
+                    
+                    # Handle special post-installation configuration for apps that require it
+                    if ($app.RequiresConfig -and $app.ConfigFile) {
+                        Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 90 -Status "Applying configuration..." -CurrentItem $currentIndex -TotalItems $totalApps
+                        $configResult = Set-AppConfiguration -App $app
+                        if ($configResult) {
+                            Write-Log "✓ CONFIGURED: $($app.Name) configuration applied successfully" 'INFO'
+                            Write-Host "    ✓ Configuration applied successfully" -ForegroundColor Green
+                        }
+                        else {
+                            Write-Log "⚠ CONFIG WARNING: $($app.Name) installed but configuration failed" 'WARN'
+                            Write-Host "    ⚠ Configuration failed - check logs" -ForegroundColor Yellow
+                        }
+                    }
+                    
                     Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation completed successfully" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
                     return
                 }
@@ -5891,6 +6061,21 @@ function Install-EssentialApps {
                     $script:successCount++
                     Write-Log "✓ INSTALLED: $($app.Name) [Method: Chocolatey]" 'INFO'
                     Write-Host "    ✓ Successfully installed via Chocolatey" -ForegroundColor Green
+                    
+                    # Handle special post-installation configuration for apps that require it
+                    if ($app.RequiresConfig -and $app.ConfigFile) {
+                        Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 90 -Status "Applying configuration..." -CurrentItem $currentIndex -TotalItems $totalApps
+                        $configResult = Set-AppConfiguration -App $app
+                        if ($configResult) {
+                            Write-Log "✓ CONFIGURED: $($app.Name) configuration applied successfully" 'INFO'
+                            Write-Host "    ✓ Configuration applied successfully" -ForegroundColor Green
+                        }
+                        else {
+                            Write-Log "⚠ CONFIG WARNING: $($app.Name) installed but configuration failed" 'WARN'
+                            Write-Host "    ⚠ Configuration failed - check logs" -ForegroundColor Yellow
+                        }
+                    }
+                    
                     Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation completed successfully" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
                     return
                 }
