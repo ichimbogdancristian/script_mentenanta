@@ -1,3 +1,11 @@
+
+using namespace System.Collections.Generic
+using namespace System.Collections.Concurrent
+
+param(
+    [string]$LogFilePath
+)
+
 # ===============================
 # SECTION 1: SCRIPT HEADER & METADATA
 # ===============================
@@ -13,13 +21,6 @@
 # ===============================
 
 #Requires -Version 7.0
-
-using namespace System.Collections.Generic
-using namespace System.Collections.Concurrent
-
-param(
-    [string]$LogFilePath
-)
 
 # ================================================================
 # Global Variables and Environment Detection
@@ -749,7 +750,6 @@ function Write-Log {
         [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE', 'DEBUG')]
         [string]$Level = 'INFO'
     )
-    
     # Debug call tracking (moved after param block)
     Write-Host "[CALL] Write-Log invoked" -ForegroundColor Cyan
     
@@ -808,7 +808,6 @@ function Write-ActionLog {
         [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO', 'COMPLETE')]
         [string]$Status
     )
-    
     # Debug call tracking (moved after param block)
     Write-Log "[CALL] Write-ActionLog invoked" 'DEBUG'
     Write-Host "[CALL] Write-ActionLog invoked" -ForegroundColor Cyan
@@ -846,8 +845,6 @@ function Write-ActionLog {
 # Dependencies: Write-Log function, process execution capabilities, timing functions
 # ================================================================
 function Write-CommandLog {
-    Write-Log "[CALL] Write-CommandLog invoked" 'DEBUG'
-    Write-Host "[CALL] Write-CommandLog invoked" -ForegroundColor Cyan
     param(
         [string]$Command,
         [string[]]$Arguments,
@@ -855,6 +852,7 @@ function Write-CommandLog {
         [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO', 'COMPLETE')]
         [string]$Status
     )
+    Write-Host "[CALL] Write-CommandLog invoked" -ForegroundColor Cyan
     
     # Apply default values for optional parameters
     if (-not $PSBoundParameters.ContainsKey('Arguments')) { $Arguments = @() }
@@ -890,9 +888,9 @@ function Write-CommandLog {
 # Dependencies: Windows PowerShell console capabilities, Write-Progress cmdlet
 # ================================================================
 function Write-TaskProgress {
+    param(
     Write-Log "[CALL] Write-TaskProgress invoked" 'DEBUG'
     Write-Host "[CALL] Write-TaskProgress invoked" -ForegroundColor Cyan
-    param(
         [string]$Activity,
         [int]$PercentComplete,
         [string]$Status = "Processing..."
@@ -923,24 +921,18 @@ function Write-TaskProgress {
 # Dependencies: Write-Progress cmdlet, console capabilities
 # ================================================================
 function Write-ActionProgress {
+    param(
     Write-Log "[CALL] Write-ActionProgress invoked" 'DEBUG'
     Write-Host "[CALL] Write-ActionProgress invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string]$ActionType,  # 'Installing', 'Uninstalling', 'Removing', 'Updating', 'Scanning', 'Cleaning'
-        
         [Parameter(Mandatory = $true)]
         [string]$ItemName,    # Name of the item being processed
-        
         [Parameter(Mandatory = $true)]
         [int]$PercentComplete, # 0-100
-        
         [string]$Status,  # Additional status text
-        
         [int]$CurrentItem,  # Current item number
-        
         [int]$TotalItems,   # Total items to process
-        
         [switch]$Completed      # Mark as completed and cleanup
     )
     
@@ -1006,23 +998,18 @@ function Write-ActionProgress {
 # Features: Smart logging that avoids percentage spam, clean visual indicators
 # ================================================================
 function Write-CleanProgress {
+    param(
     Write-Log "[CALL] Write-CleanProgress invoked" 'DEBUG'
     Write-Host "[CALL] Write-CleanProgress invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string]$Activity,
-        
         [Parameter(Mandatory = $true)]
         [string]$CurrentItem,
-        
         [Parameter(Mandatory = $true)]
         [int]$CurrentIndex,
-        
         [Parameter(Mandatory = $true)]
         [int]$TotalItems,
-        
         [string]$Status = "Processing",
-        
         [switch]$Completed
     )
     
@@ -1064,15 +1051,13 @@ function Write-CleanProgress {
 # Dependencies: Write-ActionProgress function
 # ================================================================
 function Start-ActionProgressSequence {
+    param(
     Write-Log "[CALL] Start-ActionProgressSequence invoked" 'DEBUG'
     Write-Host "[CALL] Start-ActionProgressSequence invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string]$SequenceName,  # Overall sequence name
-        
         [Parameter(Mandatory = $true)]
         [array]$Actions,        # Array of actions to perform
-        
         [scriptblock]$ActionProcessor # Script block to process each action
     )
     
@@ -1293,9 +1278,9 @@ function Write-SystemSummaryHeader {
 # Dependencies: Write-Log, Write-ActionLog functions, PowerShell execution environment
 # ================================================================
 function Invoke-Task {
+    param(
     Write-Log "[CALL] Invoke-Task invoked" 'DEBUG'
     Write-Host "[CALL] Invoke-Task invoked" -ForegroundColor Cyan
-    param(
         [string]$TaskName,
         [scriptblock]$Action
     )
@@ -1330,9 +1315,9 @@ function Invoke-Task {
 # Dependencies: Write-CommandLog, Write-ActionLog functions, Start-Process cmdlet, process monitoring
 # ================================================================
 function Invoke-LoggedCommand {
+    param(
     Write-Log "[CALL] Invoke-LoggedCommand invoked" 'DEBUG'
     Write-Host "[CALL] Invoke-LoggedCommand invoked" -ForegroundColor Cyan
-    param(
         [string]$FilePath,
         [string[]]$ArgumentList,
         [string]$Context,
@@ -1433,9 +1418,9 @@ function Invoke-LoggedCommand {
 # Features: Detects legacy/OEM/Win32 bloatware, logs all matches, supports integration with main detection pipeline
 # ================================================================
 function Get-RegistryUninstallBloatware {
+    param(
     Write-Log "[CALL] Get-RegistryUninstallBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-RegistryUninstallBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string[]]$BloatwarePatterns,
         [Parameter(Mandatory = $false)]
@@ -1490,9 +1475,9 @@ function Get-RegistryUninstallBloatware {
 # Features: Cross-platform compatibility, error suppression, boolean result
 # ================================================================
 function Test-CommandAvailable {
+    param(
     Write-Log "[CALL] Test-CommandAvailable invoked" 'DEBUG'
     Write-Host "[CALL] Test-CommandAvailable invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string]$Command
     )
@@ -1517,15 +1502,13 @@ function Test-CommandAvailable {
 # Features: Permission validation, access diagnostics, fallback path suggestions
 # ================================================================
 function Test-RegistryAccess {
+    param(
     Write-Log "[CALL] Test-RegistryAccess invoked" 'DEBUG'
     Write-Host "[CALL] Test-RegistryAccess invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string]$RegistryPath,
-        
         [Parameter(Mandatory = $false)]
         [string]$TestValueName = "TestAccess",
-        
         [Parameter(Mandatory = $false)]
         [switch]$CreatePath
     )
@@ -1603,24 +1586,19 @@ function Test-RegistryAccess {
 # Features: Permission validation, multiple registry types, detailed error diagnostics, fallback suggestions
 # ================================================================
 function Set-RegistryValueSafely {
+    param(
     Write-Log "[CALL] Set-RegistryValueSafely invoked" 'DEBUG'
     Write-Host "[CALL] Set-RegistryValueSafely invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string]$RegistryPath,
-        
         [Parameter(Mandatory = $true)]
         [string]$ValueName,
-        
         [Parameter(Mandatory = $true)]
         [object]$Value,
-        
         [Parameter(Mandatory = $false)]
         [string]$ValueType,
-        
         [Parameter(Mandatory = $false)]
         [array]$FallbackPaths,
-        
         [Parameter(Mandatory = $false)]
         [string]$Description
     )
@@ -1688,18 +1666,15 @@ function Set-RegistryValueSafely {
 # Features: Flexible comparison modes, detailed diff reporting, performance metrics, categorized results
 # ================================================================
 function Compare-InstallationDiff {
+    param(
     Write-Log "[CALL] Compare-InstallationDiff invoked" 'DEBUG'
     Write-Host "[CALL] Compare-InstallationDiff invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [array]$BeforeList,
-        
         [Parameter(Mandatory = $true)]
         [array]$AfterList,
-        
         [Parameter(Mandatory = $false)]
         [string]$ComparisonType,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -1776,18 +1751,15 @@ function Compare-InstallationDiff {
 # Features: Multi-source collection, duplicate detection, standardized output format, error resilience
 # ================================================================
 function Get-StandardizedAppInventory {
+    param(
     Write-Log "[CALL] Get-StandardizedAppInventory invoked" 'DEBUG'
     Write-Host "[CALL] Get-StandardizedAppInventory invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$Sources,
-        
         [Parameter(Mandatory = $false)]
         [switch]$IncludeDetails,
-        
         [Parameter(Mandatory = $false)]
         [switch]$UseCache,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -1934,23 +1906,19 @@ function Get-StandardizedAppInventory {
 # Features: Multi-manager support, timeout protection, standardized logging, error resilience, progress tracking
 # ================================================================
 function Invoke-PackageManagerCommand {
+    param(
     Write-Log "[CALL] Invoke-PackageManagerCommand invoked" 'DEBUG'
     Write-Host "[CALL] Invoke-PackageManagerCommand invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('Install', 'Uninstall', 'List', 'Search', 'Update')]
         [string]$Operation,
-        
         [Parameter(Mandatory = $false)]
         [string]$PackageId,
-        
         [Parameter(Mandatory = $false)]
         [ValidateSet('Winget', 'Chocolatey', 'Auto')]
         [string]$PreferredManager,
-        
         [Parameter(Mandatory = $false)]
         [int]$TimeoutSeconds,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -2085,21 +2053,17 @@ function Invoke-PackageManagerCommand {
 # Features: Auto-cleanup progress bars, error handling, timing metrics, standardized progress display
 # ================================================================
 function Start-ProgressTrackedOperation {
+    param(
     Write-Log "[CALL] Start-ProgressTrackedOperation invoked" 'DEBUG'
     Write-Host "[CALL] Start-ProgressTrackedOperation invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [scriptblock]$Operation,
-        
         [Parameter(Mandatory = $true)]
         [string]$ActionType,
-        
         [Parameter(Mandatory = $true)]
         [string]$ItemName,
-        
         [Parameter(Mandatory = $false)]
         [string]$InitialStatus,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -2165,18 +2129,15 @@ function Start-ProgressTrackedOperation {
 # Features: Multi-source search, pattern matching, detailed app information, source identification
 # ================================================================
 function Find-AppInstallations {
+    param(
     Write-Log "[CALL] Find-AppInstallations invoked" 'DEBUG'
     Write-Host "[CALL] Find-AppInstallations invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string[]]$SearchPatterns,
-        
         [Parameter(Mandatory = $false)]
         [string[]]$Sources,
-        
         [Parameter(Mandatory = $false)]
         [switch]$ExactMatch,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -2248,18 +2209,15 @@ function Find-AppInstallations {
 # Features: Safety checks, progress tracking, detailed logging, rollback on critical failures
 # ================================================================
 function Remove-AppsByPattern {
+    param(
     Write-Log "[CALL] Remove-AppsByPattern invoked" 'DEBUG'
     Write-Host "[CALL] Remove-AppsByPattern invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [string[]]$RemovalPatterns,
-        
         [Parameter(Mandatory = $false)]
         [string[]]$SafetyExclusions,
-        
         [Parameter(Mandatory = $false)]
         [switch]$WhatIf,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -2484,9 +2442,9 @@ function Set-AppConfiguration {
 # Features: Category organization, conflict resolution, progress tracking, detailed logging, retry mechanism
 # ================================================================
 function Install-AppsByCategory {
+    param(
     Write-Log "[CALL] Install-AppsByCategory invoked" 'DEBUG'
     Write-Host "[CALL] Install-AppsByCategory invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $true)]
         [hashtable]$AppCategories,
         
@@ -2632,9 +2590,9 @@ function Install-AppsByCategory {
 # Dependencies: Windows PowerShell 5.1 installation, powershell.exe availability
 # ================================================================
 function Invoke-WindowsPowerShellCommand {
+    param(
     Write-Log "[CALL] Invoke-WindowsPowerShellCommand invoked" 'DEBUG'
     Write-Host "[CALL] Invoke-WindowsPowerShellCommand invoked" -ForegroundColor Cyan
-    param(
         [string]$Command,
         [string]$ErrorAction = "Continue"
     )
@@ -2721,9 +2679,9 @@ function Invoke-WindowsPowerShellCommand {
 # Dependencies: Get-AppxPackage cmdlet, AppX subsystem availability, appropriate user context
 # ================================================================
 function Get-AppxPackageCompatible {
+    param(
     Write-Log "[CALL] Get-AppxPackageCompatible invoked" 'DEBUG'
     Write-Host "[CALL] Get-AppxPackageCompatible invoked" -ForegroundColor Cyan
-    param(
         [string]$Name = "*",
         [switch]$AllUsers
     )
@@ -2774,9 +2732,9 @@ function Get-AppxPackageCompatible {
 # Dependencies: Remove-AppxPackage cmdlet, AppX subsystem, Administrator privileges for AllUsers operations
 # ================================================================
 function Remove-AppxPackageCompatible {
+    param(
     Write-Log "[CALL] Remove-AppxPackageCompatible invoked" 'DEBUG'
     Write-Host "[CALL] Remove-AppxPackageCompatible invoked" -ForegroundColor Cyan
-    param(
         [string]$PackageFullName,
         [switch]$AllUsers
     )
@@ -2814,9 +2772,9 @@ function Remove-AppxPackageCompatible {
 # Dependencies: DISM module, Get-AppxProvisionedPackage cmdlet, Administrator privileges
 # ================================================================
 function Get-AppxProvisionedPackageCompatible {
+    param(
     Write-Log "[CALL] Get-AppxProvisionedPackageCompatible invoked" 'DEBUG'
     Write-Host "[CALL] Get-AppxProvisionedPackageCompatible invoked" -ForegroundColor Cyan
-    param(
         [switch]$Online
     )
 
@@ -2846,9 +2804,9 @@ function Get-AppxProvisionedPackageCompatible {
 # Features: Detects installed AppX bloatware, supports caching
 # ================================================================
 function Get-AppXBloatware {
+    param(
     Write-Log "[CALL] Get-AppXBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-AppXBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
@@ -2898,9 +2856,9 @@ function Get-AppXBloatware {
 # Features: Detects Winget-managed bloatware, supports caching
 # ================================================================
 function Get-WingetBloatware {
+    param(
     Write-Log "[CALL] Get-WingetBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-WingetBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
@@ -2950,9 +2908,9 @@ function Get-WingetBloatware {
 # Features: Detects Chocolatey-managed bloatware, supports caching
 # ================================================================
 function Get-ChocolateyBloatware {
+    param(
     Write-Log "[CALL] Get-ChocolateyBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-ChocolateyBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
@@ -3002,9 +2960,9 @@ function Get-ChocolateyBloatware {
 # Features: Detects registry-based bloatware installations, comprehensive coverage
 # ================================================================
 function Get-RegistryBloatware {
+    param(
     Write-Log "[CALL] Get-RegistryBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-RegistryBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
@@ -3061,9 +3019,9 @@ function Get-RegistryBloatware {
 # Features: Detects malicious/unwanted browser extensions
 # ================================================================
 function Get-BrowserExtensionsBloatware {
+    param(
     Write-Log "[CALL] Get-BrowserExtensionsBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-BrowserExtensionsBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
@@ -3095,9 +3053,9 @@ function Get-BrowserExtensionsBloatware {
 # Features: Detects unwanted context menu entries added by bloatware
 # ================================================================
 function Get-ContextMenuBloatware {
+    param(
     Write-Log "[CALL] Get-ContextMenuBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-ContextMenuBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
@@ -3129,9 +3087,9 @@ function Get-ContextMenuBloatware {
 # Features: Detects unwanted startup programs added by bloatware
 # ================================================================
 function Get-StartupProgramsBloatware {
+    param(
     Write-Log "[CALL] Get-StartupProgramsBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-StartupProgramsBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
@@ -3192,9 +3150,9 @@ function Get-StartupProgramsBloatware {
 # Features: Detects pre-installed/provisioned bloatware, logs all matches, supports integration with main detection pipeline
 # ================================================================
 function Get-ProvisionedAppxBloatware {
+    param(
     Write-Log "[CALL] Get-ProvisionedAppxBloatware invoked" 'DEBUG'
     Write-Host "[CALL] Get-ProvisionedAppxBloatware invoked" -ForegroundColor Cyan
-    param(
         [Parameter(Mandatory = $false)]
         [string[]]$BloatwarePatterns = $global:BloatwareList,
         [Parameter(Mandatory = $false)]
@@ -3262,9 +3220,9 @@ function Get-ProvisionedAppxBloatware {
 # Dependencies: DISM module, Remove-AppxProvisionedPackage cmdlet, Administrator privileges
 # ================================================================
 function Remove-AppxProvisionedPackageCompatible {
+    param(
     Write-Log "[CALL] Remove-AppxProvisionedPackageCompatible invoked" 'DEBUG'
     Write-Host "[CALL] Remove-AppxProvisionedPackageCompatible invoked" -ForegroundColor Cyan
-    param(
         [string]$PackageName,
         [switch]$Online
     )
