@@ -1,14 +1,15 @@
 # ===============================
-# SECTION 1: SCRIPT HEADER & METADATA  
+# SECTION 1: SCRIPT HEADER & METADATA
 # ===============================
-# Script: Windows Maintenance Automation (2025 Edition)
-# Purpose: Professional-grade Windows 10/11 maintenance automation with modular task architecture
-# Features: Bloatware removal, essential apps installation, system updates, privacy optimization, security hardening
-# Environment: PowerShell 7+ required, Administrator privileges mandatory
-# Dependencies: Winget, Chocolatey, AppX, DISM, Registry access, Windows Capabilities
-# Architecture: Two-tier launcher→orchestrator design with standardized task coordination
-# Performance: Parallel processing, HashSet optimizations, native PowerShell 7 operations
-# Progress Tracking: Clean visual progress bars with minimal logging noise (v2025.1)
+# Script: Windows Maintenance Orchestrator (2025 edition)
+# Purpose: Orchestrator-only maintenance logic. This script performs maintenance tasks
+# (inventory, bloatware detection/removal, app installation, updates, cleanup, and reporting).
+# Environment: Designed to run under PowerShell 7.5+ (backwards-compatible fallbacks included).
+# Assumptions: Elevated privileges and required dependencies are provisioned by the launcher
+# (script.bat). This script should NOT perform environment setup or dependency installation.
+# See the repository launcher (`script.bat`) for elevation and dependency management.
+# Features: Modular task array, robust logging, progress tracking, and graceful degradation
+# when optional components are missing.
 # ===============================
 
 #Requires -Version 7.0
@@ -416,11 +417,12 @@ $global:ScriptTasks = @(
 # ===============================
 # SECTION 1.5: CONFIGURATION & CONSTANTS
 # ===============================
-# Purpose: Centralized configuration management, app lists, settings, and constants
-# Functions: App list definitions, default settings, timeout configurations, path constants
-# Dependencies: File system access for config.json, JSON processing capabilities
-# Performance: One-time initialization, cached constants, efficient lookups
-# Features: Customizable app lists, configurable timeouts, centralized path management
+# Purpose: Centralized configuration, categorized app lists, and runtime constants used by
+# the orchestrator. Keep configuration data and timeouts here so tasks remain declarative.
+# Responsibilities: Define app categories, sensible default timeouts, package manager mappings,
+# and repository-local paths (temp_files, inventory outputs). This section is read-only at
+# runtime unless a user-provided `config.json` overrides defaults.
+# Performance: Lightweight initialization, cached values for repeated lookups.
 # ===============================
 
 # ================================================================
@@ -646,10 +648,13 @@ $global:BloatwareDetectionCache = @{
 # ===============================
 # SECTION 2: CORE INFRASTRUCTURE
 # ===============================
-# Purpose: Provides essential infrastructure functions for logging, task coordination, progress tracking, and error handling
-# Functions: Logging system, task orchestration, progress indicators, error management utilities
-# Dependencies: Global variables, PowerShell 7+ features, Windows console capabilities
-# Performance: Optimized for frequent calls, minimal overhead, thread-safe operations
+# Purpose: Core runtime utilities used by all maintenance tasks. Includes logging, task
+# orchestration, progress indicators, and error handling. These functions are intentionally
+# focused on orchestration and reporting — environment setup and dependency installation
+# are the responsibility of the launcher (`script.bat`).
+# Functions: Write-Log, Write-ActionLog, Invoke-Task, progress helpers and wrapper utilities.
+# Dependencies: Minimal — relies on global configuration and standard PowerShell features.
+# Performance: Designed for low overhead; suitable for frequent invocation from task loops.
 # ===============================
 
 # ================================================================
