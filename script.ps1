@@ -745,7 +745,6 @@ function Write-Log {
         [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE', 'DEBUG')]
         [string]$Level = 'INFO'
     )
-    
     # Debug call tracking (moved after param block)
     Write-Host "[CALL] Write-Log invoked" -ForegroundColor Cyan
     
@@ -804,7 +803,6 @@ function Write-ActionLog {
         [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO', 'COMPLETE')]
         [string]$Status
     )
-    
     # Debug call tracking (moved after param block)
     Write-Log "[CALL] Write-ActionLog invoked" 'DEBUG'
     Write-Host "[CALL] Write-ActionLog invoked" -ForegroundColor Cyan
@@ -843,7 +841,6 @@ function Write-ActionLog {
 # ================================================================
 function Write-CommandLog {
     Write-Log "[CALL] Write-CommandLog invoked" 'DEBUG'
-    Write-Host "[CALL] Write-CommandLog invoked" -ForegroundColor Cyan
     param(
         [string]$Command,
         [string[]]$Arguments,
@@ -851,6 +848,7 @@ function Write-CommandLog {
         [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO', 'COMPLETE')]
         [string]$Status
     )
+    Write-Host "[CALL] Write-CommandLog invoked" -ForegroundColor Cyan
     
     # Apply default values for optional parameters
     if (-not $PSBoundParameters.ContainsKey('Arguments')) { $Arguments = @() }
@@ -924,19 +922,13 @@ function Write-ActionProgress {
     param(
         [Parameter(Mandatory = $true)]
         [string]$ActionType,  # 'Installing', 'Uninstalling', 'Removing', 'Updating', 'Scanning', 'Cleaning'
-        
         [Parameter(Mandatory = $true)]
         [string]$ItemName,    # Name of the item being processed
-        
         [Parameter(Mandatory = $true)]
         [int]$PercentComplete, # 0-100
-        
         [string]$Status,  # Additional status text
-        
         [int]$CurrentItem,  # Current item number
-        
         [int]$TotalItems,   # Total items to process
-        
         [switch]$Completed      # Mark as completed and cleanup
     )
     
@@ -1007,18 +999,13 @@ function Write-CleanProgress {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Activity,
-        
         [Parameter(Mandatory = $true)]
         [string]$CurrentItem,
-        
         [Parameter(Mandatory = $true)]
         [int]$CurrentIndex,
-        
         [Parameter(Mandatory = $true)]
         [int]$TotalItems,
-        
         [string]$Status = "Processing",
-        
         [switch]$Completed
     )
     
@@ -1065,10 +1052,8 @@ function Start-ActionProgressSequence {
     param(
         [Parameter(Mandatory = $true)]
         [string]$SequenceName,  # Overall sequence name
-        
         [Parameter(Mandatory = $true)]
         [array]$Actions,        # Array of actions to perform
-        
         [scriptblock]$ActionProcessor # Script block to process each action
     )
     
@@ -1518,10 +1503,8 @@ function Test-RegistryAccess {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RegistryPath,
-        
         [Parameter(Mandatory = $false)]
         [string]$TestValueName = "TestAccess",
-        
         [Parameter(Mandatory = $false)]
         [switch]$CreatePath
     )
@@ -1604,19 +1587,14 @@ function Set-RegistryValueSafely {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RegistryPath,
-        
         [Parameter(Mandatory = $true)]
         [string]$ValueName,
-        
         [Parameter(Mandatory = $true)]
         [object]$Value,
-        
         [Parameter(Mandatory = $false)]
         [string]$ValueType,
-        
         [Parameter(Mandatory = $false)]
         [array]$FallbackPaths,
-        
         [Parameter(Mandatory = $false)]
         [string]$Description
     )
@@ -1689,13 +1667,10 @@ function Compare-InstallationDiff {
     param(
         [Parameter(Mandatory = $true)]
         [array]$BeforeList,
-        
         [Parameter(Mandatory = $true)]
         [array]$AfterList,
-        
         [Parameter(Mandatory = $false)]
         [string]$ComparisonType,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -1777,13 +1752,10 @@ function Get-StandardizedAppInventory {
     param(
         [Parameter(Mandatory = $false)]
         [string[]]$Sources,
-        
         [Parameter(Mandatory = $false)]
         [switch]$IncludeDetails,
-        
         [Parameter(Mandatory = $false)]
         [switch]$UseCache,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -1936,17 +1908,13 @@ function Invoke-PackageManagerCommand {
         [Parameter(Mandatory = $true)]
         [ValidateSet('Install', 'Uninstall', 'List', 'Search', 'Update')]
         [string]$Operation,
-        
         [Parameter(Mandatory = $false)]
         [string]$PackageId,
-        
         [Parameter(Mandatory = $false)]
         [ValidateSet('Winget', 'Chocolatey', 'Auto')]
         [string]$PreferredManager,
-        
         [Parameter(Mandatory = $false)]
         [int]$TimeoutSeconds,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -2086,16 +2054,12 @@ function Start-ProgressTrackedOperation {
     param(
         [Parameter(Mandatory = $true)]
         [scriptblock]$Operation,
-        
         [Parameter(Mandatory = $true)]
         [string]$ActionType,
-        
         [Parameter(Mandatory = $true)]
         [string]$ItemName,
-        
         [Parameter(Mandatory = $false)]
         [string]$InitialStatus,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -2166,13 +2130,10 @@ function Find-AppInstallations {
     param(
         [Parameter(Mandatory = $true)]
         [string[]]$SearchPatterns,
-        
         [Parameter(Mandatory = $false)]
         [string[]]$Sources,
-        
         [Parameter(Mandatory = $false)]
         [switch]$ExactMatch,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
@@ -2249,13 +2210,10 @@ function Remove-AppsByPattern {
     param(
         [Parameter(Mandatory = $true)]
         [string[]]$RemovalPatterns,
-        
         [Parameter(Mandatory = $false)]
         [string[]]$SafetyExclusions,
-        
         [Parameter(Mandatory = $false)]
         [switch]$WhatIf,
-        
         [Parameter(Mandatory = $false)]
         [string]$Context
     )
