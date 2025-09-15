@@ -1,3 +1,11 @@
+
+using namespace System.Collections.Generic
+using namespace System.Collections.Concurrent
+
+param(
+    [string]$LogFilePath
+)
+
 # ===============================
 # SECTION 1: SCRIPT HEADER & METADATA  
 # ===============================
@@ -12,13 +20,6 @@
 # ===============================
 
 #Requires -Version 7.0
-
-using namespace System.Collections.Generic
-using namespace System.Collections.Concurrent
-
-param(
-    [string]$LogFilePath
-)
 
 # ================================================================
 # Global Variables and Environment Detection
