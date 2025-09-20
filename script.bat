@@ -166,9 +166,9 @@ CALL :LOG_MESSAGE "[%TIME%] [INFO] Setting up Windows Defender exclusions for pr
 REM Add folder exclusion for the entire project directory
 powershell -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction Stop; Write-Host 'SUCCESS: Added folder exclusion for %WORKING_DIR%' } catch { Write-Host 'WARNING: Could not add folder exclusion - ' + $_.Exception.Message }" 2>nul
 IF %ERRORLEVEL% EQU 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added Windows Defender folder exclusion: %WORKING_DIR%"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO]  Added Windows Defender folder exclusion: %WORKING_DIR%"
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] ⚠ Could not add folder exclusion (may already exist)"
+    CALL :LOG_MESSAGE "[%TIME%] [WARN]  Could not add folder exclusion (may already exist)"
 )
 
 REM Add process exclusions for PowerShell and batch scripts
@@ -183,7 +183,7 @@ IF "%CFA_STATUS%"=="1" (
     REM Add specific app allowlist for PowerShell if CFA is enabled
     powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
     powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Program Files\PowerShell\7\pwsh.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Added PowerShell to Controlled Folder Access allowlist"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO]  Added PowerShell to Controlled Folder Access allowlist"
 ) ELSE IF "%CFA_STATUS%"=="0" (
     CALL :LOG_MESSAGE "[%TIME%] [INFO] Controlled Folder Access is disabled - no additional exclusions needed"
 ) ELSE (
@@ -629,14 +629,14 @@ CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying repository extraction..."
 CALL :LOG_MESSAGE "[%TIME%] [INFO] Looking for extracted folder: %EXTRACTED_PATH%"
 
 IF EXIST "%EXTRACTED_PATH%" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Repository extraction successful"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO]  Repository extraction successful"
     
     REM Update PowerShell script path to extracted version
     IF EXIST "%EXTRACTED_PATH%\script.ps1" (
         SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found script.ps1 in extracted folder"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO]  Found script.ps1 in extracted folder"
     ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [ERROR] ✗ script.ps1 not found in extracted folder"
+        CALL :LOG_MESSAGE "[%TIME%] [ERROR] script.ps1 not found in extracted folder"
         pause
         EXIT /B 3
     )
@@ -651,7 +651,7 @@ IF EXIST "%EXTRACTED_PATH%" (
         SET "EXTRACT_FOLDER=script_mentenanta-master"
         SET "EXTRACTED_PATH=%WORKING_DIR%script_mentenanta-master"
         SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found alternative folder: script_mentenanta-master"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO]  Found alternative folder: script_mentenanta-master"
     ) ELSE (
         CALL :LOG_MESSAGE "[%TIME%] [ERROR] Could not find any valid extracted folder"
         pause
@@ -696,7 +696,7 @@ CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Extracted path: %EXTRACTED_PATH%"
 REM Priority 1: Use the path already set during extraction
 IF DEFINED PS1_PATH (
     IF EXIST "%PS1_PATH%" (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Using PowerShell script: %PS1_PATH%"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell script: %PS1_PATH%"
         GOTO :PS1_DETECTION_COMPLETE
     )
 )
@@ -705,7 +705,7 @@ REM Priority 2: Check current directory (if script.ps1 exists locally)
 CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking current directory: %WORKING_DIR%script.ps1"
 IF EXIST "%WORKING_DIR%script.ps1" (
     SET "PS1_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found script.ps1 in current directory"
+    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in current directory"
     GOTO :PS1_DETECTION_COMPLETE
 )
 
@@ -714,7 +714,7 @@ IF DEFINED EXTRACTED_PATH (
     CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking extracted folder: %EXTRACTED_PATH%\script.ps1"
     IF EXIST "%EXTRACTED_PATH%\script.ps1" (
         SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] ✓ Found script.ps1 in extracted folder"
+        CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in extracted folder"
         GOTO :PS1_DETECTION_COMPLETE
     )
 )
