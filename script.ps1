@@ -740,11 +740,21 @@ function Write-Log {
     param(
         [string]$Message,
         [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE')]
-        [string]$Level = 'INFO'
+        [string]$Level = 'INFO',
+        [string]$Component = 'PS1'
     )
     
+    # Check if logging is enabled for this level
+    if ($global:LoggingConfig -and $global:LoggingConfig.LogLevels.ContainsKey($Level)) {
+        $currentLevelValue = $global:LoggingConfig.LogLevels[$global:LoggingConfig.LogLevel]
+        $messageLevelValue = $global:LoggingConfig.LogLevels[$Level]
+        if ($messageLevelValue -lt $currentLevelValue) {
+            return  # Skip logging this message
+        }
+    }
+    
     $timestamp = Get-Date -Format 'HH:mm:ss'
-    $logEntry = "[$timestamp] [$Level] $Message"
+    $logEntry = "[$timestamp] [$Level] [$Component] $Message"
     
     # Write to file with enhanced error handling
     try {
@@ -814,7 +824,7 @@ function Write-ActionLog {
         default { 'INFO' }
     }
     
-    Write-Log $fullMessage $logLevel
+    Write-Log $fullMessage $logLevel 'PS1'
 }
 
 # ================================================================
@@ -851,7 +861,7 @@ function Write-CommandLog {
         default { 'COMMAND' }
     }
     
-    Write-Log $message $logLevel
+    Write-Log $message $logLevel 'PS1'
 }
 
 # ================================================================
@@ -9487,6 +9497,51 @@ if (Test-Path $configPath) {
     catch {
         Write-Log "Error loading config.json: $_. Using defaults." 'WARN'
     }
+}
+
+# Load logging configuration from logging.json if it exists
+$loggingConfigPath = Join-Path $WorkingDirectory "logging.json"
+$global:LoggingConfig = @{
+    LogLevel = 'INFO'
+    LogFile = $global:LogFile
+    EnableColors = $true
+    EnableProgressBars = $true
+    MaxLogSizeMB = 10
+    LogRotation = $true
+    DateTimeFormat = 'HH:mm:ss'
+    MessageFormat = '[{timestamp}] [{level}] [{component}] {message}'
+    LogLevels = @{
+        'VERBOSE' = 0
+        'DEBUG' = 1
+        'INFO' = 2
+        'WARN' = 3
+        'ERROR' = 4
+        'SUCCESS' = 5
+        'PROGRESS' = 6
+        'ACTION' = 7
+        'COMMAND' = 8
+    }
+}
+
+if (Test-Path $loggingConfigPath) {
+    try {
+        $loggingConfig = Get-Content $loggingConfigPath | ConvertFrom-Json
+        # Override defaults with loaded config
+        $global:LoggingConfig.LogLevel = $loggingConfig.LogLevel
+        $global:LoggingConfig.EnableColors = $loggingConfig.EnableColors
+        $global:LoggingConfig.EnableProgressBars = $loggingConfig.EnableProgressBars
+        $global:LoggingConfig.MaxLogSizeMB = $loggingConfig.MaxLogSizeMB
+        $global:LoggingConfig.LogRotation = $loggingConfig.LogRotation
+        $global:LoggingConfig.DateTimeFormat = $loggingConfig.DateTimeFormat
+        $global:LoggingConfig.MessageFormat = $loggingConfig.MessageFormat
+        $global:LoggingConfig.LogLevels = $loggingConfig.LogLevels
+        Write-Log "Logging configuration loaded from logging.json" 'INFO'
+    }
+    catch {
+        Write-Log "Error loading logging.json: $_. Using defaults." 'WARN'
+    }
+} else {
+    Write-Log "No logging.json found - using default logging configuration" 'DEBUG'
 }
 
 # ================================================================

@@ -1,0 +1,21 @@
+{
+  "LogLevel": "INFO",
+  "LogFile": "maintenance.log",
+  "EnableColors": true,
+  "EnableProgressBars": true,
+  "MaxLogSizeMB": 10,
+  "LogRotation": true,
+  "DateTimeFormat": "HH:mm:ss",
+  "MessageFormat": "[{timestamp}] [{level}] [{component}] {message}",
+  "LogLevels": {
+    "VERBOSE": 0,
+    "DEBUG": 1,
+    "INFO": 2,
+    "WARN": 3,
+    "ERROR": 4,
+    "SUCCESS": 5,
+    "PROGRESS": 6,
+    "ACTION": 7,
+    "COMMAND": 8
+  }
+}

@@ -10,14 +10,21 @@ REM ============================================================================
 SETLOCAL ENABLEDELAYEDEXPANSION
 
 REM -----------------------------------------------------------------------------
-REM Unified Logging Function - Logs to both console and maintenance.log
-REM Usage: CALL :LOG_MESSAGE "message"
+REM Unified Logging Function - Enhanced with levels and components
+REM Usage: CALL :LOG_MESSAGE "message" "LEVEL" "COMPONENT"
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
 :LOG_MESSAGE
-SET "LOG_TIMESTAMP=%DATE% %TIME%"
-ECHO %~1
-ECHO %~1 >> "%LOG_FILE%" 2>nul
+SET "LOG_TIMESTAMP=%TIME:~0,8%"
+SET "LEVEL=%~2"
+IF "%LEVEL%"=="" SET "LEVEL=INFO"
+SET "COMPONENT=%~3"
+IF "%COMPONENT%"=="" SET "COMPONENT=BAT"
+
+SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
+
+ECHO %LOG_ENTRY%
+ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
 EXIT /B
 
 :MAIN_SCRIPT
@@ -29,7 +36,6 @@ REM Usage: !LOG_TIMESTAMP! (if delayed expansion) or %LOG_TIMESTAMP% (if not)
 
 REM -----------------------------------------------------------------------------
 REM Universal Path Detection & Environment Setup (Location-Agnostic)
-REM Works from any directory, any user, any computer - completely portable
 REM -----------------------------------------------------------------------------
 SET "TASK_NAME=ScriptMentenantaMonthly"
 SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
@@ -43,7 +49,22 @@ REM Working directory - always use the directory where script.bat is located
 SET "WORKING_DIR=%SCRIPT_DIR%"
 SET "LOG_FILE=%WORKING_DIR%maintenance.log"
 
-REM Repository settings - optimized for any location execution
+REM ----------------------------------------------------------------------------- 
+REM Load Logging Configuration (if available) - Optional enhancement for future use
+REM -----------------------------------------------------------------------------
+SET "LOG_CONFIG=%WORKING_DIR%logging.json"
+SET "LOG_LEVEL=INFO"
+SET "LOG_MAX_SIZE_MB=10"
+SET "LOG_ROTATION=YES"
+IF EXIST "%LOG_CONFIG%" (
+    CALL :LOG_MESSAGE "Loading logging configuration from: %LOG_CONFIG%" "DEBUG" "BAT"
+    REM Simple JSON parsing for key values (basic implementation for batch compatibility)
+    FOR /F "tokens=*" %%i IN ('powershell -Command "try { $config = Get-Content '%LOG_CONFIG%' -Raw | ConvertFrom-Json; Write-Output $config.LogLevel } catch { Write-Output 'INFO' }"') DO SET "LOG_LEVEL=%%i"
+    FOR /F "tokens=*" %%i IN ('powershell -Command "try { $config = Get-Content '%LOG_CONFIG%' -Raw | ConvertFrom-Json; Write-Output $config.MaxLogSizeMB } catch { Write-Output '10' }"') DO SET "LOG_MAX_SIZE_MB=%%i"
+    CALL :LOG_MESSAGE "Configuration loaded - Log Level: %LOG_LEVEL%, Max Size: %LOG_MAX_SIZE_MB%MB" "DEBUG" "BAT"
+) ELSE (
+    CALL :LOG_MESSAGE "No logging.json found - using default configuration" "DEBUG" "BAT"
+)
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 SET "ZIP_FILE=%WORKING_DIR%script_mentenanta-main.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
@@ -54,18 +75,18 @@ SET "PS1_PATH="
 REM Priority 1: Check if we're already in a repo directory (current directory has script.ps1)
 IF EXIST "%WORKING_DIR%script.ps1" (
     SET "PS1_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Found script.ps1 in current directory - using local version"
+    CALL :LOG_MESSAGE "Found script.ps1 in current directory - using local version" "DEBUG" "BAT"
     GOTO :INITIAL_PS1_CHECK_COMPLETE
 )
 
 REM Priority 2: Will be set after repository extraction
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] No local script.ps1 found - will download repository"
+CALL :LOG_MESSAGE "No local script.ps1 found - will download repository" "DEBUG" "BAT"
 
 :INITIAL_PS1_CHECK_COMPLETE
 
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working Directory: %WORKING_DIR%"
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Script Path: %SCRIPT_PATH%"
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Log File: %LOG_FILE%"
+CALL :LOG_MESSAGE "Working Directory: %WORKING_DIR%" "DEBUG" "BAT"
+CALL :LOG_MESSAGE "Script Path: %SCRIPT_PATH%" "DEBUG" "BAT"
+CALL :LOG_MESSAGE "Log File: %LOG_FILE%" "DEBUG" "BAT"
 
 REM -----------------------------------------------------------------------------
 REM Robust Script Path Detection for Scheduled Tasks
@@ -76,34 +97,34 @@ SET "SCHEDULED_TASK_SCRIPT_PATH="
 REM Priority 1: Use current executing script path (most reliable)
 IF EXIST "%SCRIPT_PATH%" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Scheduled task will use current script path: %SCRIPT_PATH%"
+    CALL :LOG_MESSAGE "Scheduled task will use current script path: %SCRIPT_PATH%" "DEBUG" "BAT"
     GOTO :SCHEDULED_TASK_PATH_COMPLETE
 )
 
 REM Priority 2: Look for script.bat in current directory
 IF EXIST "%SCRIPT_DIR%script.bat" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Scheduled task will use directory script: %SCRIPT_DIR%script.bat"
+    CALL :LOG_MESSAGE "Scheduled task will use directory script: %SCRIPT_DIR%script.bat" "DEBUG" "BAT"
     GOTO :SCHEDULED_TASK_PATH_COMPLETE
 )
 
 REM Priority 3: Use script path as fallback (should not happen)
 SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-CALL :LOG_MESSAGE "[%TIME%] [WARN] Using fallback script path for scheduled task: %SCRIPT_PATH%"
+CALL :LOG_MESSAGE "Using fallback script path for scheduled task: %SCRIPT_PATH%" "WARN" "BAT"
 
 :SCHEDULED_TASK_PATH_COMPLETE
 
 REM Check if this is a restart after PowerShell 7 installation
 IF "%1"=="PS7_RESTART" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Script restarted after PowerShell 7 installation."
+    CALL :LOG_MESSAGE "Script restarted after PowerShell 7 installation." "INFO" "BAT"
     GOTO :SKIP_PS7_INSTALL
 )
 
 REM Check if this is a restart after script.bat self-update
 REM (Legacy self-update logic removed)
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting maintenance script..."
-CALL :LOG_MESSAGE "[%TIME%] [INFO] User: %USERNAME%, Computer: %COMPUTERNAME%"
+CALL :LOG_MESSAGE "Starting maintenance script..." "INFO" "BAT"
+CALL :LOG_MESSAGE "User: %USERNAME%, Computer: %COMPUTERNAME%" "INFO" "BAT"
 
 REM -----------------------------------------------------------------------------
 REM Enhanced Admin Privilege Check
@@ -116,24 +137,24 @@ SET "NET_SESSION_RESULT=%ERRORLEVEL%"
 REM Method 2: PowerShell admin check (more reliable)
 FOR /F "tokens=*" %%i IN ('powershell -Command "([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)" 2^>nul') DO SET PS_ADMIN_CHECK=%%i
 
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] NET SESSION result: %NET_SESSION_RESULT%"
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] PowerShell admin check: %PS_ADMIN_CHECK%"
+CALL :LOG_MESSAGE "NET SESSION result: %NET_SESSION_RESULT%" "DEBUG" "BAT"
+CALL :LOG_MESSAGE "PowerShell admin check: %PS_ADMIN_CHECK%" "DEBUG" "BAT"
 
 REM Consider admin if either method confirms admin privileges
 SET "IS_ADMIN=false"
 IF %NET_SESSION_RESULT% EQU 0 SET "IS_ADMIN=true"
 IF "%PS_ADMIN_CHECK%"=="True" SET "IS_ADMIN=true"
 
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Final admin status: %IS_ADMIN%"
+CALL :LOG_MESSAGE "Final admin status: %IS_ADMIN%" "DEBUG" "BAT"
 
 IF "%IS_ADMIN%"=="false" (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] Not running as Administrator. Relaunching with admin rights..."
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Attempting elevation using PowerShell Start-Process..."
+    CALL :LOG_MESSAGE "Not running as Administrator. Relaunching with admin rights..." "WARN" "BAT"
+    CALL :LOG_MESSAGE "Attempting elevation using PowerShell Start-Process..." "DEBUG" "BAT"
     powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
     EXIT /B 0
 )
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Administrator privileges confirmed"
+CALL :LOG_MESSAGE "Administrator privileges confirmed" "INFO" "BAT"
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Version Check
@@ -142,33 +163,33 @@ REM ----------------------------------------------------------------------------
 FOR /F "tokens=*" %%i IN ('powershell -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_VERSION=%%i
 IF "%PS_VERSION%"=="" SET PS_VERSION=0
 IF %PS_VERSION% LSS 5 (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell 5.1 or higher is required. Current version: %PS_VERSION%"
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Please install PowerShell 5.1 or newer and try again."
+    CALL :LOG_MESSAGE "PowerShell 5.1 or higher is required. Current version: %PS_VERSION%" "ERROR" "BAT"
+    CALL :LOG_MESSAGE "Please install PowerShell 5.1 or newer and try again." "ERROR" "BAT"
     pause
     EXIT /B 3
 )
-CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell version: %PS_VERSION%"
+CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "BAT"
 
 REM -----------------------------------------------------------------------------
 REM Windows Version Detection - PowerShell 5.1 Compatible
 REM -----------------------------------------------------------------------------
 FOR /F "tokens=*" %%i IN ('powershell -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }" 2^>nul') DO SET OS_VERSION=%%i
 IF "%OS_VERSION%"=="" SET OS_VERSION=Unknown
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Detected Windows version: %OS_VERSION%"
+CALL :LOG_MESSAGE "Detected Windows version: %OS_VERSION%" "INFO" "BAT"
 
 REM -----------------------------------------------------------------------------
 REM Windows Defender Exclusions Setup
 REM Adds Windows Defender exclusions for the project folder and executables
 REM to prevent Controlled Folder Access from blocking script execution
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Setting up Windows Defender exclusions for project..."
+CALL :LOG_MESSAGE "Setting up Windows Defender exclusions for project..." "INFO" "BAT"
 
 REM Add folder exclusion for the entire project directory
 powershell -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction Stop; Write-Host 'SUCCESS: Added folder exclusion for %WORKING_DIR%' } catch { Write-Host 'WARNING: Could not add folder exclusion - ' + $_.Exception.Message }" 2>nul
 IF %ERRORLEVEL% EQU 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO]  Added Windows Defender folder exclusion: %WORKING_DIR%"
+    CALL :LOG_MESSAGE "Added Windows Defender folder exclusion: %WORKING_DIR%" "INFO" "BAT"
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN]  Could not add folder exclusion (may already exist)"
+    CALL :LOG_MESSAGE "Could not add folder exclusion (may already exist)" "WARN" "BAT"
 )
 
 REM Add process exclusions for PowerShell and batch scripts
@@ -179,18 +200,18 @@ powershell -Command "try { Add-MpPreference -ExclusionProcess 'cmd.exe' -ErrorAc
 REM Check Controlled Folder Access status
 FOR /F "tokens=*" %%i IN ('powershell -Command "try { (Get-MpPreference).EnableControlledFolderAccess } catch { 'Unknown' }" 2^>nul') DO SET CFA_STATUS=%%i
 IF "%CFA_STATUS%"=="1" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Controlled Folder Access is ENABLED - exclusions are important"
+    CALL :LOG_MESSAGE "Controlled Folder Access is ENABLED - exclusions are important" "INFO" "BAT"
     REM Add specific app allowlist for PowerShell if CFA is enabled
     powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
     powershell -Command "try { Add-MpPreference -ControlledFolderAccessAllowedApplications 'C:\Program Files\PowerShell\7\pwsh.exe' -ErrorAction SilentlyContinue } catch { }" >nul 2>&1
-    CALL :LOG_MESSAGE "[%TIME%] [INFO]  Added PowerShell to Controlled Folder Access allowlist"
+    CALL :LOG_MESSAGE "Added PowerShell to Controlled Folder Access allowlist" "INFO" "BAT"
 ) ELSE IF "%CFA_STATUS%"=="0" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Controlled Folder Access is disabled - no additional exclusions needed"
+    CALL :LOG_MESSAGE "Controlled Folder Access is disabled - no additional exclusions needed" "INFO" "BAT"
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Could not determine Controlled Folder Access status"
+    CALL :LOG_MESSAGE "Could not determine Controlled Folder Access status" "INFO" "BAT"
 )
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Windows Defender exclusions setup completed"
+CALL :LOG_MESSAGE "Windows Defender exclusions setup completed" "INFO" "BAT"
 
 REM -----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup
@@ -289,7 +310,7 @@ REM ----------------------------------------------------------------------------
 REM Smart Restart Detection - Only restart for pending updates requiring restart
 REM Check if Windows requires a restart for PENDING UPDATES, not general maintenance
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Checking for pending updates requiring restart..."
+CALL :LOG_MESSAGE "Checking for pending updates requiring restart..." "INFO" "BAT"
 SET "RESTART_NEEDED=NO"
 SET "RESTART_REASON="
 
@@ -297,18 +318,18 @@ REM Check if there are pending updates that require restart (more specific)
 powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $restartRequired = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($restartRequired) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }"
 
 IF !ERRORLEVEL! EQU 1 (
-    ECHO [%TIME%] [INFO] Pending updates require restart for installation.
+    CALL :LOG_MESSAGE "Pending updates require restart for installation." "INFO" "BAT"
     SET "RESTART_NEEDED=YES"
     SET "RESTART_REASON=Pending updates require restart"
 ) ELSE IF !ERRORLEVEL! EQU 0 (
-    ECHO [%TIME%] [INFO] No pending updates require restart.
+    CALL :LOG_MESSAGE "No pending updates require restart." "INFO" "BAT"
 ) ELSE IF !ERRORLEVEL! EQU 2 (
-    ECHO [%TIME%] [WARN] PSWindowsUpdate module not available. Checking system restart flags...
+    CALL :LOG_MESSAGE "PSWindowsUpdate module not available. Checking system restart flags..." "WARN" "BAT"
     
     REM Fallback: Check Windows Update reboot flag only
     REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Windows Update restart flag detected.
+        CALL :LOG_MESSAGE "Windows Update restart flag detected." "INFO" "BAT"
         SET "RESTART_NEEDED=YES"
         SET "RESTART_REASON=Windows Update restart flag detected"
     )
@@ -316,39 +337,39 @@ IF !ERRORLEVEL! EQU 1 (
     REM Check Component Based Servicing reboot flag (only for update-related restarts)
     REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        ECHO [%TIME%] [INFO] Component Based Servicing restart pending.
+        CALL :LOG_MESSAGE "Component Based Servicing restart pending." "INFO" "BAT"
         SET "RESTART_NEEDED=YES"
         SET "RESTART_REASON=Component Based Servicing restart pending"
     )
 ) ELSE (
-    ECHO [%TIME%] [WARN] Update check failed. Skipping restart check.
+    CALL :LOG_MESSAGE "Update check failed. Skipping restart check." "WARN" "BAT"
 )
 
 REM Only restart if there are actual updates requiring restart
 IF "%RESTART_NEEDED%"=="YES" (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] System restart is required for pending updates."
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Reason: %RESTART_REASON%"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Creating startup task and restarting to complete update installation..."
+    CALL :LOG_MESSAGE "System restart is required for pending updates." "WARN" "BAT"
+    CALL :LOG_MESSAGE "Reason: %RESTART_REASON%" "INFO" "BAT"
+    CALL :LOG_MESSAGE "Creating startup task and restarting to complete update installation..." "INFO" "BAT"
     
     REM Delete any existing startup task first
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
     
     REM Create startup task to run 1 minute after user login with admin rights
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Creating startup task with script path: %SCHEDULED_TASK_SCRIPT_PATH%"
+    CALL :LOG_MESSAGE "Creating startup task with script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "BAT"
     schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCHEDULED_TASK_SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Startup task created successfully. Will run 1 minute after user login."
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Restarting system to complete pending updates..."
+        CALL :LOG_MESSAGE "Startup task created successfully. Will run 1 minute after user login." "INFO" "BAT"
+        CALL :LOG_MESSAGE "Restarting system to complete pending updates..." "INFO" "BAT"
         shutdown /r /t 10 /c "System restart required to complete pending Windows Updates"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] System will restart in 10 seconds to complete updates..."
+        CALL :LOG_MESSAGE "System will restart in 10 seconds to complete updates..." "INFO" "BAT"
         timeout /t 12 /nobreak >nul
         EXIT /B 0
     ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [ERROR] Failed to create startup task. Continuing without restart..."
-        CALL :LOG_MESSAGE "[%TIME%] [WARN] Updates may require manual restart after installation."
+        CALL :LOG_MESSAGE "Failed to create startup task. Continuing without restart..." "ERROR" "BAT"
+        CALL :LOG_MESSAGE "Updates may require manual restart after installation." "WARN" "BAT"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] No pending updates require restart. Continuing with maintenance script..."
+    CALL :LOG_MESSAGE "No pending updates require restart. Continuing with maintenance script..." "INFO" "BAT"
 )
 
 
@@ -356,55 +377,55 @@ REM ----------------------------------------------------------------------------
 REM Dependency Management - Direct Downloads from Official Sources
 REM Installation Order: Winget -> PowerShell 7 -> NuGet -> PSGallery -> PSWindowsUpdate -> Chocolatey
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting dependency installation with optimized order..."
+CALL :LOG_MESSAGE "Starting dependency installation with optimized order..." "INFO" "BAT"
 
 REM -----------------------------------------------------------------------------
 REM 1. Windows Package Manager (Winget) - Foundation package manager
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Windows Package Manager (winget)..."
+CALL :LOG_MESSAGE "Installing Windows Package Manager (winget)..." "INFO" "BAT"
 REM Improved Winget detection: check both version and path
 winget --version >nul 2>&1
 SET "WINGET_FOUND=0"
 IF !ERRORLEVEL! EQU 0 (
     SET "WINGET_FOUND=1"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Winget detected via version check."
+    CALL :LOG_MESSAGE "Winget detected via version check." "DEBUG" "BAT"
 ) ELSE (
     where winget >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         SET "WINGET_FOUND=1"
-        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Winget detected via PATH (where command)."
+        CALL :LOG_MESSAGE "Winget detected via PATH (where command)." "DEBUG" "BAT"
     )
 )
 
 IF !WINGET_FOUND! EQU 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget not found, downloading from official Microsoft source..."
+    CALL :LOG_MESSAGE "Winget not found, downloading from official Microsoft source..." "INFO" "BAT"
     REM Download latest App Installer from Microsoft Store
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=!TEMP!\Microsoft.DesktopAppInstaller.msixbundle"
     powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message; exit 1 }"
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Winget package..."
+        CALL :LOG_MESSAGE "Installing Winget package..." "INFO" "BAT"
         powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget installation completed successfully."
+            CALL :LOG_MESSAGE "Winget installation completed successfully." "INFO" "BAT"
         ) ELSE (
-            CALL :LOG_MESSAGE "[%TIME%] [WARN] Winget installation failed, but continuing..."
+            CALL :LOG_MESSAGE "Winget installation failed, but continuing..." "WARN" "BAT"
         )
         DEL /F /Q "!WINGET_FILE!" >nul 2>&1
     ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [WARN] Winget download failed, but continuing..."
+        CALL :LOG_MESSAGE "Winget download failed, but continuing..." "WARN" "BAT"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Winget is already available."
+    CALL :LOG_MESSAGE "Winget is already available." "INFO" "BAT"
 )
 
 REM -----------------------------------------------------------------------------
 REM 2. PowerShell 7 - Modern PowerShell environment
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing PowerShell 7..."
+CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "BAT"
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 not found, downloading from official Microsoft source..."
+    CALL :LOG_MESSAGE "PowerShell 7 not found, downloading from official Microsoft source..." "INFO" "BAT"
     
     REM Set download URL for PowerShell 7.5.2 (no fallback)
     SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2.msi"
@@ -417,31 +438,31 @@ IF !ERRORLEVEL! NEQ 0 (
     )
     
     REM Download PowerShell 7.5.2
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading PowerShell 7.5.2..."
+    CALL :LOG_MESSAGE "Downloading PowerShell 7.5.2..." "INFO" "BAT"
     powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host '[INFO] PowerShell 7.5.2 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.2 download failed:' $_.Exception.Message; exit 1 }"
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing PowerShell 7..."
+        CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "BAT"
         msiexec /i "!PS7_INSTALLER!" /quiet /norestart
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 installed successfully."
+            CALL :LOG_MESSAGE "PowerShell 7 installed successfully." "INFO" "BAT"
             REM Refresh PATH environment variable for current session
             FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "PATH=%%B"
             REM Add common PowerShell 7 installation paths to current session
             IF EXIST "%ProgramFiles%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
             IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 installation completed. Restarting script to use new PowerShell..."
+            CALL :LOG_MESSAGE "PowerShell 7 installation completed. Restarting script to use new PowerShell..." "INFO" "BAT"
             REM Restart the script to use newly installed PowerShell 7
             START "" "%~f0" PS7_RESTART
             EXIT /B 0
         ) ELSE (
-            CALL :LOG_MESSAGE "[%TIME%] [WARN] PowerShell 7 installation failed."
+            CALL :LOG_MESSAGE "PowerShell 7 installation failed." "WARN" "BAT"
         )
         DEL /F /Q "!PS7_INSTALLER!" >nul 2>&1
     )
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 already available: %PS7_VERSION%"
+    CALL :LOG_MESSAGE "PowerShell 7 already available: %PS7_VERSION%" "INFO" "BAT"
 )
 
 :SKIP_PS7_INSTALL
@@ -449,44 +470,44 @@ IF !ERRORLEVEL! NEQ 0 (
 REM -----------------------------------------------------------------------------
 REM 3. NuGet PackageProvider - Automatic installation with multiple methods
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing NuGet PackageProvider with automatic confirmation..."
+CALL :LOG_MESSAGE "Installing NuGet PackageProvider with automatic confirmation..." "INFO" "BAT"
 
 REM Method 1: Direct bootstrap with automatic Y response
 ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Method 1 failed, trying direct download...' } } else { Write-Host '[INFO] NuGet PackageProvider already available' } }"
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Trying alternative NuGet installation method..."
+    CALL :LOG_MESSAGE "Trying alternative NuGet installation method..." "INFO" "BAT"
     REM Method 2: Direct download and install (fallback)
     powershell -ExecutionPolicy Bypass -Command "& { try { $nugetUrl = 'https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll'; $nugetPath = Join-Path $env:ProgramFiles 'PackageManagement\ProviderAssemblies\nuget\2.8.5.208\Microsoft.PackageManagement.NuGetProvider.dll'; $nugetDir = Split-Path $nugetPath; if (-not (Test-Path $nugetDir)) { New-Item -ItemType Directory -Path $nugetDir -Force | Out-Null }; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath -UseBasicParsing; Write-Host '[INFO] NuGet PackageProvider downloaded and installed manually' } catch { Write-Host '[WARN] Direct download also failed:' $_.Exception.Message } }"
 )
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] NuGet PackageProvider installation failed, but continuing..."
+    CALL :LOG_MESSAGE "NuGet PackageProvider installation failed, but continuing..." "WARN" "BAT"
 )
 
 REM -----------------------------------------------------------------------------
 REM 4. PowerShell Gallery Configuration - Fully Unattended
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Configuring PowerShell Gallery as trusted repository..."
+CALL :LOG_MESSAGE "Configuring PowerShell Gallery as trusted repository..." "INFO" "BAT"
 ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -ErrorAction SilentlyContinue }; Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; Write-Host '[INFO] PowerShell Gallery configured as trusted' } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' `$_.Exception.Message } }"
 
 REM -----------------------------------------------------------------------------
 REM 5. PSWindowsUpdate Module - Download from PowerShell Gallery with auto-confirmation
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing PSWindowsUpdate module with automatic confirmation..."
+CALL :LOG_MESSAGE "Installing PSWindowsUpdate module with automatic confirmation..." "INFO" "BAT"
 ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -ErrorAction SilentlyContinue }; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Repository PSGallery -Confirm:`$false; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' `$_.Exception.Message } } else { Write-Host '[INFO] PSWindowsUpdate module already available' } }"
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] PSWindowsUpdate module installation failed."
+    CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed." "WARN" "BAT"
 )
 
 REM -----------------------------------------------------------------------------
 REM 6. Chocolatey Package Manager - Direct download from official source
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Installing Chocolatey package manager..."
+CALL :LOG_MESSAGE "Installing Chocolatey package manager..." "INFO" "BAT"
 choco --version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Chocolatey not found, downloading from official source..."
+    CALL :LOG_MESSAGE "Chocolatey not found, downloading from official source..." "INFO" "BAT"
     
     REM Download and install Chocolatey from official source
     powershell -ExecutionPolicy Bypass -Command "& { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-ExecutionPolicy Bypass -Scope Process -Force; $chocoInstallScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'); Invoke-Expression $chocoInstallScript; Write-Host '[INFO] Chocolatey installed successfully' } catch { Write-Host '[WARN] Chocolatey installation failed:' $_.Exception.Message } }"
@@ -494,19 +515,19 @@ IF !ERRORLEVEL! NEQ 0 (
     REM Refresh PATH to include Chocolatey
     IF EXIST "%ProgramData%\chocolatey\bin" (
         SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Chocolatey PATH updated."
+        CALL :LOG_MESSAGE "Chocolatey PATH updated." "INFO" "BAT"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Chocolatey is already installed."
+    CALL :LOG_MESSAGE "Chocolatey is already installed." "INFO" "BAT"
 )
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Dependency installation phase completed with optimized order."
+CALL :LOG_MESSAGE "Dependency installation phase completed with optimized order." "INFO" "BAT"
 
 REM -----------------------------------------------------------------------------
 REM System Restart Detection - Refined for Windows Updates Only
 REM Only restart if Windows Update has installed updates requiring a reboot
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Checking for pending Windows Update restarts..."
+CALL :LOG_MESSAGE "Checking for pending Windows Update restarts..." "INFO" "BAT"
 SET "RESTART_NEEDED=NO"
 
 REM Only check Windows Update reboot flag - this is the authoritative source
@@ -514,9 +535,9 @@ REM This key is only present if Windows Update has installed updates that requir
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "RESTART_NEEDED=YES"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Windows Update restart requirement detected."
+    CALL :LOG_MESSAGE "Windows Update restart requirement detected." "INFO" "BAT"
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] No Windows Update restart requirement found."
+    CALL :LOG_MESSAGE "No Windows Update restart requirement found." "INFO" "BAT"
 )
 
 REM Additional check: Verify if any specific Windows Updates are pending restart
@@ -524,27 +545,27 @@ powershell -ExecutionPolicy Bypass -Command "try { $updates = Get-HotFix | Where
 IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
 
 IF "%RESTART_NEEDED%"=="YES" (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] System restart required due to Windows Updates. Creating startup task..."
+    CALL :LOG_MESSAGE "System restart required due to Windows Updates. Creating startup task..." "WARN" "BAT"
     schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
     IF %ERRORLEVEL% EQU 0 (
         schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
     )
     schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Startup task created. Restarting system in 15 seconds for Windows Update completion..."
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Press Ctrl+C to cancel restart."
+        CALL :LOG_MESSAGE "Startup task created. Restarting system in 15 seconds for Windows Update completion..." "INFO" "BAT"
+        CALL :LOG_MESSAGE "Press Ctrl+C to cancel restart." "INFO" "BAT"
         timeout /t 15
         shutdown /r /t 5 /c "System restart required for Windows Update completion"
         EXIT /B 0
     ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [WARN] Failed to create startup task. Continuing without restart..."
-        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Task name: %STARTUP_TASK_NAME%"
-        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Script path: %SCRIPT_PATH%"
-        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Username: %USERNAME%"
-        CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Error level: !ERRORLEVEL!"
+        CALL :LOG_MESSAGE "Failed to create startup task. Continuing without restart..." "WARN" "BAT"
+        CALL :LOG_MESSAGE "Task name: %STARTUP_TASK_NAME%" "DEBUG" "BAT"
+        CALL :LOG_MESSAGE "Script path: %SCRIPT_PATH%" "DEBUG" "BAT"
+        CALL :LOG_MESSAGE "Username: %USERNAME%" "DEBUG" "BAT"
+        CALL :LOG_MESSAGE "Error level: !ERRORLEVEL!" "DEBUG" "BAT"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] No Windows Update restart required. Continuing with maintenance script..."
+    CALL :LOG_MESSAGE "No Windows Update restart required. Continuing with maintenance script..." "INFO" "BAT"
 )
 
 REM -----------------------------------------------------------------------------
@@ -557,34 +578,34 @@ REM Check if we need to download repository or use local files
 REM Enhanced check: Look for script.ps1 in current directory first
 IF EXIST "%WORKING_DIR%script.ps1" (
     SET "PS1_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found local script.ps1 file: %PS1_PATH%"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Skipping repository download - local files available"
+    CALL :LOG_MESSAGE "Found local script.ps1 file: %PS1_PATH%" "INFO" "BAT"
+    CALL :LOG_MESSAGE "Skipping repository download - local files available" "INFO" "BAT"
     GOTO :PS1_DETECTION_COMPLETE
 )
 
 REM Fallback: Check if PS1_PATH was set earlier and file exists
 IF DEFINED PS1_PATH (
     IF EXIST "%PS1_PATH%" (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Using previously detected script.ps1 file: %PS1_PATH%"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Skipping repository download - local files available"
+        CALL :LOG_MESSAGE "Using previously detected script.ps1 file: %PS1_PATH%" "INFO" "BAT"
+        CALL :LOG_MESSAGE "Skipping repository download - local files available" "INFO" "BAT"
         GOTO :PS1_DETECTION_COMPLETE
     )
 )
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Local script.ps1 not found - downloading repository from GitHub..."
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working directory: %WORKING_DIR%"
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checked for: %WORKING_DIR%script.ps1"
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] PS1_PATH variable: %PS1_PATH%"
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading to: %WORKING_DIR%"
+CALL :LOG_MESSAGE "Local script.ps1 not found - downloading repository from GitHub..." "INFO" "BAT"
+CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "BAT"
+CALL :LOG_MESSAGE "Checked for: %WORKING_DIR%script.ps1" "DEBUG" "BAT"
+CALL :LOG_MESSAGE "PS1_PATH variable: %PS1_PATH%" "DEBUG" "BAT"
+CALL :LOG_MESSAGE "Downloading to: %WORKING_DIR%" "INFO" "BAT"
 
 REM Clean up existing files
 IF EXIST "%ZIP_FILE%" (
     DEL "%ZIP_FILE%" >nul 2>&1
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Removed existing ZIP file"
+    CALL :LOG_MESSAGE "Removed existing ZIP file" "INFO" "BAT"
 )
 
 IF EXIST "%EXTRACTED_PATH%" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Removing existing repository folder..."
+    CALL :LOG_MESSAGE "Removing existing repository folder..." "INFO" "BAT"
     RMDIR /S /Q "%EXTRACTED_PATH%" >nul 2>&1
     IF EXIST "%EXTRACTED_PATH%" (
         powershell -ExecutionPolicy Bypass -Command "try { if(Test-Path '%EXTRACTED_PATH%') { Remove-Item -Path '%EXTRACTED_PATH%' -Recurse -Force } } catch { Write-Warning 'Could not remove existing folder' }"
@@ -592,31 +613,31 @@ IF EXIST "%EXTRACTED_PATH%" (
 )
 
 REM Download repository
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Downloading from: %REPO_URL%"
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Saving to: %ZIP_FILE%"
+CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "INFO" "BAT"
+CALL :LOG_MESSAGE "Saving to: %ZIP_FILE%" "INFO" "BAT"
 
 powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $webClient = New-Object System.Net.WebClient; $webClient.DownloadFile('%REPO_URL%', '%ZIP_FILE%'); Write-Host '[INFO] Repository downloaded successfully' } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Failed to download repository. Check internet connection."
+    CALL :LOG_MESSAGE "Failed to download repository. Check internet connection." "ERROR" "BAT"
     pause
     EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Download failed - ZIP file not created at: %ZIP_FILE%"
+    CALL :LOG_MESSAGE "Download failed - ZIP file not created at: %ZIP_FILE%" "ERROR" "BAT"
     pause
     EXIT /B 3
 )
 REM -----------------------------------------------------------------------------
 REM Universal Repository Extraction - Extract to working directory
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Extracting repository to: %WORKING_DIR%"
+CALL :LOG_MESSAGE "Extracting repository to: %WORKING_DIR%" "INFO" "BAT"
 
 powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; if(Test-Path '%ZIP_FILE%') { [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host '[INFO] Repository extracted successfully.' } else { Write-Host '[ERROR] ZIP file not found at %ZIP_FILE%'; exit 1 } } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Repository extraction failed."
+    CALL :LOG_MESSAGE "Repository extraction failed." "ERROR" "BAT"
     pause
     EXIT /B 3
 )
@@ -625,25 +646,25 @@ REM Clean up ZIP file
 DEL /F /Q "%ZIP_FILE%" >nul 2>&1
 
 REM Verify extraction and update PowerShell script path
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying repository extraction..."
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Looking for extracted folder: %EXTRACTED_PATH%"
+CALL :LOG_MESSAGE "Verifying repository extraction..." "INFO" "BAT"
+CALL :LOG_MESSAGE "Looking for extracted folder: %EXTRACTED_PATH%" "INFO" "BAT"
 
 IF EXIST "%EXTRACTED_PATH%" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO]  Repository extraction successful"
+    CALL :LOG_MESSAGE "Repository extraction successful" "INFO" "BAT"
     
     REM Update PowerShell script path to extracted version
     IF EXIST "%EXTRACTED_PATH%\script.ps1" (
         SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO]  Found script.ps1 in extracted folder"
+        CALL :LOG_MESSAGE "Found script.ps1 in extracted folder" "INFO" "BAT"
     ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [ERROR] script.ps1 not found in extracted folder"
+        CALL :LOG_MESSAGE "script.ps1 not found in extracted folder" "ERROR" "BAT"
         pause
         EXIT /B 3
     )
     
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] ✗ Extraction failed - expected folder not found"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Available folders in working directory:"
+    CALL :LOG_MESSAGE "✗ Extraction failed - expected folder not found" "ERROR" "BAT"
+    CALL :LOG_MESSAGE "Available folders in working directory:" "INFO" "BAT"
     DIR "%WORKING_DIR%" /AD /B
     
     REM Try alternative folder names
@@ -651,9 +672,9 @@ IF EXIST "%EXTRACTED_PATH%" (
         SET "EXTRACT_FOLDER=script_mentenanta-master"
         SET "EXTRACTED_PATH=%WORKING_DIR%script_mentenanta-master"
         SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO]  Found alternative folder: script_mentenanta-master"
+        CALL :LOG_MESSAGE "Found alternative folder: script_mentenanta-master" "INFO" "BAT"
     ) ELSE (
-        CALL :LOG_MESSAGE "[%TIME%] [ERROR] Could not find any valid extracted folder"
+        CALL :LOG_MESSAGE "Could not find any valid extracted folder" "ERROR" "BAT"
         pause
         EXIT /B 3
     )
@@ -666,55 +687,55 @@ SET "CURRENT_SCRIPT_BAT=%SCRIPT_PATH%"
 SET "SELF_UPDATE_NEEDED=NO"
 
 IF EXIST "%NEW_SCRIPT_BAT%" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found new script.bat in extracted repository."
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Self-update will be performed AFTER PowerShell script execution."
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] This prevents execution conflicts during script update."
+    CALL :LOG_MESSAGE "Found new script.bat in extracted repository." "INFO" "BAT"
+    CALL :LOG_MESSAGE "Self-update will be performed AFTER PowerShell script execution." "INFO" "BAT"
+    CALL :LOG_MESSAGE "This prevents execution conflicts during script update." "INFO" "BAT"
     SET "SELF_UPDATE_NEEDED=YES"
 )
 REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Final Verification
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Checking PowerShell 7 availability for script execution..."
+CALL :LOG_MESSAGE "Checking PowerShell 7 availability for script execution..." "INFO" "BAT"
 SET "PS7_AVAILABLE=NO"
 
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "PS7_AVAILABLE=YES"
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell 7 found: !PS7_VERSION!"
+    CALL :LOG_MESSAGE "PowerShell 7 found: !PS7_VERSION!" "INFO" "BAT"
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [WARN] PowerShell 7 not available. Will use Windows PowerShell."
+    CALL :LOG_MESSAGE "PowerShell 7 not available. Will use Windows PowerShell." "WARN" "BAT"
 )
 
 REM -----------------------------------------------------------------------------
 REM Smart PowerShell Script Path Detection (Location-Agnostic)
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Starting PowerShell script path detection..."
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working directory: %WORKING_DIR%"
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Extracted path: %EXTRACTED_PATH%"
+CALL :LOG_MESSAGE "Starting PowerShell script path detection..." "INFO" "BAT"
+CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "BAT"
+CALL :LOG_MESSAGE "Extracted path: %EXTRACTED_PATH%" "DEBUG" "BAT"
 
 REM Priority 1: Use the path already set during extraction
 IF DEFINED PS1_PATH (
     IF EXIST "%PS1_PATH%" (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell script: %PS1_PATH%"
+        CALL :LOG_MESSAGE "Using PowerShell script: %PS1_PATH%" "INFO" "BAT"
         GOTO :PS1_DETECTION_COMPLETE
     )
 )
 
 REM Priority 2: Check current directory (if script.ps1 exists locally)
-CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking current directory: %WORKING_DIR%script.ps1"
+CALL :LOG_MESSAGE "Checking current directory: %WORKING_DIR%script.ps1" "DEBUG" "BAT"
 IF EXIST "%WORKING_DIR%script.ps1" (
     SET "PS1_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in current directory"
+    CALL :LOG_MESSAGE "Found script.ps1 in current directory" "INFO" "BAT"
     GOTO :PS1_DETECTION_COMPLETE
 )
 
 REM Priority 3: Check extracted folder (if repo was updated)
 IF DEFINED EXTRACTED_PATH (
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Checking extracted folder: %EXTRACTED_PATH%\script.ps1"
+    CALL :LOG_MESSAGE "Checking extracted folder: %EXTRACTED_PATH%\script.ps1" "DEBUG" "BAT"
     IF EXIST "%EXTRACTED_PATH%\script.ps1" (
         SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Found script.ps1 in extracted folder"
+        CALL :LOG_MESSAGE "Found script.ps1 in extracted folder" "INFO" "BAT"
         GOTO :PS1_DETECTION_COMPLETE
     )
 )
@@ -723,47 +744,47 @@ IF DEFINED EXTRACTED_PATH (
 
 REM Final check: If still not found, show detailed diagnostics
 IF NOT DEFINED PS1_PATH (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script (script.ps1) not found in any location!"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Searched locations:"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] 1. Extracted folder: %EXTRACTED_PATH%\script.ps1"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] 2. Current directory: %WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of working directory:"
+    CALL :LOG_MESSAGE "PowerShell script (script.ps1) not found in any location!" "ERROR" "BAT"
+    CALL :LOG_MESSAGE "Searched locations:" "INFO" "BAT"
+    CALL :LOG_MESSAGE "1. Extracted folder: %EXTRACTED_PATH%\script.ps1" "INFO" "BAT"
+    CALL :LOG_MESSAGE "2. Current directory: %WORKING_DIR%script.ps1" "INFO" "BAT"
+    CALL :LOG_MESSAGE "Contents of working directory:" "INFO" "BAT"
     DIR "%WORKING_DIR%" /B
     IF EXIST "%EXTRACTED_PATH%" (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Contents of extracted folder:"
+        CALL :LOG_MESSAGE "Contents of extracted folder:" "INFO" "BAT"
         DIR "%EXTRACTED_PATH%" /B
     )
     pause
     EXIT /B 7
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [SUCCESS] PowerShell script found successfully!"
+    CALL :LOG_MESSAGE "PowerShell script found successfully!" "SUCCESS" "BAT"
 )
 REM -----------------------------------------------------------------------------
 REM Launch PowerShell Script
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Final PowerShell script path: %PS1_PATH%"
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Launching PowerShell maintenance script..."
+CALL :LOG_MESSAGE "Final PowerShell script path: %PS1_PATH%" "INFO" "BAT"
+CALL :LOG_MESSAGE "Launching PowerShell maintenance script..." "INFO" "BAT"
 
 REM Test PowerShell availability before launching
 powershell.exe -Command "Write-Host 'PowerShell test successful'" >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Windows PowerShell is not available or functioning properly."
+    CALL :LOG_MESSAGE "Windows PowerShell is not available or functioning properly." "ERROR" "BAT"
     pause
     EXIT /B 5
 )
 
 REM Final check that PS1_PATH is not empty before execution
 IF NOT DEFINED PS1_PATH (
-    CALL :LOG_MESSAGE "[%TIME%] [FATAL] PS1_PATH is empty before execution!"
-    CALL :LOG_MESSAGE "[%TIME%] [FATAL] Cannot proceed without PowerShell script!"
+    CALL :LOG_MESSAGE "PS1_PATH is empty before execution!" "FATAL" "BAT"
+    CALL :LOG_MESSAGE "Cannot proceed without PowerShell script!" "FATAL" "BAT"
     pause
     EXIT /B 5
 )
 
-CALL :LOG_MESSAGE "[%TIME%] [INFO] About to execute: %PS1_PATH%"
-CALL :LOG_MESSAGE "[%TIME%] [INFO] Verifying file exists: %PS1_PATH%"
+CALL :LOG_MESSAGE "About to execute: %PS1_PATH%" "INFO" "BAT"
+CALL :LOG_MESSAGE "Verifying file exists: %PS1_PATH%" "INFO" "BAT"
 IF NOT EXIST "%PS1_PATH%" (
-    CALL :LOG_MESSAGE "[%TIME%] [FATAL] PowerShell script file does not exist: %PS1_PATH%"
+    CALL :LOG_MESSAGE "PowerShell script file does not exist: %PS1_PATH%" "FATAL" "BAT"
     pause
     EXIT /B 6
 )
@@ -772,48 +793,48 @@ SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
 IF "%PS7_AVAILABLE%"=="YES" (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Using PowerShell 7 environment..."
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: pwsh.exe"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working directory passed: %WORKING_DIRECTORY%"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Log file passed: %SCRIPT_LOG_FILE%"
+    CALL :LOG_MESSAGE "Using PowerShell 7 environment..." "INFO" "BAT"
+    CALL :LOG_MESSAGE "Launching with admin privileges: pwsh.exe" "DEBUG" "BAT"
+    CALL :LOG_MESSAGE "Working directory passed: %WORKING_DIRECTORY%" "DEBUG" "BAT"
+    CALL :LOG_MESSAGE "Log file passed: %SCRIPT_LOG_FILE%" "DEBUG" "BAT"
     pwsh.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
     SET "LAUNCH_RESULT=%ERRORLEVEL%"
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Using Windows PowerShell environment..."
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Launching with admin privileges: powershell.exe"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Working directory passed: %WORKING_DIRECTORY%"
-    CALL :LOG_MESSAGE "[%TIME%] [DEBUG] Log file passed: %SCRIPT_LOG_FILE%"
+    CALL :LOG_MESSAGE "Using Windows PowerShell environment..." "INFO" "BAT"
+    CALL :LOG_MESSAGE "Launching with admin privileges: powershell.exe" "DEBUG" "BAT"
+    CALL :LOG_MESSAGE "Working directory passed: %WORKING_DIRECTORY%" "DEBUG" "BAT"
+    CALL :LOG_MESSAGE "Log file passed: %SCRIPT_LOG_FILE%" "DEBUG" "BAT"
     powershell.exe -ExecutionPolicy Bypass -File "%PS1_PATH%"
     SET "LAUNCH_RESULT=%ERRORLEVEL%"
 )
 
 IF %LAUNCH_RESULT% EQU 0 (
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] PowerShell script execution completed successfully."
+    CALL :LOG_MESSAGE "PowerShell script execution completed successfully." "INFO" "BAT"
     
     REM -----------------------------------------------------------------------------
     REM Deferred Self-Update - Perform after PowerShell execution completes
     REM -----------------------------------------------------------------------------
     IF "%SELF_UPDATE_NEEDED%"=="YES" (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Performing deferred self-update..."
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Copying ONLY script.bat (not script.ps1) as requested."
+        CALL :LOG_MESSAGE "Performing deferred self-update..." "INFO" "BAT"
+        CALL :LOG_MESSAGE "Copying ONLY script.bat (not script.ps1) as requested." "INFO" "BAT"
         COPY /Y "%NEW_SCRIPT_BAT%" "%CURRENT_SCRIPT_BAT%" >nul 2>&1
         IF %ERRORLEVEL% EQU 0 (
-            CALL :LOG_MESSAGE "[%TIME%] [INFO] script.bat updated successfully."
+            CALL :LOG_MESSAGE "script.bat updated successfully." "INFO" "BAT"
         ) ELSE (
-            CALL :LOG_MESSAGE "[%TIME%] [WARN] Failed to update script.bat, but continuing..."
+            CALL :LOG_MESSAGE "Failed to update script.bat, but continuing..." "WARN" "BAT"
         )
     )
     
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] This launcher will close automatically in 10 seconds..."
+    CALL :LOG_MESSAGE "This launcher will close automatically in 10 seconds..." "INFO" "BAT"
     FOR /L %%i IN (10,-1,1) DO (
-        CALL :LOG_MESSAGE "[%TIME%] [INFO] Closing in %%i seconds..."
+        CALL :LOG_MESSAGE "Closing in %%i seconds..." "INFO" "BAT"
         timeout /t 1 /nobreak >nul
     )
-    CALL :LOG_MESSAGE "[%TIME%] [INFO] Batch launcher completed successfully. Window will now close."
+    CALL :LOG_MESSAGE "Batch launcher completed successfully. Window will now close." "INFO" "BAT"
     
 ) ELSE (
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] PowerShell script execution failed with error code: %LAUNCH_RESULT%"
-    CALL :LOG_MESSAGE "[%TIME%] [ERROR] Please check the PowerShell script path and permissions."
+    CALL :LOG_MESSAGE "PowerShell script execution failed with error code: %LAUNCH_RESULT%" "ERROR" "BAT"
+    CALL :LOG_MESSAGE "Please check the PowerShell script path and permissions." "ERROR" "BAT"
     pause
 )
 
