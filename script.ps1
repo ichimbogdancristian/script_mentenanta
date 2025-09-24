@@ -739,8 +739,8 @@ function Use-AllScriptTasks {
 function Write-Log {
     param(
         [string]$Message,
-        [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE')]
-        [string]$Level = 'INFO',
+    [ValidateSet('DEBUG','INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE')]
+    [string]$Level = 'INFO',
         [string]$Component = 'PS1'
     )
     
@@ -773,6 +773,7 @@ function Write-Log {
     
     # Write to console with enhanced color coding
     $color = switch ($Level) {
+        'DEBUG' { 'DarkGray' }
         'INFO' { 'White' }
         'WARN' { 'Yellow' }
         'ERROR' { 'Red' }
