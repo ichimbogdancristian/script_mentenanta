@@ -130,6 +130,17 @@ REM ----------------------------------------------------------------------------
 REM Enhanced Admin Privilege Check
 REM Uses multiple methods to ensure reliable administrator detection and proper elevation.
 REM -----------------------------------------------------------------------------
+REM -----------------------------------------------------------------------------
+REM ADMIN CHECK NOTES:
+REM - Purpose: Ensure the launcher runs with the required elevated privileges.
+REM - Why multiple checks: Some environments may restrict NET SESSION or PowerShell checks;
+REM   using both increases reliability across Windows versions and execution contexts.
+REM - Behavior: If not elevated, the script attempts to relaunch itself using PowerShell
+REM   Start-Process with the RunAs verb. This keeps elevation logic centralized here and
+REM   avoids embedding elevation checks in the PowerShell orchestrator (script.ps1).
+REM - Operator guidance: If the automatic elevation fails on a managed device, launch
+REM   an elevated command prompt and run this script manually.
+REM -----------------------------------------------------------------------------
 REM Method 1: NET SESSION (traditional approach)
 NET SESSION >nul 2>&1
 SET "NET_SESSION_RESULT=%ERRORLEVEL%"
@@ -160,6 +171,16 @@ REM ----------------------------------------------------------------------------
 REM PowerShell Version Check
 REM Ensures PowerShell 5.1+ is available for all automation features.
 REM -----------------------------------------------------------------------------
+REM -----------------------------------------------------------------------------
+REM POWERSHELL VERSION NOTES:
+REM - Purpose: Verify the system has a compatible PowerShell runtime for the
+REM   tools this launcher and orchestrator expect (PowerShell 5.1+ or later).
+REM - Why: Certain modules, cmdlets, and behaviors differ between PS versions; failing
+REM   early prevents confusing errors later in the run.
+REM - Behavior: The launcher only checks the major version number returned by
+REM   $PSVersionTable.PSVersion.Major and enforces a lower bound. The orchestrator
+REM   will still perform graceful degradation if modules are missing.
+REM -----------------------------------------------------------------------------
 FOR /F "tokens=*" %%i IN ('powershell -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_VERSION=%%i
 IF "%PS_VERSION%"=="" SET PS_VERSION=0
 IF %PS_VERSION% LSS 5 (
@@ -181,6 +202,18 @@ REM ----------------------------------------------------------------------------
 REM Windows Defender Exclusions Setup
 REM Adds Windows Defender exclusions for the project folder and executables
 REM to prevent Controlled Folder Access from blocking script execution
+REM -----------------------------------------------------------------------------
+REM -----------------------------------------------------------------------------
+REM DEFENDER EXCLUSIONS NOTES:
+REM - Purpose: Prevent Controlled Folder Access (CFA) and Windows Defender from blocking
+REM   legitimate script file I/O and executable launches during maintenance runs.
+REM - Scope: Adds folder-level and process-level exclusions. Folder exclusion targets
+REM   the entire repo working directory; process exclusions include PowerShell binaries
+REM   and the Windows command interpreter.
+REM - Safety: Adding exclusions requires administrative privileges and may be restricted
+REM   by enterprise policy. The script logs failures and continues gracefully.
+REM - Operator guidance: Review your organization's security policy before enabling
+REM   exclusions widely; consider adding only the specific required paths.
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions for project..." "INFO" "BAT"
 
@@ -216,6 +249,17 @@ CALL :LOG_MESSAGE "Windows Defender exclusions setup completed" "INFO" "BAT"
 REM -----------------------------------------------------------------------------
 REM Enhanced Monthly Scheduled Task Setup
 REM Ensures a monthly scheduled task is created to run this script as admin.
+REM -----------------------------------------------------------------------------
+REM -----------------------------------------------------------------------------
+REM SCHEDULED TASK NOTES:
+REM - Purpose: Create a monthly scheduled task that runs this launcher at high privilege
+REM   so maintenance can occur unattended on a monthly cadence.
+REM - Creation strategy: Prefer SYSTEM-level task for consistent, elevated runs; fallback
+REM   to current user if SYSTEM creation fails (some environments restrict SYSTEM tasks).
+REM - Verification: After creating the task, the script queries and logs the 'Next Run Time'
+REM   for operator confirmation.
+REM - Operator guidance: If task creation fails repeatedly, inspect the generated
+REM   schtasks_create.log or schtasks_create_user.log for error details.
 REM -----------------------------------------------------------------------------
 SET "LOG_TIMESTAMP=%DATE% %TIME%"
 CALL :LOG_MESSAGE "[%LOG_TIMESTAMP%] [INFO] Checking for monthly scheduled task '%TASK_NAME%'..."
@@ -309,6 +353,20 @@ IF !ERRORLEVEL! EQU 0 (
 REM -----------------------------------------------------------------------------
 REM Smart Restart Detection - Only restart for pending updates requiring restart
 REM Check if Windows requires a restart for PENDING UPDATES, not general maintenance
+REM -----------------------------------------------------------------------------
+REM -----------------------------------------------------------------------------
+REM RESTART DETECTION NOTES:
+REM - Purpose: Avoid unnecessary reboots. Only trigger restart flows when pending
+REM   Windows Updates (or equivalent system flags) require a restart to complete
+REM   update installation.
+REM - Strategy: Prefer PSWindowsUpdate-based detection when available (more accurate),
+REM   otherwise fall back to registry indicators like RebootRequired or RebootPending.
+REM - Behavior: When an update-related restart is required, the launcher creates a
+REM   temporary startup scheduled task to resume the script after reboot and then
+REM   reboots the system. If scheduling the startup task fails, the script logs the issue
+REM   and continues without forcing a reboot.
+REM - Operator guidance: This logic minimizes unnecessary downtime; enable auto-restarts
+REM   only when acceptable for your environment.
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking for pending updates requiring restart..." "INFO" "BAT"
 SET "RESTART_NEEDED=NO"

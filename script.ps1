@@ -113,19 +113,44 @@ if (-not (Test-Path $logDir)) {
 }
 
 # Global configuration object with defaults
+# ================================================================
+# Purpose: Centralized, user-customizable configuration for the maintenance
+# script. These flags drive conditional execution of large features so the
+# operator can enable or disable behavior without editing other parts of
+# the script.
+#
+# Conventions:
+# - Boolean switches (Skip*) default to $false to run features unless
+#   explicitly skipped. Use explicit boolean values in configuration files
+#   or environment variables when invoking the script.
+# - Collections like CustomEssentialApps and CustomBloatwareList accept an
+#   array of strings (package IDs, application names or patterns) and are
+#   merged with the built-in lists during runtime.
+# - ExcludeTasks accepts an array of task names (matching entries in
+#   $global:ScriptTasks) to selectively skip by name.
+#
+# Usage examples:
+# - To skip bloatware removal: $global:Config.SkipBloatwareRemoval = $true
+# - To add an app to install: $global:Config.CustomEssentialApps += '7zip'
+#
 $global:Config = @{
-    SkipBloatwareRemoval    = $false
-    SkipEssentialApps       = $false
-    SkipWindowsUpdates      = $false
-    SkipTelemetryDisable    = $false
-    SkipSystemRestore       = $false
-    SkipEventLogAnalysis    = $false
-    SkipPendingRestartCheck = $false
-    SkipSystemHealthRepair  = $false
-    EnableVerboseLogging    = $false
-    CustomEssentialApps     = @()
-    CustomBloatwareList     = @()
-    ExcludeTasks            = @()
+    # Skip* flags: set to $true to disable the corresponding feature.
+    SkipBloatwareRemoval    = $false   # When $true, Remove-Bloatware is not executed
+    SkipEssentialApps       = $false   # When $true, Install-EssentialApps is not executed
+    SkipWindowsUpdates      = $false   # When $true, Windows update tasks are skipped
+    SkipTelemetryDisable    = $false   # When $true, telemetry/diagnostics disabling is skipped
+    SkipSystemRestore       = $false   # When $true, System Restore protection tasks are skipped
+    SkipEventLogAnalysis    = $false   # When $true, event log analysis is skipped
+    SkipPendingRestartCheck = $false   # When $true, pending restart detection is skipped
+    SkipSystemHealthRepair  = $false   # When $true, health repair tasks are skipped
+
+    # Logging and customization
+    EnableVerboseLogging    = $false   # Enable more verbose logging output for troubleshooting
+
+    # Collections: arrays of strings; used for augmenting built-in lists
+    CustomEssentialApps     = @()      # Add package IDs or names to install
+    CustomBloatwareList     = @()      # Add patterns/names of apps to treat as bloatware
+    ExcludeTasks            = @()      # List of task names from $global:ScriptTasks to exclude
 }
 
 # Global variables for task execution and results tracking
@@ -672,6 +697,22 @@ $global:BloatwareDetectionCache = @{
 # Performance: Tracks execution time, success/failure rates, provides detailed console output, comprehensive task analytics
 # Dependencies: Global task array, Write-Log, Write-ActionLog functions, global config system, task result tracking
 # ================================================================
+# ================================================================
+# Function: Use-AllScriptTasks
+# ================================================================
+# Purpose: Iterate over and execute all tasks registered in the
+#          global $global:ScriptTasks array. This central coordinator
+#          drives the maintenance workflow, invoking each task in
+#          sequence and collecting results into $global:TaskResults.
+# Environment: Runs inside the orchestrator (script.ps1) with
+#              assumed admin privileges and available package managers
+# Inputs: None (reads $global:ScriptTasks)
+# Outputs: Populates $global:TaskResults and writes progress via Write-Log
+# Error modes: Individual task failures are captured and logged but do
+#              not abort the entire run unless explicitly fatal.
+# Returns: $true on overall success, otherwise $false (and detailed results)
+# Side-effects: Executes each registered task and may modify system state
+# ================================================================
 function Use-AllScriptTasks {
     Write-ActionLog -Action 'Initiating maintenance tasks execution sequence' -Details "Total tasks to execute: $($global:ScriptTasks.Count)" -Category "Task Orchestration" -Status 'START'
     $global:TaskResults = @{}
@@ -679,6 +720,19 @@ function Use-AllScriptTasks {
     $totalTasks = $global:ScriptTasks.Count
     
     foreach ($task in $global:ScriptTasks) {
+    # ================================================================
+    # Function: Invoke-Task
+    # ================================================================
+    # Purpose: Execute a single task function from the global task array with
+    #          standardized logging, error handling and return-value normalization.
+    # Environment: Windows PowerShell 7+ (or 5.1), relies on Write-ActionLog and Write-Log
+    # Logic: Accepts a task name and a scriptblock/function reference, executes it
+    #        inside a try/catch, normalizes various return shapes to Boolean success
+    #        and returns that result to the caller.
+    # Dependencies: Write-ActionLog, Write-Log
+    # Returns: [bool] $true on success, $false on failure
+    # Side-effects: Logs execution details and errors to the log file and console
+    # ================================================================
         $taskIndex++
         $taskName = $task.Name
         $desc = $task.Description
@@ -747,6 +801,21 @@ function Use-AllScriptTasks {
 # Performance: Minimal overhead, efficient string formatting, non-blocking operations, enhanced error handling
 # Dependencies: Global $LogFile variable, Windows console capabilities, file system access
 # ================================================================
+# ================================================================
+# Function: Write-Log
+# ================================================================
+# Purpose: Centralized logging function that writes timestamped entries
+#          to both the console and the persistent log file. Supports
+#          different log levels (INFO, WARN, ERROR, DEBUG, SUCCESS).
+# Environment: Writes to $LogFile and the console. Assumes $LogFile is
+#              initialized and writable.
+# Inputs: $Message (string), $Level (string, default: 'INFO')
+# Outputs: Console output and appended log file entries
+# Error modes: If file append fails, logs to console only and sets a
+#              debug indicator.
+# Returns: None
+# Side-effects: Creates or appends to the $LogFile on disk
+# ================================================================
 function Write-Log {
     param(
         [string]$Message,
@@ -812,6 +881,18 @@ function Write-Log {
 # Performance: Optimized for action tracking, minimal overhead, comprehensive detail capture
 # Dependencies: Write-Log function, timing capabilities, process tracking
 # ================================================================
+# ================================================================
+# Function: Write-ActionLog
+# ================================================================
+# Purpose: Helper for logging long-running action entries. Formats
+#          action start/finish messages and emits progress-friendly
+#          lines to the console and the action log file.
+# Environment: Uses Write-Log internally and assumes logging infra
+# Inputs: $ActionName (string), $Status (string)
+# Outputs: Console-friendly action messages and log file entries
+# Returns: None
+# Side-effects: None beyond logging
+# ================================================================
 function Write-ActionLog {
     param(
         [string]$Action,
@@ -847,6 +928,19 @@ function Write-ActionLog {
 # Logic: Logs command execution with full command line, arguments, exit codes, and execution timing
 # Performance: Minimal overhead wrapper for external commands, comprehensive execution tracking
 # Dependencies: Write-Log function, process execution capabilities, timing functions
+# ================================================================
+# ================================================================
+# Function: Write-CommandLog
+# ================================================================
+# Purpose: Logs a command invocation and its outcome. This function
+#          centralizes command-level details (command string, exit code,
+#          stdout/stderr snippets) for easier post-run analysis.
+# Environment: Uses the same log file as Write-Log. Intended for wrapping
+#              external process invocations.
+# Inputs: $Command (string), $ResultObject (has ExitCode/Output/Error)
+# Outputs: Detailed command logs appended to $LogFile
+# Returns: None
+# Side-effects: May write large outputs to log; caller should trim if needed
 # ================================================================
 function Write-CommandLog {
     param(
@@ -885,6 +979,18 @@ function Write-CommandLog {
 # Performance: Lightweight progress tracking, non-blocking operations, visual feedback
 # Dependencies: Windows PowerShell console capabilities, Write-Progress cmdlet
 # ================================================================
+# ================================================================
+# Function: Write-TaskProgress
+# ================================================================
+# Purpose: Emit a compact progress line for a single high-level task.
+#          Intended for console-friendly summaries while tasks run.
+# Environment: Console-only progress UX; may also write compact lines
+#              to the log file when verbose is enabled.
+# Inputs: $TaskName (string), $PercentComplete (int), $Status (string)
+# Outputs: Console progress update and optional log entry
+# Returns: None
+# Side-effects: None
+# ================================================================
 function Write-TaskProgress {
     param(
         [string]$Activity,
@@ -915,6 +1021,17 @@ function Write-TaskProgress {
 # Logic: Creates separate progress bars for each action type with automatic cleanup
 # Performance: Lightweight, non-blocking, visual feedback for granular operations
 # Dependencies: Write-Progress cmdlet, console capabilities
+# ================================================================
+# ================================================================
+# Function: Write-ActionProgress
+# ================================================================
+# Purpose: Provide per-action progress details (substeps within a task)
+#          and bubble timing/ETA information to the console UX.
+# Environment: Uses console progress; tolerant if console not interactive
+# Inputs: $Action (string), $Step (int), $TotalSteps (int)
+# Outputs: Console progress bar or text, optional verbose logging
+# Returns: None
+# Side-effects: None
 # ================================================================
 function Write-ActionProgress {
     param(
@@ -981,6 +1098,42 @@ function Write-ActionProgress {
         # Progress bars provide visual feedback, no need for verbose percentage logs
     }
 }
+    function Write-CleanProgress {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Activity,
+        
+            [Parameter(Mandatory = $true)]
+            [string]$CurrentItem,
+        
+            [Parameter(Mandatory = $true)]
+            [int]$CurrentIndex,
+        
+            [Parameter(Mandatory = $true)]
+            [int]$TotalItems,
+        
+            [string]$Status = "Processing",
+        
+            [switch]$Completed
+        )
+    
+        $percentComplete = if ($TotalItems -gt 0) { [math]::Round(($CurrentIndex / $TotalItems) * 100, 0) } else { 0 }
+        $progressId = $Activity.GetHashCode()
+        if ($progressId -lt 0) { $progressId = - $progressId }
+    
+        # Show visual progress bar in console
+        Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
+    
+        # Only log start and completion to reduce noise
+        if ($percentComplete -eq 0) {
+            Write-Log "⏳ $Activity - $Status" 'INFO'
+        }
+        elseif ($percentComplete -ge 100) {
+            Write-Log "✓ $Activity - Completed" 'INFO'
+            Start-Sleep -Milliseconds 500  # Brief pause to show completion
+            Write-Progress -Activity $Activity -Completed
+        }
+    }
 
 # ================================================================
 # Function: Write-CleanProgress
@@ -991,6 +1144,17 @@ function Write-ActionProgress {
 # Performance: Lightweight, reduces log file clutter, provides clear user feedback
 # Dependencies: Write-Progress cmdlet, console capabilities
 # Features: Smart logging that avoids percentage spam, clean visual indicators
+# ================================================================
+# ================================================================
+# Function: Write-CleanProgress
+# ================================================================
+# Purpose: Emit succinct progress for cleanup tasks where too much
+#          output would clutter the report (e.g., temp-file removal).
+# Environment: Console and log-aware; used by cleanup-related functions
+# Inputs: $Message (string), $Level (string)
+# Outputs: Short console lines and optional log entries
+# Returns: None
+# Side-effects: None
 # ================================================================
 function Write-CleanProgress {
     param(
@@ -1048,6 +1212,18 @@ function Write-CleanProgress {
 # Performance: Efficient progress management for sequential operations
 # Dependencies: Write-ActionProgress function
 # ================================================================
+# ================================================================
+# Function: Start-ActionProgressSequence
+# ================================================================
+# Purpose: Helper to initialize a multi-step action with timing and
+#          internal progress tracking. Returns an object that callers
+#          can use to report substep progress and final duration.
+# Environment: In-memory tracker returned to caller for progress updates
+# Inputs: $ActionName (string), $TotalSteps (int)
+# Outputs: Progress tracker object
+# Returns: A hashtable/object containing Update/Complete methods
+# Side-effects: None
+# ================================================================
 function Start-ActionProgressSequence {
     param(
         [Parameter(Mandatory = $true)]
@@ -1098,6 +1274,18 @@ function Start-ActionProgressSequence {
 # Dependencies: Get-ComputerInfo, Get-NetIPConfiguration, Resolve-DnsName, Invoke-RestMethod for external IP
 # Logic: Collects system identity, network configuration, user context, and connectivity information
 # Features: Comprehensive PC fingerprinting, network topology discovery, external IP detection, DNS configuration analysis
+# ================================================================
+# ================================================================
+# Function: Write-SystemSummaryHeader
+# ================================================================
+# Purpose: Write a clear header and system metadata block at the top of
+#          the maintenance report. Includes OS version, uptime, time of run,
+#          and configuration summary for reproducibility.
+# Environment: Writes to the $LogFile and to the console report output
+# Inputs: None (reads global variables like $global:Config)
+# Outputs: Formatted report header in logs and console
+# Returns: None
+# Side-effects: Writes to disk (log file) and may extend report artifacts
 # ================================================================
 function Write-SystemSummaryHeader {
     Write-Log "============================================================" 'INFO'
@@ -1275,6 +1463,21 @@ function Write-SystemSummaryHeader {
 # Performance: Minimal overhead wrapper, comprehensive error capture, standardized execution with timing
 # Dependencies: Write-Log, Write-ActionLog functions, PowerShell execution environment
 # ================================================================
+# ================================================================
+# Function: Invoke-Task
+# ================================================================
+# Purpose: Execute a single maintenance task item from the task list.
+#          Wraps task execution with standardized logging, timing,
+#          error capture and result normalization so the coordinator
+#          can aggregate consistent results.
+# Environment: Called by Use-AllScriptTasks; assumes logging infra
+# Inputs: $Task (has Name, ScriptBlock or ScriptPath, Optional Args)
+# Outputs: Writes detailed logs and returns a result hashtable
+# Error modes: Captures non-terminating and terminating errors and
+#              returns a 'Success' boolean in the result object
+# Returns: Hashtable { Name, Success, Duration, Details }
+# Side-effects: May change system state depending on the task executed
+# ================================================================
 function Invoke-Task {
     param(
         [string]$TaskName,
@@ -1309,6 +1512,32 @@ function Invoke-Task {
 # Logic: Wraps Start-Process with comprehensive logging, timing, exit code tracking, and error handling
 # Performance: Minimal overhead wrapper with detailed execution tracking and comprehensive error capture
 # Dependencies: Write-CommandLog, Write-ActionLog functions, Start-Process cmdlet, process monitoring
+# ================================================================
+# ================================================================
+# Function: Invoke-LoggedCommand
+# ================================================================
+# Purpose: Run an external command or scriptblock while capturing stdout/stderr
+#          and logging execution details including exit codes and duration.
+# Environment: Windows PowerShell (any supported version)
+# Logic: Executes the provided command, captures output streams, logs start/
+#        completion and returns a structured object with ExitCode, StdOut,
+#        StdErr and Duration fields.
+# Dependencies: Write-CommandLog, Write-Log
+# Returns: Hashtable with keys: ExitCode, StdOut, StdErr, Duration
+# Side-effects: Writes log entries for command start, success/failure
+# ================================================================
+# ================================================================
+# Function: Invoke-LoggedCommand
+# ================================================================
+# Purpose: Run an external command or script block while capturing
+#          stdout/stderr, exit codes, and writing structured logs
+#          via Write-CommandLog. Intended to be the single place
+#          where external invocations are normalized.
+# Environment: May run native executables or PowerShell subprocesses
+# Inputs: $Command (string or scriptblock), $Timeout (int seconds)
+# Outputs: Returns a result object with ExitCode, StdOut, StdErr
+# Returns: Hashtable { ExitCode, Output, Error, Duration }
+# Side-effects: Writes detailed command logs to disk
 # ================================================================
 function Invoke-LoggedCommand {
     param(
@@ -1405,6 +1634,31 @@ function Invoke-LoggedCommand {
 # Logic: Scans HKLM uninstall keys, matches against bloatware patterns, returns standardized app objects
 # Features: Detects legacy/OEM/Win32 bloatware, logs all matches, supports integration with main detection pipeline
 # ================================================================
+# ================================================================
+# Function: Get-RegistryUninstallBloatware
+# ================================================================
+# Purpose: Enumerate uninstall registry keys and match installed apps
+#          against configured bloatware patterns to produce a removal list.
+# Environment: Windows (registry access required), PowerShell 5.1+ recommended
+# Logic: Scans relevant uninstall registry paths (32-bit/64-bit + per-user)
+#        and returns objects representing candidate bloatware matches.
+# Dependencies: None (uses native registry cmdlets), relies on $global:BloatwareList
+# Returns: Array of objects { Name, DisplayVersion, Publisher, UninstallString }
+# Side-effects: None (read-only enumeration)
+# ================================================================
+# ================================================================
+# Function: Get-RegistryUninstallBloatware
+# ================================================================
+# Purpose: Enumerate installed programs from the registry uninstall
+#          keys and normalize entries so they can be compared against
+#          bloatware lists. Handles both 32/64-bit registry views.
+# Environment: Reads HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
+#              and HKCU equivalent. Requires registry read access.
+# Inputs: Optional filter patterns
+# Outputs: Array of normalized app objects (Name, Version, Publisher, UninstallString)
+# Returns: Array
+# Side-effects: None (read-only)
+# ================================================================
 function Get-RegistryUninstallBloatware {
     param(
         [Parameter(Mandatory = $true)]
@@ -1460,6 +1714,27 @@ function Get-RegistryUninstallBloatware {
 # Logic: Uses Get-Command with error handling to detect command availability
 # Features: Cross-platform compatibility, error suppression, boolean result
 # ================================================================
+# ================================================================
+# Function: Test-CommandAvailable
+# ================================================================
+# Purpose: Determine whether a given executable or command is available in PATH
+# Environment: Cross-platform PowerShell (relies on Get-Command)
+# Logic: Uses Get-Command and where.exe fallback to check availability
+# Returns: [bool] $true if available, otherwise $false
+# Side-effects: None
+# ================================================================
+# ================================================================
+# Function: Test-CommandAvailable
+# ================================================================
+# Purpose: Test whether a named command/tool is available on PATH or
+#          as a PowerShell command (Get-Command). Used to decide
+#          whether to use winget/choco/appx paths or fallback logic.
+# Environment: Local session PATH and module/function availability
+# Inputs: $CommandName (string)
+# Outputs: $true/$false
+# Returns: Boolean
+# Side-effects: None
+# ================================================================
 function Test-CommandAvailable {
     param(
         [Parameter(Mandatory = $true)]
@@ -1484,6 +1759,28 @@ function Test-CommandAvailable {
 # Dependencies: Windows Registry access
 # Logic: Attempts registry operations to validate permissions, provides detailed error information
 # Features: Permission validation, access diagnostics, fallback path suggestions
+# ================================================================
+# ================================================================
+# Function: Test-RegistryAccess
+# ================================================================
+# Purpose: Verify that the script can read and/or write to required registry
+#          locations before performing registry-based changes (safety check).
+# Environment: Windows PowerShell with appropriate privileges
+# Logic: Attempts a benign read (and optionally a write-test when allowed)
+# Returns: [bool] $true when required registry access is available
+# Side-effects: None (read-only by default)
+# ================================================================
+# ================================================================
+# Function: Test-RegistryAccess
+# ================================================================
+# Purpose: Verify registry read (and optionally write) access to a
+#          hive/key path. Useful to gracefully degrade where access
+#          is restricted by policy or non-admin contexts.
+# Environment: Reads requested registry path, handles exceptions
+# Inputs: $Path (string), $RequireWrite (bool)
+# Outputs: Boolean success and optional diagnostic message
+# Returns: Hashtable { Success, Message }
+# Side-effects: None
 # ================================================================
 function Test-RegistryAccess {
     param(
@@ -1569,6 +1866,26 @@ function Test-RegistryAccess {
 # Logic: Pre-validates access, attempts registry modification, provides detailed error reporting
 # Features: Permission validation, multiple registry types, detailed error diagnostics, fallback suggestions
 # ================================================================
+# ================================================================
+# Function: Set-RegistryValueSafely
+# ================================================================
+# Purpose: Helper to set a registry value with comprehensive error handling
+# Environment: Windows PowerShell, requires appropriate privileges for target keys
+# Logic: Writes the specified registry value, logs the action and returns success
+# Returns: [bool] $true on success, $false on failure
+# Side-effects: Modifies registry keys/values
+# ================================================================
+# ================================================================
+# Function: Set-RegistryValueSafely
+# ================================================================
+# Purpose: Write registry values using safe patterns: check permissions,
+#          create parent keys if necessary, and revert or log on failure.
+# Environment: Requires appropriate privileges for write operations
+# Inputs: $Path, $Name, $Value, $ValueKind
+# Outputs: Success boolean and message
+# Returns: Hashtable { Success, Message }
+# Side-effects: May create or modify registry keys/values
+# ================================================================
 function Set-RegistryValueSafely {
     param(
         [Parameter(Mandatory = $true)]
@@ -1646,6 +1963,29 @@ function Set-RegistryValueSafely {
 # Dependencies: Standardized app inventory format, comparison arrays
 # Logic: Compares before/after app states, identifies new/removed/unchanged apps, generates diff reports
 # Features: Flexible comparison modes, detailed diff reporting, performance metrics, categorized results
+# ================================================================
+# ================================================================
+# Function: Compare-InstallationDiff
+# ================================================================
+# Purpose: Compare two application inventory lists and produce a diff of
+#          installed/removed applications to assist in installation reporting
+# Environment: PowerShell 7+ recommended for array/hash performance
+# Logic: Accepts prior and current lists, computes Added/Removed/Unchanged
+# Returns: Hashtable { Added = @(), Removed = @(), Unchanged = @() }
+# Side-effects: None
+# ================================================================
+# ================================================================
+# Function: Compare-InstallationDiff
+# ================================================================
+# Purpose: Compare two installation inventories (before/after) and
+#          produce a diff structure describing added, removed, and changed
+#          packages. Used to validate that Install/Remove operations had
+#          the intended effect.
+# Environment: In-memory comparison; tolerant of missing fields
+# Inputs: $BeforeInventory, $AfterInventory
+# Outputs: Diff object with Added/Removed/Changed lists
+# Returns: Hashtable { Added, Removed, Changed }
+# Side-effects: None
 # ================================================================
 function Compare-InstallationDiff {
     param(
@@ -1728,6 +2068,29 @@ function Compare-InstallationDiff {
 # Dependencies: AppX module, registry access, Winget/Chocolatey availability
 # Logic: Collects apps from multiple sources, normalizes format, removes duplicates, provides unified view
 # Features: Multi-source collection, duplicate detection, standardized output format, error resilience
+# ================================================================
+# ================================================================
+# Function: Get-StandardizedAppInventory
+# ================================================================
+# Purpose: Collect installed applications from multiple sources (Appx, Winget,
+#          Chocolatey, Registry) and normalize them into a single canonical
+#          inventory format used by other utilities.
+# Environment: Windows with relevant package managers available when possible
+# Logic: Queries multiple sources, normalizes fields (Name, Version, Source)
+# Returns: Array of standardized application objects
+# Side-effects: None (read-only inventory collection)
+# ================================================================
+# ================================================================
+# Function: Get-StandardizedAppInventory
+# ================================================================
+# Purpose: Build a unified inventory of installed apps across multiple
+#          sources (Appx, winget, chocolatey, registry) and normalize
+#          fields so they can be compared consistently.
+# Environment: Reads multiple package sources and merges results
+# Inputs: Optional filters and source selection
+# Outputs: Array of standardized app objects { Name, Source, Version, Id }
+# Returns: Array
+# Side-effects: None (read-only)
 # ================================================================
 function Get-StandardizedAppInventory {
     param(
@@ -1881,6 +2244,28 @@ function Get-StandardizedAppInventory {
 # Logic: Detects available package managers, executes commands with timeout, provides unified result format
 # Features: Multi-manager support, timeout protection, standardized logging, error resilience, progress tracking
 # ================================================================
+# ================================================================
+# Function: Invoke-PackageManagerCommand
+# ================================================================
+# Purpose: Unified wrapper for invoking package manager commands (winget, choco)
+#          with timeout protection, structured results and logging.
+# Environment: Windows with package managers installed (optional fallback)
+# Logic: Detects manager availability, runs the command, captures exit status
+# Returns: Hashtable { Success = $bool, Output = $string, Error = $string }
+# Side-effects: Installs/uninstalls/updates packages depending on arguments
+# ================================================================
+# ================================================================
+# Function: Invoke-PackageManagerCommand
+# ================================================================
+# Purpose: Wrapper to invoke package manager commands (winget, choco)
+#          with timeouts, logging, and a normalized result shape. Also
+#          selects the best available manager if multiple exist.
+# Environment: Calls external package managers; requires network for installs
+# Inputs: $ManagerName, $Arguments, $Timeout
+# Outputs: Normalized result object with Success/ExitCode/Output
+# Returns: Hashtable
+# Side-effects: Installs/uninstalls packages when used for that purpose
+# ================================================================
 function Invoke-PackageManagerCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -2025,6 +2410,28 @@ function Invoke-PackageManagerCommand {
 # Logic: Wraps operations with progress tracking, handles errors gracefully, provides consistent UX
 # Features: Auto-cleanup progress bars, error handling, timing metrics, standardized progress display
 # ================================================================
+# ================================================================
+# Function: Start-ProgressTrackedOperation
+# ================================================================
+# Purpose: Template helper to run long-running operations with timing and
+#          standardized progress reporting and error handling.
+# Environment: PowerShell 7+ recommended (but works on 5.1)
+# Logic: Accepts a ScriptBlock and metadata, runs it while tracking duration
+# Returns: Hashtable { Success, Duration, Result }
+# Side-effects: Writes progress and logs
+# ================================================================
+# ================================================================
+# Function: Start-ProgressTrackedOperation
+# ================================================================
+# Purpose: Initialize a tracked operation structure for long-running
+#          processes. The returned object allows the caller to update
+#          progress, set messages, and finalize timing metrics.
+# Environment: In-memory helper; integrates with Write-TaskProgress
+# Inputs: $OperationName, $TotalSteps
+# Outputs: Tracker object with Update() and Complete() methods
+# Returns: Object/Hashtable
+# Side-effects: None
+# ================================================================
 function Start-ProgressTrackedOperation {
     param(
         [Parameter(Mandatory = $true)]
@@ -2098,6 +2505,27 @@ function Start-ProgressTrackedOperation {
 # Dependencies: System app sources, registry access, package manager availability
 # Logic: Searches across all app sources using flexible pattern matching, returns standardized results
 # Features: Multi-source search, pattern matching, detailed app information, source identification
+# ================================================================
+# ================================================================
+# Function: Find-AppInstallations
+# ================================================================
+# Purpose: Locate installed applications on disk and in registries by pattern
+# Environment: Windows file system and registry access required
+# Logic: Uses pattern matching and known install paths to find executables
+# Returns: Array of installation objects (Path, Version, Publisher)
+# Side-effects: None (detection only)
+# ================================================================
+# ================================================================
+# Function: Find-AppInstallations
+# ================================================================
+# Purpose: Search the system for instances of a named application
+#          across multiple sources (registry, appx, winget, choco) and
+#          return canonical install locations and identifiers.
+# Environment: Read-only system inspection
+# Inputs: $AppPattern (string or regex)
+# Outputs: Array of install records { Name, Path, Source, Version }
+# Returns: Array
+# Side-effects: None
 # ================================================================
 function Find-AppInstallations {
     param(
@@ -2175,6 +2603,29 @@ function Find-AppInstallations {
 # Dependencies: Package managers, AppX removal capabilities, administrator privileges
 # Logic: Finds matching apps, confirms removal safety, executes removal with progress tracking
 # Features: Safety checks, progress tracking, detailed logging, rollback on critical failures
+# ================================================================
+# ================================================================
+# Function: Remove-AppsByPattern
+# ================================================================
+# Purpose: Remove applications matching a set of patterns using configured
+#          package managers or native uninstall strings where available.
+# Environment: Windows with appropriate uninstaller access
+# Logic: Matches patterns, chooses safest uninstall method, performs removal
+# Returns: Array of results for each uninstall attempt
+# Side-effects: Uninstalls applications; use with care
+# ================================================================
+# ================================================================
+# Function: Remove-AppsByPattern
+# ================================================================
+# Purpose: Remove matching apps using the best available method per
+#          installation source (Appx removal, registry-based uninstall,
+#          winget/choco). Executes in a safe, logged manner with retries
+#          and dry-run support.
+# Environment: May require admin rights depending on source
+# Inputs: $Pattern, $WhatIf (switch), $Force (switch)
+# Outputs: Array of results per attempted uninstall
+# Returns: Array of hashtables { Name, Source, Success, Details }
+# Side-effects: Removes software from the system when invoked without WhatIf
 # ================================================================
 function Remove-AppsByPattern {
     param(
@@ -2296,6 +2747,36 @@ function Remove-AppsByPattern {
     finally {
         Write-Log "[END] Pattern-based App Removal" 'INFO'
     }
+}
+
+# ================================================================
+# Function: Install-AppsByCategory
+# ================================================================
+# Purpose: Install groups of applications by category (e.g., Browsers,
+#          Document Tools) using configured package managers and strategies.
+# Environment: Windows with package managers available for each category
+# Logic: Iterates over a category list, resolves conflicts, and installs
+# Returns: Summary object with successes/failures and timing
+# Side-effects: Installs software (may require reboots)
+# ================================================================
+# ================================================================
+# Function: Install-AppsByCategory
+# ================================================================
+# Purpose: Install a curated set of 'essential' apps grouped by category
+#          (WebBrowsers, SystemTools, Communication, etc.) using the
+#          configured package manager and respecting $global:Config
+#          preferences and exclusions.
+# Environment: Network access recommended; may require reboots for some installers
+# Inputs: $Category (string), $Options (hashtable)
+# Outputs: Installation results and logs
+# Returns: Array of results per package
+# Side-effects: Installs software and may alter system settings
+# ================================================================
+function Install-AppsByCategory {
+    param(
+        [string]$Category
+    )
+    # ...existing code...
 }
 
 # ================================================================
@@ -2530,6 +3011,20 @@ function Invoke-WindowsPowerShellCommand {
 # ================================================================
 # Function: Get-AppxPackageCompatible
 # ================================================================
+# Purpose: Wrapper around Get-AppxPackage designed to be compatible across
+#          different PowerShell versions and with added error handling.
+# Environment: Windows with AppX support
+# Logic: Runs Get-AppxPackage and normalizes results
+# Returns: Array of Appx package objects
+# Side-effects: None
+# ================================================================
+function Get-AppxPackageCompatible {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Get-AppxPackageCompatible
+# ================================================================
 # Purpose: Cross-version AppX package enumeration with enhanced compatibility and error handling
 # Environment: Windows 10/11, AppX subsystem access, supports both user and system-wide package queries
 # Logic: Provides consistent AppX package enumeration across different Windows versions with graceful error handling
@@ -2619,6 +3114,18 @@ function Remove-AppxPackageCompatible {
 # ================================================================
 # Function: Get-AppxProvisionedPackageCompatible
 # ================================================================
+# Purpose: Enumerate provisioned Appx packages from image/OS and normalize
+# Environment: Requires DISM/Appx cmdlets where available
+# Returns: Array of provisioned package objects
+# Side-effects: None
+# ================================================================
+function Get-AppxProvisionedPackageCompatible {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Get-AppxProvisionedPackageCompatible
+# ================================================================
 # Purpose: Cross-version provisioned AppX package enumeration for system-wide package management
 # Environment: Requires Administrator privileges and DISM/AppX module access for system image operations
 # Logic: Returns array of provisioned package objects for preventing installation on new user accounts
@@ -2693,6 +3200,18 @@ function Get-AppXBloatware {
         Write-Log "Error in Get-AppXBloatware: $_" 'ERROR'
         return @()
     }
+}
+
+# ================================================================
+# Function: Get-WingetBloatware
+# ================================================================
+# Purpose: Query winget/installed seeds to find apps matching bloatware patterns
+# Environment: Requires winget; degrades gracefully if absent
+# Returns: Array of candidate objects
+# Side-effects: None
+# ================================================================
+function Get-WingetBloatware {
+    # ...existing code...
 }
 
 # ================================================================
@@ -2798,6 +3317,18 @@ function Get-ChocolateyBloatware {
 # ================================================================
 # Function: Get-RegistryBloatware
 # ================================================================
+# Purpose: Cross-check registry-based installed apps against bloatware patterns
+# Environment: Windows registry access required
+# Returns: Array of candidate uninstall objects
+# Side-effects: None
+# ================================================================
+function Get-RegistryBloatware {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Get-RegistryBloatware
+# ================================================================
 # Purpose: Discover bloatware in Windows Registry uninstall keys
 # Environment: Windows, requires registry access
 # Performance: Fast, leverages existing registry scan logic
@@ -2882,6 +3413,18 @@ function Get-BrowserExtensionsBloatware {
         Write-Log "Error in Get-BrowserExtensionsBloatware: $_" 'ERROR'
         return @()
     }
+}
+
+# ================================================================
+# Function: Get-ContextMenuBloatware
+# ================================================================
+# Purpose: Detect context menu shell extensions that match bloatware patterns
+# Environment: Windows registry and file-system access
+# Returns: Array of extension objects
+# Side-effects: None
+# ================================================================
+function Get-ContextMenuBloatware {
+    # ...existing code...
 }
 
 # ================================================================
@@ -2975,6 +3518,31 @@ function Get-StartupProgramsBloatware {
         Write-Log "Error in Get-StartupProgramsBloatware: $_" 'ERROR'
         return @()
     }
+}
+
+# ================================================================
+# Function: Get-ProvisionedAppxBloatware
+# ================================================================
+# Purpose: Identify provisioned Appx packages that are considered bloatware
+# Environment: DISM/Appx provisioning queries supported
+# Returns: Array of provisioned package objects
+# Side-effects: None
+# ================================================================
+function Get-ProvisionedAppxBloatware {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Remove-AppxProvisionedPackageCompatible
+# ================================================================
+# Purpose: Remove a provisioned Appx package from the image/OS safely
+# Environment: Requires DISM/Appx provisioning cmdlets and admin rights
+# Logic: Validates package identity, attempts removal, logs results
+# Returns: [bool] success/failure
+# Side-effects: Alters provisioned Appx package list
+# ================================================================
+function Remove-AppxProvisionedPackageCompatible {
+    # ...existing code...
 }
 
 # ================================================================
@@ -3091,6 +3659,20 @@ function Remove-AppxProvisionedPackageCompatible {
 # ================================================================
 # Function: Invoke-WindowsUpdateWithSuppressionHelpers
 # ================================================================
+# Purpose: Run Windows Update API calls with environment variable suppression
+#          for automated, non-interactive runs (supresses prompts and reboots).
+# Environment: Windows with PSWindowsUpdate module (optional) and admin rights
+# Logic: Sets environment variables that influence PSWindowsUpdate behavior
+# Returns: Structured result object including UpdateCount and RebootRequired
+# Side-effects: May trigger downloads/installs depending on configuration
+# ================================================================
+function Invoke-WindowsUpdateWithSuppressionHelpers {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Invoke-WindowsUpdateWithSuppressionHelpers
+# ================================================================
 # Purpose: Helper function to completely suppress Windows Update prompts and handle reboot detection
 # Environment: PowerShell job isolation, environment variable control
 # Logic: Uses job isolation and environment controls to prevent interactive prompts
@@ -3152,6 +3734,20 @@ function Invoke-WindowsUpdateWithSuppressionHelpers {
         Remove-Item -Path 'env:BATCH_MODE' -ErrorAction SilentlyContinue
         Remove-Item -Path 'env:NO_REBOOT_PROMPT' -ErrorAction SilentlyContinue
     }
+}
+
+# ================================================================
+# Function: Install-WindowsUpdatesCompatible
+# ================================================================
+# Purpose: Install Windows Updates in a way compatible with multiple PS
+#          versions and with non-interactive automation-safe defaults.
+# Environment: Windows with update access; admin rights recommended
+# Logic: Uses PSWindowsUpdate where available and falls back to built-ins
+# Returns: Hashtable with Success, InstalledCount, RebootRequired
+# Side-effects: Installs Windows Updates and may require reboots
+# ================================================================
+function Install-WindowsUpdatesCompatible {
+    # ...existing code...
 }
 
 # ================================================================
@@ -3375,6 +3971,19 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
 # ================================================================
 # Function: Get-StartAppsCompatible
 # ================================================================
+# Purpose: Retrieve start-menu pinned apps and normalize for inventory
+# Environment: Windows shell API access
+# Logic: Enumerates shortcuts and maps them to known packages
+# Returns: Array of app objects { Name, Path, Shortcut }
+# Side-effects: None
+# ================================================================
+function Get-StartAppsCompatible {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Get-StartAppsCompatible
+# ================================================================
 # Purpose: Cross-version Start Menu apps enumeration for system analysis and app management
 # Environment: Windows 10/11, Start Menu subsystem access, user context for personalized apps
 # Logic: Retrieves Start Menu apps with error handling for system compatibility
@@ -3389,6 +3998,34 @@ function Get-StartAppsCompatible {
         Write-Log "Failed to get Start apps: $_" 'WARN'
         return @()
     }
+}
+
+# ================================================================
+# Function: Get-OptimizedSystemInventory
+# ================================================================
+# Purpose: Produce an optimized (trimmed) system inventory used for reports
+# Environment: PowerShell 7+ recommended for performance
+# Logic: Runs a subset of Get-ExtensiveSystemInventory and filters fields
+# Returns: Hashtable/object optimized for reporting
+# Side-effects: None
+# ================================================================
+function Get-OptimizedSystemInventory {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Get-ExtensiveSystemInventory
+# ================================================================
+# Purpose: Collect a comprehensive system inventory including hardware,
+#          installed software, services, scheduled tasks, drivers, and more.
+# Environment: Windows with WMI/CIM access; may require elevated permissions
+# Logic: Aggregates data from multiple sources into a single object for
+#        diagnostics and reporting
+# Returns: Hashtable/object containing many subsystem inventories
+# Side-effects: None (read-only collection)
+# ================================================================
+function Get-ExtensiveSystemInventory {
+    # ...existing code...
 }
 
 # ================================================================
@@ -3831,6 +4468,19 @@ function Get-ExtensiveSystemInventory {
 }
 
 # ================================================================
+# Function: Get-WindowsFeaturesBloatware
+# ================================================================
+# Purpose: Identify Windows optional features that match the configured
+#          bloatware patterns for optional removal via DISM or Remove-WindowsFeature
+# Environment: Requires DISM or Windows feature cmdlets
+# Returns: Array of feature objects
+# Side-effects: None (detection only)
+# ================================================================
+function Get-WindowsFeaturesBloatware {
+    # ...existing code...
+}
+
+# ================================================================
 # REUSABLE UTILITY FUNCTIONS: Enhanced Bloatware Detection System
 # ================================================================
 
@@ -3915,6 +4565,19 @@ function Get-WindowsFeaturesBloatware {
     $duration = ((Get-Date) - $startTime).TotalSeconds
     Write-Log "[END] Windows Features scan: $($found.Count) bloatware features found in ${duration}s" 'INFO'
     return $found
+}
+
+# ================================================================
+# Function: Get-ServicesBloatware
+# ================================================================
+# Purpose: Detect registered Windows services that match bloatware naming
+#          patterns and prepare them for optional disabling/removal
+# Environment: Requires service-querying access
+# Returns: Array of service objects { Name, DisplayName, Path }
+# Side-effects: None (detection only)
+# ================================================================
+function Get-ServicesBloatware {
+    # ...existing code...
 }
 
 # ================================================================
@@ -4013,6 +4676,18 @@ function Get-ServicesBloatware {
 # ================================================================
 # Function: Get-ScheduledTasksBloatware
 # ================================================================
+# Purpose: Enumerate scheduled tasks and match against bloatware patterns
+# Environment: Windows Task Scheduler access
+# Returns: Array of scheduled task objects
+# Side-effects: None
+# ================================================================
+function Get-ScheduledTasksBloatware {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Get-ScheduledTasksBloatware
+# ================================================================
 # Purpose: Detect bloatware scheduled tasks (telemetry, feedback, Adobe updaters, etc.)
 # Environment: Windows 10/11, requires Task Scheduler access, minimal privileges needed
 # Performance: Optimized task enumeration, cached results, selective scanning
@@ -4102,6 +4777,19 @@ function Get-ScheduledTasksBloatware {
     $duration = ((Get-Date) - $startTime).TotalSeconds
     Write-Log "[END] Scheduled Tasks scan: $($found.Count) bloatware tasks found in ${duration}s" 'INFO'
     return $found
+}
+
+# ================================================================
+# Function: Get-StartMenuBloatware
+# ================================================================
+# Purpose: Scan Start Menu shortcuts to find applications that match
+#          bloatware lists and report them for action
+# Environment: File-system access to Start Menu folders
+# Returns: Array of shortcut objects
+# Side-effects: None
+# ================================================================
+function Get-StartMenuBloatware {
+    # ...existing code...
 }
 
 # ================================================================
@@ -4207,6 +4895,33 @@ function Get-StartMenuBloatware {
     $duration = ((Get-Date) - $startTime).TotalSeconds
     Write-Log "[END] Start Menu scan: $($found.Count) bloatware shortcuts found in ${duration}s" 'INFO'
     return $found
+}
+
+# ================================================================
+# Function: Get-ComprehensiveBloatwareInventory
+# ================================================================
+# Purpose: Consolidate all bloatware detection sources into a single
+#          canonical list for removal operations
+# Environment: Aggregates results from all Get-*-Bloatware functions
+# Returns: Array of canonical bloatware candidate objects
+# Side-effects: None
+# ================================================================
+function Get-ComprehensiveBloatwareInventory {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Remove-Bloatware
+# ================================================================
+# Purpose: Orchestrate the safe removal of bloatware using multiple
+#          removal methods (Appx, registry uninstallers, winget/choco)
+# Environment: Administrative rights recommended; may require reboots
+# Logic: Consolidates candidates, chooses safest removal mechanism per-item
+# Returns: Summary object with counters and detailed results
+# Side-effects: Uninstalls applications and may affect user-installed apps
+# ================================================================
+function Remove-Bloatware {
+    # ...existing code...
 }
 
 # ================================================================
@@ -5390,6 +6105,20 @@ function Remove-Bloatware {
     Write-Log "[END] Ultra-Enhanced Bloatware Removal - Diff-Based Processing Complete" 'INFO'
 }
 
+# ================================================================
+# Function: Install-EssentialApps
+# ================================================================
+# Purpose: Install a curated set of essential applications (and optional
+#          custom additions) using package managers in parallel when safe.
+# Environment: Windows with package managers available (winget, choco)
+# Logic: Resolves category lists, applies conflict resolution, and installs
+# Returns: Summary with installed, skipped, and failed lists
+# Side-effects: Installs software; network access required
+# ================================================================
+function Install-EssentialApps {
+    # ...existing code...
+}
+
 # ===============================
 # SECTION 5: ESSENTIAL APPS MANAGEMENT
 # ===============================
@@ -5942,6 +6671,20 @@ function Install-EssentialApps {
 # ================================================================
 # Function: Set-FirefoxuBlockOrigin
 # ================================================================
+# Purpose: Automate Firefox configuration to install uBlock Origin and
+#          set recommended privacy settings for managed deployments.
+# Environment: Firefox installed; access to profile folder(s)
+# Logic: Attempts to locate profiles and apply extension or preferences
+# Returns: Status object summarizing applied changes
+# Side-effects: Modifies browser profiles and extensions
+# ================================================================
+function Set-FirefoxuBlockOrigin {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Set-FirefoxuBlockOrigin
+# ================================================================
 # Purpose: Configure Firefox with uBlock Origin extension using Mozilla ExtensionSettings policy
 # Environment: Windows 10/11, Firefox installation required, Administrator privileges recommended
 # Performance: Fast, configuration-based, no external downloads required
@@ -6056,6 +6799,34 @@ function Set-FirefoxuBlockOrigin {
     }
     
     Write-Log "[END] Configure Firefox with uBlock Origin" 'INFO'
+}
+
+# ================================================================
+# Function: Update-AllPackages
+# ================================================================
+# Purpose: Run package manager updates for winget, choco, and others in
+#          a coordinated manner with logging and timeout safeguards.
+# Environment: Package managers may or may not be present; function
+#              degrades gracefully if unavailable
+# Logic: Detects available managers, runs updates, collects outputs
+# Returns: Summary object with successes/failures and logs
+# Side-effects: Updates installed packages
+# ================================================================
+function Update-AllPackages {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Enable-AppBrowserControl
+# ================================================================
+# Purpose: Enable browser-based application control and related policies
+# Environment: Windows with Group Policy or registry access (admin)
+# Logic: Applies recommended registry/policy changes to lock down browser behavior
+# Returns: Hashtable with applied changes
+# Side-effects: Alters system policies that may require user re-login
+# ================================================================
+function Enable-AppBrowserControl {
+    # ...existing code...
 }
 
 # ===============================
@@ -6456,6 +7227,19 @@ function Enable-AppBrowserControl {
     }
     Write-Log "[END] Enabling App & Browser Control" 'INFO'
 }
+
+# ================================================================
+# Function: Disable-SpotlightMeetNowNewsLocation
+# ================================================================
+# Purpose: Disable or restrict UI elements like Spotlight/MeetNow/News
+# Environment: Windows registry/policy access may be required
+# Logic: Applies registry tweaks and removes shortcuts where appropriate
+# Returns: Status summary
+# Side-effects: Changes user-visible UI behavior
+# ================================================================
+function Disable-SpotlightMeetNowNewsLocation {
+    # ...existing code...
+}
 # ================================================================
 # Function: Disable-SpotlightMeetNowNewsLocation
 # ================================================================
@@ -6619,6 +7403,19 @@ function Disable-SpotlightMeetNowNewsLocation {
         Write-Log "Error disabling Spotlight/Meet Now/News/Location: $_" 'ERROR'
     }
     Write-Log "[END] Disabling Spotlight, Meet Now, News/Interests, Widgets, and Location" 'INFO'
+}
+
+# ================================================================
+# Function: Optimize-TaskbarAndDesktopUI
+# ================================================================
+# Purpose: Tweak Taskbar and Desktop UI settings for a cleaner user experience
+# Environment: Windows Shell and registry access required
+# Logic: Adjusts taskbar grouping, live tiles, icons, and system tray items
+# Returns: Status summary
+# Side-effects: Modifies user experience settings
+# ================================================================
+function Optimize-TaskbarAndDesktopUI {
+    # ...existing code...
 }
 
 # ================================================================
@@ -6848,6 +7645,20 @@ function Optimize-TaskbarAndDesktopUI {
 # ================================================================
 # Function: Disable-Telemetry
 # ================================================================
+# Purpose: Apply recommended privacy/telemetry disables that are safe for
+#          automated unattended runs (respecting opt-out flags in config)
+# Environment: Windows with registry and service management access
+# Logic: Disables telemetry services and registry-based telemetry settings
+# Returns: Summary of changes applied
+# Side-effects: Alters telemetry and diagnostics behavior
+# ================================================================
+function Disable-Telemetry {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Disable-Telemetry
+# ================================================================
 # Purpose: Comprehensive disabling of Windows telemetry, privacy-invasive features, and browser tracking with optimization
 # Environment: Windows 10/11, Administrator required, registry/service/browser modification access, system-wide privacy configuration
 # Performance: Parallel browser detection, batch registry operations, optimized service management, action-focused logging
@@ -7017,6 +7828,21 @@ function Disable-Telemetry {
 # ================================================================
 # Function: Protect-SystemRestore
 # ================================================================
+# Purpose: Ensure System Restore is enabled and create a restore point before
+#          performing maintenance when configured to do so.
+# Environment: Windows with System Restore features available; admin required
+# Logic: Checks existing restore points, enables protection if needed and
+#        creates a checkpoint restore point prior to destructive actions
+# Returns: Hashtable with status and created checkpoint ID (if any)
+# Side-effects: Creates system restore points (uses storage)
+# ================================================================
+function Protect-SystemRestore {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Protect-SystemRestore
+# ================================================================
 # Purpose: PowerShell 7+ native system restore protection with enhanced compatibility and comprehensive restore point management
 # Environment: Windows 10/11, requires Administrator privileges, system restore capability verification, disk space management
 # Performance: Fast native PowerShell operations, parallel disk checking, optimized restore point creation with intelligent scheduling
@@ -7136,6 +7962,34 @@ try {
     }
 } catch {
     Write-Output "WMI Error:`$(`$_.Exception.Message)"
+}
+
+# ================================================================
+# Function: Clear-OldRestorePoints
+# ================================================================
+# Purpose: Clean up older system restore points to conserve disk space while
+#          keeping a minimum set as configured ($global:Config.MinRestorePointsToKeep)
+# Environment: Uses VSS or WMI depending on platform availability
+# Returns: Summary of removed/kept restore points
+# Side-effects: Deletes old restore points (irreversible)
+# ================================================================
+function Clear-OldRestorePoints {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Get-EventLogAnalysis
+# ================================================================
+# Purpose: Analyze key Windows event logs to detect recurring errors or
+#          warnings that may indicate system issues prior to/after maintenance
+# Environment: Requires Event Log read access; admin recommended for full logs
+# Logic: Reads relevant event channels, filters by severity and recency,
+#        and returns a summarized view for reporting
+# Returns: Hashtable with counts and sample events per channel
+# Side-effects: None (read-only)
+# ================================================================
+function Get-EventLogAnalysis {
+    # ...existing code...
 }
 "@
                 
@@ -7655,6 +8509,19 @@ function Get-EventLogAnalysis {
 # ================================================================
 # Function: Install-WindowsUpdatesCompatible
 # ================================================================
+# Purpose: Install Windows Updates in a non-interactive and automated manner
+# Environment: Windows with admin privileges; uses PSWindowsUpdate when available
+# Logic: Detects update availability, applies updates, and records reboot requirement
+# Returns: Hashtable { Success, InstalledCount, RebootRequired }
+# Side-effects: Triggers update installation and may require reboots
+# ================================================================
+function Install-WindowsUpdatesCompatible {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Install-WindowsUpdatesCompatible
+# ================================================================
 # Purpose: PowerShell 5.1 compatible Windows Updates installation with enhanced error handling and progress tracking
 # Environment: Windows 10/11, requires Administrator privileges, PSWindowsUpdate module or Windows Update API access
 # Performance: Optimized for compatibility across PowerShell versions, parallel update detection, intelligent retry logic
@@ -7792,6 +8659,20 @@ function Install-WindowsUpdatesCompatible {
     }
 
     Write-Log "[END] Windows Updates Installation" 'INFO'
+}
+
+# ================================================================
+# Function: Clear-TempFiles
+# ================================================================
+# Purpose: Remove temporary files from configured temp locations (including
+#          `$global:TempFolder`) while preserving important caches and logs
+# Environment: File-system access; may require admin for some paths
+# Logic: Iterates configured temp paths, applies safe deletion rules, logs results
+# Returns: Summary object with deleted file counts and errors
+# Side-effects: Deletes files; be cautious in multi-user systems
+# ================================================================
+function Clear-TempFiles {
+    # ...existing code...
 }
 
 # ================================================================
@@ -7944,6 +8825,21 @@ function Clear-TempFiles {
 # ================================================================
 # Function: Remove-AllTempFiles
 # ================================================================
+# Purpose: Aggressively remove the repository temp folder contents and
+#          attempt a robust cleanup using robocopy fallback when needed
+# Environment: Administrative or adequate file-permission context
+# Logic: Attempts direct removal; if locked, uses robocopy to mirror an
+#        empty folder to clear contents; logs progress and errors
+# Returns: [bool] success/failure
+# Side-effects: Deletes files in `$global:TempFolder`
+# ================================================================
+function Remove-AllTempFiles {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Remove-AllTempFiles
+# ================================================================
 # Purpose: Comprehensive cleanup of all temporary files and folders created by the script, ensuring complete removal of repo temp folder
 # Environment: Windows 10/11, file system access to temp directories, proper cleanup verification
 # Performance: Fast enumeration and safe deletion, comprehensive error handling, detailed logging
@@ -8087,6 +8983,34 @@ function Remove-AllTempFiles {
     
     Write-Log "[END] Complete Temporary Files and Folder Cleanup - Success: $($cleanupResults.Success)" 'INFO'
     return $cleanupResults
+}
+
+# ================================================================
+# Function: Start-SystemHealthRepair
+# ================================================================
+# Purpose: Trigger system health repairs such as SFC, DISM, and other
+#          recovery operations when configured or when errors are detected
+# Environment: Requires admin privileges; operations may be long-running
+# Logic: Runs SFC /scannow, DISM restorehealth and other recommended checks
+# Returns: Hashtable with results and any suggested follow-ups
+# Side-effects: Can modify system files and require reboots
+# ================================================================
+function Start-SystemHealthRepair {
+    # ...existing code...
+}
+
+# ================================================================
+# Function: Start-DefenderFullScan
+# ================================================================
+# Purpose: Launch a full Windows Defender scan (or other AV tool) and
+#          collect results for reporting
+# Environment: Windows with Microsoft Defender available (or compatible AV)
+# Logic: Uses Windows Defender cmdlets where available and logs scan results
+# Returns: Hashtable { Success, ThreatsFound, ScanTime }
+# Side-effects: CPU and IO intensive while scanning
+# ================================================================
+function Start-DefenderFullScan {
+    # ...existing code...
 }
 
 # ================================================================
@@ -9152,6 +10076,20 @@ Quarantine Items Added: $($cleanup.QuarantineIncrease)
     }
 }
 
+# ================================================================
+# Function: Write-TempListsSummary
+# ================================================================
+# Purpose: Summarize temporary lists created during execution (bloatware,
+#          essential apps, inventory snapshots) and write them to the temp folder
+# Environment: Requires $global:TempFolder to be writable
+# Logic: Reads created temp lists and produces a compact summary for report
+# Returns: None (writes files and log entries)
+# Side-effects: Creates/updates files under `$global:TempFolder`
+# ================================================================
+function Write-TempListsSummary {
+    # ...existing code...
+}
+
 # ===============================
 # SECTION 7: REPORTING & ANALYTICS
 # ===============================
@@ -9295,6 +10233,20 @@ function Write-TempListsSummary {
     
     Write-Log "Temporary lists summary generated: $summaryPath" 'INFO'
     Write-Log "[END] Temporary Lists Summary Generation" 'INFO'
+}
+
+# ================================================================
+# Function: Write-UnifiedMaintenanceReport
+# ================================================================
+# Purpose: Generate the final human-readable maintenance report including
+#          system inventory, task results, timings, and key output files
+# Environment: Requires write access to parent directory for `maintenance_report.txt`
+# Logic: Aggregates system info and task results into a unified text report
+# Returns: Path to the generated report
+# Side-effects: Writes report to disk
+# ================================================================
+function Write-UnifiedMaintenanceReport {
+    # ...existing code...
 }
 
 # ================================================================
