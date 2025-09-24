@@ -18,6 +18,25 @@
 - No redundant admin, version, or dependency checks in script.ps1
 - All status messages are current and relevant; no legacy or comparison messages
 
+## Recent changes (September 2025)
+
+- Deferred post-execution cleanup: The PowerShell orchestrator (`script.ps1`) defers temporary file and repository removal until after the interactive 120-second countdown. If the user interacts during the countdown, cleanup is skipped and the terminal remains open for inspection.
+- Repo-local temp folder: The script prefers a repository-local `temp_files/` folder (derived from `$ScriptDir`) for all temporary artifacts and falls back to the system temp folder only on failure.
+- Countdown & abort semantics: `script.ps1` performs a 120-second countdown at the end of execution. If the countdown completes with no user input the script proceeds to run cleanup and — if required — initiate a reboot. If the user presses any key during the countdown the script sets an abort flag and skips cleanup, reboot and terminal closure.
+- Interpolation fixes: Ambiguous PowerShell string interpolation occurrences (e.g., variable followed by a colon) were fixed by delimiting variables using `${...}` to avoid parser diagnostics.
+- Documentation progress: Function header comments and conditional-block comments were added across `script.ps1` and `script.bat` in multiple batched edits. Post-edit diagnostics report no errors.
+
+## Post-execution behavior (how cleanup & reboot work)
+
+- The post-execution sequence writes a detailed execution summary and unified reports to the log and report files.
+- At the end of the script, when running in an interactive console, the script begins a 120-second countdown. The countdown watches for user key presses. If any key is pressed during this time:
+  - The script sets an abort flag, skips temp/repo cleanup, does not initiate a reboot, and keeps the terminal open for manual inspection.
+  - A reminder about manual reboot or manual cleanup is printed when relevant.
+- If no key is pressed during the countdown:
+  - The script runs `Remove-AllTempFiles` and attempts to delete the repository folder (first via Remove-Item, and as fallback via robocopy mirroring an empty folder).
+  - If a reboot is required (detected via global flags or registry indicators), the script initiates a restart; otherwise it closes the terminal window after a short delay.
+
+
 
 # 🚀 Windows Maintenance Script (2025 Edition)
 

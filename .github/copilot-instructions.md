@@ -18,6 +18,14 @@
 - No redundant admin, version, or dependency checks in script.ps1
 - All status messages are current and relevant; no legacy or comparison messages
 
+## Recent changes (September 2025)
+
+- Deferred post-execution cleanup: Temporary files and repository folder removal are deferred until after the interactive 120-second countdown in `script.ps1`. If the user interacts during the countdown the script will skip cleanup and keep the terminal open for inspection.
+- Repo-local temp folder: The script now prefers a repository-local `temp_files/` folder (based on `$ScriptDir`) and falls back to the system temp folder only when creating the repo-local folder fails. All temp file creation and cleanup use this centralized folder.
+- Countdown & abort semantics: During post-execution the script performs a 120-second countdown. If the countdown completes with no user interaction the script performs cleanup and will reboot or close the terminal depending on restart requirements. If the user presses a key during the countdown the script sets an abort flag, skips cleanup, does not reboot, and keeps the console open for operator review.
+- Interpolation diagnostics fixed: Ambiguous PowerShell interpolation occurrences (for example variable followed by a colon) were corrected by delimiting variables using `${...}` to avoid PowerShell parsing diagnostics.
+- Documentation progress: Many function header comments were added across `script.ps1` and selected conditional blocks in `script.bat`. Diagnostics checks were run after each batch of edits and currently show no errors.
+
 
 
 # Copilot Instructions for Windows Maintenance Automation Project

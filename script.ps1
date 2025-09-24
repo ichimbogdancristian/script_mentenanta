@@ -10870,92 +10870,13 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
 
     Write-Log "[POST-EXECUTION] Starting post-execution cleanup and system state analysis" 'INFO'
     
-    # STEP 0: Clean up all temporary files and folders created by the script
-    Write-Log "[CLEANUP] Removing all temporary files and folders from repository" 'INFO'
-    Write-Host "🗑️  Cleaning up temporary files..." -ForegroundColor Yellow
-    Remove-AllTempFiles
-    
-    # STEP 1: Always remove repository directory after task completion
-    Write-Log "[CLEANUP] Initiating repository directory removal" 'INFO'
-    Write-Host "🧹 Starting repository cleanup..." -ForegroundColor Cyan
-    
+    # NOTE: Cleanup and repository removal are deferred until AFTER the interactive
+    # countdown. If the user interacts during the countdown (sets $abort = $true),
+    # we intentionally skip cleaning repo/temp files and we leave the terminal open
+    # so the operator can inspect logs or manually remove files. The actual cleanup
+    # is performed later only when the countdown finishes without user interaction.
     $repoFolder = $ScriptDir
     $repoCleanupSuccess = $false
-    
-    try {
-        # Navigate to parent directory before removing repository folder
-        $parentPath = Split-Path -Path $repoFolder -Parent
-        if (Test-Path -Path $parentPath) {
-            Set-Location -Path $parentPath
-            Write-Host "📁 Changed directory to: $parentPath" -ForegroundColor Yellow
-            Write-Log "[CLEANUP] Changed working directory to parent: $parentPath" 'INFO'
-            
-            # Allow time for directory change to take effect
-            Start-Sleep -Milliseconds 500
-        }
-        
-        # Force garbage collection to release any file handles
-        [System.GC]::Collect()
-        [System.GC]::WaitForPendingFinalizers()
-        [System.GC]::Collect()
-        Write-Log "[CLEANUP] Performed garbage collection to release file handles" 'INFO'
-        
-        # Additional delay to ensure all handles are released
-        Start-Sleep -Seconds 1
-        
-        # Remove repository folder with enhanced error handling
-        if (Test-Path -Path $repoFolder) {
-            Write-Host "🗑️  Removing repository folder: $repoFolder" -ForegroundColor Yellow
-            Write-Log "[CLEANUP] Attempting repository folder removal: $repoFolder" 'INFO'
-            
-            # First attempt: Standard removal
-            try {
-                Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
-                Write-Host "✅ Repository folder removed successfully" -ForegroundColor Green
-                Write-Log "[CLEANUP] Repository folder removed successfully using standard method" 'INFO'
-                $repoCleanupSuccess = $true
-            }
-            catch {
-                Write-Host "⚠️  Standard removal failed, trying alternative method..." -ForegroundColor Yellow
-                Write-Log "[CLEANUP] Standard removal failed: $($_.Exception.Message)" 'WARN'
-                
-                # Second attempt: Use robocopy for stubborn folders
-                try {
-                    $tempEmptyDir = Join-Path $parentPath "temp_empty_$(Get-Random)"
-                    New-Item -Path $tempEmptyDir -ItemType Directory -Force | Out-Null
-                    Write-Log "[CLEANUP] Created temporary empty directory: $tempEmptyDir" 'INFO'
-                    
-                    # Use robocopy to mirror empty directory (effectively deleting)
-                    $repoCleanupProcess = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$repoFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
-                    $repoExitCode = $repoCleanupProcess.ExitCode
-                    Write-Log "[CLEANUP] Robocopy cleanup exit code: $repoExitCode" 'INFO'
-                    
-                    # Clean up temp directory and try final removal
-                    Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
-                    Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
-                    Write-Host "✅ Repository folder removed using alternative method" -ForegroundColor Green
-                    Write-Log "[CLEANUP] Repository folder removed successfully using robocopy method" 'INFO'
-                    $repoCleanupSuccess = $true
-                }
-                catch {
-                    Write-Host "❌ Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
-                    Write-Host "⚠️  Manual removal may be required: $repoFolder" -ForegroundColor Yellow
-                    Write-Log "[CLEANUP] Repository folder removal failed: $($_.Exception.Message)" 'ERROR'
-                    $repoCleanupSuccess = $false
-                }
-            }
-        }
-        else {
-            Write-Host "⚠️  Repository folder not found: $repoFolder" -ForegroundColor Yellow
-            Write-Log "[CLEANUP] Repository folder not found: $repoFolder" 'WARN'
-            $repoCleanupSuccess = $true  # Consider success if already gone
-        }
-    }
-    catch {
-        Write-Host "❌ Unexpected error during repository cleanup: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "[CLEANUP] Unexpected error during repository cleanup: $($_.Exception.Message)" 'ERROR'
-        $repoCleanupSuccess = $false
-    }
     
     # STEP 2: Check for pending restart requirements
     Write-Log "[RESTART-CHECK] Analyzing system restart requirements" 'INFO'
@@ -11116,7 +11037,77 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Log "[COUNTDOWN] Countdown finished. Abort status: $abort, Reboot required: $rebootRequired" 'INFO'
     if (-not $abort) {
         Write-Log "[COUNTDOWN] Countdown completed without user interaction - proceeding with automatic action" 'INFO'
-        
+
+        # Since there was no user interaction, perform cleanup of temporary files
+        # and attempt repository removal before initiating restart or closing the
+        # terminal. This ensures unattended runs clean up after themselves.
+        try {
+            Write-Log "[CLEANUP] Removing all temporary files and folders from repository (deferred)" 'INFO'
+            Write-Host "🗑️  Cleaning up temporary files..." -ForegroundColor Yellow
+            Remove-AllTempFiles
+
+            # Repository folder removal (deferred)
+            Write-Log "[CLEANUP] Initiating deferred repository directory removal" 'INFO'
+            Write-Host "🧹 Starting deferred repository cleanup..." -ForegroundColor Cyan
+
+            # Navigate to parent directory before removing repository folder
+            $parentPath = Split-Path -Path $repoFolder -Parent
+            if (Test-Path -Path $parentPath) {
+                Set-Location -Path $parentPath
+                Write-Host "📁 Changed directory to: $parentPath" -ForegroundColor Yellow
+                Write-Log "[CLEANUP] Changed working directory to parent: $parentPath" 'INFO'
+                Start-Sleep -Milliseconds 500
+            }
+
+            # Force garbage collection and brief delay
+            [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers(); [System.GC]::Collect()
+            Start-Sleep -Seconds 1
+
+            if (Test-Path -Path $repoFolder) {
+                Write-Host "🗑️  Removing repository folder: $repoFolder" -ForegroundColor Yellow
+                Write-Log "[CLEANUP] Attempting repository folder removal: $repoFolder" 'INFO'
+                try {
+                    Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
+                    Write-Host "✅ Repository folder removed successfully" -ForegroundColor Green
+                    Write-Log "[CLEANUP] Repository folder removed successfully using standard method" 'INFO'
+                    $repoCleanupSuccess = $true
+                }
+                catch {
+                    Write-Host "⚠️  Standard removal failed, trying alternative method..." -ForegroundColor Yellow
+                    Write-Log "[CLEANUP] Standard removal failed: $($_.Exception.Message)" 'WARN'
+                    try {
+                        $tempEmptyDir = Join-Path $parentPath "temp_empty_$(Get-Random)"
+                        New-Item -Path $tempEmptyDir -ItemType Directory -Force | Out-Null
+                        Write-Log "[CLEANUP] Created temporary empty directory: $tempEmptyDir" 'INFO'
+                        $repoCleanupProcess = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$repoFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
+                        $repoExitCode = $repoCleanupProcess.ExitCode
+                        Write-Log "[CLEANUP] Robocopy cleanup exit code: $repoExitCode" 'INFO'
+                        Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
+                        Remove-Item -Path $repoFolder -Recurse -Force -ErrorAction Stop
+                        Write-Host "✅ Repository folder removed using alternative method" -ForegroundColor Green
+                        Write-Log "[CLEANUP] Repository folder removed successfully using robocopy method" 'INFO'
+                        $repoCleanupSuccess = $true
+                    }
+                    catch {
+                        Write-Host "❌ Failed to remove repository folder: $($_.Exception.Message)" -ForegroundColor Red
+                        Write-Host "⚠️  Manual removal may be required: $repoFolder" -ForegroundColor Yellow
+                        Write-Log "[CLEANUP] Repository folder removal failed: $($_.Exception.Message)" 'ERROR'
+                        $repoCleanupSuccess = $false
+                    }
+                }
+            }
+            else {
+                Write-Host "⚠️  Repository folder not found: $repoFolder" -ForegroundColor Yellow
+                Write-Log "[CLEANUP] Repository folder not found: $repoFolder" 'WARN'
+                $repoCleanupSuccess = $true
+            }
+        }
+        catch {
+            Write-Host "❌ Unexpected error during deferred repository cleanup: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "[CLEANUP] Unexpected error during deferred repository cleanup: $($_.Exception.Message)" 'ERROR'
+            $repoCleanupSuccess = $false
+        }
+
         if ($rebootRequired) {
             # No user interaction + restart needed → Close terminal + restart PC
             Write-Host "🔄 Initiating system restart and terminal closure..." -ForegroundColor Green
