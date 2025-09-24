@@ -399,6 +399,25 @@ Based on analysis of leading Windows debloating projects:
 - 💾 **Backup Recommended**: Create system backup before first run
 - 🔄 **Rollback Available**: System restore can undo changes if needed
 
+## 🔧 New configuration flags (2025 updates)
+
+Small, safe defaults were added to make runs non-interactive and enterprise-friendly by default. These are merged from `config.json` if present.
+
+- `PromptForReboot` (boolean, default: false) — When false the script will NOT prompt or automatically reboot after Windows Updates. Instead it will log that a manual restart is required and leave the terminal open. Set to `true` in `config.json` if you want the interactive countdown and automatic restart behavior.
+- `AllowDisableWerSvc` (boolean, default: false) — Prevents the script from disabling the Windows Error Reporting service (`WerSvc`) unless explicitly allowed in `config.json`. This keeps crash reporting enabled by default for safer enterprise environments.
+- `SkipWidgetsOnly` (boolean, default: false) — Reserved flag for widget-only flows (keeps existing default behavior; set to `true` to enable widget-only tweaks in future runs).
+
+Example `config.json` snippet to opt into prompting and allow WerSvc disabling:
+
+```json
+{
+  "PromptForReboot": true,
+  "AllowDisableWerSvc": true
+}
+```
+
+These flags are safe defaults and are intended to reduce unexpected reboots and avoid disabling critical reporting services unless the operator explicitly allows it.
+
 ### **What Gets Removed (Bloatware Categories)**
 - **OEM Bloatware**: Acer, ASUS, Dell, HP, Lenovo manufacturer apps
 - **Gaming Apps**: King games, casual games, Xbox apps (if not kept)

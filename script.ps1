@@ -132,13 +132,24 @@ $global:Config = @{
 $global:TaskResults = @{}
 $global:SystemInventory = $null
 $global:AppInventoryCache = $null
-$global:TempFolder = Join-Path $WorkingDirectory 'temp_files'
+# Determine repository-based temp folder. Prefer $ScriptDir (script location) when available,
+# otherwise use the configured $WorkingDirectory. If creation fails, fallback to the system temp path.
+$repoTempBase = if ($ScriptDir) { $ScriptDir } else { $WorkingDirectory }
+$global:TempFolder = Join-Path $repoTempBase 'temp_files'
 $global:BloatwareList = @()
 $global:EssentialApps = @()
 
 # Create temp directory if it doesn't exist (early initialization)
 if (-not (Test-Path $global:TempFolder)) {
-    New-Item -Path $global:TempFolder -ItemType Directory -Force | Out-Null
+    try {
+        New-Item -Path $global:TempFolder -ItemType Directory -Force | Out-Null
+        Write-Log "Created temp folder: $global:TempFolder" 'INFO'
+    }
+    catch {
+        Write-Log "Failed to create repo temp folder $global:TempFolder: $($_.Exception.Message) - falling back to system temp" 'WARN'
+        $global:TempFolder = [System.IO.Path]::GetTempPath()
+        Write-Log "Using system temp path: $global:TempFolder" 'INFO'
+    }
 }
 
 # ================================================================
@@ -739,8 +750,8 @@ function Use-AllScriptTasks {
 function Write-Log {
     param(
         [string]$Message,
-    [ValidateSet('DEBUG','INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE')]
-    [string]$Level = 'INFO',
+        [ValidateSet('DEBUG', 'INFO', 'WARN', 'ERROR', 'SUCCESS', 'PROGRESS', 'ACTION', 'COMMAND', 'VERBOSE')]
+        [string]$Level = 'INFO',
         [string]$Component = 'PS1'
     )
     
@@ -6310,77 +6321,92 @@ function Enable-AppBrowserControl {
     Write-Log "[START] Enabling App & Browser Control (SmartScreen, Network Protection, Controlled Folder Access, Exploit Protection)" 'INFO'
     $errors = @()
     try {
-        # Enable Network Protection
-        try {
-            Set-MpPreference -EnableNetworkProtection Enabled -ErrorAction Stop
-            Write-Log "✓ Network Protection enabled" 'INFO'
-        }
-        catch [System.UnauthorizedAccessException] {
-            $errors += "Network Protection: Permission denied. Please run as Administrator."
-            Write-Log "✗ Failed to enable Network Protection: Permission denied. Ensure the script is run with Administrator privileges." 'ERROR'
-        }
-        catch {
-            $errors += "Network Protection: $($_.Exception.Message)"
-            Write-Log "✗ Failed to enable Network Protection: $($_.Exception.Message)" 'WARN'
-        }
-
-        # Enable Controlled Folder Access
-        try {
-            Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
-            Write-Log "✓ Controlled Folder Access enabled" 'INFO'
-            
-            # Add current script directory and PowerShell executables to exclusions
+        # Enable Network Protection (only if Defender cmdlets are available)
+        if (Get-Command -Name Set-MpPreference -ErrorAction SilentlyContinue) {
             try {
-                $scriptDir = $WorkingDirectory
-                $tempDir = $global:TempFolder
-                
-                # Add script directory to allowed apps/folders
-                Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.ps1" -ErrorAction SilentlyContinue
-                Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.bat" -ErrorAction SilentlyContinue
-                
-                # Add PowerShell executables to allowed applications
-                $powershellPaths = @(
-                    "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe",
-                    "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
-                )
-                
-                # Add PowerShell 7+ if available
-                $ps7Paths = @(
-                    "$env:ProgramFiles\PowerShell\7\pwsh.exe",
-                    "$env:ProgramFiles(x86)\PowerShell\7\pwsh.exe"
-                )
-                
-                foreach ($path in ($powershellPaths + $ps7Paths)) {
-                    if (Test-Path $path) {
-                        Add-MpPreference -ControlledFolderAccessAllowedApplications $path -ErrorAction SilentlyContinue
-                        Write-Log "✓ Added PowerShell executable to Controlled Folder Access exclusions: $path" 'INFO'
-                    }
-                }
-                
-                # Add maintenance script paths
-                if (Test-Path $scriptDir) {
-                    Add-MpPreference -ControlledFolderAccessProtectedFolders $scriptDir -ErrorAction SilentlyContinue
-                    Write-Log "✓ Added script directory to Controlled Folder Access protected folders: $scriptDir" 'INFO'
-                }
-                
-                if (Test-Path $tempDir) {
-                    Add-MpPreference -ControlledFolderAccessAllowedApplications $tempDir -ErrorAction SilentlyContinue
-                    Write-Log "✓ Added temp directory to Controlled Folder Access exclusions: $tempDir" 'INFO'
-                }
-                
-                Write-Log "✓ Maintenance script exclusions added to Controlled Folder Access" 'INFO'
+                Set-MpPreference -EnableNetworkProtection Enabled -ErrorAction Stop
+                Write-Log "✓ Network Protection enabled" 'INFO'
+            }
+            catch [System.UnauthorizedAccessException] {
+                $errors += "Network Protection: Permission denied. Please run as Administrator."
+                Write-Log "✗ Failed to enable Network Protection: Permission denied. Ensure the script is run with Administrator privileges." 'ERROR'
             }
             catch {
-                Write-Log "Warning: Could not add script exclusions to Controlled Folder Access: $_" 'WARN'
+                $errors += "Network Protection: $($_.Exception.Message)"
+                Write-Log "✗ Failed to enable Network Protection: $($_.Exception.Message)" 'WARN'
             }
         }
-        catch [System.UnauthorizedAccessException] {
-            $errors += "Controlled Folder Access: Permission denied. Please run as Administrator."
-            Write-Log "✗ Failed to enable Controlled Folder Access: Permission denied. Ensure the script is run with Administrator privileges." 'ERROR'
+        else {
+            Write-Log "⚠ Defender cmdlets not found: skipping Network Protection configuration" 'WARN'
         }
-        catch {
-            $errors += "Controlled Folder Access: $($_.Exception.Message)"
-            Write-Log "✗ Failed to enable Controlled Folder Access: $($_.Exception.Message)" 'WARN'
+
+        # Enable Controlled Folder Access (only if Defender cmdlets are available)
+        if (Get-Command -Name Set-MpPreference -ErrorAction SilentlyContinue) {
+            try {
+                Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
+                Write-Log "✓ Controlled Folder Access enabled" 'INFO'
+                
+                # Add current script directory and PowerShell executables to exclusions
+                try {
+                    $scriptDir = $WorkingDirectory
+                    $tempDir = $global:TempFolder
+                    
+                    # Add script directory to allowed apps/folders
+                    if (Get-Command -Name Add-MpPreference -ErrorAction SilentlyContinue) {
+                        Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.ps1" -ErrorAction SilentlyContinue
+                        Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.bat" -ErrorAction SilentlyContinue
+                        
+                        # Add PowerShell executables to allowed applications
+                        $powershellPaths = @(
+                            "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe",
+                            "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+                        )
+                        
+                        # Add PowerShell 7+ if available
+                        $ps7Paths = @(
+                            "$env:ProgramFiles\PowerShell\7\pwsh.exe",
+                            "$env:ProgramFiles(x86)\PowerShell\7\pwsh.exe"
+                        )
+                        
+                        foreach ($path in ($powershellPaths + $ps7Paths)) {
+                            if (Test-Path $path) {
+                                Add-MpPreference -ControlledFolderAccessAllowedApplications $path -ErrorAction SilentlyContinue
+                                Write-Log "✓ Added PowerShell executable to Controlled Folder Access exclusions: $path" 'INFO'
+                            }
+                        }
+                        
+                        # Add maintenance script paths
+                        if (Test-Path $scriptDir) {
+                            Add-MpPreference -ControlledFolderAccessProtectedFolders $scriptDir -ErrorAction SilentlyContinue
+                            Write-Log "✓ Added script directory to Controlled Folder Access protected folders: $scriptDir" 'INFO'
+                        }
+                        
+                        if (Test-Path $tempDir) {
+                            Add-MpPreference -ControlledFolderAccessAllowedApplications $tempDir -ErrorAction SilentlyContinue
+                            Write-Log "✓ Added temp directory to Controlled Folder Access exclusions: $tempDir" 'INFO'
+                        }
+                    }
+                    else {
+                        Write-Log "⚠ Add-MpPreference not available: cannot add Controlled Folder Access exclusions" 'WARN'
+                    }
+                    
+                    Write-Log "✓ Maintenance script exclusions added to Controlled Folder Access" 'INFO'
+                }
+                catch {
+                    Write-Log "Warning: Could not add script exclusions to Controlled Folder Access: $_" 'WARN'
+                }
+            }
+            catch [System.UnauthorizedAccessException] {
+                $errors += "Controlled Folder Access: Permission denied. Please run as Administrator."
+                Write-Log "✗ Failed to enable Controlled Folder Access: Permission denied. Ensure the script is run with Administrator privileges." 'ERROR'
+            }
+            catch {
+                $errors += "Controlled Folder Access: $($_.Exception.Message)"
+                Write-Log "✗ Failed to enable Controlled Folder Access: $($_.Exception.Message)" 'WARN'
+            }
+        }
+        else {
+            Write-Log "⚠ Defender cmdlets not found: skipping Controlled Folder Access configuration" 'WARN'
         }
 
         # Enable SmartScreen for Edge via registry (Windows 10/11)
@@ -6407,14 +6433,19 @@ function Enable-AppBrowserControl {
             Write-Log "✗ Failed to enable SmartScreen for Store Apps: $($_.Exception.Message)" 'WARN'
         }
 
-        # Enable system-level exploit mitigations (DEP, SEHOP, CFG, ASLR)
-        try {
-            Set-ProcessMitigation -System -Enable DEP, SEHOP, CFG, ForceRelocateImages, BottomUp, HighEntropy
-            Write-Log "✓ System-level exploit mitigations enabled (DEP, SEHOP, CFG, ASLR)" 'INFO'
+        # Enable system-level exploit mitigations (DEP, SEHOP, CFG, ASLR) if Set-ProcessMitigation is available
+        if (Get-Command -Name Set-ProcessMitigation -ErrorAction SilentlyContinue) {
+            try {
+                Set-ProcessMitigation -System -Enable DEP, SEHOP, CFG, ForceRelocateImages, BottomUp, HighEntropy
+                Write-Log "✓ System-level exploit mitigations enabled (DEP, SEHOP, CFG, ASLR)" 'INFO'
+            }
+            catch {
+                $errors += "Exploit Mitigations: $($_.Exception.Message)"
+                Write-Log "✗ Failed to enable Exploit Mitigations: $($_.Exception.Message)" 'WARN'
+            }
         }
-        catch {
-            $errors += "Exploit Mitigations: $($_.Exception.Message)"
-            Write-Log "✗ Failed to enable Exploit Mitigations: $($_.Exception.Message)" 'WARN'
+        else {
+            Write-Log "⚠ Set-ProcessMitigation not available: skipping exploit mitigation configuration" 'WARN'
         }
     }
     catch {
@@ -6603,10 +6634,18 @@ function Disable-SpotlightMeetNowNewsLocation {
 function Optimize-TaskbarAndDesktopUI {
     Write-Log "[START] Optimizing Taskbar and Desktop UI (Search, Task View, Chat, Widgets, Spotlight, Theme)" 'INFO'
     
-    # Detect Windows version for compatibility
-    $windowsVersion = [System.Environment]::OSVersion.Version
-    $isWindows11 = $windowsVersion.Build -ge 22000
-    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
+    # Detect Windows version for compatibility (use registry-based build if available)
+    try {
+        $windowsBuild = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'CurrentBuildNumber' -ErrorAction SilentlyContinue).CurrentBuildNumber
+        if ($windowsBuild) { $windowsBuild = [int]$windowsBuild }
+        else { $windowsBuild = [System.Environment]::OSVersion.Version.Build }
+    }
+    catch {
+        $windowsBuild = [System.Environment]::OSVersion.Version.Build
+    }
+
+    $isWindows11 = $windowsBuild -ge 22000
+    $isWindows10 = ($windowsBuild -ge 10240 -and $windowsBuild -lt 22000)
     
     Write-Log "Detected OS: Windows $(if($isWindows11){'11'}elseif($isWindows10){'10'}else{'Unknown'}) (Build: $($windowsVersion.Build))" 'INFO'
     
@@ -6636,10 +6675,18 @@ function Optimize-TaskbarAndDesktopUI {
             
             # Hide Meet Now button (Windows 10 specific location)
             try {
-                $meetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
-                if (-not (Test-Path $meetNowReg)) { New-Item -Path $meetNowReg -Force | Out-Null }
-                Set-ItemProperty -Path $meetNowReg -Name "HideSCAMeetNow" -Value 1 -Force
-                Write-Log "✓ Meet Now button hidden from taskbar (Windows 10)" 'INFO'
+                # Respect policy keys - don't overwrite Group Policy-managed values
+                $meetNowPolicy = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+                $meetNowPolicyExists = Test-Path "$meetNowPolicy\HideSCAMeetNow"
+                if ($meetNowPolicyExists) {
+                    Write-Log "Meet Now setting controlled by policy; not modifying" 'INFO'
+                }
+                else {
+                    $meetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+                    if (-not (Test-Path $meetNowReg)) { New-Item -Path $meetNowReg -Force | Out-Null }
+                    Set-ItemProperty -Path $meetNowReg -Name "HideSCAMeetNow" -Value 1 -Force
+                    Write-Log "✓ Meet Now button hidden from taskbar (Windows 10)" 'INFO'
+                }
             }
             catch {
                 Write-Log "Could not hide Meet Now button: $($_.Exception.Message)" 'WARN'
@@ -6649,8 +6696,15 @@ function Optimize-TaskbarAndDesktopUI {
             try {
                 $newsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
                 if (-not (Test-Path $newsReg)) { New-Item -Path $newsReg -Force | Out-Null }
-                Set-ItemProperty -Path $newsReg -Name "ShellFeedsTaskbarViewMode" -Value 2 -Force
-                Write-Log "✓ News and Interests disabled (Windows 10)" 'INFO'
+                # Respect policy - check if Windows Feeds is controlled by policy
+                $policyNews = "HKCU:\Software\Policies\Microsoft\Windows\Windows Feeds"
+                if (Test-Path $policyNews) {
+                    Write-Log "News & Interests controlled by policy; not modifying" 'INFO'
+                }
+                else {
+                    Set-ItemProperty -Path $newsReg -Name "ShellFeedsTaskbarViewMode" -Value 2 -Force
+                    Write-Log "✓ News and Interests disabled (Windows 10)" 'INFO'
+                }
             }
             catch {
                 Write-Log "Could not disable News and Interests: $($_.Exception.Message)" 'WARN'
@@ -6661,8 +6715,14 @@ function Optimize-TaskbarAndDesktopUI {
         if ($isWindows11) {
             # Hide Chat (Teams) button (Windows 11)
             try {
-                Set-ItemProperty -Path $advReg -Name "TaskbarMn" -Value 0 -Force
-                Write-Log "✓ Chat (Teams) button hidden from taskbar (Windows 11)" 'INFO'
+                # Respect policy keys for taskbar modifications
+                if (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer") {
+                    Write-Log "Taskbar Chat/Meet settings controlled by policy; not modifying" 'INFO'
+                }
+                else {
+                    Set-ItemProperty -Path $advReg -Name "TaskbarMn" -Value 0 -Force
+                    Write-Log "✓ Chat (Teams) button hidden from taskbar (Windows 11)" 'INFO'
+                }
             }
             catch {
                 Write-Log "Could not hide Chat button: $($_.Exception.Message)" 'WARN'
@@ -6670,8 +6730,14 @@ function Optimize-TaskbarAndDesktopUI {
             
             # Hide Widgets button (Windows 11)
             try {
-                Set-ItemProperty -Path $advReg -Name "TaskbarDa" -Value 0 -Force
-                Write-Log "✓ Widgets button hidden from taskbar (Windows 11)" 'INFO'
+                # Widgets may be controlled by Group Policy; check before changing
+                if (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer") {
+                    Write-Log "Widgets/News settings controlled by policy; not modifying TaskbarDa" 'INFO'
+                }
+                else {
+                    Set-ItemProperty -Path $advReg -Name "TaskbarDa" -Value 0 -Force
+                    Write-Log "✓ Widgets button hidden from taskbar (Windows 11)" 'INFO'
+                }
             }
             catch {
                 Write-Log "Could not hide Widgets button: $($_.Exception.Message)" 'WARN'
@@ -6679,8 +6745,18 @@ function Optimize-TaskbarAndDesktopUI {
             
             # Set taskbar alignment to left (Windows 11)
             try {
-                Set-ItemProperty -Path $advReg -Name "TaskbarAl" -Value 0 -Force
-                Write-Log "✓ Taskbar alignment set to left (Windows 11)" 'INFO'
+                try {
+                    if (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer") {
+                        Write-Log "Taskbar alignment controlled by policy; not modifying" 'INFO'
+                    }
+                    else {
+                        Set-ItemProperty -Path $advReg -Name "TaskbarAl" -Value 0 -Force
+                        Write-Log "✓ Taskbar alignment set to left (Windows 11)" 'INFO'
+                    }
+                }
+                catch {
+                    Write-Log "Could not set taskbar alignment: $($_.Exception.Message)" 'WARN'
+                }
             }
             catch {
                 Write-Log "Could not set taskbar alignment: $($_.Exception.Message)" 'WARN'
@@ -6858,6 +6934,13 @@ function Disable-Telemetry {
     $totalSettingsApplied = 0
     foreach ($regPath in $telemetrySettings.Keys) {
         try {
+            # If a policy key exists for this area, respect it and skip writing local settings
+            $policyPath = $regPath -replace '^HKLM:', 'HKLM:\SOFTWARE\Policies' -replace '^HKCU:', 'HKCU:\Software\Policies'
+            if (Test-Path $policyPath) {
+                Write-Log "Policy controls telemetry settings at $policyPath - skipping local changes" 'INFO'
+                continue
+            }
+
             if (-not (Test-Path $regPath)) {
                 New-Item -Path $regPath -Force -ErrorAction SilentlyContinue | Out-Null
             }
@@ -6865,8 +6948,13 @@ function Disable-Telemetry {
             $settings = $telemetrySettings[$regPath]
             foreach ($setting in $settings.GetEnumerator()) {
                 try {
-                    Set-ItemProperty -Path $regPath -Name $setting.Key -Value $setting.Value -Force -ErrorAction SilentlyContinue
-                    $totalSettingsApplied++
+                    # Only set if the existing value is different or missing (idempotent)
+                    $existing = $null
+                    try { $existing = (Get-ItemProperty -Path $regPath -Name $setting.Key -ErrorAction SilentlyContinue).$($setting.Key) } catch { $existing = $null }
+                    if ($existing -ne $setting.Value) {
+                        Set-ItemProperty -Path $regPath -Name $setting.Key -Value $setting.Value -Force -ErrorAction SilentlyContinue
+                        $totalSettingsApplied++
+                    }
                 }
                 catch { continue }
             }
@@ -6880,29 +6968,42 @@ function Disable-Telemetry {
     }
 
     # Disable telemetry services with parallel processing
-    $telemetryServices = @(
-        'DiagTrack',           # Connected User Experiences and Telemetry
-        'dmwappushservice',    # Device Management Wireless Application Protocol
-        'WerSvc',              # Windows Error Reporting Service
-        'OneSyncSvc',          # Sync Host Service
-        'MessagingService',    # Messaging Service
-        'PimIndexMaintenanceSvc', # Contact Data
-        'UserDataSvc',         # User Data Access
-        'UnistoreSvc',         # User Data Storage
-        'BrokerInfrastructure' # Background Tasks Infrastructure Service
-    )
+    # Use configurable list of telemetry-related services to disable
+    $telemetryServices = if ($global:Config.TelemetryServicesToDisable -and $global:Config.TelemetryServicesToDisable.Count -gt 0) { $global:Config.TelemetryServicesToDisable } else {
+        @('DiagTrack', 'dmwappushservice', 'WerSvc', 'UnistoreSvc', 'UserDataSvc', 'BrokerInfrastructure')
+    }
 
     $servicesDisabled = 0
     foreach ($serviceName in $telemetryServices) {
         try {
             $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+            if (-not $service) {
+                Write-Log "Service $serviceName not present on this system; skipping" 'VERBOSE'
+                continue
+            }
+
+            # Avoid disabling Windows Error Reporting unless explicitly allowed via config
+            if ($serviceName -eq 'WerSvc' -and -not $global:Config.AllowDisableWerSvc) {
+                Write-Log "WerSvc detected but disabling is skipped (AllowDisableWerSvc not set)" 'INFO'
+                continue
+            }
+
             if ($service -and $service.StartType -ne 'Disabled') {
-                Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-                Set-Service -Name $serviceName -StartupType Disabled -ErrorAction SilentlyContinue
-                $servicesDisabled++
+                try {
+                    Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+                    Set-Service -Name $serviceName -StartupType Disabled -ErrorAction SilentlyContinue
+                    $servicesDisabled++
+                    Write-Log "Disabled service: $serviceName" 'INFO'
+                }
+                catch {
+                    Write-Log "Failed to disable service ${serviceName}: $($_.Exception.Message)" 'WARN'
+                }
             }
         }
-        catch { continue }
+        catch {
+            Write-Log "Error checking service ${serviceName}: $($_.Exception.Message)" 'WARN'
+            continue
+        }
     }
 
     if ($servicesDisabled -gt 0) {
@@ -7081,13 +7182,29 @@ try {
                 # Clean old restore points if disk space is low (less than 10% free)
                 if ($freeSpacePercent -lt 10) {
                     Write-Log "Low disk space detected ($freeSpacePercent% free). Cleaning old restore points..." 'WARN'
-                    
                     try {
-                        $oldRestorePoints = Get-ComputerRestorePoint | Sort-Object CreationTime | Select-Object -SkipLast 3
-                        foreach ($point in $oldRestorePoints) {
-                            Remove-ComputerRestorePoint -RestorePoint $point -ErrorAction SilentlyContinue
+                        $minKeep = if ($global:Config.MinRestorePointsToKeep) { $global:Config.MinRestorePointsToKeep } else { 3 }
+                        $oldRestorePoints = Get-ComputerRestorePoint | Sort-Object CreationTime | Select-Object -SkipLast $minKeep
+                        if ($oldRestorePoints -and $oldRestorePoints.Count -gt 0) {
+                            foreach ($point in $oldRestorePoints) {
+                                if (Get-Command -Name Remove-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+                                    try {
+                                        Remove-ComputerRestorePoint -RestorePoint $point -ErrorAction SilentlyContinue
+                                    }
+                                    catch {
+                                        Write-Log "Failed to remove restore point $($point.SequenceNumber): $($_.Exception.Message)" 'WARN'
+                                    }
+                                }
+                                else {
+                                    Write-Log "Remove-ComputerRestorePoint cmdlet not available; skipping direct removal of restore points" 'WARN'
+                                    break
+                                }
+                            }
+                            Write-Log "Cleaned $($oldRestorePoints.Count) old restore points to free disk space" 'INFO'
                         }
-                        Write-Log "Cleaned $($oldRestorePoints.Count) old restore points to free disk space" 'INFO'
+                        else {
+                            Write-Log "No old restore points to remove (keeping $minKeep recent points)" 'INFO'
+                        }
                     }
                     catch {
                         Write-Log "Could not clean old restore points: $_" 'WARN'
@@ -7162,8 +7279,8 @@ function Clear-OldRestorePoints {
         }
         Write-Log "=== END RESTORE POINTS AUDIT ===" 'INFO'
         
-        # Keep minimum of 5 restore points for safety
-        $minimumKeep = 5
+        # Keep minimum configured restore points for safety
+        $minimumKeep = if ($global:Config.MinRestorePointsToKeep) { $global:Config.MinRestorePointsToKeep } else { 5 }
         
         if ($totalPoints -le $minimumKeep) {
             Write-Log "Current restore point count ($totalPoints) is at or below safety minimum ($minimumKeep). No cleanup needed." 'INFO'
@@ -7212,19 +7329,24 @@ function Clear-OldRestorePoints {
         
         Write-Log "Starting restore point removal process..." 'INFO'
         
-        foreach ($point in $pointsToRemove) {
-            $pointDate = $point.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
-            $pointDescription = $point.Description
-            
-            try {
-                Write-Log "Removing restore point: $pointDate | $pointDescription" 'INFO'
-                Remove-ComputerRestorePoint -RestorePoint $point -ErrorAction Stop
-                $removedCount++
-                Write-Log "✓ Successfully removed restore point: $pointDate" 'INFO'
-            }
-            catch {
-                $failedCount++
-                Write-Log "✗ Failed to remove restore point: $pointDate | Error: $_" 'ERROR'
+        # Perform cleanup with detailed logging (only if removal cmdlet exists)
+        if (-not (Get-Command -Name Remove-ComputerRestorePoint -ErrorAction SilentlyContinue)) {
+            Write-Log "Remove-ComputerRestorePoint cmdlet not available on this system. Skipping actual removals." 'WARN'
+        }
+        else {
+            foreach ($point in $pointsToRemove) {
+                $pointDate = $point.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
+                $pointDescription = $point.Description
+                try {
+                    Write-Log "Removing restore point: $pointDate | $pointDescription" 'INFO'
+                    Remove-ComputerRestorePoint -RestorePoint $point -ErrorAction Stop
+                    $removedCount++
+                    Write-Log "✓ Successfully removed restore point: $pointDate" 'INFO'
+                }
+                catch {
+                    $failedCount++
+                    Write-Log "✗ Failed to remove restore point: $pointDate | Error: $_" 'ERROR'
+                }
             }
         }
         
@@ -9473,6 +9595,23 @@ $global:Config = @{
     EnableVerboseLogging    = $false
 }
 
+# Granular defaults for maintenance behaviors
+$global:Config.TelemetryServicesToDisable = @(
+    'DiagTrack',
+    'dmwappushservice',
+    'UnistoreSvc',
+    'UserDataSvc',
+    'BrokerInfrastructure',
+    'PimIndexMaintenanceSvc',
+    'MessagingService'
+)
+$global:Config.MinRestorePointsToKeep = 5
+# Optional flags: control risky telemetry/service changes and widget-only behavior
+$global:Config.AllowDisableWerSvc = $false
+$global:Config.SkipWidgetsOnly = $false
+# Control whether the script should prompt to reboot after updates (default: do NOT prompt)
+$global:Config.PromptForReboot = $false
+
 # Load configuration from config.json if it exists
 if (Test-Path $configPath) {
     try {
@@ -9493,6 +9632,9 @@ if (Test-Path $configPath) {
         if ($config.CustomEssentialApps) { $global:Config.CustomEssentialApps = $config.CustomEssentialApps }
         if ($config.CustomBloatwareList) { $global:Config.CustomBloatwareList = $config.CustomBloatwareList }
         if ($config.EnableVerboseLogging) { $global:Config.EnableVerboseLogging = $config.EnableVerboseLogging }
+        if ($config.AllowDisableWerSvc) { $global:Config.AllowDisableWerSvc = $config.AllowDisableWerSvc }
+        if ($config.SkipWidgetsOnly) { $global:Config.SkipWidgetsOnly = $config.SkipWidgetsOnly }
+        if ($config.PromptForReboot) { $global:Config.PromptForReboot = $config.PromptForReboot }
         Write-Log "Configuration loaded from config.json" 'INFO'
     }
     catch {
@@ -9503,24 +9645,24 @@ if (Test-Path $configPath) {
 # Load logging configuration from logging.json if it exists
 $loggingConfigPath = Join-Path $WorkingDirectory "logging.json"
 $global:LoggingConfig = @{
-    LogLevel = 'INFO'
-    LogFile = $global:LogFile
-    EnableColors = $true
+    LogLevel           = 'INFO'
+    LogFile            = $global:LogFile
+    EnableColors       = $true
     EnableProgressBars = $true
-    MaxLogSizeMB = 10
-    LogRotation = $true
-    DateTimeFormat = 'HH:mm:ss'
-    MessageFormat = '[{timestamp}] [{level}] [{component}] {message}'
-    LogLevels = @{
-        'VERBOSE' = 0
-        'DEBUG' = 1
-        'INFO' = 2
-        'WARN' = 3
-        'ERROR' = 4
-        'SUCCESS' = 5
+    MaxLogSizeMB       = 10
+    LogRotation        = $true
+    DateTimeFormat     = 'HH:mm:ss'
+    MessageFormat      = '[{timestamp}] [{level}] [{component}] {message}'
+    LogLevels          = @{
+        'VERBOSE'  = 0
+        'DEBUG'    = 1
+        'INFO'     = 2
+        'WARN'     = 3
+        'ERROR'    = 4
+        'SUCCESS'  = 5
         'PROGRESS' = 6
-        'ACTION' = 7
-        'COMMAND' = 8
+        'ACTION'   = 7
+        'COMMAND'  = 8
     }
 }
 
@@ -9541,7 +9683,8 @@ if (Test-Path $loggingConfigPath) {
     catch {
         Write-Log "Error loading logging.json: $_. Using defaults." 'WARN'
     }
-} else {
+}
+else {
     Write-Log "No logging.json found - using default logging configuration" 'DEBUG'
 }
 
@@ -9924,15 +10067,28 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     
     # STEP 3: 120-second countdown with comprehensive user interaction handling
     Write-Host
-    if ($rebootRequired) {
-        Write-Host "🔄 Starting 120-second countdown for automatic restart and cleanup." -ForegroundColor Yellow
-        Write-Host "💡 Press any key to abort restart and keep window open." -ForegroundColor Cyan
-        Write-Log "[COUNTDOWN] Starting 120-second restart countdown" 'INFO'
+    if ($rebootRequired -and -not $global:Config.PromptForReboot) {
+        # Non-interactive mode: do not prompt or perform automatic restart. Leave decision to user.
+        Write-Host "🔕 Reboot is required but script is configured NOT to prompt or restart (PromptForReboot = $false)." -ForegroundColor Yellow
+        Write-Log "[COUNTDOWN] Reboot required but PromptForReboot is disabled; skipping interactive countdown and automatic restart" 'INFO'
+        # Provide clear instruction and do not close the window automatically
+        Write-Host "⚠️  Your system requires a restart to complete updates. Please restart manually when convenient." -ForegroundColor Cyan
+        Write-Log "[EXECUTION] Manual restart recommended: $rebootReason" 'INFO'
+        # Skip countdown and interactive prompt flow entirely
+        $countdown = 0
+        $abort = $true
     }
     else {
-        Write-Host "🕒 Starting 120-second countdown for automatic cleanup and window closure." -ForegroundColor Yellow
-        Write-Host "💡 Press any key to abort cleanup and keep window open." -ForegroundColor Cyan
-        Write-Log "[COUNTDOWN] Starting 120-second cleanup countdown (no restart needed)" 'INFO'
+        if ($rebootRequired) {
+            Write-Host "🔄 Starting 120-second countdown for automatic restart and cleanup." -ForegroundColor Yellow
+            Write-Host "💡 Press any key to abort restart and keep window open." -ForegroundColor Cyan
+            Write-Log "[COUNTDOWN] Starting 120-second restart countdown" 'INFO'
+        }
+        else {
+            Write-Host "🕒 Starting 120-second countdown for automatic cleanup and window closure." -ForegroundColor Yellow
+            Write-Host "💡 Press any key to abort cleanup and keep window open." -ForegroundColor Cyan
+            Write-Log "[COUNTDOWN] Starting 120-second cleanup countdown (no restart needed)" 'INFO'
+        }
     }
     
     $countdown = 120

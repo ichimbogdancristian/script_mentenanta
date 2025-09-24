@@ -92,6 +92,14 @@ Focus purely on maintenance orchestration:
 - **Write-UnifiedMaintenanceReport**: Comprehensive unified report generation with system info, task execution details, performance metrics, categorized actions, and file listings
 - **Performance Tracking**: Automated collection of execution metrics, inventory timings, and system performance data
 
+## Recent additions (2025 updates)
+
+- `PromptForReboot` config flag (default: `$false`) — script will not prompt or auto-restart after Windows Updates unless explicitly enabled in `config.json`. This makes unattended runs safe by default.
+- `AllowDisableWerSvc` config flag (default: `$false`) — avoids disabling the Windows Error Reporting service unless the operator opts in.
+- `SkipWidgetsOnly` config flag (default: `$false`) — reserved flag for widget-only operations.
+- Defender cmdlet guards — many Defender-related actions (Set-MpPreference, Add-MpPreference) are now guarded by `Get-Command` checks so the script degrades gracefully if Microsoft Defender cmdlets or third-party AV are present.
+- Logging: `Write-Log` now accepts a `DEBUG` level and maps it to a subdued console color for development/troubleshooting runs.
+
 ## Modern PowerShell 7.5.2 Features
 - **Sequential Processing**: Reliable inventory collection and package operations (no hanging)
 - **Async Operations**: Modern process management with timeout support
