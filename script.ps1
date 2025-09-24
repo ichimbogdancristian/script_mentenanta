@@ -112,6 +112,36 @@ if (-not (Test-Path $logDir)) {
     New-Item -Path $logDir -ItemType Directory -Force | Out-Null
 }
 
+# Minimal safe Write-Log shim used during early initialization.
+# Purpose: The full logging system is defined later (Section 2), but the
+# script needs to emit a few startup messages (temp folder creation, etc.)
+# before the advanced logging functions are declared. This lightweight
+# shim ensures those early calls succeed in both interactive and
+# batch-launched environments.
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = 'INFO'
+    )
+
+    # Timestamped one-line entry
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $line = "[$ts] [$Level] $Message"
+
+    # Try to append to the configured log file when available
+    try {
+        if ($null -ne $LogFile -and $LogFile -ne '') {
+            Add-Content -Path $LogFile -Value $line -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        # Ignore logging failures during early init
+    }
+
+    # Also print to host to aid interactive debugging
+    try { Write-Host $line } catch { }
+}
+
 # Global configuration object with defaults
 # ================================================================
 # Purpose: Centralized, user-customizable configuration for the maintenance
