@@ -565,7 +565,8 @@ $global:EssentialCategories = @{
     SystemTools   = @(
         @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell'; Category = 'System' },
         @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal'; Category = 'System' },
-        @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime'; Category = 'Runtime' }
+        @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime'; Category = 'Runtime' },
+        @{ Name = 'Sysmon'; Winget = $null; Choco = 'sysmon'; Category = 'Security' }
     )
     Communication = @(
         @{ Name = 'Mozilla Thunderbird'; Winget = 'Mozilla.Thunderbird'; Choco = 'thunderbird'; Category = 'Email' }
@@ -6513,6 +6514,67 @@ function Install-EssentialApps {
             Write-Log "✗ EXCEPTION: $($app.Name) [Error: $_]" 'ERROR'
             Write-Host "    ✗ Installation exception: $_" -ForegroundColor Red
             Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation error" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+        }
+    }
+
+    # SYSMON CONFIGURATION
+    # Configure Sysmon with custom configuration if it was installed
+    $sysmonApp = $appsToInstall | Where-Object { $_.Name -eq 'Sysmon' }
+    if ($sysmonApp) {
+        Write-Log "Configuring Sysmon with custom configuration..." 'INFO'
+        Write-Host "Configuring Sysmon with custom configuration..." -ForegroundColor Cyan
+
+        try {
+            # Find Sysmon executable path
+            $sysmonPaths = @(
+                "$env:ProgramData\Chocolatey\bin\sysmon.exe",
+                "$env:ProgramData\Chocolatey\lib\sysmon\tools\sysmon.exe",
+                "$env:ProgramFiles\Sysmon\sysmon.exe",
+                "$env:ProgramFiles\Sysinternals\Sysmon\sysmon.exe"
+            )
+
+            $sysmonExe = $null
+            foreach ($path in $sysmonPaths) {
+                if (Test-Path $path) {
+                    $sysmonExe = $path
+                    break
+                }
+            }
+
+            if ($sysmonExe) {
+                # Use path discovery variable for config file
+                $configPath = Join-Path $ScriptDir 'sysmonconfig.xml'
+
+                if (Test-Path $configPath) {
+                    Write-Log "Found Sysmon config at: $configPath" 'INFO'
+                    Write-Host "Found Sysmon config at: $configPath" -ForegroundColor Green
+
+                    # Configure Sysmon with the config file
+                    $sysmonArgs = @('-accepteula', '-i', $configPath)
+                    $sysmonProc = Start-Process -FilePath $sysmonExe -ArgumentList $sysmonArgs -WindowStyle Hidden -Wait -PassThru
+
+                    if ($sysmonProc.ExitCode -eq 0) {
+                        Write-Log "✓ Sysmon configured successfully with custom configuration" 'INFO'
+                        Write-Host "✓ Sysmon configured successfully with custom configuration" -ForegroundColor Green
+                    }
+                    else {
+                        Write-Log "⚠ Sysmon configuration failed (Exit code: $($sysmonProc.ExitCode))" 'WARN'
+                        Write-Host "⚠ Sysmon configuration failed (Exit code: $($sysmonProc.ExitCode))" -ForegroundColor Yellow
+                    }
+                }
+                else {
+                    Write-Log "⚠ Sysmon config file not found at: $configPath" 'WARN'
+                    Write-Host "⚠ Sysmon config file not found at: $configPath" -ForegroundColor Yellow
+                }
+            }
+            else {
+                Write-Log "⚠ Sysmon executable not found for configuration" 'WARN'
+                Write-Host "⚠ Sysmon executable not found for configuration" -ForegroundColor Yellow
+            }
+        }
+        catch {
+            Write-Log "⚠ Sysmon configuration error: $($_.Exception.Message)" 'WARN'
+            Write-Host "⚠ Sysmon configuration error: $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
 
