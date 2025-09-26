@@ -554,7 +554,7 @@ $global:EssentialCategories = @{
     )
     DocumentTools = @(
         @{ Name = 'Adobe Acrobat Reader'; Winget = 'Adobe.Acrobat.Reader.64-bit'; Choco = 'adobereader'; Category = 'Document' },
-        @{ Name = 'PDF24 Creator'; Winget = 'PDF24.PDF24Creator'; Choco = 'pdf24'; Category = 'Document' },
+        @{ Name = 'PDF24 Creator'; Winget = 'geeksoftwareGmbH.PDF24Creator'; Choco = 'pdf24'; Category = 'Document' },
         @{ Name = 'Notepad++'; Winget = 'Notepad++.Notepad++'; Choco = 'notepadplusplus'; Category = 'Editor' }
     )
     FileManagers  = @(
@@ -566,7 +566,7 @@ $global:EssentialCategories = @{
         @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell'; Category = 'System' },
         @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal'; Category = 'System' },
         @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime'; Category = 'Runtime' },
-        @{ Name = 'Sysmon'; Winget = $null; Choco = 'sysmon'; Category = 'Security' }
+        @{ Name = 'Sysmon'; Winget = $null; Choco = $null; DownloadUrl = 'https://download.sysinternals.com/files/Sysmon.zip'; Category = 'Security' }
     )
     Communication = @(
         @{ Name = 'Mozilla Thunderbird'; Winget = 'Mozilla.Thunderbird'; Choco = 'thunderbird'; Category = 'Email' }
@@ -6499,11 +6499,62 @@ function Install-EssentialApps {
                 }
             }
 
-            # If both methods failed
+            # Try direct download as final fallback
+            if ($app.DownloadUrl -and -not $result.Success -and -not $result.Skipped) {
+                Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 75 -Status "Downloading directly from Microsoft..." -CurrentItem $currentIndex -TotalItems $totalApps
+                
+                try {
+                    # Create temp directory for download
+                    $tempDir = Join-Path $global:TempFolder "SysmonDownload"
+                    if (-not (Test-Path $tempDir)) {
+                        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+                    }
+
+                    # Download the zip file
+                    $zipPath = Join-Path $tempDir "Sysmon.zip"
+                    Write-Log "Downloading Sysmon from: $($app.DownloadUrl)" 'INFO'
+                    Invoke-WebRequest -Uri $app.DownloadUrl -OutFile $zipPath -UseBasicParsing
+
+                    # Extract the zip file
+                    Write-Log "Extracting Sysmon archive..." 'INFO'
+                    Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+
+                    # Find and copy sysmon.exe to a permanent location
+                    $extractedSysmon = Get-ChildItem -Path $tempDir -Filter "sysmon.exe" -Recurse | Select-Object -First 1
+                    if ($extractedSysmon) {
+                        # Create Sysmon directory in Program Files
+                        $sysmonInstallDir = "$env:ProgramFiles\Sysmon"
+                        if (-not (Test-Path $sysmonInstallDir)) {
+                            New-Item -ItemType Directory -Path $sysmonInstallDir -Force | Out-Null
+                        }
+
+                        # Copy sysmon.exe to the install directory
+                        $installedSysmonPath = Join-Path $sysmonInstallDir "sysmon.exe"
+                        Copy-Item -Path $extractedSysmon.FullName -Destination $installedSysmonPath -Force
+
+                        $result.Success = $true
+                        $result.Method = "direct download"
+                        $script:successCount++
+                        Write-Log "✓ INSTALLED: $($app.Name) [Method: Direct Download]" 'INFO'
+                        Write-Host "    ✓ Successfully installed via direct download" -ForegroundColor Green
+                        Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation completed successfully" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
+                        return
+                    }
+                    else {
+                        throw "sysmon.exe not found in extracted archive"
+                    }
+                }
+                catch {
+                    Write-Log "⚠ Direct download failed for $($app.Name): $_" 'WARN'
+                    Write-Host "    ⚠ Direct download failed: $_" -ForegroundColor Yellow
+                }
+            }
+
+            # If all methods failed
             if (-not $result.Success -and -not $result.Skipped) {
-                $result.Error = "Both Winget and Chocolatey failed or unavailable"
+                $result.Error = "All installation methods failed (Winget, Chocolatey, Direct Download)"
                 $script:failedCount++
-                Write-Log "✗ FAILED: $($app.Name) [Reason: Both installation methods failed]" 'ERROR'
+                Write-Log "✗ FAILED: $($app.Name) [Reason: All installation methods failed]" 'ERROR'
                 Write-Host "    ✗ Installation failed with all methods" -ForegroundColor Red
                 Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 100 -Status "Installation failed" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
             }
