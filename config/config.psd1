@@ -44,42 +44,15 @@
 
     # Bloatware Removal
     SkipRemoveBloatware = $false
-    BloatwareApps = @(
-        "Microsoft.BingWeather"
-        "Microsoft.GetHelp"
-        "Microsoft.Getstarted"
-        "Microsoft.Messaging"
-        "Microsoft.Microsoft3DViewer"
-        "Microsoft.MicrosoftOfficeHub"
-        "Microsoft.MicrosoftSolitaireCollection"
-        "Microsoft.MixedReality.Portal"
-        "Microsoft.Office.OneNote"
-        "Microsoft.People"
-        "Microsoft.SkypeApp"
-        "Microsoft.Wallet"
-        "Microsoft.WindowsAlarms"
-        "Microsoft.WindowsCamera"
-        "Microsoft.WindowsFeedbackHub"
-        "Microsoft.WindowsMaps"
-        "Microsoft.WindowsSoundRecorder"
-        "Microsoft.Xbox.TCUI"
-        "Microsoft.XboxApp"
-        "Microsoft.XboxGameOverlay"
-        "Microsoft.XboxGamingOverlay"
-        "Microsoft.XboxSpeechToTextOverlay"
-        "Microsoft.YourPhone"
-        "Microsoft.ZuneMusic"
-        "Microsoft.ZuneVideo"
-    )
+    # Note: Bloatware list is now managed in config/BloatwareList.psd1
+    # Custom bloatware list - add your own bloatware package names here
+    CustomBloatwareList = @()
 
     # Essential Apps Installation
     SkipInstallEssentialApps = $false
-    EssentialApps = @(
-        @{ Id = "7zip.7zip"; Name = "7-Zip" }
-        @{ Id = "Mozilla.Firefox"; Name = "Firefox" }
-        @{ Id = "VideoLAN.VLC"; Name = "VLC Media Player" }
-        @{ Id = "Notepad++.Notepad++"; Name = "Notepad++" }
-    )
+    # Note: Essential apps list is now managed in config/EssentialAppsList.psd1
+    # Custom essential apps list - add your own essential app IDs here
+    CustomEssentialApps = @()
 
     # Application Updates
     SkipUpdateInstalledApplications = $false

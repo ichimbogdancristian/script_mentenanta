@@ -6594,7 +6594,7 @@ function Install-EssentialApps {
 
             if ($sysmonExe) {
                 # Use path discovery variable for config file
-                $configPath = Join-Path $ScriptDir 'sysmonconfig.xml'
+                $configPath = Join-Path $ScriptDir 'config\sysmonconfig.xml'
 
                 if (Test-Path $configPath) {
                     Write-Log "Found Sysmon config at: $configPath" 'INFO'
@@ -10738,7 +10738,7 @@ if (Test-Path $configPath) {
 }
 
 # Load logging configuration from logging.json if it exists
-$loggingConfigPath = Join-Path $WorkingDirectory "logging.json"
+$loggingConfigPath = Join-Path $WorkingDirectory "config\logging.json"
 $global:LoggingConfig = @{
     LogLevel           = 'INFO'
     LogFile            = $global:LogFile

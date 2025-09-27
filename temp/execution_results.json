@@ -1,355 +1,356 @@
 [
-  "[14:47:29] [ACTION] [PS1] [Task Orchestration] Initiating maintenance tasks execution sequence | Details: Total tasks to execute: 20",
-  "[14:47:29] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemRestoreProtection (1/20) - Enable System Restore and create pre-maintenance checkpoint",
-  "[14:47:29] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemRestoreProtection | Function execution beginning",
-  "[14:47:30] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemRestoreProtection | Duration: 1.0165857s | Result: [14:47:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection [14:47:30] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 1.000002s [14:47:30] [ERROR] [PS1] Failed to configure System Restore: Access denied  False True",
-  "[14:47:30] [SUCCESS] [PS1] [1/20] Task SystemRestoreProtection completed in 1.0165857 seconds - Result: [14:47:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection [14:47:30] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 1.000002s [14:47:30] [ERROR] [PS1] Failed to configure System Restore: Access denied  False True",
-  "[14:47:30] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemHealthOptimization (2/20) - Optimize system performance and health settings",
-  "[14:47:30] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemHealthOptimization | Function execution beginning",
-  "[14:47:32] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0583828s | Result: [14:47:30] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization [14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0537461s False True",
-  "[14:47:32] [SUCCESS] [PS1] [2/20] Task SystemHealthOptimization completed in 2.0583828 seconds - Result: [14:47:30] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization [14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0537461s False True",
-  "[14:47:32] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemInventory (3/20) - Collect comprehensive system information for analysis and reporting",
-  "[14:47:32] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemInventory | Function execution beginning",
-  "[14:47:32] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemInventory | Duration: 0.0346734s | Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory [14:47:32] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0307188s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again. False",
-  "[14:47:32] [SUCCESS] [PS1] [3/20] Task SystemInventory completed in 0.0346734 seconds - Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory [14:47:32] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0307188s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again. False",
-  "[14:47:32] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: RemoveBloatware (4/20) - Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities",
-  "[14:47:32] [ACTION] [PS1] [Task Execution] Starting task function | Details: RemoveBloatware | Function execution beginning",
-  "[14:47:32] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: RemoveBloatware | Duration: 0.3747225s | Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware [14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3712983s [14:47:32] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors True True",
-  "[14:47:32] [SUCCESS] [PS1] [4/20] Task RemoveBloatware completed in 0.3747225 seconds - Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware [14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3712983s [14:47:32] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors True True",
-  "[14:47:32] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallEssentialApps (5/20) - Install curated essential applications via parallel processing",
-  "[14:47:32] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallEssentialApps | Function execution beginning",
-  "[14:47:42] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1644034s | Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps [14:47:42] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1602871s [14:47:42] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors True True",
-  "[14:47:42] [SUCCESS] [PS1] [5/20] Task InstallEssentialApps completed in 9.1644034 seconds - Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps [14:47:42] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1602871s [14:47:42] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors True True",
-  "[14:47:42] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: UpdateInstalledApplications (6/20) - Update all installed applications via Winget, Chocolatey, and package managers",
-  "[14:47:42] [ACTION] [PS1] [Task Execution] Starting task function | Details: UpdateInstalledApplications | Function execution beginning",
-  "[14:47:54] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: UpdateInstalledApplications | Duration: 12.1349728s | Result: [14:47:42] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 12.1287774s [14:47:45] [SUCCESS] [PS1] Winget packages updated successfully [14:47:54] [SUCCESS] [PS1] Chocolatey packages updated successfully [14:47:54] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors True True",
-  "[14:47:54] [SUCCESS] [PS1] [6/20] Task UpdateInstalledApplications completed in 12.1349728 seconds - Result: [14:47:42] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 12.1287774s [14:47:45] [SUCCESS] [PS1] Winget packages updated successfully [14:47:54] [SUCCESS] [PS1] Chocolatey packages updated successfully [14:47:54] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors True True",
-  "[14:47:54] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallWindowsUpdates (7/20) - Install pending Windows updates and security patches",
-  "[14:47:54] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallWindowsUpdates | Function execution beginning",
-  "[14:47:54] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1356091s | Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1316869s [14:47:54] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console. False True",
-  "[14:47:54] [SUCCESS] [PS1] [7/20] Task InstallWindowsUpdates completed in 0.1356091 seconds - Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1316869s [14:47:54] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console. False True",
-  "[14:47:54] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallOptionalUpdates (8/20) - Install optional Windows features and updates",
-  "[14:47:54] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallOptionalUpdates | Function execution beginning",
-  "[14:47:54] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0287618s | Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0253818s [14:47:54] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors True True",
-  "[14:47:54] [SUCCESS] [PS1] [8/20] Task InstallOptionalUpdates completed in 0.0287618 seconds - Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0253818s [14:47:54] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors True True",
-  "[14:47:54] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: UpdateDeviceDrivers (9/20) - Update device drivers using Windows Update",
-  "[14:47:54] [ACTION] [PS1] [Task Execution] Starting task function | Details: UpdateDeviceDrivers | Function execution beginning",
-  "[14:47:54] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0283653s | Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0254401s [14:47:54] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'. False True",
-  "[14:47:54] [SUCCESS] [PS1] [9/20] Task UpdateDeviceDrivers completed in 0.0283653 seconds - Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0254401s [14:47:54] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'. False True",
-  "[14:47:54] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: TestSystemHealth (10/20) - Run system health checks and repairs using DISM and SFC",
-  "[14:47:54] [ACTION] [PS1] [Task Execution] Starting task function | Details: TestSystemHealth | Function execution beginning",
-  "[14:47:57] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: TestSystemHealth | Duration: 3.3634015s | Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth [14:47:57] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.3597959s [14:47:56] [ERROR] [PS1] DISM repair failed [14:47:57] [SUCCESS] [PS1] System health check completed: 2 issues found, 2 fixed True True",
-  "[14:47:57] [SUCCESS] [PS1] [10/20] Task TestSystemHealth completed in 3.3634015 seconds - Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth [14:47:57] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.3597959s [14:47:56] [ERROR] [PS1] DISM repair failed [14:47:57] [SUCCESS] [PS1] System health check completed: 2 issues found, 2 fixed True True",
-  "[14:47:57] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: OptimizeWindowsUpdate (11/20) - Optimize Windows Update settings and cleanup old files",
-  "[14:47:57] [ACTION] [PS1] [Task Execution] Starting task function | Details: OptimizeWindowsUpdate | Function execution beginning",
-  "[14:47:58] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0375488s | Result: [14:47:57] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate [14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0339236s [14:47:57] [SUCCESS] [PS1] Windows Update settings optimized True True",
-  "[14:47:58] [SUCCESS] [PS1] [11/20] Task OptimizeWindowsUpdate completed in 1.0375488 seconds - Result: [14:47:57] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate [14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0339236s [14:47:57] [SUCCESS] [PS1] Windows Update settings optimized True True",
-  "[14:47:58] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableSystemMonitoring (12/20) - Enable system monitoring services and Sysmon configuration",
-  "[14:47:58] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableSystemMonitoring | Function execution beginning",
-  "[14:47:58] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0746502s | Result: [14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring [14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0716083s [14:47:58] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'. [14:47:58] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'. [14:47:58] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified. [14:47:58] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors True True",
-  "[14:47:58] [SUCCESS] [PS1] [12/20] Task EnableSystemMonitoring completed in 0.0746502 seconds - Result: [14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring [14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0716083s [14:47:58] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'. [14:47:58] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'. [14:47:58] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified. [14:47:58] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors True True",
-  "[14:47:58] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SetEventLogging (13/20) - Configure Windows Event Log settings and retention policies",
-  "[14:47:58] [ACTION] [PS1] [Task Execution] Starting task function | Details: SetEventLogging | Function execution beginning",
-  "[14:47:59] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SetEventLogging | Duration: 0.0384563s | Result: [14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging [14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0354622s [14:47:58] [SUCCESS] [PS1] Application event log configured [14:47:59] [SUCCESS] [PS1] System event log configured [14:47:59] [SUCCESS] [PS1] Security event log configured [14:47:59] [SUCCESS] [PS1] Event logging configuration completed True True",
-  "[14:47:59] [SUCCESS] [PS1] [13/20] Task SetEventLogging completed in 0.0384563 seconds - Result: [14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging [14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0354622s [14:47:58] [SUCCESS] [PS1] Application event log configured [14:47:59] [SUCCESS] [PS1] System event log configured [14:47:59] [SUCCESS] [PS1] Security event log configured [14:47:59] [SUCCESS] [PS1] Event logging configuration completed True True",
-  "[14:47:59] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableTelemetryReporting (14/20) - Configure Windows telemetry and diagnostic reporting",
-  "[14:47:59] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableTelemetryReporting | Function execution beginning",
-  "[14:47:59] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.3015904s | Result: [14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting [14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.2965779s [14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection [14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection [14:47:59] [SUCCESS] [PS1] Diagnostic service dmwappushservice started [14:47:59] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured True True",
-  "[14:47:59] [SUCCESS] [PS1] [14/20] Task EnableTelemetryReporting completed in 0.3015904 seconds - Result: [14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting [14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.2965779s [14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection [14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection [14:47:59] [SUCCESS] [PS1] Diagnostic service dmwappushservice started [14:47:59] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured True True",
-  "[14:47:59] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: WatchSystemResources (15/20) - Monitor system resources and generate alerts for high usage",
-  "[14:47:59] [ACTION] [PS1] [Task Execution] Starting task function | Details: WatchSystemResources | Function execution beginning",
-  "[14:48:01] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: WatchSystemResources | Duration: 2.4485408s | Result: [14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources [14:48:01] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.4452385s [14:48:01] [SUCCESS] [PS1] System resources within normal parameters True True",
-  "[14:48:01] [SUCCESS] [PS1] [15/20] Task WatchSystemResources completed in 2.4485408 seconds - Result: [14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources [14:48:01] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.4452385s [14:48:01] [SUCCESS] [PS1] System resources within normal parameters True True",
-  "[14:48:01] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: NewSystemReport (16/20) - Generate comprehensive system monitoring report",
-  "[14:48:01] [ACTION] [PS1] [Task Execution] Starting task function | Details: NewSystemReport | Function execution beginning",
-  "[14:48:05] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: NewSystemReport | Duration: 3.4106334s | Result: [14:48:01] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport [14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4072022s [14:48:05] [SUCCESS] [PS1] System report generated: C:\\Users\\Bogdan\\OneDrive\\Desktop\\Projects\\script_mentenanta\\modules\\tasks\\monitoring\\..\\..\\..\\system_report.txt True True",
-  "[14:48:05] [SUCCESS] [PS1] [16/20] Task NewSystemReport completed in 3.4106334 seconds - Result: [14:48:01] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport [14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4072022s [14:48:05] [SUCCESS] [PS1] System report generated: C:\\Users\\Bogdan\\OneDrive\\Desktop\\Projects\\script_mentenanta\\modules\\tasks\\monitoring\\..\\..\\..\\system_report.txt True True",
-  "[14:48:05] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: ClearApplicationCache (17/20) - Clean application caches and temporary data",
-  "[14:48:05] [ACTION] [PS1] [Task Execution] Starting task function | Details: ClearApplicationCache | Function execution beginning",
-  "[14:48:05] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0472727s | Result: [14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache [14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0437988s [14:48:05] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned True True",
-  "[14:48:05] [SUCCESS] [PS1] [17/20] Task ClearApplicationCache completed in 0.0472727 seconds - Result: [14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache [14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0437988s [14:48:05] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned True True",
-  "[14:48:05] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: RepairBrokenApplications (18/20) - Attempt to repair broken or corrupted applications",
-  "[14:48:05] [ACTION] [PS1] [Task Execution] Starting task function | Details: RepairBrokenApplications | Function execution beginning",
-  "[14:48:06] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0333531s | Result: [14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0295284s [14:48:05] [ERROR] [PS1] Error repairing Store apps: Access is denied.\r\n\r\nAccess is denied.\r\n [14:48:06] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors True True",
-  "[14:48:06] [SUCCESS] [PS1] [18/20] Task RepairBrokenApplications completed in 1.0333531 seconds - Result: [14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0295284s [14:48:05] [ERROR] [PS1] Error repairing Store apps: Access is denied.\r\n\r\nAccess is denied.\r\n [14:48:06] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors True True",
-  "[14:48:06] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableMaintenanceScheduling (19/20) - Enable automated maintenance scheduling",
-  "[14:48:06] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableMaintenanceScheduling | Function execution beginning",
-  "[14:48:06] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0815604s | Result: [14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0755765s [14:48:06] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully True True",
-  "[14:48:06] [SUCCESS] [PS1] [19/20] Task EnableMaintenanceScheduling completed in 0.0815604 seconds - Result: [14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0755765s [14:48:06] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully True True",
-  "[14:48:06] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: CheckScheduledTaskStatus (20/20) - Check the status of scheduled maintenance tasks",
-  "[14:48:06] [ACTION] [PS1] [Task Execution] Starting task function | Details: CheckScheduledTaskStatus | Function execution beginning",
-  "[14:48:06] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0366485s | Result: [14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0329991s True",
-  "[14:48:06] [SUCCESS] [PS1] [20/20] Task CheckScheduledTaskStatus completed in 0.0366485 seconds - Result: [14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0329991s True",
-  "[14:48:06] [SUCCESS] [PS1] [Task Orchestration] Task execution sequence completed | Details: Successful: 20/20 | Total Duration: 36.85s",
-  "[14:48:06] [SUCCESS] [PS1] Maintenance sequence completed: 20/20 tasks successful in 36.85 seconds",
+  "[14:53:26] [ACTION] [PS1] [Task Orchestration] Initiating maintenance tasks execution sequence | Details: Total tasks to execute: 20",
+  "[14:53:26] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemRestoreProtection (1/20) - Enable System Restore and create pre-maintenance checkpoint",
+  "[14:53:26] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemRestoreProtection | Function execution beginning",
+  "[14:53:27] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemRestoreProtection | Duration: 0.947351s | Result: [14:53:26] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection [14:53:27] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 0.9415857s [14:53:27] [ERROR] [PS1] Failed to configure System Restore: Access denied  False True",
+  "[14:53:27] [SUCCESS] [PS1] [1/20] Task SystemRestoreProtection completed in 0.947351 seconds - Result: [14:53:26] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection [14:53:27] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 0.9415857s [14:53:27] [ERROR] [PS1] Failed to configure System Restore: Access denied  False True",
+  "[14:53:27] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemHealthOptimization (2/20) - Optimize system performance and health settings",
+  "[14:53:27] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemHealthOptimization | Function execution beginning",
+  "[14:53:29] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0682372s | Result: [14:53:27] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization [14:53:29] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0642208s False True",
+  "[14:53:29] [SUCCESS] [PS1] [2/20] Task SystemHealthOptimization completed in 2.0682372 seconds - Result: [14:53:27] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization [14:53:29] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0642208s False True",
+  "[14:53:29] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemInventory (3/20) - Collect comprehensive system information for analysis and reporting",
+  "[14:53:29] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemInventory | Function execution beginning",
+  "[14:53:29] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemInventory | Duration: 0.0166511s | Result: [14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory [14:53:29] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0129232s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again. False",
+  "[14:53:29] [SUCCESS] [PS1] [3/20] Task SystemInventory completed in 0.0166511 seconds - Result: [14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory [14:53:29] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0129232s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again. False",
+  "[14:53:29] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: RemoveBloatware (4/20) - Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities",
+  "[14:53:29] [ACTION] [PS1] [Task Execution] Starting task function | Details: RemoveBloatware | Function execution beginning",
+  "[14:53:29] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: RemoveBloatware | Duration: 0.3534411s | Result: [14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware [14:53:29] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3505769s [14:53:29] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors True True",
+  "[14:53:29] [SUCCESS] [PS1] [4/20] Task RemoveBloatware completed in 0.3534411 seconds - Result: [14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware [14:53:29] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3505769s [14:53:29] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors True True",
+  "[14:53:29] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallEssentialApps (5/20) - Install curated essential applications via parallel processing",
+  "[14:53:29] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallEssentialApps | Function execution beginning",
+  "[14:53:39] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallEssentialApps | Duration: 9.187069s | Result: [14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps [14:53:39] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1834797s [14:53:39] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors True True",
+  "[14:53:39] [SUCCESS] [PS1] [5/20] Task InstallEssentialApps completed in 9.187069 seconds - Result: [14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps [14:53:39] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1834797s [14:53:39] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors True True",
+  "[14:53:39] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: UpdateInstalledApplications (6/20) - Update all installed applications via Winget, Chocolatey, and package managers",
+  "[14:53:39] [ACTION] [PS1] [Task Execution] Starting task function | Details: UpdateInstalledApplications | Function execution beginning",
+  "[14:54:05] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: UpdateInstalledApplications | Duration: 26.1194057s | Result: [14:53:39] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications [14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 26.1161153s [14:53:42] [SUCCESS] [PS1] Winget packages updated successfully [14:54:05] [SUCCESS] [PS1] Chocolatey packages updated successfully [14:54:05] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors True True",
+  "[14:54:05] [SUCCESS] [PS1] [6/20] Task UpdateInstalledApplications completed in 26.1194057 seconds - Result: [14:53:39] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications [14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 26.1161153s [14:53:42] [SUCCESS] [PS1] Winget packages updated successfully [14:54:05] [SUCCESS] [PS1] Chocolatey packages updated successfully [14:54:05] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors True True",
+  "[14:54:05] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallWindowsUpdates (7/20) - Install pending Windows updates and security patches",
+  "[14:54:05] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallWindowsUpdates | Function execution beginning",
+  "[14:54:05] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1392407s | Result: [14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates [14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1358799s [14:54:05] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console. False True",
+  "[14:54:05] [SUCCESS] [PS1] [7/20] Task InstallWindowsUpdates completed in 0.1392407 seconds - Result: [14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates [14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1358799s [14:54:05] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console. False True",
+  "[14:54:05] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallOptionalUpdates (8/20) - Install optional Windows features and updates",
+  "[14:54:05] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallOptionalUpdates | Function execution beginning",
+  "[14:54:05] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0249122s | Result: [14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates [14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0216977s [14:54:05] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors True True",
+  "[14:54:05] [SUCCESS] [PS1] [8/20] Task InstallOptionalUpdates completed in 0.0249122 seconds - Result: [14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates [14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0216977s [14:54:05] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors True True",
+  "[14:54:05] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: UpdateDeviceDrivers (9/20) - Update device drivers using Windows Update",
+  "[14:54:05] [ACTION] [PS1] [Task Execution] Starting task function | Details: UpdateDeviceDrivers | Function execution beginning",
+  "[14:54:05] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0367595s | Result: [14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers [14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0336202s [14:54:05] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'. False True",
+  "[14:54:05] [SUCCESS] [PS1] [9/20] Task UpdateDeviceDrivers completed in 0.0367595 seconds - Result: [14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers [14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0336202s [14:54:05] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'. False True",
+  "[14:54:05] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: TestSystemHealth (10/20) - Run system health checks and repairs using DISM and SFC",
+  "[14:54:05] [ACTION] [PS1] [Task Execution] Starting task function | Details: TestSystemHealth | Function execution beginning",
+  "[14:54:08] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: TestSystemHealth | Duration: 3.0812868s | Result: [14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth [14:54:08] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.0783402s [14:54:07] [ERROR] [PS1] DISM repair failed [14:54:08] [SUCCESS] [PS1] Windows Update service is running [14:54:08] [SUCCESS] [PS1] System health check completed: 2 issues found, 1 fixed True True",
+  "[14:54:08] [SUCCESS] [PS1] [10/20] Task TestSystemHealth completed in 3.0812868 seconds - Result: [14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth [14:54:08] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.0783402s [14:54:07] [ERROR] [PS1] DISM repair failed [14:54:08] [SUCCESS] [PS1] Windows Update service is running [14:54:08] [SUCCESS] [PS1] System health check completed: 2 issues found, 1 fixed True True",
+  "[14:54:08] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: OptimizeWindowsUpdate (11/20) - Optimize Windows Update settings and cleanup old files",
+  "[14:54:08] [ACTION] [PS1] [Task Execution] Starting task function | Details: OptimizeWindowsUpdate | Function execution beginning",
+  "[14:54:09] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0447143s | Result: [14:54:08] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate [14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0418251s [14:54:08] [SUCCESS] [PS1] Windows Update settings optimized True True",
+  "[14:54:09] [SUCCESS] [PS1] [11/20] Task OptimizeWindowsUpdate completed in 1.0447143 seconds - Result: [14:54:08] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate [14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0418251s [14:54:08] [SUCCESS] [PS1] Windows Update settings optimized True True",
+  "[14:54:09] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableSystemMonitoring (12/20) - Enable system monitoring services and Sysmon configuration",
+  "[14:54:09] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableSystemMonitoring | Function execution beginning",
+  "[14:54:09] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0760604s | Result: [14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring [14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0714629s [14:54:09] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'. [14:54:09] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'. [14:54:09] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified. [14:54:09] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors True True",
+  "[14:54:09] [SUCCESS] [PS1] [12/20] Task EnableSystemMonitoring completed in 0.0760604 seconds - Result: [14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring [14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0714629s [14:54:09] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'. [14:54:09] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'. [14:54:09] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified. [14:54:09] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors True True",
+  "[14:54:09] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SetEventLogging (13/20) - Configure Windows Event Log settings and retention policies",
+  "[14:54:09] [ACTION] [PS1] [Task Execution] Starting task function | Details: SetEventLogging | Function execution beginning",
+  "[14:54:09] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SetEventLogging | Duration: 0.036629s | Result: [14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging [14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0333302s [14:54:09] [SUCCESS] [PS1] Application event log configured [14:54:09] [SUCCESS] [PS1] System event log configured [14:54:09] [SUCCESS] [PS1] Security event log configured [14:54:09] [SUCCESS] [PS1] Event logging configuration completed True True",
+  "[14:54:09] [SUCCESS] [PS1] [13/20] Task SetEventLogging completed in 0.036629 seconds - Result: [14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging [14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0333302s [14:54:09] [SUCCESS] [PS1] Application event log configured [14:54:09] [SUCCESS] [PS1] System event log configured [14:54:09] [SUCCESS] [PS1] Security event log configured [14:54:09] [SUCCESS] [PS1] Event logging configuration completed True True",
+  "[14:54:09] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableTelemetryReporting (14/20) - Configure Windows telemetry and diagnostic reporting",
+  "[14:54:09] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableTelemetryReporting | Function execution beginning",
+  "[14:54:10] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.3059474s | Result: [14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting [14:54:10] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.3029412s [14:54:09] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection [14:54:09] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection [14:54:10] [SUCCESS] [PS1] Diagnostic service dmwappushservice started [14:54:10] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured True True",
+  "[14:54:10] [SUCCESS] [PS1] [14/20] Task EnableTelemetryReporting completed in 0.3059474 seconds - Result: [14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting [14:54:10] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.3029412s [14:54:09] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection [14:54:09] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection [14:54:10] [SUCCESS] [PS1] Diagnostic service dmwappushservice started [14:54:10] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured True True",
+  "[14:54:10] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: WatchSystemResources (15/20) - Monitor system resources and generate alerts for high usage",
+  "[14:54:10] [ACTION] [PS1] [Task Execution] Starting task function | Details: WatchSystemResources | Function execution beginning",
+  "[14:54:12] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: WatchSystemResources | Duration: 2.4411985s | Result: [14:54:10] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources [14:54:12] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.434619s [14:54:12] [SUCCESS] [PS1] System resources within normal parameters True True",
+  "[14:54:12] [SUCCESS] [PS1] [15/20] Task WatchSystemResources completed in 2.4411985 seconds - Result: [14:54:10] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources [14:54:12] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.434619s [14:54:12] [SUCCESS] [PS1] System resources within normal parameters True True",
+  "[14:54:12] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: NewSystemReport (16/20) - Generate comprehensive system monitoring report",
+  "[14:54:12] [ACTION] [PS1] [Task Execution] Starting task function | Details: NewSystemReport | Function execution beginning",
+  "[14:54:15] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: NewSystemReport | Duration: 3.4231555s | Result: [14:54:12] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport [14:54:15] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4199223s [14:54:15] [SUCCESS] [PS1] System report generated: C:\\Users\\Bogdan\\OneDrive\\Desktop\\Projects\\script_mentenanta\\modules\\tasks\\monitoring\\..\\..\\..\\system_report.txt True True",
+  "[14:54:15] [SUCCESS] [PS1] [16/20] Task NewSystemReport completed in 3.4231555 seconds - Result: [14:54:12] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport [14:54:15] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4199223s [14:54:15] [SUCCESS] [PS1] System report generated: C:\\Users\\Bogdan\\OneDrive\\Desktop\\Projects\\script_mentenanta\\modules\\tasks\\monitoring\\..\\..\\..\\system_report.txt True True",
+  "[14:54:15] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: ClearApplicationCache (17/20) - Clean application caches and temporary data",
+  "[14:54:15] [ACTION] [PS1] [Task Execution] Starting task function | Details: ClearApplicationCache | Function execution beginning",
+  "[14:54:15] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0481004s | Result: [14:54:15] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache [14:54:15] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.044564s [14:54:15] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned True True",
+  "[14:54:15] [SUCCESS] [PS1] [17/20] Task ClearApplicationCache completed in 0.0481004 seconds - Result: [14:54:15] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache [14:54:15] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.044564s [14:54:15] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned True True",
+  "[14:54:15] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: RepairBrokenApplications (18/20) - Attempt to repair broken or corrupted applications",
+  "[14:54:15] [ACTION] [PS1] [Task Execution] Starting task function | Details: RepairBrokenApplications | Function execution beginning",
+  "[14:54:16] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0321105s | Result: [14:54:15] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications [14:54:16] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0292933s [14:54:15] [ERROR] [PS1] Error repairing Store apps: Access is denied.\r\n\r\nAccess is denied.\r\n [14:54:16] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors True True",
+  "[14:54:16] [SUCCESS] [PS1] [18/20] Task RepairBrokenApplications completed in 1.0321105 seconds - Result: [14:54:15] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications [14:54:16] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0292933s [14:54:15] [ERROR] [PS1] Error repairing Store apps: Access is denied.\r\n\r\nAccess is denied.\r\n [14:54:16] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors True True",
+  "[14:54:17] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableMaintenanceScheduling (19/20) - Enable automated maintenance scheduling",
+  "[14:54:17] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableMaintenanceScheduling | Function execution beginning",
+  "[14:54:17] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0770643s | Result: [14:54:17] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling [14:54:17] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.07431s [14:54:17] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully True True",
+  "[14:54:17] [SUCCESS] [PS1] [19/20] Task EnableMaintenanceScheduling completed in 0.0770643 seconds - Result: [14:54:17] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling [14:54:17] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.07431s [14:54:17] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully True True",
+  "[14:54:17] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: CheckScheduledTaskStatus (20/20) - Check the status of scheduled maintenance tasks",
+  "[14:54:17] [ACTION] [PS1] [Task Execution] Starting task function | Details: CheckScheduledTaskStatus | Function execution beginning",
+  "[14:54:17] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0315925s | Result: [14:54:17] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus [14:54:17] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0288037s True",
+  "[14:54:17] [SUCCESS] [PS1] [20/20] Task CheckScheduledTaskStatus completed in 0.0315925 seconds - Result: [14:54:17] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus [14:54:17] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0288037s True",
+  "[14:54:17] [SUCCESS] [PS1] [Task Orchestration] Task execution sequence completed | Details: Successful: 20/20 | Total Duration: 50.49s",
+  "[14:54:17] [SUCCESS] [PS1] Maintenance sequence completed: 20/20 tasks successful in 50.49 seconds",
   {
-    "SetEventLogging": {
-      "Description": "Configure Windows Event Log settings and retention policies",
+    "RemoveBloatware": {
+      "Started": "2025-09-27T14:53:29.5478495+03:00",
+      "Duration": 0.3534411,
+      "Ended": "2025-09-27T14:53:29.9012906+03:00",
       "Success": [
-        "[14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging",
-        "[14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0354622s",
-        "[14:47:58] [SUCCESS] [PS1] Application event log configured",
-        "[14:47:59] [SUCCESS] [PS1] System event log configured",
-        "[14:47:59] [SUCCESS] [PS1] Security event log configured",
-        "[14:47:59] [SUCCESS] [PS1] Event logging configuration completed",
+        "[14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware",
+        "[14:53:29] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3505769s",
+        "[14:53:29] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors",
         true,
         true
       ],
-      "Started": "2025-09-27T14:47:58.9808812+03:00",
-      "Duration": 0.0384563,
-      "Ended": "2025-09-27T14:47:59.0193375+03:00"
-    },
-    "NewSystemReport": {
-      "Description": "Generate comprehensive system monitoring report",
-      "Success": [
-        "[14:48:01] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport",
-        "[14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4072022s",
-        "[14:48:05] [SUCCESS] [PS1] System report generated: C:\\Users\\Bogdan\\OneDrive\\Desktop\\Projects\\script_mentenanta\\modules\\tasks\\monitoring\\..\\..\\..\\system_report.txt",
-        true,
-        true
-      ],
-      "Started": "2025-09-27T14:48:01.7901184+03:00",
-      "Duration": 3.4106334,
-      "Ended": "2025-09-27T14:48:05.2007518+03:00"
-    },
-    "SystemHealthOptimization": {
-      "Description": "Optimize system performance and health settings",
-      "Success": [
-        "[14:47:30] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization",
-        "[14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0537461s",
-        false,
-        true
-      ],
-      "Started": "2025-09-27T14:47:30.4506287+03:00",
-      "Duration": 2.0583828,
-      "Ended": "2025-09-27T14:47:32.5090115+03:00"
+      "Description": "Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities"
     },
     "InstallEssentialApps": {
-      "Description": "Install curated essential applications via parallel processing",
+      "Started": "2025-09-27T14:53:29.907095+03:00",
+      "Duration": 9.187069,
+      "Ended": "2025-09-27T14:53:39.094164+03:00",
       "Success": [
-        "[14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps",
-        "[14:47:42] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1602871s",
-        "[14:47:42] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors",
+        "[14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps",
+        "[14:53:39] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1834797s",
+        "[14:53:39] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors",
         true,
         true
       ],
-      "Started": "2025-09-27T14:47:32.9440958+03:00",
-      "Duration": 9.1644034,
-      "Ended": "2025-09-27T14:47:42.1084992+03:00"
-    },
-    "InstallOptionalUpdates": {
-      "Description": "Install optional Windows features and updates",
-      "Success": [
-        "[14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates",
-        "[14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0253818s",
-        "[14:47:54] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors",
-        true,
-        true
-      ],
-      "Started": "2025-09-27T14:47:54.4062376+03:00",
-      "Duration": 0.0287618,
-      "Ended": "2025-09-27T14:47:54.4349994+03:00"
-    },
-    "WatchSystemResources": {
-      "Description": "Monitor system resources and generate alerts for high usage",
-      "Success": [
-        "[14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources",
-        "[14:48:01] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.4452385s",
-        "[14:48:01] [SUCCESS] [PS1] System resources within normal parameters",
-        true,
-        true
-      ],
-      "Started": "2025-09-27T14:47:59.3355222+03:00",
-      "Duration": 2.4485408,
-      "Ended": "2025-09-27T14:48:01.784063+03:00"
-    },
-    "EnableSystemMonitoring": {
-      "Description": "Enable system monitoring services and Sysmon configuration",
-      "Success": [
-        "[14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring",
-        "[14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0716083s",
-        "[14:47:58] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'.",
-        "[14:47:58] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'.",
-        "[14:47:58] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified.",
-        "[14:47:58] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors",
-        true,
-        true
-      ],
-      "Started": "2025-09-27T14:47:58.8987572+03:00",
-      "Duration": 0.0746502,
-      "Ended": "2025-09-27T14:47:58.9734074+03:00"
-    },
-    "CheckScheduledTaskStatus": {
-      "Description": "Check the status of scheduled maintenance tasks",
-      "Success": [
-        "[14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus",
-        "[14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0329991s",
-        true
-      ],
-      "Started": "2025-09-27T14:48:06.3926631+03:00",
-      "Duration": 0.0366485,
-      "Ended": "2025-09-27T14:48:06.4293116+03:00"
-    },
-    "SystemInventory": {
-      "Description": "Collect comprehensive system information for analysis and reporting",
-      "Success": [
-        "[14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory",
-        "[14:47:32] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0307188s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again.",
-        false
-      ],
-      "Started": "2025-09-27T14:47:32.5200987+03:00",
-      "Duration": 0.0346734,
-      "Ended": "2025-09-27T14:47:32.5547721+03:00"
-    },
-    "UpdateDeviceDrivers": {
-      "Description": "Update device drivers using Windows Update",
-      "Success": [
-        "[14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers",
-        "[14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0254401s",
-        "[14:47:54] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'.",
-        false,
-        true
-      ],
-      "Started": "2025-09-27T14:47:54.440369+03:00",
-      "Duration": 0.0283653,
-      "Ended": "2025-09-27T14:47:54.4687343+03:00"
-    },
-    "OptimizeWindowsUpdate": {
-      "Description": "Optimize Windows Update settings and cleanup old files",
-      "Success": [
-        "[14:47:57] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate",
-        "[14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0339236s",
-        "[14:47:57] [SUCCESS] [PS1] Windows Update settings optimized",
-        true,
-        true
-      ],
-      "Started": "2025-09-27T14:47:57.8541108+03:00",
-      "Duration": 1.0375488,
-      "Ended": "2025-09-27T14:47:58.8916596+03:00"
-    },
-    "RepairBrokenApplications": {
-      "Description": "Attempt to repair broken or corrupted applications",
-      "Success": [
-        "[14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications",
-        "[14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0295284s",
-        "[14:48:05] [ERROR] [PS1] Error repairing Store apps: Access is denied.\r\n\r\nAccess is denied.\r\n",
-        "[14:48:06] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors",
-        true,
-        true
-      ],
-      "Started": "2025-09-27T14:48:05.2626272+03:00",
-      "Duration": 1.0333531,
-      "Ended": "2025-09-27T14:48:06.2959803+03:00"
+      "Description": "Install curated essential applications via parallel processing"
     },
     "EnableTelemetryReporting": {
-      "Description": "Configure Windows telemetry and diagnostic reporting",
+      "Started": "2025-09-27T14:54:09.7128294+03:00",
+      "Duration": 0.3059474,
+      "Ended": "2025-09-27T14:54:10.0187768+03:00",
       "Success": [
-        "[14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting",
-        "[14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.2965779s",
-        "[14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
-        "[14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
-        "[14:47:59] [SUCCESS] [PS1] Diagnostic service dmwappushservice started",
-        "[14:47:59] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured",
+        "[14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting",
+        "[14:54:10] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.3029412s",
+        "[14:54:09] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
+        "[14:54:09] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+        "[14:54:10] [SUCCESS] [PS1] Diagnostic service dmwappushservice started",
+        "[14:54:10] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured",
         true,
         true
       ],
-      "Started": "2025-09-27T14:47:59.0252786+03:00",
-      "Duration": 0.3015904,
-      "Ended": "2025-09-27T14:47:59.326869+03:00"
+      "Description": "Configure Windows telemetry and diagnostic reporting"
     },
-    "UpdateInstalledApplications": {
-      "Description": "Update all installed applications via Winget, Chocolatey, and package managers",
+    "SystemInventory": {
+      "Started": "2025-09-27T14:53:29.5245952+03:00",
+      "Duration": 0.0166511,
+      "Ended": "2025-09-27T14:53:29.5412463+03:00",
       "Success": [
-        "[14:47:42] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications",
-        "[14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 12.1287774s",
-        "[14:47:45] [SUCCESS] [PS1] Winget packages updated successfully",
-        "[14:47:54] [SUCCESS] [PS1] Chocolatey packages updated successfully",
-        "[14:47:54] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors",
-        true,
-        true
+        "[14:53:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory",
+        "[14:53:29] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0129232s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again.",
+        false
       ],
-      "Started": "2025-09-27T14:47:42.1164188+03:00",
-      "Duration": 12.1349728,
-      "Ended": "2025-09-27T14:47:54.2513916+03:00"
+      "Description": "Collect comprehensive system information for analysis and reporting"
     },
-    "ClearApplicationCache": {
-      "Description": "Clean application caches and temporary data",
+    "OptimizeWindowsUpdate": {
+      "Started": "2025-09-27T14:54:08.5360173+03:00",
+      "Duration": 1.0447143,
+      "Ended": "2025-09-27T14:54:09.5807316+03:00",
       "Success": [
-        "[14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache",
-        "[14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0437988s",
-        "[14:48:05] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned",
+        "[14:54:08] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate",
+        "[14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0418251s",
+        "[14:54:08] [SUCCESS] [PS1] Windows Update settings optimized",
         true,
         true
       ],
-      "Started": "2025-09-27T14:48:05.2074606+03:00",
-      "Duration": 0.0472727,
-      "Ended": "2025-09-27T14:48:05.2547333+03:00"
-    },
-    "EnableMaintenanceScheduling": {
-      "Description": "Enable automated maintenance scheduling",
-      "Success": [
-        "[14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling",
-        "[14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0755765s",
-        "[14:48:06] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully",
-        true,
-        true
-      ],
-      "Started": "2025-09-27T14:48:06.3040219+03:00",
-      "Duration": 0.0815604,
-      "Ended": "2025-09-27T14:48:06.3855823+03:00"
+      "Description": "Optimize Windows Update settings and cleanup old files"
     },
     "TestSystemHealth": {
-      "Description": "Run system health checks and repairs using DISM and SFC",
+      "Started": "2025-09-27T14:54:05.4476598+03:00",
+      "Duration": 3.0812868,
+      "Ended": "2025-09-27T14:54:08.5289466+03:00",
       "Success": [
-        "[14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth",
-        "[14:47:57] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.3597959s",
-        "[14:47:56] [ERROR] [PS1] DISM repair failed",
-        "[14:47:57] [SUCCESS] [PS1] System health check completed: 2 issues found, 2 fixed",
+        "[14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth",
+        "[14:54:08] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.0783402s",
+        "[14:54:07] [ERROR] [PS1] DISM repair failed",
+        "[14:54:08] [SUCCESS] [PS1] Windows Update service is running",
+        "[14:54:08] [SUCCESS] [PS1] System health check completed: 2 issues found, 1 fixed",
         true,
         true
       ],
-      "Started": "2025-09-27T14:47:54.4771713+03:00",
-      "Duration": 3.3634015,
-      "Ended": "2025-09-27T14:47:57.8405728+03:00"
+      "Description": "Run system health checks and repairs using DISM and SFC"
+    },
+    "NewSystemReport": {
+      "Started": "2025-09-27T14:54:12.4724173+03:00",
+      "Duration": 3.4231555,
+      "Ended": "2025-09-27T14:54:15.8955728+03:00",
+      "Success": [
+        "[14:54:12] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport",
+        "[14:54:15] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4199223s",
+        "[14:54:15] [SUCCESS] [PS1] System report generated: C:\\Users\\Bogdan\\OneDrive\\Desktop\\Projects\\script_mentenanta\\modules\\tasks\\monitoring\\..\\..\\..\\system_report.txt",
+        true,
+        true
+      ],
+      "Description": "Generate comprehensive system monitoring report"
+    },
+    "InstallOptionalUpdates": {
+      "Started": "2025-09-27T14:54:05.3745128+03:00",
+      "Duration": 0.0249122,
+      "Ended": "2025-09-27T14:54:05.399425+03:00",
+      "Success": [
+        "[14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates",
+        "[14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0216977s",
+        "[14:54:05] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors",
+        true,
+        true
+      ],
+      "Description": "Install optional Windows features and updates"
+    },
+    "EnableMaintenanceScheduling": {
+      "Started": "2025-09-27T14:54:17.002975+03:00",
+      "Duration": 0.0770643,
+      "Ended": "2025-09-27T14:54:17.0800393+03:00",
+      "Success": [
+        "[14:54:17] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling",
+        "[14:54:17] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.07431s",
+        "[14:54:17] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully",
+        true,
+        true
+      ],
+      "Description": "Enable automated maintenance scheduling"
+    },
+    "RepairBrokenApplications": {
+      "Started": "2025-09-27T14:54:15.9642461+03:00",
+      "Duration": 1.0321105,
+      "Ended": "2025-09-27T14:54:16.9963566+03:00",
+      "Success": [
+        "[14:54:15] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications",
+        "[14:54:16] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0292933s",
+        "[14:54:15] [ERROR] [PS1] Error repairing Store apps: Access is denied.\r\n\r\nAccess is denied.\r\n",
+        "[14:54:16] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors",
+        true,
+        true
+      ],
+      "Description": "Attempt to repair broken or corrupted applications"
     },
     "SystemRestoreProtection": {
-      "Description": "Enable System Restore and create pre-maintenance checkpoint",
+      "Started": "2025-09-27T14:53:26.4904101+03:00",
+      "Duration": 0.947351,
+      "Ended": "2025-09-27T14:53:27.4377611+03:00",
       "Success": [
-        "[14:47:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection",
-        "[14:47:30] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 1.000002s",
-        "[14:47:30] [ERROR] [PS1] Failed to configure System Restore: Access denied ",
+        "[14:53:26] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection",
+        "[14:53:27] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 0.9415857s",
+        "[14:53:27] [ERROR] [PS1] Failed to configure System Restore: Access denied ",
         false,
         true
       ],
-      "Started": "2025-09-27T14:47:29.4208674+03:00",
-      "Duration": 1.0165857,
-      "Ended": "2025-09-27T14:47:30.4374531+03:00"
+      "Description": "Enable System Restore and create pre-maintenance checkpoint"
     },
-    "RemoveBloatware": {
-      "Description": "Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities",
+    "WatchSystemResources": {
+      "Started": "2025-09-27T14:54:10.0254681+03:00",
+      "Duration": 2.4411985,
+      "Ended": "2025-09-27T14:54:12.4666666+03:00",
       "Success": [
-        "[14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware",
-        "[14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3712983s",
-        "[14:47:32] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors",
+        "[14:54:10] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources",
+        "[14:54:12] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.434619s",
+        "[14:54:12] [SUCCESS] [PS1] System resources within normal parameters",
         true,
         true
       ],
-      "Started": "2025-09-27T14:47:32.5624113+03:00",
-      "Duration": 0.3747225,
-      "Ended": "2025-09-27T14:47:32.9371338+03:00"
+      "Description": "Monitor system resources and generate alerts for high usage"
     },
-    "InstallWindowsUpdates": {
-      "Description": "Install pending Windows updates and security patches",
+    "UpdateDeviceDrivers": {
+      "Started": "2025-09-27T14:54:05.4048643+03:00",
+      "Duration": 0.0367595,
+      "Ended": "2025-09-27T14:54:05.4416238+03:00",
       "Success": [
-        "[14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates",
-        "[14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1316869s",
-        "[14:47:54] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console.",
+        "[14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers",
+        "[14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0336202s",
+        "[14:54:05] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'.",
         false,
         true
       ],
-      "Started": "2025-09-27T14:47:54.2587104+03:00",
-      "Duration": 0.1356091,
-      "Ended": "2025-09-27T14:47:54.3943195+03:00"
+      "Description": "Update device drivers using Windows Update"
+    },
+    "SystemHealthOptimization": {
+      "Started": "2025-09-27T14:53:27.4471941+03:00",
+      "Duration": 2.0682372,
+      "Ended": "2025-09-27T14:53:29.5154313+03:00",
+      "Success": [
+        "[14:53:27] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization",
+        "[14:53:29] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0642208s",
+        false,
+        true
+      ],
+      "Description": "Optimize system performance and health settings"
+    },
+    "EnableSystemMonitoring": {
+      "Started": "2025-09-27T14:54:09.5868405+03:00",
+      "Duration": 0.0760604,
+      "Ended": "2025-09-27T14:54:09.6629009+03:00",
+      "Success": [
+        "[14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring",
+        "[14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0714629s",
+        "[14:54:09] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'.",
+        "[14:54:09] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'.",
+        "[14:54:09] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified.",
+        "[14:54:09] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors",
+        true,
+        true
+      ],
+      "Description": "Enable system monitoring services and Sysmon configuration"
+    },
+    "SetEventLogging": {
+      "Started": "2025-09-27T14:54:09.6693988+03:00",
+      "Duration": 0.036629,
+      "Ended": "2025-09-27T14:54:09.7060278+03:00",
+      "Success": [
+        "[14:54:09] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging",
+        "[14:54:09] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0333302s",
+        "[14:54:09] [SUCCESS] [PS1] Application event log configured",
+        "[14:54:09] [SUCCESS] [PS1] System event log configured",
+        "[14:54:09] [SUCCESS] [PS1] Security event log configured",
+        "[14:54:09] [SUCCESS] [PS1] Event logging configuration completed",
+        true,
+        true
+      ],
+      "Description": "Configure Windows Event Log settings and retention policies"
+    },
+    "InstallWindowsUpdates": {
+      "Started": "2025-09-27T14:54:05.2291807+03:00",
+      "Duration": 0.1392407,
+      "Ended": "2025-09-27T14:54:05.3684214+03:00",
+      "Success": [
+        "[14:54:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates",
+        "[14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1358799s",
+        "[14:54:05] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console.",
+        false,
+        true
+      ],
+      "Description": "Install pending Windows updates and security patches"
+    },
+    "UpdateInstalledApplications": {
+      "Started": "2025-09-27T14:53:39.1014066+03:00",
+      "Duration": 26.1194057,
+      "Ended": "2025-09-27T14:54:05.2208123+03:00",
+      "Success": [
+        "[14:53:39] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications",
+        "[14:54:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 26.1161153s",
+        "[14:53:42] [SUCCESS] [PS1] Winget packages updated successfully",
+        "[14:54:05] [SUCCESS] [PS1] Chocolatey packages updated successfully",
+        "[14:54:05] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors",
+        true,
+        true
+      ],
+      "Description": "Update all installed applications via Winget, Chocolatey, and package managers"
+    },
+    "ClearApplicationCache": {
+      "Started": "2025-09-27T14:54:15.9079055+03:00",
+      "Duration": 0.0481004,
+      "Ended": "2025-09-27T14:54:15.9560059+03:00",
+      "Success": [
+        "[14:54:15] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache",
+        "[14:54:15] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.044564s",
+        "[14:54:15] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned",
+        true,
+        true
+      ],
+      "Description": "Clean application caches and temporary data"
+    },
+    "CheckScheduledTaskStatus": {
+      "Started": "2025-09-27T14:54:17.0864579+03:00",
+      "Duration": 0.0315925,
+      "Ended": "2025-09-27T14:54:17.1180504+03:00",
+      "Success": [
+        "[14:54:17] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus",
+        "[14:54:17] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0288037s",
+        true
+      ],
+      "Description": "Check the status of scheduled maintenance tasks"
     }
   }
 ]

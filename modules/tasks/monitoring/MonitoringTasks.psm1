@@ -47,7 +47,7 @@ function Enable-SystemMonitoring {
         }
 
         # Configure Sysmon if config file exists
-        $sysmonConfig = Join-Path $PSScriptRoot "..\..\..\sysmonconfig.xml"
+        $sysmonConfig = Join-Path $PSScriptRoot "..\..\..\config\sysmonconfig.xml"
         if (Test-Path $sysmonConfig) {
             Write-Log "Configuring Sysmon with custom configuration..." 'INFO'
             try {
@@ -341,6 +341,28 @@ Memory: $([math]::Round((Get-WmiObject Win32_ComputerSystem -ErrorAction Silentl
             }
             catch {
                 $report += "$service`: Error checking status`n"
+            }
+        }
+
+        # Add maintenance execution summary if available
+        if ($global:TaskResults -and $global:TaskResults.Count -gt 0) {
+            $report += "`n=== MAINTENANCE EXECUTION SUMMARY ===`n"
+            $successfulTasks = ($global:TaskResults.Values | Where-Object { $_.Success }).Count
+            $totalTasks = $global:TaskResults.Count
+            $totalDuration = ($global:TaskResults.Values | Measure-Object -Property Duration -Sum).Sum
+
+            $report += "Total Tasks Executed: $totalTasks`n"
+            $report += "Successful Tasks: $successfulTasks`n"
+            $report += "Failed Tasks: $($totalTasks - $successfulTasks)`n"
+            $report += "Total Execution Time: $([math]::Round($totalDuration, 2)) seconds`n"
+
+            # List failed tasks
+            $failedTasks = $global:TaskResults.GetEnumerator() | Where-Object { -not $_.Value.Success }
+            if ($failedTasks) {
+                $report += "`nFailed Tasks:`n"
+                foreach ($task in $failedTasks) {
+                    $report += "- $($task.Key): $($task.Value.Error)`n"
+                }
             }
         }
 

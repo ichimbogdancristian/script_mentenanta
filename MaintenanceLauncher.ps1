@@ -16,7 +16,6 @@ param(
 # Script path and environment detection
 $ScriptFullPath = $MyInvocation.MyCommand.Path
 $ScriptDir = Split-Path -Parent $ScriptFullPath
-$ScriptName = Split-Path -Leaf $ScriptFullPath
 
 # Working directory - use script directory
 $WorkingDirectory = $ScriptDir
@@ -63,7 +62,7 @@ $loggingModule = Join-Path $modulesPath 'logging\Logging.psm1'
 if (Test-Path $loggingModule) {
     Import-Module $loggingModule -Force
     # Initialize logging
-    Initialize-Logging -ConfigPath (Join-Path $WorkingDirectory 'logging.json')
+    Initialize-Logging -ConfigPath (Join-Path $WorkingDirectory 'config\logging.json')
     $global:LoggingConfig.LogFile = $LogFile
 }
 else {
@@ -123,7 +122,7 @@ else {
 # ================================================================
 
 # Load configuration from config.psd1 if it exists
-$configFile = Join-Path $ScriptDir 'config.psd1'
+$configFile = Join-Path $ScriptDir 'config\config.psd1'
 if (Test-Path $configFile) {
     try {
         $global:Config = Import-PowerShellDataFile -Path $configFile

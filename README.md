@@ -1,4 +1,4 @@
-# Windows Maintenance Automation Toolkit
+y# Windows Maintenance Automation Toolkit
 
 A comprehensive, modular Windows maintenance automation system built with PowerShell 7+.
 
@@ -10,23 +10,86 @@ This toolkit provides automated maintenance operations for Windows systems, orga
 
 The system is organized into the following modular components:
 
-### Core Modules
-- **Bootstrap.psm1**: Environment setup and PowerShell version management
-- **Environment.psm1**: System compatibility checks and administrator privilege management
-- **Dependencies.psm1**: Tool checking and installation (winget, choco, git, PS7)
-- **Logging.psm1**: Configuration-based logging system
-- **Inventory.psm1**: System and application data collection
+### Core Modules (`modules/core/`)
 - **Coordinator.psm1**: Central task orchestration and dependency management
 
-### Specialized Task Modules
-- **SystemTasks.psm1**: System maintenance (restore points, health optimization, inventory)
-- **ApplicationTasks.psm1**: Application management (bloatware removal, essential app installation, updates)
-- **UpdateTasks.psm1**: System and application updates (Windows updates, optional features, driver updates)
-- **MonitoringTasks.psm1**: System monitoring and telemetry (Sysmon, event logging, reporting)
-- **ScheduledTasks.psm1**: Windows scheduled tasks management and automation
+### Bootstrap Modules (`modules/bootstrap/`)
+- **Bootstrap.psm1**: Environment setup and PowerShell version management
+
+### Environment Modules (`modules/environment/`)
+- **Environment.psm1**: System compatibility checks and administrator privilege management
+
+### Dependency Modules (`modules/dependencies/`)
+- **Dependencies.psm1**: Tool checking and installation (winget, choco, git, PS7)
+
+### Utility Modules
+- **Logging.psm1** (`modules/logging/`): Configuration-based logging system
+- **Inventory.psm1** (`modules/inventory/`): System and application data collection
+
+### Specialized Task Modules (`modules/tasks/`)
+- **SystemTasks.psm1** (`modules/tasks/system/`): System maintenance (restore points, health optimization, inventory)
+- **BloatwareTasks.psm1** (`modules/tasks/applications/`): Bloatware removal and cleanup
+- **EssentialApps.psm1** (`modules/tasks/applications/`): Essential application installation
+- **UpdateTasks.psm1** (`modules/tasks/applications/`): Application updates and package management
+- **RepairTasks.psm1** (`modules/tasks/applications/`): Application repair and troubleshooting
+- **CacheTasks.psm1** (`modules/tasks/applications/`): Cache cleaning and temporary file management
+- **UpdateTasks.psm1** (`modules/tasks/updates/`): System and application updates (Windows updates, optional features, driver updates)
+- **MonitoringTasks.psm1** (`modules/tasks/monitoring/`): System monitoring and telemetry (Sysmon, event logging, reporting)
+- **ScheduledTasks.psm1** (`modules/tasks/`): Windows scheduled tasks management and automation
 
 ### Main Launcher
 - **MaintenanceLauncher.ps1**: Unified entry point that coordinates all modules
+
+### Configuration
+- **config.psd1**: User-customizable configuration file with skip flags, thresholds, and scheduled task settings
+- **BloatwareList.psd1**: Centralized bloatware definitions organized by categories (Microsoft, OEM, Gaming, etc.)
+- **EssentialAppsList.psd1**: Centralized essential applications definitions organized by categories (Browsers, Tools, etc.)
+
+## Project Structure
+
+```
+script_mentenanta/
+├── MaintenanceLauncher.ps1          # Main launcher script
+├── config/                          # Configuration files
+│   ├── config.psd1                  # Configuration file
+│   ├── BloatwareList.psd1           # Bloatware definitions
+│   ├── EssentialAppsList.psd1       # Essential applications definitions
+│   ├── logging.json                 # Logging configuration
+│   └── sysmonconfig.xml             # Sysmon configuration
+├── system_report.txt                # Consolidated system report
+├── maintenance.log                  # Main log file
+├── modules/                         # Modular components
+│   ├── bootstrap/
+│   │   └── Bootstrap.psm1          # PowerShell version management
+│   ├── core/
+│   │   └── Coordinator.psm1        # Task orchestration
+│   ├── dependencies/
+│   │   └── Dependencies.psm1       # Tool installation
+│   ├── environment/
+│   │   └── Environment.psm1        # System checks
+│   ├── inventory/
+│   │   └── Inventory.psm1          # System data collection
+│   ├── logging/
+│   │   └── Logging.psm1            # Logging system
+│   └── tasks/                      # Specialized task modules
+│       ├── applications/
+│       │   ├── BloatwareTasks.psm1
+│       │   ├── InstallationTasks.psm1
+│       │   ├── UpdateTasks.psm1
+│       │   ├── RepairTasks.psm1
+│       │   └── CacheTasks.psm1
+│       ├── monitoring/
+│       │   └── MonitoringTasks.psm1
+│       ├── system/
+│       │   └── SystemTasks.psm1
+│       ├── updates/
+│       │   └── UpdateTasks.psm1
+│       └── ScheduledTasks.psm1     # Scheduled task management
+├── temp/                           # Temporary files
+├── archive/                        # Legacy files
+└── .github/
+    └── copilot-instructions.md     # AI assistant guidance
+```
 
 ## Features
 
@@ -69,8 +132,7 @@ Run the maintenance launcher:
 
 - `-SkipAdminCheck`: Skip administrator privilege verification
 - `-SkipDependencyCheck`: Skip dependency verification
-- `-LogFile <path>`: Specify custom log file path
-- `-ConfigFile <path>`: Specify custom configuration file
+- `-LogFilePath <path>`: Specify custom log file path
 
 ### Configuration
 
@@ -104,32 +166,35 @@ $global:Config = @{
 
 ## Task Categories
 
-### System Tasks
+### System Tasks (3 tasks)
 - **System Restore Protection**: Enable System Restore and create maintenance checkpoints
 - **System Health Optimization**: Run DISM and SFC health checks and repairs
 - **System Inventory**: Collect comprehensive system information
 
-### Application Tasks
+### Application Tasks (6 tasks)
 - **Remove Bloatware**: Remove unwanted Windows apps via AppX, DISM, and registry
 - **Install Essential Apps**: Install curated essential applications via Winget
 - **Update Installed Applications**: Update all applications via Winget, Chocolatey, and Store
 - **Clear Application Cache**: Clean browser and application caches
 - **Repair Broken Applications**: Attempt to repair corrupted applications
 
-### Update Tasks
+### Update Tasks (5 tasks)
 - **Install Windows Updates**: Install pending Windows updates and security patches
 - **Install Optional Updates**: Install optional Windows features and updates
 - **Update Device Drivers**: Update device drivers using Windows Update
 - **Test System Health**: Run system health checks and repairs
 - **Optimize Windows Update**: Optimize Windows Update settings and cleanup
 
-### Monitoring Tasks
+### Monitoring Tasks (5 tasks)
 - **Enable System Monitoring**: Enable system monitoring services and Sysmon
 - **Set Event Logging**: Configure Windows Event Log settings and retention
 - **Enable Telemetry Reporting**: Configure Windows telemetry and diagnostics
 - **Watch System Resources**: Monitor system resources and generate alerts
 - **New System Report**: Generate comprehensive system monitoring reports
-- **Compress Event Logs**: Archive and compress old event logs
+
+### Scheduled Tasks (2 tasks)
+- **Enable Maintenance Scheduling**: Create automated recurring maintenance tasks
+- **Check Scheduled Task Status**: Monitor status and execution history of scheduled tasks
 
 ## Logging
 

@@ -52,7 +52,7 @@ SET "LOG_FILE=%WORKING_DIR%maintenance.log"
 REM ----------------------------------------------------------------------------- 
 REM Load Logging Configuration (if available) - Optional enhancement for future use
 REM -----------------------------------------------------------------------------
-SET "LOG_CONFIG=%WORKING_DIR%logging.json"
+SET "LOG_CONFIG=%WORKING_DIR%config\logging.json"
 SET "LOG_LEVEL=INFO"
 SET "LOG_MAX_SIZE_MB=10"
 SET "LOG_ROTATION=YES"

@@ -12,9 +12,26 @@ if (Test-Path $systemTasksPath) {
 }
 
 # Import application tasks
-$appTasksPath = Join-Path $taskModulesPath "applications\ApplicationTasks.psm1"
-if (Test-Path $appTasksPath) {
-    Import-Module $appTasksPath -Force -ErrorAction SilentlyContinue
+$appTasksPath = Join-Path $taskModulesPath "applications"
+$BloatwareTasksPath = Join-Path $appTasksPath "BloatwareTasks.psm1"
+if (Test-Path $BloatwareTasksPath) {
+    Import-Module $BloatwareTasksPath -Force -ErrorAction SilentlyContinue
+}
+$InstallationTasksPath = Join-Path $appTasksPath "EssentialApps.psm1"
+if (Test-Path $InstallationTasksPath) {
+    Import-Module $InstallationTasksPath -Force -ErrorAction SilentlyContinue
+}
+$UpdateTasksPath = Join-Path $appTasksPath "UpdateTasks.psm1"
+if (Test-Path $UpdateTasksPath) {
+    Import-Module $UpdateTasksPath -Force -ErrorAction SilentlyContinue
+}
+$RepairTasksPath = Join-Path $appTasksPath "RepairTasks.psm1"
+if (Test-Path $RepairTasksPath) {
+    Import-Module $RepairTasksPath -Force -ErrorAction SilentlyContinue
+}
+$CacheTasksPath = Join-Path $appTasksPath "CacheTasks.psm1"
+if (Test-Path $CacheTasksPath) {
+    Import-Module $CacheTasksPath -Force -ErrorAction SilentlyContinue
 }
 
 # Import update tasks
