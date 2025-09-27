@@ -1,0 +1,460 @@
+[14:47:26] [INFO] [Launcher] Configuration loaded from C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\config.psd1
+[14:47:26] [INFO] [Launcher] Starting Windows Maintenance Automation Launcher
+[14:47:26] [INFO] [Launcher] User: Bogdan, Computer: LAPTOP-BOGDAN
+[14:47:29] [INFO] [Launcher] Detected Windows version: Windows 10 Pro for Workstations 2009
+[14:47:29] [INFO] [Launcher] Tasks module loaded
+[14:47:29] [INFO] [Launcher] Coordinator module loaded
+[14:47:29] [INFO] [Launcher] Starting maintenance task execution...
+[14:47:29] [ACTION] [PS1] [Task Orchestration] Initiating maintenance tasks execution sequence | Details: Total tasks to execute: 20
+[14:47:29] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemRestoreProtection (1/20) - Enable System Restore and create pre-maintenance checkpoint
+[14:47:29] [INFO] [PS1] [1/20] Executing task: SystemRestoreProtection - Enable System Restore and create pre-maintenance checkpoint
+[14:47:29] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemRestoreProtection | Function execution beginning
+[14:47:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection
+[14:47:29] [INFO] [PS1] Starting System Restore Protection task.
+[14:47:29] [INFO] [PS1] Configuring System Restore protection...
+[14:47:30] [ERROR] [PS1] Failed to configure System Restore: Access denied 
+[14:47:30] [INFO] [PS1] Completed System Restore Protection task.
+[14:47:30] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 1.000002s
+[14:47:30] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemRestoreProtection | Duration: 1.0165857s | Result: [14:47:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection [14:47:30] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 1.000002s [14:47:30] [ERROR] [PS1] Failed to configure System Restore: Access denied  False True
+[14:47:30] [SUCCESS] [PS1] [1/20] Task SystemRestoreProtection completed in 1.0165857 seconds - Result: [14:47:29] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemRestoreProtection [14:47:30] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemRestoreProtection | Duration: 1.000002s [14:47:30] [ERROR] [PS1] Failed to configure System Restore: Access denied  False True
+[14:47:30] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemHealthOptimization (2/20) - Optimize system performance and health settings
+[14:47:30] [INFO] [PS1] [2/20] Executing task: SystemHealthOptimization - Optimize system performance and health settings
+[14:47:30] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemHealthOptimization | Function execution beginning
+[14:47:30] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization
+[14:47:30] [INFO] [PS1] Starting System Health Optimization task.
+[14:47:30] [INFO] [PS1] Running system health optimization...
+[14:47:30] [INFO] [PS1] Running DISM health check...
+[14:47:31] [WARN] [PS1] DISM health check failed with exit code 740
+[14:47:31] [INFO] [PS1] Running System File Checker...
+[14:47:32] [WARN] [PS1] System File Checker failed with exit code 1
+[14:47:32] [INFO] [PS1] Completed System Health Optimization task.
+[14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0537461s
+[14:47:32] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0583828s | Result: [14:47:30] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization [14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0537461s False True
+[14:47:32] [SUCCESS] [PS1] [2/20] Task SystemHealthOptimization completed in 2.0583828 seconds - Result: [14:47:30] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemHealthOptimization [14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SystemHealthOptimization | Duration: 2.0537461s False True
+[14:47:32] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SystemInventory (3/20) - Collect comprehensive system information for analysis and reporting
+[14:47:32] [INFO] [PS1] [3/20] Executing task: SystemInventory - Collect comprehensive system information for analysis and reporting
+[14:47:32] [ACTION] [PS1] [Task Execution] Starting task function | Details: SystemInventory | Function execution beginning
+[14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory
+[14:47:32] [INFO] [PS1] Starting System Inventory task.
+[14:47:32] [INFO] [PS1] Delegating to optimized system inventory for enhanced performance...
+[14:47:32] [INFO] [PS1] [START] Optimized System Inventory Collection
+[14:47:32] [INFO] [PS1] Building optimized system inventory...
+[14:47:32] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0307188s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again.
+[14:47:32] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SystemInventory | Duration: 0.0346734s | Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory [14:47:32] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0307188s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again. False
+[14:47:32] [SUCCESS] [PS1] [3/20] Task SystemInventory completed in 0.0346734 seconds - Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: SystemInventory [14:47:32] [ERROR] [PS1] [Task Management] Task execution failed | Details: SystemInventory | Duration: 0.0307188s | Error: Cannot validate argument on parameter 'Status'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again. False
+[14:47:32] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: RemoveBloatware (4/20) - Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities
+[14:47:32] [INFO] [PS1] [4/20] Executing task: RemoveBloatware - Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities
+[14:47:32] [ACTION] [PS1] [Task Execution] Starting task function | Details: RemoveBloatware | Function execution beginning
+[14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware
+[14:47:32] [INFO] [PS1] Starting Bloatware Removal task.
+[14:47:32] [INFO] [PS1] Starting bloatware removal process...
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.BingWeather: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.GetHelp: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.Getstarted: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.Messaging: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.Microsoft3DViewer: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.MicrosoftOfficeHub: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.MicrosoftSolitaireCollection: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.MixedReality.Portal: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.Office.OneNote: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.People: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.SkypeApp: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.Wallet: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.WindowsAlarms: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.WindowsCamera: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.WindowsFeedbackHub: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.WindowsMaps: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.WindowsSoundRecorder: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.Xbox.TCUI: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.XboxApp: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.XboxGameOverlay: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.XboxGamingOverlay: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.XboxSpeechToTextOverlay: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.YourPhone: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.ZuneMusic: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove Microsoft.ZuneVideo: Access is denied.
+
+Access is denied.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.BingWeather: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.GetHelp: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.Getstarted: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.Messaging: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.Microsoft3DViewer: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.MicrosoftOfficeHub: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.MicrosoftSolitaireCollection: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.MixedReality.Portal: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.Office.OneNote: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.People: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.SkypeApp: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.Wallet: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.WindowsAlarms: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.WindowsCamera: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.WindowsFeedbackHub: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.WindowsMaps: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.WindowsSoundRecorder: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.Xbox.TCUI: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.XboxApp: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.XboxGameOverlay: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.XboxGamingOverlay: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.XboxSpeechToTextOverlay: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.YourPhone: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.ZuneMusic: The requested operation requires elevation.
+
+[14:47:32] [WARN] [PS1] Failed to remove provisioned package Microsoft.ZuneVideo: The requested operation requires elevation.
+
+[14:47:32] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors
+[14:47:32] [INFO] [PS1] Completed Bloatware Removal task.
+[14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3712983s
+[14:47:32] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: RemoveBloatware | Duration: 0.3747225s | Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware [14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3712983s [14:47:32] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors True True
+[14:47:32] [SUCCESS] [PS1] [4/20] Task RemoveBloatware completed in 0.3747225 seconds - Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: RemoveBloatware [14:47:32] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RemoveBloatware | Duration: 0.3712983s [14:47:32] [SUCCESS] [PS1] Bloatware removal completed: 0 removed, 25 errors True True
+[14:47:32] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallEssentialApps (5/20) - Install curated essential applications via parallel processing
+[14:47:32] [INFO] [PS1] [5/20] Executing task: InstallEssentialApps - Install curated essential applications via parallel processing
+[14:47:32] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallEssentialApps | Function execution beginning
+[14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps
+[14:47:32] [INFO] [PS1] Starting Essential Apps Installation task.
+[14:47:32] [INFO] [PS1] Starting essential apps installation...
+[14:47:32] [INFO] [PS1] Using Winget for app installation
+[14:47:32] [INFO] [PS1] Installing 7zip.7zip via Winget...
+[14:47:34] [WARN] [PS1] Failed to install 7zip.7zip (exit code: -1978335189)
+[14:47:34] [INFO] [PS1] Installing Mozilla.Firefox via Winget...
+[14:47:38] [WARN] [PS1] Failed to install Mozilla.Firefox (exit code: -1978335189)
+[14:47:38] [INFO] [PS1] Installing VideoLAN.VLC via Winget...
+[14:47:40] [WARN] [PS1] Failed to install VideoLAN.VLC (exit code: -1978335189)
+[14:47:40] [INFO] [PS1] Installing Notepad++.Notepad++ via Winget...
+[14:47:42] [WARN] [PS1] Failed to install Notepad++.Notepad++ (exit code: -1978335189)
+[14:47:42] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors
+[14:47:42] [INFO] [PS1] Completed Essential Apps Installation task.
+[14:47:42] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1602871s
+[14:47:42] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1644034s | Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps [14:47:42] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1602871s [14:47:42] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors True True
+[14:47:42] [SUCCESS] [PS1] [5/20] Task InstallEssentialApps completed in 9.1644034 seconds - Result: [14:47:32] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallEssentialApps [14:47:42] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallEssentialApps | Duration: 9.1602871s [14:47:42] [SUCCESS] [PS1] Essential apps installation completed: 0 installed, 4 errors True True
+[14:47:42] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: UpdateInstalledApplications (6/20) - Update all installed applications via Winget, Chocolatey, and package managers
+[14:47:42] [INFO] [PS1] [6/20] Executing task: UpdateInstalledApplications - Update all installed applications via Winget, Chocolatey, and package managers
+[14:47:42] [ACTION] [PS1] [Task Execution] Starting task function | Details: UpdateInstalledApplications | Function execution beginning
+[14:47:42] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications
+[14:47:42] [INFO] [PS1] Starting Application Updates task.
+[14:47:42] [INFO] [PS1] Starting application updates...
+[14:47:42] [INFO] [PS1] Updating Winget packages...
+[14:47:45] [SUCCESS] [PS1] Winget packages updated successfully
+[14:47:45] [INFO] [PS1] Updating Chocolatey packages...
+[14:47:54] [SUCCESS] [PS1] Chocolatey packages updated successfully
+[14:47:54] [INFO] [PS1] Updating Microsoft Store apps...
+[14:47:54] [WARN] [PS1] Error resetting Microsoft Store: This command cannot be run due to the error: The requested operation requires elevation.
+[14:47:54] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors
+[14:47:54] [INFO] [PS1] Completed Application Updates task.
+[14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 12.1287774s
+[14:47:54] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: UpdateInstalledApplications | Duration: 12.1349728s | Result: [14:47:42] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 12.1287774s [14:47:45] [SUCCESS] [PS1] Winget packages updated successfully [14:47:54] [SUCCESS] [PS1] Chocolatey packages updated successfully [14:47:54] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors True True
+[14:47:54] [SUCCESS] [PS1] [6/20] Task UpdateInstalledApplications completed in 12.1349728 seconds - Result: [14:47:42] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateInstalledApplications [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateInstalledApplications | Duration: 12.1287774s [14:47:45] [SUCCESS] [PS1] Winget packages updated successfully [14:47:54] [SUCCESS] [PS1] Chocolatey packages updated successfully [14:47:54] [SUCCESS] [PS1] Application updates completed: 2 updated, 0 errors True True
+[14:47:54] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallWindowsUpdates (7/20) - Install pending Windows updates and security patches
+[14:47:54] [INFO] [PS1] [7/20] Executing task: InstallWindowsUpdates - Install pending Windows updates and security patches
+[14:47:54] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallWindowsUpdates | Function execution beginning
+[14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates
+[14:47:54] [INFO] [PS1] Starting Windows Updates task.
+[14:47:54] [INFO] [PS1] Starting Windows updates installation...
+[14:47:54] [INFO] [PS1] Checking for available Windows updates...
+[14:47:54] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console.
+[14:47:54] [INFO] [PS1] Completed Windows Updates task.
+[14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1316869s
+[14:47:54] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1356091s | Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1316869s [14:47:54] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console. False True
+[14:47:54] [SUCCESS] [PS1] [7/20] Task InstallWindowsUpdates completed in 0.1356091 seconds - Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallWindowsUpdates [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallWindowsUpdates | Duration: 0.1316869s [14:47:54] [ERROR] [PS1] Critical error during Windows updates: To perform operations you must run an elevated Windows PowerShell console. False True
+[14:47:54] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: InstallOptionalUpdates (8/20) - Install optional Windows features and updates
+[14:47:54] [INFO] [PS1] [8/20] Executing task: InstallOptionalUpdates - Install optional Windows features and updates
+[14:47:54] [ACTION] [PS1] [Task Execution] Starting task function | Details: InstallOptionalUpdates | Function execution beginning
+[14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates
+[14:47:54] [INFO] [PS1] Starting Optional Updates task.
+[14:47:54] [INFO] [PS1] Starting optional updates installation...
+[14:47:54] [WARN] [PS1] Failed to install feature NetFx3: The requested operation requires elevation.
+
+[14:47:54] [WARN] [PS1] Failed to install feature Microsoft-Windows-Subsystem-Linux: The requested operation requires elevation.
+
+[14:47:54] [WARN] [PS1] Failed to install feature VirtualMachinePlatform: The requested operation requires elevation.
+
+[14:47:54] [WARN] [PS1] Failed to install feature Containers-DisposableClientVM: The requested operation requires elevation.
+
+[14:47:54] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors
+[14:47:54] [INFO] [PS1] Completed Optional Updates task.
+[14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0253818s
+[14:47:54] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0287618s | Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0253818s [14:47:54] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors True True
+[14:47:54] [SUCCESS] [PS1] [8/20] Task InstallOptionalUpdates completed in 0.0287618 seconds - Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: InstallOptionalUpdates [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: InstallOptionalUpdates | Duration: 0.0253818s [14:47:54] [SUCCESS] [PS1] Optional updates completed: 0 installed, 4 errors True True
+[14:47:54] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: UpdateDeviceDrivers (9/20) - Update device drivers using Windows Update
+[14:47:54] [INFO] [PS1] [9/20] Executing task: UpdateDeviceDrivers - Update device drivers using Windows Update
+[14:47:54] [ACTION] [PS1] [Task Execution] Starting task function | Details: UpdateDeviceDrivers | Function execution beginning
+[14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers
+[14:47:54] [INFO] [PS1] Starting Device Driver Updates task.
+[14:47:54] [INFO] [PS1] Starting device driver updates...
+[14:47:54] [INFO] [PS1] Checking for driver updates...
+[14:47:54] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'.
+[14:47:54] [INFO] [PS1] Completed Device Driver Updates task.
+[14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0254401s
+[14:47:54] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0283653s | Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0254401s [14:47:54] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'. False True
+[14:47:54] [SUCCESS] [PS1] [9/20] Task UpdateDeviceDrivers completed in 0.0283653 seconds - Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: UpdateDeviceDrivers [14:47:54] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: UpdateDeviceDrivers | Duration: 0.0254401s [14:47:54] [ERROR] [PS1] Critical error during driver updates: A parameter cannot be found that matches parameter name 'Driver'. False True
+[14:47:54] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: TestSystemHealth (10/20) - Run system health checks and repairs using DISM and SFC
+[14:47:54] [INFO] [PS1] [10/20] Executing task: TestSystemHealth - Run system health checks and repairs using DISM and SFC
+[14:47:54] [ACTION] [PS1] [Task Execution] Starting task function | Details: TestSystemHealth | Function execution beginning
+[14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth
+[14:47:54] [INFO] [PS1] Starting System Health Check task.
+[14:47:54] [INFO] [PS1] Starting system health checks...
+[14:47:54] [INFO] [PS1] Running DISM health check...
+[14:47:55] [WARN] [PS1] DISM health check found issues
+[14:47:55] [INFO] [PS1] Attempting DISM repair...
+[14:47:56] [ERROR] [PS1] DISM repair failed
+[14:47:56] [INFO] [PS1] Running System File Checker...
+[14:47:57] [WARN] [PS1] SFC scan found and repaired issues
+[14:47:57] [INFO] [PS1] Checking Windows Update service health...
+[14:47:57] [WARN] [PS1] Windows Update service not running, attempting to start...
+[14:47:57] [SUCCESS] [PS1] System health check completed: 2 issues found, 2 fixed
+[14:47:57] [INFO] [PS1] Completed System Health Check task.
+[14:47:57] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.3597959s
+[14:47:57] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: TestSystemHealth | Duration: 3.3634015s | Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth [14:47:57] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.3597959s [14:47:56] [ERROR] [PS1] DISM repair failed [14:47:57] [SUCCESS] [PS1] System health check completed: 2 issues found, 2 fixed True True
+[14:47:57] [SUCCESS] [PS1] [10/20] Task TestSystemHealth completed in 3.3634015 seconds - Result: [14:47:54] [ACTION] [PS1] [Task Management] Starting task execution | Details: TestSystemHealth [14:47:57] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: TestSystemHealth | Duration: 3.3597959s [14:47:56] [ERROR] [PS1] DISM repair failed [14:47:57] [SUCCESS] [PS1] System health check completed: 2 issues found, 2 fixed True True
+[14:47:57] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: OptimizeWindowsUpdate (11/20) - Optimize Windows Update settings and cleanup old files
+[14:47:57] [INFO] [PS1] [11/20] Executing task: OptimizeWindowsUpdate - Optimize Windows Update settings and cleanup old files
+[14:47:57] [ACTION] [PS1] [Task Execution] Starting task function | Details: OptimizeWindowsUpdate | Function execution beginning
+[14:47:57] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate
+[14:47:57] [INFO] [PS1] Starting Windows Update Optimization task.
+[14:47:57] [INFO] [PS1] Optimizing Windows Update settings...
+[14:47:57] [SUCCESS] [PS1] Windows Update settings optimized
+[14:47:57] [INFO] [PS1] Cleaning up old Windows Update files...
+[14:47:58] [WARN] [PS1] Windows Update cleanup failed
+[14:47:58] [INFO] [PS1] Completed Windows Update Optimization task.
+[14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0339236s
+[14:47:58] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0375488s | Result: [14:47:57] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate [14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0339236s [14:47:57] [SUCCESS] [PS1] Windows Update settings optimized True True
+[14:47:58] [SUCCESS] [PS1] [11/20] Task OptimizeWindowsUpdate completed in 1.0375488 seconds - Result: [14:47:57] [ACTION] [PS1] [Task Management] Starting task execution | Details: OptimizeWindowsUpdate [14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: OptimizeWindowsUpdate | Duration: 1.0339236s [14:47:57] [SUCCESS] [PS1] Windows Update settings optimized True True
+[14:47:58] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableSystemMonitoring (12/20) - Enable system monitoring services and Sysmon configuration
+[14:47:58] [INFO] [PS1] [12/20] Executing task: EnableSystemMonitoring - Enable system monitoring services and Sysmon configuration
+[14:47:58] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableSystemMonitoring | Function execution beginning
+[14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring
+[14:47:58] [INFO] [PS1] Starting System Monitoring Setup task.
+[14:47:58] [INFO] [PS1] Enabling system monitoring services...
+[14:47:58] [WARN] [PS1] System Monitor service not found
+[14:47:58] [INFO] [PS1] Starting Windows Event Collector service...
+[14:47:58] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'.
+[14:47:58] [INFO] [PS1] Starting Windows Remote Management service...
+[14:47:58] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'.
+[14:47:58] [INFO] [PS1] Configuring Sysmon with custom configuration...
+[14:47:58] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified.
+[14:47:58] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors
+[14:47:58] [INFO] [PS1] Completed System Monitoring Setup task.
+[14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0716083s
+[14:47:58] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0746502s | Result: [14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring [14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0716083s [14:47:58] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'. [14:47:58] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'. [14:47:58] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified. [14:47:58] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors True True
+[14:47:58] [SUCCESS] [PS1] [12/20] Task EnableSystemMonitoring completed in 0.0746502 seconds - Result: [14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableSystemMonitoring [14:47:58] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableSystemMonitoring | Duration: 0.0716083s [14:47:58] [ERROR] [PS1] Failed to start Windows Event Collector: Service 'Windows Event Collector (Wecsvc)' cannot be started due to the following error: Cannot open 'Wecsvc' service on computer '.'. [14:47:58] [ERROR] [PS1] Failed to start Windows Remote Management: Service 'Windows Remote Management (WS-Management) (WinRM)' cannot be started due to the following error: Cannot open 'WinRM' service on computer '.'. [14:47:58] [ERROR] [PS1] Error configuring Sysmon: This command cannot be run due to the error: The system cannot find the file specified. [14:47:58] [SUCCESS] [PS1] System monitoring setup completed: 1 services enabled, 3 errors True True
+[14:47:58] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: SetEventLogging (13/20) - Configure Windows Event Log settings and retention policies
+[14:47:58] [INFO] [PS1] [13/20] Executing task: SetEventLogging - Configure Windows Event Log settings and retention policies
+[14:47:58] [ACTION] [PS1] [Task Execution] Starting task function | Details: SetEventLogging | Function execution beginning
+[14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging
+[14:47:58] [INFO] [PS1] Starting Event Logging Configuration task.
+[14:47:58] [INFO] [PS1] Configuring event logging settings...
+[14:47:58] [INFO] [PS1] Configuring Application event log...
+[14:47:58] [SUCCESS] [PS1] Application event log configured
+[14:47:58] [INFO] [PS1] Configuring System event log...
+[14:47:59] [SUCCESS] [PS1] System event log configured
+[14:47:59] [INFO] [PS1] Configuring Security event log...
+[14:47:59] [SUCCESS] [PS1] Security event log configured
+[14:47:59] [SUCCESS] [PS1] Event logging configuration completed
+[14:47:59] [INFO] [PS1] Completed Event Logging Configuration task.
+[14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0354622s
+[14:47:59] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: SetEventLogging | Duration: 0.0384563s | Result: [14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging [14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0354622s [14:47:58] [SUCCESS] [PS1] Application event log configured [14:47:59] [SUCCESS] [PS1] System event log configured [14:47:59] [SUCCESS] [PS1] Security event log configured [14:47:59] [SUCCESS] [PS1] Event logging configuration completed True True
+[14:47:59] [SUCCESS] [PS1] [13/20] Task SetEventLogging completed in 0.0384563 seconds - Result: [14:47:58] [ACTION] [PS1] [Task Management] Starting task execution | Details: SetEventLogging [14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: SetEventLogging | Duration: 0.0354622s [14:47:58] [SUCCESS] [PS1] Application event log configured [14:47:59] [SUCCESS] [PS1] System event log configured [14:47:59] [SUCCESS] [PS1] Security event log configured [14:47:59] [SUCCESS] [PS1] Event logging configuration completed True True
+[14:47:59] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableTelemetryReporting (14/20) - Configure Windows telemetry and diagnostic reporting
+[14:47:59] [INFO] [PS1] [14/20] Executing task: EnableTelemetryReporting - Configure Windows telemetry and diagnostic reporting
+[14:47:59] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableTelemetryReporting | Function execution beginning
+[14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting
+[14:47:59] [INFO] [PS1] Starting Telemetry Reporting Setup task.
+[14:47:59] [INFO] [PS1] Configuring telemetry and diagnostic reporting...
+[14:47:59] [INFO] [PS1] Setting telemetry level to 2...
+[14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection
+[14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection
+[14:47:59] [SUCCESS] [PS1] Diagnostic service dmwappushservice started
+[14:47:59] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured
+[14:47:59] [INFO] [PS1] Completed Telemetry Reporting Setup task.
+[14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.2965779s
+[14:47:59] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.3015904s | Result: [14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting [14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.2965779s [14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection [14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection [14:47:59] [SUCCESS] [PS1] Diagnostic service dmwappushservice started [14:47:59] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured True True
+[14:47:59] [SUCCESS] [PS1] [14/20] Task EnableTelemetryReporting completed in 0.3015904 seconds - Result: [14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableTelemetryReporting [14:47:59] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableTelemetryReporting | Duration: 0.2965779s [14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection [14:47:59] [SUCCESS] [PS1] Telemetry configured in registry: HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection [14:47:59] [SUCCESS] [PS1] Diagnostic service dmwappushservice started [14:47:59] [SUCCESS] [PS1] Telemetry and diagnostic reporting configured True True
+[14:47:59] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: WatchSystemResources (15/20) - Monitor system resources and generate alerts for high usage
+[14:47:59] [INFO] [PS1] [15/20] Executing task: WatchSystemResources - Monitor system resources and generate alerts for high usage
+[14:47:59] [ACTION] [PS1] [Task Execution] Starting task function | Details: WatchSystemResources | Function execution beginning
+[14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources
+[14:47:59] [INFO] [PS1] Starting System Resource Monitoring task.
+[14:47:59] [INFO] [PS1] Monitoring system resources...
+[14:48:01] [INFO] [PS1] Current resource usage - CPU: 8.51%, Memory: 50.18%
+[14:48:01] [INFO] [PS1] Disk C:: 39.83% used (286.44GB free of 476.07GB)
+[14:48:01] [SUCCESS] [PS1] System resources within normal parameters
+[14:48:01] [INFO] [PS1] Completed System Resource Monitoring task.
+[14:48:01] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.4452385s
+[14:48:01] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: WatchSystemResources | Duration: 2.4485408s | Result: [14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources [14:48:01] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.4452385s [14:48:01] [SUCCESS] [PS1] System resources within normal parameters True True
+[14:48:01] [SUCCESS] [PS1] [15/20] Task WatchSystemResources completed in 2.4485408 seconds - Result: [14:47:59] [ACTION] [PS1] [Task Management] Starting task execution | Details: WatchSystemResources [14:48:01] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: WatchSystemResources | Duration: 2.4452385s [14:48:01] [SUCCESS] [PS1] System resources within normal parameters True True
+[14:48:01] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: NewSystemReport (16/20) - Generate comprehensive system monitoring report
+[14:48:01] [INFO] [PS1] [16/20] Executing task: NewSystemReport - Generate comprehensive system monitoring report
+[14:48:01] [ACTION] [PS1] [Task Execution] Starting task function | Details: NewSystemReport | Function execution beginning
+[14:48:01] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport
+[14:48:01] [INFO] [PS1] Starting System Report Generation task.
+[14:48:01] [INFO] [PS1] Generating system monitoring report...
+[14:48:05] [SUCCESS] [PS1] System report generated: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\tasks\monitoring\..\..\..\system_report.txt
+[14:48:05] [INFO] [PS1] Completed System Report Generation task.
+[14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4072022s
+[14:48:05] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: NewSystemReport | Duration: 3.4106334s | Result: [14:48:01] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport [14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4072022s [14:48:05] [SUCCESS] [PS1] System report generated: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\tasks\monitoring\..\..\..\system_report.txt True True
+[14:48:05] [SUCCESS] [PS1] [16/20] Task NewSystemReport completed in 3.4106334 seconds - Result: [14:48:01] [ACTION] [PS1] [Task Management] Starting task execution | Details: NewSystemReport [14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: NewSystemReport | Duration: 3.4072022s [14:48:05] [SUCCESS] [PS1] System report generated: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\tasks\monitoring\..\..\..\system_report.txt True True
+[14:48:05] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: ClearApplicationCache (17/20) - Clean application caches and temporary data
+[14:48:05] [INFO] [PS1] [17/20] Executing task: ClearApplicationCache - Clean application caches and temporary data
+[14:48:05] [ACTION] [PS1] [Task Execution] Starting task function | Details: ClearApplicationCache | Function execution beginning
+[14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache
+[14:48:05] [INFO] [PS1] Starting Application Cache Cleanup task.
+[14:48:05] [INFO] [PS1] Cleaning application caches...
+[14:48:05] [WARN] [PS1] Failed to reset Windows Store cache: This command cannot be run due to the error: The requested operation requires elevation.
+[14:48:05] [INFO] [PS1] Cleaned browser cache: C:\Users\Bogdan\AppData\Local\Google\Chrome\User Data\Default\Cache
+[14:48:05] [INFO] [PS1] Cleaned browser cache: C:\Users\Bogdan\AppData\Local\Microsoft\Edge\User Data\Default\Cache
+[14:48:05] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned
+[14:48:05] [INFO] [PS1] Completed Application Cache Cleanup task.
+[14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0437988s
+[14:48:05] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0472727s | Result: [14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache [14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0437988s [14:48:05] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned True True
+[14:48:05] [SUCCESS] [PS1] [17/20] Task ClearApplicationCache completed in 0.0472727 seconds - Result: [14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: ClearApplicationCache [14:48:05] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: ClearApplicationCache | Duration: 0.0437988s [14:48:05] [SUCCESS] [PS1] Application cache cleaning completed: 0MB cleaned True True
+[14:48:05] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: RepairBrokenApplications (18/20) - Attempt to repair broken or corrupted applications
+[14:48:05] [INFO] [PS1] [18/20] Executing task: RepairBrokenApplications - Attempt to repair broken or corrupted applications
+[14:48:05] [ACTION] [PS1] [Task Execution] Starting task function | Details: RepairBrokenApplications | Function execution beginning
+[14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications
+[14:48:05] [INFO] [PS1] Starting Application Repair task.
+[14:48:05] [INFO] [PS1] Starting application repair process...
+[14:48:05] [INFO] [PS1] Repairing Microsoft Store apps...
+[14:48:05] [ERROR] [PS1] Error repairing Store apps: Access is denied.
+
+Access is denied.
+
+[14:48:05] [INFO] [PS1] Repairing Windows features...
+[14:48:06] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors
+[14:48:06] [INFO] [PS1] Completed Application Repair task.
+[14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0295284s
+[14:48:06] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0333531s | Result: [14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0295284s [14:48:05] [ERROR] [PS1] Error repairing Store apps: Access is denied.
+
+Access is denied.
+ [14:48:06] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors True True
+[14:48:06] [SUCCESS] [PS1] [18/20] Task RepairBrokenApplications completed in 1.0333531 seconds - Result: [14:48:05] [ACTION] [PS1] [Task Management] Starting task execution | Details: RepairBrokenApplications [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: RepairBrokenApplications | Duration: 1.0295284s [14:48:05] [ERROR] [PS1] Error repairing Store apps: Access is denied.
+
+Access is denied.
+ [14:48:06] [SUCCESS] [PS1] Application repair completed: 0 repaired, 1 errors True True
+[14:48:06] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: EnableMaintenanceScheduling (19/20) - Enable automated maintenance scheduling
+[14:48:06] [INFO] [PS1] [19/20] Executing task: EnableMaintenanceScheduling - Enable automated maintenance scheduling
+[14:48:06] [ACTION] [PS1] [Task Execution] Starting task function | Details: EnableMaintenanceScheduling | Function execution beginning
+[14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling
+[14:48:06] [INFO] [PS1] Starting Maintenance Scheduling Setup task.
+[14:48:06] [INFO] [PS1] Enabling automated maintenance scheduling...
+[14:48:06] [INFO] [PS1] Checking scheduled task status: WindowsMaintenance
+[14:48:06] [WARN] [PS1] Scheduled task 'WindowsMaintenance' not found
+[14:48:06] [INFO] [PS1] Creating scheduled maintenance task: WindowsMaintenance
+[14:48:06] [ERROR] [PS1] Failed to create scheduled task: ERROR: Invalid argument/option - '/WAKE'. Type "SCHTASKS /CREATE /?" for usage.
+[14:48:06] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully
+[14:48:06] [INFO] [PS1] Completed Maintenance Scheduling Setup task.
+[14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0755765s
+[14:48:06] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0815604s | Result: [14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0755765s [14:48:06] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully True True
+[14:48:06] [SUCCESS] [PS1] [19/20] Task EnableMaintenanceScheduling completed in 0.0815604 seconds - Result: [14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: EnableMaintenanceScheduling [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: EnableMaintenanceScheduling | Duration: 0.0755765s [14:48:06] [SUCCESS] [PS1] Automated maintenance scheduling enabled successfully True True
+[14:48:06] [ACTION] [PS1] [Task Execution] Preparing task execution | Details: CheckScheduledTaskStatus (20/20) - Check the status of scheduled maintenance tasks
+[14:48:06] [INFO] [PS1] [20/20] Executing task: CheckScheduledTaskStatus - Check the status of scheduled maintenance tasks
+[14:48:06] [ACTION] [PS1] [Task Execution] Starting task function | Details: CheckScheduledTaskStatus | Function execution beginning
+[14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus
+[14:48:06] [INFO] [PS1] Starting Scheduled Task Status Check task.
+[14:48:06] [INFO] [PS1] Checking scheduled task status: WindowsMaintenance
+[14:48:06] [WARN] [PS1] Scheduled task 'WindowsMaintenance' not found
+[14:48:06] [WARN] [PS1] No scheduled maintenance task found
+[14:48:06] [INFO] [PS1] Completed Scheduled Task Status Check task.
+[14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0329991s
+[14:48:06] [SUCCESS] [PS1] [Task Execution] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0366485s | Result: [14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0329991s True
+[14:48:06] [SUCCESS] [PS1] [20/20] Task CheckScheduledTaskStatus completed in 0.0366485 seconds - Result: [14:48:06] [ACTION] [PS1] [Task Management] Starting task execution | Details: CheckScheduledTaskStatus [14:48:06] [SUCCESS] [PS1] [Task Management] Task completed successfully | Details: CheckScheduledTaskStatus | Duration: 0.0329991s True
+[14:48:06] [SUCCESS] [PS1] [Task Orchestration] Task execution sequence completed | Details: Successful: 20/20 | Total Duration: 36.85s
+[14:48:06] [SUCCESS] [PS1] Maintenance sequence completed: 20/20 tasks successful in 36.85 seconds
+[14:48:06] [SUCCESS] [Launcher] Maintenance completed: 20/84 tasks successful
+[14:48:06] [INFO] [Launcher] Execution results saved to C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\temp\execution_results.json
+[14:48:06] [INFO] [Launcher] Maintenance launcher completed
