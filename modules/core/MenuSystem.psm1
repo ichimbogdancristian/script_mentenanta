@@ -2,7 +2,14 @@
 
 <#
 .SYNOPSIS
-    Interactive Menu System Module for Windows Maintenance Automation
+    Interactive Menu     Write-Host "`nPlease select execution mode:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  [1] Execute Script Normally (Unattended) " -ForegroundColor Green -NoNewline
+    Write-Host "[DEFAULT]" -ForegroundColor Cyan
+    Write-Host "      → Execute maintenance tasks with system changes" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  [2] Execute Script in Dry-Run Mode" -ForegroundColor Blue
+    Write-Host "      → Simulate maintenance tasks without system changes" -ForegroundColor Grayodule for Windows Maintenance Automation
 
 .DESCRIPTION
     Provides countdown-based interactive menus with automatic fallback to default options.
@@ -76,15 +83,15 @@ function Show-MainMenu {
     Write-Host ""
     switch ($selection) {
         1 { 
-            Write-Host "✓ Selected: Normal Execution" -ForegroundColor Green
+            Write-Host "✓ Selected: Option 1 - Execute Script Normally (Unattended)" -ForegroundColor Green
             return @{ Mode = 'Normal'; DryRun = $false }
         }
         2 { 
-            Write-Host "✓ Selected: Dry-Run Execution" -ForegroundColor Blue
+            Write-Host "✓ Selected: Option 2 - Execute Script in Dry-Run Mode" -ForegroundColor Blue
             return @{ Mode = 'DryRun'; DryRun = $true }
         }
         default { 
-            Write-Host "✓ Default: Normal Execution" -ForegroundColor Green
+            Write-Host "✓ Default: Option 1 - Execute Script Normally (Unattended)" -ForegroundColor Green
             return @{ Mode = 'Normal'; DryRun = $false }
         }
     }
@@ -119,16 +126,16 @@ function Show-NormalExecutionSubmenu {
     
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "    NORMAL EXECUTION - TASK SELECTION" -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "    OPTION 1: NORMAL EXECUTION - TASK SELECTION" -ForegroundColor White -BackgroundColor DarkGreen
     Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Please select task execution mode:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  [1] Execute All Tasks Unattended " -ForegroundColor Green -NoNewline
+    Write-Host "  [1] Sub-Option 1: Execute All Tasks Unattended " -ForegroundColor Green -NoNewline
     Write-Host "[DEFAULT]" -ForegroundColor Cyan
     Write-Host "      → Runs all $($AvailableTasks.Count) available maintenance tasks" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  [2] Execute Only Specific Task Numbers" -ForegroundColor Green
+    Write-Host "  [2] Sub-Option 2: Execute Only Inserted Task Numbers" -ForegroundColor Green
     Write-Host "      → Choose specific tasks by number (comma-separated)" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Available Tasks:" -ForegroundColor Yellow
@@ -152,7 +159,7 @@ function Show-NormalExecutionSubmenu {
     Write-Host ""
     switch ($selection) {
         1 { 
-            Write-Host "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Green
+            Write-Host "✓ Selected: Sub-Option 1 - Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Green
             return @{ 
                 SelectionType = 'All'
                 TaskNumbers = @(1..$AvailableTasks.Count)
@@ -161,13 +168,13 @@ function Show-NormalExecutionSubmenu {
             }
         }
         2 { 
-            Write-Host "✓ Selected: Execute Only Specific Task Numbers" -ForegroundColor Green
+            Write-Host "✓ Selected: Sub-Option 2 - Execute Only Inserted Task Numbers" -ForegroundColor Green
             $selectedTasks = Get-TaskNumberSelection -AvailableTasks $AvailableTasks
             $selectedTasks.DryRun = $false
             return $selectedTasks
         }
         default { 
-            Write-Host "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Green
+            Write-Host "✓ Default: Sub-Option 1 - Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Green
             return @{ 
                 SelectionType = 'All'
                 TaskNumbers = @(1..$AvailableTasks.Count)
@@ -207,16 +214,16 @@ function Show-DryRunExecutionSubmenu {
     
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "    DRY-RUN EXECUTION - TASK SELECTION" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "    OPTION 2: DRY-RUN EXECUTION - TASK SELECTION" -ForegroundColor White -BackgroundColor DarkBlue
     Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Please select task simulation mode:" -ForegroundColor Yellow
+    Write-Host "Please select dry-run task execution mode:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  [1] Simulate All Tasks Unattended " -ForegroundColor Blue -NoNewline
+    Write-Host "  [1] Sub-Option 1: Execute All Tasks in Dry-Run Unattended " -ForegroundColor Blue -NoNewline
     Write-Host "[DEFAULT]" -ForegroundColor Cyan
     Write-Host "      → Simulates all $($AvailableTasks.Count) available maintenance tasks" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  [2] Simulate Only Specific Task Numbers" -ForegroundColor Blue
+    Write-Host "  [2] Sub-Option 2: Execute Only Inserted Task Numbers in Dry-Run" -ForegroundColor Blue
     Write-Host "      → Choose specific tasks by number for simulation (comma-separated)" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Available Tasks:" -ForegroundColor Yellow
@@ -240,7 +247,7 @@ function Show-DryRunExecutionSubmenu {
     Write-Host ""
     switch ($selection) {
         1 { 
-            Write-Host "✓ Selected: Simulate All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Blue
+            Write-Host "✓ Selected: Sub-Option 1 - Execute All Tasks in Dry-Run Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Blue
             return @{ 
                 SelectionType = 'All'
                 TaskNumbers = @(1..$AvailableTasks.Count)
@@ -249,13 +256,13 @@ function Show-DryRunExecutionSubmenu {
             }
         }
         2 { 
-            Write-Host "✓ Selected: Simulate Only Specific Task Numbers" -ForegroundColor Blue
+            Write-Host "✓ Selected: Sub-Option 2 - Execute Only Inserted Task Numbers in Dry-Run" -ForegroundColor Blue
             $selectedTasks = Get-TaskNumberSelection -AvailableTasks $AvailableTasks
             $selectedTasks.DryRun = $true
             return $selectedTasks
         }
         default { 
-            Write-Host "✓ Default: Simulate All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Blue
+            Write-Host "✓ Default: Sub-Option 1 - Execute All Tasks in Dry-Run Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Blue
             return @{ 
                 SelectionType = 'All'
                 TaskNumbers = @(1..$AvailableTasks.Count)

@@ -61,7 +61,7 @@ function Find-InstalledBloatware {
     
     try {
         # Get bloatware patterns from configuration
-        $bloatwareList = Get-UnifiedBloatwareList -Categories $Categories
+        $bloatwareList = Get-UnifiedBloatwareList -IncludeCategories $Categories
         if (-not $bloatwareList -or $bloatwareList.Count -eq 0) {
             Write-Warning "No bloatware patterns found in configuration"
             return @()

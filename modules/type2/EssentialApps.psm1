@@ -75,7 +75,7 @@ function Install-EssentialApplications {
     $startTime = Get-Date
     
     # Get essential apps from configuration
-    $essentialApps = Get-UnifiedEssentialAppsList -Categories $Categories
+    $essentialApps = Get-UnifiedEssentialAppsList -IncludeCategories $Categories
     
     # Add custom apps if specified
     if ($CustomApps.Count -gt 0) {

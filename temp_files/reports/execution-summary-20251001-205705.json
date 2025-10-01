@@ -1,0 +1,167 @@
+{
+  "TasksExecuted": 9,
+  "TotalDuration": 0.209653,
+  "StartTime": "2025-10-01T20:57:05.1413626+03:00",
+  "SuccessfulTasks": 8,
+  "Configuration": {
+    "execution": {
+      "defaultMode": "unattended",
+      "countdownSeconds": 20,
+      "enableDryRun": true,
+      "autoSelectDefault": true,
+      "showProgressBars": true
+    },
+    "modules": {
+      "skipBloatwareRemoval": false,
+      "skipEssentialApps": false,
+      "skipWindowsUpdates": false,
+      "skipTelemetryDisable": false,
+      "skipSystemOptimization": false,
+      "skipSecurityAudit": false,
+      "customModulesPath": ""
+    },
+    "bloatware": {
+      "enableDiffBasedProcessing": true,
+      "parallelRemoval": true,
+      "createBackups": true,
+      "customBloatwareList": []
+    },
+    "essentialApps": {
+      "enableParallelInstallation": true,
+      "fallbackToLibreOffice": true,
+      "customEssentialApps": [],
+      "skipConflictResolution": false
+    },
+    "system": {
+      "createSystemRestorePoint": true,
+      "enableVerboseLogging": false,
+      "maxLogSizeMB": 10,
+      "enablePerformanceOptimizations": true
+    },
+    "reporting": {
+      "enableHtmlReport": true,
+      "enableDetailedAudit": true,
+      "includeSystemInventory": true,
+      "generateBeforeAfterComparison": true
+    },
+    "paths": {
+      "tempFolder": "temp_files",
+      "reportsFolder": "temp_files/reports",
+      "logsFolder": "temp_files/logs",
+      "inventoryFolder": "temp_files/inventory"
+    }
+  },
+  "EndTime": "2025-10-01T20:57:05.3757526+03:00",
+  "TaskResults": [
+    {
+      "DryRun": true,
+      "TaskName": "SystemInventory",
+      "Success": true,
+      "Output": "DRY-RUN: Task would be executed",
+      "Category": "Inventory",
+      "Error": null,
+      "StartTime": "2025-10-01T20:57:05.1526052+03:00",
+      "Type": "Type1",
+      "Description": "Collect comprehensive system information and generate inventory reports",
+      "Duration": 0.0199692
+    },
+    {
+      "DryRun": true,
+      "TaskName": "BloatwareDetection",
+      "Success": true,
+      "Output": "DRY-RUN: Task would be executed",
+      "Category": "Detection",
+      "Error": null,
+      "StartTime": "2025-10-01T20:57:05.183936+03:00",
+      "Type": "Type1",
+      "Description": "Scan for bloatware applications and system components",
+      "Duration": 0.0137882
+    },
+    {
+      "DryRun": true,
+      "TaskName": "BloatwareRemoval",
+      "Success": true,
+      "Output": "DRY-RUN: Task would be executed",
+      "Category": "Cleanup",
+      "Error": null,
+      "StartTime": "2025-10-01T20:57:05.2010167+03:00",
+      "Type": "Type2",
+      "Description": "Remove detected bloatware applications using multiple methods",
+      "Duration": 0.0297951
+    },
+    {
+      "DryRun": true,
+      "TaskName": "EssentialApps",
+      "Success": true,
+      "Output": "DRY-RUN: Task would be executed",
+      "Category": "Installation",
+      "Error": null,
+      "StartTime": "2025-10-01T20:57:05.2348532+03:00",
+      "Type": "Type2",
+      "Description": "Install essential applications from curated lists",
+      "Duration": 0.0130161
+    },
+    {
+      "DryRun": true,
+      "TaskName": "WindowsUpdates",
+      "Success": true,
+      "Output": "DRY-RUN: Task would be executed",
+      "Category": "Updates",
+      "Error": null,
+      "StartTime": "2025-10-01T20:57:05.2509824+03:00",
+      "Type": "Type2",
+      "Description": "Check for and install Windows updates",
+      "Duration": 0.0128031
+    },
+    {
+      "DryRun": true,
+      "TaskName": "TelemetryDisable",
+      "Success": true,
+      "Output": "DRY-RUN: Task would be executed",
+      "Category": "Privacy",
+      "Error": null,
+      "StartTime": "2025-10-01T20:57:05.2668632+03:00",
+      "Type": "Type2",
+      "Description": "Disable Windows telemetry and privacy-invasive features",
+      "Duration": 0.0145261
+    },
+    {
+      "DryRun": true,
+      "TaskName": "SecurityAudit",
+      "Success": false,
+      "Output": "",
+      "Category": "Security",
+      "Error": "The running command stopped because the preference variable \"ErrorActionPreference\" or common parameter is set to Stop: At C:\\Users\\Bogdan\\OneDrive\\Desktop\\Projects\\script_mentenanta\\modules\\type1\\SecurityAudit.psm1:215 char:107\r\n+ …  (Get-Date) - $defenderStatus.AntivirusSignatureLastUpdated < (New-Ti …\r\n+                                                               ~\r\nThe '<' operator is reserved for future use.",
+      "StartTime": "2025-10-01T20:57:05.2838559+03:00",
+      "Type": "Type1",
+      "Description": "Perform security audit and apply hardening recommendations",
+      "Duration": 0.0232909
+    },
+    {
+      "DryRun": true,
+      "TaskName": "SystemOptimization",
+      "Success": true,
+      "Output": "DRY-RUN: Task would be executed",
+      "Category": "Optimization",
+      "Error": null,
+      "StartTime": "2025-10-01T20:57:05.3103118+03:00",
+      "Type": "Type2",
+      "Description": "Apply performance optimizations and cleanup temporary files",
+      "Duration": 0.0197041
+    },
+    {
+      "DryRun": true,
+      "TaskName": "ReportGeneration",
+      "Success": true,
+      "Output": "DRY-RUN: Task would be executed",
+      "Category": "Reporting",
+      "Error": null,
+      "StartTime": "2025-10-01T20:57:05.3335663+03:00",
+      "Type": "Type1",
+      "Description": "Generate comprehensive HTML and text reports of all operations",
+      "Duration": 0.0151011
+    }
+  ],
+  "FailedTasks": 10,
+  "ExecutionMode": "DRY-RUN"
+}

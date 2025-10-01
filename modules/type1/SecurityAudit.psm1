@@ -212,7 +212,7 @@ function Get-WindowsDefenderStatus {
             if ($defenderStatus) {
                 $results.Enabled = $defenderStatus.AntivirusEnabled
                 $results.RealTimeProtectionEnabled = $defenderStatus.RealTimeProtectionEnabled
-                $results.DefinitionsUpToDate = (Get-Date) - $defenderStatus.AntivirusSignatureLastUpdated < (New-TimeSpan -Days 7)
+                $results.DefinitionsUpToDate = ((Get-Date) - $defenderStatus.AntivirusSignatureLastUpdated) -lt (New-TimeSpan -Days 7)
                 $results.LastScanDate = $defenderStatus.FullScanStartTime
                 
                 $results.Details = @{

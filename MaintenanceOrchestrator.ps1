@@ -229,7 +229,7 @@ $MaintenanceTasks = @(
         Name = 'TelemetryDisable'
         Description = 'Disable Windows telemetry and privacy-invasive features'
         ModulePath = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
-        Function = 'Disable-TelemetryFeatures'
+        Function = 'Disable-WindowsTelemetry'
         Type = 'Type2'
         Category = 'Privacy'
     },
@@ -253,7 +253,7 @@ $MaintenanceTasks = @(
         Name = 'ReportGeneration'
         Description = 'Generate comprehensive HTML and text reports of all operations'
         ModulePath = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
-        Function = 'Generate-MaintenanceReport'
+        Function = 'New-MaintenanceReport'
         Type = 'Type1'
         Category = 'Reporting'
     }
@@ -294,21 +294,28 @@ if (-not $NonInteractive) {
     
     # Show hierarchical execution menu system (only if TaskNumbers not specified)
     if (-not $TaskNumbers) {
-        Write-Host "`nPresenting execution options with 20-second countdowns..." -ForegroundColor Cyan
+        Write-Host "`nPresenting hierarchical execution options with 20-second countdowns..." -ForegroundColor Cyan
+        Write-Host "Each menu will automatically select the default option after 20 seconds if no input is provided.`n" -ForegroundColor Gray
+        
         $executionSelection = Show-HierarchicalExecutionMenu -AvailableTasks $AvailableTasks
         
         # Apply the selection results
         $ExecutionParams.DryRun = $executionSelection.DryRun
         $ExecutionParams.SelectedTasks = $executionSelection.Tasks
         
-        Write-Host "`nExecution Configuration:" -ForegroundColor Yellow
-        Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
+        Write-Host "`nFinal Execution Configuration:" -ForegroundColor Yellow
+        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
+        Write-Host "  Execution Mode: " -NoNewline -ForegroundColor Gray
         if ($ExecutionParams.DryRun) {
             Write-Host "DRY-RUN SIMULATION" -ForegroundColor Blue
         } else {
             Write-Host "LIVE EXECUTION" -ForegroundColor Green
         }
         Write-Host "  Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -ForegroundColor Gray
+        if ($executionSelection.SelectionType -eq 'Specific') {
+            Write-Host "  Task Numbers: $($executionSelection.TaskNumbers -join ', ')" -ForegroundColor Gray
+        }
+        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
         
     } else {
         # TaskNumbers parameter provided - use simplified selection
