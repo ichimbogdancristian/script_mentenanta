@@ -45,9 +45,16 @@ script_mentenanta/
 │   └── logs/                      # Detailed operation logs
 └── docs/
     ├── README.md                  # Project documentation
-    ├── MODULE-GUIDE.md            # Module usage guide
-    └── CONFIGURATION.md           # Configuration reference
+    ├── ARCHITECTURE-DIAGRAM.md    # Visual architecture diagrams
+    └── MODULE-GUIDE.md            # Module development guide
 ```
+
+## Visual Architecture
+📊 **See [ARCHITECTURE-DIAGRAM.md](docs/ARCHITECTURE-DIAGRAM.md) for detailed visual diagrams including:**
+- Complete system architecture flow
+- Module interaction sequences  
+- Configuration management flow
+- Dependency bootstrap process
 
 ## Module Architecture
 
@@ -55,19 +62,43 @@ script_mentenanta/
 - **Purpose**: Collect information, analyze system state, generate reports
 - **Characteristics**: 
   - Read-only operations
+  - Return structured data objects
   - Can run independently
   - Create temporary files and reports
-  - Triggered by Type 2 modules as needed
+- **Current Modules**:
+  - `SystemInventory.psm1` - Comprehensive system information collection
+  - `BloatwareDetection.psm1` - Scan for unwanted applications and components
+  - `SecurityAudit.psm1` - Security posture analysis with scoring system
+  - `ReportGeneration.psm1` - HTML and text report generation
   - Cacheable results for performance
 
 ### Type 2 Modules (System Modification)
 - **Purpose**: Modify system state, install/remove software, change settings
 - **Characteristics**:
   - Write operations that change the system
+  - Return success/failure booleans for orchestrator tracking
   - Can trigger Type 1 modules for pre/post analysis
-  - Require elevated privileges
-  - Can run in dry-run mode
+  - Require elevated privileges for most operations
+  - Must support dry-run mode via `-DryRun` parameter
   - Generate before/after comparisons
+- **Current Modules**:
+  - `BloatwareRemoval.psm1` - Remove unwanted applications using multiple methods
+  - `EssentialApps.psm1` - Install curated essential software collections
+  - `WindowsUpdates.psm1` - Windows Update management with suppression handling
+  - `TelemetryDisable.psm1` - Privacy hardening and telemetry disabling
+  - `SystemOptimization.psm1` - Performance tuning, cleanup, and optimization
+
+### Core Infrastructure Modules
+- **Purpose**: Provide foundational services for the maintenance system
+- **Characteristics**:
+  - Support both Type 1 and Type 2 modules
+  - Handle configuration, dependencies, scheduling, and user interaction
+  - Load first during orchestrator initialization
+- **Current Modules**:
+  - `ConfigManager.psm1` - JSON configuration loading, validation, and management
+  - `MenuSystem.psm1` - Interactive countdown menus with automatic fallbacks
+  - `DependencyManager.psm1` - Package manager installation and dependency resolution
+  - `TaskScheduler.psm1` - Windows scheduled task creation and management
 
 ## Execution Flow
 

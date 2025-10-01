@@ -4,14 +4,18 @@ A completely redesigned, modular Windows maintenance automation system with inte
 
 ## 🚀 Features
 
-### ✨ New in v2.0
+### ✨ New in v2.0 - Complete Modular Redesign
 - **Modular Architecture**: Separated Type 1 (inventory/reporting) and Type 2 (system modification) modules
 - **Interactive Menu System**: 20-second countdown menus with automatic fallback
 - **Dry-Run Mode**: Test changes without modifying your system
 - **Self-Discovery Environment**: Works from any folder on any PC
 - **Enhanced Configuration**: JSON-based configuration files for easy maintenance
 - **Comprehensive Reporting**: HTML and text reports with detailed audit trails
-- **Improved Dependency Management**: Automatic detection and installation of required tools
+- **Advanced Dependency Management**: Automatic package manager installation and validation
+- **Task Scheduling**: Windows scheduled task creation and management
+- **Security Hardening**: Comprehensive telemetry disabling and privacy optimization
+
+📊 **[View Architecture Diagrams](ARCHITECTURE-DIAGRAM.md)** - Visual system flow and module interactions
 
 ### 🛠️ Core Capabilities
 - **Bloatware Removal**: Remove unwanted OEM, Windows, gaming, and security software
@@ -25,26 +29,25 @@ A completely redesigned, modular Windows maintenance automation system with inte
 
 ```
 script_mentenanta/
-├── script.bat                     # Enhanced launcher (use script-new.bat)
+├── script.bat                     # Enhanced launcher with self-discovery
 ├── MaintenanceOrchestrator.ps1    # Central coordination script
 ├── modules/
-│   ├── type1/                     # Type 1: Inventory & Reporting
+│   ├── type1/                     # Type 1: Inventory & Reporting (Read-Only)
 │   │   ├── SystemInventory.psm1   # System information collection
-│   │   ├── BloatwareDetection.psm1 # Bloatware identification
-│   │   ├── AppInventory.psm1      # Application discovery
-│   │   ├── SecurityAudit.psm1     # Security analysis
-│   │   └── ReportGeneration.psm1  # HTML/Log reporting
-│   ├── type2/                     # Type 2: System Modification
+│   │   ├── BloatwareDetection.psm1 # Bloatware identification  
+│   │   ├── SecurityAudit.psm1     # Security posture analysis
+│   │   └── ReportGeneration.psm1  # HTML/Log report generation
+│   ├── type2/                     # Type 2: System Modification (Changes System)
 │   │   ├── BloatwareRemoval.psm1  # Application removal
 │   │   ├── EssentialApps.psm1     # Application installation
 │   │   ├── WindowsUpdates.psm1    # Update management
-│   │   ├── TelemetryDisable.psm1  # Privacy optimization
+│   │   ├── TelemetryDisable.psm1  # Privacy hardening
 │   │   └── SystemOptimization.psm1 # Performance tuning
-│   └── core/                      # Core Infrastructure
-│       ├── ConfigManager.psm1     # Configuration management
-│       ├── MenuSystem.psm1        # Interactive menus
-│       ├── DependencyManager.psm1 # Dependency handling
-│       └── TaskScheduler.psm1     # Task scheduling
+│   └── core/                      # Core Infrastructure Modules
+│       ├── ConfigManager.psm1     # Configuration & JSON management
+│       ├── MenuSystem.psm1        # Interactive menu system
+│       ├── DependencyManager.psm1 # Package manager dependencies
+│       └── TaskScheduler.psm1     # Windows scheduled tasks
 ├── config/
 │   ├── bloatware-lists/           # Categorized bloatware definitions
 │   ├── essential-apps/            # Essential app definitions
@@ -57,6 +60,7 @@ script_mentenanta/
 └── docs/
     ├── README.md                  # This file
     ├── ARCHITECTURE.md           # Architecture documentation
+    ├── ARCHITECTURE-DIAGRAM.md   # Visual architecture diagrams
     └── MODULE-GUIDE.md           # Module development guide
 ```
 
@@ -65,8 +69,8 @@ script_mentenanta/
 ### Quick Start
 1. **Download and run** from any location:
    ```batch
-   # Copy script-new.bat to any folder and run as Administrator
-   script-new.bat
+   # Copy script.bat to any folder and run as Administrator
+   script.bat
    ```
 
 2. **Interactive Mode** (default):
@@ -77,17 +81,17 @@ script_mentenanta/
 
 3. **Non-Interactive Mode**:
    ```batch
-   script-new.bat -NonInteractive
+   script.bat -NonInteractive
    ```
 
 4. **Dry-Run Mode**:
    ```batch
-   script-new.bat -DryRun
+   script.bat -DryRun
    ```
 
 5. **Specific Tasks**:
    ```batch
-   script-new.bat -TaskNumbers 1,3,5
+   script.bat -TaskNumbers 1,3,5
    ```
 
 ### PowerShell Direct Execution
@@ -98,6 +102,33 @@ script_mentenanta/
 # With parameters
 .\MaintenanceOrchestrator.ps1 -NonInteractive -DryRun -TaskNumbers "1,2,3"
 ```
+
+## 📋 Available Modules
+
+### Type 1 Modules (Inventory & Reporting) - Read-Only Operations
+| Module | Function | Description | Status |
+|--------|----------|-------------|---------|
+| **SystemInventory** | `Get-SystemInventory` | Comprehensive system information collection | ✅ Active |
+| **BloatwareDetection** | `Find-BloatwareApplications` | Scan for unwanted OEM and system bloatware | ✅ Active |
+| **SecurityAudit** | `Start-SecurityAudit` | Security posture analysis with scoring | ✅ Active |
+| **ReportGeneration** | `New-MaintenanceReport` | HTML and text report generation | ✅ Active |
+
+### Type 2 Modules (System Modification) - Changes System State
+| Module | Function | Description | Status |
+|--------|----------|-------------|---------|
+| **BloatwareRemoval** | `Remove-BloatwareApplications` | Remove detected bloatware using multiple methods | ✅ Active |
+| **EssentialApps** | `Install-EssentialApplications` | Install curated essential software lists | ✅ Active |
+| **WindowsUpdates** | `Install-WindowsUpdates` | Windows Update installation and management | ✅ Active |
+| **TelemetryDisable** | `Disable-TelemetryFeatures` | Windows telemetry disabling and privacy hardening | ✅ Active |
+| **SystemOptimization** | `Optimize-SystemPerformance` | Performance tuning, cleanup, and optimization | ✅ Active |
+
+### Core Infrastructure Modules
+| Module | Function | Description | Status |
+|--------|----------|-------------|---------|
+| **ConfigManager** | `Get-MainConfiguration` | JSON configuration loading and management | ✅ Active |
+| **MenuSystem** | `Show-MainMenu` | Interactive countdown menus with fallbacks | ✅ Active |
+| **DependencyManager** | `Install-AllDependencies` | Package manager dependency installation | ✅ Active |
+| **TaskScheduler** | `New-MaintenanceTask` | Windows scheduled task automation | ✅ Active |
 
 ## 📋 Available Tasks
 

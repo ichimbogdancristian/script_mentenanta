@@ -1,67 +1,104 @@
 ### Repo overview
 
-This repository contains a Windows maintenance automation launcher written as a two-file entrypoint:
-- `script.bat` — launcher/installer wrapper that ensures elevation, installs dependencies (winget, pwsh, choco, PSWindowsUpdate), manages scheduled tasks/startup tasks, downloads the repo ZIP and launches `script.ps1`.
-- `script.ps1` — the PowerShell orchestrator (PowerShell 7+ required). Implements the maintenance task framework (task list, logging, app/package management, Windows Update handling, bloatware detection/removal).
+This repository contains a Windows maintenance automation system built on a **modular architecture** with the following components:
+- `script.bat` — Enhanced launcher/installer wrapper that ensures elevation, installs dependencies (winget, pwsh, choco, PSWindowsUpdate), manages scheduled tasks, downloads repos, and launches the orchestrator.
+- `MaintenanceOrchestrator.ps1` — Central coordination script (PowerShell 7+ required) that loads modules, handles configuration, presents interactive menus, and orchestrates task execution.
+- **Modular System**: Specialized PowerShell modules organized by function:
+  - `modules/type1/` — Inventory & Reporting modules (read-only operations)
+  - `modules/type2/` — System Modification modules (changes system state)
+  - `modules/core/` — Core infrastructure (config, menus, dependencies, scheduling)
+- **Configuration System**: JSON-based configuration files for all settings and data
+- **Interactive Execution**: Menu-driven interface with dry-run capabilities and task selection
 
-Targets: Windows 10/11. Many operations require Administrator privileges and network access. The batch launcher is designed to be location-agnostic and to run from any folder.
+Targets: Windows 10/11. Many operations require Administrator privileges and network access. The launcher is location-agnostic and uses self-discovery to work from any folder.
 
 ### Core concepts an AI should know (why the structure exists)
 
-- Two-tier launcher → orchestrator design: `script.bat` prepares environment (elevation, dependency bootstrap, scheduled task management, downloads) and delegates the work to `script.ps1`. Avoid editing elevation logic in the PS1 file — it is intentionally centralized in the batch launcher.
-- Idempotent, non-interactive automation: the scripts aim to run unattended (suppressed prompts, environment variables to avoid reboots/prompts). When adding new commands, preserve non-interactive flags and the avoidance of interactive prompts.
-- Centralized task registry: `script.ps1` exposes a single global array `$global:ScriptTasks` — add, disable or reorder features by editing this array or by adding new task entries that follow the Name/Function/Description pattern.
-- Feature flags via `$global:Config`: use the existing Skip* flags (e.g. SkipBloatwareRemoval, SkipEssentialApps) and collections (CustomEssentialApps, CustomBloatwareList) for configuration rather than editing task bodies.
+- **Modular Architecture**: The system is built from specialized PowerShell modules, each with a single responsibility. Type 1 modules handle inventory/reporting (read-only), Type 2 modules perform system modifications, and Core modules provide infrastructure.
+- **Launcher → Orchestrator Design**: `script.bat` prepares environment (elevation, dependency bootstrap, scheduled tasks, downloads) and delegates to `MaintenanceOrchestrator.ps1`. Avoid editing elevation logic in PowerShell — it's centralized in the batch launcher.
+- **Configuration-Driven**: All settings, app lists, and behaviors are controlled through JSON configuration files in the `config/` directory. Never hardcode data that should be configurable.
+- **Interactive + Non-Interactive Modes**: The system supports both menu-driven interactive use and unattended automation. All interactive prompts must have timeout fallbacks and non-interactive bypass options.
+- **Task Registry Pattern**: Tasks are defined as module function calls in `MaintenanceOrchestrator.ps1` rather than a global array. Each task specifies its module path, function name, type, and category.
+- **Dry-Run Architecture**: All system-modifying operations must support dry-run mode through `-DryRun` parameters or `-WhatIf` cmdlet binding.
 
 ### Files and key places to read first
 
-- `script.bat` — read top-to-bottom to understand environment setup: admin checks, PowerShell detection, dependency install order (winget → pwsh → NuGet → PSGallery → PSWindowsUpdate → chocolatey), scheduled task creation, repository download/extract, and how it invokes `script.ps1`.
-- `script.ps1` — start at the header and global sections (metadata, $global:Config, $global:ScriptTasks, logging functions). The orchestrator functions `Use-AllScriptTasks`, `Invoke-Task`, `Invoke-LoggedCommand`, `Invoke-PackageManagerCommand` are core abstractions used throughout.
+- `script.bat` — Read top-to-bottom to understand environment setup: admin checks, PowerShell detection, dependency install order (winget → pwsh → NuGet → PSGallery → PSWindowsUpdate → chocolatey), scheduled task creation, repository download/extract, and how it invokes `MaintenanceOrchestrator.ps1`.
+- `MaintenanceOrchestrator.ps1` — Start at the header and initialization sections. The task registry array defines all available tasks with their module paths and function names. Key functions: `Invoke-Task`, `Show-TaskMenu`, parameter parsing.
+- `modules/core/ConfigManager.psm1` — Configuration loading and management. Functions: `Initialize-ConfigSystem`, `Get-MainConfiguration`, `Get-LoggingConfiguration`.
+- `modules/core/MenuSystem.psm1` — Interactive menu system with countdown timers. Functions: `Show-MainMenu`, `Show-TaskSelectionMenu`.
+- Module architecture: Each `.psm1` file exports specific functions. Type 1 modules return data objects, Type 2 modules return success/failure booleans.
 
 ### Common workflows & exact commands
 
-- Run locally (developer): open an elevated PowerShell 7+ console and run `.\\script.ps1` from the repository folder; the batch file is only necessary when you want the full bootstrap behavior. The PS1 expects `$env:WORKING_DIRECTORY` or will use its own folder.
-- Launch via launcher (production/operator): run `script.bat` (double-click or elevated command prompt). The batch file will ensure elevation and dependencies before launching the PS1.
-- Non-interactive package installs: use `Invoke-PackageManagerCommand` for calls to winget/choco. Preserve `--silent`, `--accept-package-agreements`, `--accept-source-agreements`, and `-y` flags used by the project.
-- Windows Updates: functions `Install-WindowsUpdatesCompatible` and `Invoke-WindowsUpdateWithSuppressionHelpers` set environment variables to suppress prompts and reboots. When modifying update flows, preserve suppression env vars (PSWINDOWSUPDATE_REBOOT, SUPPRESSPROMPTS, etc.) and never re-enable interactive reboots by default.
+- **Run locally (developer)**: Open an elevated PowerShell 7+ console and run `.\MaintenanceOrchestrator.ps1` from the repository folder. The batch file is only necessary for full bootstrap behavior.
+- **Launch via launcher (production/operator)**: Run `script.bat` (double-click or elevated command prompt). The batch file ensures elevation and dependencies before launching the orchestrator.
+- **Interactive mode**: Default behavior shows countdown menus for execution mode and task selection.
+- **Non-interactive automation**: Use `script.bat -NonInteractive` or `MaintenanceOrchestrator.ps1 -NonInteractive` for unattended execution.
+- **Dry-run testing**: Use `-DryRun` parameter to simulate changes without system modification.
+- **Specific task execution**: Use `-TaskNumbers "1,3,5"` to run only specified tasks from the registry.
+- **Package manager calls**: Modules should use their own package manager abstractions. WindowsUpdates module handles update suppression automatically.
+- **Configuration changes**: Edit JSON files in `config/` directory rather than hardcoding values in modules.
 
 ### Patterns and conventions to follow
 
-- Task entries: add tasks to `$global:ScriptTasks` as a hashtable with Name, Function (scriptblock), and Description. Example found in `script.ps1`:
-  @{ Name = 'RemoveBloatware'; Function = { Remove-Bloatware }; Description = 'Remove unwanted apps' }
-- Logging: always use Write-Log, Write-ActionLog, or Write-CommandLog for messages instead of Write-Host alone. These functions centralize log file writing, levels, console coloring and backups.
-- Progress UX: use Write-TaskProgress / Write-ActionProgress to display user-friendly progress; avoid printing raw progress loops that spam the console/log.
-- Feature flags: prefer `$global:Config.Skip*` toggles and `$global:Config.Custom*` lists rather than changing core task logic.
-- Package manager wrappers: call Invoke-PackageManagerCommand instead of spawning winget/choco directly to get normalized output and timeout handling.
+- **Task registry entries**: Add tasks to the `$Tasks` array in `MaintenanceOrchestrator.ps1` as hashtables with Name, Description, ModulePath, Function, Type, and Category.
+- **Module structure**: Each module exports specific functions using `Export-ModuleMember`. Type 1 modules return data objects, Type 2 modules return success/failure booleans.
+- **Configuration access**: Use `Get-MainConfiguration` and configuration-specific functions from ConfigManager module. Load settings from JSON files in `config/` directory.
+- **Progress reporting**: Use `Write-Host` with consistent formatting and color coding. Include operation status indicators (✓, ❌, ⚠️, 🔄).
+- **Dry-run support**: All Type 2 modules must support `-DryRun` parameter and use `ShouldProcess` for destructive operations.
+- **Error handling**: Use try/catch blocks with proper error messages. Return structured results with Success/Error properties.
+- **Dependency management**: Use `DependencyManager` module for package manager operations instead of direct winget/choco calls.
 
 ### Integration & external dependencies
 
-- External tools: winget, pwsh (PowerShell 7), chocolatey, PSWindowsUpdate, NuGet provider. The batch script tries to install these if missing; do not assume they exist in all environments.
-- Remote repo fetching: `script.bat` downloads a repo ZIP from GitHub (see REPO_URL inside `script.bat`). If you change download/update behavior, update the self-update extraction and copy logic in the batch file.
-- Windows APIs: registry keys are used extensively (bloatware detection, restart checks). Use provided Test-RegistryAccess / Set-RegistryValueSafely helpers for safe registry writes.
+- **External tools**: winget, pwsh (PowerShell 7), chocolatey, PSWindowsUpdate, NuGet provider. The `DependencyManager` module handles installation; modules should check dependencies using `Get-DependencyStatus`.
+- **Remote repo fetching**: `script.bat` downloads repo ZIP from GitHub. Self-update logic is in the batch file; coordinate changes with batch script updates.
+- **Windows APIs**: Registry keys used extensively for system configuration. Use appropriate error handling and validation when accessing registry.
+- **Module dependencies**: Core modules (ConfigManager, MenuSystem) are loaded first. Type 1/Type 2 modules are loaded on-demand by the orchestrator.
+- **Configuration system**: All configuration through JSON files. Use `ConfigManager` module functions for loading and validation.
 
 ### Small actionable examples (copy/paste friendly guidance for agents)
 
-- Add a new maintenance task:
-  - Create a new function in `script.ps1` that performs the work and returns $true/$false.
-  - Add an entry to `$global:ScriptTasks` with Name, Function = { <your-call> }, Description.
-  - Respect `$global:Config` switches: check for a Skip* flag if your task should be optionally disabled.
+- **Add a new maintenance task**:
+  1. Create a PowerShell module (.psm1) in appropriate `modules/type1/` or `modules/type2/` directory
+  2. Add task entry to `$Tasks` array in `MaintenanceOrchestrator.ps1` with ModulePath, Function, Type, Category
+  3. Use configuration from JSON files in `config/` directory instead of hardcoded values
+  4. Support `-DryRun` parameter for Type 2 modules using `[CmdletBinding(SupportsShouldProcess)]`
 
-- Run the orchestrator locally (developer):
-  - Open an elevated PowerShell 7 console in the repository folder and run `pwsh -ExecutionPolicy Bypass -File .\script.ps1` (or pass -LogFilePath if needed).
+- **Run the orchestrator locally (developer)**:
+  - Open elevated PowerShell 7+ console: `.\MaintenanceOrchestrator.ps1`
+  - With parameters: `.\MaintenanceOrchestrator.ps1 -DryRun -TaskNumbers "1,3,5"`
 
-- Inspect package installation code paths: search for `Invoke-PackageManagerCommand` in `script.ps1` to see how installs/uninstalls are normalized.
+- **Create a new module**:
+  - Follow existing module structure with `Export-ModuleMember` at end
+  - Type 1 modules return data objects, Type 2 modules return success/failure booleans
+  - Include proper error handling and progress reporting with colored output
 
 ### What not to change without careful review
 
-- Elevation and scheduled-task logic in `script.bat` — this is sensitive and relies on multiple Windows behaviors and admin rights.
-- Default silent/reboot suppression around Windows Update flows — these were intentionally added to avoid unattended reboots.
-- The contract of task functions: they should return $true/$false (or otherwise behave like the existing tasks) so the orchestrator can record success/failure.
+- **Elevation and scheduled-task logic in `script.bat`** — This is sensitive and relies on multiple Windows behaviors and admin rights.
+- **Module loading order in `MaintenanceOrchestrator.ps1`** — Core modules must load before Type 1/Type 2 modules due to dependencies.
+- **Configuration schema in JSON files** — Changes affect all modules; coordinate updates across the system.
+- **Task return value contracts** — Type 1 modules return data objects, Type 2 modules return success/failure booleans for orchestrator tracking.
+- **DryRun parameter handling** — All Type 2 modules must respect the `-DryRun` parameter for safe testing.
 
 ### Quick map to notable symbols & files
 
-- `script.bat` — launcher and bootstrapper: admin checks, dependency installation order, scheduled tasks, repo download/extract, invocation of PS1.
-- `script.ps1` — orchestrator: $global:ScriptTasks, $global:Config, Write-Log, Use-AllScriptTasks, Invoke-Task, Invoke-PackageManagerCommand, Install-WindowsUpdatesCompatible.
+- `script.bat` — Launcher and bootstrapper: admin checks, dependency installation order, scheduled tasks, repo download/extract, invocation of orchestrator.
+- `MaintenanceOrchestrator.ps1` — Central orchestrator: `$Tasks` registry, module loading, `Invoke-Task`, menu coordination, parameter parsing.
+- `modules/core/ConfigManager.psm1` — Configuration system: `Initialize-ConfigSystem`, `Get-MainConfiguration`, JSON loading/validation.
+- `modules/core/MenuSystem.psm1` — Interactive menus: `Show-MainMenu`, `Show-TaskSelectionMenu`, countdown timers.
+- `modules/core/DependencyManager.psm1` — Dependency management: `Install-AllDependencies`, `Get-DependencyStatus`, package manager detection.
+- `modules/core/TaskScheduler.psm1` — Task scheduling: `New-MaintenanceTask`, `Get-MaintenanceTasks`, Windows scheduled task automation.
+
+### Project Evolution and Archive
+
+This project underwent a **complete architectural transformation** from a monolithic script to a modular system:
+- **Original monolithic files** are preserved in `archive/` directory for reference
+- **Current architecture** is fully modular with specialized PowerShell modules
+- **Migration complete**: All functionality extracted from the original 11,353-line `script.ps1`
+- **Production ready**: New system is the current active implementation
 
 ### If something is missing or unclear
 
