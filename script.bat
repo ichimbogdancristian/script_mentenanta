@@ -13,6 +13,7 @@ REM ----------------------------------------------------------------------------
 REM Enhanced Logging System
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
+
 :LOG_MESSAGE
 SET "LOG_TIMESTAMP=%TIME:~0,8%"
 SET "LEVEL=%~2"
@@ -24,6 +25,38 @@ SET "LOG_ENTRY=[%DATE% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
 ECHO %LOG_ENTRY%
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
+EXIT /B
+
+:REFRESH_PATH
+REM Refresh PATH environment variable from registry
+FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul`) DO SET "SYSTEM_PATH=%%B"
+FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKCU\Environment" /v PATH 2^>nul`) DO SET "USER_PATH=%%B"
+IF DEFINED USER_PATH (
+    SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
+) ELSE (
+    SET "PATH=%SYSTEM_PATH%"
+)
+EXIT /B
+
+:DETECT_PS7_ALTERNATIVE
+REM Try common PowerShell 7 installation paths
+SET "PS7_FOUND=NO"
+FOR %%P IN (
+    "%ProgramFiles%\PowerShell\7\pwsh.exe"
+    "%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
+    "%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe"
+    "%ProgramFiles%\PowerShell\pwsh.exe"
+) DO (
+    IF EXIST "%%P" (
+        SET "PS7_PATH=%%P"
+        SET "PS7_FOUND=YES"
+        CALL :LOG_MESSAGE "Found PowerShell 7 at: %%P" "SUCCESS" "LAUNCHER"
+        FOR /F "tokens=*" %%V IN ('"%%P" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%V
+        CALL :LOG_MESSAGE "PowerShell 7 version: !PS7_VERSION!" "INFO" "LAUNCHER"
+        GOTO :PS7_FOUND
+    )
+)
+:PS7_FOUND
 EXIT /B
 
 :MAIN_SCRIPT
@@ -249,6 +282,21 @@ IF !ERRORLEVEL! NEQ 0 (
         winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
+            
+            REM Refresh PATH environment variable to detect newly installed PowerShell 7
+            CALL :LOG_MESSAGE "Refreshing PATH environment variable..." "INFO" "LAUNCHER"
+            CALL :REFRESH_PATH
+            
+            REM Try to detect PowerShell 7 again after PATH refresh
+            pwsh.exe -Version >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+                CALL :LOG_MESSAGE "PowerShell 7 detected after installation: !PS7_VERSION!" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell 7 installed but not yet available in PATH" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "Trying alternative detection methods..." "INFO" "LAUNCHER"
+                CALL :DETECT_PS7_ALTERNATIVE
+            )
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
         )
@@ -348,7 +396,13 @@ IF !ERRORLEVEL! EQU 0 (
     SET "PS_EXECUTABLE=pwsh.exe"
     CALL :LOG_MESSAGE "Using PowerShell 7 for execution" "INFO" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Using Windows PowerShell for execution" "INFO" "LAUNCHER"
+    REM Check if we found PowerShell 7 via alternative detection
+    IF "%PS7_FOUND%"=="YES" (
+        SET "PS_EXECUTABLE=%PS7_PATH%"
+        CALL :LOG_MESSAGE "Using PowerShell 7 from alternative path for execution" "INFO" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Using Windows PowerShell for execution" "INFO" "LAUNCHER"
+    )
 )
 
 REM Parse command line arguments for the orchestrator
