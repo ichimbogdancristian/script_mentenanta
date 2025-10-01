@@ -59,11 +59,14 @@ if (-not $ScriptRoot) {
     $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
-$WorkingDirectory = if ($env:WORKING_DIRECTORY) { $env:WORKING_DIRECTORY } else { $ScriptRoot }
+# Always use the script's actual location as working directory for reliable module loading
+# This ensures modules are found relative to the orchestrator script, not environment variables
+$WorkingDirectory = $ScriptRoot
 
 Write-Host "Windows Maintenance Automation - Central Orchestrator v2.0.0" -ForegroundColor Cyan
 Write-Host "Working Directory: $WorkingDirectory" -ForegroundColor Gray
 Write-Host "Script Root: $ScriptRoot" -ForegroundColor Gray
+Write-Host "Environment WORKING_DIRECTORY: $env:WORKING_DIRECTORY" -ForegroundColor Gray
 
 # Detect configuration path
 if (-not $ConfigPath) {
@@ -112,6 +115,10 @@ Write-Host "`nLoading modules..." -ForegroundColor Yellow
 # Import core modules
 $ModulesPath = Join-Path $WorkingDirectory 'modules'
 $CoreModulesPath = Join-Path $ModulesPath 'core'
+
+Write-Host "Module Path Resolution:" -ForegroundColor Gray
+Write-Host "  ModulesPath: $ModulesPath" -ForegroundColor Gray
+Write-Host "  CoreModulesPath: $CoreModulesPath" -ForegroundColor Gray
 
 $CoreModules = @(
     'ConfigManager',
@@ -283,16 +290,45 @@ if (-not $NonInteractive) {
     Write-Host "`nStarting interactive mode..." -ForegroundColor Yellow
     
     # Configure menu system
-    Set-MenuConfiguration -CountdownSeconds $MainConfig.execution.countdownSeconds
+    Set-MenuConfiguration -CountdownSeconds 20
     
-    # Show main menu
-    $mainSelection = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds
-    $ExecutionParams.DryRun = $mainSelection.DryRun
-    
-    # Show task selection menu if not overridden by parameter
+    # Show hierarchical execution menu system (only if TaskNumbers not specified)
     if (-not $TaskNumbers) {
-        $taskSelection = Show-TaskSelectionMenu -IsDryRun $ExecutionParams.DryRun -AvailableTasks $AvailableTasks
-        $ExecutionParams.SelectedTasks = $taskSelection.Tasks
+        Write-Host "`nPresenting execution options with 20-second countdowns..." -ForegroundColor Cyan
+        $executionSelection = Show-HierarchicalExecutionMenu -AvailableTasks $AvailableTasks
+        
+        # Apply the selection results
+        $ExecutionParams.DryRun = $executionSelection.DryRun
+        $ExecutionParams.SelectedTasks = $executionSelection.Tasks
+        
+        Write-Host "`nExecution Configuration:" -ForegroundColor Yellow
+        Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
+        if ($ExecutionParams.DryRun) {
+            Write-Host "DRY-RUN SIMULATION" -ForegroundColor Blue
+        } else {
+            Write-Host "LIVE EXECUTION" -ForegroundColor Green
+        }
+        Write-Host "  Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -ForegroundColor Gray
+        
+    } else {
+        # TaskNumbers parameter provided - use simplified selection
+        Write-Host "`nTask numbers specified via parameter - using simplified selection..." -ForegroundColor Gray
+        
+        # Show simple execution mode menu for TaskNumbers scenario
+        Write-Host "`nPlease select execution mode for specified tasks:" -ForegroundColor Yellow
+        Write-Host "  [1] Normal Execution " -ForegroundColor Green -NoNewline
+        Write-Host "[DEFAULT]" -ForegroundColor Cyan
+        Write-Host "  [2] Dry-Run Execution" -ForegroundColor Blue
+        
+        $selection = Start-CountdownSelection -CountdownSeconds 20 -DefaultOption 1 -OptionsCount 2
+        $ExecutionParams.DryRun = ($selection -eq 2)
+        
+        Write-Host ""
+        if ($ExecutionParams.DryRun) {
+            Write-Host "✓ Selected: Dry-Run Execution for specified tasks" -ForegroundColor Blue
+        } else {
+            Write-Host "✓ Selected: Normal Execution for specified tasks" -ForegroundColor Green
+        }
     }
 } else {
     Write-Host "`nNon-interactive mode enabled" -ForegroundColor Yellow

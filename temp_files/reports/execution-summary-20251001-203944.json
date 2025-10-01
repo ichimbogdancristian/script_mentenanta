@@ -1,0 +1,1015 @@
+{
+  "SuccessfulTasks": 3,
+  "ExecutionMode": "LIVE",
+  "EndTime": "2025-10-01T20:39:44.5539686+03:00",
+  "TotalDuration": 13.2709232,
+  "TasksExecuted": 9,
+  "FailedTasks": 6,
+  "TaskResults": [
+    {
+      "Output": {
+        "InstalledSoftware": {
+          "TotalCount": 76,
+          "Programs": [
+            {
+              "Name": "7-Zip 25.01 (x64)",
+              "Publisher": "Igor Pavlov",
+              "Size": 5758,
+              "InstallLocation": "C:\\Program Files\\7-Zip\\",
+              "InstallDate": null,
+              "Version": "25.01",
+              "UninstallString": "\"C:\\Program Files\\7-Zip\\Uninstall.exe\""
+            },
+            {
+              "Name": "Adobe Acrobat (64-bit)",
+              "Publisher": "Adobe",
+              "Size": 1068352,
+              "InstallLocation": "C:\\Program Files\\Adobe\\Acrobat DC\\",
+              "InstallDate": "20250926",
+              "Version": "25.001.20744",
+              "UninstallString": "MsiExec.exe /I{AC76BA86-1033-FF00-7760-BC15014EA700}"
+            },
+            {
+              "Name": "Adobe Refresh Manager",
+              "Publisher": "Adobe Systems Incorporated",
+              "Size": 2064,
+              "InstallLocation": "C:\\Program Files (x86)\\Common Files\\Adobe\\ARM\\1.0\\",
+              "InstallDate": "20250907",
+              "Version": "1.8.0",
+              "UninstallString": "MsiExec.exe /I{AC76BA86-0804-1033-1959-018244601120}"
+            },
+            {
+              "Name": "Angry IP Scanner",
+              "Publisher": "Angry IP Scanner",
+              "Size": 28100,
+              "InstallLocation": "\"C:\\Program Files\\Angry IP Scanner\"",
+              "InstallDate": null,
+              "Version": "3.9.2",
+              "UninstallString": "\"C:\\Program Files\\Angry IP Scanner\\uninstall.exe\""
+            },
+            {
+              "Name": "BabyWare",
+              "Publisher": "Paradox Security Systems",
+              "Size": 284141,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "5.6.65",
+              "UninstallString": "C:\\Program Files (x86)\\Paradox Security Systems\\BabyWare\\uninstall.exe"
+            },
+            {
+              "Name": "CrystalDiskInfo 9.7.2",
+              "Publisher": "Crystal Dew World",
+              "Size": 14431,
+              "InstallLocation": "C:\\Program Files\\CrystalDiskInfo\\",
+              "InstallDate": "20250906",
+              "Version": "9.7.2",
+              "UninstallString": "\"C:\\Program Files\\CrystalDiskInfo\\unins000.exe\""
+            },
+            {
+              "Name": "Docker Desktop",
+              "Publisher": "Docker Inc.",
+              "Size": 2888891,
+              "InstallLocation": "C:\\Program Files\\Docker\\Docker",
+              "InstallDate": null,
+              "Version": "4.47.0",
+              "UninstallString": "\"C:\\Program Files\\Docker\\Docker\\Docker Desktop Installer.exe\" \"uninstall\""
+            },
+            {
+              "Name": "Everything 1.4.1.1026 (x86)",
+              "Publisher": "voidtools",
+              "Size": 3072,
+              "InstallLocation": "C:\\Program Files (x86)\\Everything",
+              "InstallDate": null,
+              "Version": "1.4.1.1026",
+              "UninstallString": "C:\\Program Files (x86)\\Everything\\Uninstall.exe"
+            },
+            {
+              "Name": "Git",
+              "Publisher": "The Git Development Community",
+              "Size": 348444,
+              "InstallLocation": "C:\\Program Files\\Git\\",
+              "InstallDate": "20250910",
+              "Version": "2.51.0",
+              "UninstallString": "\"C:\\Program Files\\Git\\unins000.exe\""
+            },
+            {
+              "Name": "GOG.com Heroes of Might and Magic 3",
+              "Publisher": null,
+              "Size": null,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": null,
+              "UninstallString": "C:\\WINDOWS\\system32\\sdbinst.exe -u \"C:\\WINDOWS\\AppPatch\\CustomSDB\\{1d3c859c-1028-4822-b0a7-da4f7bbc18bc}.sdb\""
+            },
+            {
+              "Name": "Google Chrome",
+              "Publisher": "Google LLC",
+              "Size": 134909,
+              "InstallLocation": "",
+              "InstallDate": "20250918",
+              "Version": "140.0.7339.208",
+              "UninstallString": "MsiExec.exe /X{15971136-C56A-3015-AC9D-ED17B8F94952}"
+            },
+            {
+              "Name": "Heroes of Might and Magic 3 Complete",
+              "Publisher": "GOG.com",
+              "Size": 1000317,
+              "InstallLocation": "C:\\GOG Games\\Heroes of Might and Magic 3 Complete\\",
+              "InstallDate": "20250102",
+              "Version": "2.0.0.16",
+              "UninstallString": "\"C:\\GOG Games\\Heroes of Might and Magic 3 Complete\\unins000.exe\""
+            },
+            {
+              "Name": "Heroes of Might and Magic® III: Horn of the Abyss",
+              "Publisher": "HotA Crew",
+              "Size": 374469,
+              "InstallLocation": "C:\\GOG Games\\Heroes of Might and Magic 3 Complete\\",
+              "InstallDate": "20250102",
+              "Version": "1.7.2",
+              "UninstallString": "\"C:\\GOG Games\\Heroes of Might and Magic 3 Complete\\Uninstall_HotA\\unins000.exe\""
+            },
+            {
+              "Name": "Java 8 Update 461 (64-bit)",
+              "Publisher": "Oracle Corporation",
+              "Size": 115891,
+              "InstallLocation": "C:\\Program Files\\Java\\jre1.8.0_461\\",
+              "InstallDate": "20250817",
+              "Version": "8.0.4610.11",
+              "UninstallString": "MsiExec.exe /I{71124AE4-039E-4CA4-87B4-2F64180461F0}"
+            },
+            {
+              "Name": "Java Auto Updater",
+              "Publisher": "Oracle Corporation",
+              "Size": 2437,
+              "InstallLocation": "",
+              "InstallDate": "20250817",
+              "Version": "2.8.461.11",
+              "UninstallString": null
+            },
+            {
+              "Name": "Logi Options+",
+              "Publisher": "Logitech",
+              "Size": null,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "1.95.771519",
+              "UninstallString": "\"C:\\Program Files\\LogiOptionsPlus\\logioptionsplus_updater.exe\" --uninstall --full --shadow"
+            },
+            {
+              "Name": "Logi Plugin Service",
+              "Publisher": "Logitech",
+              "Size": 268682,
+              "InstallLocation": "",
+              "InstallDate": "20250919",
+              "Version": "6.2.1.714",
+              "UninstallString": "MsiExec.exe /X{5B02A222-E9E7-4F6D-8E84-6C8D645EA6EC}"
+            },
+            {
+              "Name": "Logi RightSightForWebcams 1.1.205",
+              "Publisher": "Logitech",
+              "Size": 68922,
+              "InstallLocation": "",
+              "InstallDate": "20250919",
+              "Version": "1.1.205.0",
+              "UninstallString": "MsiExec.exe /I{F48643E2-AE04-47A9-9E12-2785E32F7D9A}"
+            },
+            {
+              "Name": "Microsoft 365 Apps for enterprise - en-us",
+              "Publisher": "Microsoft Corporation",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files\\Microsoft Office",
+              "InstallDate": null,
+              "Version": "16.0.19127.20264",
+              "UninstallString": "\"C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe\" scenario=install scenariosubtype=ARP sourcetype=None productstoremove=O365ProPlusRetail.16_en-us_x-none culture=en-us version.16=16.0"
+            },
+            {
+              "Name": "Microsoft Edge",
+              "Publisher": "Microsoft Corporation",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application",
+              "InstallDate": "20250927",
+              "Version": "140.0.3485.94",
+              "UninstallString": "\"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\140.0.3485.94\\Installer\\setup.exe\" --uninstall --msedge --channel=stable --system-level --verbose-logging"
+            },
+            {
+              "Name": "Microsoft Edge WebView2 Runtime",
+              "Publisher": "Microsoft Corporation",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application",
+              "InstallDate": "20250927",
+              "Version": "140.0.3485.94",
+              "UninstallString": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\140.0.3485.94\\Installer\\setup.exe\" --uninstall --msedgewebview --system-level --verbose-logging"
+            },
+            {
+              "Name": "Microsoft OneDrive",
+              "Publisher": "Microsoft Corporation",
+              "Size": 437898,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "25.164.0824.0003",
+              "UninstallString": "\"C:\\Program Files\\Microsoft OneDrive\\25.164.0824.0003\\OneDriveSetup.exe\"  /uninstall  /allusers "
+            },
+            {
+              "Name": "Microsoft Update Health Tools",
+              "Publisher": "Microsoft Corporation",
+              "Size": 1045,
+              "InstallLocation": "",
+              "InstallDate": "20240818",
+              "Version": "5.72.0.0",
+              "UninstallString": "MsiExec.exe /X{C6FD611E-7EFE-488C-A0E0-974C09EF6473}"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219",
+              "Publisher": "Microsoft Corporation",
+              "Size": 14199,
+              "InstallLocation": "",
+              "InstallDate": "20240921",
+              "Version": "10.0.40219",
+              "UninstallString": "MsiExec.exe /X{1D8E6291-B0D5-35EC-8441-6616F567A0F7}"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2010  x86 Redistributable - 10.0.40219",
+              "Publisher": "Microsoft Corporation",
+              "Size": 11417,
+              "InstallLocation": "",
+              "InstallDate": "20250726",
+              "Version": "10.0.40219",
+              "UninstallString": "MsiExec.exe /X{F0C3E5D1-1ADE-321E-8167-68EF0DE699A5}"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664",
+              "Publisher": "Microsoft Corporation",
+              "Size": 21062,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "12.0.40664.0",
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{042d26ef-3dbe-4c25-95d3-4c1b11b235a7}\\vcredist_x64.exe\"  /uninstall"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.30501",
+              "Publisher": "Microsoft Corporation",
+              "Size": null,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "12.0.30501.0",
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{f65db027-aff3-4070-886a-0d87064aabb1}\\vcredist_x86.exe\"  /uninstall"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.40664",
+              "Publisher": "Microsoft Corporation",
+              "Size": 17602,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "12.0.40664.0",
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{9dff3540-fc85-4ed5-ac84-9e3c7fd8bece}\\vcredist_x86.exe\"  /uninstall"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664",
+              "Publisher": "Microsoft Corporation",
+              "Size": 11784,
+              "InstallLocation": "",
+              "InstallDate": "20240922",
+              "Version": "12.0.40664",
+              "UninstallString": "MsiExec.exe /X{010792BA-551A-3AC0-A7EF-0FAB4156C382}"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2013 x64 Minimum Runtime - 12.0.40664",
+              "Publisher": "Microsoft Corporation",
+              "Size": 2524,
+              "InstallLocation": "",
+              "InstallDate": "20240922",
+              "Version": "12.0.40664",
+              "UninstallString": "MsiExec.exe /X{53CF6934-A98D-3D84-9146-FC4EDF3D5641}"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2013 x86 Additional Runtime - 12.0.40664",
+              "Publisher": "Microsoft Corporation",
+              "Size": 9456,
+              "InstallLocation": "",
+              "InstallDate": "20240922",
+              "Version": "12.0.40664",
+              "UninstallString": "MsiExec.exe /X{D401961D-3A20-3AC7-943B-6139D5BD490A}"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2013 x86 Minimum Runtime - 12.0.40664",
+              "Publisher": "Microsoft Corporation",
+              "Size": 2076,
+              "InstallLocation": "",
+              "InstallDate": "20240922",
+              "Version": "12.0.40664",
+              "UninstallString": "MsiExec.exe /X{8122DAB1-ED4D-3676-BB0A-CA368196543E}"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211",
+              "Publisher": "Microsoft Corporation",
+              "Size": 21235,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "14.44.35211.0",
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{d8bbe9f9-7c5b-42c6-b715-9ee898a2e515}\\VC_redist.x64.exe\"  /uninstall"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2022 X64 Additional Runtime - 14.44.35211",
+              "Publisher": "Microsoft Corporation",
+              "Size": 11892,
+              "InstallLocation": "",
+              "InstallDate": "20250620",
+              "Version": "14.44.35211",
+              "UninstallString": "MsiExec.exe /I{86AB2CC9-08BD-4643-B0F9-F82D006D72FF}"
+            },
+            {
+              "Name": "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.44.35211",
+              "Publisher": "Microsoft Corporation",
+              "Size": 2404,
+              "InstallLocation": "",
+              "InstallDate": "20250620",
+              "Version": "14.44.35211",
+              "UninstallString": "MsiExec.exe /I{43B0D101-A022-48F4-9D04-BA404CEB1D53}"
+            },
+            {
+              "Name": "Mozilla Firefox (x64 en-US)",
+              "Publisher": "Mozilla",
+              "Size": 316454,
+              "InstallLocation": "C:\\Program Files\\Mozilla Firefox",
+              "InstallDate": null,
+              "Version": "143.0.3",
+              "UninstallString": "\"C:\\Program Files\\Mozilla Firefox\\uninstall\\helper.exe\""
+            },
+            {
+              "Name": "Mozilla Maintenance Service",
+              "Publisher": "Mozilla",
+              "Size": 728,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "143.0.1",
+              "UninstallString": "\"C:\\Program Files (x86)\\Mozilla Maintenance Service\\uninstall.exe\""
+            },
+            {
+              "Name": "Mozilla Thunderbird (x64 en-US)",
+              "Publisher": "Mozilla",
+              "Size": 306138,
+              "InstallLocation": "C:\\Program Files\\Mozilla Thunderbird",
+              "InstallDate": null,
+              "Version": "143.0.1",
+              "UninstallString": "\"C:\\Program Files\\Mozilla Thunderbird\\uninstall\\helper.exe\""
+            },
+            {
+              "Name": "Notepad++ (64-bit x64)",
+              "Publisher": "Notepad++ Team",
+              "Size": 18105,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "8.8.5",
+              "UninstallString": "\"C:\\Program Files\\Notepad++\\uninstall.exe\""
+            },
+            {
+              "Name": "NVIDIA Graphics Driver 457.49",
+              "Publisher": "NVIDIA Corporation",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\Display.Driver.{C5687AA1-900A-4A8D-A95E-71A7326679D4}",
+              "InstallDate": "20250514",
+              "Version": "457.49",
+              "UninstallString": "\"C:\\WINDOWS\\SysWOW64\\RunDll32.EXE\" \"C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore\\NVI2.DLL\",UninstallPackage Display.Driver"
+            },
+            {
+              "Name": "NVIDIA Install Application",
+              "Publisher": "NVIDIA Corporation",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore",
+              "InstallDate": "20250514",
+              "Version": "2.1002.346.0",
+              "UninstallString": null
+            },
+            {
+              "Name": "Office 16 Click-to-Run Extensibility Component",
+              "Publisher": "Microsoft Corporation",
+              "Size": 32180,
+              "InstallLocation": "",
+              "InstallDate": "20250926",
+              "Version": "16.0.19127.20154",
+              "UninstallString": "MsiExec.exe /X{90160000-008C-0000-1000-0000000FF1CE}"
+            },
+            {
+              "Name": "Oh My Posh",
+              "Publisher": "Jan De Dobbeleer",
+              "Size": 19464,
+              "InstallLocation": "",
+              "InstallDate": "20250927",
+              "Version": "26.26.0",
+              "UninstallString": "MsiExec.exe /I{7F299EAF-BA19-40C5-8CA9-65C360B067A0}"
+            },
+            {
+              "Name": "Oh My Posh",
+              "Publisher": "Jan De Dobbeleer",
+              "Size": 19456,
+              "InstallLocation": "",
+              "InstallDate": "20250923",
+              "Version": "26.24.1",
+              "UninstallString": "MsiExec.exe /I{D9C9D7E3-A0EB-4AF8-8F76-50AA37C04072}"
+            },
+            {
+              "Name": "OpenVPN Connect",
+              "Publisher": "OpenVPN Inc.",
+              "Size": 309088,
+              "InstallLocation": "",
+              "InstallDate": "20250812",
+              "Version": "3.7.3",
+              "UninstallString": "MsiExec.exe /X{08E6014D-38DB-471A-A919-30DA9B1A9AFF}"
+            },
+            {
+              "Name": "PDF24 Creator",
+              "Publisher": "geek software GmbH",
+              "Size": 1037888,
+              "InstallLocation": "C:\\Program Files\\PDF24\\",
+              "InstallDate": "20250918",
+              "Version": "11.28.2",
+              "UninstallString": "MsiExec.exe /I{807B6B52-8124-4C81-A657-DC8DF91A8B37}"
+            },
+            {
+              "Name": "PokerStars.ro",
+              "Publisher": "PokerStars.ro",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files (x86)\\PokerStars.RO",
+              "InstallDate": "Fri Nov 15 20:38:53 2024\n",
+              "Version": null,
+              "UninstallString": "\"C:\\Program Files (x86)\\PokerStars.RO\\PokerStarsUninstall.exe\" /u:PokerStars.ro"
+            },
+            {
+              "Name": "PowerShell 7-x64",
+              "Publisher": "Microsoft Corporation",
+              "Size": 286722,
+              "InstallLocation": "",
+              "InstallDate": "20250913",
+              "Version": "7.5.3.0",
+              "UninstallString": "MsiExec.exe /X{B4D3359E-1191-4BBD-ABDB-0E4A39534981}"
+            },
+            {
+              "Name": "PowerToys (Preview)",
+              "Publisher": "Microsoft Corporation",
+              "Size": 818096,
+              "InstallLocation": "C:\\Users\\Bogdan\\AppData\\Local\\PowerToys\\",
+              "InstallDate": "20250926",
+              "Version": "0.94.2",
+              "UninstallString": "MsiExec.exe /X{AF2B4F8F-4F55-42E5-8208-9623B1AFA833}"
+            },
+            {
+              "Name": "Python 3.13.7 Add to Path (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 52,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{235C9435-3313-4658-881D-5A7E559A5A41}"
+            },
+            {
+              "Name": "Python 3.13.7 Core Interpreter (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 6040,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{BE75E968-78F4-411D-92E4-73EC3043F7E4}"
+            },
+            {
+              "Name": "Python 3.13.7 Development Libraries (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 2832,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{96A23710-E014-4A5B-96A1-DE64AC37251B}"
+            },
+            {
+              "Name": "Python 3.13.7 Documentation (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 60616,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{CFAAA24B-16EF-4D9D-80A5-F67798771571}"
+            },
+            {
+              "Name": "Python 3.13.7 Executables (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 2608,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{E4047598-558F-4468-8B53-9FCEF7F86E0D}"
+            },
+            {
+              "Name": "Python 3.13.7 pip Bootstrap (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 288,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{CD31E178-F872-466B-A231-9C8AA53A89FD}"
+            },
+            {
+              "Name": "Python 3.13.7 Standard Library (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 23416,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{A139F43E-8105-465D-AC80-28F349CBE08D}"
+            },
+            {
+              "Name": "Python 3.13.7 Tcl/Tk Support (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 13880,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{A65B1339-6492-4CA4-AEB5-2B25A83A20B9}"
+            },
+            {
+              "Name": "Python 3.13.7 Test Suite (64-bit)",
+              "Publisher": "Python Software Foundation",
+              "Size": 33248,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /I{6BD2B618-9A2B-47D9-B24B-2F05BD2768E4}"
+            },
+            {
+              "Name": "Python Launcher",
+              "Publisher": "Python Software Foundation",
+              "Size": 1556,
+              "InstallLocation": "",
+              "InstallDate": "20250816",
+              "Version": "3.13.7150.0",
+              "UninstallString": "MsiExec.exe /X{8B8DEA15-D815-4CB1-AC10-4E7713F3DFA0}"
+            },
+            {
+              "Name": "qBittorrent",
+              "Publisher": "The qBittorrent project",
+              "Size": 219981,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "5.1.2",
+              "UninstallString": "\"C:\\Program Files\\qBittorrent\\uninst.exe\""
+            },
+            {
+              "Name": "Revo Uninstaller 2.6.0",
+              "Publisher": "VS Revo Group, Ltd.",
+              "Size": 32685,
+              "InstallLocation": "C:\\Program Files\\VS Revo Group\\Revo Uninstaller\\",
+              "InstallDate": "20250620",
+              "Version": "2.6.0",
+              "UninstallString": "\"C:\\Program Files\\VS Revo Group\\Revo Uninstaller\\unins000.exe\""
+            },
+            {
+              "Name": "RustDesk",
+              "Publisher": "RustDesk",
+              "Size": 270,
+              "InstallLocation": "C:\\Program Files\\RustDesk",
+              "InstallDate": null,
+              "Version": "1.4.1",
+              "UninstallString": "\"C:\\Program Files\\RustDesk\\RustDesk.exe\" --uninstall"
+            },
+            {
+              "Name": "SmartPSS 2.003.0000001.0",
+              "Publisher": null,
+              "Size": 166445,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "2.003.0000001.0",
+              "UninstallString": "C:\\Program Files\\Smart Professional Surveillance System\\uninst.exe"
+            },
+            {
+              "Name": "SmartPSSLite 1.003.0000006.0",
+              "Publisher": "Dahua Technology Co.,Ltd",
+              "Size": null,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "1.003.0000006.0",
+              "UninstallString": "C:\\Program Files\\SmartPSSLite\\uninst.exe"
+            },
+            {
+              "Name": "SQL-Profiler 4.1.1 - PostgreSQL 16",
+              "Publisher": "EnterpriseDB",
+              "Size": 76,
+              "InstallLocation": "C:\\Program Files\\PostgreSQL\\16",
+              "InstallDate": "20240820",
+              "Version": "4.1.1",
+              "UninstallString": "\"C:\\Program Files\\PostgreSQL\\16\\uninstall-sqlprofiler.exe\""
+            },
+            {
+              "Name": "TeamViewer",
+              "Publisher": "TeamViewer",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files\\TeamViewer",
+              "InstallDate": null,
+              "Version": "15.69.5",
+              "UninstallString": "\"C:\\Program Files\\TeamViewer\\uninstall.exe\""
+            },
+            {
+              "Name": "The Long Dark",
+              "Publisher": null,
+              "Size": 15908383,
+              "InstallLocation": "C:\\Games\\The Long Dark\\",
+              "InstallDate": "20240921",
+              "Version": null,
+              "UninstallString": "\"C:\\Games\\The Long Dark\\unins000.exe\""
+            },
+            {
+              "Name": "Total Commander 64-bit (Remove or Repair)",
+              "Publisher": "Ghisler Software GmbH",
+              "Size": 21826,
+              "InstallLocation": "C:\\Program Files\\totalcmd\\",
+              "InstallDate": null,
+              "Version": "11.56",
+              "UninstallString": "\"C:\\Program Files\\totalcmd\\tcunin64.exe\""
+            },
+            {
+              "Name": "UltraViewer version 6.6.124",
+              "Publisher": "DucFabulous",
+              "Size": 12050,
+              "InstallLocation": "C:\\Program Files (x86)\\UltraViewer\\",
+              "InstallDate": "20250722",
+              "Version": "6.6.124",
+              "UninstallString": "\"C:\\Program Files (x86)\\UltraViewer\\unins000.exe\""
+            },
+            {
+              "Name": "VLC media player",
+              "Publisher": "VideoLAN",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files\\VideoLAN\\VLC",
+              "InstallDate": null,
+              "Version": "3.0.21",
+              "UninstallString": "\"C:\\Program Files\\VideoLAN\\VLC\\uninstall.exe\""
+            },
+            {
+              "Name": "Windows Driver Package - Apple Inc. Apple Wireless Mouse (06/01/2011 4.0.0.1)",
+              "Publisher": "Apple Inc.",
+              "Size": null,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "06/01/2011 4.0.0.1",
+              "UninstallString": "C:\\PROGRA~1\\DIFX\\873032~1\\DPInst.exe /u C:\\Windows\\System32\\DriverStore\\FileRepository\\applebmt64.inf_amd64_6d97d6264f077f40\\applebmt64.inf"
+            },
+            {
+              "Name": "Windows Driver Package - Ross-Tech HIDClass  (01/05/2014 6.3.0.3)",
+              "Publisher": "Ross-Tech",
+              "Size": null,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "01/05/2014 6.3.0.3",
+              "UninstallString": "C:\\PROGRA~1\\DIFX\\D8FA49~1\\DPInst.exe /u C:\\Windows\\System32\\DriverStore\\FileRepository\\hexnet.inf_amd64_643213b86e20194d\\hexnet.inf"
+            },
+            {
+              "Name": "Windows Driver Package - Ross-Tech USB Driver Package (05/12/2014 2.10.00)",
+              "Publisher": "Ross-Tech",
+              "Size": null,
+              "InstallLocation": null,
+              "InstallDate": null,
+              "Version": "05/12/2014 2.10.00",
+              "UninstallString": "C:\\PROGRA~1\\DIFX\\D8FA49~1\\DPInst.exe /u C:\\Windows\\System32\\DriverStore\\FileRepository\\rt-usb64.inf_amd64_936b05782467367d\\rt-usb64.inf"
+            },
+            {
+              "Name": "Windows PC Health Check",
+              "Publisher": "Microsoft Corporation",
+              "Size": 11987,
+              "InstallLocation": "",
+              "InstallDate": "20241030",
+              "Version": "4.0.2410.23001",
+              "UninstallString": "MsiExec.exe /X{B008D72C-0326-421E-BB2F-98BA5F9DDE9C}"
+            },
+            {
+              "Name": "Windows Subsystem for Linux",
+              "Publisher": "Microsoft Corporation",
+              "Size": 858876,
+              "InstallLocation": "",
+              "InstallDate": "20250913",
+              "Version": "2.6.1.0",
+              "UninstallString": "MsiExec.exe /X{8705254B-3AE0-4CFA-93D5-F71DCDE9ED2B}"
+            },
+            {
+              "Name": "WinRAR 7.13 (64-bit)",
+              "Publisher": "win.rar GmbH",
+              "Size": null,
+              "InstallLocation": "C:\\Program Files\\WinRAR",
+              "InstallDate": null,
+              "Version": "7.13.0",
+              "UninstallString": "C:\\Program Files\\WinRAR\\uninstall.exe"
+            }
+          ]
+        },
+        "Metadata": {
+          "Duration": 9.4181384,
+          "ComputerName": "LAPTOP-BOGDAN",
+          "UserName": "Bogdan",
+          "IncludeDetailed": false,
+          "ModuleVersion": "1.0.0",
+          "CollectionTime": "2025-10-01T20:39:31.2875375+03:00"
+        },
+        "Hardware": {
+          "Processor": {
+            "Architecture": 9,
+            "MaxClockSpeed": 2900,
+            "NumberOfCores": 8,
+            "NumberOfLogicalProcessors": 16,
+            "Name": "AMD Ryzen 7 4800H with Radeon Graphics         "
+          },
+          "Graphics": {
+            "DriverVersion": "27.21.14.5749",
+            "DriverDate": "2020-11-20T02:00:00+02:00",
+            "AdapterRAM": 4293918720,
+            "Name": "NVIDIA GeForce GTX 1650 Ti"
+          },
+          "Memory": {
+            "Modules": [
+              {
+                "PartNumber": "9905700-101.A00G    ",
+                "Capacity": 17179869184,
+                "Manufacturer": "Kingston",
+                "Speed": 3200
+              },
+              {
+                "PartNumber": "9905700-046.A00G    ",
+                "Capacity": 17179869184,
+                "Manufacturer": "Kingston",
+                "Speed": 3200
+              }
+            ],
+            "TotalCapacity": 34359738368.0,
+            "TotalModules": 2
+          },
+          "Storage": {
+            "MediaType": "Fixed hard disk media",
+            "InterfaceType": "SCSI",
+            "Size": 512105932800,
+            "Model": "INTEL SSDPEKNW512G8L"
+          }
+        },
+        "Network": {
+          "InternetConnectivity": {
+            "google.com": true,
+            "microsoft.com": false,
+            "8.8.8.8": true
+          },
+          "Adapters": {
+            "IPAddress": "",
+            "MediaType": "802.3",
+            "SubnetMask": "",
+            "LinkSpeed": "1 Gbps",
+            "MacAddress": "54-05-DB-EA-BD-82",
+            "DefaultGateway": "",
+            "Description": "Realtek PCIe GbE Family Controller",
+            "Name": "Ethernet",
+            "DNSServers": ""
+          }
+        },
+        "OperatingSystem": {
+          "LastBootUpTime": "2025-09-30T19:14:55.5+03:00",
+          "InstallDate": "2025-05-14T18:39:52+03:00",
+          "TimeZone": "(UTC+02:00) Athens, Bucharest",
+          "PowerShellVersion": "7.5.3",
+          "Caption": "Microsoft Windows 11 Pro for Workstations",
+          "Architecture": "64-bit",
+          "Version": "10.0.26100",
+          "DotNetVersion": "9.0.8",
+          "FreePhysicalMemory": 20705396,
+          "BuildNumber": "26100",
+          "TotalVirtualMemorySize": 34993476
+        },
+        "Services": {},
+        "SystemInfo": {
+          "Domain": "WORKGROUP",
+          "ComputerName": "LAPTOP-BOGDAN",
+          "BIOSManufacturer": "LENOVO",
+          "TotalPhysicalMemory": 33685835776,
+          "Manufacturer": "LENOVO",
+          "SerialNumber": "PF20M3D7",
+          "BIOSVersion": "FCCN21WW",
+          "NumberOfProcessors": 1,
+          "Model": "82EY"
+        }
+      },
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:31.2580531+03:00",
+      "Category": "Inventory",
+      "Success": true,
+      "Error": null,
+      "Description": "Collect comprehensive system information and generate inventory reports",
+      "Type": "Type1",
+      "Duration": 9.4560812,
+      "TaskName": "SystemInventory"
+    },
+    {
+      "Output": "",
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:40.7202011+03:00",
+      "Category": "Detection",
+      "Success": false,
+      "Error": "A parameter cannot be found that matches parameter name 'Categories'.",
+      "Description": "Scan for bloatware applications and system components",
+      "Type": "Type1",
+      "Duration": 0.1103872,
+      "TaskName": "BloatwareDetection"
+    },
+    {
+      "Output": "",
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:40.8432874+03:00",
+      "Category": "Cleanup",
+      "Success": false,
+      "Error": "A parameter cannot be found that matches parameter name 'Categories'.",
+      "Description": "Remove detected bloatware applications using multiple methods",
+      "Type": "Type2",
+      "Duration": 0.0237183,
+      "TaskName": "BloatwareRemoval"
+    },
+    {
+      "Output": "",
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:40.8696093+03:00",
+      "Category": "Installation",
+      "Success": false,
+      "Error": "A parameter cannot be found that matches parameter name 'Categories'.",
+      "Description": "Install essential applications from curated lists",
+      "Type": "Type2",
+      "Duration": 0.0279085,
+      "TaskName": "EssentialApps"
+    },
+    {
+      "Output": {
+        "RebootRequired": false,
+        "UpdatesFound": 0,
+        "DryRun": false,
+        "UpdatesInstalled": 0,
+        "Method": "Unknown",
+        "Details": [],
+        "TotalSizeMB": 0,
+        "UpdatesFailed": 0
+      },
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:40.899776+03:00",
+      "Category": "Updates",
+      "Success": true,
+      "Error": null,
+      "Description": "Check for and install Windows updates",
+      "Type": "Type2",
+      "Duration": 1.269864,
+      "TaskName": "WindowsUpdates"
+    },
+    {
+      "Output": "",
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:42.1730665+03:00",
+      "Category": "Privacy",
+      "Success": false,
+      "Error": "The term 'Disable-TelemetryFeatures' is not recognized as a name of a cmdlet, function, script file, or executable program.\r\nCheck the spelling of the name, or if a path was included, verify that the path is correct and try again.",
+      "Description": "Disable Windows telemetry and privacy-invasive features",
+      "Type": "Type2",
+      "Duration": 0.0395355,
+      "TaskName": "TelemetryDisable"
+    },
+    {
+      "Output": "",
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:42.2151383+03:00",
+      "Category": "Security",
+      "Success": false,
+      "Error": "The running command stopped because the preference variable \"ErrorActionPreference\" or common parameter is set to Stop: At C:\\Users\\Bogdan\\OneDrive\\Desktop\\Projects\\script_mentenanta\\modules\\type1\\SecurityAudit.psm1:215 char:107\r\n+ …  (Get-Date) - $defenderStatus.AntivirusSignatureLastUpdated < (New-Ti …\r\n+                                                               ~\r\nThe '<' operator is reserved for future use.",
+      "Description": "Perform security audit and apply hardening recommendations",
+      "Type": "Type1",
+      "Duration": 0.0139932,
+      "TaskName": "SecurityAudit"
+    },
+    {
+      "Output": {
+        "SpaceFreed": 480911229,
+        "TotalOperations": 19,
+        "DryRun": false,
+        "Successful": 19,
+        "Details": [],
+        "Failed": 0,
+        "Categories": {
+          "UIOptimization": {
+            "EntriesProcessed": 0,
+            "Failed": 0,
+            "SettingsApplied": 0,
+            "TasksCompleted": 0,
+            "SpaceFreed": 0,
+            "SettingsChanged": 10,
+            "ItemsOptimized": 0,
+            "Success": 10
+          },
+          "RegistryOptimization": {
+            "EntriesProcessed": 0,
+            "Failed": 0,
+            "Success": 0
+          },
+          "StartupOptimization": {
+            "EntriesProcessed": 0,
+            "Failed": 0,
+            "SettingsApplied": 0,
+            "TasksCompleted": 0,
+            "SpaceFreed": 0,
+            "SettingsChanged": 0,
+            "ItemsOptimized": 0,
+            "Success": 0
+          },
+          "DiskOptimization": {
+            "EntriesProcessed": 0,
+            "Failed": 0,
+            "SettingsApplied": 0,
+            "TasksCompleted": 3,
+            "SpaceFreed": 0,
+            "SettingsChanged": 0,
+            "ItemsOptimized": 0,
+            "Success": 3
+          },
+          "TempCleanup": {
+            "EntriesProcessed": 0,
+            "Failed": 0,
+            "SettingsApplied": 0,
+            "TasksCompleted": 0,
+            "SpaceFreed": 480911229,
+            "SettingsChanged": 0,
+            "ItemsOptimized": 0,
+            "Success": 6
+          },
+          "NetworkOptimization": {
+            "Failed": 0,
+            "Success": 0,
+            "SettingsApplied": 0
+          }
+        }
+      },
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:42.2314353+03:00",
+      "Category": "Optimization",
+      "Success": true,
+      "Error": null,
+      "Description": "Apply performance optimizations and cleanup temporary files",
+      "Type": "Type2",
+      "Duration": 2.2157308,
+      "TaskName": "SystemOptimization"
+    },
+    {
+      "Output": "",
+      "DryRun": false,
+      "StartTime": "2025-10-01T20:39:44.451533+03:00",
+      "Category": "Reporting",
+      "Success": false,
+      "Error": "The term 'Generate-MaintenanceReport' is not recognized as a name of a cmdlet, function, script file, or executable program.\r\nCheck the spelling of the name, or if a path was included, verify that the path is correct and try again.",
+      "Description": "Generate comprehensive HTML and text reports of all operations",
+      "Type": "Type1",
+      "Duration": 0.0672505,
+      "TaskName": "ReportGeneration"
+    }
+  ],
+  "StartTime": "2025-10-01T20:39:31.251426+03:00",
+  "Configuration": {
+    "execution": {
+      "defaultMode": "unattended",
+      "countdownSeconds": 20,
+      "enableDryRun": true,
+      "autoSelectDefault": true,
+      "showProgressBars": true
+    },
+    "modules": {
+      "skipBloatwareRemoval": false,
+      "skipEssentialApps": false,
+      "skipWindowsUpdates": false,
+      "skipTelemetryDisable": false,
+      "skipSystemOptimization": false,
+      "skipSecurityAudit": false,
+      "customModulesPath": ""
+    },
+    "bloatware": {
+      "enableDiffBasedProcessing": true,
+      "parallelRemoval": true,
+      "createBackups": true,
+      "customBloatwareList": []
+    },
+    "essentialApps": {
+      "enableParallelInstallation": true,
+      "fallbackToLibreOffice": true,
+      "customEssentialApps": [],
+      "skipConflictResolution": false
+    },
+    "system": {
+      "createSystemRestorePoint": true,
+      "enableVerboseLogging": false,
+      "maxLogSizeMB": 10,
+      "enablePerformanceOptimizations": true
+    },
+    "reporting": {
+      "enableHtmlReport": true,
+      "enableDetailedAudit": true,
+      "includeSystemInventory": true,
+      "generateBeforeAfterComparison": true
+    },
+    "paths": {
+      "tempFolder": "temp_files",
+      "reportsFolder": "temp_files/reports",
+      "logsFolder": "temp_files/logs",
+      "inventoryFolder": "temp_files/inventory"
+    }
+  }
+}

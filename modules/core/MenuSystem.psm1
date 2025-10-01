@@ -49,7 +49,7 @@ function Show-MainMenu {
     [CmdletBinding()]
     param(
         [Parameter()]
-        [int]$CountdownSeconds = $script:MenuConfig.CountdownSeconds,
+        [int]$CountdownSeconds = 20,
         
         [Parameter()]
         [int]$DefaultOption = 1
@@ -62,12 +62,12 @@ function Show-MainMenu {
     Write-Host ""
     Write-Host "Please select execution mode:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  [1] Execute Maintenance (Unattended Mode) " -ForegroundColor Green -NoNewline
+    Write-Host "  [1] Normal Execution " -ForegroundColor Green -NoNewline
     Write-Host "[DEFAULT]" -ForegroundColor Cyan
-    Write-Host "      → Performs actual system changes" -ForegroundColor Gray
+    Write-Host "      → Execute maintenance tasks with system changes" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  [2] Execute with Dry-Run Mode" -ForegroundColor Blue
-    Write-Host "      → Simulates changes without modifying the system" -ForegroundColor Gray
+    Write-Host "  [2] Dry-Run Execution" -ForegroundColor Blue
+    Write-Host "      → Simulate maintenance tasks without system changes" -ForegroundColor Gray
     Write-Host ""
     Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
     
@@ -76,18 +76,238 @@ function Show-MainMenu {
     Write-Host ""
     switch ($selection) {
         1 { 
-            Write-Host "✓ Selected: Execute Maintenance (Unattended Mode)" -ForegroundColor Green
-            return @{ Mode = 'Execute'; DryRun = $false }
+            Write-Host "✓ Selected: Normal Execution" -ForegroundColor Green
+            return @{ Mode = 'Normal'; DryRun = $false }
         }
         2 { 
-            Write-Host "✓ Selected: Execute with Dry-Run Mode" -ForegroundColor Blue
-            return @{ Mode = 'Execute'; DryRun = $true }
+            Write-Host "✓ Selected: Dry-Run Execution" -ForegroundColor Blue
+            return @{ Mode = 'DryRun'; DryRun = $true }
         }
         default { 
-            Write-Host "✓ Default: Execute Maintenance (Unattended Mode)" -ForegroundColor Green
-            return @{ Mode = 'Execute'; DryRun = $false }
+            Write-Host "✓ Default: Normal Execution" -ForegroundColor Green
+            return @{ Mode = 'Normal'; DryRun = $false }
         }
     }
+}
+
+<#
+.SYNOPSIS
+    Shows the normal execution submenu with task selection options
+    
+.DESCRIPTION
+    Displays a submenu for normal execution mode allowing user to choose between
+    executing all tasks or selecting specific task numbers.
+    
+.PARAMETER AvailableTasks
+    Array of available tasks to display
+    
+.PARAMETER CountdownSeconds
+    Number of seconds for the countdown timer (default: 20)
+    
+.EXAMPLE
+    $taskSelection = Show-NormalExecutionSubmenu -AvailableTasks $tasks
+#>
+function Show-NormalExecutionSubmenu {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [Array]$AvailableTasks,
+        
+        [Parameter()]
+        [int]$CountdownSeconds = 20
+    )
+    
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "    NORMAL EXECUTION - TASK SELECTION" -ForegroundColor White -BackgroundColor DarkGreen
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Please select task execution mode:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  [1] Execute All Tasks Unattended " -ForegroundColor Green -NoNewline
+    Write-Host "[DEFAULT]" -ForegroundColor Cyan
+    Write-Host "      → Runs all $($AvailableTasks.Count) available maintenance tasks" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  [2] Execute Only Specific Task Numbers" -ForegroundColor Green
+    Write-Host "      → Choose specific tasks by number (comma-separated)" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Available Tasks:" -ForegroundColor Yellow
+    Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
+    
+    for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
+        $taskNum = $i + 1
+        $task = $AvailableTasks[$i]
+        $taskName = if ($task.Name) { $task.Name } else { "Task $taskNum" }
+        $taskDesc = if ($task.Description) { " - $($task.Description)" } else { "" }
+        
+        Write-Host "  [$taskNum] " -ForegroundColor White -NoNewline
+        Write-Host "$taskName" -ForegroundColor Cyan -NoNewline
+        Write-Host "$taskDesc" -ForegroundColor Gray
+    }
+    
+    Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
+    
+    $selection = Start-CountdownSelection -CountdownSeconds $CountdownSeconds -DefaultOption 1 -OptionsCount 2
+    
+    Write-Host ""
+    switch ($selection) {
+        1 { 
+            Write-Host "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Green
+            return @{ 
+                SelectionType = 'All'
+                TaskNumbers = @(1..$AvailableTasks.Count)
+                Tasks = $AvailableTasks
+                DryRun = $false
+            }
+        }
+        2 { 
+            Write-Host "✓ Selected: Execute Only Specific Task Numbers" -ForegroundColor Green
+            $selectedTasks = Get-TaskNumberSelection -AvailableTasks $AvailableTasks
+            $selectedTasks.DryRun = $false
+            return $selectedTasks
+        }
+        default { 
+            Write-Host "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Green
+            return @{ 
+                SelectionType = 'All'
+                TaskNumbers = @(1..$AvailableTasks.Count)
+                Tasks = $AvailableTasks
+                DryRun = $false
+            }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Shows the dry-run execution submenu with task selection options
+    
+.DESCRIPTION
+    Displays a submenu for dry-run execution mode allowing user to choose between
+    simulating all tasks or selecting specific task numbers for simulation.
+    
+.PARAMETER AvailableTasks
+    Array of available tasks to display
+    
+.PARAMETER CountdownSeconds
+    Number of seconds for the countdown timer (default: 20)
+    
+.EXAMPLE
+    $taskSelection = Show-DryRunExecutionSubmenu -AvailableTasks $tasks
+#>
+function Show-DryRunExecutionSubmenu {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [Array]$AvailableTasks,
+        
+        [Parameter()]
+        [int]$CountdownSeconds = 20
+    )
+    
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "    DRY-RUN EXECUTION - TASK SELECTION" -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Please select task simulation mode:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  [1] Simulate All Tasks Unattended " -ForegroundColor Blue -NoNewline
+    Write-Host "[DEFAULT]" -ForegroundColor Cyan
+    Write-Host "      → Simulates all $($AvailableTasks.Count) available maintenance tasks" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  [2] Simulate Only Specific Task Numbers" -ForegroundColor Blue
+    Write-Host "      → Choose specific tasks by number for simulation (comma-separated)" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Available Tasks:" -ForegroundColor Yellow
+    Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
+    
+    for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
+        $taskNum = $i + 1
+        $task = $AvailableTasks[$i]
+        $taskName = if ($task.Name) { $task.Name } else { "Task $taskNum" }
+        $taskDesc = if ($task.Description) { " - $($task.Description)" } else { "" }
+        
+        Write-Host "  [$taskNum] " -ForegroundColor White -NoNewline
+        Write-Host "$taskName" -ForegroundColor Cyan -NoNewline
+        Write-Host "$taskDesc" -ForegroundColor Gray
+    }
+    
+    Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
+    
+    $selection = Start-CountdownSelection -CountdownSeconds $CountdownSeconds -DefaultOption 1 -OptionsCount 2
+    
+    Write-Host ""
+    switch ($selection) {
+        1 { 
+            Write-Host "✓ Selected: Simulate All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Blue
+            return @{ 
+                SelectionType = 'All'
+                TaskNumbers = @(1..$AvailableTasks.Count)
+                Tasks = $AvailableTasks
+                DryRun = $true
+            }
+        }
+        2 { 
+            Write-Host "✓ Selected: Simulate Only Specific Task Numbers" -ForegroundColor Blue
+            $selectedTasks = Get-TaskNumberSelection -AvailableTasks $AvailableTasks
+            $selectedTasks.DryRun = $true
+            return $selectedTasks
+        }
+        default { 
+            Write-Host "✓ Default: Simulate All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor Blue
+            return @{ 
+                SelectionType = 'All'
+                TaskNumbers = @(1..$AvailableTasks.Count)
+                Tasks = $AvailableTasks
+                DryRun = $true
+            }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Shows the hierarchical execution menu system
+    
+.DESCRIPTION
+    Implements the complete hierarchical menu system with:
+    - Main menu: Normal vs Dry-run execution (20s countdown)
+    - Normal submenu: All tasks vs Specific tasks (20s countdown)  
+    - Dry-run submenu: All tasks vs Specific tasks (20s countdown)
+    All with automatic fallback to default options.
+    
+.PARAMETER AvailableTasks
+    Array of available tasks to display and execute
+    
+.EXAMPLE
+    $executionParams = Show-HierarchicalExecutionMenu -AvailableTasks $tasks
+#>
+function Show-HierarchicalExecutionMenu {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [Array]$AvailableTasks
+    )
+    
+    # Step 1: Main execution mode selection (20s countdown)
+    Write-Host ""
+    Write-Host "🚀 Windows Maintenance Automation System" -ForegroundColor Cyan
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
+    
+    $mainSelection = Show-MainMenu -CountdownSeconds 20
+    
+    # Step 2: Show appropriate submenu based on main selection
+    if ($mainSelection.Mode -eq 'Normal') {
+        # Normal execution submenu (20s countdown)
+        $taskSelection = Show-NormalExecutionSubmenu -AvailableTasks $AvailableTasks -CountdownSeconds 20
+    } else {
+        # Dry-run execution submenu (20s countdown)
+        $taskSelection = Show-DryRunExecutionSubmenu -AvailableTasks $AvailableTasks -CountdownSeconds 20
+    }
+    
+    # Return combined execution parameters
+    return $taskSelection
 }
 
 <#
@@ -496,7 +716,10 @@ function Get-MenuConfiguration {
 # Export module functions
 Export-ModuleMember -Function @(
     'Show-MainMenu',
-    'Show-TaskSelectionMenu', 
+    'Show-TaskSelectionMenu',
+    'Show-NormalExecutionSubmenu',
+    'Show-DryRunExecutionSubmenu', 
+    'Show-HierarchicalExecutionMenu',
     'Get-TaskNumberSelection',
     'Start-CountdownSelection',
     'Show-ConfirmationDialog',
