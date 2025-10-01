@@ -190,7 +190,7 @@ $MaintenanceTasks = @(
         Name = 'BloatwareDetection'
         Description = 'Scan for bloatware applications and system components'
         ModulePath = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
-        Function = 'Find-BloatwareApplications'
+        Function = 'Find-InstalledBloatware'
         Type = 'Type1'
         Category = 'Detection'
     },
@@ -198,7 +198,7 @@ $MaintenanceTasks = @(
         Name = 'BloatwareRemoval'
         Description = 'Remove detected bloatware applications using multiple methods'
         ModulePath = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
-        Function = 'Remove-BloatwareApplications'
+        Function = 'Remove-DetectedBloatware'
         Type = 'Type2'
         Category = 'Cleanup'
     },
