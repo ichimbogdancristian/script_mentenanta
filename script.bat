@@ -109,55 +109,20 @@ SET "EXTRACT_FOLDER=script_mentenanta-main"
 CALL :LOG_MESSAGE "Self-discovery environment initialized" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
-REM Early Administrator Privilege Check (Fast Exit for Elevation)
+REM Administrator Privilege Check
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Performing early admin privilege check..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Checking administrator privileges..." "INFO" "LAUNCHER"
 
-REM If this is already an elevated instance, skip elevation checks
-IF "%ELEVATION_ATTEMPTED%"=="YES" (
-    CALL :LOG_MESSAGE "This is an elevated instance - skipping elevation checks" "INFO" "LAUNCHER"
-    GOTO :SKIP_ELEVATION_CHECKS
-)
-
-REM Quick admin check using NET SESSION (fastest method)
+REM Simple admin check using NET SESSION
 NET SESSION >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    CALL :LOG_MESSAGE "No admin privileges detected - initiating immediate elevation" "WARN" "LAUNCHER"
+    REM No admin rights - close and relaunch with admin rights
+    CALL :LOG_MESSAGE "No admin privileges detected - relaunching with elevation" "WARN" "LAUNCHER"
     GOTO :ELEVATION_HANDLER
+) ELSE (
+    REM Has admin rights - continue running
+    CALL :LOG_MESSAGE "Administrator privileges confirmed - continuing execution" "SUCCESS" "LAUNCHER"
 )
-
-:SKIP_ELEVATION_CHECKS
-
-CALL :LOG_MESSAGE "Administrator privileges confirmed - continuing with full startup" "SUCCESS" "LAUNCHER"
-
-REM -----------------------------------------------------------------------------
-REM Administrator Privilege Verification
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Verifying administrator privileges..." "INFO" "LAUNCHER"
-
-REM Multiple methods for admin detection (improved reliability)
-NET SESSION >nul 2>&1
-SET "NET_ADMIN_CHECK=%ERRORLEVEL%"
-
-FOR /F "tokens=*" %%i IN ('powershell -NoProfile -Command "([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)" 2^>nul') DO SET PS_ADMIN_CHECK=%%i
-
-SET "IS_ADMIN=NO"
-IF %NET_ADMIN_CHECK% EQU 0 SET "IS_ADMIN=YES"
-IF "%PS_ADMIN_CHECK%"=="True" SET "IS_ADMIN=YES"
-
-CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHECK%" "DEBUG" "LAUNCHER"
-
-IF "%IS_ADMIN%"=="NO" (
-    IF "%ELEVATION_ATTEMPTED%"=="YES" (
-        CALL :LOG_MESSAGE "WARNING: Elevated instance but admin check still failed - proceeding anyway" "WARN" "LAUNCHER"
-        CALL :LOG_MESSAGE "This may indicate admin detection issues but continuing execution" "WARN" "LAUNCHER"
-        SET "IS_ADMIN=YES"
-    ) ELSE (
-        GOTO :ELEVATION_HANDLER
-    )
-)
-
-CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Elevation Handler (Used by Early Admin Check)
