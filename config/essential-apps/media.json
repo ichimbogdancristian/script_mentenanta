@@ -1,0 +1,37 @@
+[
+  {
+    "name": "VLC Media Player",
+    "winget": "VideoLAN.VLC",
+    "choco": "vlc",
+    "category": "Media",
+    "description": "Free multimedia player"
+  },
+  {
+    "name": "Spotify",
+    "winget": "Spotify.Spotify",
+    "choco": "spotify",
+    "category": "Music",
+    "description": "Music streaming service"
+  },
+  {
+    "name": "GIMP",
+    "winget": "GIMP.GIMP",
+    "choco": "gimp",
+    "category": "Graphics",
+    "description": "Free image editor"
+  },
+  {
+    "name": "HandBrake",
+    "winget": "HandBrake.HandBrake",
+    "choco": "handbrake",
+    "category": "Video",
+    "description": "Video transcoder"
+  },
+  {
+    "name": "Audacity",
+    "winget": "Audacity.Audacity",
+    "choco": "audacity",
+    "category": "Audio",
+    "description": "Free audio editor"
+  }
+]

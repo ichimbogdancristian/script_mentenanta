@@ -1,0 +1,51 @@
+{
+  "logging": {
+    "logLevel": "INFO",
+    "enableConsoleOutput": true,
+    "enableFileOutput": true,
+    "enableProgressBars": true,
+    "coloredOutput": true,
+    "maxLogSizeMB": 10,
+    "logRotation": true,
+    "keepLogFiles": 5
+  },
+  "formatting": {
+    "dateTimeFormat": "yyyy-MM-dd HH:mm:ss",
+    "messageFormat": "[{timestamp}] [{level}] [{component}] {message}",
+    "progressBarStyle": "detailed"
+  },
+  "levels": {
+    "DEBUG": {
+      "enabled": false,
+      "color": "Gray"
+    },
+    "INFO": {
+      "enabled": true,
+      "color": "White"
+    },
+    "SUCCESS": {
+      "enabled": true,
+      "color": "Green"
+    },
+    "WARN": {
+      "enabled": true,
+      "color": "Yellow"
+    },
+    "ERROR": {
+      "enabled": true,
+      "color": "Red"
+    },
+    "CRITICAL": {
+      "enabled": true,
+      "color": "Magenta"
+    }
+  },
+  "components": {
+    "BAT": "Batch Launcher",
+    "ORCHESTRATOR": "Main Orchestrator",
+    "TYPE1": "Inventory/Reporting",
+    "TYPE2": "System Modification",
+    "CONFIG": "Configuration Manager",
+    "MENU": "Interactive Menu"
+  }
+}

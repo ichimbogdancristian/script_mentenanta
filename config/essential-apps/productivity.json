@@ -1,0 +1,44 @@
+[
+  {
+    "name": "LibreOffice",
+    "winget": "TheDocumentFoundation.LibreOffice",
+    "choco": "libreoffice",
+    "category": "Office",
+    "description": "Free and open-source office suite"
+  },
+  {
+    "name": "Microsoft Office",
+    "winget": "Microsoft.Office",
+    "choco": null,
+    "category": "Office", 
+    "description": "Microsoft Office Suite (requires license)"
+  },
+  {
+    "name": "Adobe Acrobat Reader",
+    "winget": "Adobe.Acrobat.Reader.64-bit",
+    "choco": "adobereader",
+    "category": "Document",
+    "description": "PDF reader and editor"
+  },
+  {
+    "name": "PDF24 Creator",
+    "winget": "geeksoftwareGmbH.PDF24Creator",
+    "choco": "pdf24",
+    "category": "Document",
+    "description": "Free PDF creator and editor"
+  },
+  {
+    "name": "Notepad++",
+    "winget": "Notepad++.Notepad++",
+    "choco": "notepadplusplus",
+    "category": "Editor",
+    "description": "Advanced text and code editor"
+  },
+  {
+    "name": "Microsoft Teams",
+    "winget": "Microsoft.Teams",
+    "choco": "microsoft-teams",
+    "category": "Communication",
+    "description": "Team collaboration and communication"
+  }
+]

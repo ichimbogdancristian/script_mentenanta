@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Google Chrome",
+    "winget": "Google.Chrome",
+    "choco": "googlechrome",
+    "category": "Browser",
+    "description": "Fast, secure web browser by Google"
+  },
+  {
+    "name": "Mozilla Firefox",
+    "winget": "Mozilla.Firefox", 
+    "choco": "firefox",
+    "category": "Browser",
+    "description": "Open source web browser with privacy focus"
+  },
+  {
+    "name": "Microsoft Edge",
+    "winget": "Microsoft.Edge",
+    "choco": "microsoft-edge",
+    "category": "Browser", 
+    "description": "Modern web browser by Microsoft"
+  },
+  {
+    "name": "Opera",
+    "winget": "Opera.Opera",
+    "choco": "opera",
+    "category": "Browser",
+    "description": "Feature-rich web browser with VPN"
+  }
+]
