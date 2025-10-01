@@ -330,7 +330,44 @@ IF "%PS7_FOUND%"=="YES" (
 REM PowerShell 7 not found - attempt installation
 CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "WARN" "LAUNCHER"
 
-REM Check if winget is available for PS7 installation
+REM Try multiple installation methods
+SET "PS7_INSTALL_SUCCESS=NO"
+
+REM First, try to install winget if it's not available
+winget --version >nul 2>&1
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "Winget not found, attempting to install Windows Package Manager..." "INFO" "LAUNCHER"
+    
+    REM Try to install App Installer (which includes winget) via PowerShell
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+    "try { " ^
+    "Write-Host 'Downloading App Installer...'; " ^
+    "$progressPreference = 'SilentlyContinue'; " ^
+    "$url = 'https://aka.ms/getwinget'; " ^
+    "Invoke-WebRequest -Uri $url -OutFile '$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -UseBasicParsing; " ^
+    "Add-AppxPackage -Path '$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; " ^
+    "Write-Host 'WINGET_INSTALL_SUCCESS'; " ^
+    "} catch { Write-Host 'WINGET_INSTALL_FAILED'; Write-Host $_.Exception.Message }"
+    
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Winget installation completed" "SUCCESS" "LAUNCHER"
+        
+        REM Refresh PATH and wait for winget to be available
+        CALL :REFRESH_PATH
+        timeout /t 3 /nobreak >nul 2>&1
+        
+        winget --version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Winget successfully installed and detected" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Winget installed but not immediately available" "WARN" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget installation failed" "WARN" "LAUNCHER"
+    )
+)
+
+REM Method 1: Check if winget is available for PS7 installation
 winget --version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
@@ -339,38 +376,83 @@ IF !ERRORLEVEL! EQU 0 (
     winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "PowerShell 7 installation completed" "SUCCESS" "LAUNCHER"
-        
-        REM Refresh PATH environment variable
-        CALL :LOG_MESSAGE "Refreshing PATH environment variable..." "INFO" "LAUNCHER"
-        CALL :REFRESH_PATH
-        
-        REM Wait a moment for the installation to settle
-        timeout /t 3 /nobreak >nul 2>&1
-        
-        REM Try detection again
-        pwsh.exe -Version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            FOR /F "tokens=*" %%i IN ('pwsh.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-            CALL :LOG_MESSAGE "PowerShell 7 successfully installed and detected: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installed but not immediately available. Trying alternative detection..." "INFO" "LAUNCHER"
-            CALL :DETECT_PS7_ALTERNATIVE
-            IF "%PS7_FOUND%"=="YES" (
-                FOR /F "tokens=*" %%i IN ('"%PS7_PATH%" -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-                CALL :LOG_MESSAGE "PowerShell 7 detected via alternative path: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
-            ) ELSE (
-                CALL :LOG_MESSAGE "PowerShell 7 installation succeeded but detection failed" "WARN" "LAUNCHER"
-                CALL :LOG_MESSAGE "You may need to restart your terminal or computer" "WARN" "LAUNCHER"
-            )
-        )
+        CALL :LOG_MESSAGE "PowerShell 7 installation completed via winget" "SUCCESS" "LAUNCHER"
+        SET "PS7_INSTALL_SUCCESS=YES"
     ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE "Manual installation may be required" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Winget not available - cannot install PowerShell 7 automatically" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please install PowerShell 7 manually from: https://github.com/PowerShell/PowerShell/releases/latest" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Winget not available - trying alternative installation methods..." "WARN" "LAUNCHER"
+)
+
+REM Method 2: Try PowerShell direct download if winget failed
+IF "%PS7_INSTALL_SUCCESS%"=="NO" (
+    CALL :LOG_MESSAGE "Attempting PowerShell 7 installation via direct download..." "INFO" "LAUNCHER"
+    
+    REM Use PowerShell 5.1 to download and install PowerShell 7
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+    "try { " ^
+    "Write-Host 'Downloading PowerShell 7 installer...'; " ^
+    "$url = 'https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.5-win-x64.msi'; " ^
+    "$output = '$env:TEMP\PowerShell-7-x64.msi'; " ^
+    "Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing; " ^
+    "Write-Host 'Installing PowerShell 7...'; " ^
+    "Start-Process msiexec.exe -ArgumentList '/i', $output, '/quiet', '/norestart' -Wait; " ^
+    "Write-Host 'PS7_INSTALL_COMPLETE'; " ^
+    "Remove-Item $output -Force -ErrorAction SilentlyContinue " ^
+    "} catch { Write-Host 'PS7_INSTALL_FAILED'; Write-Host $_.Exception.Message }"
+    
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "PowerShell 7 installation completed via direct download" "SUCCESS" "LAUNCHER"
+        SET "PS7_INSTALL_SUCCESS=YES"
+    ) ELSE (
+        CALL :LOG_MESSAGE "PowerShell 7 installation via direct download failed" "WARN" "LAUNCHER"
+    )
+)
+
+REM Method 3: Try Chocolatey if available
+IF "%PS7_INSTALL_SUCCESS%"=="NO" (
+    choco --version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Attempting PowerShell 7 installation via Chocolatey..." "INFO" "LAUNCHER"
+        choco install powershell-core -y --no-progress >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "PowerShell 7 installation completed via Chocolatey" "SUCCESS" "LAUNCHER"
+            SET "PS7_INSTALL_SUCCESS=YES"
+        ) ELSE (
+            CALL :LOG_MESSAGE "PowerShell 7 installation via Chocolatey failed" "WARN" "LAUNCHER"
+        )
+    )
+)
+
+REM Post-installation verification
+IF "%PS7_INSTALL_SUCCESS%"=="YES" (
+    REM Refresh PATH environment variable
+    CALL :LOG_MESSAGE "Refreshing PATH environment variable..." "INFO" "LAUNCHER"
+    CALL :REFRESH_PATH
+    
+    REM Wait a moment for the installation to settle
+    timeout /t 5 /nobreak >nul 2>&1
+    
+    REM Try detection again
+    pwsh.exe -Version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        FOR /F "tokens=*" %%i IN ('pwsh.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+        CALL :LOG_MESSAGE "PowerShell 7 successfully installed and detected: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "PowerShell 7 installed but not immediately available. Trying alternative detection..." "INFO" "LAUNCHER"
+        CALL :DETECT_PS7_ALTERNATIVE
+        IF "%PS7_FOUND%"=="YES" (
+            FOR /F "tokens=*" %%i IN ('"%PS7_PATH%" -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+            CALL :LOG_MESSAGE "PowerShell 7 detected via alternative path: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "PowerShell 7 installation succeeded but detection failed" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "You may need to restart your terminal or computer" "WARN" "LAUNCHER"
+        )
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "All PowerShell 7 installation methods failed" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Manual installation required from: https://github.com/PowerShell/PowerShell/releases/latest" "INFO" "LAUNCHER"
 )
 
 :PS7_DETECTION_COMPLETE
@@ -650,19 +732,32 @@ REM Verify PowerShell 7 is available before proceeding
 IF "%PS7_AVAILABLE%"=="NO" (
     ECHO.
     ECHO ================================================================================
-    ECHO  POWERSHELL 7 REQUIRED
+    ECHO  POWERSHELL 7 INSTALLATION REQUIRED
     ECHO ================================================================================
     ECHO  The maintenance orchestrator requires PowerShell 7.0 or later to function.
     ECHO  Windows PowerShell 5.1 is not compatible due to modern language features.
     ECHO.
-    ECHO  PowerShell 7 installation appears to have failed or is not accessible.
-    ECHO  Please install PowerShell 7 manually from:
-    ECHO  https://github.com/PowerShell/PowerShell/releases/latest
+    ECHO  Automatic installation failed. Please install PowerShell 7 manually:
     ECHO.
-    ECHO  After installation, please restart this script.
+    ECHO  QUICK INSTALLATION OPTIONS:
+    ECHO  1. Download installer: https://github.com/PowerShell/PowerShell/releases/latest
+    ECHO  2. Via Microsoft Store: Search for "PowerShell"
+    ECHO  3. Via winget (if available): winget install Microsoft.PowerShell
+    ECHO  4. Via Chocolatey: choco install powershell-core
+    ECHO.
+    ECHO  RECOMMENDED: Download the .msi installer from GitHub releases for easiest setup.
+    ECHO  After installation, restart this script or open a new command prompt.
     ECHO ================================================================================
     ECHO.
     CALL :LOG_MESSAGE "Maintenance cannot continue without PowerShell 7" "ERROR" "LAUNCHER"
+    
+    REM Offer to open download page
+    SET /P "OPEN_BROWSER=Would you like to open the PowerShell download page? (Y/N): "
+    IF /I "%OPEN_BROWSER%"=="Y" (
+        CALL :LOG_MESSAGE "Opening PowerShell download page..." "INFO" "LAUNCHER"
+        start "" "https://github.com/PowerShell/PowerShell/releases/latest"
+    )
+    
     PAUSE
     EXIT /B 5
 )
