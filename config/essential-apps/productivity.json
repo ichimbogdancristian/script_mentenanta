@@ -4,14 +4,9 @@
     "winget": "TheDocumentFoundation.LibreOffice",
     "choco": "libreoffice",
     "category": "Office",
-    "description": "Free and open-source office suite"
-  },
-  {
-    "name": "Microsoft Office",
-    "winget": "Microsoft.Office",
-    "choco": null,
-    "category": "Office", 
-    "description": "Microsoft Office Suite (requires license)"
+    "description": "Free and open-source office suite (installed only if Microsoft Office not present)",
+    "conditional": true,
+    "condition": "not_has_msoffice"
   },
   {
     "name": "Adobe Acrobat Reader",

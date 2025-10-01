@@ -90,12 +90,44 @@ REM Environment variables for PowerShell orchestrator
 SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
+REM Elevation loop prevention marker
+SET "ELEVATION_ATTEMPTED=NO"
+
+REM Check if this is an elevated instance (prevent infinite loops)
+FOR %%i in (%*) DO (
+    IF "%%i"=="ELEVATED_INSTANCE" (
+        SET "ELEVATION_ATTEMPTED=YES"
+        CALL :LOG_MESSAGE "This is an elevated instance - skipping further elevation checks" "INFO" "LAUNCHER"
+    )
+)
+
 REM Repository configuration for auto-updates
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 SET "ZIP_FILE=%WORKING_DIR%update.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 
 CALL :LOG_MESSAGE "Self-discovery environment initialized" "SUCCESS" "LAUNCHER"
+
+REM -----------------------------------------------------------------------------
+REM Early Administrator Privilege Check (Fast Exit for Elevation)
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Performing early admin privilege check..." "INFO" "LAUNCHER"
+
+REM Quick admin check using NET SESSION (fastest method)
+NET SESSION >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 (
+    IF "%ELEVATION_ATTEMPTED%"=="YES" (
+        CALL :LOG_MESSAGE "Elevation loop detected - admin privileges still not available" "ERROR" "LAUNCHER"
+        ECHO ERROR: Unable to obtain administrator privileges after elevation attempt.
+        ECHO Please manually run this script as Administrator.
+        PAUSE
+        EXIT /B 1
+    )
+    CALL :LOG_MESSAGE "No admin privileges detected - initiating immediate elevation" "WARN" "LAUNCHER"
+    GOTO :ELEVATION_HANDLER
+)
+
+CALL :LOG_MESSAGE "Administrator privileges confirmed - continuing with full startup" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Administrator Privilege Verification
@@ -115,17 +147,67 @@ IF "%PS_ADMIN_CHECK%"=="True" SET "IS_ADMIN=YES"
 CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHECK%" "DEBUG" "LAUNCHER"
 
 IF "%IS_ADMIN%"=="NO" (
-    CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
-    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -Wait"
-    IF !ERRORLEVEL! NEQ 0 (
-        CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
+    IF "%ELEVATION_ATTEMPTED%"=="YES" (
+        CALL :LOG_MESSAGE "Secondary elevation check failed - admin privileges still not available" "ERROR" "LAUNCHER"
+        ECHO ERROR: Unable to obtain administrator privileges after elevation attempt.
+        ECHO This may indicate a UAC policy issue or insufficient user permissions.
+        ECHO Please manually run this script as Administrator.
         PAUSE
         EXIT /B 1
     )
-    EXIT /B 0
+    GOTO :ELEVATION_HANDLER
 )
 
 CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
+
+REM -----------------------------------------------------------------------------
+REM Elevation Handler (Used by Early Admin Check)
+REM -----------------------------------------------------------------------------
+:ELEVATION_HANDLER
+CALL :LOG_MESSAGE "Handling privilege elevation..." "INFO" "LAUNCHER"
+
+REM Prepare parameters to pass to elevated instance
+SET "ELEVATION_PARAMS="
+IF "%~1" NEQ "" (
+    SET "ELEVATION_PARAMS=%*"
+    CALL :LOG_MESSAGE "Passing parameters to elevated instance: !ELEVATION_PARAMS!" "DEBUG" "LAUNCHER"
+)
+
+ECHO.
+ECHO ================================================================================
+ECHO  ADMINISTRATOR PRIVILEGES REQUIRED
+ECHO ================================================================================
+ECHO  This Windows Maintenance script requires administrator privileges to:
+ECHO  - Install and update system packages
+ECHO  - Modify system settings and registry
+ECHO  - Install Windows updates
+ECHO  - Remove bloatware and system apps
+ECHO  
+ECHO  The script will now CLOSE and RELAUNCH with elevated privileges.
+ECHO  Please ACCEPT the UAC prompt when it appears.
+ECHO ================================================================================
+ECHO.
+
+REM Launch elevated instance and close current instance immediately
+CALL :LOG_MESSAGE "Launching elevated instance and closing current process..." "INFO" "LAUNCHER"
+IF "!ELEVATION_PARAMS!" NEQ "" (
+    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\" !ELEVATION_PARAMS!\"' -Verb RunAs"
+) ELSE (
+    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
+)
+
+REM Check if elevation was successful
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
+    ECHO ERROR: Failed to elevate privileges. UAC prompt may have been cancelled.
+    ECHO Please run this script as Administrator or accept the UAC prompt.
+    PAUSE
+    EXIT /B 1
+)
+
+REM Exit current non-elevated instance
+CALL :LOG_MESSAGE "Elevation initiated - terminating current instance" "INFO" "LAUNCHER"
+EXIT /B 0
 
 REM -----------------------------------------------------------------------------
 REM System Requirements Verification

@@ -107,11 +107,15 @@ function Install-EssentialApplications {
         Write-Host "  🧪 DRY RUN MODE - No installations will be performed" -ForegroundColor Magenta
     }
     
+    # Apply conditional installation rules (e.g., LibreOffice only if MS Office not present)
+    Write-Host "  🔍 Applying conditional installation rules..." -ForegroundColor Cyan
+    $conditionallyFilteredApps = Get-ConditionallyFilteredApps -AppList $essentialApps
+    
     # Filter out duplicates if requested
     $appsToInstall = if ($SkipDuplicates) {
-        Get-AppsNotInstalled -AppList $essentialApps
+        Get-AppsNotInstalled -AppList $conditionallyFilteredApps
     } else {
-        $essentialApps
+        $conditionallyFilteredApps
     }
     
     if ($appsToInstall.Count -eq 0) {
@@ -119,8 +123,9 @@ function Install-EssentialApplications {
         return @{
             TotalApps = $essentialApps.Count
             Installed = 0
-            Skipped = $essentialApps.Count
+            Skipped = $conditionallyFilteredApps.Count
             Failed = 0
+            ConditionallyFiltered = $essentialApps.Count - $conditionallyFilteredApps.Count
             AlreadyInstalled = $true
         }
     }
@@ -131,7 +136,8 @@ function Install-EssentialApplications {
     $results = @{
         TotalApps = $essentialApps.Count
         Installed = 0
-        Skipped = $essentialApps.Count - $appsToInstall.Count
+        Skipped = $conditionallyFilteredApps.Count - $appsToInstall.Count
+        ConditionallyFiltered = $essentialApps.Count - $conditionallyFilteredApps.Count
         Failed = 0
         Details = [List[PSCustomObject]]::new()
         ByCategory = @{}
@@ -176,7 +182,11 @@ function Install-EssentialApplications {
     # Summary output
     $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
     Write-Host "  $statusIcon Essential apps installation completed in $([math]::Round($duration, 2))s" -ForegroundColor Green
-    Write-Host "    📊 Total: $($results.TotalApps), Installed: $($results.Installed), Skipped: $($results.Skipped), Failed: $($results.Failed)" -ForegroundColor Gray
+    Write-Host "    📊 Total: $($results.TotalApps), Installed: $($results.Installed), Skipped: $($results.Skipped), Conditionally Filtered: $($results.ConditionallyFiltered), Failed: $($results.Failed)" -ForegroundColor Gray
+    
+    if ($results.ConditionallyFiltered -gt 0) {
+        Write-Host "    ℹ️  Conditionally filtered apps are skipped based on system state (e.g., LibreOffice skipped if MS Office present)" -ForegroundColor Cyan
+    }
     
     return $results
 }
@@ -244,6 +254,126 @@ function Get-AppsNotInstalled {
     }
     
     return $notInstalled
+}
+
+<#
+.SYNOPSIS
+    Checks if Microsoft Office is installed on the system
+    
+.DESCRIPTION
+    Scans the system for various versions and distributions of Microsoft Office
+    including Office 365, Office 2016, 2019, 2021, and standalone applications.
+    
+.EXAMPLE
+    $hasMSOffice = Test-MicrosoftOfficeInstalled
+#>
+function Test-MicrosoftOfficeInstalled {
+    [CmdletBinding()]
+    param()
+    
+    Write-Verbose "Checking for Microsoft Office installation..."
+    
+    # Get system inventory for Office detection
+    $inventory = Get-SystemInventory -UseCache
+    
+    if (-not $inventory.InstalledApps) {
+        Write-Warning "No system inventory available for Office detection"
+        return $false
+    }
+    
+    # Microsoft Office identifiers to check for
+    $officeIdentifiers = @(
+        # Office Suites
+        "Microsoft Office", "Office 365", "Microsoft 365", 
+        "Office Professional", "Office Home", "Office Standard",
+        "Office 2016", "Office 2019", "Office 2021", "Office 2024",
+        
+        # Individual Office Apps
+        "Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint",
+        "Microsoft Outlook", "Microsoft Access", "Microsoft Publisher",
+        "Microsoft OneNote", "Microsoft Project", "Microsoft Visio",
+        
+        # Package identifiers
+        "Microsoft.Office", "Microsoft.OfficeHome", "Microsoft.OfficeProfessional",
+        "Microsoft.Office365ProPlus", "Microsoft.Office365Business"
+    )
+    
+    # Check installed applications
+    foreach ($app in $inventory.InstalledApps) {
+        if ($app.Name -or $app.DisplayName -or $app.Id) {
+            $appIdentifiers = @($app.Name, $app.DisplayName, $app.Id) | Where-Object { $_ }
+            
+            foreach ($appId in $appIdentifiers) {
+                foreach ($officeId in $officeIdentifiers) {
+                    if ($appId -like "*$officeId*") {
+                        Write-Verbose "Found Microsoft Office: $appId"
+                        return $true
+                    }
+                }
+            }
+        }
+    }
+    
+    Write-Verbose "Microsoft Office not detected on system"
+    return $false
+}
+
+<#
+.SYNOPSIS
+    Filters apps based on conditional installation rules
+    
+.DESCRIPTION
+    Processes the app list and removes apps that have conditional installation
+    rules that are not met (e.g., LibreOffice when Microsoft Office is present).
+    
+.PARAMETER AppList
+    Array of applications to filter
+    
+.EXAMPLE
+    $filteredApps = Get-ConditionallyFilteredApps -AppList $apps
+#>
+function Get-ConditionallyFilteredApps {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [Array]$AppList
+    )
+    
+    $filteredApps = @()
+    $skippedApps = 0
+    
+    foreach ($app in $AppList) {
+        $shouldInstall = $true
+        
+        # Check if app has conditional installation rules
+        if ($app.conditional -eq $true -and $app.condition) {
+            switch ($app.condition) {
+                "not_has_msoffice" {
+                    $hasMSOffice = Test-MicrosoftOfficeInstalled
+                    if ($hasMSOffice) {
+                        Write-Host "  🔄 Skipping $($app.name) - Microsoft Office is already installed" -ForegroundColor Yellow
+                        $shouldInstall = $false
+                        $skippedApps++
+                    } else {
+                        Write-Host "  ✅ Including $($app.name) - Microsoft Office not detected" -ForegroundColor Green
+                    }
+                }
+                default {
+                    Write-Warning "Unknown conditional installation rule: $($app.condition)"
+                }
+            }
+        }
+        
+        if ($shouldInstall) {
+            $filteredApps += $app
+        }
+    }
+    
+    if ($skippedApps -gt 0) {
+        Write-Host "  📊 Filtered out $skippedApps app(s) based on conditional installation rules" -ForegroundColor Gray
+    }
+    
+    return $filteredApps
 }
 
 #endregion
@@ -527,5 +657,7 @@ function Get-InstallationStatistics {
 Export-ModuleMember -Function @(
     'Install-EssentialApplications',
     'Get-AppsNotInstalled',
-    'Get-InstallationStatistics'
+    'Get-InstallationStatistics',
+    'Test-MicrosoftOfficeInstalled',
+    'Get-ConditionallyFilteredApps'
 )
