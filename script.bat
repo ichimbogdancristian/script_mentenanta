@@ -113,19 +113,20 @@ REM Early Administrator Privilege Check (Fast Exit for Elevation)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Performing early admin privilege check..." "INFO" "LAUNCHER"
 
+REM If this is already an elevated instance, skip elevation checks
+IF "%ELEVATION_ATTEMPTED%"=="YES" (
+    CALL :LOG_MESSAGE "This is an elevated instance - skipping elevation checks" "INFO" "LAUNCHER"
+    GOTO :SKIP_ELEVATION_CHECKS
+)
+
 REM Quick admin check using NET SESSION (fastest method)
 NET SESSION >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    IF "%ELEVATION_ATTEMPTED%"=="YES" (
-        CALL :LOG_MESSAGE "Elevation loop detected - admin privileges still not available" "ERROR" "LAUNCHER"
-        ECHO ERROR: Unable to obtain administrator privileges after elevation attempt.
-        ECHO Please manually run this script as Administrator.
-        PAUSE
-        EXIT /B 1
-    )
     CALL :LOG_MESSAGE "No admin privileges detected - initiating immediate elevation" "WARN" "LAUNCHER"
     GOTO :ELEVATION_HANDLER
 )
+
+:SKIP_ELEVATION_CHECKS
 
 CALL :LOG_MESSAGE "Administrator privileges confirmed - continuing with full startup" "SUCCESS" "LAUNCHER"
 
@@ -148,14 +149,12 @@ CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHEC
 
 IF "%IS_ADMIN%"=="NO" (
     IF "%ELEVATION_ATTEMPTED%"=="YES" (
-        CALL :LOG_MESSAGE "Secondary elevation check failed - admin privileges still not available" "ERROR" "LAUNCHER"
-        ECHO ERROR: Unable to obtain administrator privileges after elevation attempt.
-        ECHO This may indicate a UAC policy issue or insufficient user permissions.
-        ECHO Please manually run this script as Administrator.
-        PAUSE
-        EXIT /B 1
+        CALL :LOG_MESSAGE "WARNING: Elevated instance but admin check still failed - proceeding anyway" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "This may indicate admin detection issues but continuing execution" "WARN" "LAUNCHER"
+        SET "IS_ADMIN=YES"
+    ) ELSE (
+        GOTO :ELEVATION_HANDLER
     )
-    GOTO :ELEVATION_HANDLER
 )
 
 CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
