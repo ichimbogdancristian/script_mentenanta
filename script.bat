@@ -306,44 +306,74 @@ REM Windows Defender Exclusions (Enhanced)
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
-REM PowerShell 7 Detection and Installation
+REM Enhanced PowerShell 7 Detection and Installation
 CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
+
+REM Initial detection
 pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "PowerShell 7 not found. Checking installation options..." "INFO" "LAUNCHER"
-    
-    REM Check if winget is available for PS7 installation
-    winget --version >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-        winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
-            
-            REM Refresh PATH environment variable to detect newly installed PowerShell 7
-            CALL :LOG_MESSAGE "Refreshing PATH environment variable..." "INFO" "LAUNCHER"
-            CALL :REFRESH_PATH
-            
-            REM Try to detect PowerShell 7 again after PATH refresh
-            pwsh.exe -Version >nul 2>&1
-            IF !ERRORLEVEL! EQU 0 (
-                FOR /F "tokens=*" %%i IN ('pwsh.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-                CALL :LOG_MESSAGE "PowerShell 7 detected after installation: !PS7_VERSION!" "SUCCESS" "LAUNCHER"
-            ) ELSE (
-                CALL :LOG_MESSAGE "PowerShell 7 installed but not yet available in PATH" "WARN" "LAUNCHER"
-                CALL :LOG_MESSAGE "Trying alternative detection methods..." "INFO" "LAUNCHER"
-                CALL :DETECT_PS7_ALTERNATIVE
-            )
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "Winget not available for PowerShell 7 installation" "INFO" "LAUNCHER"
-    )
-) ELSE (
+IF !ERRORLEVEL! EQU 0 (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
     CALL :LOG_MESSAGE "PowerShell 7 available: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
+    GOTO :PS7_DETECTION_COMPLETE
 )
+
+REM Try alternative detection methods first
+CALL :LOG_MESSAGE "PowerShell 7 not found in PATH, trying alternative detection..." "INFO" "LAUNCHER"
+CALL :DETECT_PS7_ALTERNATIVE
+
+IF "%PS7_FOUND%"=="YES" (
+    FOR /F "tokens=*" %%i IN ('"%PS7_PATH%" -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+    CALL :LOG_MESSAGE "PowerShell 7 found via alternative detection: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
+    GOTO :PS7_DETECTION_COMPLETE
+)
+
+REM PowerShell 7 not found - attempt installation
+CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "WARN" "LAUNCHER"
+
+REM Check if winget is available for PS7 installation
+winget --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
+    ECHO Installing PowerShell 7... This may take a few minutes.
+    
+    winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+    
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "PowerShell 7 installation completed" "SUCCESS" "LAUNCHER"
+        
+        REM Refresh PATH environment variable
+        CALL :LOG_MESSAGE "Refreshing PATH environment variable..." "INFO" "LAUNCHER"
+        CALL :REFRESH_PATH
+        
+        REM Wait a moment for the installation to settle
+        timeout /t 3 /nobreak >nul 2>&1
+        
+        REM Try detection again
+        pwsh.exe -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            FOR /F "tokens=*" %%i IN ('pwsh.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+            CALL :LOG_MESSAGE "PowerShell 7 successfully installed and detected: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "PowerShell 7 installed but not immediately available. Trying alternative detection..." "INFO" "LAUNCHER"
+            CALL :DETECT_PS7_ALTERNATIVE
+            IF "%PS7_FOUND%"=="YES" (
+                FOR /F "tokens=*" %%i IN ('"%PS7_PATH%" -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+                CALL :LOG_MESSAGE "PowerShell 7 detected via alternative path: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell 7 installation succeeded but detection failed" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "You may need to restart your terminal or computer" "WARN" "LAUNCHER"
+            )
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Manual installation may be required" "WARN" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "Winget not available - cannot install PowerShell 7 automatically" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please install PowerShell 7 manually from: https://github.com/PowerShell/PowerShell/releases/latest" "INFO" "LAUNCHER"
+)
+
+:PS7_DETECTION_COMPLETE
 
 REM Package Manager Dependencies
 CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
@@ -594,20 +624,47 @@ IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     EXIT /B 4
 )
 
-REM Determine PowerShell executable to use
-SET "PS_EXECUTABLE=powershell.exe"
+REM Determine PowerShell executable to use - MUST be PowerShell 7
+SET "PS_EXECUTABLE="
+SET "PS7_AVAILABLE=NO"
+
+REM First check: pwsh.exe in PATH
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "PS_EXECUTABLE=pwsh.exe"
-    CALL :LOG_MESSAGE "Using PowerShell 7 for execution" "INFO" "LAUNCHER"
+    SET "PS7_AVAILABLE=YES"
+    CALL :LOG_MESSAGE "Using PowerShell 7 for execution (pwsh.exe)" "INFO" "LAUNCHER"
 ) ELSE (
-    REM Check if we found PowerShell 7 via alternative detection
+    REM Second check: Alternative PS7 detection
     IF "%PS7_FOUND%"=="YES" (
         SET "PS_EXECUTABLE=%PS7_PATH%"
+        SET "PS7_AVAILABLE=YES"
         CALL :LOG_MESSAGE "Using PowerShell 7 from alternative path for execution" "INFO" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "Using Windows PowerShell for execution" "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "PowerShell 7 not available - orchestrator requires PS7" "ERROR" "LAUNCHER"
+        SET "PS7_AVAILABLE=NO"
     )
+)
+
+REM Verify PowerShell 7 is available before proceeding
+IF "%PS7_AVAILABLE%"=="NO" (
+    ECHO.
+    ECHO ================================================================================
+    ECHO  POWERSHELL 7 REQUIRED
+    ECHO ================================================================================
+    ECHO  The maintenance orchestrator requires PowerShell 7.0 or later to function.
+    ECHO  Windows PowerShell 5.1 is not compatible due to modern language features.
+    ECHO.
+    ECHO  PowerShell 7 installation appears to have failed or is not accessible.
+    ECHO  Please install PowerShell 7 manually from:
+    ECHO  https://github.com/PowerShell/PowerShell/releases/latest
+    ECHO.
+    ECHO  After installation, please restart this script.
+    ECHO ================================================================================
+    ECHO.
+    CALL :LOG_MESSAGE "Maintenance cannot continue without PowerShell 7" "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 5
 )
 
 REM Parse command line arguments for the orchestrator
