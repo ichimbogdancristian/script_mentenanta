@@ -122,6 +122,7 @@ IF %ERRORLEVEL% NEQ 0 (
 ) ELSE (
     REM Has admin rights - continue running
     CALL :LOG_MESSAGE "Administrator privileges confirmed - continuing execution" "SUCCESS" "LAUNCHER"
+    GOTO :CONTINUE_EXECUTION
 )
 
 REM -----------------------------------------------------------------------------
@@ -129,13 +130,6 @@ REM Elevation Handler (Used by Early Admin Check)
 REM -----------------------------------------------------------------------------
 :ELEVATION_HANDLER
 CALL :LOG_MESSAGE "Handling privilege elevation..." "INFO" "LAUNCHER"
-
-REM Prepare parameters to pass to elevated instance
-SET "ELEVATION_PARAMS="
-IF "%~1" NEQ "" (
-    SET "ELEVATION_PARAMS=%*"
-    CALL :LOG_MESSAGE "Passing parameters to elevated instance: !ELEVATION_PARAMS!" "DEBUG" "LAUNCHER"
-)
 
 ECHO.
 ECHO ================================================================================
@@ -154,11 +148,7 @@ ECHO.
 
 REM Launch elevated instance and close current instance immediately
 CALL :LOG_MESSAGE "Launching elevated instance and closing current process..." "INFO" "LAUNCHER"
-IF "!ELEVATION_PARAMS!" NEQ "" (
-    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\" !ELEVATION_PARAMS! ELEVATED_INSTANCE\"' -Verb RunAs"
-) ELSE (
-    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" ELEVATED_INSTANCE' -Verb RunAs"
-)
+powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" ELEVATED_INSTANCE' -Verb RunAs"
 
 REM Check if elevation was successful
 IF !ERRORLEVEL! NEQ 0 (
@@ -173,6 +163,7 @@ REM Exit current non-elevated instance
 CALL :LOG_MESSAGE "Elevation initiated - terminating current instance" "INFO" "LAUNCHER"
 EXIT /B 0
 
+:CONTINUE_EXECUTION
 REM -----------------------------------------------------------------------------
 REM System Requirements Verification
 REM -----------------------------------------------------------------------------
