@@ -36,8 +36,8 @@ using namespace System.Collections.Concurrent
 .PARAMETER CustomApps
     Additional custom apps to install beyond the standard list
     
-.PARAMETER SkipDuplicates
-    Skip apps that are already installed
+.PARAMETER ForceInstall
+    Force installation even if apps are already installed
     
 .PARAMETER DryRun
     Simulate installation without making changes
@@ -50,6 +50,10 @@ using namespace System.Collections.Concurrent
     
 .EXAMPLE
     $results = Install-EssentialApplications -CustomApps @('VSCode', 'Git') -DryRun
+
+.EXAMPLE
+    $results = Install-EssentialApplications -ForceInstall
+    # Forces installation even for apps that appear to be already installed
 #>
 function Install-EssentialApplications {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
@@ -61,7 +65,7 @@ function Install-EssentialApplications {
         [string[]]$CustomApps = @(),
         
         [Parameter()]
-        [switch]$SkipDuplicates = $true,
+        [switch]$ForceInstall,
         
         [Parameter()]
         [switch]$DryRun,
@@ -111,11 +115,12 @@ function Install-EssentialApplications {
     Write-Host "  🔍 Applying conditional installation rules..." -ForegroundColor Cyan
     $conditionallyFilteredApps = Get-ConditionallyFilteredApps -AppList $essentialApps
     
-    # Filter out duplicates if requested
-    $appsToInstall = if ($SkipDuplicates) {
-        Get-AppsNotInstalled -AppList $conditionallyFilteredApps
-    } else {
+    # Filter out duplicates (default behavior, unless ForceInstall is specified)
+    $appsToInstall = if ($ForceInstall) {
+        Write-Host "  🔄 Force install mode - will attempt to install all apps regardless of current installation status" -ForegroundColor Yellow
         $conditionallyFilteredApps
+    } else {
+        Get-AppsNotInstalled -AppList $conditionallyFilteredApps
     }
     
     if ($appsToInstall.Count -eq 0) {

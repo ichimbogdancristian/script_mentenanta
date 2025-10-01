@@ -191,9 +191,9 @@ ECHO.
 REM Launch elevated instance and close current instance immediately
 CALL :LOG_MESSAGE "Launching elevated instance and closing current process..." "INFO" "LAUNCHER"
 IF "!ELEVATION_PARAMS!" NEQ "" (
-    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\" !ELEVATION_PARAMS!\"' -Verb RunAs"
+    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\" !ELEVATION_PARAMS! ELEVATED_INSTANCE\"' -Verb RunAs"
 ) ELSE (
-    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
+    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" ELEVATED_INSTANCE' -Verb RunAs"
 )
 
 REM Check if elevation was successful
@@ -414,6 +414,41 @@ IF !ERRORLEVEL! EQU 0 (
 CALL :LOG_MESSAGE "Dependency verification completed" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
+REM Pending Restart Detection and Management
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Checking for pending system restarts..." "INFO" "LAUNCHER"
+
+SET "PENDING_RESTART=NO"
+
+REM Check Windows Update pending restart registry keys
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "PENDING_RESTART=YES"
+    CALL :LOG_MESSAGE "Windows Update restart required (RebootRequired key found)" "INFO" "LAUNCHER"
+)
+
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "PENDING_RESTART=YES"
+    CALL :LOG_MESSAGE "Component Based Servicing restart pending" "INFO" "LAUNCHER"
+)
+
+REG QUERY "HKLM\SOFTWARE\Microsoft\Updates\UpdateExeVolatile" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "PENDING_RESTART=YES"
+    CALL :LOG_MESSAGE "Update installer restart pending" "INFO" "LAUNCHER"
+)
+
+REM Check for SCCM/ConfigMgr pending restart
+REG QUERY "HKLM\SOFTWARE\Microsoft\SMS\Mobile Client\Reboot Management\RebootData" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "PENDING_RESTART=YES"
+    CALL :LOG_MESSAGE "SCCM restart pending" "INFO" "LAUNCHER"
+)
+
+CALL :LOG_MESSAGE "Pending restart status: %PENDING_RESTART%" "INFO" "LAUNCHER"
+
+REM -----------------------------------------------------------------------------
 REM Modular Task Scheduler Management
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
@@ -421,12 +456,42 @@ CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
 SET "TASK_NAME=WindowsMaintenanceAutomation"
 SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
 
-REM Check existing scheduled task
+REM Always check and clean up existing startup task first
+schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "Found existing startup task - removing it" "INFO" "LAUNCHER"
+    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task removed successfully" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to remove startup task" "WARN" "LAUNCHER"
+    )
+)
+
+REM Create startup task if pending restart detected
+IF "%PENDING_RESTART%"=="YES" (
+    CALL :LOG_MESSAGE "Creating startup task for post-restart continuation..." "INFO" "LAUNCHER"
+    schtasks /Create ^
+        /SC ONSTART ^
+        /TN "%STARTUP_TASK_NAME%" ^
+        /TR "\"%SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
+        /RL HIGHEST ^
+        /RU SYSTEM ^
+        /F >nul 2>&1
+        
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Startup task creation failed" "WARN" "LAUNCHER"
+    )
+)
+
+REM Check/Create monthly maintenance task using global path discovery
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Scheduled task exists: %TASK_NAME%" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Monthly scheduled task exists: %TASK_NAME%" "INFO" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Creating scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
@@ -438,17 +503,10 @@ IF !ERRORLEVEL! EQU 0 (
         /F >nul 2>&1
         
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Scheduled task created successfully" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Monthly scheduled task created successfully" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "Scheduled task creation failed - continuing without scheduling" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Monthly scheduled task creation failed - continuing without scheduling" "WARN" "LAUNCHER"
     )
-)
-
-REM Clean up any startup tasks (shouldn't normally exist)
-schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Removing temporary startup task" "INFO" "LAUNCHER"
-    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
 )
 
 REM -----------------------------------------------------------------------------
@@ -493,6 +551,8 @@ IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
 IF "%1"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
 IF "%2"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
 IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
+IF "%2"=="-PostRestart" SET "PS_ARGS=%PS_ARGS% -PostRestart"
+IF "%3"=="-PostRestart" SET "PS_ARGS=%PS_ARGS% -PostRestart"
 
 CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
 
@@ -501,6 +561,65 @@ CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%O
 
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
 SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
+
+REM -----------------------------------------------------------------------------
+REM Post-Execution Restart Logic
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Checking post-execution restart requirements..." "INFO" "LAUNCHER"
+
+REM Check if this was a post-restart execution
+SET "IS_POST_RESTART=NO"
+FOR %%i in (%*) DO (
+    IF "%%i"=="-PostRestart" (
+        SET "IS_POST_RESTART=YES"
+        CALL :LOG_MESSAGE "This is a post-restart execution - cleaning up startup task" "INFO" "LAUNCHER"
+    )
+)
+
+REM If this was a post-restart execution, remove the startup task
+IF "%IS_POST_RESTART%"=="YES" (
+    schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Removing startup task after successful post-restart execution" "INFO" "LAUNCHER"
+        schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Startup task cleanup completed" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to remove startup task" "WARN" "LAUNCHER"
+        )
+    )
+)
+
+REM If pending restart was detected and this is not a post-restart execution, initiate restart
+IF "%PENDING_RESTART%"=="YES" (
+    IF "%IS_POST_RESTART%"=="NO" (
+        CALL :LOG_MESSAGE "Pending restart detected - initiating system restart in 60 seconds..." "INFO" "LAUNCHER"
+        ECHO.
+        ECHO ================================================================================
+        ECHO  SYSTEM RESTART REQUIRED
+        ECHO ================================================================================
+        ECHO  Windows updates require a system restart to complete installation.
+        ECHO  A startup task has been created to continue maintenance after restart.
+        ECHO.
+        ECHO  The system will restart in 60 seconds...
+        ECHO  Press Ctrl+C to cancel the restart if needed.
+        ECHO ================================================================================
+        ECHO.
+        
+        REM Give user 60 seconds to cancel if needed
+        shutdown /r /t 60 /c "Windows Maintenance: Restarting to complete Windows updates. Maintenance will continue after restart."
+        
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "System restart scheduled successfully" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to schedule system restart" "ERROR" "LAUNCHER"
+        )
+        
+        REM Exit immediately after scheduling restart
+        CALL :LOG_MESSAGE "Maintenance launcher exiting - system will restart shortly" "INFO" "LAUNCHER"
+        EXIT /B 0
+    )
+)
 
 REM -----------------------------------------------------------------------------
 REM Post-Execution Cleanup and Reporting
