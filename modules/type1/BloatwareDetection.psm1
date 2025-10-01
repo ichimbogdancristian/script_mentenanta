@@ -18,6 +18,75 @@
 using namespace System.Collections.Generic
 using namespace System.Collections.Concurrent
 
+#region Private Functions
+
+<#
+.SYNOPSIS
+    Gets unified bloatware patterns from configuration files
+
+.DESCRIPTION
+    Loads bloatware patterns from the ConfigManager and combines them into a single list
+    based on the requested categories.
+
+.PARAMETER IncludeCategories
+    Array of category names to include (e.g., @('OEM', 'Windows', 'Gaming', 'Security'))
+
+.EXAMPLE
+    $patterns = Get-UnifiedBloatwareList -IncludeCategories @('OEM', 'Windows')
+#>
+function Get-UnifiedBloatwareList {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string[]]$IncludeCategories = @('OEM', 'Windows', 'Gaming', 'Security')
+    )
+    
+    try {
+        # Import ConfigManager module if not already available
+        if (-not (Get-Module ConfigManager)) {
+            Import-Module (Join-Path $PSScriptRoot '..\core\ConfigManager.psm1') -Force
+        }
+        
+        # Get bloatware configuration from ConfigManager
+        $bloatwareConfig = Get-BloatwareConfiguration
+        
+        if (-not $bloatwareConfig -or $bloatwareConfig.Count -eq 0) {
+            Write-Warning "No bloatware configuration loaded"
+            return @()
+        }
+        
+        $allPatterns = @()
+        
+        foreach ($category in $IncludeCategories) {
+            # Map common category names to file names
+            $categoryKey = switch ($category.ToLower()) {
+                'oem' { 'oem-bloatware' }
+                'windows' { 'windows-bloatware' }
+                'gaming' { 'gaming-bloatware' }
+                'security' { 'security-bloatware' }
+                default { $category }
+            }
+            
+            if ($bloatwareConfig.ContainsKey($categoryKey)) {
+                $categoryPatterns = $bloatwareConfig[$categoryKey]
+                $allPatterns += $categoryPatterns
+                Write-Verbose "Loaded $($categoryPatterns.Count) patterns from category '$category'"
+            } else {
+                Write-Warning "Bloatware category not found: $category"
+            }
+        }
+        
+        Write-Verbose "Total bloatware patterns loaded: $($allPatterns.Count)"
+        return $allPatterns
+    }
+    catch {
+        Write-Error "Failed to load bloatware patterns: $_"
+        return @()
+    }
+}
+
+#endregion
+
 #region Public Functions
 
 <#

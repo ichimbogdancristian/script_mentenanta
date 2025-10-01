@@ -677,7 +677,15 @@ function Get-IssueRecommendation {
 function New-SecurityReport {
     param($AuditResults)
     
-    $reportPath = Join-Path $global:TempFolder "security-audit-$(Get-Date -Format 'yyyy-MM-dd-HHmm').txt"
+    # Use global temp folder or fallback to temp_files/reports
+    $tempBase = if ($global:TempFolder) { $global:TempFolder } else { Join-Path $PSScriptRoot "..\..\temp_files\reports" }
+    
+    # Ensure directory exists
+    if (-not (Test-Path $tempBase)) {
+        New-Item -Path $tempBase -ItemType Directory -Force | Out-Null
+    }
+    
+    $reportPath = Join-Path $tempBase "security-audit-$(Get-Date -Format 'yyyy-MM-dd-HHmm').txt"
     
     $report = @"
 WINDOWS SECURITY AUDIT REPORT

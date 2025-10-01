@@ -436,8 +436,30 @@ IF "%PENDING_RESTART%"=="YES" (
         
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
+        
+        REM Initiate system restart to complete updates
+        ECHO.
+        ECHO ================================================================================
+        ECHO  SYSTEM RESTART REQUIRED
+        ECHO ================================================================================
+        ECHO  Windows Updates or system components require a restart to complete installation.
+        ECHO  The system will restart automatically in 30 seconds.
+        ECHO  The maintenance script will continue automatically after restart.
+        ECHO.
+        ECHO  Press Ctrl+C to cancel the restart if needed.
+        ECHO ================================================================================
+        ECHO.
+        
+        CALL :LOG_MESSAGE "Initiating system restart in 30 seconds..." "INFO" "LAUNCHER"
+        shutdown /r /t 30 /c "Windows Maintenance: Restarting to complete system updates"
+        
+        REM Exit script - it will continue after restart via the startup task
+        CALL :LOG_MESSAGE "System restart initiated - script will continue after reboot" "INFO" "LAUNCHER"
+        EXIT /B 0
+        
     ) ELSE (
-        CALL :LOG_MESSAGE "Startup task creation failed" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Startup task creation failed - cannot safely restart" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Manual restart may be required to complete updates" "WARN" "LAUNCHER"
     )
 )
 
