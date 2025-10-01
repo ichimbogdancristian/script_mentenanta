@@ -426,16 +426,51 @@ IF !ERRORLEVEL! EQU 0 (
 REM Create startup task if pending restart detected
 IF "%PENDING_RESTART%"=="YES" (
     CALL :LOG_MESSAGE "Creating startup task for post-restart continuation..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using script path for startup task: %SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    
+    REM Create startup task with SYSTEM account first (preferred)
     schtasks /Create ^
         /SC ONSTART ^
         /TN "%STARTUP_TASK_NAME%" ^
         /TR "\"%SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
         /RL HIGHEST ^
         /RU SYSTEM ^
-        /F >nul 2>&1
+        /F >"%WORKING_DIR%schtasks_startup.log" 2>&1
         
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Startup task created successfully with SYSTEM account" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to create startup task with SYSTEM account, trying current user..." "WARN" "LAUNCHER"
+        
+        REM Display error details
+        IF EXIST "%WORKING_DIR%schtasks_startup.log" (
+            CALL :LOG_MESSAGE "SYSTEM startup task creation error details:" "ERROR" "LAUNCHER"
+            TYPE "%WORKING_DIR%schtasks_startup.log"
+        )
+        
+        REM Fallback: Try with current user account
+        schtasks /Create ^
+            /SC ONSTART ^
+            /TN "%STARTUP_TASK_NAME%" ^
+            /TR "\"%SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
+            /RL HIGHEST ^
+            /F >"%WORKING_DIR%schtasks_startup_user.log" 2>&1
+            
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Startup task created successfully with current user account" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to create startup task with both SYSTEM and current user" "ERROR" "LAUNCHER"
+            IF EXIST "%WORKING_DIR%schtasks_startup_user.log" (
+                TYPE "%WORKING_DIR%schtasks_startup_user.log"
+            )
+            CALL :LOG_MESSAGE "Cannot create startup task - manual restart and execution will be required" "ERROR" "LAUNCHER"
+            PAUSE
+            EXIT /B 1
+        )
+    )
+    
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task creation successful - proceeding with restart" "SUCCESS" "LAUNCHER"
         
         REM Initiate system restart to complete updates
         ECHO.
@@ -457,18 +492,30 @@ IF "%PENDING_RESTART%"=="YES" (
         CALL :LOG_MESSAGE "System restart initiated - script will continue after reboot" "INFO" "LAUNCHER"
         EXIT /B 0
         
+        REM Exit script - it will continue after restart via the startup task
+        CALL :LOG_MESSAGE "System restart initiated - script will continue after reboot" "INFO" "LAUNCHER"
+        EXIT /B 0
+        
     ) ELSE (
         CALL :LOG_MESSAGE "Startup task creation failed - cannot safely restart" "WARN" "LAUNCHER"
         CALL :LOG_MESSAGE "Manual restart may be required to complete updates" "WARN" "LAUNCHER"
     )
 )
 
-REM Check/Create monthly maintenance task using global path discovery
+REM Enhanced Monthly Scheduled Task Setup with Error Handling
+CALL :LOG_MESSAGE "Checking for monthly scheduled task '%TASK_NAME%'..." "INFO" "LAUNCHER"
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly scheduled task exists: %TASK_NAME%" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Monthly scheduled task already exists: %TASK_NAME%" "INFO" "LAUNCHER"
+    REM Verify and log next run time
+    FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time" 2^>nul') DO (
+        CALL :LOG_MESSAGE "Next scheduled run: %%i" "INFO" "LAUNCHER"
+    )
 ) ELSE (
     CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using script path for task: %SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    
+    REM Create scheduled task with SYSTEM account first (preferred)
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
@@ -477,12 +524,53 @@ IF !ERRORLEVEL! EQU 0 (
         /ST 02:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
-        /F >nul 2>&1
+        /F >"%WORKING_DIR%schtasks_create.log" 2>&1
         
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Monthly scheduled task created successfully" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Monthly scheduled task created successfully with SYSTEM account" "SUCCESS" "LAUNCHER"
+        
+        REM Verify task creation and log next run time
+        schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Task verification successful" "INFO" "LAUNCHER"
+            FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time" 2^>nul') DO (
+                CALL :LOG_MESSAGE "Next scheduled run: %%i" "SUCCESS" "LAUNCHER"
+            )
+        )
     ) ELSE (
-        CALL :LOG_MESSAGE "Monthly scheduled task creation failed - continuing without scheduling" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Failed to create task with SYSTEM account, trying current user..." "WARN" "LAUNCHER"
+        
+        REM Display error details
+        IF EXIST "%WORKING_DIR%schtasks_create.log" (
+            CALL :LOG_MESSAGE "SYSTEM task creation error details:" "ERROR" "LAUNCHER"
+            TYPE "%WORKING_DIR%schtasks_create.log"
+        )
+        
+        REM Fallback: Try with current user account
+        schtasks /Create ^
+            /SC MONTHLY ^
+            /MO 1 ^
+            /TN "%TASK_NAME%" ^
+            /TR "\"%SCRIPT_PATH%\" -NonInteractive" ^
+            /ST 02:00 ^
+            /RL HIGHEST ^
+            /F >"%WORKING_DIR%schtasks_create_user.log" 2>&1
+            
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Monthly scheduled task created successfully with current user account" "SUCCESS" "LAUNCHER"
+            
+            REM Verify task creation and log next run time
+            FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time" 2^>nul') DO (
+                CALL :LOG_MESSAGE "Next scheduled run: %%i" "SUCCESS" "LAUNCHER"
+            )
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to create scheduled task with both SYSTEM and current user accounts" "ERROR" "LAUNCHER"
+            IF EXIST "%WORKING_DIR%schtasks_create_user.log" (
+                CALL :LOG_MESSAGE "User task creation error details:" "ERROR" "LAUNCHER"
+                TYPE "%WORKING_DIR%schtasks_create_user.log"
+            )
+            CALL :LOG_MESSAGE "Continuing without monthly scheduling - manual execution will be required" "WARN" "LAUNCHER"
+        )
     )
 )
 
@@ -614,6 +702,21 @@ IF EXIST "%WORKING_DIR%temp_files\reports" (
     FOR %%F IN ("%WORKING_DIR%temp_files\reports\*.html") DO (
         CALL :LOG_MESSAGE "Generated report: %%~nxF" "INFO" "LAUNCHER"
     )
+)
+
+REM Cleanup temporary scheduled task log files
+IF EXIST "%WORKING_DIR%schtasks_create.log" (
+    CALL :LOG_MESSAGE "Cleaning up task creation log files" "DEBUG" "LAUNCHER"
+    DEL "%WORKING_DIR%schtasks_create.log" >nul 2>&1
+)
+IF EXIST "%WORKING_DIR%schtasks_create_user.log" (
+    DEL "%WORKING_DIR%schtasks_create_user.log" >nul 2>&1
+)
+IF EXIST "%WORKING_DIR%schtasks_startup.log" (
+    DEL "%WORKING_DIR%schtasks_startup.log" >nul 2>&1
+)
+IF EXIST "%WORKING_DIR%schtasks_startup_user.log" (
+    DEL "%WORKING_DIR%schtasks_startup_user.log" >nul 2>&1
 )
 
 REM Auto-close behavior
