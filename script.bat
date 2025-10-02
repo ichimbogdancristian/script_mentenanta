@@ -605,19 +605,13 @@ IF "%PENDING_RESTART%"=="YES" (
         /RL HIGHEST ^
         /RU "%USERNAME%" ^
         /DELAY 0001:00 ^
-        /F >"%WORKING_DIR%schtasks_startup.log" 2>&1
+        /F >nul 2>&1
         
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Startup task created successfully with ONLOGON trigger" "SUCCESS" "LAUNCHER"
         CALL :LOG_MESSAGE "Task will execute 1 minute after user logon" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "Failed to create startup task with ONLOGON trigger" "ERROR" "LAUNCHER"
-        
-        REM Display error details
-        IF EXIST "%WORKING_DIR%schtasks_startup.log" (
-            CALL :LOG_MESSAGE "ONLOGON startup task creation error details:" "ERROR" "LAUNCHER"
-            TYPE "%WORKING_DIR%schtasks_startup.log"
-        )
         
         REM Fallback to ONSTART if ONLOGON fails
         CALL :LOG_MESSAGE "Attempting fallback with ONSTART trigger..." "WARN" "LAUNCHER"
@@ -627,15 +621,12 @@ IF "%PENDING_RESTART%"=="YES" (
             /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
             /RL HIGHEST ^
             /RU SYSTEM ^
-            /F >"%WORKING_DIR%schtasks_startup_fallback.log" 2>&1
+            /F >nul 2>&1
             
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "Fallback startup task created successfully with ONSTART" "SUCCESS" "LAUNCHER"
         ) ELSE (
             CALL :LOG_MESSAGE "Failed to create startup task with both ONLOGON and ONSTART" "ERROR" "LAUNCHER"
-            IF EXIST "%WORKING_DIR%schtasks_startup_fallback.log" (
-                TYPE "%WORKING_DIR%schtasks_startup_fallback.log"
-            )
             CALL :LOG_MESSAGE "Cannot create startup task - manual restart and execution will be required" "ERROR" "LAUNCHER"
             PAUSE
             EXIT /B 1
@@ -929,12 +920,6 @@ IF EXIST "%WORKING_DIR%schtasks_create.log" (
 )
 IF EXIST "%WORKING_DIR%schtasks_create_user.log" (
     DEL "%WORKING_DIR%schtasks_create_user.log" >nul 2>&1
-)
-IF EXIST "%WORKING_DIR%schtasks_startup.log" (
-    DEL "%WORKING_DIR%schtasks_startup.log" >nul 2>&1
-)
-IF EXIST "%WORKING_DIR%schtasks_startup_user.log" (
-    DEL "%WORKING_DIR%schtasks_startup_user.log" >nul 2>&1
 )
 
 REM Auto-close behavior

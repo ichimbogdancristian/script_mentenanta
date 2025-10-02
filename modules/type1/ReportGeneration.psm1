@@ -64,9 +64,14 @@ function New-MaintenanceReport {
     # Provide default values for parameters when not specified
     if (-not $OutputPath -or $OutputPath -eq "") {
         $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        # Use the same directory as maintenance.log (root directory)
+        # Use the temp_files/reports directory
         $rootDir = Join-Path $PSScriptRoot "..\.."
-        $OutputPath = Join-Path $rootDir "maintenance-report-$timestamp"
+        $reportsDir = Join-Path $rootDir "temp_files\reports"
+        # Ensure reports directory exists
+        if (-not (Test-Path $reportsDir)) {
+            New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
+        }
+        $OutputPath = Join-Path $reportsDir "maintenance-report-$timestamp"
         Write-Host "  📁 Using default output path: $OutputPath" -ForegroundColor Gray
     }
     
@@ -120,17 +125,19 @@ function New-MaintenanceReport {
             New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
         }
         
-        # Generate HTML report
-        $htmlPath = "$OutputPath.html"
-        Write-Host "  📄 Creating HTML report..." -ForegroundColor Gray
+        # Generate HTML report (in root directory for easy access)
+        $rootDir = Join-Path $PSScriptRoot "..\.." | Resolve-Path
+        $htmlFilename = Split-Path $OutputPath -Leaf
+        $htmlPath = Join-Path $rootDir "$htmlFilename.html"
+        Write-Host "  📄 Creating HTML report in root directory: $htmlPath" -ForegroundColor Gray
         New-HtmlReport -ReportData $reportData -OutputPath $htmlPath
         
-        # Generate text report
+        # Generate text report (in reports directory)
         $textPath = "$OutputPath.txt"
         Write-Host "  📝 Creating text report..." -ForegroundColor Gray
         New-TextReport -ReportData $reportData -OutputPath $textPath
         
-        # Generate JSON data export
+        # Generate JSON data export (in reports directory)
         $jsonPath = "$OutputPath.json"
         Write-Host "  📊 Creating JSON data export..." -ForegroundColor Gray
         $reportData | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonPath -Encoding UTF8

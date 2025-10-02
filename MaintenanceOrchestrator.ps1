@@ -101,7 +101,7 @@ if (-not $LogFilePath) {
     $LogFilePath = if ($env:SCRIPT_LOG_FILE) { 
         $env:SCRIPT_LOG_FILE 
     } else { 
-        Join-Path $WorkingDirectory 'maintenance.log' 
+        Join-Path $LogsDir 'maintenance.log' 
     }
 }
 
@@ -457,6 +457,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
             if ($task.Function -eq 'New-MaintenanceReport') {
                 # Pass the collected TaskResults from previous tasks (excluding the current ReportGeneration task)
                 $previousTaskResults = $TaskResults | Where-Object { $_.TaskName -ne 'ReportGeneration' }
+                # Let ReportGeneration module handle path logic (HTML in root, JSON/TXT in reports)
                 $result = & $task.Function -TaskResults $previousTaskResults -Configuration $MainConfig
             } else {
                 $result = & $task.Function
