@@ -377,53 +377,48 @@ class ModuleExecutor {
         return $result
     }
     
-    [System.Threading.Tasks.Task[object]] ExecuteModuleWithTimeout([ModuleExecutionContext] $Context, [ModuleManifest] $Manifest) {
-        $scriptBlock = {
-            param($FunctionName, $Parameters, $DryRun, $SharedData)
+    [System.Threading.Tasks.Task] ExecuteModuleWithTimeout([ModuleExecutionContext] $Context, [ModuleManifest] $Manifest) {
+        # Execute directly without threading for now to avoid Runspace issues
+        try {
+            # Prepare function parameters
+            $funcParams = @{}
             
-            try {
-                # Prepare function parameters
-                $funcParams = @{}
-                
-                # Add DryRun if supported
-                if ((Get-Command $FunctionName).Parameters.ContainsKey('DryRun')) {
-                    $funcParams['DryRun'] = $DryRun
-                }
-                
-                # Add any custom parameters
-                foreach ($key in $Parameters.Keys) {
-                    if ((Get-Command $FunctionName).Parameters.ContainsKey($key)) {
-                        $funcParams[$key] = $Parameters[$key]
+            # Add DryRun if supported
+            if ((Get-Command $Manifest.EntryFunction).Parameters.ContainsKey('DryRun')) {
+                $funcParams['DryRun'] = $Context.DryRun
+            }
+            
+            # Add any custom parameters
+            if ($Context.Parameters) {
+                foreach ($key in $Context.Parameters.Keys) {
+                    if ((Get-Command $Manifest.EntryFunction).Parameters.ContainsKey($key)) {
+                        $funcParams[$key] = $Context.Parameters[$key]
                     }
                 }
-                
-                # Execute the function
-                $functionResult = & $FunctionName @funcParams
-                
-                return @{
-                    Success = $true
-                    Output = $functionResult
-                    Error = $null
-                }
-            } catch {
-                return @{
-                    Success = $false
-                    Output = $null
-                    Error = $_.Exception.Message
-                }
             }
+            
+            # Execute the function directly
+            $functionResult = & $Manifest.EntryFunction @funcParams
+            
+            $result = @{
+                Success = $true
+                Output = $functionResult
+                Error = $null
+            }
+            
+            # Return as a completed task
+            return [System.Threading.Tasks.Task]::FromResult([object]$result)
+            
+        } catch {
+            $result = @{
+                Success = $false
+                Output = $null
+                Error = $_.Exception.Message
+            }
+            
+            # Return as a completed task with error
+            return [System.Threading.Tasks.Task]::FromResult([object]$result)
         }
-        
-        $task = [System.Threading.Tasks.Task]::Run({
-            & $scriptBlock $Manifest.EntryFunction $Context.Parameters $Context.DryRun $Context.SharedData
-        }, $Context.CancellationTokenSource.Token)
-        
-        if (-not $task.Wait($Context.TimeoutSeconds * 1000)) {
-            $Context.CancellationTokenSource.Cancel()
-            throw "Module execution timed out after $($Context.TimeoutSeconds) seconds"
-        }
-        
-        return $task
     }
     
     [bool] ValidateAdminPrivileges() {
