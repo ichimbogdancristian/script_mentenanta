@@ -4,11 +4,11 @@ using namespace System.Collections.Generic
 
 <#
 .SYNOPSIS
-    Windows Maintenance Automation - Central Orchestrator
+    Windows Maintenance Automation - Enhanced Central Orchestrator v2.1
 
 .DESCRIPTION
-    Central coordination script for the modular Windows maintenance system.
-    Handles module loading, configuration management, interactive menus, and task execution.
+    Next-generation central coordination script with comprehensive module execution protocol,
+    dependency management, completion reporting, and robust error handling.
 
 .PARAMETER LogFilePath
     Path to the log file (optional)
@@ -25,22 +25,28 @@ using namespace System.Collections.Generic
 .PARAMETER TaskNumbers
     Comma-separated list of task numbers to execute (e.g., "1,3,5")
 
-.EXAMPLE
-    .\MaintenanceOrchestrator.ps1
-    # Interactive mode with menus
+.PARAMETER ModuleName
+    Execute a specific module by name
+
+.PARAMETER EnableDetailedLogging
+    Enable comprehensive logging including dependency tracking
 
 .EXAMPLE
-    .\MaintenanceOrchestrator.ps1 -NonInteractive
-    # Unattended mode with all tasks
+    .\EnhancedMaintenanceOrchestrator.ps1
+    # Interactive mode with enhanced protocol
 
 .EXAMPLE
-    .\MaintenanceOrchestrator.ps1 -DryRun -TaskNumbers "1,2,3"
-    # Dry-run mode with specific tasks
+    .\EnhancedMaintenanceOrchestrator.ps1 -NonInteractive -DryRun
+    # Unattended dry-run with full dependency validation
+
+.EXAMPLE
+    .\EnhancedMaintenanceOrchestrator.ps1 -ModuleName "SystemInventory" -EnableDetailedLogging
+    # Execute specific module with detailed logging
 
 .NOTES
     Author: Windows Maintenance Automation Project
-    Version: 2.0.0
-    Requires: PowerShell 7.0+, Administrator privileges
+    Version: 2.1.0
+    Requires: PowerShell 7.0+, Administrator privileges for Type2 modules
 #>
 
 param(
@@ -48,7 +54,9 @@ param(
     [string]$ConfigPath,
     [switch]$NonInteractive,
     [switch]$DryRun,
-    [string]$TaskNumbers
+    [string]$TaskNumbers,
+    [string]$ModuleName,
+    [switch]$EnableDetailedLogging
 )
 
 #region Script Initialization
@@ -59,37 +67,36 @@ if (-not $ScriptRoot) {
     $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
-# Always use the script's actual location as working directory for reliable module loading
-# This ensures modules are found relative to the orchestrator script, not environment variables
 $WorkingDirectory = $ScriptRoot
+$StartTime = Get-Date
 
-Write-Host "Windows Maintenance Automation - Central Orchestrator v2.0.0" -ForegroundColor Cyan
-Write-Log "Windows Maintenance Automation - Central Orchestrator v2.0.0 started" -Level INFO -Component ORCHESTRATOR
+Write-Host "╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "║                          Windows Maintenance Automation - Enhanced Orchestrator v2.1                                       ║" -ForegroundColor Cyan
+Write-Host "║                                     Advanced Module Execution Protocol                                                      ║" -ForegroundColor Cyan
+Write-Host "╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 
-# Validate elevation context early to prevent crashes in Type2 modules
-try {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    
-    Write-Host "Elevation Status: " -NoNewline -ForegroundColor Gray
-    if ($isAdmin) {
-        Write-Host "Administrator privileges confirmed" -ForegroundColor Green
-        Write-Log "Running with Administrator privileges" -Level SUCCESS -Component ORCHESTRATOR
-    } else {
-        Write-Host "Running without Administrator privileges" -ForegroundColor Yellow
-        Write-Log "WARNING: Running without Administrator privileges - Type2 modules may fail" -Level WARN -Component ORCHESTRATOR
-        Write-Host "⚠️  Some operations may fail due to insufficient privileges" -ForegroundColor Yellow
-        Write-Host "   To fix: Right-click script.bat and select 'Run as administrator'" -ForegroundColor Yellow
+# Set up temp directories
+$TempRoot = Join-Path $WorkingDirectory 'temp_files'
+$ReportsDir = Join-Path $TempRoot 'reports'
+$LogsDir = Join-Path $TempRoot 'logs'
+$InventoryDir = Join-Path $TempRoot 'inventory'
+
+@($TempRoot, $ReportsDir, $LogsDir, $InventoryDir) | ForEach-Object {
+    if (-not (Test-Path $_)) {
+        New-Item -Path $_ -ItemType Directory -Force | Out-Null
     }
-} catch {
-    Write-Host "Unable to determine privilege level" -ForegroundColor Red
-    Write-Log "Failed to check privilege level: $_" -Level ERROR -Component ORCHESTRATOR
 }
 
-Write-Host "Working Directory: $WorkingDirectory" -ForegroundColor Gray
-Write-Host "Script Root: $ScriptRoot" -ForegroundColor Gray
-Write-Host "Environment WORKING_DIRECTORY: $env:WORKING_DIRECTORY" -ForegroundColor Gray
+# Set up log file
+if (-not $LogFilePath) {
+    $LogFilePath = if ($env:SCRIPT_LOG_FILE) { 
+        $env:SCRIPT_LOG_FILE 
+    } else { 
+        Join-Path $LogsDir 'maintenance.log' 
+    }
+}
+
+$Global:MaintenanceLogFile = $LogFilePath
 
 # Detect configuration path
 if (-not $ConfigPath) {
@@ -103,67 +110,69 @@ if (-not (Test-Path $ConfigPath)) {
     throw "Configuration directory not found. Expected at: $ConfigPath"
 }
 
-Write-Host "Configuration Path: $ConfigPath" -ForegroundColor Gray
-
-# Set up temp directories
-$TempRoot = Join-Path $WorkingDirectory 'temp_files'
-$ReportsDir = Join-Path $TempRoot 'reports'
-$LogsDir = Join-Path $TempRoot 'logs'
-$InventoryDir = Join-Path $TempRoot 'inventory'
-
-@($TempRoot, $ReportsDir, $LogsDir, $InventoryDir) | ForEach-Object {
-    if (-not (Test-Path $_)) {
-        New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        Write-Verbose "Created directory: $_"
-    }
-}
-
-# Set up log file
-if (-not $LogFilePath) {
-    $LogFilePath = if ($env:SCRIPT_LOG_FILE) { 
-        $env:SCRIPT_LOG_FILE 
-    } else { 
-        Join-Path $LogsDir 'maintenance.log' 
-    }
-}
-
-Write-Host "Log File: $LogFilePath" -ForegroundColor Gray
-
-# Set up global log file variable for Write-Log function
-$Global:MaintenanceLogFile = $LogFilePath
+Write-Host ""
+Write-Host "🔧 System Initialization:" -ForegroundColor Yellow
+Write-Host "  Working Directory: $WorkingDirectory" -ForegroundColor Gray
+Write-Host "  Configuration: $ConfigPath" -ForegroundColor Gray
+Write-Host "  Log File: $LogFilePath" -ForegroundColor Gray
+Write-Host "  Execution Mode: $(if($DryRun){'DRY-RUN'}else{'LIVE'})" -ForegroundColor $(if($DryRun){'Blue'}else{'Green'})
 
 #endregion
 
-#region Module Loading
+#region Enhanced Privilege Validation
 
-Write-Host "`nLoading modules..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "🔐 Enhanced Privilege Validation:" -ForegroundColor Yellow
 
-# Import core modules
+try {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    
+    if ($isAdmin) {
+        Write-Host "  ✅ Administrator privileges confirmed" -ForegroundColor Green
+        Write-Host "  🔑 Elevation Context: PowerShell $($PSVersionTable.PSVersion)" -ForegroundColor Green
+    } else {
+        Write-Host "  ⚠️  Running without Administrator privileges" -ForegroundColor Yellow
+        Write-Host "  💡 Type2 modules will be skipped or may fail" -ForegroundColor Yellow
+        if (-not $DryRun) {
+            Write-Host "  🛠️  Recommendation: Right-click script.bat and select 'Run as administrator'" -ForegroundColor Cyan
+        }
+    }
+} catch {
+    Write-Host "  ❌ Unable to determine privilege level: $_" -ForegroundColor Red
+}
+
+#endregion
+
+#region Core Module Loading
+
+Write-Host ""
+Write-Host "📦 Loading Enhanced Core Modules:" -ForegroundColor Yellow
+
 $ModulesPath = Join-Path $WorkingDirectory 'modules'
 $CoreModulesPath = Join-Path $ModulesPath 'core'
 
-Write-Host "Module Path Resolution:" -ForegroundColor Gray
-Write-Host "  ModulesPath: $ModulesPath" -ForegroundColor Gray
-Write-Host "  CoreModulesPath: $CoreModulesPath" -ForegroundColor Gray
-
+# Core modules in load order
 $CoreModules = @(
     'ConfigManager',
-    'MenuSystem'
+    'MenuSystem',
+    'ModuleExecutionProtocol'
 )
 
-foreach ($moduleName in $CoreModules) {
-    $modulePath = Join-Path $CoreModulesPath "$moduleName.psm1"
+foreach ($coreModuleName in $CoreModules) {
+    $modulePath = Join-Path $CoreModulesPath "$coreModuleName.psm1"
     if (Test-Path $modulePath) {
         try {
             Import-Module $modulePath -Force -ErrorAction Stop
-            Write-Host "  ✓ Loaded: $moduleName" -ForegroundColor Green
+            Write-Host "  ✅ Loaded: $coreModuleName" -ForegroundColor Green
         }
         catch {
-            Write-Error "Failed to load module $moduleName`: $_"
+            Write-Host "  ❌ Failed to load $coreModuleName`: $_" -ForegroundColor Red
             exit 1
         }
     } else {
-        Write-Error "Module not found: $modulePath"
+        Write-Host "  ❌ Module not found: $modulePath" -ForegroundColor Red
         exit 1
     }
 }
@@ -172,420 +181,378 @@ foreach ($moduleName in $CoreModules) {
 
 #region Configuration Loading
 
-Write-Host "`nInitializing configuration..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "⚙️  Enhanced Configuration Loading:" -ForegroundColor Yellow
 
 try {
     Initialize-ConfigSystem -ConfigRootPath $ConfigPath
     $MainConfig = Get-MainConfiguration
-    $null = Get-LoggingConfiguration  # Load logging config but don't store unused variable
+    $null = Get-LoggingConfiguration
     
-    Write-Host "  ✓ Main configuration loaded" -ForegroundColor Green
-    Write-Log "Main configuration loaded successfully" -Level SUCCESS -Component ORCHESTRATOR
+    Write-Host "  ✅ Main configuration loaded successfully" -ForegroundColor Green
+    Write-Host "  ✅ Logging configuration loaded successfully" -ForegroundColor Green
     
-    Write-Host "  ✓ Logging configuration loaded" -ForegroundColor Green
-    Write-Log "Logging configuration loaded successfully" -Level SUCCESS -Component ORCHESTRATOR
-}
-catch {
-    Write-Error "Failed to initialize configuration: $_"
-    exit 1
-}
-
-# Load app configurations
-try {
+    # Load app configurations for dependency validation
     $BloatwareLists = Get-BloatwareConfiguration
     $EssentialApps = Get-EssentialAppsConfiguration
     
     $totalBloatware = ($BloatwareLists.Values | Measure-Object -Sum { $_.Count }).Sum
     $totalEssentialApps = ($EssentialApps.Values | Measure-Object -Sum { $_.Count }).Sum
     
-    Write-Host "  ✓ Bloatware lists: $($BloatwareLists.Keys.Count) categories, $totalBloatware total entries" -ForegroundColor Green
-    Write-Host "  ✓ Essential apps: $($EssentialApps.Keys.Count) categories, $totalEssentialApps total entries" -ForegroundColor Green
-}
-catch {
-    Write-Error "Failed to load app configurations: $_"
+    Write-Host "  📋 Bloatware lists: $($BloatwareLists.Keys.Count) categories, $totalBloatware total entries" -ForegroundColor Green
+    Write-Host "  📱 Essential apps: $($EssentialApps.Keys.Count) categories, $totalEssentialApps total entries" -ForegroundColor Green
+    
+} catch {
+    Write-Host "  ❌ Configuration loading failed: $_" -ForegroundColor Red
     exit 1
 }
 
 #endregion
 
-#region Task Definitions
+#region Enhanced Module Registration with Dependencies
 
-Write-Host "`nRegistering maintenance tasks..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "🏗️  Enhanced Module Registration with Dependency Analysis:" -ForegroundColor Yellow
 
-# Define available maintenance tasks
-$MaintenanceTasks = @(
+# Create module executor
+# Convert PSCustomObject to hashtable for compatibility
+if ($MainConfig -is [PSCustomObject]) {
+    $configHash = @{}
+    $MainConfig.PSObject.Properties | ForEach-Object { $configHash[$_.Name] = $_.Value }
+    $MainConfig = $configHash
+}
+$moduleExecutor = New-ModuleExecutor -Configuration $MainConfig -DryRun $DryRun
+
+# Define enhanced module manifests with explicit dependencies
+$ModuleManifests = @(
     @{
         Name = 'SystemInventory'
+        Version = '1.0.0'
         Description = 'Collect comprehensive system information and generate inventory reports'
-        ModulePath = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
-        Function = 'Get-SystemInventory'
         Type = 'Type1'
         Category = 'Inventory'
+        ModulePath = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
+        EntryFunction = 'Get-SystemInventory'
+        Dependencies = @()  # No dependencies - foundational module
+        RequiresElevation = $false
+        TimeoutSeconds = 180
+        ConfigurationDependencies = @()
     },
     @{
         Name = 'BloatwareDetection'
+        Version = '1.0.0'
         Description = 'Scan for bloatware applications and system components'
-        ModulePath = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
-        Function = 'Find-InstalledBloatware'
         Type = 'Type1'
         Category = 'Detection'
-    },
-    @{
-        Name = 'BloatwareRemoval'
-        Description = 'Remove detected bloatware applications using multiple methods'
-        ModulePath = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
-        Function = 'Remove-DetectedBloatware'
-        Type = 'Type2'
-        Category = 'Cleanup'
-    },
-    @{
-        Name = 'EssentialApps'
-        Description = 'Install essential applications from curated lists'
-        ModulePath = Join-Path $ModulesPath 'type2\EssentialApps.psm1'
-        Function = 'Install-EssentialApplications'
-        Type = 'Type2'
-        Category = 'Installation'
-    },
-    @{
-        Name = 'WindowsUpdates'
-        Description = 'Check for and install Windows updates'
-        ModulePath = Join-Path $ModulesPath 'type2\WindowsUpdates.psm1'
-        Function = 'Install-WindowsUpdates'
-        Type = 'Type2'
-        Category = 'Updates'
-    },
-    @{
-        Name = 'TelemetryDisable'
-        Description = 'Disable Windows telemetry and privacy-invasive features'
-        ModulePath = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
-        Function = 'Disable-WindowsTelemetry'
-        Type = 'Type2'
-        Category = 'Privacy'
+        ModulePath = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
+        EntryFunction = 'Find-InstalledBloatware'
+        Dependencies = @('SystemInventory')  # Depends on system inventory for comprehensive scanning
+        RequiresElevation = $false
+        TimeoutSeconds = 300
+        ConfigurationDependencies = @('bloatware-lists')
     },
     @{
         Name = 'SecurityAudit'
+        Version = '1.0.0'
         Description = 'Perform security audit and apply hardening recommendations'
-        ModulePath = Join-Path $ModulesPath 'type1\SecurityAudit.psm1'
-        Function = 'Start-SecurityAudit'
         Type = 'Type1'
         Category = 'Security'
+        ModulePath = Join-Path $ModulesPath 'type1\SecurityAudit.psm1'
+        EntryFunction = 'Start-SecurityAudit'
+        Dependencies = @('SystemInventory')  # Uses system info for context
+        RequiresElevation = $false
+        TimeoutSeconds = 240
+        ConfigurationDependencies = @()
+    },
+    @{
+        Name = 'BloatwareRemoval'
+        Version = '1.0.0'
+        Description = 'Remove detected bloatware applications using multiple methods'
+        Type = 'Type2'
+        Category = 'Cleanup'
+        ModulePath = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
+        EntryFunction = 'Remove-DetectedBloatware'
+        Dependencies = @('BloatwareDetection')  # Must run after detection
+        RequiresElevation = $true
+        TimeoutSeconds = 600
+        ConfigurationDependencies = @('bloatware-lists')
+    },
+    @{
+        Name = 'EssentialApps'
+        Version = '1.0.0'
+        Description = 'Install essential applications from curated lists'
+        Type = 'Type2'
+        Category = 'Installation'
+        ModulePath = Join-Path $ModulesPath 'type2\EssentialApps.psm1'
+        EntryFunction = 'Install-EssentialApplications'
+        Dependencies = @('SystemInventory')  # Uses system info to avoid conflicts
+        RequiresElevation = $true
+        TimeoutSeconds = 1800  # 30 minutes for installations
+        ConfigurationDependencies = @('essential-apps')
+    },
+    @{
+        Name = 'WindowsUpdates'
+        Version = '1.0.0'
+        Description = 'Check for and install Windows updates'
+        Type = 'Type2'
+        Category = 'Updates'
+        ModulePath = Join-Path $ModulesPath 'type2\WindowsUpdates.psm1'
+        EntryFunction = 'Install-WindowsUpdates'
+        Dependencies = @()  # Independent operation
+        RequiresElevation = $true
+        TimeoutSeconds = 3600  # 60 minutes for updates
+        ConfigurationDependencies = @()
+    },
+    @{
+        Name = 'TelemetryDisable'
+        Version = '1.0.0'
+        Description = 'Disable Windows telemetry and privacy-invasive features'
+        Type = 'Type2'
+        Category = 'Privacy'
+        ModulePath = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
+        EntryFunction = 'Disable-WindowsTelemetry'
+        Dependencies = @()  # Independent operation
+        RequiresElevation = $true
+        TimeoutSeconds = 300
+        ConfigurationDependencies = @()
     },
     @{
         Name = 'SystemOptimization'
+        Version = '1.0.0'
         Description = 'Apply performance optimizations and cleanup temporary files'
-        ModulePath = Join-Path $ModulesPath 'type2\SystemOptimization.psm1'
-        Function = 'Optimize-SystemPerformance'
         Type = 'Type2'
         Category = 'Optimization'
+        ModulePath = Join-Path $ModulesPath 'type2\SystemOptimization.psm1'
+        EntryFunction = 'Optimize-SystemPerformance'
+        Dependencies = @('SystemInventory')  # Uses system info for optimization decisions
+        RequiresElevation = $true
+        TimeoutSeconds = 600
+        ConfigurationDependencies = @()
     },
     @{
         Name = 'ReportGeneration'
+        Version = '1.0.0'
         Description = 'Generate comprehensive HTML and text reports of all operations'
-        ModulePath = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
-        Function = 'New-MaintenanceReport'
         Type = 'Type1'
         Category = 'Reporting'
+        ModulePath = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
+        EntryFunction = 'New-MaintenanceReport'
+        Dependencies = @('SystemInventory', 'SecurityAudit')  # Aggregates results from other modules
+        RequiresElevation = $false
+        TimeoutSeconds = 120
+        ConfigurationDependencies = @()
     }
 )
 
-# Filter tasks based on configuration
-$AvailableTasks = @()
-foreach ($task in $MaintenanceTasks) {
-    $skipProperty = "skip$($task.Name)"
-    if ($MainConfig.modules.PSObject.Properties.Name -contains $skipProperty) {
-        if (-not $MainConfig.modules.$skipProperty) {
-            $AvailableTasks += $task
-        } else {
-            Write-Host "  ⊘ Skipped: $($task.Name) (disabled in configuration)" -ForegroundColor DarkGray
-        }
-    } else {
-        $AvailableTasks += $task
-    }
-}
-
-Write-Host "  ✓ Registered $($AvailableTasks.Count) available tasks" -ForegroundColor Green
-
-#endregion
-
-#region Execution Mode Selection
-
-$ExecutionParams = @{
-    Mode = 'Execute'
-    DryRun = $false
-    SelectedTasks = $AvailableTasks
-}
-
-if (-not $NonInteractive) {
-    Write-Host "`nStarting interactive mode..." -ForegroundColor Yellow
-    
-    # Configure menu system
-    Set-MenuConfiguration -CountdownSeconds 20
-    
-    # Show hierarchical execution menu system (only if TaskNumbers not specified)
-    if (-not $TaskNumbers) {
-        Write-Host "`nPresenting hierarchical execution options with 20-second countdowns..." -ForegroundColor Cyan
-        Write-Host "Each menu will automatically select the default option after 20 seconds if no input is provided.`n" -ForegroundColor Gray
-        
-        $executionSelection = Show-HierarchicalExecutionMenu -AvailableTasks $AvailableTasks
-        
-        # Apply the selection results
-        $ExecutionParams.DryRun = $executionSelection.DryRun
-        $ExecutionParams.SelectedTasks = $executionSelection.Tasks
-        
-        Write-Host "`nFinal Execution Configuration:" -ForegroundColor Yellow
-        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
-        Write-Host "  Execution Mode: " -NoNewline -ForegroundColor Gray
-        if ($ExecutionParams.DryRun) {
-            Write-Host "DRY-RUN SIMULATION" -ForegroundColor Blue
-        } else {
-            Write-Host "LIVE EXECUTION" -ForegroundColor Green
-        }
-        Write-Host "  Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -ForegroundColor Gray
-        if ($executionSelection.SelectionType -eq 'Specific') {
-            Write-Host "  Task Numbers: $($executionSelection.TaskNumbers -join ', ')" -ForegroundColor Gray
-        }
-        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
-        
-    } else {
-        # TaskNumbers parameter provided - use simplified selection
-        Write-Host "`nTask numbers specified via parameter - using simplified selection..." -ForegroundColor Gray
-        
-        # Show simple execution mode menu for TaskNumbers scenario
-        Write-Host "`nPlease select execution mode for specified tasks:" -ForegroundColor Yellow
-        Write-Host "  [1] Normal Execution " -ForegroundColor Green -NoNewline
-        Write-Host "[DEFAULT]" -ForegroundColor Cyan
-        Write-Host "  [2] Dry-Run Execution" -ForegroundColor Blue
-        
-        $selection = Start-CountdownSelection -CountdownSeconds 20 -DefaultOption 1 -OptionsCount 2
-        $ExecutionParams.DryRun = ($selection -eq 2)
-        
-        Write-Host ""
-        if ($ExecutionParams.DryRun) {
-            Write-Host "✓ Selected: Dry-Run Execution for specified tasks" -ForegroundColor Blue
-        } else {
-            Write-Host "✓ Selected: Normal Execution for specified tasks" -ForegroundColor Green
-        }
-    }
-} else {
-    Write-Host "`nNon-interactive mode enabled" -ForegroundColor Yellow
-    if ($DryRun) {
-        $ExecutionParams.DryRun = $true
-        Write-Host "  ✓ Dry-run mode enabled" -ForegroundColor Blue
-    }
-}
-
-# Handle TaskNumbers parameter
-if ($TaskNumbers) {
+# Register all modules and validate dependencies
+$registeredModules = @()
+foreach ($manifestData in $ModuleManifests) {
     try {
-        $taskNumbersArray = $TaskNumbers -split ',' | ForEach-Object { [int]$_.Trim() }
-        $selectedTasks = @()
+        # Validate module file exists
+        if (-not (Test-Path $manifestData.ModulePath)) {
+            Write-Host "  ⚠️  Module file not found: $($manifestData.Name) at $($manifestData.ModulePath)" -ForegroundColor Yellow
+            continue
+        }
         
-        foreach ($taskNum in $taskNumbersArray) {
-            if ($taskNum -ge 1 -and $taskNum -le $AvailableTasks.Count) {
-                $selectedTasks += $AvailableTasks[$taskNum - 1]
-            } else {
-                Write-Warning "Invalid task number: $taskNum (valid range: 1-$($AvailableTasks.Count))"
+        # Validate configuration dependencies
+        $configErrors = @()
+        foreach ($configDep in $manifestData.ConfigurationDependencies) {
+            $configPath = Join-Path $ConfigPath $configDep
+            if (-not (Test-Path $configPath)) {
+                $configErrors += "Missing configuration: $configDep"
             }
         }
         
-        $ExecutionParams.SelectedTasks = $selectedTasks
-        Write-Host "  ✓ Task selection: $($taskNumbersArray -join ', ')" -ForegroundColor Green
+        if ($configErrors.Count -gt 0) {
+            Write-Host "  ⚠️  Configuration dependencies missing for $($manifestData.Name): $($configErrors -join ', ')" -ForegroundColor Yellow
+        }
+        
+        # Create and register manifest
+        $manifest = New-ModuleManifest -Properties $manifestData
+        $moduleExecutor.RegisterModule($manifest)
+        $registeredModules += $manifest
+        
+        $depStr = if ($manifest.Dependencies.Count -gt 0) { " (depends: $($manifest.Dependencies -join ', '))" } else { " (no dependencies)" }
+        $elevStr = if ($manifest.RequiresElevation) { " [ADMIN]" } else { " [USER]" }
+        
+        Write-Host "  ✅ $($manifest.Name)$elevStr$depStr" -ForegroundColor Green
+        
+        if ($EnableDetailedLogging) {
+            Write-Host "    📋 Timeout: $($manifest.TimeoutSeconds)s, Config deps: $($manifest.ConfigurationDependencies -join ', ')" -ForegroundColor Gray
+        }
+        
+    } catch {
+        Write-Host "  ❌ Failed to register module $($manifestData.Name): $_" -ForegroundColor Red
     }
-    catch {
-        Write-Error "Invalid TaskNumbers parameter format: $TaskNumbers"
+}
+
+Write-Host "  📊 Total registered modules: $($registeredModules.Count)" -ForegroundColor Cyan
+
+#endregion
+
+#region Module Selection & Execution Planning
+
+Write-Host ""
+Write-Host "🎯 Module Selection & Execution Planning:" -ForegroundColor Yellow
+
+$selectedModules = @()
+
+if ($ModuleName) {
+    # Single module execution
+    Write-Host "  🔍 Debug: Looking for module '$ModuleName' among $($registeredModules.Count) registered modules" -ForegroundColor Gray
+    $selectedModule = $registeredModules | Where-Object { $_.Name -eq $ModuleName }
+    if ($selectedModule) {
+        $selectedModules = @($ModuleName)
+        Write-Host "  🎯 Single module selected: $ModuleName" -ForegroundColor Cyan
+    } else {
+        Write-Host "  ❌ Module not found: $ModuleName" -ForegroundColor Red
+        Write-Host "  Available modules: $($registeredModules.Name -join ', ')" -ForegroundColor Gray
         exit 1
     }
+} elseif ($TaskNumbers) {
+    # Task number selection (backward compatibility)
+    $taskNums = $TaskNumbers.Split(',') | ForEach-Object { $_.Trim() }
+    $selectedModules = @()
+    foreach ($num in $taskNums) {
+        if ([int]$num -le $registeredModules.Count) {
+            $selectedModules += $registeredModules[[int]$num - 1].Name
+        }
+    }
+    Write-Host "  🔢 Selected by task numbers: $($selectedModules -join ', ')" -ForegroundColor Cyan
+} elseif ($NonInteractive) {
+    # All modules in non-interactive mode
+    $selectedModules = $registeredModules.Name
+    Write-Host "  🤖 Non-interactive mode: All modules selected" -ForegroundColor Cyan
+} else {
+    # Interactive selection (simplified for now)
+    Write-Host "  🖱️  Interactive mode: All modules selected (enhanced UI coming soon)" -ForegroundColor Cyan
+    $selectedModules = $registeredModules.Name
+}
+
+Write-Host "  📋 Modules to execute: $($selectedModules.Count)" -ForegroundColor Green
+if ($EnableDetailedLogging) {
+    Write-Host "  📝 Module list: $($selectedModules -join ' → ')" -ForegroundColor Gray
 }
 
 #endregion
 
-#region Task Execution
+#region Enhanced Module Execution
 
-Write-Host "`nStarting maintenance execution..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "🚀 Enhanced Module Execution Engine:" -ForegroundColor Yellow
+Write-Host "══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 
-$executionMode = if ($ExecutionParams.DryRun) { "DRY-RUN" } else { "LIVE" }
-Write-Host "Execution Mode: $executionMode" -ForegroundColor $(if ($ExecutionParams.DryRun) { 'Blue' } else { 'Green' })
-Write-Host "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -ForegroundColor Cyan
-
-if ($ExecutionParams.SelectedTasks.Count -eq 0) {
-    Write-Warning "No tasks selected for execution"
-    exit 0
-}
-
-# Show final confirmation for system modification tasks
-$type2Tasks = $ExecutionParams.SelectedTasks | Where-Object { $_.Type -eq 'Type2' }
-if ($type2Tasks.Count -gt 0 -and -not $ExecutionParams.DryRun -and -not $NonInteractive) {
-    $confirmMessage = "About to execute $($type2Tasks.Count) system modification task(s). Continue?"
-    $confirmed = Show-ConfirmationDialog -Message $confirmMessage -CountdownSeconds 10
-    if (-not $confirmed) {
-        Write-Host "Operation cancelled by user" -ForegroundColor Yellow
-        exit 0
-    }
-}
-
-# Initialize execution tracking
-$TaskResults = @()
-$StartTime = Get-Date
-
-Write-Host "`nExecuting tasks..." -ForegroundColor Yellow
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-
-for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
-    $task = $ExecutionParams.SelectedTasks[$i]
-    $taskNumber = $i + 1
-    $totalTasks = $ExecutionParams.SelectedTasks.Count
+try {
+    # Execute modules with full dependency management
+    $executionResults = $moduleExecutor.ExecuteAllModules($selectedModules)
     
     Write-Host ""
-    Write-Host "[$taskNumber/$totalTasks] $($task.Name)" -ForegroundColor White -BackgroundColor DarkBlue
-    Write-Host "Description: $($task.Description)" -ForegroundColor Gray
-    Write-Host "Type: $($task.Type) | Category: $($task.Category)" -ForegroundColor Gray
+    Write-Host "📊 Execution Results Summary:" -ForegroundColor Yellow
+    Write-Host "────────────────────────────────" -ForegroundColor DarkCyan
     
-    if ($ExecutionParams.DryRun) {
-        Write-Host "Mode: DRY-RUN (simulation)" -ForegroundColor Blue
-    }
-    
-    $taskStartTime = Get-Date
-    $taskResult = @{
-        TaskName = $task.Name
-        Description = $task.Description
-        Type = $task.Type
-        Category = $task.Category
-        StartTime = $taskStartTime
-        Success = $false
-        DryRun = $ExecutionParams.DryRun
-        Output = ''
-        Error = $null
-        Duration = $null
-    }
-    
-    try {
-        # Check if module exists and load it
-        if (Test-Path $task.ModulePath) {
-            Import-Module $task.ModulePath -Force -ErrorAction Stop
-            Write-Host "  ✓ Module loaded: $($task.ModulePath | Split-Path -Leaf)" -ForegroundColor Green
-        } else {
-            throw "Module not found: $($task.ModulePath)"
+    foreach ($result in $executionResults) {
+        $statusIcon = switch ($result.CompletionStatus) {
+            'Success' { '✅' }
+            'Failed' { '❌' }
+            'Timeout' { '⏱️' }
+            'Cancelled' { '🚫' }
+            'DependencyFailure' { '🔗' }
+            default { '❓' }
         }
         
-        # Execute the task function
-        if ($ExecutionParams.DryRun) {
-            Write-Host "  ▶ Simulating: $($task.Function)" -ForegroundColor Blue
-            # In dry-run mode, we could call with -WhatIf parameter if supported
-            $result = "DRY-RUN: Task would be executed"
-        } else {
-            Write-Host "  ▶ Executing: $($task.Function)" -ForegroundColor Green
-            
-            # Special handling for ReportGeneration to pass TaskResults from previous tasks
-            if ($task.Function -eq 'New-MaintenanceReport') {
-                # Pass the collected TaskResults from previous tasks (excluding the current ReportGeneration task)
-                $previousTaskResults = $TaskResults | Where-Object { $_.TaskName -ne 'ReportGeneration' }
-                # Let ReportGeneration module handle path logic (HTML in root, JSON/TXT in reports)
-                $result = & $task.Function -TaskResults $previousTaskResults -Configuration $MainConfig
-            } else {
-                $result = & $task.Function
-            }
+        $statusColor = switch ($result.CompletionStatus) {
+            'Success' { 'Green' }
+            'Failed' { 'Red' }
+            'Timeout' { 'Yellow' }
+            'Cancelled' { 'Gray' }
+            'DependencyFailure' { 'Magenta' }
+            default { 'White' }
         }
         
-        $taskResult.Success = $true
-        $taskResult.Output = $result
-        Write-Host "  ✓ Completed successfully" -ForegroundColor Green
+        Write-Host "  $statusIcon " -NoNewline
+        Write-Host "$($result.ModuleName) " -NoNewline -ForegroundColor White
+        Write-Host "($([math]::Round($result.DurationSeconds, 2))s) " -NoNewline -ForegroundColor Gray
+        Write-Host "- $($result.CompletionStatus)" -ForegroundColor $statusColor
         
-    }
-    catch {
-        $taskResult.Success = $false
-        $taskResult.Error = $_.Exception.Message
-        
-        # Provide specific guidance for privilege-related failures
-        if ($_.Exception.Message -like "*administrator*" -or $_.Exception.Message -like "*elevated*" -or $_.Exception.Message -like "*privileges*") {
-            Write-Host "  ✗ Failed: Insufficient privileges" -ForegroundColor Red
-            Write-Host "    💡 Solution: Right-click script.bat and select 'Run as administrator'" -ForegroundColor Yellow
-            Write-Log "Task $($task.Name) failed due to insufficient privileges: $($_.Exception.Message)" -Level ERROR -Component ORCHESTRATOR
-        } else {
-            Write-Host "  ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Log "Task $($task.Name) failed: $($_.Exception.Message)" -Level ERROR -Component ORCHESTRATOR
+        if ($result.Error -and $EnableDetailedLogging) {
+            Write-Host "    💬 Error: $($result.Error)" -ForegroundColor Red
         }
         
-        # Continue with remaining tasks instead of stopping execution
-        Write-Host "    ⏭️  Continuing with remaining tasks..." -ForegroundColor Gray
+        if ($result.ConfigurationErrors.Count -gt 0) {
+            Write-Host "    ⚠️  Config Issues: $($result.ConfigurationErrors -join ', ')" -ForegroundColor Yellow
+        }
     }
-    finally {
-        $taskResult.Duration = ((Get-Date) - $taskStartTime).TotalSeconds
-        $TaskResults += $taskResult
-        
-        Write-Host "  Duration: $([math]::Round($taskResult.Duration, 2)) seconds" -ForegroundColor Gray
-    }
+    
+} catch {
+    Write-Host "❌ Critical execution engine failure: $_" -ForegroundColor Red
+    exit 1
 }
 
 #endregion
 
-#region Execution Summary
+#region Enhanced Execution Summary
 
 Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "    EXECUTION SUMMARY" -ForegroundColor White -BackgroundColor DarkBlue  
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "║                                            ENHANCED EXECUTION SUMMARY                                                       ║" -ForegroundColor Cyan
+Write-Host "╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 
 $totalDuration = ((Get-Date) - $StartTime).TotalSeconds
-$successfulTasks = ($TaskResults | Where-Object { $_.Success }).Count
-$failedTasks = ($TaskResults | Where-Object { -not $_.Success }).Count
+$successfulModules = ($executionResults | Where-Object { $_.Success }).Count
+$failedModules = ($executionResults | Where-Object { -not $_.Success }).Count
+$dependencyFailures = ($executionResults | Where-Object { $_.CompletionStatus -eq 'DependencyFailure' }).Count
+$timeouts = ($executionResults | Where-Object { $_.CompletionStatus -eq 'Timeout' }).Count
 
 Write-Host ""
-Write-Host "Execution Mode: " -NoNewline -ForegroundColor Gray
-Write-Host $executionMode -ForegroundColor $(if ($ExecutionParams.DryRun) { 'Blue' } else { 'Green' })
-Write-Host "Total Duration: " -NoNewline -ForegroundColor Gray  
-Write-Host "$([math]::Round($totalDuration, 2)) seconds" -ForegroundColor White
-Write-Host "Tasks Executed: " -NoNewline -ForegroundColor Gray
-Write-Host "$($TaskResults.Count)" -ForegroundColor White
-Write-Host "Successful: " -NoNewline -ForegroundColor Gray
-Write-Host "$successfulTasks" -ForegroundColor Green
-Write-Host "Failed: " -NoNewline -ForegroundColor Gray
-Write-Host "$failedTasks" -ForegroundColor $(if ($failedTasks -gt 0) { 'Red' } else { 'Green' })
+Write-Host "📊 Overall Statistics:" -ForegroundColor Yellow
+Write-Host "  🕒 Total Duration: $([math]::Round($totalDuration, 2)) seconds" -ForegroundColor White
+Write-Host "  📦 Modules Executed: $($executionResults.Count)" -ForegroundColor White
+Write-Host "  ✅ Successful: $successfulModules" -ForegroundColor Green
+Write-Host "  ❌ Failed: $failedModules" -ForegroundColor $(if ($failedModules -gt 0) { 'Red' } else { 'Green' })
+Write-Host "  🔗 Dependency Failures: $dependencyFailures" -ForegroundColor $(if ($dependencyFailures -gt 0) { 'Magenta' } else { 'Green' })
+Write-Host "  ⏱️ Timeouts: $timeouts" -ForegroundColor $(if ($timeouts -gt 0) { 'Yellow' } else { 'Green' })
 
-Write-Host ""
-Write-Host "Task Results:" -ForegroundColor Yellow
-Write-Host "─────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
-
-foreach ($result in $TaskResults) {
-    $status = if ($result.Success) { '✓' } else { '✗' }
-    $statusColor = if ($result.Success) { 'Green' } else { 'Red' }
-    $durationText = "$([math]::Round($result.Duration, 2))s"
-    
-    Write-Host "  $status " -NoNewline -ForegroundColor $statusColor
-    Write-Host "$($result.TaskName)" -NoNewline -ForegroundColor White
-    Write-Host " ($durationText)" -ForegroundColor Gray
-    
-    if (-not $result.Success -and $result.Error) {
-        Write-Host "    Error: $($result.Error)" -ForegroundColor Red
-    }
+if ($executionResults.Count -gt 0) {
+    $successRate = [math]::Round(($successfulModules / $executionResults.Count) * 100, 1)
+    Write-Host "  📈 Success Rate: $successRate%" -ForegroundColor $(if ($successRate -ge 80) { 'Green' } elseif ($successRate -ge 60) { 'Yellow' } else { 'Red' })
 }
 
-# Save execution results
-$executionSummary = @{
-    ExecutionMode = $executionMode
+# Save enhanced execution summary
+$enhancedSummary = @{
     StartTime = $StartTime
     EndTime = Get-Date
     TotalDuration = $totalDuration
-    TasksExecuted = $TaskResults.Count
-    SuccessfulTasks = $successfulTasks
-    FailedTasks = $failedTasks
-    TaskResults = $TaskResults
+    ExecutionMode = if ($DryRun) { 'DRY-RUN' } else { 'LIVE' }
+    ModulesExecuted = $executionResults.Count
+    SuccessfulModules = $successfulModules
+    FailedModules = $failedModules
+    DependencyFailures = $dependencyFailures
+    Timeouts = $timeouts
+    SuccessRate = if ($executionResults.Count -gt 0) { ($successfulModules / $executionResults.Count) * 100 } else { 0 }
     Configuration = $MainConfig
+    ExecutionResults = $executionResults
+    DependencyGraph = $moduleExecutor.DependencyResolver.DependencyGraph
 }
 
-$summaryPath = Join-Path $ReportsDir "execution-summary-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
-$executionSummary | ConvertTo-Json -Depth 10 | Out-File -FilePath $summaryPath -Encoding UTF8
+$summaryPath = Join-Path $ReportsDir "enhanced-execution-summary-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+try {
+    $enhancedSummary | ConvertTo-Json -Depth 10 | Set-Content -Path $summaryPath -Encoding UTF8
+    Write-Host ""
+    Write-Host "📄 Enhanced execution summary saved: $summaryPath" -ForegroundColor Cyan
+} catch {
+    Write-Host "⚠️  Could not save execution summary: $_" -ForegroundColor Yellow
+}
 
 Write-Host ""
-Write-Host "Execution summary saved to: $summaryPath" -ForegroundColor Gray
-
-if ($failedTasks -gt 0) {
-    Write-Host ""
-    Write-Host "⚠️  Some tasks failed. Check the logs for detailed error information." -ForegroundColor Yellow
-    exit 1
+if ($failedModules -eq 0 -and $dependencyFailures -eq 0 -and $timeouts -eq 0) {
+    Write-Host "🎉 All modules completed successfully with enhanced protocol!" -ForegroundColor Green
+} elseif ($successfulModules -gt 0) {
+    Write-Host "⚠️  Execution completed with some issues - see detailed logs above" -ForegroundColor Yellow
 } else {
-    Write-Host ""
-    Write-Host "🎉 All tasks completed successfully!" -ForegroundColor Green
-    exit 0
+    Write-Host "❌ Execution completed with significant failures" -ForegroundColor Red
 }
 
 #endregion
+
+# Exit with appropriate code
+exit $(if ($failedModules -gt $successfulModules) { 1 } else { 0 })
