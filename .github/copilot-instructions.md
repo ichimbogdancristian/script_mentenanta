@@ -1,6 +1,6 @@
 ### Repo overview
 
-This repository contains a Windows maintenance automation system built on a **modular architecture** with the following components:
+This repository contains a Windows maintenance automation system v2.0 built on a **modular architecture** with the following components:
 - `script.bat` — Enhanced launcher/installer wrapper that ensures elevation, installs dependencies (winget, pwsh, choco, PSWindowsUpdate), manages scheduled tasks, downloads repos, and launches the orchestrator.
 - `MaintenanceOrchestrator.ps1` — Central coordination script (PowerShell 7+ required) that loads modules, handles configuration, presents interactive menus, and orchestrates task execution.
 - **Modular System**: Specialized PowerShell modules organized by function:
@@ -9,6 +9,8 @@ This repository contains a Windows maintenance automation system built on a **mo
   - `modules/core/` — Core infrastructure (config, menus, dependencies, scheduling)
 - **Configuration System**: JSON-based configuration files for all settings and data
 - **Interactive Execution**: Menu-driven interface with dry-run capabilities and task selection
+- **Comprehensive Logging**: File-based logging with Write-Log function and HTML report generation
+- **Test Organization**: All test scripts organized in `Test/` directory for proper isolation
 
 Targets: Windows 10/11. Many operations require Administrator privileges and network access. The launcher is location-agnostic and uses self-discovery to work from any folder.
 
@@ -65,6 +67,7 @@ Targets: Windows 10/11. Many operations require Administrator privileges and net
   2. Add task entry to `$Tasks` array in `MaintenanceOrchestrator.ps1` with ModulePath, Function, Type, Category
   3. Use configuration from JSON files in `config/` directory instead of hardcoded values
   4. Support `-DryRun` parameter for Type 2 modules using `[CmdletBinding(SupportsShouldProcess)]`
+  5. Include Write-Log calls for comprehensive logging to maintenance.log
 
 - **Run the orchestrator locally (developer)**:
   - Open elevated PowerShell 7+ console: `.\MaintenanceOrchestrator.ps1`
@@ -74,6 +77,12 @@ Targets: Windows 10/11. Many operations require Administrator privileges and net
   - Follow existing module structure with `Export-ModuleMember` at end
   - Type 1 modules return data objects, Type 2 modules return success/failure booleans
   - Include proper error handling and progress reporting with colored output
+  - Use Write-Log function from ConfigManager for consistent logging
+
+- **Create test scripts**:
+  - Place all test scripts in `Test/` directory for proper organization
+  - Use descriptive names like `Test-ModuleName.ps1` or `Test-SpecificFeature.ps1`
+  - Include dry-run testing and error validation in test scripts
 
 ### What not to change without careful review
 
@@ -92,13 +101,22 @@ Targets: Windows 10/11. Many operations require Administrator privileges and net
 - `modules/core/DependencyManager.psm1` — Dependency management: `Install-AllDependencies`, `Get-DependencyStatus`, package manager detection.
 - `modules/core/TaskScheduler.psm1` — Task scheduling: `New-MaintenanceTask`, `Get-MaintenanceTasks`, Windows scheduled task automation.
 
-### Project Evolution and Archive
+### Project Evolution and Current Status
 
 This project underwent a **complete architectural transformation** from a monolithic script to a modular system:
-- **Original monolithic files** are preserved in `archive/` directory for reference
+- **Original monolithic files** are preserved in `archive/` directory for reference  
 - **Current architecture** is fully modular with specialized PowerShell modules
 - **Migration complete**: All functionality extracted from the original 11,353-line `script.ps1`
 - **Production ready**: New system is the current active implementation
+- **Recent fixes**: Version 2.0.1 resolved 5 critical bugs affecting execution:
+  - Services permission errors (WaaSMedicSvc access denied)
+  - Module dependency import issues (BloatwareDetection)
+  - Data structure mismatches (SystemInventory integration)
+  - AppX permission handling for non-elevated users
+  - Null reference protection in collection operations
+- **Enhanced logging**: Comprehensive Write-Log function with file output to maintenance.log
+- **Improved reporting**: Enhanced HTML reports with per-task details and CSS styling
+- **Test organization**: All test scripts now standardized to `Test/` directory
 
 ### If something is missing or unclear
 

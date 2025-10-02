@@ -64,6 +64,7 @@ if (-not $ScriptRoot) {
 $WorkingDirectory = $ScriptRoot
 
 Write-Host "Windows Maintenance Automation - Central Orchestrator v2.0.0" -ForegroundColor Cyan
+Write-Log "Windows Maintenance Automation - Central Orchestrator v2.0.0 started" -Level INFO -Component ORCHESTRATOR
 Write-Host "Working Directory: $WorkingDirectory" -ForegroundColor Gray
 Write-Host "Script Root: $ScriptRoot" -ForegroundColor Gray
 Write-Host "Environment WORKING_DIRECTORY: $env:WORKING_DIRECTORY" -ForegroundColor Gray
@@ -105,6 +106,9 @@ if (-not $LogFilePath) {
 }
 
 Write-Host "Log File: $LogFilePath" -ForegroundColor Gray
+
+# Set up global log file variable for Write-Log function
+$Global:MaintenanceLogFile = $LogFilePath
 
 #endregion
 
@@ -154,7 +158,10 @@ try {
     $null = Get-LoggingConfiguration  # Load logging config but don't store unused variable
     
     Write-Host "  ✓ Main configuration loaded" -ForegroundColor Green
+    Write-Log "Main configuration loaded successfully" -Level SUCCESS -Component ORCHESTRATOR
+    
     Write-Host "  ✓ Logging configuration loaded" -ForegroundColor Green
+    Write-Log "Logging configuration loaded successfully" -Level SUCCESS -Component ORCHESTRATOR
 }
 catch {
     Write-Error "Failed to initialize configuration: $_"
@@ -445,7 +452,15 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
             $result = "DRY-RUN: Task would be executed"
         } else {
             Write-Host "  ▶ Executing: $($task.Function)" -ForegroundColor Green
-            $result = & $task.Function
+            
+            # Special handling for ReportGeneration to pass TaskResults from previous tasks
+            if ($task.Function -eq 'New-MaintenanceReport') {
+                # Pass the collected TaskResults from previous tasks (excluding the current ReportGeneration task)
+                $previousTaskResults = $TaskResults | Where-Object { $_.TaskName -ne 'ReportGeneration' }
+                $result = & $task.Function -TaskResults $previousTaskResults -Configuration $MainConfig
+            } else {
+                $result = & $task.Function
+            }
         }
         
         $taskResult.Success = $true

@@ -585,6 +585,90 @@ function Merge-HashTables {
 
 #endregion
 
+#region Logging Functions
+
+<#
+.SYNOPSIS
+    Writes log messages to file and console based on logging configuration
+
+.PARAMETER Message
+    The message to log
+
+.PARAMETER Level
+    Log level (DEBUG, INFO, SUCCESS, WARN, ERROR, CRITICAL)
+
+.PARAMETER Component
+    Component name for the log entry
+
+.PARAMETER LogFilePath
+    Path to the log file (uses global variable if not specified)
+#>
+function Write-Log {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Message,
+        
+        [Parameter()]
+        [ValidateSet('DEBUG', 'INFO', 'SUCCESS', 'WARN', 'ERROR', 'CRITICAL')]
+        [string]$Level = 'INFO',
+        
+        [Parameter()]
+        [string]$Component = 'SYSTEM',
+        
+        [Parameter()]
+        [string]$LogFilePath
+    )
+    
+    try {
+        # Get logging configuration
+        $loggingConfig = Get-LoggingConfiguration
+        
+        # Check if level is enabled
+        if (-not $loggingConfig.levels.$Level.enabled) {
+            return
+        }
+        
+        # Use global log file path if not specified
+        if (-not $LogFilePath -and $Global:MaintenanceLogFile) {
+            $LogFilePath = $Global:MaintenanceLogFile
+        }
+        
+        # Format timestamp
+        $timestamp = Get-Date -Format $loggingConfig.formatting.dateTimeFormat
+        
+        # Format message
+        $formattedMessage = $loggingConfig.formatting.messageFormat -replace '\{timestamp\}', $timestamp -replace '\{level\}', $Level -replace '\{component\}', $Component -replace '\{message\}', $Message
+        
+        # Console output
+        if ($loggingConfig.logging.enableConsoleOutput) {
+            $color = $loggingConfig.levels.$Level.color
+            if ($loggingConfig.logging.coloredOutput -and $color) {
+                Write-Host $formattedMessage -ForegroundColor $color
+            } else {
+                Write-Host $formattedMessage
+            }
+        }
+        
+        # File output
+        if ($loggingConfig.logging.enableFileOutput -and $LogFilePath) {
+            # Ensure log directory exists
+            $logDir = Split-Path $LogFilePath -Parent
+            if ($logDir -and $logDir.Length -gt 0 -and -not (Test-Path $logDir)) {
+                New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Append to log file
+            $formattedMessage | Add-Content -Path $LogFilePath -Encoding UTF8
+        }
+    }
+    catch {
+        Write-Warning "Failed to write log: $_"
+    }
+}
+
+#endregion
+
 # Export module functions
 Export-ModuleMember -Function @(
     'Initialize-ConfigSystem',
@@ -594,5 +678,6 @@ Export-ModuleMember -Function @(
     'Get-EssentialAppsConfiguration',
     'Get-UnifiedBloatwareList',
     'Get-UnifiedEssentialAppsList',
-    'Save-Configuration'
+    'Save-Configuration',
+    'Write-Log'
 )
