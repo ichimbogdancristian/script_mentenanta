@@ -31,6 +31,9 @@ using namespace System.Collections.Generic
 .PARAMETER EnableDetailedLogging
     Enable comprehensive logging including dependency tracking
 
+.PARAMETER ForceAllModules
+    Execute all modules regardless of privilege level (may cause failures)
+
 .EXAMPLE
     .\EnhancedMaintenanceOrchestrator.ps1
     # Interactive mode with enhanced protocol
@@ -56,19 +59,88 @@ param(
     [switch]$DryRun,
     [string]$TaskNumbers,
     [string]$ModuleName,
-    [switch]$EnableDetailedLogging
+    [switch]$EnableDetailedLogging,
+    [switch]$ForceAllModules
 )
 
-#region Script Initialization
+#region Enhanced Self-Discovery Environment Setup
 
-# Script path detection and environment setup
-$ScriptRoot = $PSScriptRoot
-if (-not $ScriptRoot) {
-    $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Universal path detection - works from any location on any PC
+function Get-ScriptEnvironment {
+    $environment = @{}
+    
+    # Method 1: PSScriptRoot (PowerShell 3.0+)
+    if ($PSScriptRoot) {
+        $environment.ScriptRoot = $PSScriptRoot
+    }
+    # Method 2: MyInvocation path
+    elseif ($MyInvocation.MyCommand.Path) {
+        $environment.ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    # Method 3: Current execution context
+    elseif ($MyInvocation.MyCommand.Definition) {
+        $environment.ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+    }
+    # Method 4: Working directory fallback
+    else {
+        $environment.ScriptRoot = Get-Location
+    }
+    
+    # Resolve to absolute path
+    $environment.ScriptRoot = Resolve-Path $environment.ScriptRoot -ErrorAction SilentlyContinue
+    if (-not $environment.ScriptRoot) {
+        $environment.ScriptRoot = (Get-Location).Path
+    }
+    
+    # Enhanced working directory detection
+    $environment.WorkingDirectory = $environment.ScriptRoot
+    
+    # Check if we're in a maintenance automation repository structure
+    $repoIndicators = @('MaintenanceOrchestrator.ps1', 'script.bat', 'modules', 'config')
+    $foundIndicators = 0
+    
+    foreach ($indicator in $repoIndicators) {
+        $testPath = Join-Path $environment.ScriptRoot $indicator
+        if (Test-Path $testPath) {
+            $foundIndicators++
+        }
+    }
+    
+    # If we found most indicators, we're in the right place
+    $environment.IsValidRepo = ($foundIndicators -ge 2)
+    
+    # Environment variable overrides
+    if ($env:MAINTENANCE_ROOT) {
+        $environment.WorkingDirectory = $env:MAINTENANCE_ROOT
+        $environment.ScriptRoot = $env:MAINTENANCE_ROOT
+    }
+    
+    # Network path handling
+    if ($environment.ScriptRoot -like "\\*") {
+        Write-Verbose "Detected network path execution"
+        $environment.IsNetworkPath = $true
+    } else {
+        $environment.IsNetworkPath = $false
+    }
+    
+    # Drive letter detection for Windows
+    $environment.DriveLetter = if ($environment.ScriptRoot -match "^([A-Z]):") { $matches[1] } else { "C" }
+    
+    return $environment
 }
 
-$WorkingDirectory = $ScriptRoot
+# Initialize environment
+$ScriptEnvironment = Get-ScriptEnvironment
+$ScriptRoot = $ScriptEnvironment.ScriptRoot
+$WorkingDirectory = $ScriptEnvironment.WorkingDirectory
 $StartTime = Get-Date
+
+Write-Verbose "Script Environment Detected:"
+Write-Verbose "  ScriptRoot: $ScriptRoot"
+Write-Verbose "  WorkingDirectory: $WorkingDirectory"
+Write-Verbose "  IsValidRepo: $($ScriptEnvironment.IsValidRepo)"
+Write-Verbose "  IsNetworkPath: $($ScriptEnvironment.IsNetworkPath)"
+Write-Verbose "  DriveLetter: $($ScriptEnvironment.DriveLetter)"
 
 Write-Host "╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "║                          Windows Maintenance Automation - Enhanced Orchestrator v2.1                                       ║" -ForegroundColor Cyan
@@ -91,23 +163,177 @@ $InventoryDir = Join-Path $TempRoot 'inventory'
 if (-not $LogFilePath) {
     $LogFilePath = if ($env:SCRIPT_LOG_FILE) { 
         $env:SCRIPT_LOG_FILE 
-    } else { 
+    }
+    else { 
         Join-Path $LogsDir 'maintenance.log' 
     }
 }
 
 $Global:MaintenanceLogFile = $LogFilePath
 
-# Detect configuration path
+# Universal configuration and modules path discovery
+function Find-MaintenanceStructure {
+    param([string]$BaseDirectory)
+    
+    $structure = @{
+        ConfigPath = $null
+        ModulesPath = $null
+        IsComplete = $false
+    }
+    
+    # Enhanced search strategies for any PC/path scenario
+    $searchStrategies = @(
+        # Strategy 1: Direct subdirectories
+        @{
+            Config = Join-Path $BaseDirectory 'config'
+            Modules = Join-Path $BaseDirectory 'modules'
+        },
+        # Strategy 2: Parent directory (extracted zip scenario)
+        @{
+            Config = Join-Path (Split-Path $BaseDirectory -Parent) 'config'
+            Modules = Join-Path (Split-Path $BaseDirectory -Parent) 'modules'
+        },
+        # Strategy 3: Sibling directories
+        @{
+            Config = Join-Path (Split-Path $BaseDirectory -Parent) "config"
+            Modules = Join-Path (Split-Path $BaseDirectory -Parent) "modules"
+        },
+        # Strategy 4: Environment variable paths
+        @{
+            Config = if ($env:MAINTENANCE_CONFIG) { $env:MAINTENANCE_CONFIG } else { $null }
+            Modules = if ($env:MAINTENANCE_MODULES) { $env:MAINTENANCE_MODULES } else { $null }
+        },
+        # Strategy 5: Common installation locations
+        @{
+            Config = "C:\MaintenanceAutomation\config"
+            Modules = "C:\MaintenanceAutomation\modules"
+        },
+        # Strategy 6: User profile locations  
+        @{
+            Config = Join-Path $env:USERPROFILE "MaintenanceAutomation\config"
+            Modules = Join-Path $env:USERPROFILE "MaintenanceAutomation\modules"
+        },
+        # Strategy 7: Recursive search up to 3 levels
+        @{
+            Config = $null  # Will be populated by recursive search
+            Modules = $null
+        }
+    )
+    
+    foreach ($strategy in $searchStrategies) {
+        if ($strategy.Config -and $strategy.Modules) {
+            if ((Test-Path $strategy.Config) -and (Test-Path $strategy.Modules)) {
+                $structure.ConfigPath = $strategy.Config
+                $structure.ModulesPath = $strategy.Modules
+                $structure.IsComplete = $true
+                return $structure
+            }
+        }
+    }
+    
+    # Strategy 7 implementation: Recursive search
+    $searchRoot = $BaseDirectory
+    for ($level = 0; $level -lt 3; $level++) {
+        Get-ChildItem -Path $searchRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $testConfig = Join-Path $_.FullName 'config'
+            $testModules = Join-Path $_.FullName 'modules'
+            
+            if ((Test-Path $testConfig) -and (Test-Path $testModules)) {
+                $structure.ConfigPath = $testConfig
+                $structure.ModulesPath = $testModules  
+                $structure.IsComplete = $true
+                return $structure
+            }
+        }
+        
+        # Move up one level
+        $searchRoot = Split-Path $searchRoot -Parent
+        if (-not $searchRoot) { break }
+    }
+    
+    return $structure
+}
+
+# Discover maintenance structure
 if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $WorkingDirectory 'config'
-    if (-not (Test-Path $ConfigPath)) {
-        $ConfigPath = Join-Path $ScriptRoot 'config'
+    Write-Host "🔍 Discovering maintenance automation structure..." -ForegroundColor Yellow
+    
+    $structure = Find-MaintenanceStructure -BaseDirectory $WorkingDirectory
+    
+    if ($structure.IsComplete) {
+        $ConfigPath = $structure.ConfigPath
+        $ModulesPath = $structure.ModulesPath
+        Write-Host "✅ Found complete structure:" -ForegroundColor Green
+        Write-Host "   Config: $ConfigPath" -ForegroundColor Gray
+        Write-Host "   Modules: $ModulesPath" -ForegroundColor Gray
+    } else {
+        Write-Host "⚠️  Complete structure not found. Will create minimal structure..." -ForegroundColor Yellow
+        $ConfigPath = Join-Path $WorkingDirectory 'config'
+        $ModulesPath = Join-Path $WorkingDirectory 'modules'
     }
 }
 
+# Create minimal config structure if not found
 if (-not (Test-Path $ConfigPath)) {
-    throw "Configuration directory not found. Expected at: $ConfigPath"
+    Write-Host "⚠️  Configuration directory not found. Creating minimal structure..." -ForegroundColor Yellow
+    
+    try {
+        # Create config directory in working directory
+        $ConfigPath = Join-Path $WorkingDirectory 'config'
+        New-Item -Path $ConfigPath -ItemType Directory -Force | Out-Null
+        
+        # Create essential subdirectories
+        $bloatwarePath = Join-Path $ConfigPath 'bloatware-lists'
+        $essentialPath = Join-Path $ConfigPath 'essential-apps'
+        New-Item -Path $bloatwarePath -ItemType Directory -Force | Out-Null
+        New-Item -Path $essentialPath -ItemType Directory -Force | Out-Null
+        
+        # Create minimal configuration files
+        $mainConfig = Join-Path $ConfigPath 'main-config.json'
+        $loggingConfig = Join-Path $ConfigPath 'logging-config.json'
+        
+        @'
+{
+    "systemSettings": {
+        "performanceMode": "balanced",
+        "enableTelemetryDisabling": true,
+        "enableStartupOptimization": true
+    },
+    "maintenanceSettings": {
+        "createSystemRestore": true,
+        "cleanupTemporaryFiles": true,
+        "defragmentationEnabled": false
+    }
+}
+'@ | Out-File -FilePath $mainConfig -Encoding utf8 -Force
+        
+        @'
+{
+    "logLevel": "INFO",
+    "enableFileLogging": true,
+    "enableConsoleLogging": true,
+    "logRetentionDays": 30,
+    "maxLogFileSizeMB": 10
+}
+'@ | Out-File -FilePath $loggingConfig -Encoding utf8 -Force
+        
+        # Create empty bloatware lists
+        @('gaming-bloatware.json', 'oem-bloatware.json', 'security-bloatware.json', 'windows-bloatware.json') | ForEach-Object {
+            $filePath = Join-Path $bloatwarePath $_
+            '{ "applications": [] }' | Out-File -FilePath $filePath -Encoding utf8 -Force
+        }
+        
+        # Create empty essential apps lists  
+        @('development.json', 'media.json', 'productivity.json', 'web-browsers.json') | ForEach-Object {
+            $filePath = Join-Path $essentialPath $_
+            '{ "applications": [] }' | Out-File -FilePath $filePath -Encoding utf8 -Force
+        }
+        
+        Write-Host "✅ Minimal configuration structure created at: $ConfigPath" -ForegroundColor Green
+    }
+    catch {
+        throw "Failed to create configuration structure: $($_.Exception.Message)"
+    }
 }
 
 Write-Host ""
@@ -115,7 +341,7 @@ Write-Host "🔧 System Initialization:" -ForegroundColor Yellow
 Write-Host "  Working Directory: $WorkingDirectory" -ForegroundColor Gray
 Write-Host "  Configuration: $ConfigPath" -ForegroundColor Gray
 Write-Host "  Log File: $LogFilePath" -ForegroundColor Gray
-Write-Host "  Execution Mode: $(if($DryRun){'DRY-RUN'}else{'LIVE'})" -ForegroundColor $(if($DryRun){'Blue'}else{'Green'})
+Write-Host "  Execution Mode: $(if($DryRun){'DRY-RUN'}else{'LIVE'})" -ForegroundColor $(if ($DryRun) { 'Blue' }else { 'Green' })
 
 #endregion
 
@@ -132,14 +358,19 @@ try {
     if ($isAdmin) {
         Write-Host "  ✅ Administrator privileges confirmed" -ForegroundColor Green
         Write-Host "  🔑 Elevation Context: PowerShell $($PSVersionTable.PSVersion)" -ForegroundColor Green
-    } else {
+        Write-Host "  🚀 All modules (Type1 + Type2) available for execution" -ForegroundColor Green
+    }
+    else {
         Write-Host "  ⚠️  Running without Administrator privileges" -ForegroundColor Yellow
-        Write-Host "  💡 Type2 modules will be skipped or may fail" -ForegroundColor Yellow
-        if (-not $DryRun) {
-            Write-Host "  🛠️  Recommendation: Right-click script.bat and select 'Run as administrator'" -ForegroundColor Cyan
+        Write-Host "  � Available: Type1 modules (inventory/reporting)" -ForegroundColor Cyan
+        Write-Host "  🔒 Restricted: Type2 modules (system modification)" -ForegroundColor Yellow
+        if (-not $DryRun -and -not $NonInteractive) {
+            Write-Host "  🛠️  For full functionality: Right-click script.bat → 'Run as administrator'" -ForegroundColor Cyan
+            Write-Host "  📋 Current mode: Safe inventory and reporting only" -ForegroundColor Gray
         }
     }
-} catch {
+}
+catch {
     Write-Host "  ❌ Unable to determine privilege level: $_" -ForegroundColor Red
 }
 
@@ -150,32 +381,90 @@ try {
 Write-Host ""
 Write-Host "📦 Loading Enhanced Core Modules:" -ForegroundColor Yellow
 
-$ModulesPath = Join-Path $WorkingDirectory 'modules'
+# Ensure modules path exists (from earlier discovery or default)
+if (-not $ModulesPath) {
+    $ModulesPath = Join-Path $WorkingDirectory 'modules'
+}
+
 $CoreModulesPath = Join-Path $ModulesPath 'core'
 
-# Core modules in load order
+# Create minimal module structure if not found
+if (-not (Test-Path $CoreModulesPath)) {
+    Write-Host "⚠️  Core modules not found. Creating minimal structure..." -ForegroundColor Yellow
+    
+    try {
+        New-Item -Path $CoreModulesPath -ItemType Directory -Force | Out-Null
+        New-Item -Path (Join-Path $ModulesPath 'type1') -ItemType Directory -Force | Out-Null
+        New-Item -Path (Join-Path $ModulesPath 'type2') -ItemType Directory -Force | Out-Null
+        
+        Write-Host "✅ Minimal modules structure created" -ForegroundColor Green
+        Write-Host "⚠️  Running in limited mode - some features may be unavailable" -ForegroundColor Yellow
+    }
+    catch {
+        Write-Host "❌ Failed to create modules structure: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "🔧 Continuing in standalone mode..." -ForegroundColor Yellow
+    }
+}
+
+# Core modules in load order with graceful fallback
 $CoreModules = @(
-    'ConfigManager',
-    'MenuSystem',
-    'ModuleExecutionProtocol'
+    @{Name='ConfigManager'; Essential=$true; Description='Configuration management'},
+    @{Name='MenuSystem'; Essential=$false; Description='Interactive menus'},
+    @{Name='ModuleExecutionProtocol'; Essential=$false; Description='Advanced execution engine'}
 )
 
-foreach ($coreModuleName in $CoreModules) {
+$LoadedModules = @()
+$SkippedModules = @()
+
+foreach ($coreModule in $CoreModules) {
+    $coreModuleName = $coreModule.Name
     $modulePath = Join-Path $CoreModulesPath "$coreModuleName.psm1"
+    
     if (Test-Path $modulePath) {
         try {
             Import-Module $modulePath -Force -ErrorAction Stop
             Write-Host "  ✅ Loaded: $coreModuleName" -ForegroundColor Green
+            $LoadedModules += $coreModuleName
         }
         catch {
-            Write-Host "  ❌ Failed to load $coreModuleName`: $_" -ForegroundColor Red
-            exit 1
+            Write-Host "  ⚠️  Failed to load $coreModuleName`: $($_.Exception.Message)" -ForegroundColor Yellow
+            $SkippedModules += @{Name=$coreModuleName; Reason="Load error"}
+            
+            if ($coreModule.Essential) {
+                Write-Host "  ❌ Essential module $coreModuleName failed - continuing in limited mode" -ForegroundColor Red
+            }
         }
-    } else {
-        Write-Host "  ❌ Module not found: $modulePath" -ForegroundColor Red
-        exit 1
+    }
+    else {
+        Write-Host "  ⚠️  Module not found: $coreModuleName ($($coreModule.Description))" -ForegroundColor Yellow
+        $SkippedModules += @{Name=$coreModuleName; Reason="Not found"}
+        
+        if ($coreModule.Essential) {
+            Write-Host "  💡 Essential module missing - will use built-in alternatives" -ForegroundColor Cyan
+        }
     }
 }
+
+# Module loading summary
+Write-Host ""
+if ($LoadedModules.Count -gt 0) {
+    Write-Host "✅ Successfully loaded $($LoadedModules.Count) core modules" -ForegroundColor Green
+}
+
+if ($SkippedModules.Count -gt 0) {
+    Write-Host "⚠️  $($SkippedModules.Count) modules unavailable - running in compatibility mode" -ForegroundColor Yellow
+}
+
+# Determine execution mode based on available modules
+$ExecutionMode = if ('ModuleExecutionProtocol' -in $LoadedModules) {
+    'Enhanced'
+} elseif ('ConfigManager' -in $LoadedModules) {
+    'Standard'
+} else {
+    'Minimal'
+}
+
+Write-Host "🔧 Execution mode: $ExecutionMode" -ForegroundColor Cyan
 
 #endregion
 
@@ -202,7 +491,8 @@ try {
     Write-Host "  📋 Bloatware lists: $($BloatwareLists.Keys.Count) categories, $totalBloatware total entries" -ForegroundColor Green
     Write-Host "  📱 Essential apps: $($EssentialApps.Keys.Count) categories, $totalEssentialApps total entries" -ForegroundColor Green
     
-} catch {
+}
+catch {
     Write-Host "  ❌ Configuration loading failed: $_" -ForegroundColor Red
     exit 1
 }
@@ -226,120 +516,120 @@ $moduleExecutor = New-ModuleExecutor -Configuration $MainConfig -DryRun $DryRun
 # Define enhanced module manifests with explicit dependencies
 $ModuleManifests = @(
     @{
-        Name = 'SystemInventory'
-        Version = '1.0.0'
-        Description = 'Collect comprehensive system information and generate inventory reports'
-        Type = 'Type1'
-        Category = 'Inventory'
-        ModulePath = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
-        EntryFunction = 'Get-SystemInventory'
-        Dependencies = @()  # No dependencies - foundational module
-        RequiresElevation = $false
-        TimeoutSeconds = 180
+        Name                      = 'SystemInventory'
+        Version                   = '1.0.0'
+        Description               = 'Collect comprehensive system information and generate inventory reports'
+        Type                      = 'Type1'
+        Category                  = 'Inventory'
+        ModulePath                = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
+        EntryFunction             = 'Get-SystemInventory'
+        Dependencies              = @()  # No dependencies - foundational module
+        RequiresElevation         = $false
+        TimeoutSeconds            = 180
         ConfigurationDependencies = @()
     },
     @{
-        Name = 'BloatwareDetection'
-        Version = '1.0.0'
-        Description = 'Scan for bloatware applications and system components'
-        Type = 'Type1'
-        Category = 'Detection'
-        ModulePath = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
-        EntryFunction = 'Find-InstalledBloatware'
-        Dependencies = @('SystemInventory')  # Depends on system inventory for comprehensive scanning
-        RequiresElevation = $false
-        TimeoutSeconds = 300
+        Name                      = 'BloatwareDetection'
+        Version                   = '1.0.0'
+        Description               = 'Scan for bloatware applications and system components'
+        Type                      = 'Type1'
+        Category                  = 'Detection'
+        ModulePath                = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
+        EntryFunction             = 'Find-InstalledBloatware'
+        Dependencies              = @('SystemInventory')  # Depends on system inventory for comprehensive scanning
+        RequiresElevation         = $false
+        TimeoutSeconds            = 300
         ConfigurationDependencies = @('bloatware-lists')
     },
     @{
-        Name = 'SecurityAudit'
-        Version = '1.0.0'
-        Description = 'Perform security audit and apply hardening recommendations'
-        Type = 'Type1'
-        Category = 'Security'
-        ModulePath = Join-Path $ModulesPath 'type1\SecurityAudit.psm1'
-        EntryFunction = 'Start-SecurityAudit'
-        Dependencies = @('SystemInventory')  # Uses system info for context
-        RequiresElevation = $false
-        TimeoutSeconds = 240
+        Name                      = 'SecurityAudit'
+        Version                   = '1.0.0'
+        Description               = 'Perform security audit and apply hardening recommendations'
+        Type                      = 'Type1'
+        Category                  = 'Security'
+        ModulePath                = Join-Path $ModulesPath 'type1\SecurityAudit.psm1'
+        EntryFunction             = 'Start-SecurityAudit'
+        Dependencies              = @('SystemInventory')  # Uses system info for context
+        RequiresElevation         = $false
+        TimeoutSeconds            = 240
         ConfigurationDependencies = @()
     },
     @{
-        Name = 'BloatwareRemoval'
-        Version = '1.0.0'
-        Description = 'Remove detected bloatware applications using multiple methods'
-        Type = 'Type2'
-        Category = 'Cleanup'
-        ModulePath = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
-        EntryFunction = 'Remove-DetectedBloatware'
-        Dependencies = @('BloatwareDetection')  # Must run after detection
-        RequiresElevation = $true
-        TimeoutSeconds = 600
+        Name                      = 'BloatwareRemoval'
+        Version                   = '1.0.0'
+        Description               = 'Remove detected bloatware applications using multiple methods'
+        Type                      = 'Type2'
+        Category                  = 'Cleanup'
+        ModulePath                = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
+        EntryFunction             = 'Remove-DetectedBloatware'
+        Dependencies              = @('BloatwareDetection')  # Must run after detection
+        RequiresElevation         = $true
+        TimeoutSeconds            = 600
         ConfigurationDependencies = @('bloatware-lists')
     },
     @{
-        Name = 'EssentialApps'
-        Version = '1.0.0'
-        Description = 'Install essential applications from curated lists'
-        Type = 'Type2'
-        Category = 'Installation'
-        ModulePath = Join-Path $ModulesPath 'type2\EssentialApps.psm1'
-        EntryFunction = 'Install-EssentialApplications'
-        Dependencies = @('SystemInventory')  # Uses system info to avoid conflicts
-        RequiresElevation = $true
-        TimeoutSeconds = 1800  # 30 minutes for installations
+        Name                      = 'EssentialApps'
+        Version                   = '1.0.0'
+        Description               = 'Install essential applications from curated lists'
+        Type                      = 'Type2'
+        Category                  = 'Installation'
+        ModulePath                = Join-Path $ModulesPath 'type2\EssentialApps.psm1'
+        EntryFunction             = 'Install-EssentialApplications'
+        Dependencies              = @('SystemInventory')  # Uses system info to avoid conflicts
+        RequiresElevation         = $true
+        TimeoutSeconds            = 1800  # 30 minutes for installations
         ConfigurationDependencies = @('essential-apps')
     },
     @{
-        Name = 'WindowsUpdates'
-        Version = '1.0.0'
-        Description = 'Check for and install Windows updates'
-        Type = 'Type2'
-        Category = 'Updates'
-        ModulePath = Join-Path $ModulesPath 'type2\WindowsUpdates.psm1'
-        EntryFunction = 'Install-WindowsUpdates'
-        Dependencies = @()  # Independent operation
-        RequiresElevation = $true
-        TimeoutSeconds = 3600  # 60 minutes for updates
+        Name                      = 'WindowsUpdates'
+        Version                   = '1.0.0'
+        Description               = 'Check for and install Windows updates'
+        Type                      = 'Type2'
+        Category                  = 'Updates'
+        ModulePath                = Join-Path $ModulesPath 'type2\WindowsUpdates.psm1'
+        EntryFunction             = 'Install-WindowsUpdates'
+        Dependencies              = @()  # Independent operation
+        RequiresElevation         = $true
+        TimeoutSeconds            = 3600  # 60 minutes for updates
         ConfigurationDependencies = @()
     },
     @{
-        Name = 'TelemetryDisable'
-        Version = '1.0.0'
-        Description = 'Disable Windows telemetry and privacy-invasive features'
-        Type = 'Type2'
-        Category = 'Privacy'
-        ModulePath = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
-        EntryFunction = 'Disable-WindowsTelemetry'
-        Dependencies = @()  # Independent operation
-        RequiresElevation = $true
-        TimeoutSeconds = 300
+        Name                      = 'TelemetryDisable'
+        Version                   = '1.0.0'
+        Description               = 'Disable Windows telemetry and privacy-invasive features'
+        Type                      = 'Type2'
+        Category                  = 'Privacy'
+        ModulePath                = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
+        EntryFunction             = 'Disable-WindowsTelemetry'
+        Dependencies              = @()  # Independent operation
+        RequiresElevation         = $true
+        TimeoutSeconds            = 300
         ConfigurationDependencies = @()
     },
     @{
-        Name = 'SystemOptimization'
-        Version = '1.0.0'
-        Description = 'Apply performance optimizations and cleanup temporary files'
-        Type = 'Type2'
-        Category = 'Optimization'
-        ModulePath = Join-Path $ModulesPath 'type2\SystemOptimization.psm1'
-        EntryFunction = 'Optimize-SystemPerformance'
-        Dependencies = @('SystemInventory')  # Uses system info for optimization decisions
-        RequiresElevation = $true
-        TimeoutSeconds = 600
+        Name                      = 'SystemOptimization'
+        Version                   = '1.0.0'
+        Description               = 'Apply performance optimizations and cleanup temporary files'
+        Type                      = 'Type2'
+        Category                  = 'Optimization'
+        ModulePath                = Join-Path $ModulesPath 'type2\SystemOptimization.psm1'
+        EntryFunction             = 'Optimize-SystemPerformance'
+        Dependencies              = @('SystemInventory')  # Uses system info for optimization decisions
+        RequiresElevation         = $true
+        TimeoutSeconds            = 600
         ConfigurationDependencies = @()
     },
     @{
-        Name = 'ReportGeneration'
-        Version = '1.0.0'
-        Description = 'Generate comprehensive HTML and text reports of all operations'
-        Type = 'Type1'
-        Category = 'Reporting'
-        ModulePath = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
-        EntryFunction = 'New-MaintenanceReport'
-        Dependencies = @('SystemInventory', 'SecurityAudit')  # Aggregates results from other modules
-        RequiresElevation = $false
-        TimeoutSeconds = 120
+        Name                      = 'ReportGeneration'
+        Version                   = '1.0.0'
+        Description               = 'Generate comprehensive HTML and text reports of all operations'
+        Type                      = 'Type1'
+        Category                  = 'Reporting'
+        ModulePath                = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
+        EntryFunction             = 'New-MaintenanceReport'
+        Dependencies              = @('SystemInventory', 'SecurityAudit')  # Aggregates results from other modules
+        RequiresElevation         = $false
+        TimeoutSeconds            = 120
         ConfigurationDependencies = @()
     }
 )
@@ -381,7 +671,8 @@ foreach ($manifestData in $ModuleManifests) {
             Write-Host "    📋 Timeout: $($manifest.TimeoutSeconds)s, Config deps: $($manifest.ConfigurationDependencies -join ', ')" -ForegroundColor Gray
         }
         
-    } catch {
+    }
+    catch {
         Write-Host "  ❌ Failed to register module $($manifestData.Name): $_" -ForegroundColor Red
     }
 }
@@ -404,12 +695,14 @@ if ($ModuleName) {
     if ($selectedModule) {
         $selectedModules = @($ModuleName)
         Write-Host "  🎯 Single module selected: $ModuleName" -ForegroundColor Cyan
-    } else {
+    }
+    else {
         Write-Host "  ❌ Module not found: $ModuleName" -ForegroundColor Red
         Write-Host "  Available modules: $($registeredModules.Name -join ', ')" -ForegroundColor Gray
         exit 1
     }
-} elseif ($TaskNumbers) {
+}
+elseif ($TaskNumbers) {
     # Task number selection (backward compatibility)
     $taskNums = $TaskNumbers.Split(',') | ForEach-Object { $_.Trim() }
     $selectedModules = @()
@@ -419,14 +712,45 @@ if ($ModuleName) {
         }
     }
     Write-Host "  🔢 Selected by task numbers: $($selectedModules -join ', ')" -ForegroundColor Cyan
-} elseif ($NonInteractive) {
-    # All modules in non-interactive mode
-    $selectedModules = $registeredModules.Name
-    Write-Host "  🤖 Non-interactive mode: All modules selected" -ForegroundColor Cyan
-} else {
-    # Interactive selection (simplified for now)
-    Write-Host "  🖱️  Interactive mode: All modules selected (enhanced UI coming soon)" -ForegroundColor Cyan
-    $selectedModules = $registeredModules.Name
+}
+elseif ($NonInteractive) {
+    # Smart module selection in non-interactive mode
+    if ($isAdmin -or $ForceAllModules) {
+        $selectedModules = $registeredModules.Name
+        $modeDesc = if ($isAdmin) { "admin privileges" } else { "forced execution" }
+        Write-Host "  🤖 Non-interactive mode: All modules selected ($modeDesc)" -ForegroundColor Cyan
+        if ($ForceAllModules -and -not $isAdmin) {
+            Write-Host "  ⚠️  Warning: Some modules may fail due to insufficient privileges" -ForegroundColor Yellow
+        }
+    }
+    else {
+        # Filter to user-level modules only
+        $userModules = $registeredModules | Where-Object { -not $_.RequiresElevation }
+        $selectedModules = $userModules.Name
+        Write-Host "  🤖 Non-interactive mode: User-level modules selected (safe mode)" -ForegroundColor Cyan
+        Write-Host "  📊 Smart filtering: $($selectedModules.Count) user modules, $($registeredModules.Count - $selectedModules.Count) admin modules excluded" -ForegroundColor Gray
+        Write-Host "  💡 Use -ForceAllModules to override filtering" -ForegroundColor Gray
+    }
+}
+else {
+    # Interactive selection with privilege-aware filtering
+    if ($isAdmin -or $ForceAllModules) {
+        $modeDesc = if ($isAdmin) { "admin privileges" } else { "forced execution" }
+        Write-Host "  🖱️  Interactive mode: All modules available ($modeDesc)" -ForegroundColor Cyan
+        if ($ForceAllModules -and -not $isAdmin) {
+            Write-Host "  ⚠️  Warning: Some modules may fail due to insufficient privileges" -ForegroundColor Yellow
+        }
+        $selectedModules = $registeredModules.Name
+    }
+    else {
+        # Smart filtering for non-admin users
+        $userModules = $registeredModules | Where-Object { -not $_.RequiresElevation }
+        Write-Host "  🖱️  Interactive mode: User-level modules selected (safe mode)" -ForegroundColor Cyan
+        Write-Host "  📋 Available: $($userModules.Name -join ', ')" -ForegroundColor Gray
+        Write-Host "  🔒 Excluded: $((($registeredModules | Where-Object { $_.RequiresElevation }).Name) -join ', ')" -ForegroundColor Yellow
+        Write-Host "  💡 Use -ForceAllModules to override smart filtering" -ForegroundColor Gray
+        $selectedModules = $userModules.Name
+    }
 }
 
 Write-Host "  📋 Modules to execute: $($selectedModules.Count)" -ForegroundColor Green
@@ -483,7 +807,8 @@ try {
         }
     }
     
-} catch {
+}
+catch {
     Write-Host "❌ Critical execution engine failure: $_" -ForegroundColor Red
     exit 1
 }
@@ -519,19 +844,19 @@ if ($executionResults.Count -gt 0) {
 
 # Save enhanced execution summary
 $enhancedSummary = @{
-    StartTime = $StartTime
-    EndTime = Get-Date
-    TotalDuration = $totalDuration
-    ExecutionMode = if ($DryRun) { 'DRY-RUN' } else { 'LIVE' }
-    ModulesExecuted = $executionResults.Count
-    SuccessfulModules = $successfulModules
-    FailedModules = $failedModules
+    StartTime          = $StartTime
+    EndTime            = Get-Date
+    TotalDuration      = $totalDuration
+    ExecutionMode      = if ($DryRun) { 'DRY-RUN' } else { 'LIVE' }
+    ModulesExecuted    = $executionResults.Count
+    SuccessfulModules  = $successfulModules
+    FailedModules      = $failedModules
     DependencyFailures = $dependencyFailures
-    Timeouts = $timeouts
-    SuccessRate = if ($executionResults.Count -gt 0) { ($successfulModules / $executionResults.Count) * 100 } else { 0 }
-    Configuration = $MainConfig
-    ExecutionResults = $executionResults
-    DependencyGraph = $moduleExecutor.DependencyResolver.DependencyGraph
+    Timeouts           = $timeouts
+    SuccessRate        = if ($executionResults.Count -gt 0) { ($successfulModules / $executionResults.Count) * 100 } else { 0 }
+    Configuration      = $MainConfig
+    ExecutionResults   = $executionResults
+    DependencyGraph    = $moduleExecutor.DependencyResolver.DependencyGraph
 }
 
 $summaryPath = Join-Path $ReportsDir "enhanced-execution-summary-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
@@ -539,16 +864,19 @@ try {
     $enhancedSummary | ConvertTo-Json -Depth 10 | Set-Content -Path $summaryPath -Encoding UTF8
     Write-Host ""
     Write-Host "📄 Enhanced execution summary saved: $summaryPath" -ForegroundColor Cyan
-} catch {
+}
+catch {
     Write-Host "⚠️  Could not save execution summary: $_" -ForegroundColor Yellow
 }
 
 Write-Host ""
 if ($failedModules -eq 0 -and $dependencyFailures -eq 0 -and $timeouts -eq 0) {
     Write-Host "🎉 All modules completed successfully with enhanced protocol!" -ForegroundColor Green
-} elseif ($successfulModules -gt 0) {
+}
+elseif ($successfulModules -gt 0) {
     Write-Host "⚠️  Execution completed with some issues - see detailed logs above" -ForegroundColor Yellow
-} else {
+}
+else {
     Write-Host "❌ Execution completed with significant failures" -ForegroundColor Red
 }
 

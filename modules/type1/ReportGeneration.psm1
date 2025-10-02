@@ -125,11 +125,12 @@ function New-MaintenanceReport {
             New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
         }
         
-        # Generate HTML report (in root directory for easy access)
-        $rootDir = Join-Path $PSScriptRoot "..\.." | Resolve-Path
+        # Generate HTML report (alongside repository folder for easy access)
+        $repoRootDir = Join-Path $PSScriptRoot "..\.." | Resolve-Path
+        $parentDir = Split-Path $repoRootDir -Parent
         $htmlFilename = Split-Path $OutputPath -Leaf
-        $htmlPath = Join-Path $rootDir "$htmlFilename.html"
-        Write-Host "  📄 Creating HTML report in root directory: $htmlPath" -ForegroundColor Gray
+        $htmlPath = Join-Path $parentDir "$htmlFilename.html"
+        Write-Host "  📄 Creating HTML report alongside repository: $htmlPath" -ForegroundColor Gray
         New-HtmlReport -ReportData $reportData -OutputPath $htmlPath
         
         # Generate text report (in reports directory)
