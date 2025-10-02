@@ -937,10 +937,168 @@ function Merge-OptimizationResults {
     }
 }
 
+function Optimize-SecurityServices {
+    <#
+    .SYNOPSIS
+        Optimizes critical security services for proper Windows security
+        
+    .DESCRIPTION
+        Configures and starts critical Windows security services including:
+        - Windows Update Service (wuauserv)
+        - Windows Defender Network Inspection Service (WdNisSvc)
+        - Other security-related services for optimal system protection
+        
+    .PARAMETER DryRun
+        If specified, shows what would be changed without making actual changes
+        
+    .EXAMPLE
+        Optimize-SecurityServices
+        # Configures all security services for optimal protection
+        
+    .EXAMPLE
+        Optimize-SecurityServices -DryRun
+        # Shows what changes would be made without applying them
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [switch]$DryRun
+    )
+    
+    Assert-AdministratorPrivileges -OperationName "Security Services Optimization"
+    
+    $startTime = Get-Date
+    Write-Host "🔒 Starting security services optimization..." -ForegroundColor Cyan
+    
+    # Define critical security services and their optimal configuration
+    $securityServices = @{
+        'wuauserv' = @{
+            Name = 'Windows Update'
+            StartType = 'Manual'  # Manual is actually correct for Windows Update
+            ShouldBeRunning = $false  # Windows Update should not always be running
+            Action = 'Configure'
+        }
+        'WdNisSvc' = @{
+            Name = 'Windows Defender Network Inspection Service'
+            StartType = 'Automatic'
+            ShouldBeRunning = $true
+            Action = 'Configure'
+        }
+        'Windefend' = @{
+            Name = 'Windows Defender Antivirus Service'  
+            StartType = 'Automatic'
+            ShouldBeRunning = $true
+            Action = 'Verify'
+        }
+        'wscsvc' = @{
+            Name = 'Security Center'
+            StartType = 'Automatic'
+            ShouldBeRunning = $true  
+            Action = 'Verify'
+        }
+        'mpssvc' = @{
+            Name = 'Windows Defender Firewall'
+            StartType = 'Automatic'
+            ShouldBeRunning = $true
+            Action = 'Verify'
+        }
+    }
+    
+    $results = @{
+        ServicesConfigured = 0
+        ServicesStarted = 0
+        ServicesVerified = 0
+        Issues = @()
+        Success = $true
+    }
+    
+    foreach ($serviceName in $securityServices.Keys) {
+        $serviceConfig = $securityServices[$serviceName]
+        
+        try {
+            $service = Get-Service -Name $serviceName -ErrorAction Stop
+            $currentStartType = (Get-CimInstance -ClassName Win32_Service -Filter "Name='$serviceName'").StartMode
+            
+            Write-Host "  🔍 Checking $($serviceConfig.Name)..." -ForegroundColor Gray
+            Write-Host "    Current Status: $($service.Status), StartType: $currentStartType" -ForegroundColor Gray
+            
+            $needsConfiguration = $false
+            $needsStart = $false
+            
+            # Check if start type needs to be changed
+            if ($currentStartType -ne $serviceConfig.StartType) {
+                $needsConfiguration = $true
+                Write-Host "    ⚙️  StartType needs change: $currentStartType → $($serviceConfig.StartType)" -ForegroundColor Yellow
+            }
+            
+            # Check if service needs to be started
+            if ($serviceConfig.ShouldBeRunning -and $service.Status -ne 'Running') {
+                $needsStart = $true
+                Write-Host "    🚀 Service needs to be started" -ForegroundColor Yellow
+            }
+            
+            # Apply changes if not in dry run mode
+            if (-not $DryRun) {
+                if ($needsConfiguration) {
+                    if ($PSCmdlet.ShouldProcess($serviceConfig.Name, "Change StartType to $($serviceConfig.StartType)")) {
+                        Set-Service -Name $serviceName -StartupType $serviceConfig.StartType -ErrorAction Stop
+                        Write-Host "    ✅ StartType configured: $($serviceConfig.StartType)" -ForegroundColor Green
+                        $results.ServicesConfigured++
+                    }
+                }
+                
+                if ($needsStart) {
+                    if ($PSCmdlet.ShouldProcess($serviceConfig.Name, "Start Service")) {
+                        Start-Service -Name $serviceName -ErrorAction Stop
+                        Write-Host "    ✅ Service started successfully" -ForegroundColor Green
+                        $results.ServicesStarted++
+                    }
+                }
+                
+                if (-not $needsConfiguration -and -not $needsStart) {
+                    Write-Host "    ✅ Service already optimally configured" -ForegroundColor Green
+                    $results.ServicesVerified++
+                }
+            } else {
+                Write-Host "    💡 DRY RUN: Would configure this service" -ForegroundColor Cyan
+                if ($needsConfiguration) { $results.ServicesConfigured++ }
+                if ($needsStart) { $results.ServicesStarted++ }
+            }
+            
+        } catch {
+            $errorMsg = "Failed to configure $($serviceConfig.Name): $($_.Exception.Message)"
+            Write-Host "    ❌ $errorMsg" -ForegroundColor Red
+            $results.Issues += $errorMsg
+            $results.Success = $false
+        }
+    }
+    
+    $duration = ((Get-Date) - $startTime).TotalSeconds
+    
+    # Summary
+    Write-Host "  📊 Security Services Summary:" -ForegroundColor Cyan
+    Write-Host "    Configured: $($results.ServicesConfigured)" -ForegroundColor $(if ($results.ServicesConfigured -gt 0) {'Green'} else {'Gray'})
+    Write-Host "    Started: $($results.ServicesStarted)" -ForegroundColor $(if ($results.ServicesStarted -gt 0) {'Green'} else {'Gray'})  
+    Write-Host "    Verified: $($results.ServicesVerified)" -ForegroundColor $(if ($results.ServicesVerified -gt 0) {'Green'} else {'Gray'})
+    
+    if ($results.Issues.Count -gt 0) {
+        Write-Host "  ⚠️  Issues encountered:" -ForegroundColor Yellow
+        foreach ($issue in $results.Issues) {
+            Write-Host "    • $issue" -ForegroundColor Yellow
+        }
+    }
+    
+    $status = if ($results.Success) { "SUCCESS" } else { "PARTIAL" }
+    Write-Host "  ✅ Security services optimization completed in $([math]::Round($duration, 2))s - Status: $status" -ForegroundColor $(if ($results.Success) {'Green'} else {'Yellow'})
+    
+    return $results
+}
+
 #endregion
 
 # Export module functions
 Export-ModuleMember -Function @(
     'Optimize-SystemPerformance',
-    'Get-SystemPerformanceMetrics'
+    'Get-SystemPerformanceMetrics',
+    'Optimize-SecurityServices'
 )

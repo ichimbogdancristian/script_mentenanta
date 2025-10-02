@@ -620,6 +620,19 @@ $ModuleManifests = @(
         ConfigurationDependencies = @()
     },
     @{
+        Name                      = 'SecurityServicesOptimization'
+        Version                   = '1.0.0'
+        Description               = 'Configure and optimize critical Windows security services'
+        Type                      = 'Type2'
+        Category                  = 'Security'
+        ModulePath                = Join-Path $ModulesPath 'type2\SystemOptimization.psm1'
+        EntryFunction             = 'Optimize-SecurityServices'
+        Dependencies              = @('SecurityAudit')  # Run after security audit to address findings
+        RequiresElevation         = $true
+        TimeoutSeconds            = 180
+        ConfigurationDependencies = @()
+    },
+    @{
         Name                      = 'ReportGeneration'
         Version                   = '1.0.0'
         Description               = 'Generate comprehensive HTML and text reports of all operations'
