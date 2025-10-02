@@ -353,7 +353,7 @@ function Get-InstalledSoftwareInfo {
 #>
 function Get-ServicesInfo {
     try {
-        $services = Get-Service -ErrorAction Stop
+        $services = Get-Service -ErrorAction SilentlyContinue
         $runningServices = $services | Where-Object { $_.Status -eq 'Running' }
         $stoppedServices = $services | Where-Object { $_.Status -eq 'Stopped' }
         

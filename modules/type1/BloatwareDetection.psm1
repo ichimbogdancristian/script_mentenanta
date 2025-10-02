@@ -47,6 +47,11 @@ function Get-UnifiedBloatwareList {
             Import-Module (Join-Path $PSScriptRoot '..\core\ConfigManager.psm1') -Force
         }
         
+        # Import SystemInventory module if not already available
+        if (-not (Get-Module SystemInventory)) {
+            Import-Module (Join-Path $PSScriptRoot 'SystemInventory.psm1') -Force
+        }
+        
         # Get bloatware configuration from ConfigManager
         $bloatwareConfig = Get-BloatwareConfiguration
         
@@ -144,22 +149,22 @@ function Find-InstalledBloatware {
         # Scan AppX packages
         Write-Host "  📱 Scanning AppX packages..." -ForegroundColor Gray
         $appxBloatware = Get-AppXBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
-        $allBloatware.AddRange($appxBloatware)
+        if ($appxBloatware) { $allBloatware.AddRange($appxBloatware) }
         
         # Scan Winget packages
         Write-Host "  📦 Scanning Winget packages..." -ForegroundColor Gray
         $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
-        $allBloatware.AddRange($wingetBloatware)
+        if ($wingetBloatware) { $allBloatware.AddRange($wingetBloatware) }
         
         # Scan Chocolatey packages
         Write-Host "  🍫 Scanning Chocolatey packages..." -ForegroundColor Gray
         $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
-        $allBloatware.AddRange($chocoBloatware)
+        if ($chocoBloatware) { $allBloatware.AddRange($chocoBloatware) }
         
         # Scan Registry entries
         Write-Host "  📋 Scanning Registry entries..." -ForegroundColor Gray
         $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
-        $allBloatware.AddRange($registryBloatware)
+        if ($registryBloatware) { $allBloatware.AddRange($registryBloatware) }
         
         # Remove duplicates and sort results
         $uniqueBloatware = $allBloatware | 
@@ -250,28 +255,42 @@ function Get-AppXBloatware {
     )
     
     try {
+        # Import SystemInventory module if not already available
+        if (-not (Get-Module SystemInventory)) {
+            Import-Module (Join-Path $PSScriptRoot 'SystemInventory.psm1') -Force
+        }
+        
         $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledApps) {
-            Write-Warning "No app inventory available for AppX scan"
+        if (-not $appInventory.InstalledSoftware -or -not $appInventory.InstalledSoftware.Programs) {
+            Write-Warning "No software inventory available for AppX scan"
             return @()
         }
         
-        $appXApps = $appInventory.InstalledApps | Where-Object { $_.Source -eq 'AppX' }
+        # For AppX packages, we need to get them directly since InstalledSoftware doesn't categorize by source
+        # Get AppX packages for current user (safer than -AllUsers which requires admin)
+        try {
+            $appXApps = Get-AppxPackage -ErrorAction Stop | Where-Object { $_.Name -and $_.PublisherDisplayName }
+        }
+        catch {
+            Write-Warning "Failed to get AppX packages: $_"
+            return @()
+        }
         
         $found = @()
         foreach ($app in $appXApps) {
             foreach ($pattern in $BloatwarePatterns) {
-                if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
+                if ($app.Name -like "*$pattern*" -or $app.PackageFullName -like "*$pattern*") {
                     $found += [PSCustomObject]@{
                         Name           = $app.Name
-                        DisplayName    = $app.DisplayName
+                        DisplayName    = $app.PackageFullName
                         Version        = $app.Version
-                        Publisher      = $app.Publisher
+                        Publisher      = $app.PublisherDisplayName
                         InstallDate    = $app.InstallDate
                         Source         = 'AppX'
                         MatchedPattern = $pattern
                         Context        = $Context
                         RemovalMethod  = 'Remove-AppxPackage'
+                        PackageFullName = $app.PackageFullName
                     }
                     break  # Only match first pattern to avoid duplicates
                 }
@@ -308,28 +327,36 @@ function Get-WingetBloatware {
     )
     
     try {
+        # Import SystemInventory module if not already available
+        if (-not (Get-Module SystemInventory)) {
+            Import-Module (Join-Path $PSScriptRoot 'SystemInventory.psm1') -Force
+        }
+        
         $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledApps) {
-            Write-Warning "No app inventory available for Winget scan"
+        if (-not $appInventory.InstalledSoftware -or -not $appInventory.InstalledSoftware.Programs) {
+            Write-Warning "No software inventory available for Winget scan"
             return @()
         }
         
-        $wingetApps = $appInventory.InstalledApps | Where-Object { $_.Source -eq 'Winget' }
+        # Use the installed software data (since we can't easily distinguish Winget vs other sources in registry)
+        # We'll scan all installed programs for bloatware patterns
+        $installedPrograms = $appInventory.InstalledSoftware.Programs
         
         $found = @()
-        foreach ($app in $wingetApps) {
+        foreach ($app in $installedPrograms) {
             foreach ($pattern in $BloatwarePatterns) {
-                if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
+                if ($app.Name -like "*$pattern*" -or $app.Publisher -like "*$pattern*") {
                     $found += [PSCustomObject]@{
                         Name           = $app.Name
-                        DisplayName    = $app.DisplayName
+                        DisplayName    = $app.Name
                         Version        = $app.Version
                         Publisher      = $app.Publisher
                         InstallDate    = $app.InstallDate
-                        Source         = 'Winget'
+                        Source         = 'Registry'
                         MatchedPattern = $pattern
                         Context        = $Context
-                        RemovalMethod  = 'winget uninstall'
+                        RemovalMethod  = 'Registry Uninstall'
+                        UninstallString = $app.UninstallString
                     }
                     break  # Only match first pattern to avoid duplicates
                 }
@@ -366,24 +393,46 @@ function Get-ChocolateyBloatware {
     )
     
     try {
-        $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledApps) {
-            Write-Warning "No app inventory available for Chocolatey scan"
+        # Import SystemInventory module if not already available
+        if (-not (Get-Module SystemInventory)) {
+            Import-Module (Join-Path $PSScriptRoot 'SystemInventory.psm1') -Force
+        }
+        
+        # Chocolatey apps are typically not in the registry, so try to get them directly from Chocolatey
+        # If Chocolatey is not available, return empty array
+        if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Write-Warning "Chocolatey not available for scan"
             return @()
         }
         
-        $chocoApps = $appInventory.InstalledApps | Where-Object { $_.Source -eq 'Chocolatey' }
+        # Get Chocolatey installed packages
+        try {
+            $chocoOutput = & choco list --local-only --no-color 2>$null
+            $chocoApps = @()
+            foreach ($line in $chocoOutput) {
+                if ($line -match '^(\S+)\s+(.+)$' -and $line -notlike '*packages installed*') {
+                    $chocoApps += [PSCustomObject]@{
+                        Name = $matches[1]
+                        Version = $matches[2]
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Warning "Failed to get Chocolatey packages: $_"
+            return @()
+        }
         
         $found = @()
         foreach ($app in $chocoApps) {
             foreach ($pattern in $BloatwarePatterns) {
-                if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
+                if ($app.Name -like "*$pattern*") {
                     $found += [PSCustomObject]@{
                         Name           = $app.Name
-                        DisplayName    = $app.DisplayName
+                        DisplayName    = $app.Name
                         Version        = $app.Version
-                        Publisher      = $app.Publisher
-                        InstallDate    = $app.InstallDate
+                        Publisher      = 'Chocolatey'
+                        InstallDate    = $null
                         Source         = 'Chocolatey'
                         MatchedPattern = $pattern
                         Context        = $Context
