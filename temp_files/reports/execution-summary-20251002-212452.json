@@ -1,0 +1,1696 @@
+{
+  "StartTime": "2025-10-02T21:24:44.9556951+03:00",
+  "FailedTasks": 0,
+  "Configuration": {
+    "execution": {
+      "defaultMode": "unattended",
+      "countdownSeconds": 20,
+      "enableDryRun": true,
+      "autoSelectDefault": true,
+      "showProgressBars": true
+    },
+    "modules": {
+      "skipBloatwareRemoval": false,
+      "skipEssentialApps": false,
+      "skipWindowsUpdates": false,
+      "skipTelemetryDisable": false,
+      "skipSystemOptimization": false,
+      "skipSecurityAudit": false,
+      "customModulesPath": ""
+    },
+    "bloatware": {
+      "enableDiffBasedProcessing": true,
+      "parallelRemoval": true,
+      "createBackups": true,
+      "customBloatwareList": []
+    },
+    "essentialApps": {
+      "enableParallelInstallation": true,
+      "fallbackToLibreOffice": true,
+      "customEssentialApps": [],
+      "skipConflictResolution": false
+    },
+    "system": {
+      "createSystemRestorePoint": true,
+      "enableVerboseLogging": false,
+      "maxLogSizeMB": 10,
+      "enablePerformanceOptimizations": true
+    },
+    "reporting": {
+      "enableHtmlReport": true,
+      "enableDetailedAudit": true,
+      "includeSystemInventory": true,
+      "generateBeforeAfterComparison": true
+    },
+    "paths": {
+      "tempFolder": "temp_files",
+      "reportsFolder": "temp_files/reports",
+      "logsFolder": "temp_files/logs",
+      "inventoryFolder": "temp_files/inventory"
+    }
+  },
+  "TotalDuration": 7.2629604,
+  "ExecutionMode": "LIVE",
+  "TasksExecuted": 1,
+  "TaskResults": [
+    {
+      "TaskName": "SystemInventory",
+      "StartTime": "2025-10-02T21:24:44.9586408+03:00",
+      "DryRun": false,
+      "Output": {
+        "Services": {
+          "StoppedCount": 171,
+          "RunningCount": 127,
+          "CriticalServices": {
+            "Name": "Spooler",
+            "DisplayName": "Print Spooler",
+            "Status": 4
+          },
+          "TotalCount": 298,
+          "RunningServices": [
+            {
+              "Name": "AdobeARMservice",
+              "StartType": 2,
+              "DisplayName": "Adobe Acrobat Update Service",
+              "Status": 4
+            },
+            {
+              "Name": "agent_ovpnconnect",
+              "StartType": 2,
+              "DisplayName": "OpenVPN Agent agent_ovpnconnect",
+              "Status": 4
+            },
+            {
+              "Name": "AMD External Events Utility",
+              "StartType": 2,
+              "DisplayName": "AMD External Events Utility",
+              "Status": 4
+            },
+            {
+              "Name": "Appinfo",
+              "StartType": 3,
+              "DisplayName": "Application Information",
+              "Status": 4
+            },
+            {
+              "Name": "AppXSvc",
+              "StartType": 3,
+              "DisplayName": "AppX Deployment Service (AppXSVC)",
+              "Status": 4
+            },
+            {
+              "Name": "AudioEndpointBuilder",
+              "StartType": 2,
+              "DisplayName": "Windows Audio Endpoint Builder",
+              "Status": 4
+            },
+            {
+              "Name": "Audiosrv",
+              "StartType": 2,
+              "DisplayName": "Windows Audio",
+              "Status": 4
+            },
+            {
+              "Name": "BFE",
+              "StartType": 2,
+              "DisplayName": "Base Filtering Engine",
+              "Status": 4
+            },
+            {
+              "Name": "BITS",
+              "StartType": 2,
+              "DisplayName": "Background Intelligent Transfer Service",
+              "Status": 4
+            },
+            {
+              "Name": "BluetoothUserService_b5f3d50",
+              "StartType": 3,
+              "DisplayName": "Bluetooth User Support Service_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "BrokerInfrastructure",
+              "StartType": 2,
+              "DisplayName": "Background Tasks Infrastructure Service",
+              "Status": 4
+            },
+            {
+              "Name": "BTAGService",
+              "StartType": 3,
+              "DisplayName": "Bluetooth Audio Gateway Service",
+              "Status": 4
+            },
+            {
+              "Name": "BthAvctpSvc",
+              "StartType": 3,
+              "DisplayName": "AVCTP service",
+              "Status": 4
+            },
+            {
+              "Name": "bthserv",
+              "StartType": 3,
+              "DisplayName": "Bluetooth Support Service",
+              "Status": 4
+            },
+            {
+              "Name": "camsvc",
+              "StartType": 2,
+              "DisplayName": "Capability Access Manager Service",
+              "Status": 4
+            },
+            {
+              "Name": "cbdhsvc_b5f3d50",
+              "StartType": 2,
+              "DisplayName": "Clipboard User Service_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "CDPSvc",
+              "StartType": 2,
+              "DisplayName": "Connected Devices Platform Service",
+              "Status": 4
+            },
+            {
+              "Name": "CDPUserSvc_b5f3d50",
+              "StartType": 2,
+              "DisplayName": "Connected Devices Platform User Service_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "ClickToRunSvc",
+              "StartType": 2,
+              "DisplayName": "Microsoft Office Click-to-Run Service",
+              "Status": 4
+            },
+            {
+              "Name": "com.docker.service",
+              "StartType": 2,
+              "DisplayName": "Docker Desktop Service",
+              "Status": 4
+            },
+            {
+              "Name": "CoreMessagingRegistrar",
+              "StartType": 2,
+              "DisplayName": "CoreMessaging",
+              "Status": 4
+            },
+            {
+              "Name": "CryptSvc",
+              "StartType": 2,
+              "DisplayName": "Cryptographic Services",
+              "Status": 4
+            },
+            {
+              "Name": "DcomLaunch",
+              "StartType": 2,
+              "DisplayName": "DCOM Server Process Launcher",
+              "Status": 4
+            },
+            {
+              "Name": "DeviceAssociationService",
+              "StartType": 3,
+              "DisplayName": "Device Association Service",
+              "Status": 4
+            },
+            {
+              "Name": "Dhcp",
+              "StartType": 2,
+              "DisplayName": "DHCP Client",
+              "Status": 4
+            },
+            {
+              "Name": "DiagTrack",
+              "StartType": 2,
+              "DisplayName": "Connected User Experiences and Telemetry",
+              "Status": 4
+            },
+            {
+              "Name": "DispBrokerDesktopSvc",
+              "StartType": 2,
+              "DisplayName": "Display Policy Service",
+              "Status": 4
+            },
+            {
+              "Name": "DisplayEnhancementService",
+              "StartType": 3,
+              "DisplayName": "Display Enhancement Service",
+              "Status": 4
+            },
+            {
+              "Name": "Dnscache",
+              "StartType": 2,
+              "DisplayName": "DNS Client",
+              "Status": 4
+            },
+            {
+              "Name": "DolbyDAXAPI",
+              "StartType": 2,
+              "DisplayName": "Dolby DAX API Service",
+              "Status": 4
+            },
+            {
+              "Name": "DoSvc",
+              "StartType": 2,
+              "DisplayName": "Delivery Optimization",
+              "Status": 4
+            },
+            {
+              "Name": "DPS",
+              "StartType": 2,
+              "DisplayName": "Diagnostic Policy Service",
+              "Status": 4
+            },
+            {
+              "Name": "DsSvc",
+              "StartType": 3,
+              "DisplayName": "Data Sharing Service",
+              "Status": 4
+            },
+            {
+              "Name": "DusmSvc",
+              "StartType": 2,
+              "DisplayName": "Data Usage",
+              "Status": 4
+            },
+            {
+              "Name": "EventLog",
+              "StartType": 2,
+              "DisplayName": "Windows Event Log",
+              "Status": 4
+            },
+            {
+              "Name": "EventSystem",
+              "StartType": 2,
+              "DisplayName": "COM+ Event System",
+              "Status": 4
+            },
+            {
+              "Name": "Everything",
+              "StartType": 2,
+              "DisplayName": "Everything",
+              "Status": 4
+            },
+            {
+              "Name": "FileSyncHelper",
+              "StartType": 3,
+              "DisplayName": "FileSyncHelper",
+              "Status": 4
+            },
+            {
+              "Name": "FMAPOService",
+              "StartType": 2,
+              "DisplayName": "Fortemedia APO Control Service",
+              "Status": 4
+            },
+            {
+              "Name": "FontCache",
+              "StartType": 2,
+              "DisplayName": "Windows Font Cache Service",
+              "Status": 4
+            },
+            {
+              "Name": "hidserv",
+              "StartType": 3,
+              "DisplayName": "Human Interface Device Service",
+              "Status": 4
+            },
+            {
+              "Name": "HNS",
+              "StartType": 3,
+              "DisplayName": "Host Network Service",
+              "Status": 4
+            },
+            {
+              "Name": "HvHost",
+              "StartType": 3,
+              "DisplayName": "HV Host Service",
+              "Status": 4
+            },
+            {
+              "Name": "IKEEXT",
+              "StartType": 2,
+              "DisplayName": "IKE and AuthIP IPsec Keying Modules",
+              "Status": 4
+            },
+            {
+              "Name": "InstallService",
+              "StartType": 3,
+              "DisplayName": "Microsoft Store Install Service",
+              "Status": 4
+            },
+            {
+              "Name": "InventorySvc",
+              "StartType": 2,
+              "DisplayName": "Inventory and Compatibility Appraisal service",
+              "Status": 4
+            },
+            {
+              "Name": "iphlpsvc",
+              "StartType": 2,
+              "DisplayName": "IP Helper",
+              "Status": 4
+            },
+            {
+              "Name": "KeyIso",
+              "StartType": 3,
+              "DisplayName": "CNG Key Isolation",
+              "Status": 4
+            },
+            {
+              "Name": "LanmanServer",
+              "StartType": 2,
+              "DisplayName": "Server",
+              "Status": 4
+            },
+            {
+              "Name": "LanmanWorkstation",
+              "StartType": 2,
+              "DisplayName": "Workstation",
+              "Status": 4
+            },
+            {
+              "Name": "lfsvc",
+              "StartType": 3,
+              "DisplayName": "Geolocation Service",
+              "Status": 4
+            },
+            {
+              "Name": "LicenseManager",
+              "StartType": 3,
+              "DisplayName": "Windows License Manager Service",
+              "Status": 4
+            },
+            {
+              "Name": "lmhosts",
+              "StartType": 3,
+              "DisplayName": "TCP/IP NetBIOS Helper",
+              "Status": 4
+            },
+            {
+              "Name": "LSM",
+              "StartType": 2,
+              "DisplayName": "Local Session Manager",
+              "Status": 4
+            },
+            {
+              "Name": "MDCoreSvc",
+              "StartType": 2,
+              "DisplayName": "Microsoft Defender Core Service",
+              "Status": 4
+            },
+            {
+              "Name": "mpssvc",
+              "StartType": 2,
+              "DisplayName": "Windows Defender Firewall",
+              "Status": 4
+            },
+            {
+              "Name": "NcbService",
+              "StartType": 3,
+              "DisplayName": "Network Connection Broker",
+              "Status": 4
+            },
+            {
+              "Name": "netprofm",
+              "StartType": 3,
+              "DisplayName": "Network List Service",
+              "Status": 4
+            },
+            {
+              "Name": "NgcCtnrSvc",
+              "StartType": 3,
+              "DisplayName": "Microsoft Passport Container",
+              "Status": 4
+            },
+            {
+              "Name": "NgcSvc",
+              "StartType": 3,
+              "DisplayName": "Microsoft Passport",
+              "Status": 4
+            },
+            {
+              "Name": "NPSMSvc_b5f3d50",
+              "StartType": 3,
+              "DisplayName": "Now Playing Session Manager Service_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "nsi",
+              "StartType": 2,
+              "DisplayName": "Network Store Interface Service",
+              "Status": 4
+            },
+            {
+              "Name": "nvagent",
+              "StartType": 3,
+              "DisplayName": "Network Virtualization Service",
+              "Status": 4
+            },
+            {
+              "Name": "NVDisplay.ContainerLocalSystem",
+              "StartType": 2,
+              "DisplayName": "NVIDIA Display Container LS",
+              "Status": 4
+            },
+            {
+              "Name": "OneSyncSvc_b5f3d50",
+              "StartType": 2,
+              "DisplayName": "Sync Host_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "OptionsPlusUpdaterService",
+              "StartType": 2,
+              "DisplayName": "Logi Options+",
+              "Status": 4
+            },
+            {
+              "Name": "ovpnhelper_service",
+              "StartType": 2,
+              "DisplayName": "OpenVPN Connect Helper Service",
+              "Status": 4
+            },
+            {
+              "Name": "PcaSvc",
+              "StartType": 2,
+              "DisplayName": "Program Compatibility Assistant Service",
+              "Status": 4
+            },
+            {
+              "Name": "PDF24",
+              "StartType": 2,
+              "DisplayName": "PDF24",
+              "Status": 4
+            },
+            {
+              "Name": "PhoneSvc",
+              "StartType": 3,
+              "DisplayName": "Phone Service",
+              "Status": 4
+            },
+            {
+              "Name": "PlugPlay",
+              "StartType": 3,
+              "DisplayName": "Plug and Play",
+              "Status": 4
+            },
+            {
+              "Name": "PolicyAgent",
+              "StartType": 3,
+              "DisplayName": "IPsec Policy Agent",
+              "Status": 4
+            },
+            {
+              "Name": "Power",
+              "StartType": 2,
+              "DisplayName": "Power",
+              "Status": 4
+            },
+            {
+              "Name": "PrintWorkflowUserSvc_b5f3d50",
+              "StartType": 3,
+              "DisplayName": "PrintWorkflow_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "ProfSvc",
+              "StartType": 2,
+              "DisplayName": "User Profile Service",
+              "Status": 4
+            },
+            {
+              "Name": "RasMan",
+              "StartType": 3,
+              "DisplayName": "Remote Access Connection Manager",
+              "Status": 4
+            },
+            {
+              "Name": "RmSvc",
+              "StartType": 3,
+              "DisplayName": "Radio Management Service",
+              "Status": 4
+            },
+            {
+              "Name": "RpcEptMapper",
+              "StartType": 2,
+              "DisplayName": "RPC Endpoint Mapper",
+              "Status": 4
+            },
+            {
+              "Name": "RpcSs",
+              "StartType": 2,
+              "DisplayName": "Remote Procedure Call (RPC)",
+              "Status": 4
+            },
+            {
+              "Name": "RtkAudioUniversalService",
+              "StartType": 2,
+              "DisplayName": "Realtek Audio Universal Service",
+              "Status": 4
+            },
+            {
+              "Name": "RtkBtManServ",
+              "StartType": 2,
+              "DisplayName": "Realtek Bluetooth Device Manager Service",
+              "Status": 4
+            },
+            {
+              "Name": "RustDesk",
+              "StartType": 2,
+              "DisplayName": "RustDesk Service",
+              "Status": 4
+            },
+            {
+              "Name": "SamSs",
+              "StartType": 2,
+              "DisplayName": "Security Accounts Manager",
+              "Status": 4
+            },
+            {
+              "Name": "Schedule",
+              "StartType": 2,
+              "DisplayName": "Task Scheduler",
+              "Status": 4
+            },
+            {
+              "Name": "seclogon",
+              "StartType": 3,
+              "DisplayName": "Secondary Logon",
+              "Status": 4
+            },
+            {
+              "Name": "SecurityHealthService",
+              "StartType": 3,
+              "DisplayName": "Windows Security Service",
+              "Status": 4
+            },
+            {
+              "Name": "SENS",
+              "StartType": 2,
+              "DisplayName": "System Event Notification Service",
+              "Status": 4
+            },
+            {
+              "Name": "SharedAccess",
+              "StartType": 3,
+              "DisplayName": "Internet Connection Sharing (ICS)",
+              "Status": 4
+            },
+            {
+              "Name": "ShellHWDetection",
+              "StartType": 2,
+              "DisplayName": "Shell Hardware Detection",
+              "Status": 4
+            },
+            {
+              "Name": "Spooler",
+              "StartType": 2,
+              "DisplayName": "Print Spooler",
+              "Status": 4
+            },
+            {
+              "Name": "SSDPSRV",
+              "StartType": 3,
+              "DisplayName": "SSDP Discovery",
+              "Status": 4
+            },
+            {
+              "Name": "ssh-agent",
+              "StartType": 2,
+              "DisplayName": "OpenSSH Authentication Agent",
+              "Status": 4
+            },
+            {
+              "Name": "sshd",
+              "StartType": 2,
+              "DisplayName": "OpenSSH SSH Server",
+              "Status": 4
+            },
+            {
+              "Name": "SstpSvc",
+              "StartType": 3,
+              "DisplayName": "Secure Socket Tunneling Protocol Service",
+              "Status": 4
+            },
+            {
+              "Name": "StateRepository",
+              "StartType": 2,
+              "DisplayName": "State Repository Service",
+              "Status": 4
+            },
+            {
+              "Name": "StorSvc",
+              "StartType": 2,
+              "DisplayName": "Storage Service",
+              "Status": 4
+            },
+            {
+              "Name": "SysMain",
+              "StartType": 2,
+              "DisplayName": "SysMain",
+              "Status": 4
+            },
+            {
+              "Name": "SystemEventsBroker",
+              "StartType": 2,
+              "DisplayName": "System Events Broker",
+              "Status": 4
+            },
+            {
+              "Name": "TeamViewer",
+              "StartType": 2,
+              "DisplayName": "TeamViewer",
+              "Status": 4
+            },
+            {
+              "Name": "TextInputManagementService",
+              "StartType": 2,
+              "DisplayName": "Text Input Management Service",
+              "Status": 4
+            },
+            {
+              "Name": "Themes",
+              "StartType": 2,
+              "DisplayName": "Themes",
+              "Status": 4
+            },
+            {
+              "Name": "TimeBrokerSvc",
+              "StartType": 3,
+              "DisplayName": "Time Broker",
+              "Status": 4
+            },
+            {
+              "Name": "TokenBroker",
+              "StartType": 3,
+              "DisplayName": "Web Account Manager",
+              "Status": 4
+            },
+            {
+              "Name": "TrkWks",
+              "StartType": 2,
+              "DisplayName": "Distributed Link Tracking Client",
+              "Status": 4
+            },
+            {
+              "Name": "UdkUserSvc_b5f3d50",
+              "StartType": 3,
+              "DisplayName": "Udk User Service_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "UltraViewService",
+              "StartType": 2,
+              "DisplayName": "UltraViewer Service",
+              "Status": 4
+            },
+            {
+              "Name": "UserManager",
+              "StartType": 2,
+              "DisplayName": "User Manager",
+              "Status": 4
+            },
+            {
+              "Name": "UsoSvc",
+              "StartType": 2,
+              "DisplayName": "Update Orchestrator Service",
+              "Status": 4
+            },
+            {
+              "Name": "VaultSvc",
+              "StartType": 3,
+              "DisplayName": "Credential Manager",
+              "Status": 4
+            },
+            {
+              "Name": "vmcompute",
+              "StartType": 3,
+              "DisplayName": "Hyper-V Host Compute Service",
+              "Status": 4
+            },
+            {
+              "Name": "vmms",
+              "StartType": 2,
+              "DisplayName": "Hyper-V Virtual Machine Management",
+              "Status": 4
+            },
+            {
+              "Name": "Wcmsvc",
+              "StartType": 2,
+              "DisplayName": "Windows Connection Manager",
+              "Status": 4
+            },
+            {
+              "Name": "WdiSystemHost",
+              "StartType": 3,
+              "DisplayName": "Diagnostic System Host",
+              "Status": 4
+            },
+            {
+              "Name": "WdNisSvc",
+              "StartType": 3,
+              "DisplayName": "Microsoft Defender Antivirus Network Inspection Service",
+              "Status": 4
+            },
+            {
+              "Name": "webthreatdefsvc",
+              "StartType": 3,
+              "DisplayName": "Web Threat Defense Service",
+              "Status": 4
+            },
+            {
+              "Name": "webthreatdefusersvc_b5f3d50",
+              "StartType": 2,
+              "DisplayName": "Web Threat Defense User Service_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "whesvc",
+              "StartType": 2,
+              "DisplayName": "Windows Health and Optimized Experiences",
+              "Status": 4
+            },
+            {
+              "Name": "WinDefend",
+              "StartType": 2,
+              "DisplayName": "Microsoft Defender Antivirus Service",
+              "Status": 4
+            },
+            {
+              "Name": "WinHttpAutoProxySvc",
+              "StartType": 3,
+              "DisplayName": "WinHTTP Web Proxy Auto-Discovery Service",
+              "Status": 4
+            },
+            {
+              "Name": "Winmgmt",
+              "StartType": 2,
+              "DisplayName": "Windows Management Instrumentation",
+              "Status": 4
+            },
+            {
+              "Name": "WlanSvc",
+              "StartType": 2,
+              "DisplayName": "WLAN AutoConfig",
+              "Status": 4
+            },
+            {
+              "Name": "WpnService",
+              "StartType": 2,
+              "DisplayName": "Windows Push Notifications System Service",
+              "Status": 4
+            },
+            {
+              "Name": "WpnUserService_b5f3d50",
+              "StartType": 2,
+              "DisplayName": "Windows Push Notifications User Service_b5f3d50",
+              "Status": 4
+            },
+            {
+              "Name": "WSAIFabricSvc",
+              "StartType": 2,
+              "DisplayName": "WSAIFabricSvc",
+              "Status": 4
+            },
+            {
+              "Name": "wscsvc",
+              "StartType": 2,
+              "DisplayName": "Security Center",
+              "Status": 4
+            },
+            {
+              "Name": "WSearch",
+              "StartType": 2,
+              "DisplayName": "Windows Search",
+              "Status": 4
+            },
+            {
+              "Name": "WSLService",
+              "StartType": 2,
+              "DisplayName": "WSL Service",
+              "Status": 4
+            }
+          ]
+        },
+        "Network": {
+          "Adapters": {
+            "MediaType": "802.3",
+            "LinkSpeed": "1 Gbps",
+            "SubnetMask": "",
+            "Description": "Realtek PCIe GbE Family Controller",
+            "Name": "Ethernet",
+            "DNSServers": "",
+            "MacAddress": "54-05-DB-EA-BD-82",
+            "IPAddress": "",
+            "DefaultGateway": ""
+          },
+          "InternetConnectivity": {
+            "microsoft.com": false,
+            "google.com": true,
+            "8.8.8.8": true
+          }
+        },
+        "OperatingSystem": {
+          "TimeZone": "(UTC+02:00) Athens, Bucharest",
+          "TotalVirtualMemorySize": 34993476,
+          "Caption": "Microsoft Windows 11 Pro for Workstations",
+          "LastBootUpTime": "2025-09-30T19:14:55.5+03:00",
+          "Version": "10.0.26100",
+          "BuildNumber": "26100",
+          "FreePhysicalMemory": 19316060,
+          "PowerShellVersion": "7.5.3",
+          "InstallDate": "2025-05-14T18:39:52+03:00",
+          "DotNetVersion": "9.0.8",
+          "Architecture": "64-bit"
+        },
+        "Hardware": {
+          "Memory": {
+            "TotalModules": 2,
+            "Modules": [
+              {
+                "Manufacturer": "Kingston",
+                "Capacity": 17179869184,
+                "Speed": 3200,
+                "PartNumber": "9905700-101.A00G    "
+              },
+              {
+                "Manufacturer": "Kingston",
+                "Capacity": 17179869184,
+                "Speed": 3200,
+                "PartNumber": "9905700-046.A00G    "
+              }
+            ],
+            "TotalCapacity": 34359738368.0
+          },
+          "Storage": {
+            "InterfaceType": "SCSI",
+            "MediaType": "Fixed hard disk media",
+            "Model": "INTEL SSDPEKNW512G8L",
+            "Size": 512105932800
+          },
+          "Graphics": {
+            "Name": "NVIDIA GeForce GTX 1650 Ti",
+            "AdapterRAM": 4293918720,
+            "DriverVersion": "27.21.14.5749",
+            "DriverDate": "2020-11-20T02:00:00+02:00"
+          },
+          "Processor": {
+            "Name": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "NumberOfCores": 8,
+            "MaxClockSpeed": 2900,
+            "Architecture": 9,
+            "NumberOfLogicalProcessors": 16
+          }
+        },
+        "InstalledSoftware": {
+          "Programs": [
+            {
+              "Version": "25.01",
+              "InstallDate": null,
+              "Name": "7-Zip 25.01 (x64)",
+              "InstallLocation": "C:\\Program Files\\7-Zip\\",
+              "UninstallString": "\"C:\\Program Files\\7-Zip\\Uninstall.exe\"",
+              "Publisher": "Igor Pavlov",
+              "Size": 5758
+            },
+            {
+              "Version": "25.001.20756",
+              "InstallDate": "20251002",
+              "Name": "Adobe Acrobat (64-bit)",
+              "InstallLocation": "C:\\Program Files\\Adobe\\Acrobat DC\\",
+              "UninstallString": "MsiExec.exe /I{AC76BA86-1033-FF00-7760-BC15014EA700}",
+              "Publisher": "Adobe",
+              "Size": 1068352
+            },
+            {
+              "Version": "1.8.0",
+              "InstallDate": "20250907",
+              "Name": "Adobe Refresh Manager",
+              "InstallLocation": "C:\\Program Files (x86)\\Common Files\\Adobe\\ARM\\1.0\\",
+              "UninstallString": "MsiExec.exe /I{AC76BA86-0804-1033-1959-018244601120}",
+              "Publisher": "Adobe Systems Incorporated",
+              "Size": 2064
+            },
+            {
+              "Version": "3.9.2",
+              "InstallDate": null,
+              "Name": "Angry IP Scanner",
+              "InstallLocation": "\"C:\\Program Files\\Angry IP Scanner\"",
+              "UninstallString": "\"C:\\Program Files\\Angry IP Scanner\\uninstall.exe\"",
+              "Publisher": "Angry IP Scanner",
+              "Size": 28100
+            },
+            {
+              "Version": "3.7.5",
+              "InstallDate": "20251002",
+              "Name": "Audacity 3.7.5",
+              "InstallLocation": "C:\\Program Files\\Audacity\\",
+              "UninstallString": "\"C:\\Program Files\\Audacity\\unins000.exe\"",
+              "Publisher": "Audacity Team",
+              "Size": 89386
+            },
+            {
+              "Version": "5.6.65",
+              "InstallDate": null,
+              "Name": "BabyWare",
+              "InstallLocation": null,
+              "UninstallString": "C:\\Program Files (x86)\\Paradox Security Systems\\BabyWare\\uninstall.exe",
+              "Publisher": "Paradox Security Systems",
+              "Size": 284141
+            },
+            {
+              "Version": "9.7.2",
+              "InstallDate": "20250906",
+              "Name": "CrystalDiskInfo 9.7.2",
+              "InstallLocation": "C:\\Program Files\\CrystalDiskInfo\\",
+              "UninstallString": "\"C:\\Program Files\\CrystalDiskInfo\\unins000.exe\"",
+              "Publisher": "Crystal Dew World",
+              "Size": 14431
+            },
+            {
+              "Version": "4.47.0",
+              "InstallDate": null,
+              "Name": "Docker Desktop",
+              "InstallLocation": "C:\\Program Files\\Docker\\Docker",
+              "UninstallString": "\"C:\\Program Files\\Docker\\Docker\\Docker Desktop Installer.exe\" \"uninstall\"",
+              "Publisher": "Docker Inc.",
+              "Size": 2888891
+            },
+            {
+              "Version": "1.4.1.1026",
+              "InstallDate": null,
+              "Name": "Everything 1.4.1.1026 (x86)",
+              "InstallLocation": "C:\\Program Files (x86)\\Everything",
+              "UninstallString": "C:\\Program Files (x86)\\Everything\\Uninstall.exe",
+              "Publisher": "voidtools",
+              "Size": 3072
+            },
+            {
+              "Version": "2.51.0",
+              "InstallDate": "20250910",
+              "Name": "Git",
+              "InstallLocation": "C:\\Program Files\\Git\\",
+              "UninstallString": "\"C:\\Program Files\\Git\\unins000.exe\"",
+              "Publisher": "The Git Development Community",
+              "Size": 348444
+            },
+            {
+              "Version": null,
+              "InstallDate": null,
+              "Name": "GOG.com Heroes of Might and Magic 3",
+              "InstallLocation": null,
+              "UninstallString": "C:\\WINDOWS\\system32\\sdbinst.exe -u \"C:\\WINDOWS\\AppPatch\\CustomSDB\\{1d3c859c-1028-4822-b0a7-da4f7bbc18bc}.sdb\"",
+              "Publisher": null,
+              "Size": null
+            },
+            {
+              "Version": "140.0.7339.208",
+              "InstallDate": "20250918",
+              "Name": "Google Chrome",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{15971136-C56A-3015-AC9D-ED17B8F94952}",
+              "Publisher": "Google LLC",
+              "Size": 134909
+            },
+            {
+              "Version": "1.10.2",
+              "InstallDate": null,
+              "Name": "HandBrake 1.10.2",
+              "InstallLocation": null,
+              "UninstallString": "C:\\Program Files\\HandBrake\\uninst.exe",
+              "Publisher": null,
+              "Size": null
+            },
+            {
+              "Version": "2.0.0.16",
+              "InstallDate": "20250102",
+              "Name": "Heroes of Might and Magic 3 Complete",
+              "InstallLocation": "C:\\GOG Games\\Heroes of Might and Magic 3 Complete\\",
+              "UninstallString": "\"C:\\GOG Games\\Heroes of Might and Magic 3 Complete\\unins000.exe\"",
+              "Publisher": "GOG.com",
+              "Size": 1000317
+            },
+            {
+              "Version": "1.7.2",
+              "InstallDate": "20250102",
+              "Name": "Heroes of Might and Magic® III: Horn of the Abyss",
+              "InstallLocation": "C:\\GOG Games\\Heroes of Might and Magic 3 Complete\\",
+              "UninstallString": "\"C:\\GOG Games\\Heroes of Might and Magic 3 Complete\\Uninstall_HotA\\unins000.exe\"",
+              "Publisher": "HotA Crew",
+              "Size": 374469
+            },
+            {
+              "Version": "8.0.4610.11",
+              "InstallDate": "20250817",
+              "Name": "Java 8 Update 461 (64-bit)",
+              "InstallLocation": "C:\\Program Files\\Java\\jre1.8.0_461\\",
+              "UninstallString": "MsiExec.exe /I{71124AE4-039E-4CA4-87B4-2F64180461F0}",
+              "Publisher": "Oracle Corporation",
+              "Size": 115891
+            },
+            {
+              "Version": "2.8.461.11",
+              "InstallDate": "20250817",
+              "Name": "Java Auto Updater",
+              "InstallLocation": "",
+              "UninstallString": null,
+              "Publisher": "Oracle Corporation",
+              "Size": 2437
+            },
+            {
+              "Version": "1.95.771519",
+              "InstallDate": null,
+              "Name": "Logi Options+",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\Program Files\\LogiOptionsPlus\\logioptionsplus_updater.exe\" --uninstall --full --shadow",
+              "Publisher": "Logitech",
+              "Size": null
+            },
+            {
+              "Version": "6.2.1.714",
+              "InstallDate": "20250919",
+              "Name": "Logi Plugin Service",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{5B02A222-E9E7-4F6D-8E84-6C8D645EA6EC}",
+              "Publisher": "Logitech",
+              "Size": 268682
+            },
+            {
+              "Version": "1.1.205.0",
+              "InstallDate": "20250919",
+              "Name": "Logi RightSightForWebcams 1.1.205",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{F48643E2-AE04-47A9-9E12-2785E32F7D9A}",
+              "Publisher": "Logitech",
+              "Size": 68922
+            },
+            {
+              "Version": "64.80.39230",
+              "InstallDate": "20251002",
+              "Name": "Microsoft .NET Host - 8.0.20 (x64)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{E8562B28-F84C-45AA-AE65-E31D1068377F}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 508
+            },
+            {
+              "Version": "64.80.39230",
+              "InstallDate": "20251002",
+              "Name": "Microsoft .NET Host FX Resolver - 8.0.20 (x64)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{BB4BB73D-8784-40A3-9888-9BD29EC1B023}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 340
+            },
+            {
+              "Version": "64.80.39230",
+              "InstallDate": "20251002",
+              "Name": "Microsoft .NET Runtime - 8.0.20 (x64)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{402EB961-5AED-472A-B785-B5AE9EF71286}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 71936
+            },
+            {
+              "Version": "16.0.19127.20264",
+              "InstallDate": null,
+              "Name": "Microsoft 365 Apps for enterprise - en-us",
+              "InstallLocation": "C:\\Program Files\\Microsoft Office",
+              "UninstallString": "\"C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe\" scenario=install scenariosubtype=ARP sourcetype=None productstoremove=O365ProPlusRetail.16_en-us_x-none culture=en-us version.16=16.0",
+              "Publisher": "Microsoft Corporation",
+              "Size": null
+            },
+            {
+              "Version": "140.0.3485.94",
+              "InstallDate": "20250927",
+              "Name": "Microsoft Edge",
+              "InstallLocation": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application",
+              "UninstallString": "\"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\140.0.3485.94\\Installer\\setup.exe\" --uninstall --msedge --channel=stable --system-level --verbose-logging",
+              "Publisher": "Microsoft Corporation",
+              "Size": null
+            },
+            {
+              "Version": "140.0.3485.94",
+              "InstallDate": "20250927",
+              "Name": "Microsoft Edge WebView2 Runtime",
+              "InstallLocation": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application",
+              "UninstallString": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\140.0.3485.94\\Installer\\setup.exe\" --uninstall --msedgewebview --system-level --verbose-logging",
+              "Publisher": "Microsoft Corporation",
+              "Size": null
+            },
+            {
+              "Version": "25.164.0824.0003",
+              "InstallDate": null,
+              "Name": "Microsoft OneDrive",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\Program Files\\Microsoft OneDrive\\25.164.0824.0003\\OneDriveSetup.exe\"  /uninstall  /allusers ",
+              "Publisher": "Microsoft Corporation",
+              "Size": 437898
+            },
+            {
+              "Version": "5.72.0.0",
+              "InstallDate": "20240818",
+              "Name": "Microsoft Update Health Tools",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{C6FD611E-7EFE-488C-A0E0-974C09EF6473}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 1045
+            },
+            {
+              "Version": "10.0.40219",
+              "InstallDate": "20240921",
+              "Name": "Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{1D8E6291-B0D5-35EC-8441-6616F567A0F7}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 14199
+            },
+            {
+              "Version": "10.0.40219",
+              "InstallDate": "20250726",
+              "Name": "Microsoft Visual C++ 2010  x86 Redistributable - 10.0.40219",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{F0C3E5D1-1ADE-321E-8167-68EF0DE699A5}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 11417
+            },
+            {
+              "Version": "12.0.40664.0",
+              "InstallDate": null,
+              "Name": "Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{042d26ef-3dbe-4c25-95d3-4c1b11b235a7}\\vcredist_x64.exe\"  /uninstall",
+              "Publisher": "Microsoft Corporation",
+              "Size": 21062
+            },
+            {
+              "Version": "12.0.30501.0",
+              "InstallDate": null,
+              "Name": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.30501",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{f65db027-aff3-4070-886a-0d87064aabb1}\\vcredist_x86.exe\"  /uninstall",
+              "Publisher": "Microsoft Corporation",
+              "Size": null
+            },
+            {
+              "Version": "12.0.40664.0",
+              "InstallDate": null,
+              "Name": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.40664",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{9dff3540-fc85-4ed5-ac84-9e3c7fd8bece}\\vcredist_x86.exe\"  /uninstall",
+              "Publisher": "Microsoft Corporation",
+              "Size": 17602
+            },
+            {
+              "Version": "12.0.40664",
+              "InstallDate": "20240922",
+              "Name": "Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{010792BA-551A-3AC0-A7EF-0FAB4156C382}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 11784
+            },
+            {
+              "Version": "12.0.40664",
+              "InstallDate": "20240922",
+              "Name": "Microsoft Visual C++ 2013 x64 Minimum Runtime - 12.0.40664",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{53CF6934-A98D-3D84-9146-FC4EDF3D5641}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 2524
+            },
+            {
+              "Version": "12.0.40664",
+              "InstallDate": "20240922",
+              "Name": "Microsoft Visual C++ 2013 x86 Additional Runtime - 12.0.40664",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{D401961D-3A20-3AC7-943B-6139D5BD490A}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 9456
+            },
+            {
+              "Version": "12.0.40664",
+              "InstallDate": "20240922",
+              "Name": "Microsoft Visual C++ 2013 x86 Minimum Runtime - 12.0.40664",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{8122DAB1-ED4D-3676-BB0A-CA368196543E}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 2076
+            },
+            {
+              "Version": "14.44.35211.0",
+              "InstallDate": null,
+              "Name": "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{d8bbe9f9-7c5b-42c6-b715-9ee898a2e515}\\VC_redist.x64.exe\"  /uninstall",
+              "Publisher": "Microsoft Corporation",
+              "Size": 21235
+            },
+            {
+              "Version": "14.44.35211",
+              "InstallDate": "20250620",
+              "Name": "Microsoft Visual C++ 2022 X64 Additional Runtime - 14.44.35211",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{86AB2CC9-08BD-4643-B0F9-F82D006D72FF}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 11892
+            },
+            {
+              "Version": "14.44.35211",
+              "InstallDate": "20250620",
+              "Name": "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.44.35211",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{43B0D101-A022-48F4-9D04-BA404CEB1D53}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 2404
+            },
+            {
+              "Version": "64.80.39251",
+              "InstallDate": "20251002",
+              "Name": "Microsoft Windows Desktop Runtime - 8.0.20 (x64)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{D330A645-92DF-4389-8324-B82FE3561498}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 92100
+            },
+            {
+              "Version": "8.0.20.35221",
+              "InstallDate": null,
+              "Name": "Microsoft Windows Desktop Runtime - 8.0.20 (x64)",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\ProgramData\\Package Cache\\{e033dc24-62c0-4f2c-928e-99122efab19d}\\windowsdesktop-runtime-8.0.20-win-x64.exe\"  /uninstall",
+              "Publisher": "Microsoft Corporation",
+              "Size": 222214
+            },
+            {
+              "Version": "143.0.3",
+              "InstallDate": null,
+              "Name": "Mozilla Firefox (x64 en-US)",
+              "InstallLocation": "C:\\Program Files\\Mozilla Firefox",
+              "UninstallString": "\"C:\\Program Files\\Mozilla Firefox\\uninstall\\helper.exe\"",
+              "Publisher": "Mozilla",
+              "Size": 316454
+            },
+            {
+              "Version": "143.0.1",
+              "InstallDate": null,
+              "Name": "Mozilla Maintenance Service",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\Program Files (x86)\\Mozilla Maintenance Service\\uninstall.exe\"",
+              "Publisher": "Mozilla",
+              "Size": 728
+            },
+            {
+              "Version": "143.0.1",
+              "InstallDate": null,
+              "Name": "Mozilla Thunderbird (x64 en-US)",
+              "InstallLocation": "C:\\Program Files\\Mozilla Thunderbird",
+              "UninstallString": "\"C:\\Program Files\\Mozilla Thunderbird\\uninstall\\helper.exe\"",
+              "Publisher": "Mozilla",
+              "Size": 306138
+            },
+            {
+              "Version": "24.9.0",
+              "InstallDate": "20251002",
+              "Name": "Node.js",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{66C37A44-92B0-43FF-A723-81BE75A2717D}",
+              "Publisher": "Node.js Foundation",
+              "Size": 105341
+            },
+            {
+              "Version": "8.8.5",
+              "InstallDate": null,
+              "Name": "Notepad++ (64-bit x64)",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\Program Files\\Notepad++\\uninstall.exe\"",
+              "Publisher": "Notepad++ Team",
+              "Size": 18105
+            },
+            {
+              "Version": "457.49",
+              "InstallDate": "20250514",
+              "Name": "NVIDIA Graphics Driver 457.49",
+              "InstallLocation": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\Display.Driver.{C5687AA1-900A-4A8D-A95E-71A7326679D4}",
+              "UninstallString": "\"C:\\WINDOWS\\SysWOW64\\RunDll32.EXE\" \"C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore\\NVI2.DLL\",UninstallPackage Display.Driver",
+              "Publisher": "NVIDIA Corporation",
+              "Size": null
+            },
+            {
+              "Version": "2.1002.346.0",
+              "InstallDate": "20250514",
+              "Name": "NVIDIA Install Application",
+              "InstallLocation": "C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore",
+              "UninstallString": null,
+              "Publisher": "NVIDIA Corporation",
+              "Size": null
+            },
+            {
+              "Version": "16.0.19127.20154",
+              "InstallDate": "20250926",
+              "Name": "Office 16 Click-to-Run Extensibility Component",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{90160000-008C-0000-1000-0000000FF1CE}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 32180
+            },
+            {
+              "Version": "26.26.0",
+              "InstallDate": "20250927",
+              "Name": "Oh My Posh",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{7F299EAF-BA19-40C5-8CA9-65C360B067A0}",
+              "Publisher": "Jan De Dobbeleer",
+              "Size": 19464
+            },
+            {
+              "Version": "26.24.1",
+              "InstallDate": "20250923",
+              "Name": "Oh My Posh",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{D9C9D7E3-A0EB-4AF8-8F76-50AA37C04072}",
+              "Publisher": "Jan De Dobbeleer",
+              "Size": 19456
+            },
+            {
+              "Version": "3.7.3",
+              "InstallDate": "20250812",
+              "Name": "OpenVPN Connect",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{08E6014D-38DB-471A-A919-30DA9B1A9AFF}",
+              "Publisher": "OpenVPN Inc.",
+              "Size": 309088
+            },
+            {
+              "Version": "11.28.2",
+              "InstallDate": "20250918",
+              "Name": "PDF24 Creator",
+              "InstallLocation": "C:\\Program Files\\PDF24\\",
+              "UninstallString": "MsiExec.exe /I{807B6B52-8124-4C81-A657-DC8DF91A8B37}",
+              "Publisher": "geek software GmbH",
+              "Size": 1037888
+            },
+            {
+              "Version": null,
+              "InstallDate": "Fri Nov 15 20:38:53 2024\n",
+              "Name": "PokerStars.ro",
+              "InstallLocation": "C:\\Program Files (x86)\\PokerStars.RO",
+              "UninstallString": "\"C:\\Program Files (x86)\\PokerStars.RO\\PokerStarsUninstall.exe\" /u:PokerStars.ro",
+              "Publisher": "PokerStars.ro",
+              "Size": null
+            },
+            {
+              "Version": "7.5.3.0",
+              "InstallDate": "20250913",
+              "Name": "PowerShell 7-x64",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{B4D3359E-1191-4BBD-ABDB-0E4A39534981}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 286722
+            },
+            {
+              "Version": "0.94.2",
+              "InstallDate": "20250926",
+              "Name": "PowerToys (Preview)",
+              "InstallLocation": "C:\\Users\\Bogdan\\AppData\\Local\\PowerToys\\",
+              "UninstallString": "MsiExec.exe /X{AF2B4F8F-4F55-42E5-8208-9623B1AFA833}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 818096
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 Add to Path (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{235C9435-3313-4658-881D-5A7E559A5A41}",
+              "Publisher": "Python Software Foundation",
+              "Size": 52
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 Core Interpreter (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{BE75E968-78F4-411D-92E4-73EC3043F7E4}",
+              "Publisher": "Python Software Foundation",
+              "Size": 6040
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 Development Libraries (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{96A23710-E014-4A5B-96A1-DE64AC37251B}",
+              "Publisher": "Python Software Foundation",
+              "Size": 2832
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 Documentation (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{CFAAA24B-16EF-4D9D-80A5-F67798771571}",
+              "Publisher": "Python Software Foundation",
+              "Size": 60616
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 Executables (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{E4047598-558F-4468-8B53-9FCEF7F86E0D}",
+              "Publisher": "Python Software Foundation",
+              "Size": 2608
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 pip Bootstrap (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{CD31E178-F872-466B-A231-9C8AA53A89FD}",
+              "Publisher": "Python Software Foundation",
+              "Size": 288
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 Standard Library (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{A139F43E-8105-465D-AC80-28F349CBE08D}",
+              "Publisher": "Python Software Foundation",
+              "Size": 23416
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 Tcl/Tk Support (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{A65B1339-6492-4CA4-AEB5-2B25A83A20B9}",
+              "Publisher": "Python Software Foundation",
+              "Size": 13880
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python 3.13.7 Test Suite (64-bit)",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /I{6BD2B618-9A2B-47D9-B24B-2F05BD2768E4}",
+              "Publisher": "Python Software Foundation",
+              "Size": 33248
+            },
+            {
+              "Version": "3.13.7150.0",
+              "InstallDate": "20250816",
+              "Name": "Python Launcher",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{8B8DEA15-D815-4CB1-AC10-4E7713F3DFA0}",
+              "Publisher": "Python Software Foundation",
+              "Size": 1556
+            },
+            {
+              "Version": "5.1.2",
+              "InstallDate": null,
+              "Name": "qBittorrent",
+              "InstallLocation": null,
+              "UninstallString": "\"C:\\Program Files\\qBittorrent\\uninst.exe\"",
+              "Publisher": "The qBittorrent project",
+              "Size": 219981
+            },
+            {
+              "Version": "2.6.0",
+              "InstallDate": "20250620",
+              "Name": "Revo Uninstaller 2.6.0",
+              "InstallLocation": "C:\\Program Files\\VS Revo Group\\Revo Uninstaller\\",
+              "UninstallString": "\"C:\\Program Files\\VS Revo Group\\Revo Uninstaller\\unins000.exe\"",
+              "Publisher": "VS Revo Group, Ltd.",
+              "Size": 32685
+            },
+            {
+              "Version": "1.4.1",
+              "InstallDate": null,
+              "Name": "RustDesk",
+              "InstallLocation": "C:\\Program Files\\RustDesk",
+              "UninstallString": "\"C:\\Program Files\\RustDesk\\RustDesk.exe\" --uninstall",
+              "Publisher": "RustDesk",
+              "Size": 270
+            },
+            {
+              "Version": "2.003.0000001.0",
+              "InstallDate": null,
+              "Name": "SmartPSS 2.003.0000001.0",
+              "InstallLocation": null,
+              "UninstallString": "C:\\Program Files\\Smart Professional Surveillance System\\uninst.exe",
+              "Publisher": null,
+              "Size": 166445
+            },
+            {
+              "Version": "1.003.0000006.0",
+              "InstallDate": null,
+              "Name": "SmartPSSLite 1.003.0000006.0",
+              "InstallLocation": null,
+              "UninstallString": "C:\\Program Files\\SmartPSSLite\\uninst.exe",
+              "Publisher": "Dahua Technology Co.,Ltd",
+              "Size": null
+            },
+            {
+              "Version": "4.1.1",
+              "InstallDate": "20240820",
+              "Name": "SQL-Profiler 4.1.1 - PostgreSQL 16",
+              "InstallLocation": "C:\\Program Files\\PostgreSQL\\16",
+              "UninstallString": "\"C:\\Program Files\\PostgreSQL\\16\\uninstall-sqlprofiler.exe\"",
+              "Publisher": "EnterpriseDB",
+              "Size": 76
+            },
+            {
+              "Version": "15.69.5",
+              "InstallDate": null,
+              "Name": "TeamViewer",
+              "InstallLocation": "C:\\Program Files\\TeamViewer",
+              "UninstallString": "\"C:\\Program Files\\TeamViewer\\uninstall.exe\"",
+              "Publisher": "TeamViewer",
+              "Size": null
+            },
+            {
+              "Version": null,
+              "InstallDate": "20240921",
+              "Name": "The Long Dark",
+              "InstallLocation": "C:\\Games\\The Long Dark\\",
+              "UninstallString": "\"C:\\Games\\The Long Dark\\unins000.exe\"",
+              "Publisher": null,
+              "Size": 15908383
+            },
+            {
+              "Version": "11.56",
+              "InstallDate": null,
+              "Name": "Total Commander 64-bit (Remove or Repair)",
+              "InstallLocation": "C:\\Program Files\\totalcmd\\",
+              "UninstallString": "\"C:\\Program Files\\totalcmd\\tcunin64.exe\"",
+              "Publisher": "Ghisler Software GmbH",
+              "Size": 21826
+            },
+            {
+              "Version": "6.6.124",
+              "InstallDate": "20250722",
+              "Name": "UltraViewer version 6.6.124",
+              "InstallLocation": "C:\\Program Files (x86)\\UltraViewer\\",
+              "UninstallString": "\"C:\\Program Files (x86)\\UltraViewer\\unins000.exe\"",
+              "Publisher": "DucFabulous",
+              "Size": 12050
+            },
+            {
+              "Version": "3.0.21",
+              "InstallDate": null,
+              "Name": "VLC media player",
+              "InstallLocation": "C:\\Program Files\\VideoLAN\\VLC",
+              "UninstallString": "\"C:\\Program Files\\VideoLAN\\VLC\\uninstall.exe\"",
+              "Publisher": "VideoLAN",
+              "Size": null
+            },
+            {
+              "Version": "06/01/2011 4.0.0.1",
+              "InstallDate": null,
+              "Name": "Windows Driver Package - Apple Inc. Apple Wireless Mouse (06/01/2011 4.0.0.1)",
+              "InstallLocation": null,
+              "UninstallString": "C:\\PROGRA~1\\DIFX\\873032~1\\DPInst.exe /u C:\\Windows\\System32\\DriverStore\\FileRepository\\applebmt64.inf_amd64_6d97d6264f077f40\\applebmt64.inf",
+              "Publisher": "Apple Inc.",
+              "Size": null
+            },
+            {
+              "Version": "01/05/2014 6.3.0.3",
+              "InstallDate": null,
+              "Name": "Windows Driver Package - Ross-Tech HIDClass  (01/05/2014 6.3.0.3)",
+              "InstallLocation": null,
+              "UninstallString": "C:\\PROGRA~1\\DIFX\\D8FA49~1\\DPInst.exe /u C:\\Windows\\System32\\DriverStore\\FileRepository\\hexnet.inf_amd64_643213b86e20194d\\hexnet.inf",
+              "Publisher": "Ross-Tech",
+              "Size": null
+            },
+            {
+              "Version": "05/12/2014 2.10.00",
+              "InstallDate": null,
+              "Name": "Windows Driver Package - Ross-Tech USB Driver Package (05/12/2014 2.10.00)",
+              "InstallLocation": null,
+              "UninstallString": "C:\\PROGRA~1\\DIFX\\D8FA49~1\\DPInst.exe /u C:\\Windows\\System32\\DriverStore\\FileRepository\\rt-usb64.inf_amd64_936b05782467367d\\rt-usb64.inf",
+              "Publisher": "Ross-Tech",
+              "Size": null
+            },
+            {
+              "Version": "4.0.2410.23001",
+              "InstallDate": "20241030",
+              "Name": "Windows PC Health Check",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{B008D72C-0326-421E-BB2F-98BA5F9DDE9C}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 11987
+            },
+            {
+              "Version": "2.6.1.0",
+              "InstallDate": "20250913",
+              "Name": "Windows Subsystem for Linux",
+              "InstallLocation": "",
+              "UninstallString": "MsiExec.exe /X{8705254B-3AE0-4CFA-93D5-F71DCDE9ED2B}",
+              "Publisher": "Microsoft Corporation",
+              "Size": 858876
+            },
+            {
+              "Version": "7.13.0",
+              "InstallDate": null,
+              "Name": "WinRAR 7.13 (64-bit)",
+              "InstallLocation": "C:\\Program Files\\WinRAR",
+              "UninstallString": "C:\\Program Files\\WinRAR\\uninstall.exe",
+              "Publisher": "win.rar GmbH",
+              "Size": null
+            }
+          ],
+          "TotalCount": 84
+        },
+        "Metadata": {
+          "ModuleVersion": "1.0.0",
+          "CollectionTime": "2025-10-02T21:24:44.9709452+03:00",
+          "IncludeDetailed": false,
+          "UserName": "Bogdan",
+          "Duration": 7.2432119,
+          "ComputerName": "LAPTOP-BOGDAN"
+        },
+        "SystemInfo": {
+          "BIOSVersion": "FCCN21WW",
+          "ComputerName": "LAPTOP-BOGDAN",
+          "Model": "82EY",
+          "Manufacturer": "LENOVO",
+          "NumberOfProcessors": 1,
+          "BIOSManufacturer": "LENOVO",
+          "TotalPhysicalMemory": 33685835776,
+          "Domain": "WORKGROUP",
+          "SerialNumber": "PF20M3D7"
+        }
+      },
+      "Description": "Collect comprehensive system information and generate inventory reports",
+      "Duration": 7.257795,
+      "Type": "Type1",
+      "Category": "Inventory",
+      "Error": null,
+      "Success": true
+    }
+  ],
+  "SuccessfulTasks": 10,
+  "EndTime": "2025-10-02T21:24:52.2265954+03:00"
+}

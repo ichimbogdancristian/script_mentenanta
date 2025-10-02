@@ -18,6 +18,61 @@
 
 using namespace System.Collections.Generic
 
+#region Privilege Validation
+function Test-IsAdministrator {
+    <#
+    .SYNOPSIS
+        Tests if the current PowerShell session is running with Administrator privileges
+    .DESCRIPTION  
+        Checks Windows identity and role to determine if current session has admin privileges.
+        Required for Type2 modules that modify system settings, registry, or services.
+    .RETURNS
+        Boolean - True if running as administrator, False otherwise
+    #>
+    try {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+        Write-Warning "Failed to check administrator privileges: $_"
+        return $false
+    }
+}
+
+function Assert-AdministratorPrivileges {
+    <#
+    .SYNOPSIS
+        Validates administrator privileges and throws descriptive error if not elevated
+    .DESCRIPTION
+        Checks for admin privileges and provides clear error message if missing.
+        Should be called at the beginning of functions requiring elevation.
+    .PARAMETER OperationName
+        Name of the operation requiring admin privileges (for error message)
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$OperationName
+    )
+    
+    if (-not (Test-IsAdministrator)) {
+        $errorMessage = @"
+$OperationName requires Administrator privileges.
+
+SOLUTION:
+1. Close this PowerShell session
+2. Right-click script.bat and select "Run as administrator" 
+3. Accept the UAC prompt when it appears
+4. Re-run the maintenance script
+
+The script launcher (script.bat) handles privilege elevation automatically,
+but the PowerShell session must maintain elevated context.
+"@
+        throw $errorMessage
+    }
+}
+#endregion
+
+
 #region Public Functions
 
 <#
@@ -91,10 +146,23 @@ function Install-WindowsUpdates {
     }
     
     try {
-        # Try PSWindowsUpdate module first
+        # Validate administrator privileges before attempting Windows Updates
+        Assert-AdministratorPrivileges -OperationName "Windows Updates"
+        
+        # Try PSWindowsUpdate module first with privilege validation
         if (Test-PSWindowsUpdateAvailable) {
             Write-Host "  📦 Using PSWindowsUpdate module..." -ForegroundColor Gray
-            $results = Install-UpdatesViaPSWindowsUpdate @PSBoundParameters
+            try {
+                $results = Install-UpdatesViaPSWindowsUpdate @PSBoundParameters
+            }
+            catch {
+                if ($_.Exception.Message -like "*elevated*PowerShell*console*") {
+                    Write-Host "  ⚠️  PSWindowsUpdate requires elevated console context - using fallback method" -ForegroundColor Yellow
+                    $results = Install-UpdatesViaNativeAPI @PSBoundParameters
+                } else {
+                    throw
+                }
+            }
         }
         # Fallback to native Windows Update API
         elseif (Test-NativeWindowsUpdateAvailable) {

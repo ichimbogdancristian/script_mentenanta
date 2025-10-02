@@ -65,6 +65,28 @@ $WorkingDirectory = $ScriptRoot
 
 Write-Host "Windows Maintenance Automation - Central Orchestrator v2.0.0" -ForegroundColor Cyan
 Write-Log "Windows Maintenance Automation - Central Orchestrator v2.0.0 started" -Level INFO -Component ORCHESTRATOR
+
+# Validate elevation context early to prevent crashes in Type2 modules
+try {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    
+    Write-Host "Elevation Status: " -NoNewline -ForegroundColor Gray
+    if ($isAdmin) {
+        Write-Host "Administrator privileges confirmed" -ForegroundColor Green
+        Write-Log "Running with Administrator privileges" -Level SUCCESS -Component ORCHESTRATOR
+    } else {
+        Write-Host "Running without Administrator privileges" -ForegroundColor Yellow
+        Write-Log "WARNING: Running without Administrator privileges - Type2 modules may fail" -Level WARN -Component ORCHESTRATOR
+        Write-Host "⚠️  Some operations may fail due to insufficient privileges" -ForegroundColor Yellow
+        Write-Host "   To fix: Right-click script.bat and select 'Run as administrator'" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "Unable to determine privilege level" -ForegroundColor Red
+    Write-Log "Failed to check privilege level: $_" -Level ERROR -Component ORCHESTRATOR
+}
+
 Write-Host "Working Directory: $WorkingDirectory" -ForegroundColor Gray
 Write-Host "Script Root: $ScriptRoot" -ForegroundColor Gray
 Write-Host "Environment WORKING_DIRECTORY: $env:WORKING_DIRECTORY" -ForegroundColor Gray
@@ -472,7 +494,19 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     catch {
         $taskResult.Success = $false
         $taskResult.Error = $_.Exception.Message
-        Write-Host "  ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
+        
+        # Provide specific guidance for privilege-related failures
+        if ($_.Exception.Message -like "*administrator*" -or $_.Exception.Message -like "*elevated*" -or $_.Exception.Message -like "*privileges*") {
+            Write-Host "  ✗ Failed: Insufficient privileges" -ForegroundColor Red
+            Write-Host "    💡 Solution: Right-click script.bat and select 'Run as administrator'" -ForegroundColor Yellow
+            Write-Log "Task $($task.Name) failed due to insufficient privileges: $($_.Exception.Message)" -Level ERROR -Component ORCHESTRATOR
+        } else {
+            Write-Host "  ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Log "Task $($task.Name) failed: $($_.Exception.Message)" -Level ERROR -Component ORCHESTRATOR
+        }
+        
+        # Continue with remaining tasks instead of stopping execution
+        Write-Host "    ⏭️  Continuing with remaining tasks..." -ForegroundColor Gray
     }
     finally {
         $taskResult.Duration = ((Get-Date) - $taskStartTime).TotalSeconds
