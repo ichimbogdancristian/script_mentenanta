@@ -357,8 +357,8 @@ foreach ($manifestData in $ModuleManifests) {
         # Validate configuration dependencies
         $configErrors = @()
         foreach ($configDep in $manifestData.ConfigurationDependencies) {
-            $configPath = Join-Path $ConfigPath $configDep
-            if (-not (Test-Path $configPath)) {
+            $configDepPath = Join-Path $ConfigPath $configDep
+            if (-not (Test-Path $configDepPath)) {
                 $configErrors += "Missing configuration: $configDep"
             }
         }

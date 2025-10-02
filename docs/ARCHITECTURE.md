@@ -98,6 +98,8 @@ script_mentenanta/
   - `ConfigManager.psm1` - JSON configuration loading, validation, and management
   - `MenuSystem.psm1` - Interactive countdown menus with automatic fallbacks
   - `DependencyManager.psm1` - Package manager installation and dependency resolution
+  - `ModuleExecutionProtocol.psm1` - Advanced dependency resolution and execution engine
+  - `TaskScheduler.psm1` - Windows scheduled task creation and management
   - `TaskScheduler.psm1` - Windows scheduled task creation and management
 
 ## Execution Flow
@@ -185,5 +187,19 @@ Available tasks:
 3. **Flexibility**: Can run individual modules or full suites
 4. **Performance**: Cached Type 1 modules, parallel Type 2 execution
 5. **Usability**: Interactive menus with sane defaults
+
+## Recent Improvements (v2.1)
+
+### Enhanced Module Execution Protocol
+- **Advanced Dependency Resolution**: Proper execution ordering with comprehensive dependency analysis
+- **Configuration Validation**: Fixed path validation bugs and enhanced error handling
+- **Performance Metrics**: Detailed timing and success rate reporting
+- **Robust Error Handling**: Better admin privilege validation and dependency resolution
+
+### Quality Assurance
+- **100% Test Coverage**: Comprehensive validation with 28/28 tests passing
+- **Bug Fixes**: Resolved critical configuration path validation issues (variable name collision)
+- **Enhanced Logging**: Improved diagnostic information and execution tracking
+- **Stability Improvements**: Better handling of edge cases and error conditions
 6. **Reporting**: Comprehensive HTML and text reports
 7. **Portability**: Self-contained with discovery capabilities

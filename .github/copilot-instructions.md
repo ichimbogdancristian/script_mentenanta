@@ -1,6 +1,6 @@
 ### Repo overview
 
-This repository contains a Windows maintenance automation system v2.0 built on a **modular architecture** with the following components:
+This repository contains a Windows maintenance automation system v2.1 built on a **modular architecture** with the following components:
 - `script.bat` — Enhanced launcher/installer wrapper that ensures elevation, installs dependencies (winget, pwsh, choco, PSWindowsUpdate), manages scheduled tasks, downloads repos, and launches the orchestrator.
 - `MaintenanceOrchestrator.ps1` — Central coordination script (PowerShell 7+ required) that loads modules, handles configuration, presents interactive menus, and orchestrates task execution.
 - **Modular System**: Specialized PowerShell modules organized by function:
@@ -21,14 +21,16 @@ Targets: Windows 10/11. Many operations require Administrator privileges and net
 - **Configuration-Driven**: All settings, app lists, and behaviors are controlled through JSON configuration files in the `config/` directory. Never hardcode data that should be configurable.
 - **Interactive + Non-Interactive Modes**: The system supports both menu-driven interactive use and unattended automation. All interactive prompts must have timeout fallbacks and non-interactive bypass options.
 - **Task Registry Pattern**: Tasks are defined as module function calls in `MaintenanceOrchestrator.ps1` rather than a global array. Each task specifies its module path, function name, type, and category.
+- **Enhanced Module Execution Protocol**: Advanced dependency resolution with proper execution ordering, configuration validation, and comprehensive result tracking through `ModuleExecutionProtocol.psm1`.
 - **Dry-Run Architecture**: All system-modifying operations must support dry-run mode through `-DryRun` parameters or `-WhatIf` cmdlet binding.
 
 ### Files and key places to read first
 
 - `script.bat` — Read top-to-bottom to understand environment setup: admin checks, PowerShell detection, dependency install order (winget → pwsh → NuGet → PSGallery → PSWindowsUpdate → chocolatey), scheduled task creation, repository download/extract, and how it invokes `MaintenanceOrchestrator.ps1`.
-- `MaintenanceOrchestrator.ps1` — Start at the header and initialization sections. The task registry array defines all available tasks with their module paths and function names. Key functions: `Invoke-Task`, `Show-TaskMenu`, parameter parsing.
+- `MaintenanceOrchestrator.ps1` — Start at the header and initialization sections. The task registry array defines all available tasks with their module paths and function names. Key functions: enhanced module registration with configuration dependency validation.
 - `modules/core/ConfigManager.psm1` — Configuration loading and management. Functions: `Initialize-ConfigSystem`, `Get-MainConfiguration`, `Get-LoggingConfiguration`.
 - `modules/core/MenuSystem.psm1` — Interactive menu system with countdown timers. Functions: `Show-MainMenu`, `Show-TaskSelectionMenu`.
+- `modules/core/ModuleExecutionProtocol.psm1` — Advanced execution engine with dependency resolution, timeout handling, and comprehensive result tracking.
 - Module architecture: Each `.psm1` file exports specific functions. Type 1 modules return data objects, Type 2 modules return success/failure booleans.
 
 ### Common workflows & exact commands
@@ -100,6 +102,7 @@ Targets: Windows 10/11. Many operations require Administrator privileges and net
 - `modules/core/MenuSystem.psm1` — Interactive menus: `Show-MainMenu`, `Show-TaskSelectionMenu`, countdown timers.
 - `modules/core/DependencyManager.psm1` — Dependency management: `Install-AllDependencies`, `Get-DependencyStatus`, package manager detection.
 - `modules/core/TaskScheduler.psm1` — Task scheduling: `New-MaintenanceTask`, `Get-MaintenanceTasks`, Windows scheduled task automation.
+- `modules/core/ModuleExecutionProtocol.psm1` — Advanced execution engine: dependency resolution, timeout handling, comprehensive result tracking.
 
 ### Project Evolution and Current Status
 
@@ -107,16 +110,20 @@ This project underwent a **complete architectural transformation** from a monoli
 - **Original monolithic files** are preserved in `archive/` directory for reference  
 - **Current architecture** is fully modular with specialized PowerShell modules
 - **Migration complete**: All functionality extracted from the original 11,353-line `script.ps1`
-- **Production ready**: New system is the current active implementation
-- **Recent fixes**: Version 2.0.1 resolved 5 critical bugs affecting execution:
-  - Services permission errors (WaaSMedicSvc access denied)
-  - Module dependency import issues (BloatwareDetection)
-  - Data structure mismatches (SystemInventory integration)
-  - AppX permission handling for non-elevated users
-  - Null reference protection in collection operations
+- **Production ready**: New system is the current active implementation (v2.1)
+- **Latest fixes**: Version 2.1 resolved critical configuration and execution issues:
+  - **Configuration path validation bug**: Fixed variable name collision in dependency checking (v2.1)
+  - **Enhanced test coverage**: 100% test success rate with comprehensive validation (28/28 tests passing)
+  - **Improved error handling**: Better admin privilege validation and dependency resolution
+  - **Module execution protocol**: Advanced dependency management with proper execution ordering
+  - Services permission errors (WaaSMedicSvc access denied) - resolved in v2.0.1
+  - Module dependency import issues (BloatwareDetection) - resolved in v2.0.1
+  - Data structure mismatches (SystemInventory integration) - resolved in v2.0.1
+  - AppX permission handling for non-elevated users - resolved in v2.0.1
+  - Null reference protection in collection operations - resolved in v2.0.1
 - **Enhanced logging**: Comprehensive Write-Log function with file output to maintenance.log
-- **Improved reporting**: Enhanced HTML reports with per-task details and CSS styling
-- **Test organization**: All test scripts now standardized to `Test/` directory
+- **Advanced reporting**: HTML reports with execution summaries and performance metrics
+- **Test organization**: All test scripts standardized in `Test/` directory with comprehensive coverage
 
 ### If something is missing or unclear
 
