@@ -106,6 +106,32 @@ SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/r
 SET "ZIP_FILE=%WORKING_DIR%update.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 
+REM -----------------------------------------------------------------------------
+REM Robust Script Path Detection for Scheduled Tasks
+REM Determines the best path to use for scheduled task creation
+REM -----------------------------------------------------------------------------
+SET "SCHEDULED_TASK_SCRIPT_PATH="
+
+REM Priority 1: Use current executing script path (most reliable)
+IF EXIST "%SCRIPT_PATH%" (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
+    CALL :LOG_MESSAGE "Scheduled task will use current script path: %SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    GOTO :SCHEDULED_TASK_PATH_COMPLETE
+)
+
+REM Priority 2: Look for script.bat in current directory
+IF EXIST "%SCRIPT_DIR%script.bat" (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
+    CALL :LOG_MESSAGE "Scheduled task will use directory script: %SCRIPT_DIR%script.bat" "DEBUG" "LAUNCHER"
+    GOTO :SCHEDULED_TASK_PATH_COMPLETE
+)
+
+REM Priority 3: Use script path as fallback (should not happen)
+SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
+CALL :LOG_MESSAGE "Using fallback script path for scheduled task: %SCRIPT_PATH%" "WARN" "LAUNCHER"
+
+:SCHEDULED_TASK_PATH_COMPLETE
+
 CALL :LOG_MESSAGE "Self-discovery environment initialized" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
@@ -481,11 +507,51 @@ IF !ERRORLEVEL! EQU 0 (
 CALL :LOG_MESSAGE "Dependency verification completed" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
-REM Pending Restart Detection and Management
+REM Startup Task Cleanup (Based on Archived Script Logic)
+REM Always remove existing startup tasks at script startup
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Performing startup task cleanup..." "INFO" "LAUNCHER"
+
+REM Remove all possible startup task variations
+schtasks /delete /tn "Windows Maintenance Post-Restart Startup" /f >nul 2>&1
+schtasks /delete /tn "Windows Maintenance Startup" /f >nul 2>&1 
+schtasks /delete /tn "WindowsMaintenanceStartup" /f >nul 2>&1
+
+IF %ERRORLEVEL% EQU 0 (
+    CALL :LOG_MESSAGE "Cleaned up existing startup tasks" "SUCCESS" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "No existing startup tasks to clean up" "DEBUG" "LAUNCHER"
+)
+
+REM -----------------------------------------------------------------------------
+REM Enhanced Pending Restart Detection (Based on Archived Script Logic)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking for pending system restarts..." "INFO" "LAUNCHER"
 
 SET "PENDING_RESTART=NO"
+
+REM Primary method: Use PSWindowsUpdate module if available (most accurate)
+IF "%POWERSHELL_EXE%"=="" (
+    SET "POWERSHELL_EXE=powershell.exe"
+)
+
+CALL :LOG_MESSAGE "Attempting PSWindowsUpdate restart detection..." "DEBUG" "LAUNCHER"
+"%POWERSHELL_EXE%" -NoProfile -NonInteractive -Command ^
+    "try { Import-Module PSWindowsUpdate -ErrorAction Stop; $reboot = Get-WURebootStatus -Silent; if ($reboot -eq $true) { exit 1 } else { exit 0 } } catch { exit 2 }" 2>nul
+
+IF !ERRORLEVEL! EQU 1 (
+    SET "PENDING_RESTART=YES"
+    CALL :LOG_MESSAGE "PSWindowsUpdate module detected restart required" "INFO" "LAUNCHER"
+    GOTO :RESTART_DETECTION_COMPLETE
+)
+
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "PSWindowsUpdate module reports no restart required" "DEBUG" "LAUNCHER"
+    GOTO :RESTART_DETECTION_COMPLETE
+)
+
+REM Fallback methods: Registry-based detection
+CALL :LOG_MESSAGE "PSWindowsUpdate unavailable, using registry-based detection..." "DEBUG" "LAUNCHER"
 
 REM Check Windows Update pending restart registry keys
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
@@ -513,6 +579,7 @@ IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "SCCM restart pending" "INFO" "LAUNCHER"
 )
 
+:RESTART_DETECTION_COMPLETE
 CALL :LOG_MESSAGE "Pending restart status: %PENDING_RESTART%" "INFO" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
@@ -523,57 +590,51 @@ CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
 SET "TASK_NAME=WindowsMaintenanceAutomation"
 SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
 
-REM Always check and clean up existing startup task first
-schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Found existing startup task - removing it" "INFO" "LAUNCHER"
-    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task removed successfully" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to remove startup task" "WARN" "LAUNCHER"
-    )
-)
+REM Startup task cleanup already performed at script startup
 
-REM Create startup task if pending restart detected
+REM Create startup task if pending restart detected using archived script logic
 IF "%PENDING_RESTART%"=="YES" (
     CALL :LOG_MESSAGE "Creating startup task for post-restart continuation..." "INFO" "LAUNCHER"
-    CALL :LOG_MESSAGE "Using script path for startup task: %SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using scheduled task script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
     
-    REM Create startup task with SYSTEM account first (preferred)
+    REM Use archived script's approach: ONLOGON with delay and current user
     schtasks /Create ^
-        /SC ONSTART ^
+        /SC ONLOGON ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "\"%SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
+        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
         /RL HIGHEST ^
-        /RU SYSTEM ^
+        /RU "%USERNAME%" ^
+        /DELAY 0001:00 ^
         /F >"%WORKING_DIR%schtasks_startup.log" 2>&1
         
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task created successfully with SYSTEM account" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Startup task created successfully with ONLOGON trigger" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Task will execute 1 minute after user logon" "INFO" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create startup task with SYSTEM account, trying current user..." "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Failed to create startup task with ONLOGON trigger" "ERROR" "LAUNCHER"
         
         REM Display error details
         IF EXIST "%WORKING_DIR%schtasks_startup.log" (
-            CALL :LOG_MESSAGE "SYSTEM startup task creation error details:" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "ONLOGON startup task creation error details:" "ERROR" "LAUNCHER"
             TYPE "%WORKING_DIR%schtasks_startup.log"
         )
         
-        REM Fallback: Try with current user account
+        REM Fallback to ONSTART if ONLOGON fails
+        CALL :LOG_MESSAGE "Attempting fallback with ONSTART trigger..." "WARN" "LAUNCHER"
         schtasks /Create ^
             /SC ONSTART ^
             /TN "%STARTUP_TASK_NAME%" ^
-            /TR "\"%SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
+            /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
             /RL HIGHEST ^
-            /F >"%WORKING_DIR%schtasks_startup_user.log" 2>&1
+            /RU SYSTEM ^
+            /F >"%WORKING_DIR%schtasks_startup_fallback.log" 2>&1
             
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Startup task created successfully with current user account" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "Fallback startup task created successfully with ONSTART" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "Failed to create startup task with both SYSTEM and current user" "ERROR" "LAUNCHER"
-            IF EXIST "%WORKING_DIR%schtasks_startup_user.log" (
-                TYPE "%WORKING_DIR%schtasks_startup_user.log"
+            CALL :LOG_MESSAGE "Failed to create startup task with both ONLOGON and ONSTART" "ERROR" "LAUNCHER"
+            IF EXIST "%WORKING_DIR%schtasks_startup_fallback.log" (
+                TYPE "%WORKING_DIR%schtasks_startup_fallback.log"
             )
             CALL :LOG_MESSAGE "Cannot create startup task - manual restart and execution will be required" "ERROR" "LAUNCHER"
             PAUSE
@@ -793,18 +854,23 @@ FOR %%i in (%*) DO (
     )
 )
 
-REM If this was a post-restart execution, remove the startup task
+REM Enhanced post-restart cleanup (based on archived script logic)
 IF "%IS_POST_RESTART%"=="YES" (
-    schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Removing startup task after successful post-restart execution" "INFO" "LAUNCHER"
-        schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Startup task cleanup completed" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to remove startup task" "WARN" "LAUNCHER"
-        )
+    CALL :LOG_MESSAGE "Performing comprehensive post-restart cleanup..." "INFO" "LAUNCHER"
+    
+    REM Remove all possible startup task variations (archived script approach)
+    schtasks /delete /tn "Windows Maintenance Post-Restart Startup" /f >nul 2>&1
+    schtasks /delete /tn "Windows Maintenance Startup" /f >nul 2>&1
+    schtasks /delete /tn "WindowsMaintenanceStartup" /f >nul 2>&1
+    schtasks /delete /tn "%STARTUP_TASK_NAME%" /f >nul 2>&1
+    
+    IF %ERRORLEVEL% EQU 0 (
+        CALL :LOG_MESSAGE "Post-restart startup task cleanup completed" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Post-restart cleanup: no startup tasks found" "DEBUG" "LAUNCHER"
     )
+) ELSE (
+    CALL :LOG_MESSAGE "Normal execution - no post-restart cleanup needed" "DEBUG" "LAUNCHER"
 )
 
 REM If pending restart was detected and this is not a post-restart execution, initiate restart

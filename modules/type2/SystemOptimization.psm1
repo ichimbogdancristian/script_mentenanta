@@ -56,25 +56,25 @@ using namespace System.Collections.Generic
     $results = Optimize-SystemPerformance -OptimizeStartup -OptimizeUI -DryRun
 #>
 function Optimize-SystemPerformance {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     param(
         [Parameter()]
-        [switch]$CleanupTemp = $true,
+        [switch]$CleanupTemp,
         
         [Parameter()]
-        [switch]$OptimizeStartup = $true,
+        [switch]$OptimizeStartup,
         
         [Parameter()]
-        [switch]$OptimizeUI = $true,
+        [switch]$OptimizeUI,
         
         [Parameter()]
-        [switch]$OptimizeRegistry = $false,
+        [switch]$OptimizeRegistry,
         
         [Parameter()]
-        [switch]$OptimizeDisk = $true,
+        [switch]$OptimizeDisk,
         
         [Parameter()]
-        [switch]$OptimizeNetwork = $false,
+        [switch]$OptimizeNetwork,
         
         [Parameter()]
         [switch]$DryRun
@@ -90,19 +90,38 @@ function Optimize-SystemPerformance {
     # Initialize results tracking
     $results = @{
         TotalOperations = 0
-        Successful = 0
-        Failed = 0
-        SpaceFreed = 0
-        DryRun = $DryRun.IsPresent
-        Details = [List[PSCustomObject]]::new()
-        Categories = @{
-            TempCleanup = @{ Success = 0; Failed = 0; SpaceFreed = 0 }
-            StartupOptimization = @{ Success = 0; Failed = 0; ItemsOptimized = 0 }
-            UIOptimization = @{ Success = 0; Failed = 0; SettingsChanged = 0 }
+        Successful      = 0
+        Failed          = 0
+        SpaceFreed      = 0
+        DryRun          = $DryRun.IsPresent
+        Details         = [List[PSCustomObject]]::new()
+        Categories      = @{
+            TempCleanup          = @{ Success = 0; Failed = 0; SpaceFreed = 0 }
+            StartupOptimization  = @{ Success = 0; Failed = 0; ItemsOptimized = 0 }
+            UIOptimization       = @{ Success = 0; Failed = 0; SettingsChanged = 0 }
             RegistryOptimization = @{ Success = 0; Failed = 0; EntriesProcessed = 0 }
-            DiskOptimization = @{ Success = 0; Failed = 0; TasksCompleted = 0 }
-            NetworkOptimization = @{ Success = 0; Failed = 0; SettingsApplied = 0 }
+            DiskOptimization     = @{ Success = 0; Failed = 0; TasksCompleted = 0 }
+            NetworkOptimization  = @{ Success = 0; Failed = 0; SettingsApplied = 0 }
         }
+    }
+    
+    # Handle default behavior when no switches are specified
+    # Enable commonly used optimizations by default
+    $hasSpecificSwitches = $CleanupTemp.IsPresent -or $OptimizeStartup.IsPresent -or 
+    $OptimizeUI.IsPresent -or $OptimizeRegistry.IsPresent -or 
+    $OptimizeDisk.IsPresent -or $OptimizeNetwork.IsPresent
+    
+    if (-not $hasSpecificSwitches) {
+        # No specific switches provided - enable default optimizations
+        $CleanupTemp = $true
+        $OptimizeStartup = $true
+        $OptimizeUI = $true
+        $OptimizeDisk = $true
+        Write-Host "  📋 No specific optimizations specified - running default optimizations" -ForegroundColor Yellow
+        Write-Host "     ✓ Temporary files cleanup" -ForegroundColor Gray
+        Write-Host "     ✓ Startup optimization" -ForegroundColor Gray
+        Write-Host "     ✓ UI optimization" -ForegroundColor Gray
+        Write-Host "     ✓ Disk optimization" -ForegroundColor Gray
     }
     
     try {
@@ -189,14 +208,14 @@ function Get-SystemPerformanceMetrics {
     Write-Host "📊 Analyzing system performance..." -ForegroundColor Cyan
     
     $metrics = @{
-        Timestamp = Get-Date
-        DiskUsage = Get-DiskUsageMetrics
+        Timestamp       = Get-Date
+        DiskUsage       = Get-DiskUsageMetrics
         StartupPrograms = Get-StartupProgramCount
-        TemporaryFiles = Get-TemporaryFilesSize
-        RegistrySize = Get-RegistrySize
+        TemporaryFiles  = Get-TemporaryFilesSize
+        RegistrySize    = Get-RegistrySize
         ServicesRunning = (Get-Service | Where-Object Status -eq 'Running').Count
-        ProcessCount = (Get-Process).Count
-        MemoryUsage = Get-MemoryUsagePercent
+        ProcessCount    = (Get-Process).Count
+        MemoryUsage     = Get-MemoryUsagePercent
         Recommendations = [List[string]]::new()
     }
     
@@ -237,10 +256,10 @@ function Clear-TemporaryFiles {
     )
     
     $results = @{
-        Success = 0
-        Failed = 0
+        Success    = 0
+        Failed     = 0
         SpaceFreed = 0
-        Details = [List[PSCustomObject]]::new()
+        Details    = [List[PSCustomObject]]::new()
     }
     
     # Define cleanup targets
@@ -255,11 +274,11 @@ function Clear-TemporaryFiles {
     
     foreach ($target in $cleanupTargets) {
         $cleanupResult = @{
-            Name = $target.Name
-            Path = $target.Path
-            Success = $false
+            Name       = $target.Name
+            Path       = $target.Path
+            Success    = $false
             SpaceFreed = 0
-            Error = $null
+            Error      = $null
         }
         
         try {
@@ -270,7 +289,8 @@ function Clear-TemporaryFiles {
                 if ($target.Recurse) {
                     $beforeSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue | 
                         Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-                } else {
+                }
+                else {
                     $beforeSize = ($items | Where-Object { -not $_.PSIsContainer } | 
                         Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                 }
@@ -286,7 +306,8 @@ function Clear-TemporaryFiles {
                 if (Test-Path (Split-Path $target.Path -Parent)) {
                     if ($target.Recurse) {
                         Remove-Item -Path $target.Path -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
-                    } else {
+                    }
+                    else {
                         Remove-Item -Path $target.Path -Force -Confirm:$false -ErrorAction SilentlyContinue
                     }
                 }
@@ -298,7 +319,8 @@ function Clear-TemporaryFiles {
                     if ($target.Recurse) {
                         $afterSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue | 
                             Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-                    } else {
+                    }
+                    else {
                         $afterSize = ($items | Where-Object { -not $_.PSIsContainer } | 
                             Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                     }
@@ -343,10 +365,10 @@ function Optimize-StartupPrograms {
     )
     
     $results = @{
-        Success = 0
-        Failed = 0
+        Success        = 0
+        Failed         = 0
         ItemsOptimized = 0
-        Details = [List[PSCustomObject]]::new()
+        Details        = [List[PSCustomObject]]::new()
     }
     
     # Get startup programs from registry
@@ -389,11 +411,11 @@ function Optimize-StartupPrograms {
                         
                         if ($shouldOptimize) {
                             $optimizationResult = @{
-                                Name = $itemName
-                                Value = $itemValue
+                                Name     = $itemName
+                                Value    = $itemValue
                                 Location = $location
-                                Action = 'Disabled'
-                                Success = $false
+                                Action   = 'Disabled'
+                                Success  = $false
                             }
                             
                             try {
@@ -455,10 +477,10 @@ function Optimize-UserInterface {
     )
     
     $results = @{
-        Success = 0
-        Failed = 0
+        Success         = 0
+        Failed          = 0
         SettingsChanged = 0
-        Details = [List[PSCustomObject]]::new()
+        Details         = [List[PSCustomObject]]::new()
     }
     
     # UI optimization settings
@@ -468,23 +490,23 @@ function Optimize-UserInterface {
             'VisualFXSetting' = 2  # Custom (let us set individual settings)
         }
         # Taskbar optimizations
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced'      = @{
             'ShowTaskViewButton' = 0      # Hide Task View button
-            'TaskbarAnimations' = 0       # Disable taskbar animations
-            'ListviewShadow' = 0          # Disable shadows
-            'TaskbarSmallIcons' = 1       # Use small taskbar icons
+            'TaskbarAnimations'  = 0       # Disable taskbar animations
+            'ListviewShadow'     = 0          # Disable shadows
+            'TaskbarSmallIcons'  = 1       # Use small taskbar icons
         }
         # Search optimizations
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search' = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search'                 = @{
             'SearchboxTaskbarMode' = 0    # Hide search box
-            'CortanaConsent' = 0          # Disable Cortana
+            'CortanaConsent'       = 0          # Disable Cortana
         }
         # Performance settings
-        'HKCU:\Control Panel\Desktop' = @{
+        'HKCU:\Control Panel\Desktop'                                            = @{
             'DragFullWindows' = '0'       # Don't drag full windows
-            'MenuShowDelay' = '0'         # No menu delay
+            'MenuShowDelay'   = '0'         # No menu delay
         }
-        'HKCU:\Control Panel\Desktop\WindowMetrics' = @{
+        'HKCU:\Control Panel\Desktop\WindowMetrics'                              = @{
             'MinAnimate' = '0'            # Disable minimize/maximize animations
         }
     }
@@ -492,11 +514,11 @@ function Optimize-UserInterface {
     foreach ($registryPath in $uiOptimizations.Keys) {
         foreach ($setting in $uiOptimizations[$registryPath].GetEnumerator()) {
             $settingResult = @{
-                Path = $registryPath
+                Path    = $registryPath
                 Setting = $setting.Key
-                Value = $setting.Value
+                Value   = $setting.Value
                 Success = $false
-                Error = $null
+                Error   = $null
             }
             
             try {
@@ -548,10 +570,10 @@ function Optimize-WindowsRegistry {
     )
     
     $results = @{
-        Success = 0
-        Failed = 0
+        Success          = 0
+        Failed           = 0
         EntriesProcessed = 0
-        Details = [List[PSCustomObject]]::new()
+        Details          = [List[PSCustomObject]]::new()
     }
     
     Write-Warning "Registry optimization requires careful implementation and is currently limited to safe operations"
@@ -560,12 +582,12 @@ function Optimize-WindowsRegistry {
     $safeOptimizations = @{
         # Clear recent documents
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs' = @{
-            Action = 'ClearEntries'
+            Action      = 'ClearEntries'
             Description = 'Clear recent documents'
         }
         # Clear run history
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU' = @{
-            Action = 'ClearEntries' 
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU'     = @{
+            Action      = 'ClearEntries' 
             Description = 'Clear run command history'
         }
     }
@@ -573,10 +595,10 @@ function Optimize-WindowsRegistry {
     foreach ($registryPath in $safeOptimizations.Keys) {
         $optimization = $safeOptimizations[$registryPath]
         $optimizationResult = @{
-            Path = $registryPath
+            Path        = $registryPath
             Description = $optimization.Description
-            Success = $false
-            Error = $null
+            Success     = $false
+            Error       = $null
         }
         
         try {
@@ -628,10 +650,10 @@ function Optimize-DiskPerformance {
     )
     
     $results = @{
-        Success = 0
-        Failed = 0
+        Success        = 0
+        Failed         = 0
         TasksCompleted = 0
-        Details = [List[PSCustomObject]]::new()
+        Details        = [List[PSCustomObject]]::new()
     }
     
     # Disk optimization tasks
@@ -643,10 +665,10 @@ function Optimize-DiskPerformance {
     
     foreach ($task in $diskTasks) {
         $taskResult = @{
-            Name = $task.Name
-            Action = $task.Action
+            Name    = $task.Name
+            Action  = $task.Action
             Success = $false
-            Error = $null
+            Error   = $null
         }
         
         try {
@@ -705,28 +727,28 @@ function Optimize-NetworkSettings {
     )
     
     $results = @{
-        Success = 0
-        Failed = 0
+        Success         = 0
+        Failed          = 0
         SettingsApplied = 0
-        Details = [List[PSCustomObject]]::new()
+        Details         = [List[PSCustomObject]]::new()
     }
     
     # Network optimization settings (registry-based)
     $networkOptimizations = @{
         'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' = @{
             'TcpAckFrequency' = 1
-            'TCPNoDelay' = 1
+            'TCPNoDelay'      = 1
         }
     }
     
     foreach ($registryPath in $networkOptimizations.Keys) {
         foreach ($setting in $networkOptimizations[$registryPath].GetEnumerator()) {
             $settingResult = @{
-                Path = $registryPath
+                Path    = $registryPath
                 Setting = $setting.Key
-                Value = $setting.Value
+                Value   = $setting.Value
                 Success = $false
-                Error = $null
+                Error   = $null
             }
             
             try {
@@ -768,12 +790,13 @@ function Get-DiskUsageMetrics {
     try {
         $systemDrive = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DeviceID -eq 'C:' }
         return @{
-            TotalSize = $systemDrive.Size
-            FreeSpace = $systemDrive.FreeSpace
-            UsedSpace = $systemDrive.Size - $systemDrive.FreeSpace
+            TotalSize      = $systemDrive.Size
+            FreeSpace      = $systemDrive.FreeSpace
+            UsedSpace      = $systemDrive.Size - $systemDrive.FreeSpace
             UsedPercentage = [math]::Round((($systemDrive.Size - $systemDrive.FreeSpace) / $systemDrive.Size) * 100, 1)
         }
-    } catch {
+    }
+    catch {
         return @{ TotalSize = 0; FreeSpace = 0; UsedSpace = 0; UsedPercentage = 0 }
     }
 }
@@ -791,14 +814,15 @@ function Get-StartupProgramCount {
                 $items = Get-ItemProperty -Path $location -ErrorAction SilentlyContinue
                 if ($items) {
                     $count += ($items.PSObject.Properties | Where-Object { 
-                        $_.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider') 
-                    }).Count
+                            $_.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider') 
+                        }).Count
                 }
             }
         }
         
         return $count
-    } catch {
+    }
+    catch {
         return 0
     }
 }
@@ -817,7 +841,8 @@ function Get-TemporaryFilesSize {
         }
         
         return $totalSize
-    } catch {
+    }
+    catch {
         return 0
     }
 }
@@ -831,7 +856,8 @@ function Get-MemoryUsagePercent {
     try {
         $memory = Get-CimInstance -ClassName Win32_OperatingSystem
         return [math]::Round((($memory.TotalVisibleMemorySize - $memory.FreePhysicalMemory) / $memory.TotalVisibleMemorySize) * 100, 1)
-    } catch {
+    }
+    catch {
         return 0
     }
 }
