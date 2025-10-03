@@ -560,21 +560,17 @@ IF !ERRORLEVEL! EQU 0 (
 CALL :LOG_MESSAGE "Dependency verification completed" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
-REM Startup Task Cleanup (Based on Archived Script Logic)
-REM Always remove existing startup tasks at script startup
+REM Initial Cleanup - Remove any leftover startup tasks from previous runs
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Performing startup task cleanup..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Performing initial cleanup..." "INFO" "LAUNCHER"
 
-REM Remove all possible startup task variations
+REM Remove all possible startup task variations from previous versions
 schtasks /delete /tn "Windows Maintenance Post-Restart Startup" /f >nul 2>&1
 schtasks /delete /tn "Windows Maintenance Startup" /f >nul 2>&1 
 schtasks /delete /tn "WindowsMaintenanceStartup" /f >nul 2>&1
+schtasks /delete /tn "WindowsMaintenanceStartupFallback" /f >nul 2>&1
 
-IF %ERRORLEVEL% EQU 0 (
-    CALL :LOG_MESSAGE "Cleaned up existing startup tasks" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "No existing startup tasks to clean up" "DEBUG" "LAUNCHER"
-)
+CALL :LOG_MESSAGE "Initial cleanup completed" "DEBUG" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Enhanced Pending Restart Detection (Based on Archived Script Logic)
@@ -636,25 +632,33 @@ IF !ERRORLEVEL! EQU 0 (
 CALL :LOG_MESSAGE "Pending restart status: %PENDING_RESTART%" "INFO" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
-REM Modular Task Scheduler Management
+REM Simple Startup Task Management
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Managing startup task..." "INFO" "LAUNCHER"
 
 SET "TASK_NAME=WindowsMaintenanceAutomation"
 SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
 
-REM Startup task cleanup already performed at script startup
+REM Step 1: Check if startup task exists, if yes remove it
+CALL :LOG_MESSAGE "Checking if startup task exists..." "DEBUG" "LAUNCHER"
+schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "Startup task exists - removing it..." "INFO" "LAUNCHER"
+    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task removed successfully" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to remove existing startup task" "WARN" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "No existing startup task found" "DEBUG" "LAUNCHER"
+)
 
-REM Create startup task if pending restart detected using archived script logic
+REM Step 2: Check for pending restarts
 IF "%PENDING_RESTART%"=="YES" (
-    CALL :LOG_MESSAGE "Creating startup task for post-restart continuation..." "INFO" "LAUNCHER"
-    CALL :LOG_MESSAGE "Using scheduled task script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    REM Step 3a: Pending restart detected - create startup task and restart
+    CALL :LOG_MESSAGE "Pending restart detected - creating startup task..." "INFO" "LAUNCHER"
     
-    REM Use the same PowerShell detection for startup task
-    SET "STARTUP_PS_EXECUTABLE=powershell.exe"
-    IF "%PS7_AVAILABLE%"=="YES" SET "STARTUP_PS_EXECUTABLE=%PS_EXECUTABLE%"
-    
-    REM Use archived script's approach: ONLOGON with delay and current user
     schtasks /Create ^
         /SC ONLOGON ^
         /TN "%STARTUP_TASK_NAME%" ^
@@ -665,62 +669,33 @@ IF "%PENDING_RESTART%"=="YES" (
         /F >nul 2>&1
         
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task created successfully with ONLOGON trigger" "SUCCESS" "LAUNCHER"
-        CALL :LOG_MESSAGE "Task will execute 1 minute after user logon" "INFO" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create startup task with ONLOGON trigger" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
         
-        REM Fallback to ONSTART if ONLOGON fails
-        CALL :LOG_MESSAGE "Attempting fallback with ONSTART trigger..." "WARN" "LAUNCHER"
-        schtasks /Create ^
-            /SC ONSTART ^
-            /TN "%STARTUP_TASK_NAME%" ^
-            /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && powershell.exe -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive -PostRestart\"" ^
-            /RL HIGHEST ^
-            /RU SYSTEM ^
-            /F >nul 2>&1
-            
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Fallback startup task created successfully with ONSTART" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to create startup task with both ONLOGON and ONSTART" "ERROR" "LAUNCHER"
-            CALL :LOG_MESSAGE "Cannot create startup task - manual restart and execution will be required" "ERROR" "LAUNCHER"
-            PAUSE
-            EXIT /B 1
-        )
-    )
-    
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task creation successful - proceeding with restart" "SUCCESS" "LAUNCHER"
-        
-        REM Initiate system restart to complete updates
+        REM Initiate system restart
         ECHO.
         ECHO ================================================================================
         ECHO  SYSTEM RESTART REQUIRED
         ECHO ================================================================================
-        ECHO  Windows Updates or system components require a restart to complete installation.
-        ECHO  The system will restart automatically in 30 seconds.
+        ECHO  Windows Updates require a restart. The system will restart in 30 seconds.
         ECHO  The maintenance script will continue automatically after restart.
         ECHO.
-        ECHO  Press Ctrl+C to cancel the restart if needed.
+        ECHO  Press Ctrl+C to cancel if needed.
         ECHO ================================================================================
         ECHO.
         
         CALL :LOG_MESSAGE "Initiating system restart in 30 seconds..." "INFO" "LAUNCHER"
         shutdown /r /t 30 /c "Windows Maintenance: Restarting to complete system updates"
         
-        REM Exit script - it will continue after restart via the startup task
-        CALL :LOG_MESSAGE "System restart initiated - script will continue after reboot" "INFO" "LAUNCHER"
-        EXIT /B 0
-        
-        REM Exit script - it will continue after restart via the startup task
         CALL :LOG_MESSAGE "System restart initiated - script will continue after reboot" "INFO" "LAUNCHER"
         EXIT /B 0
         
     ) ELSE (
-        CALL :LOG_MESSAGE "Startup task creation failed - cannot safely restart" "WARN" "LAUNCHER"
-        CALL :LOG_MESSAGE "Manual restart may be required to complete updates" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Failed to create startup task - cannot safely restart" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Manual restart may be required" "WARN" "LAUNCHER"
     )
+) ELSE (
+    REM Step 3b: No pending restart - continue with script execution
+    CALL :LOG_MESSAGE "No pending restart detected - continuing with script execution" "INFO" "LAUNCHER"
 )
 
 REM Enhanced Monthly Scheduled Task Setup with Error Handling
