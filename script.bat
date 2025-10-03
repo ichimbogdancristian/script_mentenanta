@@ -659,14 +659,40 @@ IF "%PENDING_RESTART%"=="YES" (
     REM Step 3a: Pending restart detected - create startup task and restart
     CALL :LOG_MESSAGE "Pending restart detected - creating startup task..." "INFO" "LAUNCHER"
     
+    REM Determine which script to use for restart continuation
+    SET "RESTART_SCRIPT="
+    IF EXIST "!WORKING_DIR!MaintenanceCompatibilityWrapper.ps1" (
+        SET "RESTART_SCRIPT=!WORKING_DIR!MaintenanceCompatibilityWrapper.ps1"
+        CALL :LOG_MESSAGE "Using MaintenanceCompatibilityWrapper.ps1 for restart continuation" "DEBUG" "LAUNCHER"
+    ) ELSE IF EXIST "!WORKING_DIR!MaintenanceOrchestrator.ps1" (
+        SET "RESTART_SCRIPT=!WORKING_DIR!MaintenanceOrchestrator.ps1"
+        CALL :LOG_MESSAGE "Using MaintenanceOrchestrator.ps1 for restart continuation" "DEBUG" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "No valid PowerShell script found for restart continuation" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Cannot create startup task - no orchestrator available" "ERROR" "LAUNCHER"
+        GOTO :SKIP_RESTART
+    )
+    
+    REM Use correct PowerShell executable
+    SET "STARTUP_PS_EXEC=powershell.exe"
+    IF "%PS7_AVAILABLE%"=="YES" (
+        SET "STARTUP_PS_EXEC=!PS_EXECUTABLE!"
+        CALL :LOG_MESSAGE "Using PowerShell 7 for startup task: !PS_EXECUTABLE!" "DEBUG" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Using Windows PowerShell 5 for startup task" "DEBUG" "LAUNCHER"
+    )
+    
+    CALL :LOG_MESSAGE "Creating startup task with script: !RESTART_SCRIPT!" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using PowerShell executable: !STARTUP_PS_EXEC!" "DEBUG" "LAUNCHER"
+    
     schtasks /Create ^
         /SC ONLOGON ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && powershell.exe -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive -PostRestart\"" ^
+        /TR "cmd /c \"cd /d \"!WORKING_DIR!\" && \"!STARTUP_PS_EXEC!\" -ExecutionPolicy Bypass -File \"!RESTART_SCRIPT!\" -NonInteractive -PostRestart\"" ^
         /RL HIGHEST ^
         /RU "%USERNAME%" ^
         /DELAY 0001:00 ^
-        /F >nul 2>&1
+        /F >"%WORKING_DIR%startup_task_creation.log" 2>&1
         
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
@@ -690,9 +716,15 @@ IF "%PENDING_RESTART%"=="YES" (
         EXIT /B 0
         
     ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create startup task - cannot safely restart" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Failed to create startup task - error details:" "ERROR" "LAUNCHER"
+        IF EXIST "%WORKING_DIR%startup_task_creation.log" (
+            TYPE "%WORKING_DIR%startup_task_creation.log"
+        )
+        CALL :LOG_MESSAGE "Cannot safely restart without startup task" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "Manual restart may be required" "WARN" "LAUNCHER"
     )
+    
+    :SKIP_RESTART
 ) ELSE (
     REM Step 3b: No pending restart - continue with script execution
     CALL :LOG_MESSAGE "No pending restart detected - continuing with script execution" "INFO" "LAUNCHER"
@@ -703,7 +735,7 @@ CALL :LOG_MESSAGE "Managing monthly scheduled task '%TASK_NAME%'..." "INFO" "LAU
 
 REM Step 1: Check if monthly task exists, if yes remove it
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0
+IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Monthly task exists - removing it..." "INFO" "LAUNCHER"
     schtasks /Delete /TN "%TASK_NAME%" /F >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
