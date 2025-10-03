@@ -29,7 +29,18 @@ using namespace System.Collections.Generic
     Execute a specific module by name
 
 .PARAMETER EnableDetailedLogging
-    Enable comprehensive logging including dependency tracking
+    Eif ($failedModules -eq 0 -and $successfulModules -gt 0) {
+    Write-Host "🎉 All modules completed successfully with enhanced protocol!" -ForegroundColor Green
+    Write-Log "All modules completed successfully. Total: $successfulModules" -Level SUCCESS -Component ORCHESTRATOR
+}
+elseif ($successfulModules -gt 0) {
+    Write-Host "⚠️  Execution completed with some issues - see detailed logs above" -ForegroundColor Yellow
+    Write-Log "Execution completed with issues. Successful: $successfulModules, Failed: $failedModules" -Level WARN -Component ORCHESTRATOR
+}
+else {
+    Write-Host "❌ Execution completed with significant failures" -ForegroundColor Red
+    Write-Log "Execution completed with significant failures. Total failures: $failedModules" -Level ERROR -Component ORCHESTRATOR
+}prehensive logging including dependency tracking
 
 .PARAMETER ForceAllModules
     Execute all modules regardless of privilege level (may cause failures)
@@ -146,6 +157,9 @@ Write-Host "╔═════════════════════�
 Write-Host "║                          Windows Maintenance Automation - Enhanced Orchestrator v2.1                                       ║" -ForegroundColor Cyan
 Write-Host "║                                     Advanced Module Execution Protocol                                                      ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+
+# Log orchestrator startup
+Write-Log "Windows Maintenance Automation - Enhanced Orchestrator v2.1 started" -Level INFO -Component ORCHESTRATOR
 
 # Set up temp directories
 $TempRoot = Join-Path $WorkingDirectory 'temp_files'
@@ -465,6 +479,10 @@ $ExecutionMode = if ('ModuleExecutionProtocol' -in $LoadedModules) {
 }
 
 Write-Host "🔧 Execution mode: $ExecutionMode" -ForegroundColor Cyan
+Write-Log "Execution mode set to: $ExecutionMode" -Level INFO -Component ORCHESTRATOR
+if ($DryRun) {
+    Write-Log "DRY-RUN MODE activated - no changes will be applied" -Level INFO -Component ORCHESTRATOR
+}
 
 #endregion
 
@@ -778,9 +796,11 @@ if ($EnableDetailedLogging) {
 Write-Host ""
 Write-Host "🚀 Enhanced Module Execution Engine:" -ForegroundColor Yellow
 Write-Host "══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Log "Starting enhanced module execution engine with $($selectedModules.Count) selected modules" -Level INFO -Component ORCHESTRATOR
 
 try {
     # Execute modules with full dependency management
+    Write-Log "Executing modules: $($selectedModules -join ', ')" -Level INFO -Component ORCHESTRATOR
     $executionResults = $moduleExecutor.ExecuteAllModules($selectedModules)
     
     Write-Host ""
@@ -823,6 +843,7 @@ try {
 }
 catch {
     Write-Host "❌ Critical execution engine failure: $_" -ForegroundColor Red
+    Write-Log "Critical execution engine failure: $_" -Level ERROR -Component ORCHESTRATOR
     exit 1
 }
 

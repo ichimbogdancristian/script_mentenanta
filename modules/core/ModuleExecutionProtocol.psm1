@@ -291,6 +291,7 @@ class ModuleExecutor {
                 
                 # Execute module
                 Write-Log "Executing module: $moduleName" -Level INFO -Component MODULE_EXECUTOR
+                Write-Log "Starting execution of $moduleName" -Level INFO -Component $moduleName
                 $result = $this.ExecuteModule($manifest)
                 
                 $this.ExecutionResults[$moduleName] = $result
@@ -300,6 +301,7 @@ class ModuleExecutor {
                 # Log completion
                 $status = if ($result.Success) { "SUCCESS" } else { "FAILED" }
                 Write-Log "Module '$moduleName' completed with status: $status (Duration: $([math]::Round($result.DurationSeconds, 2))s)" -Level $(if ($result.Success) { "SUCCESS" } else { "ERROR" }) -Component MODULE_EXECUTOR
+                Write-Log "Execution completed with status: $status (Duration: $([math]::Round($result.DurationSeconds, 2))s)" -Level $(if ($result.Success) { "SUCCESS" } else { "ERROR" }) -Component $moduleName
                 
             } catch {
                 Write-Log "Critical error executing module '$moduleName': $_" -Level ERROR -Component MODULE_EXECUTOR
@@ -342,6 +344,7 @@ class ModuleExecutor {
             }
             
             Write-Log "Loading module: $($context.ModulePath)" -Level INFO -Component MODULE_EXECUTOR
+            Write-Log "Loading module from path: $($context.ModulePath)" -Level INFO -Component $Manifest.Name
             Import-Module $context.ModulePath -Force -ErrorAction Stop
             
             # Validate entry function exists
@@ -362,6 +365,7 @@ class ModuleExecutor {
         } catch {
             $errorMessage = $_.Exception.Message
             Write-Log "Module execution failed: $errorMessage" -Level ERROR -Component MODULE_EXECUTOR
+            Write-Log "Execution failed with error: $errorMessage" -Level ERROR -Component $Manifest.Name
             $result.Complete($false, $null, $errorMessage)
             
             # Add specific error categorization

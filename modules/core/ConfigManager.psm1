@@ -629,9 +629,18 @@ function Write-Log {
             return
         }
         
-        # Use global log file path if not specified
-        if (-not $LogFilePath -and $Global:MaintenanceLogFile) {
-            $LogFilePath = $Global:MaintenanceLogFile
+        # Determine log file paths
+        $mainLogPath = $LogFilePath
+        if (-not $mainLogPath -and $Global:MaintenanceLogFile) {
+            $mainLogPath = $Global:MaintenanceLogFile
+        }
+        
+        # Create component-specific log file path
+        $componentLogPath = $null
+        if ($mainLogPath -and $Component -ne 'SYSTEM') {
+            $logDir = Split-Path $mainLogPath -Parent
+            $componentFileName = "$Component-$(Get-Date -Format 'yyyy-MM-dd').log"
+            $componentLogPath = Join-Path $logDir $componentFileName
         }
         
         # Format timestamp
@@ -650,21 +659,89 @@ function Write-Log {
             }
         }
         
-        # File output
-        if ($loggingConfig.logging.enableFileOutput -and $LogFilePath) {
+        # File output - Write to main log file
+        if ($loggingConfig.logging.enableFileOutput -and $mainLogPath) {
             # Ensure log directory exists
-            $logDir = Split-Path $LogFilePath -Parent
+            $logDir = Split-Path $mainLogPath -Parent
             if ($logDir -and $logDir.Length -gt 0 -and -not (Test-Path $logDir)) {
                 New-Item -Path $logDir -ItemType Directory -Force | Out-Null
             }
             
-            # Append to log file
-            $formattedMessage | Add-Content -Path $LogFilePath -Encoding UTF8
+            # Append to main log file
+            $formattedMessage | Add-Content -Path $mainLogPath -Encoding UTF8
+        }
+        
+        # Component-specific file output
+        if ($loggingConfig.logging.enableFileOutput -and $componentLogPath) {
+            # Ensure log directory exists
+            $componentLogDir = Split-Path $componentLogPath -Parent
+            if ($componentLogDir -and $componentLogDir.Length -gt 0 -and -not (Test-Path $componentLogDir)) {
+                New-Item -Path $componentLogDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Append to component-specific log file
+            $formattedMessage | Add-Content -Path $componentLogPath -Encoding UTF8
+            
+            # Store component log path for later retrieval
+            if (-not $Global:ComponentLogFiles) {
+                $Global:ComponentLogFiles = @{}
+            }
+            $Global:ComponentLogFiles[$Component] = $componentLogPath
         }
     }
     catch {
         Write-Warning "Failed to write log: $_"
     }
+}
+
+<#
+.SYNOPSIS
+    Gets the log file paths for all components
+
+.DESCRIPTION
+    Returns a hashtable with component names and their corresponding log file paths
+
+.EXAMPLE
+    Get-ComponentLogFiles
+#>
+function Get-ComponentLogFiles {
+    [CmdletBinding()]
+    param()
+    
+    if ($Global:ComponentLogFiles) {
+        return $Global:ComponentLogFiles
+    }
+    
+    return @{}
+}
+
+<#
+.SYNOPSIS
+    Reads the content of a component's log file
+
+.DESCRIPTION
+    Returns the log entries for a specific component from its dedicated log file
+
+.PARAMETER Component
+    The component name to read logs for
+
+.EXAMPLE
+    Get-ComponentLogContent -Component 'MODULE_EXECUTOR'
+#>
+function Get-ComponentLogContent {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Component
+    )
+    
+    $componentLogs = Get-ComponentLogFiles
+    
+    if ($componentLogs.ContainsKey($Component) -and (Test-Path $componentLogs[$Component])) {
+        return Get-Content -Path $componentLogs[$Component] -Encoding UTF8
+    }
+    
+    return @()
 }
 
 #endregion
@@ -679,5 +756,7 @@ Export-ModuleMember -Function @(
     'Get-UnifiedBloatwareList',
     'Get-UnifiedEssentialAppsList',
     'Save-Configuration',
-    'Write-Log'
+    'Write-Log',
+    'Get-ComponentLogFiles',
+    'Get-ComponentLogContent'
 )

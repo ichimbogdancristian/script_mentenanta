@@ -18,6 +18,9 @@
 using namespace System.Collections.Generic
 using namespace System.Text
 
+# Add necessary assemblies for HTML encoding
+Add-Type -AssemblyName System.Web
+
 #region Public Functions
 
 <#
@@ -441,6 +444,143 @@ function Get-DetailedTaskResults {
 
 <#
 .SYNOPSIS
+    Adds orchestrator logs section to HTML report
+#>
+function Add-OrchestratorLogsSection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [System.Text.StringBuilder]$Html
+    )
+    
+    try {
+        # Import ConfigManager to access log functions
+        Import-Module (Join-Path $PSScriptRoot '..' 'core' 'ConfigManager.psm1') -Force -ErrorAction SilentlyContinue
+        
+        $orchestratorLogs = Get-ComponentLogContent -Component 'ORCHESTRATOR'
+        if ($orchestratorLogs.Count -eq 0) {
+            $orchestratorLogs = Get-ComponentLogContent -Component 'SYSTEM'
+        }
+        
+        $Html.AppendLine(@"
+        <div class="section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>🎯 Orchestrator Execution Logs</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content">
+                <div class="log-container">
+"@) | Out-Null
+        
+        if ($orchestratorLogs.Count -gt 0) {
+            foreach ($logLine in $orchestratorLogs) {
+                $logClass = 'log-info'
+                if ($logLine -match '\[ERROR\]') { $logClass = 'log-error' }
+                elseif ($logLine -match '\[WARN\]') { $logClass = 'log-warning' }
+                elseif ($logLine -match '\[SUCCESS\]') { $logClass = 'log-success' }
+                
+                $Html.AppendLine("                    <div class='log-entry $logClass'>$([System.Web.HttpUtility]::HtmlEncode($logLine))</div>") | Out-Null
+            }
+        } else {
+            $Html.AppendLine("                    <div class='log-entry log-info'>No orchestrator logs available</div>") | Out-Null
+        }
+        
+        $Html.AppendLine(@"
+                </div>
+            </div>
+        </div>
+"@) | Out-Null
+    }
+    catch {
+        Write-Warning "Failed to add orchestrator logs section: $_"
+    }
+}
+
+<#
+.SYNOPSIS
+    Adds module-specific logs sections to HTML report
+#>
+function Add-ModuleLogsSection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [System.Text.StringBuilder]$Html,
+        
+        [Parameter()]
+        [Array]$TaskResults = @()
+    )
+    
+    try {
+        # Import ConfigManager to access log functions
+        Import-Module (Join-Path $PSScriptRoot '..' 'core' 'ConfigManager.psm1') -Force -ErrorAction SilentlyContinue
+        
+        $componentLogs = Get-ComponentLogFiles
+        $moduleNames = @()
+        
+        # Get unique module names from task results and component logs
+        foreach ($task in $TaskResults) {
+            if ($task.TaskName -and $task.TaskName -notin $moduleNames) {
+                $moduleNames += $task.TaskName
+            }
+        }
+        
+        foreach ($component in $componentLogs.Keys) {
+            if ($component -notin @('ORCHESTRATOR', 'SYSTEM', 'MODULE_EXECUTOR') -and $component -notin $moduleNames) {
+                $moduleNames += $component
+            }
+        }
+        
+        if ($moduleNames.Count -gt 0) {
+            $Html.AppendLine(@"
+        <div class="section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>📦 Module Execution Logs</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content">
+"@) | Out-Null
+            
+            foreach ($moduleName in $moduleNames | Sort-Object) {
+                $moduleLogs = Get-ComponentLogContent -Component $moduleName
+                
+                $Html.AppendLine(@"
+                <div class="module-log-section">
+                    <h3 class="module-log-title">🔧 $moduleName</h3>
+                    <div class="log-container">
+"@) | Out-Null
+                
+                if ($moduleLogs.Count -gt 0) {
+                    foreach ($logLine in $moduleLogs) {
+                        $logClass = 'log-info'
+                        if ($logLine -match '\[ERROR\]') { $logClass = 'log-error' }
+                        elseif ($logLine -match '\[WARN\]') { $logClass = 'log-warning' }
+                        elseif ($logLine -match '\[SUCCESS\]') { $logClass = 'log-success' }
+                        
+                        $Html.AppendLine("                        <div class='log-entry $logClass'>$([System.Web.HttpUtility]::HtmlEncode($logLine))</div>") | Out-Null
+                    }
+                } else {
+                    $Html.AppendLine("                        <div class='log-entry log-info'>No logs available for this module</div>") | Out-Null
+                }
+                
+                $Html.AppendLine(@"
+                    </div>
+                </div>
+"@) | Out-Null
+            }
+            
+            $Html.AppendLine(@"
+            </div>
+        </div>
+"@) | Out-Null
+        }
+    }
+    catch {
+        Write-Warning "Failed to add module logs section: $_"
+    }
+}
+
+<#
+.SYNOPSIS
     Creates an interactive HTML report
 #>
 function New-HtmlReport {
@@ -780,6 +920,66 @@ function New-HtmlReport {
             border-left: 4px solid #dc3545;
         }
         
+        /* Log Container Styles */
+        .log-container {
+            background-color: #1e1e1e;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.85em;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #444;
+        }
+        
+        .log-entry {
+            padding: 4px 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border-bottom: 1px solid #333;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-info {
+            color: #d4d4d4;
+        }
+        
+        .log-success {
+            color: #4ec9b0;
+        }
+        
+        .log-warning {
+            color: #dcdcaa;
+        }
+        
+        .log-error {
+            color: #f44747;
+        }
+        
+        .module-log-section {
+            margin-bottom: 25px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .module-log-title {
+            background-color: #f8f9fa;
+            padding: 12px 15px;
+            margin: 0;
+            font-size: 1.1em;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .module-log-section .log-container {
+            margin: 15px;
+            margin-top: 0;
+        }
+        
         @media (max-width: 768px) {
             .container { padding: 10px; }
             .header { padding: 20px; }
@@ -890,6 +1090,12 @@ function New-HtmlReport {
         </div>
 "@) | Out-Null
     }
+    
+    # Orchestrator logs section
+    Add-OrchestratorLogsSection -Html $html
+    
+    # Module logs section
+    Add-ModuleLogsSection -Html $html -TaskResults $ReportData.TaskResults
     
     # System information
     if ($ReportData.SystemInventory) {
