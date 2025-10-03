@@ -1,0 +1,9 @@
+ 
+[03-Oct-25 22:58:07] [INFO] [LAUNCHER] Log file: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\temp_files\logs\maintenance_t-2503-O_225807.log 
+[03-Oct-25 22:58:07] [DEBUG] [LAUNCHER] Parsing command line arguments... 
+[03-Oct-25 22:58:07] [DEBUG] [LAUNCHER] IS_POST_RESTART: NO 
+[03-Oct-25 22:58:07] [DEBUG] [LAUNCHER] ELEVATION_ATTEMPTED: NO 
+[03-Oct-25 22:58:07] [INFO] [LAUNCHER] Checking administrator privileges... 
+[03-Oct-25 22:58:07] [DEBUG] [LAUNCHER] NET SESSION returned exit code: 2 
+[03-Oct-25 22:58:07] [WARN] [LAUNCHER] No admin privileges detected - elevation required 
+[03-Oct-25 22:58:07] [DEBUG] [LAUNCHER] Launching elevated instance... 

@@ -1,16 +1,14 @@
 @echo off
 REM ============================================================================
-REM  Windows Maintenance Automation Launcher v2.0 (Enhanced Self-Discovery)
+REM  Windows Maintenance Automation Launcher v2.2 (Enhanced Debugging)
 REM  Purpose: Universal launcher for modular Windows maintenance system
-REM  Features: Self-discovery environment, dependency management, task scheduling
 REM  Requirements: Windows 10/11, Administrator privileges
-REM  Author: Windows Maintenance Automation Project
 REM ============================================================================
 
 SETLOCAL ENABLEDELAYEDEXPANSION
 
 REM -----------------------------------------------------------------------------
-REM Enhanced Logging System
+REM Enhanced Logging System with Verbose Output
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
 
@@ -23,15 +21,24 @@ IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 
 SET "LOG_ENTRY=[%DATE% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
-ECHO %LOG_ENTRY%
-REM Create log file if it doesn't exist and LOG_FILE is defined
+REM Color coding for console output
+IF "%LEVEL%"=="ERROR" (
+    ECHO [91m%LOG_ENTRY%[0m
+) ELSE IF "%LEVEL%"=="WARN" (
+    ECHO [93m%LOG_ENTRY%[0m
+) ELSE IF "%LEVEL%"=="SUCCESS" (
+    ECHO [92m%LOG_ENTRY%[0m
+) ELSE IF "%LEVEL%"=="DEBUG" (
+    ECHO [96m%LOG_ENTRY%[0m
+) ELSE (
+    ECHO %LOG_ENTRY%
+)
+
 IF DEFINED LOG_FILE (
     IF NOT EXIST "%LOG_FILE%" (
-        REM Create the log file directory if needed
         FOR %%F IN ("%LOG_FILE%") DO (
             IF NOT EXIST "%%~dpF" MD "%%~dpF" 2>nul
         )
-        REM Create empty log file
         ECHO. > "%LOG_FILE%" 2>nul
     )
     ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
@@ -39,78 +46,201 @@ IF DEFINED LOG_FILE (
 EXIT /B
 
 :REFRESH_PATH
-REM Refresh PATH environment variable from registry
+CALL :LOG_MESSAGE "Refreshing PATH environment variable..." "DEBUG" "LAUNCHER"
 FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul`) DO SET "SYSTEM_PATH=%%B"
 FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKCU\Environment" /v PATH 2^>nul`) DO SET "USER_PATH=%%B"
 IF DEFINED USER_PATH (
     SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
+    CALL :LOG_MESSAGE "PATH updated with SYSTEM and USER paths" "DEBUG" "LAUNCHER"
 ) ELSE (
     SET "PATH=%SYSTEM_PATH%"
+    CALL :LOG_MESSAGE "PATH updated with SYSTEM path only" "DEBUG" "LAUNCHER"
 )
+CALL :LOG_MESSAGE "Current PATH: %PATH%" "DEBUG" "LAUNCHER"
 EXIT /B
 
-:DIAGNOSE_POWERSHELL
-REM Comprehensive PowerShell diagnostic function
-CALL :LOG_MESSAGE "=== PowerShell Diagnostic Information ===" "DEBUG" "LAUNCHER"
+:CHECK_POWERSHELL7
+CALL :LOG_MESSAGE "=== PowerShell 7 Detection Start ===" "DEBUG" "PS7_CHECK"
 
-REM Check Windows PowerShell 5.1
-CALL :LOG_MESSAGE "Checking Windows PowerShell 5.1..." "DEBUG" "LAUNCHER"
-powershell.exe -NoProfile -Command "echo 'Windows PowerShell Version:'; $PSVersionTable.PSVersion; echo 'Execution Policy:'; Get-ExecutionPolicy" 2>&1 | (
-    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "WinPS: %%A" "DEBUG" "LAUNCHER"
+REM Method 1: Check pwsh.exe in PATH
+CALL :LOG_MESSAGE "Checking for pwsh.exe in PATH..." "DEBUG" "PS7_CHECK"
+pwsh.exe -Version >nul 2>&1
+SET "PWSH_CHECK_RESULT=!ERRORLEVEL!"
+CALL :LOG_MESSAGE "pwsh.exe -Version returned exit code: !PWSH_CHECK_RESULT!" "DEBUG" "PS7_CHECK"
+
+IF !PWSH_CHECK_RESULT! EQU 0 (
+    FOR /F "tokens=*" %%i IN ('pwsh.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS7_VERSION=%%i"
+    CALL :LOG_MESSAGE "PowerShell 7 found via PATH: !PS7_VERSION!" "SUCCESS" "PS7_CHECK"
+    SET "PS7_AVAILABLE=YES"
+    SET "PS7_PATH=pwsh.exe"
+    GOTO :PS7_CHECK_COMPLETE
 )
 
-REM Check PowerShell 7
-CALL :LOG_MESSAGE "Checking PowerShell 7..." "DEBUG" "LAUNCHER"
-pwsh.exe -NoProfile -Command "echo 'PowerShell 7 Version:'; $PSVersionTable.PSVersion; echo 'Execution Policy:'; Get-ExecutionPolicy" 2>&1 | (
-    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "PS7: %%A" "DEBUG" "LAUNCHER"
-)
+REM Method 2: Check common installation paths
+CALL :LOG_MESSAGE "pwsh.exe not in PATH, checking common installation directories..." "DEBUG" "PS7_CHECK"
 
-REM Check PATH for PowerShell executables
-CALL :LOG_MESSAGE "Checking PATH for PowerShell executables..." "DEBUG" "LAUNCHER"
-WHERE powershell.exe 2>nul | (
-    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "Found powershell.exe: %%A" "DEBUG" "LAUNCHER"
-)
-WHERE pwsh.exe 2>nul | (
-    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "Found pwsh.exe: %%A" "DEBUG" "LAUNCHER"
-)
-
-REM Check file associations
-CALL :LOG_MESSAGE "Checking .ps1 file association..." "DEBUG" "LAUNCHER"
-ASSOC .ps1 2>nul | (
-    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "PS1 ASSOC: %%A" "DEBUG" "LAUNCHER"
-)
-
-REM Test simple PowerShell execution
-CALL :LOG_MESSAGE "Testing simple PowerShell 7 execution..." "DEBUG" "LAUNCHER"
-pwsh.exe -NoProfile -Command "Write-Output 'PowerShell 7 execution test successful'" 2>&1 | (
-    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "PS7 Test: %%A" "DEBUG" "LAUNCHER"
-)
-
-CALL :LOG_MESSAGE "=== End PowerShell Diagnostics ===" "DEBUG" "LAUNCHER"
-EXIT /B
-
-:DETECT_PS7_ALTERNATIVE
-REM Try common PowerShell 7 installation paths (Enhanced with more locations)
-SET "PS7_FOUND=NO"
+SET "PS7_AVAILABLE=NO"
 FOR %%P IN (
     "%ProgramFiles%\PowerShell\7\pwsh.exe"
     "%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
     "%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe"
     "%ProgramFiles%\PowerShell\pwsh.exe"
-    "%ProgramFiles%\PowerShell\7.5.3\pwsh.exe"
-    "%ProgramFiles%\PowerShell\7.5\pwsh.exe"
-    "%ProgramFiles%\PowerShell\7.4\pwsh.exe"
 ) DO (
-    IF EXIST "%%P" (
-        SET "PS7_PATH=%%P"
-        SET "PS7_FOUND=YES"
-        CALL :LOG_MESSAGE "Found PowerShell 7 at: %%P" "SUCCESS" "LAUNCHER"
-        FOR /F "tokens=*" %%V IN ('"%%P" -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%V
-        CALL :LOG_MESSAGE "PowerShell 7 version: !PS7_VERSION!" "INFO" "LAUNCHER"
-        GOTO :PS7_FOUND
+    CALL :LOG_MESSAGE "Checking path: %%P" "DEBUG" "PS7_CHECK"
+    IF EXIST "%%~P" (
+        CALL :LOG_MESSAGE "Found PowerShell 7 at: %%~P" "SUCCESS" "PS7_CHECK"
+        SET "PS7_PATH=%%~P"
+        SET "PS7_AVAILABLE=YES"
+        
+        REM Get version
+        FOR /F "tokens=*" %%V IN ('"%%~P" -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS7_VERSION=%%V"
+        CALL :LOG_MESSAGE "PowerShell 7 version: !PS7_VERSION!" "INFO" "PS7_CHECK"
+        GOTO :PS7_CHECK_COMPLETE
     )
 )
-:PS7_FOUND
+
+CALL :LOG_MESSAGE "PowerShell 7 not found in any known location" "WARN" "PS7_CHECK"
+
+:PS7_CHECK_COMPLETE
+CALL :LOG_MESSAGE "=== PowerShell 7 Detection Complete ===" "DEBUG" "PS7_CHECK"
+CALL :LOG_MESSAGE "PS7_AVAILABLE: %PS7_AVAILABLE%" "DEBUG" "PS7_CHECK"
+CALL :LOG_MESSAGE "PS7_PATH: %PS7_PATH%" "DEBUG" "PS7_CHECK"
+EXIT /B
+
+:INSTALL_POWERSHELL7
+CALL :LOG_MESSAGE "=== PowerShell 7 Installation Start ===" "INFO" "PS7_INSTALL"
+
+REM Determine architecture
+CALL :LOG_MESSAGE "Detecting system architecture..." "DEBUG" "PS7_INSTALL"
+CALL :LOG_MESSAGE "PROCESSOR_ARCHITECTURE: %PROCESSOR_ARCHITECTURE%" "DEBUG" "PS7_INSTALL"
+
+IF "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
+    SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
+    CALL :LOG_MESSAGE "Using x64 installer" "INFO" "PS7_INSTALL"
+) ELSE IF "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
+    SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-arm64.msi"
+    CALL :LOG_MESSAGE "Using ARM64 installer" "INFO" "PS7_INSTALL"
+) ELSE (
+    SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x86.msi"
+    CALL :LOG_MESSAGE "Using x86 installer" "INFO" "PS7_INSTALL"
+)
+
+SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2-Setup.msi"
+CALL :LOG_MESSAGE "Download URL: %PS7_URL%" "DEBUG" "PS7_INSTALL"
+CALL :LOG_MESSAGE "Installer path: %PS7_INSTALLER%" "DEBUG" "PS7_INSTALL"
+
+REM Clean up any existing installer
+IF EXIST "%PS7_INSTALLER%" (
+    CALL :LOG_MESSAGE "Removing existing installer file..." "DEBUG" "PS7_INSTALL"
+    DEL /F /Q "%PS7_INSTALLER%" >nul 2>&1
+)
+
+REM Download PowerShell 7
+CALL :LOG_MESSAGE "Downloading PowerShell 7.5.2..." "INFO" "PS7_INSTALL"
+CALL :LOG_MESSAGE "This may take several minutes depending on connection speed..." "INFO" "PS7_INSTALL"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ProgressPreference = 'SilentlyContinue'; " ^
+    "Write-Host '[DEBUG] Starting download...'; " ^
+    "try { " ^
+    "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+    "    Write-Host '[DEBUG] TLS 1.2 enabled'; " ^
+    "    Write-Host '[DEBUG] Downloading from: %PS7_URL%'; " ^
+    "    Write-Host '[DEBUG] Saving to: %PS7_INSTALLER%'; " ^
+    "    $startTime = Get-Date; " ^
+    "    Invoke-WebRequest -Uri '%PS7_URL%' -OutFile '%PS7_INSTALLER%' -UseBasicParsing -TimeoutSec 300; " ^
+    "    $duration = ((Get-Date) - $startTime).TotalSeconds; " ^
+    "    Write-Host '[SUCCESS] Download completed in' $duration 'seconds'; " ^
+    "    $fileSize = (Get-Item '%PS7_INSTALLER%').Length / 1MB; " ^
+    "    Write-Host '[DEBUG] Downloaded file size:' ([math]::Round($fileSize, 2)) 'MB'; " ^
+    "    exit 0; " ^
+    "} catch { " ^
+    "    Write-Host '[ERROR] Download failed:' $_.Exception.Message; " ^
+    "    Write-Host '[ERROR] Exception type:' $_.Exception.GetType().FullName; " ^
+    "    exit 1; " ^
+    "}"
+
+SET "DOWNLOAD_RESULT=!ERRORLEVEL!"
+CALL :LOG_MESSAGE "Download command exit code: %DOWNLOAD_RESULT%" "DEBUG" "PS7_INSTALL"
+
+IF %DOWNLOAD_RESULT% NEQ 0 (
+    CALL :LOG_MESSAGE "PowerShell 7 download failed with exit code %DOWNLOAD_RESULT%" "ERROR" "PS7_INSTALL"
+    EXIT /B 1
+)
+
+REM Verify download
+IF NOT EXIST "%PS7_INSTALLER%" (
+    CALL :LOG_MESSAGE "Installer file not found after download" "ERROR" "PS7_INSTALL"
+    EXIT /B 1
+)
+
+FOR %%F IN ("%PS7_INSTALLER%") DO SET "FILE_SIZE=%%~zF"
+CALL :LOG_MESSAGE "Installer file size: %FILE_SIZE% bytes" "DEBUG" "PS7_INSTALL"
+
+IF %FILE_SIZE% LSS 100000 (
+    CALL :LOG_MESSAGE "Installer file too small - download likely failed" "ERROR" "PS7_INSTALL"
+    TYPE "%PS7_INSTALLER%"
+    EXIT /B 1
+)
+
+REM Install PowerShell 7
+CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "PS7_INSTALL"
+CALL :LOG_MESSAGE "Running msiexec with /i /quiet /norestart flags..." "DEBUG" "PS7_INSTALL"
+
+msiexec /i "%PS7_INSTALLER%" /quiet /norestart /log "%TEMP%\PS7_Install.log"
+SET "INSTALL_RESULT=!ERRORLEVEL!"
+
+CALL :LOG_MESSAGE "msiexec exit code: %INSTALL_RESULT%" "DEBUG" "PS7_INSTALL"
+
+REM Display installation log if available
+IF EXIST "%TEMP%\PS7_Install.log" (
+    CALL :LOG_MESSAGE "Installation log created at: %TEMP%\PS7_Install.log" "DEBUG" "PS7_INSTALL"
+    CALL :LOG_MESSAGE "Last 10 lines of installation log:" "DEBUG" "PS7_INSTALL"
+    powershell -NoProfile -Command "Get-Content '%TEMP%\PS7_Install.log' -Tail 10 | ForEach-Object { Write-Host '[LOG] ' + $_ }"
+)
+
+IF %INSTALL_RESULT% EQU 0 (
+    CALL :LOG_MESSAGE "PowerShell 7 installation completed successfully" "SUCCESS" "PS7_INSTALL"
+) ELSE IF %INSTALL_RESULT% EQU 3010 (
+    CALL :LOG_MESSAGE "PowerShell 7 installation completed (restart required)" "SUCCESS" "PS7_INSTALL"
+) ELSE (
+    CALL :LOG_MESSAGE "PowerShell 7 installation failed with exit code %INSTALL_RESULT%" "ERROR" "PS7_INSTALL"
+    CALL :LOG_MESSAGE "Check log at: %TEMP%\PS7_Install.log" "ERROR" "PS7_INSTALL"
+    EXIT /B 1
+)
+
+REM Wait for installation to settle
+CALL :LOG_MESSAGE "Waiting 5 seconds for installation to settle..." "DEBUG" "PS7_INSTALL"
+timeout /t 5 /nobreak >nul
+
+REM Refresh PATH
+CALL :REFRESH_PATH
+
+REM Add PowerShell 7 paths to current session
+CALL :LOG_MESSAGE "Adding PowerShell 7 paths to current session..." "DEBUG" "PS7_INSTALL"
+IF EXIST "%ProgramFiles%\PowerShell\7" (
+    SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
+    CALL :LOG_MESSAGE "Added to PATH: %ProgramFiles%\PowerShell\7" "DEBUG" "PS7_INSTALL"
+)
+
+REM Clean up installer
+CALL :LOG_MESSAGE "Cleaning up installer file..." "DEBUG" "PS7_INSTALL"
+DEL /F /Q "%PS7_INSTALLER%" >nul 2>&1
+
+REM Verify installation
+CALL :LOG_MESSAGE "Verifying PowerShell 7 installation..." "DEBUG" "PS7_INSTALL"
+CALL :CHECK_POWERSHELL7
+
+IF "%PS7_AVAILABLE%"=="YES" (
+    CALL :LOG_MESSAGE "PowerShell 7 successfully installed and verified" "SUCCESS" "PS7_INSTALL"
+    EXIT /B 0
+) ELSE (
+    CALL :LOG_MESSAGE "PowerShell 7 installation verification failed" "WARN" "PS7_INSTALL"
+    CALL :LOG_MESSAGE "Installation may require a system restart to take effect" "WARN" "PS7_INSTALL"
+    EXIT /B 1
+)
+
+CALL :LOG_MESSAGE "=== PowerShell 7 Installation Complete ===" "INFO" "PS7_INSTALL"
 EXIT /B
 
 :MAIN_SCRIPT
@@ -118,167 +248,134 @@ EXIT /B
 REM -----------------------------------------------------------------------------
 REM Self-Discovery Environment Setup
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
+ECHO.
+ECHO ================================================================================
+ECHO  Windows Maintenance Automation Launcher v2.2
+ECHO ================================================================================
+ECHO.
 
-REM Enhanced path detection - works from any location
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 
-REM Detect if running from a network location
-IF "%SCRIPT_PATH:~0,2%"=="\\" (
-    SET "IS_NETWORK_LOCATION=YES"
-    CALL :LOG_MESSAGE "Running from network location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
-) ELSE (
-    SET "IS_NETWORK_LOCATION=NO"
-    CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.2" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Script path: %SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Script directory: %SCRIPT_DIR%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "LAUNCHER"
+
+REM Setup logging
+IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
+    CALL :LOG_MESSAGE "Creating logs directory..." "DEBUG" "LAUNCHER"
+    MD "%WORKING_DIR%temp_files\logs" 2>nul
 )
-
-REM Setup logging - ensure logs directory exists
-IF NOT EXIST "%WORKING_DIR%temp_files" MD "%WORKING_DIR%temp_files" 2>nul
-IF NOT EXIST "%WORKING_DIR%temp_files\logs" MD "%WORKING_DIR%temp_files\logs" 2>nul
-SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
-CALL :LOG_MESSAGE "Log file: %LOG_FILE%" "DEBUG" "LAUNCHER"
-
-REM Environment variables for PowerShell orchestrator
+SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%.log"
+SET "LOG_FILE=%LOG_FILE: =0%"
 SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
-REM Elevation loop prevention marker
+CALL :LOG_MESSAGE "Log file: %LOG_FILE%" "INFO" "LAUNCHER"
+
+REM Check if this is a post-restart execution
+SET "IS_POST_RESTART=NO"
 SET "ELEVATION_ATTEMPTED=NO"
 
-REM Check if this is an elevated instance (prevent infinite loops)
+CALL :LOG_MESSAGE "Parsing command line arguments..." "DEBUG" "LAUNCHER"
 FOR %%i in (%*) DO (
-    IF "%%i"=="ELEVATED_INSTANCE" (
-        SET "ELEVATION_ATTEMPTED=YES"
-        CALL :LOG_MESSAGE "This is an elevated instance - skipping further elevation checks" "INFO" "LAUNCHER"
-    )
+    CALL :LOG_MESSAGE "Argument: %%i" "DEBUG" "LAUNCHER"
+    IF "%%i"=="-PostRestart" SET "IS_POST_RESTART=YES"
+    IF "%%i"=="ELEVATED_INSTANCE" SET "ELEVATION_ATTEMPTED=YES"
 )
 
-REM Repository configuration for auto-updates
+CALL :LOG_MESSAGE "IS_POST_RESTART: %IS_POST_RESTART%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "ELEVATION_ATTEMPTED: %ELEVATION_ATTEMPTED%" "DEBUG" "LAUNCHER"
+
+REM Repository configuration
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 SET "ZIP_FILE=%WORKING_DIR%update.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 
+REM Task names
+SET "TASK_NAME=ScriptMentenantaMonthly"
+SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
+
 REM -----------------------------------------------------------------------------
-REM Robust Script Path Detection for Scheduled Tasks
-REM Determines the best path to use for scheduled task creation
+REM Post-Restart Cleanup (Do this BEFORE anything else)
 REM -----------------------------------------------------------------------------
-SET "SCHEDULED_TASK_SCRIPT_PATH="
-
-REM Priority 1: Use current executing script path (most reliable)
-IF EXIST "%SCRIPT_PATH%" (
-    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "Scheduled task will use current script path: %SCRIPT_PATH%" "DEBUG" "LAUNCHER"
-    GOTO :SCHEDULED_TASK_PATH_COMPLETE
+IF "%IS_POST_RESTART%"=="YES" (
+    CALL :LOG_MESSAGE "=== POST-RESTART EXECUTION DETECTED ===" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Performing post-restart cleanup..." "INFO" "LAUNCHER"
+    
+    REM Remove startup task
+    CALL :LOG_MESSAGE "Removing startup task: %STARTUP_TASK_NAME%" "DEBUG" "LAUNCHER"
+    schtasks /delete /tn "%STARTUP_TASK_NAME%" /f >nul 2>&1
+    SET "TASK_DELETE_RESULT=!ERRORLEVEL!"
+    
+    IF !TASK_DELETE_RESULT! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task removed successfully" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "No startup task found to remove (exit code: !TASK_DELETE_RESULT!)" "DEBUG" "LAUNCHER"
+    )
+    
+    CALL :LOG_MESSAGE "Proceeding with normal maintenance execution" "INFO" "LAUNCHER"
 )
-
-REM Priority 2: Look for script.bat in current directory
-IF EXIST "%SCRIPT_DIR%script.bat" (
-    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
-    CALL :LOG_MESSAGE "Scheduled task will use directory script: %SCRIPT_DIR%script.bat" "DEBUG" "LAUNCHER"
-    GOTO :SCHEDULED_TASK_PATH_COMPLETE
-)
-
-REM Priority 3: Use script path as fallback (should not happen)
-SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-CALL :LOG_MESSAGE "Using fallback script path for scheduled task: %SCRIPT_PATH%" "WARN" "LAUNCHER"
-
-:SCHEDULED_TASK_PATH_COMPLETE
-
-CALL :LOG_MESSAGE "Self-discovery environment initialized" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Administrator Privilege Check
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking administrator privileges..." "INFO" "LAUNCHER"
 
-REM Simple admin check using NET SESSION
 NET SESSION >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    REM No admin rights - close and relaunch with admin rights
-    CALL :LOG_MESSAGE "No admin privileges detected - relaunching with elevation" "WARN" "LAUNCHER"
-    GOTO :ELEVATION_HANDLER
-) ELSE (
-    REM Has admin rights - continue running
-    CALL :LOG_MESSAGE "Administrator privileges confirmed - continuing execution" "SUCCESS" "LAUNCHER"
-    GOTO :CONTINUE_EXECUTION
+SET "ADMIN_CHECK_RESULT=!ERRORLEVEL!"
+CALL :LOG_MESSAGE "NET SESSION returned exit code: %ADMIN_CHECK_RESULT%" "DEBUG" "LAUNCHER"
+
+IF %ADMIN_CHECK_RESULT% NEQ 0 (
+    CALL :LOG_MESSAGE "No admin privileges detected - elevation required" "WARN" "LAUNCHER"
+    ECHO.
+    ECHO ================================================================================
+    ECHO  ADMINISTRATOR PRIVILEGES REQUIRED
+    ECHO ================================================================================
+    ECHO  This script will now close and relaunch with elevated privileges.
+    ECHO  Please accept the UAC prompt when it appears.
+    ECHO ================================================================================
+    ECHO.
+    
+    CALL :LOG_MESSAGE "Launching elevated instance..." "DEBUG" "LAUNCHER"
+    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" ELEVATED_INSTANCE %*' -Verb RunAs"
+    EXIT /B 0
 )
 
-REM -----------------------------------------------------------------------------
-REM Elevation Handler (Used by Early Admin Check)
-REM -----------------------------------------------------------------------------
-:ELEVATION_HANDLER
-CALL :LOG_MESSAGE "Handling privilege elevation..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
 
-ECHO.
-ECHO ================================================================================
-ECHO  ADMINISTRATOR PRIVILEGES REQUIRED
-ECHO ================================================================================
-ECHO  This Windows Maintenance script requires administrator privileges to:
-ECHO  - Install and update system packages
-ECHO  - Modify system settings and registry
-ECHO  - Install Windows updates
-ECHO  - Remove bloatware and system apps
-ECHO  
-ECHO  The script will now CLOSE and RELAUNCH with elevated privileges.
-ECHO  Please ACCEPT the UAC prompt when it appears.
-ECHO ================================================================================
-ECHO.
-
-REM Launch elevated instance and close current instance immediately
-CALL :LOG_MESSAGE "Launching elevated instance and closing current process..." "INFO" "LAUNCHER"
-powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" ELEVATED_INSTANCE' -Verb RunAs"
-
-REM Check if elevation was successful
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
-    ECHO ERROR: Failed to elevate privileges. UAC prompt may have been cancelled.
-    ECHO Please run this script as Administrator or accept the UAC prompt.
-    PAUSE
-    EXIT /B 1
-)
-
-REM Exit current non-elevated instance
-CALL :LOG_MESSAGE "Elevation initiated - terminating current instance" "INFO" "LAUNCHER"
-EXIT /B 0
-
-:CONTINUE_EXECUTION
 REM -----------------------------------------------------------------------------
 REM System Requirements Verification
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Verifying system requirements..." "INFO" "LAUNCHER"
 
-REM Windows version detection
-FOR /F "tokens=*" %%i IN ('powershell -NoProfile -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }"') DO SET OS_VERSION=%%i
-CALL :LOG_MESSAGE "Windows version: %OS_VERSION%" "INFO" "LAUNCHER"
+REM Get OS information
+FOR /F "tokens=*" %%i IN ('powershell -NoProfile -Command "[System.Environment]::OSVersion.Version.ToString()" 2^>nul') DO SET "OS_VERSION=%%i"
+CALL :LOG_MESSAGE "OS Version: %OS_VERSION%" "INFO" "LAUNCHER"
 
-REM PowerShell version check
-FOR /F "tokens=*" %%i IN ('powershell -NoProfile -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_VERSION=%%i
-IF "%PS_VERSION%"=="" SET PS_VERSION=0
-CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
+REM Get PowerShell version
+FOR /F "tokens=*" %%i IN ('powershell -NoProfile -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET "PS_VERSION=%%i"
+IF "%PS_VERSION%"=="" SET "PS_VERSION=0"
+CALL :LOG_MESSAGE "Windows PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 
 IF %PS_VERSION% LSS 5 (
-    CALL :LOG_MESSAGE "PowerShell 5.1 or higher required. Current: %PS_VERSION%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please install Windows PowerShell 5.1 or PowerShell 7+" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 5.1 or higher required (found: %PS_VERSION%)" "ERROR" "LAUNCHER"
     PAUSE
     EXIT /B 2
 )
 
-CALL :LOG_MESSAGE "System requirements verified" "SUCCESS" "LAUNCHER"
-
 REM -----------------------------------------------------------------------------
-REM Project Structure Discovery and Validation
+REM Project Structure Discovery
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Discovering project structure..." "INFO" "LAUNCHER"
 
-REM Check for required components
 SET "STRUCTURE_VALID=YES"
 SET "ORCHESTRATOR_PATH="
 
-REM Look for MaintenanceOrchestrator.ps1
+REM Check for orchestrator
 IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
     CALL :LOG_MESSAGE "Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
@@ -286,15 +383,15 @@ IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%script.ps1"
     CALL :LOG_MESSAGE "Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "No orchestrator found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
 REM Check for config directory
 IF EXIST "%WORKING_DIR%config" (
-    CALL :LOG_MESSAGE "Found configuration directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "Found config directory" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Configuration directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "Config directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
@@ -307,7 +404,7 @@ IF EXIST "%WORKING_DIR%modules" (
 )
 
 IF "%STRUCTURE_VALID%"=="NO" (
-    CALL :LOG_MESSAGE "Project structure incomplete. Attempting repository download..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Project structure incomplete - attempting repository download" "INFO" "LAUNCHER"
     GOTO :DOWNLOAD_REPOSITORY
 ) ELSE (
     CALL :LOG_MESSAGE "Project structure validated" "SUCCESS" "LAUNCHER"
@@ -315,36 +412,48 @@ IF "%STRUCTURE_VALID%"=="NO" (
 )
 
 REM -----------------------------------------------------------------------------
-REM Repository Download and Extraction
+REM Repository Download
 REM -----------------------------------------------------------------------------
 :DOWNLOAD_REPOSITORY
-CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "=== Repository Download Start ===" "INFO" "LAUNCHER"
 
-REM Clean up existing files
-IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
+IF EXIST "%ZIP_FILE%" (
+    CALL :LOG_MESSAGE "Removing existing ZIP file..." "DEBUG" "LAUNCHER"
+    DEL /Q "%ZIP_FILE%" >nul 2>&1
+)
 
-REM Download repository
-CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing -TimeoutSec 60; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
+CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "INFO" "LAUNCHER"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ProgressPreference = 'SilentlyContinue'; " ^
+    "try { " ^
+    "    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; " ^
+    "    Write-Host '[DEBUG] Starting download...'; " ^
+    "    Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing -TimeoutSec 60; " ^
+    "    Write-Host '[SUCCESS] Download completed'; " ^
+    "    exit 0; " ^
+    "} catch { " ^
+    "    Write-Host '[ERROR]' $_.Exception.Message; " ^
+    "    exit 1; " ^
+    "}"
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Repository download failed" "ERROR" "LAUNCHER"
     PAUSE
     EXIT /B 3
 )
 
-IF NOT EXIST "%ZIP_FILE%" (
-    CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    PAUSE
-    EXIT /B 3
-)
-
-CALL :LOG_MESSAGE "Repository downloaded successfully" "SUCCESS" "LAUNCHER"
-
-REM Extract repository
 CALL :LOG_MESSAGE "Extracting repository..." "INFO" "LAUNCHER"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "try { " ^
+    "    Add-Type -AssemblyName System.IO.Compression.FileSystem; " ^
+    "    [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); " ^
+    "    Write-Host '[SUCCESS] Extraction completed'; " ^
+    "    exit 0; " ^
+    "} catch { " ^
+    "    Write-Host '[ERROR]' $_.Exception.Message; " ^
+    "    exit 1; " ^
+    "}"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
@@ -352,752 +461,222 @@ IF !ERRORLEVEL! NEQ 0 (
     EXIT /B 3
 )
 
-REM Verify extraction
 SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
-IF EXIST "%EXTRACTED_PATH%" (
-    CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
-    
-    REM Update working directory to use extracted repository
+IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
+    SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1"
     SET "WORKING_DIR=%EXTRACTED_PATH%\"
-    SET "WORKING_DIRECTORY=%EXTRACTED_PATH%\"
-    
-    REM Check for orchestrator in extracted files
-    IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
-        SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1"
-        CALL :LOG_MESSAGE "Using extracted orchestrator: !ORCHESTRATOR_PATH!" "INFO" "LAUNCHER"
-    ) ELSE IF EXIST "%EXTRACTED_PATH%\script.ps1" (
-        SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "Using extracted legacy orchestrator: !ORCHESTRATOR_PATH!" "INFO" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        PAUSE
-        EXIT /B 3
-    )
+    CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "No orchestrator found in extracted files" "ERROR" "LAUNCHER"
     PAUSE
     EXIT /B 3
 )
 
-REM Clean up ZIP file
 DEL /Q "%ZIP_FILE%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
-REM Enhanced Dependency Management
+REM Dependency Management
 REM -----------------------------------------------------------------------------
 :DEPENDENCY_MANAGEMENT
-CALL :LOG_MESSAGE "Starting dependency management..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "=== Dependency Management Start ===" "INFO" "LAUNCHER"
 
-REM Windows Defender Exclusions (Enhanced) - Non-blocking
-CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }" 2>nul
-
-REM -----------------------------------------------------------------------------
-REM Dependency Management - Direct Downloads from Official Sources
-REM Installation Order: Winget -> PowerShell 7 -> NuGet -> PSGallery -> PSWindowsUpdate -> Chocolatey
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Starting dependency installation with optimized order..." "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "EMERGENCY: If process hangs for >3 minutes, press Ctrl+C and run MaintenanceOrchestrator.ps1 directly" "WARN" "LAUNCHER"
-
-REM Fixed dependency installation - robust and reliable
-CALL :LOG_MESSAGE "Starting fixed dependency installation with proper timeouts..." "INFO" "LAUNCHER"
-
-REM Add skip mechanism for troubleshooting
-IF EXIST "%WORKING_DIR%SKIP_DEPENDENCIES.txt" (
-    CALL :LOG_MESSAGE "SKIP_DEPENDENCIES.txt found - bypassing dependency installation" "WARN" "LAUNCHER"
-    GOTO :PS7_DETECTION_COMPLETE
-)
-
-REM -----------------------------------------------------------------------------
-REM 1. Windows Package Manager (Winget) - Foundation package manager
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Installing Windows Package Manager (winget)..." "INFO" "LAUNCHER"
-
-REM Improved Winget detection: check both version and path (ORIGINAL WORKING METHOD)
-CALL :LOG_MESSAGE "Installing Windows Package Manager (winget)..." "INFO" "LAUNCHER"
+REM Install Winget
+CALL :LOG_MESSAGE "Checking for Windows Package Manager (winget)..." "INFO" "LAUNCHER"
 winget --version >nul 2>&1
-SET "WINGET_FOUND=0"
-IF !ERRORLEVEL! EQU 0 (
-    SET "WINGET_FOUND=1"
-    CALL :LOG_MESSAGE "Winget detected via version check." "DEBUG" "LAUNCHER"
-) ELSE (
-    where winget >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        SET "WINGET_FOUND=1"
-        CALL :LOG_MESSAGE "Winget detected via PATH (where command)." "DEBUG" "LAUNCHER"
-    )
-)
-
-IF !WINGET_FOUND! EQU 0 (
-    CALL :LOG_MESSAGE "Winget not found, downloading from official Microsoft source..." "INFO" "LAUNCHER"
-    REM Download latest App Installer from Microsoft Store (ORIGINAL WORKING METHOD)
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "Winget not found - installing..." "INFO" "LAUNCHER"
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=!TEMP!\Microsoft.DesktopAppInstaller.msixbundle"
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message; exit 1 }"
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Installing Winget package..." "INFO" "LAUNCHER"
-        powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Winget installation completed successfully." "INFO" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Winget installation failed, but continuing..." "WARN" "LAUNCHER"
-        )
-        DEL /F /Q "!WINGET_FILE!" >nul 2>&1
-    ) ELSE (
-        CALL :LOG_MESSAGE "Winget download failed, but continuing..." "WARN" "LAUNCHER"
+    
+    powershell -ExecutionPolicy Bypass -Command ^
+        "$ProgressPreference = 'SilentlyContinue'; " ^
+        "try { " ^
+        "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+        "    Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; " ^
+        "    Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; " ^
+        "    Write-Host '[SUCCESS] Winget installed'; " ^
+        "} catch { " ^
+        "    Write-Host '[WARN] Winget installation failed'; " ^
+        "}" 2>nul
+    DEL /F /Q "!WINGET_FILE!" >nul 2>&1
+) ELSE (
+    FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET "WINGET_VERSION=%%i"
+    CALL :LOG_MESSAGE "Winget already installed: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+)
+
+REM Check and Install PowerShell 7
+CALL :LOG_MESSAGE "Checking for PowerShell 7..." "INFO" "LAUNCHER"
+CALL :CHECK_POWERSHELL7
+
+IF "%PS7_AVAILABLE%"=="NO" (
+    CALL :LOG_MESSAGE "PowerShell 7 not found - installing..." "INFO" "LAUNCHER"
+    CALL :INSTALL_POWERSHELL7
+    
+    IF !ERRORLEVEL! NEQ 0 (
+        CALL :LOG_MESSAGE "PowerShell 7 installation failed" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Manual installation required from: https://github.com/PowerShell/PowerShell/releases/latest" "ERROR" "LAUNCHER"
+        
+        ECHO.
+        ECHO ================================================================================
+        ECHO  POWERSHELL 7 INSTALLATION FAILED
+        ECHO ================================================================================
+        ECHO  The maintenance orchestrator requires PowerShell 7.0 or later.
+        ECHO  Automatic installation failed. Please install manually:
+        ECHO.
+        ECHO  Download: https://github.com/PowerShell/PowerShell/releases/latest
+        ECHO  OR use winget: winget install Microsoft.PowerShell
+        ECHO  OR use Chocolatey: choco install powershell-core
+        ECHO ================================================================================
+        ECHO.
+        PAUSE
+        EXIT /B 5
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Winget is already available." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7 is available: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
 )
 
-REM -----------------------------------------------------------------------------
-REM 2. PowerShell 7 - Modern PowerShell environment
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "LAUNCHER"
+REM Install NuGet
+CALL :LOG_MESSAGE "Installing NuGet PackageProvider..." "INFO" "LAUNCHER"
+ECHO Y | powershell -ExecutionPolicy Bypass -Command ^
+    "& { " ^
+    "    $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; " ^
+    "    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { " ^
+    "        try { " ^
+    "            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+    "            Write-Host '[DEBUG] Installing NuGet...'; " ^
+    "            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop; " ^
+    "            Write-Host '[SUCCESS] NuGet installed'; " ^
+    "        } catch { " ^
+    "            Write-Host '[WARN] NuGet installation failed:' $_.Exception.Message; " ^
+    "        } " ^
+    "    } else { " ^
+    "        Write-Host '[INFO] NuGet already installed'; " ^
+    "    } " ^
+    "}"
 
-REM PowerShell 7 - Modern PowerShell environment (ORIGINAL WORKING METHOD)
-CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "LAUNCHER"
-pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "PowerShell 7 not found, downloading from official Microsoft source..." "INFO" "LAUNCHER"
-    
-    REM Set download URL for PowerShell 7.5.2 (no fallback)
-    SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2.msi"
-    
-    REM Detect architecture and set appropriate download URL
-    IF "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
-        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
-    ) ELSE (
-        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x86.msi"
-    )
-    
-    REM Download PowerShell 7.5.2
-    CALL :LOG_MESSAGE "Downloading PowerShell 7.5.2..." "INFO" "LAUNCHER"
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host '[INFO] PowerShell 7.5.2 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.2 download failed:' $_.Exception.Message; exit 1 }"
-    
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "LAUNCHER"
-        msiexec /i "!PS7_INSTALLER!" /quiet /norestart
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "PowerShell 7 installed successfully." "INFO" "LAUNCHER"
-            REM Refresh PATH environment variable for current session
-            FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "PATH=%%B"
-            REM Add common PowerShell 7 installation paths to current session
-            IF EXIST "%ProgramFiles%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
-            IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
-            CALL :LOG_MESSAGE "PowerShell 7 installation completed." "INFO" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installation failed." "WARN" "LAUNCHER"
-        )
-        DEL /F /Q "!PS7_INSTALLER!" >nul 2>&1
-    )
-) ELSE (
-    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "PowerShell 7 already available: !PS7_VERSION!" "INFO" "LAUNCHER"
-)
+REM Configure PSGallery
+CALL :LOG_MESSAGE "Configuring PowerShell Gallery..." "INFO" "LAUNCHER"
+ECHO Y | powershell -ExecutionPolicy Bypass -Command ^
+    "& { " ^
+    "    try { " ^
+    "        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+    "        if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { " ^
+    "            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -ErrorAction SilentlyContinue " ^
+    "        }; " ^
+    "        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; " ^
+    "        Write-Host '[SUCCESS] PowerShell Gallery configured as trusted'; " ^
+    "    } catch { " ^
+    "        Write-Host '[WARN] Failed to configure PowerShell Gallery:' `$_.Exception.Message; " ^
+    "    } " ^
+    "}"
 
-:PS7_DETECTION_COMPLETE
+REM Install PSWindowsUpdate Module
+CALL :LOG_MESSAGE "Installing PSWindowsUpdate module..." "INFO" "LAUNCHER"
+ECHO Y | powershell -ExecutionPolicy Bypass -Command ^
+    "& { " ^
+    "    if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { " ^
+    "        try { " ^
+    "            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+    "            Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Repository PSGallery -Confirm:`$false; " ^
+    "            Write-Host '[SUCCESS] PSWindowsUpdate module installed'; " ^
+    "        } catch { " ^
+    "            Write-Host '[WARN] Failed to install PSWindowsUpdate module:' `$_.Exception.Message; " ^
+    "        } " ^
+    "    } else { " ^
+    "        Write-Host '[INFO] PSWindowsUpdate module already available'; " ^
+    "    } " ^
+    "}"
 
-REM NuGet PackageProvider - Automatic installation with multiple methods (ORIGINAL WORKING METHOD)
-CALL :LOG_MESSAGE "Installing NuGet PackageProvider with automatic confirmation..." "INFO" "LAUNCHER"
-
-REM Method 1: Direct bootstrap with automatic Y response
-ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Method 1 failed, trying direct download...' } } else { Write-Host '[INFO] NuGet PackageProvider already available' } }"
-
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "Trying alternative NuGet installation method..." "INFO" "LAUNCHER"
-    REM Method 2: Direct download and install (fallback)
-    powershell -ExecutionPolicy Bypass -Command "& { try { $nugetUrl = 'https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll'; $nugetPath = Join-Path $env:ProgramFiles 'PackageManagement\ProviderAssemblies\nuget\2.8.5.208\Microsoft.PackageManagement.NuGetProvider.dll'; $nugetDir = Split-Path $nugetPath; if (-not (Test-Path $nugetDir)) { New-Item -ItemType Directory -Path $nugetDir -Force | Out-Null }; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath -UseBasicParsing; Write-Host '[INFO] NuGet PackageProvider downloaded and installed manually' } catch { Write-Host '[WARN] Direct download also failed:' $_.Exception.Message } }"
-)
-
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "NuGet PackageProvider installation failed, but continuing..." "WARN" "LAUNCHER"
-)
-
-REM PowerShell Gallery Configuration - Fully Unattended (ORIGINAL WORKING METHOD)
-CALL :LOG_MESSAGE "Configuring PowerShell Gallery as trusted repository..." "INFO" "LAUNCHER"
-ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -ErrorAction SilentlyContinue }; Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; Write-Host '[INFO] PowerShell Gallery configured as trusted' } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' `$_.Exception.Message } }"
-
-REM PSWindowsUpdate Module - Download from PowerShell Gallery (ORIGINAL WORKING METHOD)
-CALL :LOG_MESSAGE "Installing PSWindowsUpdate module with automatic confirmation..." "INFO" "LAUNCHER"
-ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -ErrorAction SilentlyContinue }; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Repository PSGallery -Confirm:`$false; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' `$_.Exception.Message } } else { Write-Host '[INFO] PSWindowsUpdate module already available' } }"
-
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed." "WARN" "LAUNCHER"
-)
-
-REM Chocolatey Package Manager - Direct download from official source (ORIGINAL WORKING METHOD)
+REM Install Chocolatey
 CALL :LOG_MESSAGE "Installing Chocolatey package manager..." "INFO" "LAUNCHER"
 choco --version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "Chocolatey not found, downloading from official source..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Chocolatey not found - installing..." "INFO" "LAUNCHER"
+    powershell -ExecutionPolicy Bypass -Command ^
+        "& { " ^
+        "    try { " ^
+        "        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+        "        Set-ExecutionPolicy Bypass -Scope Process -Force; " ^
+        "        `$chocoInstallScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'); " ^
+        "        Invoke-Expression `$chocoInstallScript; " ^
+        "        Write-Host '[SUCCESS] Chocolatey installed'; " ^
+        "    } catch { " ^
+        "        Write-Host '[WARN] Chocolatey installation failed:' `$_.Exception.Message; " ^
+        "    } " ^
+        "}"
     
-    REM Download and install Chocolatey from official source
-    powershell -ExecutionPolicy Bypass -Command "& { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-ExecutionPolicy Bypass -Scope Process -Force; $chocoInstallScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'); Invoke-Expression $chocoInstallScript; Write-Host '[INFO] Chocolatey installed successfully' } catch { Write-Host '[WARN] Chocolatey installation failed:' $_.Exception.Message } }"
-    
-    REM Refresh PATH to include Chocolatey
     IF EXIST "%ProgramData%\chocolatey\bin" (
         SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
-        CALL :LOG_MESSAGE "Chocolatey PATH updated." "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Chocolatey PATH updated" "INFO" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Chocolatey is already installed." "INFO" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('choco --version 2^>nul') DO SET "CHOCO_VERSION=%%i"
+    CALL :LOG_MESSAGE "Chocolatey already installed: %CHOCO_VERSION%" "SUCCESS" "LAUNCHER"
 )
 
-CALL :LOG_MESSAGE "Dependency installation phase completed with optimized order." "INFO" "LAUNCHER"
-
-REM Post-installation verification
-IF "%PS7_INSTALL_SUCCESS%"=="YES" (
-    REM Refresh PATH environment variable
-    CALL :LOG_MESSAGE "Refreshing PATH environment variable..." "INFO" "LAUNCHER"
-    CALL :REFRESH_PATH
-    
-    REM Wait a moment for the installation to settle
-    timeout /t 5 /nobreak >nul 2>&1
-    
-    REM Try detection again
-    pwsh.exe -Version >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        FOR /F "tokens=*" %%i IN ('pwsh.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-        CALL :LOG_MESSAGE "PowerShell 7 successfully installed and detected: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell 7 installed but not immediately available. Trying alternative detection..." "INFO" "LAUNCHER"
-        CALL :DETECT_PS7_ALTERNATIVE
-        IF "%PS7_FOUND%"=="YES" (
-            FOR /F "tokens=*" %%i IN ('"%PS7_PATH%" -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-            CALL :LOG_MESSAGE "PowerShell 7 detected via alternative path: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installation succeeded but detection failed" "WARN" "LAUNCHER"
-            CALL :LOG_MESSAGE "You may need to restart your terminal or computer" "WARN" "LAUNCHER"
-        )
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "All PowerShell 7 installation methods failed" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Manual installation required from: https://github.com/PowerShell/PowerShell/releases/latest" "INFO" "LAUNCHER"
-)
-
-:PS7_DETECTION_COMPLETE
-
-REM Package Manager Dependencies
-CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
-
-REM Winget
-winget --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
-    CALL :LOG_MESSAGE "Winget available: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Winget not available - some features may be limited" "INFO" "LAUNCHER"
-)
-
-REM Chocolatey  
-choco --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    FOR /F "tokens=*" %%i IN ('choco --version 2^>nul') DO SET CHOCO_VERSION=%%i
-    CALL :LOG_MESSAGE "Chocolatey available: %CHOCO_VERSION%" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Chocolatey not available - will be installed if needed" "INFO" "LAUNCHER"
-)
-
-CALL :LOG_MESSAGE "Dependency verification completed" "SUCCESS" "LAUNCHER"
+CALL :LOG_MESSAGE "=== Dependency Management Complete ===" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
-REM Initial Cleanup - Remove any leftover startup tasks from previous runs
+REM PowerShell Orchestrator Execution
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Performing initial cleanup..." "INFO" "LAUNCHER"
+:ORCHESTRATOR_EXECUTION
+CALL :LOG_MESSAGE "=== PowerShell Orchestrator Execution ===" "INFO" "LAUNCHER"
 
-REM Remove all possible startup task variations from previous versions
-schtasks /delete /tn "Windows Maintenance Post-Restart Startup" /f >nul 2>&1
-schtasks /delete /tn "Windows Maintenance Startup" /f >nul 2>&1 
-schtasks /delete /tn "WindowsMaintenanceStartup" /f >nul 2>&1
-schtasks /delete /tn "WindowsMaintenanceStartupFallback" /f >nul 2>&1
-schtasks /delete /tn "ScriptMentenantaStartup" /f >nul 2>&1
-
-CALL :LOG_MESSAGE "Initial cleanup completed" "DEBUG" "LAUNCHER"
-
-REM -----------------------------------------------------------------------------
-REM Enhanced Pending Restart Detection (Based on Archived Script Logic)
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Checking for pending system restarts..." "INFO" "LAUNCHER"
-
-SET "PENDING_RESTART=NO"
-
-REM Primary method: Use PSWindowsUpdate module if available (most accurate)
-IF "%POWERSHELL_EXE%"=="" (
-    SET "POWERSHELL_EXE=powershell.exe"
-)
-
-CALL :LOG_MESSAGE "Attempting PSWindowsUpdate restart detection..." "DEBUG" "LAUNCHER"
-"%POWERSHELL_EXE%" -NoProfile -NonInteractive -Command ^
-    "try { Import-Module PSWindowsUpdate -ErrorAction Stop; $reboot = Get-WURebootStatus -Silent; if ($reboot -eq $true) { exit 1 } else { exit 0 } } catch { exit 2 }" 2>nul
-
-IF !ERRORLEVEL! EQU 1 (
-    SET "PENDING_RESTART=YES"
-    CALL :LOG_MESSAGE "PSWindowsUpdate module detected restart required" "INFO" "LAUNCHER"
-    GOTO :RESTART_DETECTION_COMPLETE
-)
-
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "PSWindowsUpdate module reports no restart required" "DEBUG" "LAUNCHER"
-    GOTO :RESTART_DETECTION_COMPLETE
-)
-
-REM Fallback methods: Registry-based detection
-CALL :LOG_MESSAGE "PSWindowsUpdate unavailable, using registry-based detection..." "DEBUG" "LAUNCHER"
-
-REM Check Windows Update pending restart registry keys
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "PENDING_RESTART=YES"
-    CALL :LOG_MESSAGE "Windows Update restart required (RebootRequired key found)" "INFO" "LAUNCHER"
-)
-
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "PENDING_RESTART=YES"
-    CALL :LOG_MESSAGE "Component Based Servicing restart pending" "INFO" "LAUNCHER"
-)
-
-REG QUERY "HKLM\SOFTWARE\Microsoft\Updates\UpdateExeVolatile" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "PENDING_RESTART=YES"
-    CALL :LOG_MESSAGE "Update installer restart pending" "INFO" "LAUNCHER"
-)
-
-REM Check for SCCM/ConfigMgr pending restart
-REG QUERY "HKLM\SOFTWARE\Microsoft\SMS\Mobile Client\Reboot Management\RebootData" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "PENDING_RESTART=YES"
-    CALL :LOG_MESSAGE "SCCM restart pending" "INFO" "LAUNCHER"
-)
-
-:RESTART_DETECTION_COMPLETE
-CALL :LOG_MESSAGE "Pending restart status: %PENDING_RESTART%" "INFO" "LAUNCHER"
-
-REM -----------------------------------------------------------------------------
-REM Simple Startup Task Management
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Managing startup task..." "INFO" "LAUNCHER"
-
-SET "TASK_NAME=ScriptMentenantaMonthly"
-SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
-
-REM Simple Startup Task Logic - Check → Remove → Check Pending → Create+Restart OR Continue
-CALL :LOG_MESSAGE "Startup Task Management: Simple Logic Implementation" "INFO" "LAUNCHER"
-
-REM Step 1: Check if startup task exists, if yes remove it
-CALL :LOG_MESSAGE "Checking for existing startup task '%STARTUP_TASK_NAME%'..." "DEBUG" "LAUNCHER"
-schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Startup task exists - removing it..." "INFO" "LAUNCHER"
-    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task removed successfully" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to remove existing startup task" "WARN" "LAUNCHER"
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "No existing startup task found" "DEBUG" "LAUNCHER"
-)
-
-REM Step 2: Check for pending restarts
-CALL :LOG_MESSAGE "Checking for pending system restarts..." "DEBUG" "LAUNCHER"
-IF "%PENDING_RESTART%"=="YES" (
-    REM Step 3a: Pending restart detected - create startup task and restart system
-    CALL :LOG_MESSAGE "Pending restart detected - creating startup task and restarting system" "INFO" "LAUNCHER"
-    
-    REM Create startup task to continue after restart
-    CALL :LOG_MESSAGE "Creating startup task: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
-    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCHEDULED_TASK_SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F >nul 2>&1
-    
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
-        
-        REM Initiate system restart
-        ECHO.
-        ECHO ================================================================================
-        ECHO  SYSTEM RESTART REQUIRED
-        ECHO ================================================================================
-        ECHO  Pending updates require a restart. System will restart in 10 seconds.
-        ECHO  Maintenance script will continue automatically after restart.
-        ECHO ================================================================================
-        ECHO.
-        
-        shutdown /r /t 10 /c "System restart required to complete pending updates"
-        CALL :LOG_MESSAGE "System restarting in 10 seconds..." "INFO" "LAUNCHER"
-        timeout /t 12 /nobreak >nul
-        EXIT /B 0
-        
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create startup task - continuing without restart" "ERROR" "LAUNCHER"
-    )
-) ELSE (
-    REM Step 3b: No pending restart - continue with script execution
-    CALL :LOG_MESSAGE "No pending restart required - continuing with script execution" "INFO" "LAUNCHER"
-)
-
-REM Enhanced Monthly Scheduled Task Setup (Original Working Method)
-CALL :LOG_MESSAGE "Checking for monthly scheduled task '%TASK_NAME%'..." "INFO" "LAUNCHER"
-schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly scheduled task already exists. Skipping creation." "INFO" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Monthly scheduled task not found. Creating..." "INFO" "LAUNCHER"
-    CALL :LOG_MESSAGE "Using script path for task: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
-    
-    REM Create scheduled task with proper escaping (ORIGINAL METHOD)
-    schtasks /Create ^
-        /SC MONTHLY ^
-        /MO 1 ^
-        /TN "%TASK_NAME%" ^
-        /TR "%SCHEDULED_TASK_SCRIPT_PATH%" ^
-        /ST 01:00 ^
-        /RL HIGHEST ^
-        /RU SYSTEM ^
-        /F >"%WORKING_DIR%schtasks_create.log" 2>&1
-        
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Monthly scheduled task created successfully." "SUCCESS" "LAUNCHER"
-        schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Task verification successful." "INFO" "LAUNCHER"
-            FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
-                CALL :LOG_MESSAGE "Next scheduled run: %%i" "INFO" "LAUNCHER"
-            )
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create monthly scheduled task. See schtasks_create.log for details." "ERROR" "LAUNCHER"
-        REM Display the actual error for debugging
-        IF EXIST "%WORKING_DIR%schtasks_create.log" (
-            CALL :LOG_MESSAGE "Scheduled task creation error details:" "ERROR" "LAUNCHER"
-            TYPE "%WORKING_DIR%schtasks_create.log"
-        ) ELSE (
-            CALL :LOG_MESSAGE "No error log file created." "ERROR" "LAUNCHER"
-        )
-        
-        REM Try alternative approach with current user instead of SYSTEM (ORIGINAL FALLBACK)
-        CALL :LOG_MESSAGE "Attempting to create task under current user account..." "INFO" "LAUNCHER"
-        CALL :LOG_MESSAGE "Using script path for user task: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
-        schtasks /Create ^
-            /SC MONTHLY ^
-            /MO 1 ^
-            /TN "%TASK_NAME%" ^
-            /TR "%SCHEDULED_TASK_SCRIPT_PATH%" ^
-            /ST 01:00 ^
-            /RL HIGHEST ^
-            /F >"%WORKING_DIR%schtasks_create_user.log" 2>&1
-            
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Monthly scheduled task created successfully under current user." "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to create scheduled task under current user as well." "WARN" "LAUNCHER"
-            IF EXIST "%WORKING_DIR%schtasks_create_user.log" TYPE "%WORKING_DIR%schtasks_create_user.log"
-        )
-    )
-)
-
-REM -----------------------------------------------------------------------------
-REM Dependency Management Completion Check
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Dependency management section completed - proceeding to orchestrator..." "INFO" "LAUNCHER"
-
-REM Verify we have a valid orchestrator path
-IF "%ORCHESTRATOR_PATH%"=="" (
-    CALL :LOG_MESSAGE "Orchestrator path not set - attempting to find orchestrator..." "WARN" "LAUNCHER"
-    IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
-        SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
-        CALL :LOG_MESSAGE "Found orchestrator in working directory" "SUCCESS" "LAUNCHER"
-    )
-)
-
-REM -----------------------------------------------------------------------------
-REM PowerShell Orchestrator Launch
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Preparing to launch PowerShell orchestrator..." "INFO" "LAUNCHER"
-
-IF "%ORCHESTRATOR_PATH%"=="" (
-    CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
+IF NOT DEFINED ORCHESTRATOR_PATH (
+    CALL :LOG_MESSAGE "No orchestrator path defined" "ERROR" "LAUNCHER"
     PAUSE
     EXIT /B 4
 )
 
-CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
-
-REM Verify orchestrator file exists
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-    CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Orchestrator not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
     PAUSE
     EXIT /B 4
 )
 
-REM Determine PowerShell executable to use - MUST be PowerShell 7
-SET "PS_EXECUTABLE="
-SET "PS7_AVAILABLE=NO"
+CALL :LOG_MESSAGE "Executing orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "LAUNCHER"
 
-REM Simplified PowerShell detection - assume pwsh.exe works since we tested it manually
-CALL :LOG_MESSAGE "Using PowerShell 7 for execution (pwsh.exe)" "INFO" "LAUNCHER"
-SET "PS_EXECUTABLE=pwsh.exe"
-SET "PS7_AVAILABLE=YES"
-
-REM Verify PowerShell 7 is available before proceeding
-IF "%PS7_AVAILABLE%"=="NO" (
-    ECHO.
-    ECHO ================================================================================
-    ECHO  POWERSHELL 7 INSTALLATION REQUIRED
-    ECHO ================================================================================
-    ECHO  The maintenance orchestrator requires PowerShell 7.0 or later to function.
-    ECHO  Windows PowerShell 5.1 is not compatible due to modern language features.
-    ECHO.
-    ECHO  Automatic installation failed. Please install PowerShell 7 manually:
-    ECHO.
-    ECHO  QUICK INSTALLATION OPTIONS:
-    ECHO  1. Download installer: https://github.com/PowerShell/PowerShell/releases/latest
-    ECHO  2. Via Microsoft Store: Search for "PowerShell"
-    ECHO  3. Via winget (if available): winget install Microsoft.PowerShell
-    ECHO  4. Via Chocolatey: choco install powershell-core
-    ECHO.
-    ECHO  RECOMMENDED: Download the .msi installer from GitHub releases for easiest setup.
-    ECHO  After installation, restart this script or open a new command prompt.
-    ECHO ================================================================================
-    ECHO.
-    CALL :LOG_MESSAGE "Maintenance cannot continue without PowerShell 7" "ERROR" "LAUNCHER"
-    
-    REM Offer to open download page
-    SET /P "OPEN_BROWSER=Would you like to open the PowerShell download page? (Y/N): "
-    IF /I "%OPEN_BROWSER%"=="Y" (
-        CALL :LOG_MESSAGE "Opening PowerShell download page..." "INFO" "LAUNCHER"
-        start "" "https://github.com/PowerShell/PowerShell/releases/latest"
-    )
-    
-    PAUSE
-    EXIT /B 5
-)
-
-REM Parse command line arguments for the orchestrator
-CALL :LOG_MESSAGE "Parsing command line arguments..." "DEBUG" "LAUNCHER"
-SET "PS_ARGS="
-IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-IF "%1"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
-IF "%2"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
-IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
-IF "%2"=="-PostRestart" SET "PS_ARGS=%PS_ARGS% -PostRestart"
-IF "%3"=="-PostRestart" SET "PS_ARGS=%PS_ARGS% -PostRestart"
-CALL :LOG_MESSAGE "Command line parsing completed" "DEBUG" "LAUNCHER"
-
-CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
-
-REM Enhanced debugging - verify all paths and executables exist
-CALL :LOG_MESSAGE "Verifying PowerShell executable: %PS_EXECUTABLE%" "DEBUG" "LAUNCHER"
-IF NOT EXIST "%PS_EXECUTABLE%" (
-    CALL :LOG_MESSAGE "ERROR: PowerShell executable not found at: %PS_EXECUTABLE%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Attempting to locate PowerShell..." "INFO" "LAUNCHER"
-    WHERE pwsh.exe >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        FOR /F "tokens=*" %%i IN ('WHERE pwsh.exe') DO (
-            CALL :LOG_MESSAGE "Found pwsh.exe at: %%i" "INFO" "LAUNCHER"
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "pwsh.exe not found in PATH" "ERROR" "LAUNCHER"
-    )
-    GOTO :HANDLE_ERROR
-)
-
-CALL :LOG_MESSAGE "Verifying orchestrator script: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
-IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-    CALL :LOG_MESSAGE "ERROR: Orchestrator script not found at: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Current working directory: %CD%" "DEBUG" "LAUNCHER"
-    DIR "%SCRIPT_DIR%" | FINDSTR "MaintenanceOrchestrator"
-    GOTO :HANDLE_ERROR
-)
-
-REM Launch the PowerShell orchestrator with simple, reliable execution
-CALL :LOG_MESSAGE "Launching PowerShell orchestrator..." "INFO" "LAUNCHER"
-
-REM Change to script directory
-PUSHD "%SCRIPT_DIR%"
-
-REM Execute PowerShell orchestrator directly - tested and working
-CALL :LOG_MESSAGE "Executing orchestrator: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
-pwsh.exe -ExecutionPolicy Bypass -NoProfile -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
-SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
-
-REM PowerShell execution completed
-CALL :LOG_MESSAGE "PowerShell orchestrator execution completed with exit code: !ORCHESTRATOR_EXIT_CODE!" "INFO" "LAUNCHER"
-
-POPD
-
-REM If PowerShell execution failed, try fallback method
-IF %ORCHESTRATOR_EXIT_CODE% NEQ 0 (
-    CALL :LOG_MESSAGE "Primary PowerShell execution failed with exit code %ORCHESTRATOR_EXIT_CODE%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Attempting fallback execution method..." "WARN" "LAUNCHER"
-    
-    REM Try direct execution without output capture
-    PUSHD "%SCRIPT_DIR%"
-    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -NoProfile -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
-    SET "FALLBACK_EXIT_CODE=!ERRORLEVEL!"
-    POPD
-    
-    IF !FALLBACK_EXIT_CODE! EQU 0 (
-        CALL :LOG_MESSAGE "Fallback execution succeeded" "SUCCESS" "LAUNCHER"
-        SET "ORCHESTRATOR_EXIT_CODE=0"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Fallback execution also failed with exit code !FALLBACK_EXIT_CODE!" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE "This indicates a serious PowerShell compatibility or script error" "ERROR" "LAUNCHER"
-        
-        REM Try with Windows PowerShell 5.1 as last resort
-        CALL :LOG_MESSAGE "Attempting last resort with Windows PowerShell 5.1..." "WARN" "LAUNCHER"
-        powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
-        SET "WPS_EXIT_CODE=!ERRORLEVEL!"
-        
-        IF !WPS_EXIT_CODE! EQU 0 (
-            CALL :LOG_MESSAGE "Windows PowerShell 5.1 execution succeeded" "SUCCESS" "LAUNCHER"
-            SET "ORCHESTRATOR_EXIT_CODE=0"
-        ) ELSE (
-            CALL :LOG_MESSAGE "All PowerShell execution methods failed" "ERROR" "LAUNCHER"
-            SET "ORCHESTRATOR_EXIT_CODE=!WPS_EXIT_CODE!"
-        )
-    )
-)
-
-REM -----------------------------------------------------------------------------
-REM Post-Execution Restart Logic
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Checking post-execution restart requirements..." "INFO" "LAUNCHER"
-
-REM Check if this was a post-restart execution
-SET "IS_POST_RESTART=NO"
-FOR %%i in (%*) DO (
-    IF "%%i"=="-PostRestart" (
-        SET "IS_POST_RESTART=YES"
-        CALL :LOG_MESSAGE "This is a post-restart execution - cleaning up startup task" "INFO" "LAUNCHER"
-    )
-)
-
-REM Enhanced post-restart cleanup (based on archived script logic)
-IF "%IS_POST_RESTART%"=="YES" (
-    CALL :LOG_MESSAGE "Performing comprehensive post-restart cleanup..." "INFO" "LAUNCHER"
-    
-    REM Remove all possible startup task variations (archived script approach)
-    schtasks /delete /tn "Windows Maintenance Post-Restart Startup" /f >nul 2>&1
-    schtasks /delete /tn "Windows Maintenance Startup" /f >nul 2>&1
-    schtasks /delete /tn "WindowsMaintenanceStartup" /f >nul 2>&1
-    schtasks /delete /tn "%STARTUP_TASK_NAME%" /f >nul 2>&1
-    
-    IF %ERRORLEVEL% EQU 0 (
-        CALL :LOG_MESSAGE "Post-restart startup task cleanup completed" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Post-restart cleanup: no startup tasks found" "DEBUG" "LAUNCHER"
-    )
+REM Execute with PowerShell 7 if available, otherwise Windows PowerShell
+IF "%PS7_AVAILABLE%"=="YES" (
+    CALL :LOG_MESSAGE "Using PowerShell 7: %PS7_PATH%" "INFO" "LAUNCHER"
+    "%PS7_PATH%" -NoProfile -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -WorkingDirectory "%WORKING_DIR%" -LogFile "%LOG_FILE%"
 ) ELSE (
-    CALL :LOG_MESSAGE "Normal execution - no post-restart cleanup needed" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using Windows PowerShell 5.1" "INFO" "LAUNCHER"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -WorkingDirectory "%WORKING_DIR%" -LogFile "%LOG_FILE%"
 )
 
-REM If pending restart was detected and this is not a post-restart execution, initiate restart
-IF "%PENDING_RESTART%"=="YES" (
-    IF "%IS_POST_RESTART%"=="NO" (
-        CALL :LOG_MESSAGE "Pending restart detected - initiating system restart in 60 seconds..." "INFO" "LAUNCHER"
-        ECHO.
-        ECHO ================================================================================
-        ECHO  SYSTEM RESTART REQUIRED
-        ECHO ================================================================================
-        ECHO  Windows updates require a system restart to complete installation.
-        ECHO  A startup task has been created to continue maintenance after restart.
-        ECHO.
-        ECHO  The system will restart in 60 seconds...
-        ECHO  Press Ctrl+C to cancel the restart if needed.
-        ECHO ================================================================================
-        ECHO.
-        
-        REM Give user 60 seconds to cancel if needed
-        shutdown /r /t 60 /c "Windows Maintenance: Restarting to complete Windows updates. Maintenance will continue after restart."
-        
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "System restart scheduled successfully" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to schedule system restart" "ERROR" "LAUNCHER"
-        )
-        
-        REM Exit immediately after scheduling restart
-        CALL :LOG_MESSAGE "Maintenance launcher exiting - system will restart shortly" "INFO" "LAUNCHER"
-        EXIT /B 0
-    )
-)
+SET "ORCHESTRATOR_RESULT=!ERRORLEVEL!"
+CALL :LOG_MESSAGE "Orchestrator execution completed with exit code: %ORCHESTRATOR_RESULT%" "INFO" "LAUNCHER"
 
-REM -----------------------------------------------------------------------------
-REM Post-Execution Cleanup and Reporting
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "PowerShell orchestrator completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
-
-IF %ORCHESTRATOR_EXIT_CODE% EQU 0 (
-    CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"
+IF %ORCHESTRATOR_RESULT% EQU 0 (
+    CALL :LOG_MESSAGE "Maintenance script completed successfully" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Maintenance execution completed with errors (exit code: %ORCHESTRATOR_EXIT_CODE%)" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "Maintenance script completed with errors (exit code: %ORCHESTRATOR_RESULT%)" "WARN" "LAUNCHER"
 )
 
-REM Check for generated reports
-IF EXIST "%WORKING_DIR%temp_files\reports" (
-    FOR %%F IN ("%WORKING_DIR%temp_files\reports\*.html") DO (
-        CALL :LOG_MESSAGE "Generated report: %%~nxF" "INFO" "LAUNCHER"
-    )
+REM -----------------------------------------------------------------------------
+REM Cleanup and Exit
+REM -----------------------------------------------------------------------------
+:CLEANUP
+CALL :LOG_MESSAGE "=== Cleanup Phase ===" "INFO" "LAUNCHER"
+
+REM Remove temporary files
+IF EXIST "%ZIP_FILE%" (
+    DEL /F /Q "%ZIP_FILE%" >nul 2>&1
+    CALL :LOG_MESSAGE "Removed temporary ZIP file" "DEBUG" "LAUNCHER"
 )
 
-REM Enhanced error logging for orchestrator execution
-CALL :LOG_MESSAGE "Orchestrator execution completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Maintenance automation launcher completed" "SUCCESS" "LAUNCHER"
+CALL :LOG_MESSAGE "Log file: %LOG_FILE%" "INFO" "LAUNCHER"
 
-IF %ORCHESTRATOR_EXIT_CODE% NEQ 0 (
-    CALL :LOG_MESSAGE "ERROR: Orchestrator execution failed with exit code %ORCHESTRATOR_EXIT_CODE%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "This may indicate PowerShell version compatibility issues or missing dependencies" "WARN" "LAUNCHER"
-    
-    REM Additional debugging for exit codes
-    IF %ORCHESTRATOR_EXIT_CODE% EQU 1 (
-        CALL :LOG_MESSAGE "Exit code 1: General PowerShell error - check if PowerShell 7 is properly installed" "ERROR" "LAUNCHER"
-    ) ELSE IF %ORCHESTRATOR_EXIT_CODE% EQU -1 (
-        CALL :LOG_MESSAGE "Exit code -1: PowerShell startup failure - try running compatibility wrapper" "ERROR" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Unexpected exit code: %ORCHESTRATOR_EXIT_CODE%" "ERROR" "LAUNCHER"
-    )
-)
-
-GOTO :CLEANUP_AND_EXIT
-
-:HANDLE_ERROR
-CALL :LOG_MESSAGE "CRITICAL ERROR: Script execution halted due to missing requirements" "ERROR" "LAUNCHER"
-CALL :LOG_MESSAGE "Please check the log file for detailed error information" "ERROR" "LAUNCHER"
-CALL :LOG_MESSAGE "Log file location: %SCRIPT_DIR%\launcher-*.log" "INFO" "LAUNCHER"
-
-REM Don't auto-close on error so user can see the problem
 ECHO.
-ECHO =====================================================
-ECHO CRITICAL ERROR - EXECUTION STOPPED
-ECHO =====================================================
-ECHO Check the log file for details:
-ECHO %SCRIPT_DIR%\launcher-*.log
+ECHO ================================================================================
+ECHO  Maintenance Complete
+ECHO ================================================================================
+ECHO  Check the log file for detailed results: %LOG_FILE%
+ECHO ================================================================================
 ECHO.
-ECHO Press any key to close...
-PAUSE >nul
-EXIT /B 1
 
-:CLEANUP_AND_EXIT
-REM Cleanup temporary scheduled task log files
-IF EXIST "%WORKING_DIR%schtasks_create.log" (
-    CALL :LOG_MESSAGE "Cleaning up task creation log files" "DEBUG" "LAUNCHER"
-    DEL "%WORKING_DIR%schtasks_create.log" >nul 2>&1
-)
-IF EXIST "%WORKING_DIR%schtasks_create_user.log" (
-    DEL "%WORKING_DIR%schtasks_create_user.log" >nul 2>&1
-)
-
-REM Auto-close behavior
-IF "%1"=="-NonInteractive" (
-    CALL :LOG_MESSAGE "Non-interactive mode - closing automatically" "INFO" "LAUNCHER"
-    EXIT /B %ORCHESTRATOR_EXIT_CODE%
-) ELSE (
-    CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
-    PAUSE >nul
-    EXIT /B %ORCHESTRATOR_EXIT_CODE%
-)
-
-REM -----------------------------------------------------------------------------
-REM End of Script
-REM -----------------------------------------------------------------------------
-ENDLOCAL
+PAUSE
+EXIT /B %ORCHESTRATOR_RESULT%
