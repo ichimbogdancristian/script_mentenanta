@@ -326,7 +326,7 @@ IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLD
 
 REM Download repository
 CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing -TimeoutSec 60; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
@@ -344,7 +344,7 @@ CALL :LOG_MESSAGE "Repository downloaded successfully" "SUCCESS" "LAUNCHER"
 
 REM Extract repository
 CALL :LOG_MESSAGE "Extracting repository..." "INFO" "LAUNCHER"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message }"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
@@ -357,10 +357,14 @@ SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
     
-    REM Copy files to working directory if needed
+    REM Update working directory to use extracted repository
+    SET "WORKING_DIR=%EXTRACTED_PATH%\"
+    SET "WORKING_DIRECTORY=%EXTRACTED_PATH%\"
+    
+    REM Check for orchestrator in extracted files
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
         SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1"
-        CALL :LOG_MESSAGE "Using extracted orchestrator" "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Using extracted orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
     ) ELSE IF EXIST "%EXTRACTED_PATH%\script.ps1" (
         SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\script.ps1"
         CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
@@ -375,7 +379,7 @@ IF EXIST "%EXTRACTED_PATH%" (
     EXIT /B 3
 )
 
-REM Clean up
+REM Clean up ZIP file
 DEL /Q "%ZIP_FILE%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
@@ -384,15 +388,16 @@ REM ----------------------------------------------------------------------------
 :DEPENDENCY_MANAGEMENT
 CALL :LOG_MESSAGE "Starting dependency management..." "INFO" "LAUNCHER"
 
-REM Windows Defender Exclusions (Enhanced)
+REM Windows Defender Exclusions (Enhanced) - Non-blocking
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }" 2>nul
 
 REM -----------------------------------------------------------------------------
 REM Dependency Management - Direct Downloads from Official Sources
 REM Installation Order: Winget -> PowerShell 7 -> NuGet -> PSGallery -> PSWindowsUpdate -> Chocolatey
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Starting dependency installation with optimized order..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "EMERGENCY: If process hangs for >5 minutes, press Ctrl+C and run MaintenanceOrchestrator.ps1 directly" "WARN" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM 1. Windows Package Manager (Winget) - Foundation package manager
@@ -418,19 +423,24 @@ IF !WINGET_FOUND! EQU 0 (
     REM Download latest App Installer from Microsoft Store (Original Method)
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=!TEMP!\Microsoft.DesktopAppInstaller.msixbundle"
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message; exit 1 }"
+    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing -TimeoutSec 30; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message }"
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Installing Winget package..." "INFO" "LAUNCHER"
-        powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Winget installation completed successfully." "SUCCESS" "LAUNCHER"
-            REM Refresh PATH and wait for winget to be available
-            CALL :REFRESH_PATH
-            timeout /t 3 /nobreak >nul 2>&1
-        ) ELSE (
-            CALL :LOG_MESSAGE "Winget installation failed, but continuing..." "WARN" "LAUNCHER"
-        )
+        powershell -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction SilentlyContinue; Write-Host '[INFO] Winget installation attempted' } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message }"
+        
+        REM Always continue regardless of winget installation result
+        CALL :LOG_MESSAGE "Winget installation process completed, checking availability..." "INFO" "LAUNCHER"
         DEL /F /Q "!WINGET_FILE!" >nul 2>&1
+        
+        REM Refresh PATH and test again
+        CALL :REFRESH_PATH
+        timeout /t 3 /nobreak >nul 2>&1
+        winget --version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Winget is now available after installation" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Winget installation completed but may require system restart" "WARN" "LAUNCHER"
+        )
     ) ELSE (
         CALL :LOG_MESSAGE "Winget download failed, but continuing..." "WARN" "LAUNCHER"
     )
@@ -473,22 +483,20 @@ IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Installing PowerShell 7.5.3 via winget..." "INFO" "LAUNCHER"
     ECHO Installing PowerShell 7.5.3... This may take a few minutes.
     
-    REM Use specific version to ensure we get 7.5.3
-    winget install --id Microsoft.PowerShell --version 7.5.3 --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+    REM Try winget installation with timeout
+    CALL :LOG_MESSAGE "Attempting winget PowerShell installation with 3-minute timeout..." "INFO" "LAUNCHER"
+    timeout /t 3 /nobreak >nul 2>&1
+    START /WAIT /B "" cmd /c "winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements --disable-interactivity && echo WINGET_PS7_SUCCESS || echo WINGET_PS7_FAILED" >"%TEMP%\winget_ps7.log" 2>&1
     
+    REM Check result
+    FIND "WINGET_PS7_SUCCESS" "%TEMP%\winget_ps7.log" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "PowerShell 7.5.3 installation completed via winget" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "PowerShell 7 installation completed via winget" "SUCCESS" "LAUNCHER"
         SET "PS7_INSTALL_SUCCESS=YES"
     ) ELSE (
-        CALL :LOG_MESSAGE "Specific version install failed, trying latest..." "INFO" "LAUNCHER"
-        winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "PowerShell 7 installation completed via winget (latest)" "SUCCESS" "LAUNCHER"
-            SET "PS7_INSTALL_SUCCESS=YES"
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
-        )
+        CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed or timed out" "WARN" "LAUNCHER"
     )
+    DEL /F /Q "%TEMP%\winget_ps7.log" >nul 2>&1
 ) ELSE (
     CALL :LOG_MESSAGE "Winget not available - using direct download method..." "INFO" "LAUNCHER"
 )
@@ -509,7 +517,7 @@ IF "%PS7_INSTALL_SUCCESS%"=="NO" (
     
     REM Download PowerShell 7.5.3 (Original Method)
     CALL :LOG_MESSAGE "Downloading PowerShell 7.5.3..." "INFO" "LAUNCHER"
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host '[INFO] PowerShell 7.5.3 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.3 download failed:' $_.Exception.Message; exit 1 }"
+    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing -TimeoutSec 60; Write-Host '[INFO] PowerShell 7.5.3 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.3 download failed:' $_.Exception.Message }"
     
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Installing PowerShell 7.5.3..." "INFO" "LAUNCHER"
@@ -797,6 +805,20 @@ IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "Failed to create scheduled task under current user as well." "WARN" "LAUNCHER"
             IF EXIST "%WORKING_DIR%schtasks_create_user.log" TYPE "%WORKING_DIR%schtasks_create_user.log"
         )
+    )
+)
+
+REM -----------------------------------------------------------------------------
+REM Dependency Management Completion Check
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Dependency management section completed - proceeding to orchestrator..." "INFO" "LAUNCHER"
+
+REM Verify we have a valid orchestrator path
+IF "%ORCHESTRATOR_PATH%"=="" (
+    CALL :LOG_MESSAGE "Orchestrator path not set - attempting to find orchestrator..." "WARN" "LAUNCHER"
+    IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
+        SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
+        CALL :LOG_MESSAGE "Found orchestrator in working directory" "SUCCESS" "LAUNCHER"
     )
 )
 

@@ -13,11 +13,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup PowerShell
-        uses: actions/setup-powershell@v2
-        with:
-          powershell-version: '7.4'
-
       - name: Install PSScriptAnalyzer
         shell: pwsh
         run: |
