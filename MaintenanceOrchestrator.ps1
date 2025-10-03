@@ -29,18 +29,7 @@ using namespace System.Collections.Generic
     Execute a specific module by name
 
 .PARAMETER EnableDetailedLogging
-    Eif ($failedModules -eq 0 -and $successfulModules -gt 0) {
-    Write-Host "🎉 All modules completed successfully with enhanced protocol!" -ForegroundColor Green
-    Write-Log "All modules completed successfully. Total: $successfulModules" -Level SUCCESS -Component ORCHESTRATOR
-}
-elseif ($successfulModules -gt 0) {
-    Write-Host "⚠️  Execution completed with some issues - see detailed logs above" -ForegroundColor Yellow
-    Write-Log "Execution completed with issues. Successful: $successfulModules, Failed: $failedModules" -Level WARN -Component ORCHESTRATOR
-}
-else {
-    Write-Host "❌ Execution completed with significant failures" -ForegroundColor Red
-    Write-Log "Execution completed with significant failures. Total failures: $failedModules" -Level ERROR -Component ORCHESTRATOR
-}prehensive logging including dependency tracking
+    Enable comprehensive logging including dependency tracking
 
 .PARAMETER ForceAllModules
     Execute all modules regardless of privilege level (may cause failures)
@@ -130,7 +119,8 @@ function Get-ScriptEnvironment {
     if ($environment.ScriptRoot -like "\\*") {
         Write-Verbose "Detected network path execution"
         $environment.IsNetworkPath = $true
-    } else {
+    }
+    else {
         $environment.IsNetworkPath = $false
     }
     
@@ -157,9 +147,6 @@ Write-Host "╔═════════════════════�
 Write-Host "║                          Windows Maintenance Automation - Enhanced Orchestrator v2.1                                       ║" -ForegroundColor Cyan
 Write-Host "║                                     Advanced Module Execution Protocol                                                      ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
-
-# Log orchestrator startup
-Write-Log "Windows Maintenance Automation - Enhanced Orchestrator v2.1 started" -Level INFO -Component ORCHESTRATOR
 
 # Set up temp directories
 $TempRoot = Join-Path $WorkingDirectory 'temp_files'
@@ -190,46 +177,46 @@ function Find-MaintenanceStructure {
     param([string]$BaseDirectory)
     
     $structure = @{
-        ConfigPath = $null
+        ConfigPath  = $null
         ModulesPath = $null
-        IsComplete = $false
+        IsComplete  = $false
     }
     
     # Enhanced search strategies for any PC/path scenario
     $searchStrategies = @(
         # Strategy 1: Direct subdirectories
         @{
-            Config = Join-Path $BaseDirectory 'config'
+            Config  = Join-Path $BaseDirectory 'config'
             Modules = Join-Path $BaseDirectory 'modules'
         },
         # Strategy 2: Parent directory (extracted zip scenario)
         @{
-            Config = Join-Path (Split-Path $BaseDirectory -Parent) 'config'
+            Config  = Join-Path (Split-Path $BaseDirectory -Parent) 'config'
             Modules = Join-Path (Split-Path $BaseDirectory -Parent) 'modules'
         },
         # Strategy 3: Sibling directories
         @{
-            Config = Join-Path (Split-Path $BaseDirectory -Parent) "config"
+            Config  = Join-Path (Split-Path $BaseDirectory -Parent) "config"
             Modules = Join-Path (Split-Path $BaseDirectory -Parent) "modules"
         },
         # Strategy 4: Environment variable paths
         @{
-            Config = if ($env:MAINTENANCE_CONFIG) { $env:MAINTENANCE_CONFIG } else { $null }
+            Config  = if ($env:MAINTENANCE_CONFIG) { $env:MAINTENANCE_CONFIG } else { $null }
             Modules = if ($env:MAINTENANCE_MODULES) { $env:MAINTENANCE_MODULES } else { $null }
         },
         # Strategy 5: Common installation locations
         @{
-            Config = "C:\MaintenanceAutomation\config"
+            Config  = "C:\MaintenanceAutomation\config"
             Modules = "C:\MaintenanceAutomation\modules"
         },
         # Strategy 6: User profile locations  
         @{
-            Config = Join-Path $env:USERPROFILE "MaintenanceAutomation\config"
+            Config  = Join-Path $env:USERPROFILE "MaintenanceAutomation\config"
             Modules = Join-Path $env:USERPROFILE "MaintenanceAutomation\modules"
         },
         # Strategy 7: Recursive search up to 3 levels
         @{
-            Config = $null  # Will be populated by recursive search
+            Config  = $null  # Will be populated by recursive search
             Modules = $null
         }
     )
@@ -280,7 +267,8 @@ if (-not $ConfigPath) {
         Write-Host "✅ Found complete structure:" -ForegroundColor Green
         Write-Host "   Config: $ConfigPath" -ForegroundColor Gray
         Write-Host "   Modules: $ModulesPath" -ForegroundColor Gray
-    } else {
+    }
+    else {
         Write-Host "⚠️  Complete structure not found. Will create minimal structure..." -ForegroundColor Yellow
         $ConfigPath = Join-Path $WorkingDirectory 'config'
         $ModulesPath = Join-Path $WorkingDirectory 'modules'
@@ -422,9 +410,9 @@ if (-not (Test-Path $CoreModulesPath)) {
 
 # Core modules in load order with graceful fallback
 $CoreModules = @(
-    @{Name='ConfigManager'; Essential=$true; Description='Configuration management'},
-    @{Name='MenuSystem'; Essential=$false; Description='Interactive menus'},
-    @{Name='ModuleExecutionProtocol'; Essential=$false; Description='Advanced execution engine'}
+    @{Name = 'ConfigManager'; Essential = $true; Description = 'Configuration management' },
+    @{Name = 'MenuSystem'; Essential = $false; Description = 'Interactive menus' },
+    @{Name = 'ModuleExecutionProtocol'; Essential = $false; Description = 'Advanced execution engine' }
 )
 
 $LoadedModules = @()
@@ -442,7 +430,7 @@ foreach ($coreModule in $CoreModules) {
         }
         catch {
             Write-Host "  ⚠️  Failed to load $coreModuleName`: $($_.Exception.Message)" -ForegroundColor Yellow
-            $SkippedModules += @{Name=$coreModuleName; Reason="Load error"}
+            $SkippedModules += @{Name = $coreModuleName; Reason = "Load error" }
             
             if ($coreModule.Essential) {
                 Write-Host "  ❌ Essential module $coreModuleName failed - continuing in limited mode" -ForegroundColor Red
@@ -451,7 +439,7 @@ foreach ($coreModule in $CoreModules) {
     }
     else {
         Write-Host "  ⚠️  Module not found: $coreModuleName ($($coreModule.Description))" -ForegroundColor Yellow
-        $SkippedModules += @{Name=$coreModuleName; Reason="Not found"}
+        $SkippedModules += @{Name = $coreModuleName; Reason = "Not found" }
         
         if ($coreModule.Essential) {
             Write-Host "  💡 Essential module missing - will use built-in alternatives" -ForegroundColor Cyan
@@ -472,16 +460,23 @@ if ($SkippedModules.Count -gt 0) {
 # Determine execution mode based on available modules
 $ExecutionMode = if ('ModuleExecutionProtocol' -in $LoadedModules) {
     'Enhanced'
-} elseif ('ConfigManager' -in $LoadedModules) {
+}
+elseif ('ConfigManager' -in $LoadedModules) {
     'Standard'
-} else {
+}
+else {
     'Minimal'
 }
 
 Write-Host "🔧 Execution mode: $ExecutionMode" -ForegroundColor Cyan
-Write-Log "Execution mode set to: $ExecutionMode" -Level INFO -Component ORCHESTRATOR
-if ($DryRun) {
-    Write-Log "DRY-RUN MODE activated - no changes will be applied" -Level INFO -Component ORCHESTRATOR
+
+# Log orchestrator startup and mode (only if ConfigManager is available)
+if ('ConfigManager' -in $LoadedModules) {
+    Write-Log "Windows Maintenance Automation - Enhanced Orchestrator v2.1 started" -Level INFO -Component ORCHESTRATOR
+    Write-Log "Execution mode set to: $ExecutionMode" -Level INFO -Component ORCHESTRATOR
+    if ($DryRun) {
+        Write-Log "DRY-RUN MODE activated - no changes will be applied" -Level INFO -Component ORCHESTRATOR
+    }
 }
 
 #endregion
@@ -796,11 +791,17 @@ if ($EnableDetailedLogging) {
 Write-Host ""
 Write-Host "🚀 Enhanced Module Execution Engine:" -ForegroundColor Yellow
 Write-Host "══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Log "Starting enhanced module execution engine with $($selectedModules.Count) selected modules" -Level INFO -Component ORCHESTRATOR
+
+# Log execution start (only if ConfigManager is available)
+if ('ConfigManager' -in $LoadedModules) {
+    Write-Log "Starting enhanced module execution engine with $($selectedModules.Count) selected modules" -Level INFO -Component ORCHESTRATOR
+}
 
 try {
     # Execute modules with full dependency management
-    Write-Log "Executing modules: $($selectedModules -join ', ')" -Level INFO -Component ORCHESTRATOR
+    if ('ConfigManager' -in $LoadedModules) {
+        Write-Log "Executing modules: $($selectedModules -join ', ')" -Level INFO -Component ORCHESTRATOR
+    }
     $executionResults = $moduleExecutor.ExecuteAllModules($selectedModules)
     
     Write-Host ""
@@ -843,7 +844,9 @@ try {
 }
 catch {
     Write-Host "❌ Critical execution engine failure: $_" -ForegroundColor Red
-    Write-Log "Critical execution engine failure: $_" -Level ERROR -Component ORCHESTRATOR
+    if ('ConfigManager' -in $LoadedModules) {
+        Write-Log "Critical execution engine failure: $_" -Level ERROR -Component ORCHESTRATOR
+    }
     exit 1
 }
 

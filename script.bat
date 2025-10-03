@@ -49,6 +49,46 @@ IF DEFINED USER_PATH (
 )
 EXIT /B
 
+:DIAGNOSE_POWERSHELL
+REM Comprehensive PowerShell diagnostic function
+CALL :LOG_MESSAGE "=== PowerShell Diagnostic Information ===" "DEBUG" "LAUNCHER"
+
+REM Check Windows PowerShell 5.1
+CALL :LOG_MESSAGE "Checking Windows PowerShell 5.1..." "DEBUG" "LAUNCHER"
+powershell.exe -NoProfile -Command "echo 'Windows PowerShell Version:'; $PSVersionTable.PSVersion; echo 'Execution Policy:'; Get-ExecutionPolicy" 2>&1 | (
+    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "WinPS: %%A" "DEBUG" "LAUNCHER"
+)
+
+REM Check PowerShell 7
+CALL :LOG_MESSAGE "Checking PowerShell 7..." "DEBUG" "LAUNCHER"
+pwsh.exe -NoProfile -Command "echo 'PowerShell 7 Version:'; $PSVersionTable.PSVersion; echo 'Execution Policy:'; Get-ExecutionPolicy" 2>&1 | (
+    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "PS7: %%A" "DEBUG" "LAUNCHER"
+)
+
+REM Check PATH for PowerShell executables
+CALL :LOG_MESSAGE "Checking PATH for PowerShell executables..." "DEBUG" "LAUNCHER"
+WHERE powershell.exe 2>nul | (
+    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "Found powershell.exe: %%A" "DEBUG" "LAUNCHER"
+)
+WHERE pwsh.exe 2>nul | (
+    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "Found pwsh.exe: %%A" "DEBUG" "LAUNCHER"
+)
+
+REM Check file associations
+CALL :LOG_MESSAGE "Checking .ps1 file association..." "DEBUG" "LAUNCHER"
+ASSOC .ps1 2>nul | (
+    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "PS1 ASSOC: %%A" "DEBUG" "LAUNCHER"
+)
+
+REM Test simple PowerShell execution
+CALL :LOG_MESSAGE "Testing simple PowerShell 7 execution..." "DEBUG" "LAUNCHER"
+pwsh.exe -NoProfile -Command "Write-Output 'PowerShell 7 execution test successful'" 2>&1 | (
+    FOR /F "tokens=*" %%A IN ('MORE') DO CALL :LOG_MESSAGE "PS7 Test: %%A" "DEBUG" "LAUNCHER"
+)
+
+CALL :LOG_MESSAGE "=== End PowerShell Diagnostics ===" "DEBUG" "LAUNCHER"
+EXIT /B
+
 :DETECT_PS7_ALTERNATIVE
 REM Try common PowerShell 7 installation paths
 SET "PS7_FOUND=NO"
@@ -847,11 +887,91 @@ IF "%3"=="-PostRestart" SET "PS_ARGS=%PS_ARGS% -PostRestart"
 
 CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
 
-REM Launch the PowerShell orchestrator
-CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%ORCHESTRATOR_PATH%\" %PS_ARGS%" "DEBUG" "LAUNCHER"
+REM Enhanced debugging - verify all paths and executables exist
+CALL :LOG_MESSAGE "Verifying PowerShell executable: %PS_EXECUTABLE%" "DEBUG" "LAUNCHER"
+IF NOT EXIST "%PS_EXECUTABLE%" (
+    CALL :LOG_MESSAGE "ERROR: PowerShell executable not found at: %PS_EXECUTABLE%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Attempting to locate PowerShell..." "INFO" "LAUNCHER"
+    WHERE pwsh.exe >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        FOR /F "tokens=*" %%i IN ('WHERE pwsh.exe') DO (
+            CALL :LOG_MESSAGE "Found pwsh.exe at: %%i" "INFO" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "pwsh.exe not found in PATH" "ERROR" "LAUNCHER"
+    )
+    GOTO :HANDLE_ERROR
+)
 
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
+CALL :LOG_MESSAGE "Verifying orchestrator script: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
+IF NOT EXIST "%ORCHESTRATOR_PATH%" (
+    CALL :LOG_MESSAGE "ERROR: Orchestrator script not found at: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Current working directory: %CD%" "DEBUG" "LAUNCHER"
+    DIR "%SCRIPT_DIR%" | FINDSTR "MaintenanceOrchestrator"
+    GOTO :HANDLE_ERROR
+)
+
+REM Launch the PowerShell orchestrator with enhanced error capture
+CALL :LOG_MESSAGE "Running comprehensive PowerShell diagnostics before execution..." "INFO" "LAUNCHER"
+CALL :DIAGNOSE_POWERSHELL
+
+CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%ORCHESTRATOR_PATH%\" %PS_ARGS%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Working directory: %SCRIPT_DIR%" "DEBUG" "LAUNCHER"
+
+REM Execute with enhanced output capture and error handling
+PUSHD "%SCRIPT_DIR%"
+
+CALL :LOG_MESSAGE "Starting PowerShell execution with timeout monitoring..." "INFO" "LAUNCHER"
+START /WAIT /B "" "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "%ORCHESTRATOR_PATH%" %PS_ARGS% ^> "%TEMP%\ps_output.log" 2^>^&1
 SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
+
+REM Display captured output
+IF EXIST "%TEMP%\ps_output.log" (
+    CALL :LOG_MESSAGE "PowerShell execution output captured:" "DEBUG" "LAUNCHER"
+    FOR /F "tokens=*" %%A IN (%TEMP%\ps_output.log) DO (
+        CALL :LOG_MESSAGE "PS_OUTPUT: %%A" "DEBUG" "LAUNCHER"
+        ECHO %%A
+    )
+    REM Clean up temp file
+    DEL "%TEMP%\ps_output.log" >nul 2>&1
+) ELSE (
+    CALL :LOG_MESSAGE "No PowerShell output captured - execution may have failed immediately" "WARN" "LAUNCHER"
+)
+
+POPD
+
+REM If PowerShell execution failed, try fallback method
+IF %ORCHESTRATOR_EXIT_CODE% NEQ 0 (
+    CALL :LOG_MESSAGE "Primary PowerShell execution failed with exit code %ORCHESTRATOR_EXIT_CODE%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Attempting fallback execution method..." "WARN" "LAUNCHER"
+    
+    REM Try direct execution without output capture
+    PUSHD "%SCRIPT_DIR%"
+    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -NoProfile -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
+    SET "FALLBACK_EXIT_CODE=!ERRORLEVEL!"
+    POPD
+    
+    IF !FALLBACK_EXIT_CODE! EQU 0 (
+        CALL :LOG_MESSAGE "Fallback execution succeeded" "SUCCESS" "LAUNCHER"
+        SET "ORCHESTRATOR_EXIT_CODE=0"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Fallback execution also failed with exit code !FALLBACK_EXIT_CODE!" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "This indicates a serious PowerShell compatibility or script error" "ERROR" "LAUNCHER"
+        
+        REM Try with Windows PowerShell 5.1 as last resort
+        CALL :LOG_MESSAGE "Attempting last resort with Windows PowerShell 5.1..." "WARN" "LAUNCHER"
+        powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
+        SET "WPS_EXIT_CODE=!ERRORLEVEL!"
+        
+        IF !WPS_EXIT_CODE! EQU 0 (
+            CALL :LOG_MESSAGE "Windows PowerShell 5.1 execution succeeded" "SUCCESS" "LAUNCHER"
+            SET "ORCHESTRATOR_EXIT_CODE=0"
+        ) ELSE (
+            CALL :LOG_MESSAGE "All PowerShell execution methods failed" "ERROR" "LAUNCHER"
+            SET "ORCHESTRATOR_EXIT_CODE=!WPS_EXIT_CODE!"
+        )
+    )
+)
 
 REM -----------------------------------------------------------------------------
 REM Post-Execution Restart Logic
@@ -935,6 +1055,43 @@ IF EXIST "%WORKING_DIR%temp_files\reports" (
     )
 )
 
+REM Enhanced error logging for orchestrator execution
+CALL :LOG_MESSAGE "Orchestrator execution completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
+
+IF %ORCHESTRATOR_EXIT_CODE% NEQ 0 (
+    CALL :LOG_MESSAGE "ERROR: Orchestrator execution failed with exit code %ORCHESTRATOR_EXIT_CODE%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "This may indicate PowerShell version compatibility issues or missing dependencies" "WARN" "LAUNCHER"
+    
+    REM Additional debugging for exit codes
+    IF %ORCHESTRATOR_EXIT_CODE% EQU 1 (
+        CALL :LOG_MESSAGE "Exit code 1: General PowerShell error - check if PowerShell 7 is properly installed" "ERROR" "LAUNCHER"
+    ) ELSE IF %ORCHESTRATOR_EXIT_CODE% EQU -1 (
+        CALL :LOG_MESSAGE "Exit code -1: PowerShell startup failure - try running compatibility wrapper" "ERROR" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Unexpected exit code: %ORCHESTRATOR_EXIT_CODE%" "ERROR" "LAUNCHER"
+    )
+)
+
+GOTO :CLEANUP_AND_EXIT
+
+:HANDLE_ERROR
+CALL :LOG_MESSAGE "CRITICAL ERROR: Script execution halted due to missing requirements" "ERROR" "LAUNCHER"
+CALL :LOG_MESSAGE "Please check the log file for detailed error information" "ERROR" "LAUNCHER"
+CALL :LOG_MESSAGE "Log file location: %SCRIPT_DIR%\launcher-*.log" "INFO" "LAUNCHER"
+
+REM Don't auto-close on error so user can see the problem
+ECHO.
+ECHO =====================================================
+ECHO CRITICAL ERROR - EXECUTION STOPPED
+ECHO =====================================================
+ECHO Check the log file for details:
+ECHO %SCRIPT_DIR%\launcher-*.log
+ECHO.
+ECHO Press any key to close...
+PAUSE >nul
+EXIT /B 1
+
+:CLEANUP_AND_EXIT
 REM Cleanup temporary scheduled task log files
 IF EXIST "%WORKING_DIR%schtasks_create.log" (
     CALL :LOG_MESSAGE "Cleaning up task creation log files" "DEBUG" "LAUNCHER"
