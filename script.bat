@@ -90,13 +90,16 @@ CALL :LOG_MESSAGE "=== End PowerShell Diagnostics ===" "DEBUG" "LAUNCHER"
 EXIT /B
 
 :DETECT_PS7_ALTERNATIVE
-REM Try common PowerShell 7 installation paths
+REM Try common PowerShell 7 installation paths (Enhanced with more locations)
 SET "PS7_FOUND=NO"
 FOR %%P IN (
     "%ProgramFiles%\PowerShell\7\pwsh.exe"
     "%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
     "%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe"
     "%ProgramFiles%\PowerShell\pwsh.exe"
+    "%ProgramFiles%\PowerShell\7.5.3\pwsh.exe"
+    "%ProgramFiles%\PowerShell\7.5\pwsh.exe"
+    "%ProgramFiles%\PowerShell\7.4\pwsh.exe"
 ) DO (
     IF EXIST "%%P" (
         SET "PS7_PATH=%%P"
@@ -385,8 +388,60 @@ REM Windows Defender Exclusions (Enhanced)
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
-REM Enhanced PowerShell 7 Detection and Installation
-CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
+REM -----------------------------------------------------------------------------
+REM Dependency Management - Direct Downloads from Official Sources
+REM Installation Order: Winget -> PowerShell 7 -> NuGet -> PSGallery -> PSWindowsUpdate -> Chocolatey
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Starting dependency installation with optimized order..." "INFO" "LAUNCHER"
+
+REM -----------------------------------------------------------------------------
+REM 1. Windows Package Manager (Winget) - Foundation package manager
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Installing Windows Package Manager (winget)..." "INFO" "LAUNCHER"
+
+REM Improved Winget detection: check both version and path (Original Method)
+winget --version >nul 2>&1
+SET "WINGET_FOUND=0"
+IF !ERRORLEVEL! EQU 0 (
+    SET "WINGET_FOUND=1"
+    CALL :LOG_MESSAGE "Winget detected via version check." "DEBUG" "LAUNCHER"
+) ELSE (
+    where winget >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        SET "WINGET_FOUND=1"
+        CALL :LOG_MESSAGE "Winget detected via PATH (where command)." "DEBUG" "LAUNCHER"
+    )
+)
+
+IF !WINGET_FOUND! EQU 0 (
+    CALL :LOG_MESSAGE "Winget not found, downloading from official Microsoft source..." "INFO" "LAUNCHER"
+    REM Download latest App Installer from Microsoft Store (Original Method)
+    SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+    SET "WINGET_FILE=!TEMP!\Microsoft.DesktopAppInstaller.msixbundle"
+    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message; exit 1 }"
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Installing Winget package..." "INFO" "LAUNCHER"
+        powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Winget installation completed successfully." "SUCCESS" "LAUNCHER"
+            REM Refresh PATH and wait for winget to be available
+            CALL :REFRESH_PATH
+            timeout /t 3 /nobreak >nul 2>&1
+        ) ELSE (
+            CALL :LOG_MESSAGE "Winget installation failed, but continuing..." "WARN" "LAUNCHER"
+        )
+        DEL /F /Q "!WINGET_FILE!" >nul 2>&1
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget download failed, but continuing..." "WARN" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "Winget is already available." "INFO" "LAUNCHER"
+)
+
+REM -----------------------------------------------------------------------------
+REM 2. PowerShell 7 - Modern PowerShell environment
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "LAUNCHER"
 
 REM Initial detection
 pwsh.exe -Version >nul 2>&1
@@ -412,80 +467,71 @@ CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "WARN" "L
 REM Try multiple installation methods
 SET "PS7_INSTALL_SUCCESS=NO"
 
-REM First, try to install winget if it's not available
-winget --version >nul 2>&1
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "Winget not found, attempting to install Windows Package Manager..." "INFO" "LAUNCHER"
-    
-    REM Try to install App Installer (which includes winget) via PowerShell
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-    "try { " ^
-    "Write-Host 'Downloading App Installer...'; " ^
-    "$progressPreference = 'SilentlyContinue'; " ^
-    "$url = 'https://aka.ms/getwinget'; " ^
-    "Invoke-WebRequest -Uri $url -OutFile '$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -UseBasicParsing; " ^
-    "Add-AppxPackage -Path '$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; " ^
-    "Write-Host 'WINGET_INSTALL_SUCCESS'; " ^
-    "} catch { Write-Host 'WINGET_INSTALL_FAILED'; Write-Host $_.Exception.Message }"
-    
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Winget installation completed" "SUCCESS" "LAUNCHER"
-        
-        REM Refresh PATH and wait for winget to be available
-        CALL :REFRESH_PATH
-        timeout /t 3 /nobreak >nul 2>&1
-        
-        winget --version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Winget successfully installed and detected" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Winget installed but not immediately available" "WARN" "LAUNCHER"
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "Winget installation failed" "WARN" "LAUNCHER"
-    )
-)
-
-REM Method 1: Check if winget is available for PS7 installation
+REM Method 1: Winget PowerShell 7.5.3 Installation (if available)
 winget --version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-    ECHO Installing PowerShell 7... This may take a few minutes.
+    CALL :LOG_MESSAGE "Installing PowerShell 7.5.3 via winget..." "INFO" "LAUNCHER"
+    ECHO Installing PowerShell 7.5.3... This may take a few minutes.
     
-    winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+    REM Use specific version to ensure we get 7.5.3
+    winget install --id Microsoft.PowerShell --version 7.5.3 --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "PowerShell 7 installation completed via winget" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "PowerShell 7.5.3 installation completed via winget" "SUCCESS" "LAUNCHER"
         SET "PS7_INSTALL_SUCCESS=YES"
     ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Specific version install failed, trying latest..." "INFO" "LAUNCHER"
+        winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "PowerShell 7 installation completed via winget (latest)" "SUCCESS" "LAUNCHER"
+            SET "PS7_INSTALL_SUCCESS=YES"
+        ) ELSE (
+            CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
+        )
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Winget not available - trying alternative installation methods..." "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "Winget not available - using direct download method..." "INFO" "LAUNCHER"
 )
 
-REM Method 2: Try PowerShell direct download if winget failed
+REM Method 2: PowerShell 7.5.3 Direct Download (Original Working Method)
 IF "%PS7_INSTALL_SUCCESS%"=="NO" (
-    CALL :LOG_MESSAGE "Attempting PowerShell 7 installation via direct download..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Attempting PowerShell 7.5.3 installation via direct download..." "INFO" "LAUNCHER"
     
-    REM Use PowerShell 5.1 to download and install PowerShell 7
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-    "try { " ^
-    "Write-Host 'Downloading PowerShell 7 installer...'; " ^
-    "$url = 'https://github.com/PowerShell/PowerShell/releases/latest/download/PowerShell-7.4.5-win-x64.msi'; " ^
-    "$output = '$env:TEMP\PowerShell-7-x64.msi'; " ^
-    "Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing; " ^
-    "Write-Host 'Installing PowerShell 7...'; " ^
-    "Start-Process msiexec.exe -ArgumentList '/i', $output, '/quiet', '/norestart' -Wait; " ^
-    "Write-Host 'PS7_INSTALL_COMPLETE'; " ^
-    "Remove-Item $output -Force -ErrorAction SilentlyContinue " ^
-    "} catch { Write-Host 'PS7_INSTALL_FAILED'; Write-Host $_.Exception.Message }"
+    REM Set download URL for PowerShell 7.5.3 (latest stable)
+    SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.3.msi"
+    
+    REM Detect architecture and set appropriate download URL
+    IF "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
+        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.3/PowerShell-7.5.3-win-x64.msi"
+    ) ELSE (
+        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.3/PowerShell-7.5.3-win-x86.msi"
+    )
+    
+    REM Download PowerShell 7.5.3 (Original Method)
+    CALL :LOG_MESSAGE "Downloading PowerShell 7.5.3..." "INFO" "LAUNCHER"
+    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host '[INFO] PowerShell 7.5.3 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.3 download failed:' $_.Exception.Message; exit 1 }"
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "PowerShell 7 installation completed via direct download" "SUCCESS" "LAUNCHER"
-        SET "PS7_INSTALL_SUCCESS=YES"
+        CALL :LOG_MESSAGE "Installing PowerShell 7.5.3..." "INFO" "LAUNCHER"
+        msiexec /i "!PS7_INSTALLER!" /quiet /norestart
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "PowerShell 7.5.3 installed successfully" "SUCCESS" "LAUNCHER"
+            SET "PS7_INSTALL_SUCCESS=YES"
+            
+            REM Refresh PATH environment variable for current session (Original Method)
+            FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "PATH=%%B"
+            REM Add common PowerShell 7 installation paths to current session
+            IF EXIST "%ProgramFiles%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
+            IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
+            
+            CALL :LOG_MESSAGE "PowerShell 7.5.3 installation completed successfully" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "PowerShell 7.5.3 installation failed" "WARN" "LAUNCHER"
+        )
+        REM Cleanup installer file
+        DEL /F /Q "!PS7_INSTALLER!" >nul 2>&1
     ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell 7 installation via direct download failed" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "PowerShell 7.5.3 download failed" "WARN" "LAUNCHER"
     )
 )
 
