@@ -24,7 +24,18 @@ IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 SET "LOG_ENTRY=[%DATE% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
 ECHO %LOG_ENTRY%
-IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
+REM Create log file if it doesn't exist and LOG_FILE is defined
+IF DEFINED LOG_FILE (
+    IF NOT EXIST "%LOG_FILE%" (
+        REM Create the log file directory if needed
+        FOR %%F IN ("%LOG_FILE%") DO (
+            IF NOT EXIST "%%~dpF" MD "%%~dpF" 2>nul
+        )
+        REM Create empty log file
+        ECHO. > "%LOG_FILE%" 2>nul
+    )
+    ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
+)
 EXIT /B
 
 :REFRESH_PATH
@@ -82,8 +93,10 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
     CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 )
 
-REM Setup logging
-SET "LOG_FILE=%WORKING_DIR%maintenance.log"
+REM Setup logging - ensure logs directory exists
+IF NOT EXIST "%WORKING_DIR%temp_files" MD "%WORKING_DIR%temp_files" 2>nul
+IF NOT EXIST "%WORKING_DIR%temp_files\logs" MD "%WORKING_DIR%temp_files\logs" 2>nul
+SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
 CALL :LOG_MESSAGE "Log file: %LOG_FILE%" "DEBUG" "LAUNCHER"
 
 REM Environment variables for PowerShell orchestrator
@@ -597,11 +610,15 @@ IF "%PENDING_RESTART%"=="YES" (
     CALL :LOG_MESSAGE "Creating startup task for post-restart continuation..." "INFO" "LAUNCHER"
     CALL :LOG_MESSAGE "Using scheduled task script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
     
+    REM Use the same PowerShell detection for startup task
+    SET "STARTUP_PS_EXECUTABLE=powershell.exe"
+    IF "%PS7_AVAILABLE%"=="YES" SET "STARTUP_PS_EXECUTABLE=%PS_EXECUTABLE%"
+    
     REM Use archived script's approach: ONLOGON with delay and current user
     schtasks /Create ^
         /SC ONLOGON ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
+        /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && powershell.exe -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive -PostRestart\"" ^
         /RL HIGHEST ^
         /RU "%USERNAME%" ^
         /DELAY 0001:00 ^
@@ -618,7 +635,7 @@ IF "%PENDING_RESTART%"=="YES" (
         schtasks /Create ^
             /SC ONSTART ^
             /TN "%STARTUP_TASK_NAME%" ^
-            /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive -PostRestart" ^
+            /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && powershell.exe -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive -PostRestart\"" ^
             /RL HIGHEST ^
             /RU SYSTEM ^
             /F >nul 2>&1
@@ -680,11 +697,15 @@ IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Using script path for task: %SCRIPT_PATH%" "DEBUG" "LAUNCHER"
     
     REM Create scheduled task with SYSTEM account first (preferred)
+    REM Use the same PowerShell detection logic as the main script
+    SET "TASK_PS_EXECUTABLE=powershell.exe"
+    IF "%PS7_AVAILABLE%"=="YES" SET "TASK_PS_EXECUTABLE=%PS_EXECUTABLE%"
+    
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "\"%SCRIPT_PATH%\" -NonInteractive" ^
+        /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && powershell.exe -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive\"" ^
         /ST 02:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
@@ -711,11 +732,12 @@ IF !ERRORLEVEL! EQU 0 (
         )
         
         REM Fallback: Try with current user account
+        REM Use the same PowerShell detection for user account
         schtasks /Create ^
             /SC MONTHLY ^
             /MO 1 ^
             /TN "%TASK_NAME%" ^
-            /TR "\"%SCRIPT_PATH%\" -NonInteractive" ^
+            /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && powershell.exe -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive\"" ^
             /ST 02:00 ^
             /RL HIGHEST ^
             /F >"%WORKING_DIR%schtasks_create_user.log" 2>&1
