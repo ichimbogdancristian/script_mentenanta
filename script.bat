@@ -569,6 +569,7 @@ schtasks /delete /tn "Windows Maintenance Post-Restart Startup" /f >nul 2>&1
 schtasks /delete /tn "Windows Maintenance Startup" /f >nul 2>&1 
 schtasks /delete /tn "WindowsMaintenanceStartup" /f >nul 2>&1
 schtasks /delete /tn "WindowsMaintenanceStartupFallback" /f >nul 2>&1
+schtasks /delete /tn "ScriptMentenantaStartup" /f >nul 2>&1
 
 CALL :LOG_MESSAGE "Initial cleanup completed" "DEBUG" "LAUNCHER"
 
@@ -636,8 +637,8 @@ REM Simple Startup Task Management
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Managing startup task..." "INFO" "LAUNCHER"
 
-SET "TASK_NAME=WindowsMaintenanceAutomation"
-SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
+SET "TASK_NAME=ScriptMentenantaMonthly"
+SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
 
 REM Step 1: Check if startup task exists, if yes remove it
 CALL :LOG_MESSAGE "Checking if startup task exists..." "DEBUG" "LAUNCHER"
@@ -656,129 +657,103 @@ IF !ERRORLEVEL! EQU 0 (
 
 REM Step 2: Check for pending restarts
 IF "%PENDING_RESTART%"=="YES" (
-    REM Step 3a: Pending restart detected - create startup task and restart
-    CALL :LOG_MESSAGE "Pending restart detected - creating startup task..." "INFO" "LAUNCHER"
+    REM Step 3a: Pending restart detected - create startup task and restart (Original Working Method)
+    CALL :LOG_MESSAGE "System restart is required for pending updates" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Creating startup task and restarting to complete update installation..." "INFO" "LAUNCHER"
     
-    REM Determine which script to use for restart continuation
-    SET "RESTART_SCRIPT="
-    IF EXIST "!WORKING_DIR!MaintenanceCompatibilityWrapper.ps1" (
-        SET "RESTART_SCRIPT=!WORKING_DIR!MaintenanceCompatibilityWrapper.ps1"
-        CALL :LOG_MESSAGE "Using MaintenanceCompatibilityWrapper.ps1 for restart continuation" "DEBUG" "LAUNCHER"
-    ) ELSE IF EXIST "!WORKING_DIR!MaintenanceOrchestrator.ps1" (
-        SET "RESTART_SCRIPT=!WORKING_DIR!MaintenanceOrchestrator.ps1"
-        CALL :LOG_MESSAGE "Using MaintenanceOrchestrator.ps1 for restart continuation" "DEBUG" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "No valid PowerShell script found for restart continuation" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE "Cannot create startup task - no orchestrator available" "ERROR" "LAUNCHER"
-        GOTO :SKIP_RESTART
-    )
+    REM Delete any existing startup task first (like original)
+    schtasks /Delete /TN "%STARTUzzP_TASK_NAME%" /F >nul 2>&1
     
-    REM Use correct PowerShell executable
-    SET "STARTUP_PS_EXEC=powershell.exe"
-    IF "%PS7_AVAILABLE%"=="YES" (
-        SET "STARTUP_PS_EXEC=!PS_EXECUTABLE!"
-        CALL :LOG_MESSAGE "Using PowerShell 7 for startup task: !PS_EXECUTABLE!" "DEBUG" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Using Windows PowerShell 5 for startup task" "DEBUG" "LAUNCHER"
-    )
+    REM Create startup task to run 1 minute after user login with admin rights (ORIGINAL METHOD)
+    CALL :LOG_MESSAGE "Creating startup task with script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCHEDULED_TASK_SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
     
-    CALL :LOG_MESSAGE "Creating startup task with script: !RESTART_SCRIPT!" "DEBUG" "LAUNCHER"
-    CALL :LOG_MESSAGE "Using PowerShell executable: !STARTUP_PS_EXEC!" "DEBUG" "LAUNCHER"
-    
-    schtasks /Create ^
-        /SC ONLOGON ^
-        /TN "%STARTUP_TASK_NAME%" ^
-        /TR "cmd /c \"cd /d \"!WORKING_DIR!\" && \"!STARTUP_PS_EXEC!\" -ExecutionPolicy Bypass -File \"!RESTART_SCRIPT!\" -NonInteractive -PostRestart\"" ^
-        /RL HIGHEST ^
-        /RU "%USERNAME%" ^
-        /DELAY 0001:00 ^
-        /F >"%WORKING_DIR%startup_task_creation.log" 2>&1
-        
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Startup task created successfully. Will run 1 minute after user login." "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Restarting system to complete pending updates..." "INFO" "LAUNCHER"
         
-        REM Initiate system restart
+        REM Initiate system restart (like original - shorter timeout)
         ECHO.
         ECHO ================================================================================
         ECHO  SYSTEM RESTART REQUIRED
         ECHO ================================================================================
-        ECHO  Windows Updates require a restart. The system will restart in 30 seconds.
+        ECHO  Windows Updates require a restart. The system will restart in 10 seconds.
         ECHO  The maintenance script will continue automatically after restart.
-        ECHO.
-        ECHO  Press Ctrl+C to cancel if needed.
         ECHO ================================================================================
         ECHO.
         
-        CALL :LOG_MESSAGE "Initiating system restart in 30 seconds..." "INFO" "LAUNCHER"
-        shutdown /r /t 30 /c "Windows Maintenance: Restarting to complete system updates"
-        
-        CALL :LOG_MESSAGE "System restart initiated - script will continue after reboot" "INFO" "LAUNCHER"
+        shutdown /r /t 10 /c "System restart required to complete pending Windows Updates"
+        CALL :LOG_MESSAGE "System will restart in 10 seconds to complete updates..." "INFO" "LAUNCHER"
+        timeout /t 12 /nobreak >nul
         EXIT /B 0
         
     ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create startup task - error details:" "ERROR" "LAUNCHER"
-        IF EXIST "%WORKING_DIR%startup_task_creation.log" (
-            TYPE "%WORKING_DIR%startup_task_creation.log"
-        )
-        CALL :LOG_MESSAGE "Cannot safely restart without startup task" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE "Manual restart may be required" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Failed to create startup task. Continuing without restart..." "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Updates may require manual restart after installation." "WARN" "LAUNCHER"
     )
-    
-    :SKIP_RESTART
 ) ELSE (
     REM Step 3b: No pending restart - continue with script execution
     CALL :LOG_MESSAGE "No pending restart detected - continuing with script execution" "INFO" "LAUNCHER"
 )
 
-REM Simple Monthly Scheduled Task Setup
-CALL :LOG_MESSAGE "Managing monthly scheduled task '%TASK_NAME%'..." "INFO" "LAUNCHER"
-
-REM Step 1: Check if monthly task exists, if yes remove it
+REM Enhanced Monthly Scheduled Task Setup (Original Working Method)
+CALL :LOG_MESSAGE "Checking for monthly scheduled task '%TASK_NAME%'..." "INFO" "LAUNCHER"
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly task exists - removing it..." "INFO" "LAUNCHER"
-    schtasks /Delete /TN "%TASK_NAME%" /F >nul 2>&1
+    CALL :LOG_MESSAGE "Monthly scheduled task already exists. Skipping creation." "INFO" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Monthly scheduled task not found. Creating..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using script path for task: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    
+    REM Create scheduled task with proper escaping (ORIGINAL METHOD)
+    schtasks /Create ^
+        /SC MONTHLY ^
+        /MO 1 ^
+        /TN "%TASK_NAME%" ^
+        /TR "%SCHEDULED_TASK_SCRIPT_PATH%" ^
+        /ST 01:00 ^
+        /RL HIGHEST ^
+        /RU SYSTEM ^
+        /F >"%WORKING_DIR%schtasks_create.log" 2>&1
+        
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Monthly task removed successfully" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Monthly scheduled task created successfully." "SUCCESS" "LAUNCHER"
+        schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Task verification successful." "INFO" "LAUNCHER"
+            FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time"') DO (
+                CALL :LOG_MESSAGE "Next scheduled run: %%i" "INFO" "LAUNCHER"
+            )
+        )
     ) ELSE (
-        CALL :LOG_MESSAGE "Failed to remove existing monthly task" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Failed to create monthly scheduled task. See schtasks_create.log for details." "ERROR" "LAUNCHER"
+        REM Display the actual error for debugging
+        IF EXIST "%WORKING_DIR%schtasks_create.log" (
+            CALL :LOG_MESSAGE "Scheduled task creation error details:" "ERROR" "LAUNCHER"
+            TYPE "%WORKING_DIR%schtasks_create.log"
+        ) ELSE (
+            CALL :LOG_MESSAGE "No error log file created." "ERROR" "LAUNCHER"
+        )
+        
+        REM Try alternative approach with current user instead of SYSTEM (ORIGINAL FALLBACK)
+        CALL :LOG_MESSAGE "Attempting to create task under current user account..." "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Using script path for user task: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+        schtasks /Create ^
+            /SC MONTHLY ^
+            /MO 1 ^
+            /TN "%TASK_NAME%" ^
+            /TR "%SCHEDULED_TASK_SCRIPT_PATH%" ^
+            /ST 01:00 ^
+            /RL HIGHEST ^
+            /F >"%WORKING_DIR%schtasks_create_user.log" 2>&1
+            
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Monthly scheduled task created successfully under current user." "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to create scheduled task under current user as well." "WARN" "LAUNCHER"
+            IF EXIST "%WORKING_DIR%schtasks_create_user.log" TYPE "%WORKING_DIR%schtasks_create_user.log"
+        )
     )
-) ELSE (
-    CALL :LOG_MESSAGE "No existing monthly task found" "DEBUG" "LAUNCHER"
-)
-
-REM Step 2: Create new monthly task with correct PowerShell path
-CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
-
-REM Determine correct PowerShell executable path
-SET "TASK_PS_EXECUTABLE=powershell.exe"
-IF "%PS7_AVAILABLE%"=="YES" (
-    SET "TASK_PS_EXECUTABLE=%PS_EXECUTABLE%"
-    CALL :LOG_MESSAGE "Using PowerShell 7 for scheduled task: %PS_EXECUTABLE%" "DEBUG" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Using Windows PowerShell for scheduled task" "DEBUG" "LAUNCHER"
-)
-
-REM Create task with current user (more reliable than SYSTEM for PowerShell execution)
-schtasks /Create ^
-    /SC MONTHLY ^
-    /MO 1 ^
-    /TN "%TASK_NAME%" ^
-    /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && \"%TASK_PS_EXECUTABLE%\" -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive\"" ^
-    /ST 02:00 ^
-    /RL HIGHEST ^
-    /F >nul 2>&1
-    
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly scheduled task created successfully" "SUCCESS" "LAUNCHER"
-    
-    REM Log next run time
-    FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time" 2^>nul') DO (
-        CALL :LOG_MESSAGE "Next scheduled run: %%i" "INFO" "LAUNCHER"
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "Failed to create monthly scheduled task" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Continuing without monthly scheduling - manual execution will be required" "WARN" "LAUNCHER"
 )
 
 REM -----------------------------------------------------------------------------
