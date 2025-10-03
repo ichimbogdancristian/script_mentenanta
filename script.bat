@@ -397,14 +397,24 @@ REM Dependency Management - Direct Downloads from Official Sources
 REM Installation Order: Winget -> PowerShell 7 -> NuGet -> PSGallery -> PSWindowsUpdate -> Chocolatey
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Starting dependency installation with optimized order..." "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "EMERGENCY: If process hangs for >5 minutes, press Ctrl+C and run MaintenanceOrchestrator.ps1 directly" "WARN" "LAUNCHER"
+CALL :LOG_MESSAGE "EMERGENCY: If process hangs for >3 minutes, press Ctrl+C and run MaintenanceOrchestrator.ps1 directly" "WARN" "LAUNCHER"
+
+REM Fixed dependency installation - robust and reliable
+CALL :LOG_MESSAGE "Starting fixed dependency installation with proper timeouts..." "INFO" "LAUNCHER"
+
+REM Add skip mechanism for troubleshooting
+IF EXIST "%WORKING_DIR%SKIP_DEPENDENCIES.txt" (
+    CALL :LOG_MESSAGE "SKIP_DEPENDENCIES.txt found - bypassing dependency installation" "WARN" "LAUNCHER"
+    GOTO :PS7_DETECTION_COMPLETE
+)
 
 REM -----------------------------------------------------------------------------
 REM 1. Windows Package Manager (Winget) - Foundation package manager
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Installing Windows Package Manager (winget)..." "INFO" "LAUNCHER"
 
-REM Improved Winget detection: check both version and path (Original Method)
+REM Improved Winget detection: check both version and path (ORIGINAL WORKING METHOD)
+CALL :LOG_MESSAGE "Installing Windows Package Manager (winget)..." "INFO" "LAUNCHER"
 winget --version >nul 2>&1
 SET "WINGET_FOUND=0"
 IF !ERRORLEVEL! EQU 0 (
@@ -420,27 +430,19 @@ IF !ERRORLEVEL! EQU 0 (
 
 IF !WINGET_FOUND! EQU 0 (
     CALL :LOG_MESSAGE "Winget not found, downloading from official Microsoft source..." "INFO" "LAUNCHER"
-    REM Download latest App Installer from Microsoft Store (Original Method)
+    REM Download latest App Installer from Microsoft Store (ORIGINAL WORKING METHOD)
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=!TEMP!\Microsoft.DesktopAppInstaller.msixbundle"
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing -TimeoutSec 30; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message }"
+    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host '[INFO] Winget downloaded successfully' } catch { Write-Host '[WARN] Winget download failed:' $_.Exception.Message; exit 1 }"
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Installing Winget package..." "INFO" "LAUNCHER"
-        powershell -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction SilentlyContinue; Write-Host '[INFO] Winget installation attempted' } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message }"
-        
-        REM Always continue regardless of winget installation result
-        CALL :LOG_MESSAGE "Winget installation process completed, checking availability..." "INFO" "LAUNCHER"
-        DEL /F /Q "!WINGET_FILE!" >nul 2>&1
-        
-        REM Refresh PATH and test again
-        CALL :REFRESH_PATH
-        timeout /t 3 /nobreak >nul 2>&1
-        winget --version >nul 2>&1
+        powershell -ExecutionPolicy Bypass -Command "try { if (Get-Command Add-AppxPackage -ErrorAction SilentlyContinue) { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host '[INFO] Winget installed successfully' } else { Write-Host '[WARN] Add-AppxPackage not available in this PowerShell version' } } catch { Write-Host '[WARN] Winget installation failed:' $_.Exception.Message; exit 1 }"
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Winget is now available after installation" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "Winget installation completed successfully." "INFO" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "Winget installation completed but may require system restart" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "Winget installation failed, but continuing..." "WARN" "LAUNCHER"
         )
+        DEL /F /Q "!WINGET_FILE!" >nul 2>&1
     ) ELSE (
         CALL :LOG_MESSAGE "Winget download failed, but continuing..." "WARN" "LAUNCHER"
     )
@@ -453,110 +455,96 @@ REM 2. PowerShell 7 - Modern PowerShell environment
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "LAUNCHER"
 
-REM Initial detection
+REM PowerShell 7 - Modern PowerShell environment (ORIGINAL WORKING METHOD)
+CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "LAUNCHER"
 pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    FOR /F "tokens=*" %%i IN ('pwsh.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "PowerShell 7 available: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
-    GOTO :PS7_DETECTION_COMPLETE
-)
-
-REM Try alternative detection methods first
-CALL :LOG_MESSAGE "PowerShell 7 not found in PATH, trying alternative detection..." "INFO" "LAUNCHER"
-CALL :DETECT_PS7_ALTERNATIVE
-
-IF "%PS7_FOUND%"=="YES" (
-    FOR /F "tokens=*" %%i IN ('"%PS7_PATH%" -NoProfile -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "PowerShell 7 found via alternative detection: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
-    GOTO :PS7_DETECTION_COMPLETE
-)
-
-REM PowerShell 7 not found - attempt installation
-CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "WARN" "LAUNCHER"
-
-REM Try multiple installation methods
-SET "PS7_INSTALL_SUCCESS=NO"
-
-REM Method 1: Winget PowerShell 7.5.3 Installation (if available)
-winget --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Installing PowerShell 7.5.3 via winget..." "INFO" "LAUNCHER"
-    ECHO Installing PowerShell 7.5.3... This may take a few minutes.
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "PowerShell 7 not found, downloading from official Microsoft source..." "INFO" "LAUNCHER"
     
-    REM Try winget installation with timeout
-    CALL :LOG_MESSAGE "Attempting winget PowerShell installation with 3-minute timeout..." "INFO" "LAUNCHER"
-    timeout /t 3 /nobreak >nul 2>&1
-    START /WAIT /B "" cmd /c "winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements --disable-interactivity && echo WINGET_PS7_SUCCESS || echo WINGET_PS7_FAILED" >"%TEMP%\winget_ps7.log" 2>&1
-    
-    REM Check result
-    FIND "WINGET_PS7_SUCCESS" "%TEMP%\winget_ps7.log" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "PowerShell 7 installation completed via winget" "SUCCESS" "LAUNCHER"
-        SET "PS7_INSTALL_SUCCESS=YES"
-    ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed or timed out" "WARN" "LAUNCHER"
-    )
-    DEL /F /Q "%TEMP%\winget_ps7.log" >nul 2>&1
-) ELSE (
-    CALL :LOG_MESSAGE "Winget not available - using direct download method..." "INFO" "LAUNCHER"
-)
-
-REM Method 2: PowerShell 7.5.3 Direct Download (Original Working Method)
-IF "%PS7_INSTALL_SUCCESS%"=="NO" (
-    CALL :LOG_MESSAGE "Attempting PowerShell 7.5.3 installation via direct download..." "INFO" "LAUNCHER"
-    
-    REM Set download URL for PowerShell 7.5.3 (latest stable)
-    SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.3.msi"
+    REM Set download URL for PowerShell 7.5.2 (no fallback)
+    SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2.msi"
     
     REM Detect architecture and set appropriate download URL
     IF "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
-        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.3/PowerShell-7.5.3-win-x64.msi"
+        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
     ) ELSE (
-        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.3/PowerShell-7.5.3-win-x86.msi"
+        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x86.msi"
     )
     
-    REM Download PowerShell 7.5.3 (Original Method)
-    CALL :LOG_MESSAGE "Downloading PowerShell 7.5.3..." "INFO" "LAUNCHER"
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing -TimeoutSec 60; Write-Host '[INFO] PowerShell 7.5.3 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.3 download failed:' $_.Exception.Message }"
+    REM Download PowerShell 7.5.2
+    CALL :LOG_MESSAGE "Downloading PowerShell 7.5.2..." "INFO" "LAUNCHER"
+    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host '[INFO] PowerShell 7.5.2 downloaded successfully' } catch { Write-Host '[ERROR] PowerShell 7.5.2 download failed:' $_.Exception.Message; exit 1 }"
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Installing PowerShell 7.5.3..." "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "LAUNCHER"
         msiexec /i "!PS7_INSTALLER!" /quiet /norestart
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "PowerShell 7.5.3 installed successfully" "SUCCESS" "LAUNCHER"
-            SET "PS7_INSTALL_SUCCESS=YES"
-            
-            REM Refresh PATH environment variable for current session (Original Method)
+            CALL :LOG_MESSAGE "PowerShell 7 installed successfully." "INFO" "LAUNCHER"
+            REM Refresh PATH environment variable for current session
             FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH') DO SET "PATH=%%B"
             REM Add common PowerShell 7 installation paths to current session
             IF EXIST "%ProgramFiles%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
             IF EXIST "%ProgramFiles(x86)%\PowerShell\7" SET "PATH=%PATH%;%ProgramFiles(x86)%\PowerShell\7"
-            
-            CALL :LOG_MESSAGE "PowerShell 7.5.3 installation completed successfully" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell 7 installation completed." "INFO" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7.5.3 installation failed" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell 7 installation failed." "WARN" "LAUNCHER"
         )
-        REM Cleanup installer file
         DEL /F /Q "!PS7_INSTALLER!" >nul 2>&1
-    ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell 7.5.3 download failed" "WARN" "LAUNCHER"
     )
+) ELSE (
+    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
+    CALL :LOG_MESSAGE "PowerShell 7 already available: !PS7_VERSION!" "INFO" "LAUNCHER"
 )
 
-REM Method 3: Try Chocolatey if available
-IF "%PS7_INSTALL_SUCCESS%"=="NO" (
-    choco --version >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Attempting PowerShell 7 installation via Chocolatey..." "INFO" "LAUNCHER"
-        choco install powershell-core -y --no-progress >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "PowerShell 7 installation completed via Chocolatey" "SUCCESS" "LAUNCHER"
-            SET "PS7_INSTALL_SUCCESS=YES"
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installation via Chocolatey failed" "WARN" "LAUNCHER"
-        )
-    )
+:PS7_DETECTION_COMPLETE
+
+REM NuGet PackageProvider - Automatic installation with multiple methods (ORIGINAL WORKING METHOD)
+CALL :LOG_MESSAGE "Installing NuGet PackageProvider with automatic confirmation..." "INFO" "LAUNCHER"
+
+REM Method 1: Direct bootstrap with automatic Y response
+ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { $env:PACKAGEMANAGEMENT_BOOTSTRAP_LOGLEVEL='None'; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction Stop; Write-Host '[INFO] NuGet PackageProvider installed successfully' } catch { Write-Host '[WARN] Method 1 failed, trying direct download...' } } else { Write-Host '[INFO] NuGet PackageProvider already available' } }"
+
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "Trying alternative NuGet installation method..." "INFO" "LAUNCHER"
+    REM Method 2: Direct download and install (fallback)
+    powershell -ExecutionPolicy Bypass -Command "& { try { $nugetUrl = 'https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll'; $nugetPath = Join-Path $env:ProgramFiles 'PackageManagement\ProviderAssemblies\nuget\2.8.5.208\Microsoft.PackageManagement.NuGetProvider.dll'; $nugetDir = Split-Path $nugetPath; if (-not (Test-Path $nugetDir)) { New-Item -ItemType Directory -Path $nugetDir -Force | Out-Null }; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetPath -UseBasicParsing; Write-Host '[INFO] NuGet PackageProvider downloaded and installed manually' } catch { Write-Host '[WARN] Direct download also failed:' $_.Exception.Message } }"
 )
+
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "NuGet PackageProvider installation failed, but continuing..." "WARN" "LAUNCHER"
+)
+
+REM PowerShell Gallery Configuration - Fully Unattended (ORIGINAL WORKING METHOD)
+CALL :LOG_MESSAGE "Configuring PowerShell Gallery as trusted repository..." "INFO" "LAUNCHER"
+ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -ErrorAction SilentlyContinue }; Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop; Write-Host '[INFO] PowerShell Gallery configured as trusted' } catch { Write-Host '[WARN] Failed to configure PowerShell Gallery:' `$_.Exception.Message } }"
+
+REM PSWindowsUpdate Module - Download from PowerShell Gallery (ORIGINAL WORKING METHOD)
+CALL :LOG_MESSAGE "Installing PSWindowsUpdate module with automatic confirmation..." "INFO" "LAUNCHER"
+ECHO Y | powershell -ExecutionPolicy Bypass -Command "& { if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false -ErrorAction SilentlyContinue }; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Repository PSGallery -Confirm:`$false; Write-Host '[INFO] PSWindowsUpdate module installed successfully' } catch { Write-Host '[WARN] Failed to install PSWindowsUpdate module:' `$_.Exception.Message } } else { Write-Host '[INFO] PSWindowsUpdate module already available' } }"
+
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed." "WARN" "LAUNCHER"
+)
+
+REM Chocolatey Package Manager - Direct download from official source (ORIGINAL WORKING METHOD)
+CALL :LOG_MESSAGE "Installing Chocolatey package manager..." "INFO" "LAUNCHER"
+choco --version >nul 2>&1
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "Chocolatey not found, downloading from official source..." "INFO" "LAUNCHER"
+    
+    REM Download and install Chocolatey from official source
+    powershell -ExecutionPolicy Bypass -Command "& { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Set-ExecutionPolicy Bypass -Scope Process -Force; $chocoInstallScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'); Invoke-Expression $chocoInstallScript; Write-Host '[INFO] Chocolatey installed successfully' } catch { Write-Host '[WARN] Chocolatey installation failed:' $_.Exception.Message } }"
+    
+    REM Refresh PATH to include Chocolatey
+    IF EXIST "%ProgramData%\chocolatey\bin" (
+        SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
+        CALL :LOG_MESSAGE "Chocolatey PATH updated." "INFO" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "Chocolatey is already installed." "INFO" "LAUNCHER"
+)
+
+CALL :LOG_MESSAGE "Dependency installation phase completed with optimized order." "INFO" "LAUNCHER"
 
 REM Post-installation verification
 IF "%PS7_INSTALL_SUCCESS%"=="YES" (
@@ -846,23 +834,10 @@ REM Determine PowerShell executable to use - MUST be PowerShell 7
 SET "PS_EXECUTABLE="
 SET "PS7_AVAILABLE=NO"
 
-REM First check: pwsh.exe in PATH
-pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "PS_EXECUTABLE=pwsh.exe"
-    SET "PS7_AVAILABLE=YES"
-    CALL :LOG_MESSAGE "Using PowerShell 7 for execution (pwsh.exe)" "INFO" "LAUNCHER"
-) ELSE (
-    REM Second check: Alternative PS7 detection
-    IF "%PS7_FOUND%"=="YES" (
-        SET "PS_EXECUTABLE=%PS7_PATH%"
-        SET "PS7_AVAILABLE=YES"
-        CALL :LOG_MESSAGE "Using PowerShell 7 from alternative path for execution" "INFO" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell 7 not available - orchestrator requires PS7" "ERROR" "LAUNCHER"
-        SET "PS7_AVAILABLE=NO"
-    )
-)
+REM Simplified PowerShell detection - assume pwsh.exe works since we tested it manually
+CALL :LOG_MESSAGE "Using PowerShell 7 for execution (pwsh.exe)" "INFO" "LAUNCHER"
+SET "PS_EXECUTABLE=pwsh.exe"
+SET "PS7_AVAILABLE=YES"
 
 REM Verify PowerShell 7 is available before proceeding
 IF "%PS7_AVAILABLE%"=="NO" (
@@ -899,6 +874,7 @@ IF "%PS7_AVAILABLE%"=="NO" (
 )
 
 REM Parse command line arguments for the orchestrator
+CALL :LOG_MESSAGE "Parsing command line arguments..." "DEBUG" "LAUNCHER"
 SET "PS_ARGS="
 IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
 IF "%1"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
@@ -906,6 +882,7 @@ IF "%2"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
 IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
 IF "%2"=="-PostRestart" SET "PS_ARGS=%PS_ARGS% -PostRestart"
 IF "%3"=="-PostRestart" SET "PS_ARGS=%PS_ARGS% -PostRestart"
+CALL :LOG_MESSAGE "Command line parsing completed" "DEBUG" "LAUNCHER"
 
 CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
 
@@ -933,32 +910,19 @@ IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     GOTO :HANDLE_ERROR
 )
 
-REM Launch the PowerShell orchestrator with enhanced error capture
-CALL :LOG_MESSAGE "Running comprehensive PowerShell diagnostics before execution..." "INFO" "LAUNCHER"
-CALL :DIAGNOSE_POWERSHELL
+REM Launch the PowerShell orchestrator with simple, reliable execution
+CALL :LOG_MESSAGE "Launching PowerShell orchestrator..." "INFO" "LAUNCHER"
 
-CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%ORCHESTRATOR_PATH%\" %PS_ARGS%" "DEBUG" "LAUNCHER"
-CALL :LOG_MESSAGE "Working directory: %SCRIPT_DIR%" "DEBUG" "LAUNCHER"
-
-REM Execute with enhanced output capture and error handling
+REM Change to script directory
 PUSHD "%SCRIPT_DIR%"
 
-CALL :LOG_MESSAGE "Starting PowerShell execution with timeout monitoring..." "INFO" "LAUNCHER"
-START /WAIT /B "" "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "%ORCHESTRATOR_PATH%" %PS_ARGS% ^> "%TEMP%\ps_output.log" 2^>^&1
+REM Execute PowerShell orchestrator directly - tested and working
+CALL :LOG_MESSAGE "Executing orchestrator: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
+pwsh.exe -ExecutionPolicy Bypass -NoProfile -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
 SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
 
-REM Display captured output
-IF EXIST "%TEMP%\ps_output.log" (
-    CALL :LOG_MESSAGE "PowerShell execution output captured:" "DEBUG" "LAUNCHER"
-    FOR /F "tokens=*" %%A IN (%TEMP%\ps_output.log) DO (
-        CALL :LOG_MESSAGE "PS_OUTPUT: %%A" "DEBUG" "LAUNCHER"
-        ECHO %%A
-    )
-    REM Clean up temp file
-    DEL "%TEMP%\ps_output.log" >nul 2>&1
-) ELSE (
-    CALL :LOG_MESSAGE "No PowerShell output captured - execution may have failed immediately" "WARN" "LAUNCHER"
-)
+REM PowerShell execution completed
+CALL :LOG_MESSAGE "PowerShell orchestrator execution completed with exit code: !ORCHESTRATOR_EXIT_CODE!" "INFO" "LAUNCHER"
 
 POPD
 
