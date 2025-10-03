@@ -640,8 +640,11 @@ CALL :LOG_MESSAGE "Managing startup task..." "INFO" "LAUNCHER"
 SET "TASK_NAME=ScriptMentenantaMonthly"
 SET "STARTUP_TASK_NAME=ScriptMentenantaStartup"
 
+REM Simple Startup Task Logic - Check → Remove → Check Pending → Create+Restart OR Continue
+CALL :LOG_MESSAGE "Startup Task Management: Simple Logic Implementation" "INFO" "LAUNCHER"
+
 REM Step 1: Check if startup task exists, if yes remove it
-CALL :LOG_MESSAGE "Checking if startup task exists..." "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Checking for existing startup task '%STARTUP_TASK_NAME%'..." "DEBUG" "LAUNCHER"
 schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Startup task exists - removing it..." "INFO" "LAUNCHER"
@@ -656,44 +659,39 @@ IF !ERRORLEVEL! EQU 0 (
 )
 
 REM Step 2: Check for pending restarts
+CALL :LOG_MESSAGE "Checking for pending system restarts..." "DEBUG" "LAUNCHER"
 IF "%PENDING_RESTART%"=="YES" (
-    REM Step 3a: Pending restart detected - create startup task and restart (Original Working Method)
-    CALL :LOG_MESSAGE "System restart is required for pending updates" "INFO" "LAUNCHER"
-    CALL :LOG_MESSAGE "Creating startup task and restarting to complete update installation..." "INFO" "LAUNCHER"
+    REM Step 3a: Pending restart detected - create startup task and restart system
+    CALL :LOG_MESSAGE "Pending restart detected - creating startup task and restarting system" "INFO" "LAUNCHER"
     
-    REM Delete any existing startup task first (like original)
-    schtasks /Delete /TN "%STARTUzzP_TASK_NAME%" /F >nul 2>&1
-    
-    REM Create startup task to run 1 minute after user login with admin rights (ORIGINAL METHOD)
-    CALL :LOG_MESSAGE "Creating startup task with script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
-    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCHEDULED_TASK_SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F
+    REM Create startup task to continue after restart
+    CALL :LOG_MESSAGE "Creating startup task: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    schtasks /Create /SC ONLOGON /TN "%STARTUP_TASK_NAME%" /TR "%SCHEDULED_TASK_SCRIPT_PATH%" /RL HIGHEST /RU "%USERNAME%" /DELAY 0001:00 /F >nul 2>&1
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task created successfully. Will run 1 minute after user login." "SUCCESS" "LAUNCHER"
-        CALL :LOG_MESSAGE "Restarting system to complete pending updates..." "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
         
-        REM Initiate system restart (like original - shorter timeout)
+        REM Initiate system restart
         ECHO.
         ECHO ================================================================================
         ECHO  SYSTEM RESTART REQUIRED
         ECHO ================================================================================
-        ECHO  Windows Updates require a restart. The system will restart in 10 seconds.
-        ECHO  The maintenance script will continue automatically after restart.
+        ECHO  Pending updates require a restart. System will restart in 10 seconds.
+        ECHO  Maintenance script will continue automatically after restart.
         ECHO ================================================================================
         ECHO.
         
-        shutdown /r /t 10 /c "System restart required to complete pending Windows Updates"
-        CALL :LOG_MESSAGE "System will restart in 10 seconds to complete updates..." "INFO" "LAUNCHER"
+        shutdown /r /t 10 /c "System restart required to complete pending updates"
+        CALL :LOG_MESSAGE "System restarting in 10 seconds..." "INFO" "LAUNCHER"
         timeout /t 12 /nobreak >nul
         EXIT /B 0
         
     ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create startup task. Continuing without restart..." "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE "Updates may require manual restart after installation." "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Failed to create startup task - continuing without restart" "ERROR" "LAUNCHER"
     )
 ) ELSE (
     REM Step 3b: No pending restart - continue with script execution
-    CALL :LOG_MESSAGE "No pending restart detected - continuing with script execution" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "No pending restart required - continuing with script execution" "INFO" "LAUNCHER"
 )
 
 REM Enhanced Monthly Scheduled Task Setup (Original Working Method)
