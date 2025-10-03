@@ -698,81 +698,55 @@ IF "%PENDING_RESTART%"=="YES" (
     CALL :LOG_MESSAGE "No pending restart detected - continuing with script execution" "INFO" "LAUNCHER"
 )
 
-REM Enhanced Monthly Scheduled Task Setup with Error Handling
-CALL :LOG_MESSAGE "Checking for monthly scheduled task '%TASK_NAME%'..." "INFO" "LAUNCHER"
+REM Simple Monthly Scheduled Task Setup
+CALL :LOG_MESSAGE "Managing monthly scheduled task '%TASK_NAME%'..." "INFO" "LAUNCHER"
+
+REM Step 1: Check if monthly task exists, if yes remove it
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
+IF !ERRORLEVEL! EQU 0
+    CALL :LOG_MESSAGE "Monthly task exists - removing it..." "INFO" "LAUNCHER"
+    schtasks /Delete /TN "%TASK_NAME%" /F >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Monthly task removed successfully" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to remove existing monthly task" "WARN" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "No existing monthly task found" "DEBUG" "LAUNCHER"
+)
+
+REM Step 2: Create new monthly task with correct PowerShell path
+CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
+
+REM Determine correct PowerShell executable path
+SET "TASK_PS_EXECUTABLE=powershell.exe"
+IF "%PS7_AVAILABLE%"=="YES" (
+    SET "TASK_PS_EXECUTABLE=%PS_EXECUTABLE%"
+    CALL :LOG_MESSAGE "Using PowerShell 7 for scheduled task: %PS_EXECUTABLE%" "DEBUG" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Using Windows PowerShell for scheduled task" "DEBUG" "LAUNCHER"
+)
+
+REM Create task with current user (more reliable than SYSTEM for PowerShell execution)
+schtasks /Create ^
+    /SC MONTHLY ^
+    /MO 1 ^
+    /TN "%TASK_NAME%" ^
+    /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && \"%TASK_PS_EXECUTABLE%\" -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive\"" ^
+    /ST 02:00 ^
+    /RL HIGHEST ^
+    /F >nul 2>&1
+    
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly scheduled task already exists: %TASK_NAME%" "INFO" "LAUNCHER"
-    REM Verify and log next run time
+    CALL :LOG_MESSAGE "Monthly scheduled task created successfully" "SUCCESS" "LAUNCHER"
+    
+    REM Log next run time
     FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time" 2^>nul') DO (
         CALL :LOG_MESSAGE "Next scheduled run: %%i" "INFO" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
-    CALL :LOG_MESSAGE "Using script path for task: %SCRIPT_PATH%" "DEBUG" "LAUNCHER"
-    
-    REM Create scheduled task with SYSTEM account first (preferred)
-    REM Use the same PowerShell detection logic as the main script
-    SET "TASK_PS_EXECUTABLE=powershell.exe"
-    IF "%PS7_AVAILABLE%"=="YES" SET "TASK_PS_EXECUTABLE=%PS_EXECUTABLE%"
-    
-    schtasks /Create ^
-        /SC MONTHLY ^
-        /MO 1 ^
-        /TN "%TASK_NAME%" ^
-        /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && powershell.exe -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive\"" ^
-        /ST 02:00 ^
-        /RL HIGHEST ^
-        /RU SYSTEM ^
-        /F >"%WORKING_DIR%schtasks_create.log" 2>&1
-        
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Monthly scheduled task created successfully with SYSTEM account" "SUCCESS" "LAUNCHER"
-        
-        REM Verify task creation and log next run time
-        schtasks /Query /TN "%TASK_NAME%" /V >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Task verification successful" "INFO" "LAUNCHER"
-            FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time" 2^>nul') DO (
-                CALL :LOG_MESSAGE "Next scheduled run: %%i" "SUCCESS" "LAUNCHER"
-            )
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create task with SYSTEM account, trying current user..." "WARN" "LAUNCHER"
-        
-        REM Display error details
-        IF EXIST "%WORKING_DIR%schtasks_create.log" (
-            CALL :LOG_MESSAGE "SYSTEM task creation error details:" "ERROR" "LAUNCHER"
-            TYPE "%WORKING_DIR%schtasks_create.log"
-        )
-        
-        REM Fallback: Try with current user account
-        REM Use the same PowerShell detection for user account
-        schtasks /Create ^
-            /SC MONTHLY ^
-            /MO 1 ^
-            /TN "%TASK_NAME%" ^
-            /TR "cmd /c \"cd /d \"%WORKING_DIR%\" && powershell.exe -ExecutionPolicy Bypass -File \"%WORKING_DIR%MaintenanceCompatibilityWrapper.ps1\" -NonInteractive\"" ^
-            /ST 02:00 ^
-            /RL HIGHEST ^
-            /F >"%WORKING_DIR%schtasks_create_user.log" 2>&1
-            
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Monthly scheduled task created successfully with current user account" "SUCCESS" "LAUNCHER"
-            
-            REM Verify task creation and log next run time
-            FOR /F "tokens=2 delims=:" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /C:"Next Run Time" 2^>nul') DO (
-                CALL :LOG_MESSAGE "Next scheduled run: %%i" "SUCCESS" "LAUNCHER"
-            )
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to create scheduled task with both SYSTEM and current user accounts" "ERROR" "LAUNCHER"
-            IF EXIST "%WORKING_DIR%schtasks_create_user.log" (
-                CALL :LOG_MESSAGE "User task creation error details:" "ERROR" "LAUNCHER"
-                TYPE "%WORKING_DIR%schtasks_create_user.log"
-            )
-            CALL :LOG_MESSAGE "Continuing without monthly scheduling - manual execution will be required" "WARN" "LAUNCHER"
-        )
-    )
+    CALL :LOG_MESSAGE "Failed to create monthly scheduled task" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Continuing without monthly scheduling - manual execution will be required" "WARN" "LAUNCHER"
 )
 
 REM -----------------------------------------------------------------------------
