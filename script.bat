@@ -364,10 +364,10 @@ IF EXIST "%EXTRACTED_PATH%" (
     REM Check for orchestrator in extracted files
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
         SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1"
-        CALL :LOG_MESSAGE "Using extracted orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Using extracted orchestrator: !ORCHESTRATOR_PATH!" "INFO" "LAUNCHER"
     ) ELSE IF EXIST "%EXTRACTED_PATH%\script.ps1" (
         SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Using extracted legacy orchestrator: !ORCHESTRATOR_PATH!" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
         PAUSE
