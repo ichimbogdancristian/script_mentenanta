@@ -330,6 +330,20 @@ class ModuleExecutor {
         $result = [ModuleExecutionResult]::new($context)
         
         try {
+            # Prepare per-module log path so module logs are written to an independent file
+            try {
+                if ($Global:MaintenanceLogFile) {
+                    $logDir = Split-Path $Global:MaintenanceLogFile -Parent
+                    $Global:ModuleLogFile = Join-Path $logDir ($Manifest.Name + '.log')
+                } else {
+                    # Fallback: place module log in temp_files/logs under working directory if determinable
+                    $fallbackLogDir = Join-Path (Split-Path $context.ModulePath -Parent) '..\..\temp_files\logs'
+                    $Global:ModuleLogFile = Join-Path $fallbackLogDir ($Manifest.Name + '.log')
+                }
+            } catch {
+                Remove-Variable -Name ModuleLogFile -Scope Global -ErrorAction SilentlyContinue
+            }
+
             # Validate privileges if required
             if ($context.RequiresElevation) {
                 $isAdmin = $this.ValidateAdminPrivileges()
@@ -377,7 +391,11 @@ class ModuleExecutor {
                 $result.ConfigurationErrors += "Execution timeout"
             }
         }
-        
+        finally {
+            # Ensure we clear the per-module log path to avoid cross-module leakage
+            try { Remove-Variable -Name ModuleLogFile -Scope Global -ErrorAction SilentlyContinue } catch { }
+        }
+
         return $result
     }
     
@@ -469,9 +487,21 @@ function Write-Log {
     Write-Host $logEntry -ForegroundColor $color
     
     # Write to log file if available
-    if ($Global:MaintenanceLogFile -and (Test-Path (Split-Path $Global:MaintenanceLogFile))) {
-        $logEntry | Add-Content -Path $Global:MaintenanceLogFile -ErrorAction SilentlyContinue
-    }
+        if ($Global:MaintenanceLogFile -and (Test-Path (Split-Path $Global:MaintenanceLogFile))) {
+            $logEntry | Add-Content -Path $Global:MaintenanceLogFile -ErrorAction SilentlyContinue
+        }
+
+        # Additionally write to a per-module log file if the orchestrator set one for the current module
+        if ($Global:ModuleLogFile) {
+            try {
+                $moduleLogDir = Split-Path $Global:ModuleLogFile -Parent
+                if (-not (Test-Path $moduleLogDir)) { New-Item -Path $moduleLogDir -ItemType Directory -Force | Out-Null }
+                $logEntry | Add-Content -Path $Global:ModuleLogFile -ErrorAction SilentlyContinue
+            } catch {
+                # Non-fatal: continue writing other logs
+                Write-Host "[WARN] Failed to write to module log $Global:ModuleLogFile: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+        }
 }
 
 #endregion

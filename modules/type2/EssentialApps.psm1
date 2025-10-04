@@ -74,6 +74,75 @@ but the PowerShell session must maintain elevated context.
 #endregion
 
 
+#region Private Functions
+
+<#
+.SYNOPSIS
+    Gets unified essential apps list from configuration files
+
+.DESCRIPTION
+    Loads essential apps from the ConfigManager based on the requested categories.
+
+.PARAMETER IncludeCategories
+    Array of category names to include (e.g., @('Browser', 'Development', 'Media', 'Office'))
+
+.EXAMPLE
+    $apps = Get-UnifiedEssentialAppsList -IncludeCategories @('Browser', 'Development')
+#>
+function Get-UnifiedEssentialAppsList {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string[]]$IncludeCategories = @('Browser', 'Development', 'Media', 'Office', 'System', 'Document', 'Editor', 'Utility', 'Runtime', 'Graphics', 'Audio', 'Video', 'Music')
+    )
+    
+    try {
+        # Import ConfigManager module if not already available
+        if (-not (Get-Module ConfigManager)) {
+            Import-Module (Join-Path $PSScriptRoot '..\core\ConfigManager.psm1') -Force
+        }
+        
+        # Get essential apps configuration from ConfigManager
+        $appsConfig = Get-EssentialAppsConfiguration
+        
+        if (-not $appsConfig -or $appsConfig.Count -eq 0) {
+            Write-Warning "No essential apps configuration loaded"
+            return @()
+        }
+        
+        # If 'all' category exists, filter from that, otherwise try category-based approach
+        if ($appsConfig.ContainsKey('all')) {
+            $allApps = $appsConfig['all']
+            # Filter by requested categories
+            $filteredApps = $allApps | Where-Object { $_.category -in $IncludeCategories }
+            Write-Verbose "Filtered $($filteredApps.Count) apps from $($allApps.Count) total apps"
+            return $filteredApps
+        } else {
+            # Fallback to category-based loading
+            $allApps = @()
+            foreach ($category in $IncludeCategories) {
+                $categoryKey = $category.ToLower()
+                if ($appsConfig.ContainsKey($categoryKey)) {
+                    $categoryApps = $appsConfig[$categoryKey]
+                    $allApps += $categoryApps
+                    Write-Verbose "Loaded $($categoryApps.Count) apps from category '$category'"
+                } else {
+                    Write-Warning "Essential apps category not found: $category"
+                }
+            }
+            
+            Write-Verbose "Total essential apps loaded: $($allApps.Count)"
+            return $allApps
+        }
+    }
+    catch {
+        Write-Error "Failed to load essential apps: $_"
+        return @()
+    }
+}
+
+#endregion
+
 #region Public Functions
 
 <#

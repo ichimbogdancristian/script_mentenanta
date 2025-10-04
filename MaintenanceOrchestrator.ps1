@@ -160,6 +160,34 @@ $InventoryDir = Join-Path $TempRoot 'inventory'
     }
 }
 
+# If there's an existing maintenance.log in the working directory (created by the batch launcher),
+# move it into the orchestrator-managed logs folder so all runtime logs are centralized.
+$LauncherLog = Join-Path $WorkingDirectory 'maintenance.log'
+try {
+    if (Test-Path $LauncherLog) {
+        $TargetLog = Join-Path $LogsDir 'maintenance.log'
+
+        # If file already exists in target, append a timestamp to the existing backup first
+        if (Test-Path $TargetLog) {
+            $timeSuffix = (Get-Date).ToString('yyyyMMdd-HHmmss')
+            $backup = "$TargetLog.$timeSuffix.bak"
+            Move-Item -LiteralPath $TargetLog -Destination $backup -Force -ErrorAction SilentlyContinue
+        }
+
+        # Attempt to move the launcher log into the logs folder. If Move-Item fails (locked), fall back to Copy+Remove.
+        try {
+            Move-Item -LiteralPath $LauncherLog -Destination $TargetLog -Force -ErrorAction Stop
+        } catch {
+            Copy-Item -LiteralPath $LauncherLog -Destination $TargetLog -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 200
+            try { Remove-Item -LiteralPath $LauncherLog -Force -ErrorAction SilentlyContinue } catch { }
+        }
+        Write-Verbose "Moved launcher maintenance.log to $TargetLog"
+    }
+} catch {
+    Write-Warning "Failed to relocate launcher maintenance.log: $($_.Exception.Message)"
+}
+
 # Set up log file
 if (-not $LogFilePath) {
     $LogFilePath = if ($env:SCRIPT_LOG_FILE) { 
@@ -493,6 +521,35 @@ try {
     
     Write-Host "  ✅ Main configuration loaded successfully" -ForegroundColor Green
     Write-Host "  ✅ Logging configuration loaded successfully" -ForegroundColor Green
+    
+    # Move launcher log if configuration allows it
+    if ($MainConfig.system.moveBatchLogToOrchestrator -and (Test-Path $LauncherLog)) {
+        try {
+            $TargetLog = Join-Path $LogsDir 'maintenance.log'
+
+            # If file already exists in target, append a timestamp to the existing backup first
+            if (Test-Path $TargetLog) {
+                $timeSuffix = (Get-Date).ToString('yyyyMMdd-HHmmss')
+                $backup = "$TargetLog.$timeSuffix.bak"
+                Move-Item -LiteralPath $TargetLog -Destination $backup -Force -ErrorAction SilentlyContinue
+            }
+
+            # Attempt to move the launcher log into the logs folder. If Move-Item fails (locked), fall back to Copy+Remove.
+            try {
+                Move-Item -LiteralPath $LauncherLog -Destination $TargetLog -Force -ErrorAction Stop
+            } catch {
+                Copy-Item -LiteralPath $LauncherLog -Destination $TargetLog -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Milliseconds 200
+                try { Remove-Item -LiteralPath $LauncherLog -Force -ErrorAction SilentlyContinue } catch { }
+            }
+            
+            Write-Host "  📝 Moved batch launcher log to orchestrator logs folder" -ForegroundColor Green
+        } catch {
+            Write-Warning "Failed to relocate launcher maintenance.log: $($_.Exception.Message)"
+        }
+    } elseif (Test-Path $LauncherLog) {
+        Write-Host "  📋 Keeping batch launcher log separate (moveBatchLogToOrchestrator = false)" -ForegroundColor Gray
+    }
     
     # Load app configurations for dependency validation
     $BloatwareLists = Get-BloatwareConfiguration

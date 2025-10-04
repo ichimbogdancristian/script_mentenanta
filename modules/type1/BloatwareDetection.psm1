@@ -63,13 +63,13 @@ function Get-UnifiedBloatwareList {
         $allPatterns = @()
         
         foreach ($category in $IncludeCategories) {
-            # Map common category names to file names
+            # Map common category names to consolidated structure keys
             $categoryKey = switch ($category.ToLower()) {
-                'oem' { 'oem-bloatware' }
-                'windows' { 'windows-bloatware' }
-                'gaming' { 'gaming-bloatware' }
-                'security' { 'security-bloatware' }
-                default { $category }
+                'oem' { 'oem' }
+                'windows' { 'windows' }
+                'gaming' { 'gaming' }
+                'security' { 'security' }
+                default { $category.ToLower() }
             }
             
             if ($bloatwareConfig.ContainsKey($categoryKey)) {

@@ -81,7 +81,9 @@ function New-MaintenanceReport {
     # If no system inventory provided, try to get it from TaskResults or collect it
     if (-not $SystemInventory) {
         # First, check if SystemInventory data is available in TaskResults
-        $systemInventoryTask = $TaskResults | Where-Object { $_.TaskName -eq 'SystemInventory' -and $_.Success }
+        $systemInventoryTask = $TaskResults | Where-Object { 
+            ($_.ModuleName -eq 'SystemInventory' -or $_.TaskName -eq 'SystemInventory') -and $_.Success 
+        }
         if ($systemInventoryTask -and $systemInventoryTask.Output) {
             Write-Host "  � Using SystemInventory data from previous task execution..." -ForegroundColor Gray
             $SystemInventory = $systemInventoryTask.Output

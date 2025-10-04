@@ -56,8 +56,8 @@ function Initialize-ConfigSystem {
         Root = $ConfigRootPath
         MainConfig = Join-Path $ConfigRootPath 'main-config.json'
         LoggingConfig = Join-Path $ConfigRootPath 'logging-config.json'
-        BloatwareLists = Join-Path $ConfigRootPath 'bloatware-lists'
-        EssentialApps = Join-Path $ConfigRootPath 'essential-apps'
+        BloatwareLists = Join-Path $ConfigRootPath 'bloatware.json'
+        EssentialApps = Join-Path $ConfigRootPath 'essential-apps.json'
     }
     
     # Validate required paths
@@ -65,7 +65,7 @@ function Initialize-ConfigSystem {
     foreach ($pathKey in $requiredPaths) {
         $path = $script:ConfigPaths[$pathKey]
         if (-not (Test-Path $path)) {
-            throw "Required configuration path does not exist: $path"
+            throw "Required configuration file does not exist: $path"
         }
     }
     
@@ -159,7 +159,7 @@ function Get-LoggingConfiguration {
     Loads all bloatware lists from configuration files
     
 .DESCRIPTION
-    Reads all JSON files in the bloatware-lists directory and combines them into categories.
+    Reads the consolidated bloatware.json file and loads all bloatware categories.
     
 .EXAMPLE
     $bloatwareLists = Get-BloatwareConfiguration
@@ -172,43 +172,39 @@ function Get-BloatwareConfiguration {
         return $script:BloatwareLists
     }
     
-    $bloatwareDir = $script:ConfigPaths.BloatwareLists
+    $bloatwareFile = $script:ConfigPaths.BloatwareLists
     
-    if (-not (Test-Path $bloatwareDir)) {
-        Write-Warning "Bloatware configuration directory not found: $bloatwareDir"
+    if (-not (Test-Path $bloatwareFile)) {
+        Write-Warning "Bloatware configuration file not found: $bloatwareFile"
         return @{}
     }
     
     try {
-        Write-Verbose "Loading bloatware configurations from: $bloatwareDir"
+        Write-Verbose "Loading bloatware configuration from: $bloatwareFile"
         
-        $bloatwareFiles = Get-ChildItem -Path $bloatwareDir -Filter "*.json" -ErrorAction Stop
+        $configJson = Get-Content $bloatwareFile -Raw -ErrorAction Stop
+        $bloatwareConfig = $configJson | ConvertFrom-Json -ErrorAction Stop
         
-        foreach ($file in $bloatwareFiles) {
-            try {
-                $categoryName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-                $configJson = Get-Content $file.FullName -Raw -ErrorAction Stop
-                $categoryList = $configJson | ConvertFrom-Json -ErrorAction Stop
-                
-                # Convert to array if it's not already
-                if ($categoryList -is [Array]) {
-                    $script:BloatwareLists[$categoryName] = $categoryList
-                } else {
-                    $script:BloatwareLists[$categoryName] = @($categoryList)
-                }
-                
-                Write-Verbose "Loaded bloatware category '$categoryName' with $($script:BloatwareLists[$categoryName].Count) entries"
+        # Convert the object properties to the script variable format
+        foreach ($category in $bloatwareConfig.PSObject.Properties) {
+            $categoryName = $category.Name
+            $categoryList = $category.Value
+            
+            # Convert to array if it's not already
+            if ($categoryList -is [Array]) {
+                $script:BloatwareLists[$categoryName] = $categoryList
+            } else {
+                $script:BloatwareLists[$categoryName] = @($categoryList)
             }
-            catch {
-                Write-Warning "Failed to load bloatware configuration from $($file.FullName): $_"
-            }
+            
+            Write-Verbose "Loaded bloatware category '$categoryName' with $($script:BloatwareLists[$categoryName].Count) entries"
         }
         
         Write-Verbose "Loaded $($script:BloatwareLists.Keys.Count) bloatware categories"
         return $script:BloatwareLists
     }
     catch {
-        Write-Error "Failed to load bloatware configurations: $_"
+        Write-Error "Failed to load bloatware configuration: $_"
         return @{}
     }
 }
@@ -218,7 +214,7 @@ function Get-BloatwareConfiguration {
     Loads all essential apps lists from configuration files
     
 .DESCRIPTION
-    Reads all JSON files in the essential-apps directory and combines them into categories.
+    Reads the consolidated essential-apps.json file and groups apps by category.
     
 .EXAMPLE
     $essentialApps = Get-EssentialAppsConfiguration
@@ -231,43 +227,38 @@ function Get-EssentialAppsConfiguration {
         return $script:EssentialApps
     }
     
-    $appsDir = $script:ConfigPaths.EssentialApps
+    $appsFile = $script:ConfigPaths.EssentialApps
     
-    if (-not (Test-Path $appsDir)) {
-        Write-Warning "Essential apps configuration directory not found: $appsDir"
+    if (-not (Test-Path $appsFile)) {
+        Write-Warning "Essential apps configuration file not found: $appsFile"
         return @{}
     }
     
     try {
-        Write-Verbose "Loading essential apps configurations from: $appsDir"
+        Write-Verbose "Loading essential apps configuration from: $appsFile"
         
-        $appFiles = Get-ChildItem -Path $appsDir -Filter "*.json" -ErrorAction Stop
+        $configJson = Get-Content $appsFile -Raw -ErrorAction Stop
+        $appsArray = $configJson | ConvertFrom-Json -ErrorAction Stop
         
-        foreach ($file in $appFiles) {
-            try {
-                $categoryName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-                $configJson = Get-Content $file.FullName -Raw -ErrorAction Stop
-                $categoryApps = $configJson | ConvertFrom-Json -ErrorAction Stop
-                
-                # Convert to array if it's not already
-                if ($categoryApps -is [Array]) {
-                    $script:EssentialApps[$categoryName] = $categoryApps
-                } else {
-                    $script:EssentialApps[$categoryName] = @($categoryApps)
-                }
-                
-                Write-Verbose "Loaded essential apps category '$categoryName' with $($script:EssentialApps[$categoryName].Count) entries"
-            }
-            catch {
-                Write-Warning "Failed to load essential apps configuration from $($file.FullName): $_"
-            }
+        # Group apps by category for backwards compatibility
+        $groupedApps = $appsArray | Group-Object -Property category
+        
+        foreach ($group in $groupedApps) {
+            $categoryName = $group.Name.ToLower()
+            $categoryApps = $group.Group
+            
+            $script:EssentialApps[$categoryName] = $categoryApps
+            Write-Verbose "Loaded essential apps category '$categoryName' with $($categoryApps.Count) entries"
         }
+        
+        # Also store the full array for direct access
+        $script:EssentialApps['all'] = $appsArray
         
         Write-Verbose "Loaded $($script:EssentialApps.Keys.Count) essential apps categories"
         return $script:EssentialApps
     }
     catch {
-        Write-Error "Failed to load essential apps configurations: $_"
+        Write-Error "Failed to load essential apps configuration: $_"
         return @{}
     }
 }
@@ -455,6 +446,7 @@ function Get-DefaultConfiguration {
             enableVerboseLogging = $false
             maxLogSizeMB = 10
             enablePerformanceOptimizations = $true
+            moveBatchLogToOrchestrator = $true
         }
         reporting = [PSCustomObject]@{
             enableHtmlReport = $true
@@ -688,6 +680,17 @@ function Write-Log {
             }
             $Global:ComponentLogFiles[$Component] = $componentLogPath
         }
+
+        # Additionally write to a per-module log file if orchestrator requested one
+        if ($Global:ModuleLogFile) {
+            try {
+                $moduleLogDir = Split-Path $Global:ModuleLogFile -Parent
+                if (-not (Test-Path $moduleLogDir)) { New-Item -Path $moduleLogDir -ItemType Directory -Force | Out-Null }
+                $formattedMessage | Add-Content -Path $Global:ModuleLogFile -Encoding UTF8 -ErrorAction SilentlyContinue
+            } catch {
+                Write-Warning "Failed to write to module log $Global:ModuleLogFile: $($_.Exception.Message)"
+            }
+        }
     }
     catch {
         Write-Warning "Failed to write log: $_"
@@ -744,6 +747,198 @@ function Get-ComponentLogContent {
     return @()
 }
 
+<#
+.SYNOPSIS
+    Gets the standardized inventory folder path
+
+.DESCRIPTION
+    Returns the canonical inventory folder path based on configuration, creating 
+    the directory if it doesn't exist.
+
+.PARAMETER ConfigurationOverride
+    Optional configuration object to use instead of loading from file
+
+.EXAMPLE
+    $inventoryFolder = Get-InventoryFolder
+    
+.EXAMPLE
+    $inventoryFolder = Get-InventoryFolder -ConfigurationOverride $customConfig
+#>
+function Get-InventoryFolder {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [PSCustomObject]$ConfigurationOverride
+    )
+    
+    # Get configuration
+    $config = if ($ConfigurationOverride) { 
+        $ConfigurationOverride 
+    } else { 
+        Get-MainConfiguration 
+    }
+    
+    # Determine base working directory
+    $workingDir = if ($PSScriptRoot) {
+        Join-Path $PSScriptRoot '..\..\..' | Resolve-Path -ErrorAction SilentlyContinue
+    } else {
+        Get-Location
+    }
+    
+    # Get inventory folder path from config
+    $inventoryFolder = if ($config.paths.inventoryFolder) {
+        if ([System.IO.Path]::IsPathRooted($config.paths.inventoryFolder)) {
+            $config.paths.inventoryFolder
+        } else {
+            Join-Path $workingDir $config.paths.inventoryFolder
+        }
+    } else {
+        Join-Path $workingDir 'temp_files\inventory'
+    }
+    
+    # Ensure directory exists
+    if (-not (Test-Path $inventoryFolder)) {
+        New-Item -Path $inventoryFolder -ItemType Directory -Force | Out-Null
+    }
+    
+    return $inventoryFolder
+}
+
+<#
+.SYNOPSIS
+    Gets standardized inventory file paths for exports
+
+.DESCRIPTION
+    Returns canonical file paths for inventory exports with standardized naming
+    including module name, hostname, timestamp, and format.
+
+.PARAMETER ModuleName
+    The name of the module creating the inventory export
+
+.PARAMETER Format
+    The export format (JSON, XML, CSV, or All)
+
+.PARAMETER IncludeTimestamp
+    Whether to include timestamp in filename (default: true)
+
+.PARAMETER InventoryFolder
+    Base inventory folder (uses Get-InventoryFolder if not specified)
+
+.EXAMPLE
+    $paths = Get-StandardInventoryPath -ModuleName 'SystemInventory' -Format 'JSON'
+    
+.EXAMPLE
+    $paths = Get-StandardInventoryPath -ModuleName 'BloatwareDetection' -Format 'All'
+#>
+function Get-StandardInventoryPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName,
+        
+        [Parameter()]
+        [ValidateSet('JSON', 'XML', 'CSV', 'All')]
+        [string]$Format = 'JSON',
+        
+        [Parameter()]
+        [switch]$IncludeTimestamp = $true,
+        
+        [Parameter()]
+        [string]$InventoryFolder
+    )
+    
+    # Get inventory folder
+    if (-not $InventoryFolder) {
+        $InventoryFolder = Get-InventoryFolder
+    }
+    
+    # Generate standardized filename components
+    $hostname = $env:COMPUTERNAME
+    $timestamp = if ($IncludeTimestamp) { "-$(Get-Date -Format 'yyyyMMdd-HHmmss')" } else { "" }
+    $baseFileName = "$ModuleName-inventory-$hostname$timestamp"
+    
+    # Return paths based on format
+    $paths = @{}
+    
+    if ($Format -eq 'All') {
+        $paths.JSON = Join-Path $InventoryFolder "$baseFileName.json"
+        $paths.XML = Join-Path $InventoryFolder "$baseFileName.xml"
+        $paths.CSV = Join-Path $InventoryFolder "$baseFileName-csv"  # Directory for CSV files
+    } else {
+        $extension = $Format.ToLower()
+        if ($Format -eq 'CSV') {
+            $paths.CSV = Join-Path $InventoryFolder "$baseFileName-csv"  # Directory for CSV files
+        } else {
+            $paths[$Format] = Join-Path $InventoryFolder "$baseFileName.$extension"
+        }
+    }
+    
+    return $paths
+}
+
+<#
+.SYNOPSIS
+    Gets or creates the log file path for a specific module
+
+.DESCRIPTION
+    Returns the standardized log file path for a module and registers it in 
+    $Global:ComponentLogFiles for easy retrieval. Creates the log directory if needed.
+
+.PARAMETER ModuleName
+    The name of the module to get the log path for
+
+.PARAMETER LogDirectory
+    The base log directory (uses global maintenance log dir if not specified)
+
+.EXAMPLE
+    $logPath = Get-ModuleLogPath -ModuleName 'SystemInventory'
+    
+.EXAMPLE
+    $logPath = Get-ModuleLogPath -ModuleName 'BloatwareDetection' -LogDirectory 'C:\Logs'
+#>
+function Get-ModuleLogPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName,
+        
+        [Parameter()]
+        [string]$LogDirectory
+    )
+    
+    # Determine log directory
+    if (-not $LogDirectory) {
+        if ($Global:MaintenanceLogFile) {
+            $LogDirectory = Split-Path $Global:MaintenanceLogFile -Parent
+        } else {
+            # Fallback to temp_files/logs in working directory
+            $workingDir = if ($PSScriptRoot) { 
+                Join-Path $PSScriptRoot '..\..\..' | Resolve-Path -ErrorAction SilentlyContinue
+            } else {
+                Get-Location
+            }
+            $LogDirectory = Join-Path $workingDir 'temp_files\logs'
+        }
+    }
+    
+    # Ensure log directory exists
+    if (-not (Test-Path $LogDirectory)) {
+        New-Item -Path $LogDirectory -ItemType Directory -Force | Out-Null
+    }
+    
+    # Generate standardized log file name with current date
+    $logFileName = "$ModuleName-$(Get-Date -Format 'yyyy-MM-dd').log"
+    $logPath = Join-Path $LogDirectory $logFileName
+    
+    # Register in global component log files for easy retrieval
+    if (-not $Global:ComponentLogFiles) {
+        $Global:ComponentLogFiles = @{}
+    }
+    $Global:ComponentLogFiles[$ModuleName] = $logPath
+    
+    return $logPath
+}
+
 #endregion
 
 # Export module functions
@@ -758,5 +953,8 @@ Export-ModuleMember -Function @(
     'Save-Configuration',
     'Write-Log',
     'Get-ComponentLogFiles',
-    'Get-ComponentLogContent'
+    'Get-ComponentLogContent',
+    'Get-ModuleLogPath',
+    'Get-InventoryFolder',
+    'Get-StandardInventoryPath'
 )
