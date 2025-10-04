@@ -12,14 +12,34 @@ SETLOCAL ENABLEDELAYEDEXPANSION
 REM -----------------------------------------------------------------------------
 REM Step 1: Initialize Logging System (First Priority)
 REM -----------------------------------------------------------------------------
-REM Set up paths first
+REM =============================================================================
+REM Enhanced Path Discovery System
+REM =============================================================================
+REM Get script's full path and directory (works from any location)
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
+
 REM Ensure SCRIPT_DIR ends with backslash
 IF NOT "%SCRIPT_DIR:~-1%"=="\" SET "SCRIPT_DIR=%SCRIPT_DIR%\"
+
+REM Set working directory to script location (ensures relative paths work)
 SET "WORKING_DIR=%SCRIPT_DIR%"
+CD /D "%WORKING_DIR%" 2>nul || (
+    ECHO ERROR: Cannot access script directory: %WORKING_DIR%
+    PAUSE
+    EXIT /B 1
+)
+
+REM Validate critical paths exist
+SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
+SET "CONFIG_DIR=%WORKING_DIR%config\"
+SET "MODULES_DIR=%WORKING_DIR%modules\"
 SET "LOG_FILE=%WORKING_DIR%maintenance.log"
+
+REM Create environment variables for the orchestrator to inherit
+SET "SCRIPT_HOME=%WORKING_DIR%"
+SET "MAINTENANCE_ROOT=%WORKING_DIR%"
 
 REM Create maintenance.log if it doesn't exist
 IF NOT EXIST "%LOG_FILE%" (
@@ -87,6 +107,37 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v3.0" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Script location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Current directory: %CD%" "INFO" "LAUNCHER"
+
+REM =============================================================================
+REM Path Validation and Environment Check
+REM =============================================================================
+CALL :LOG_MESSAGE "Validating project structure..." "INFO" "LAUNCHER"
+
+REM Check for essential files
+IF NOT EXIST "%ORCHESTRATOR_PATH%" (
+    CALL :LOG_MESSAGE "ERROR: PowerShell orchestrator not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please ensure MaintenanceOrchestrator.ps1 exists in the script directory" "ERROR" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+
+IF NOT EXIST "%CONFIG_DIR%" (
+    CALL :LOG_MESSAGE "ERROR: Config directory not found: %CONFIG_DIR%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please ensure the config/ directory exists with required configuration files" "ERROR" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+
+IF NOT EXIST "%MODULES_DIR%" (
+    CALL :LOG_MESSAGE "ERROR: Modules directory not found: %MODULES_DIR%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please ensure the modules/ directory exists with required PowerShell modules" "ERROR" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+
+CALL :LOG_MESSAGE "Project structure validated successfully" "SUCCESS" "LAUNCHER"
+CALL :LOG_MESSAGE "Orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Config dir: %CONFIG_DIR%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Modules dir: %MODULES_DIR%" "INFO" "LAUNCHER"
 
 REM Check if this is a post-restart execution
 IF "%1"=="POST_RESTART" (
@@ -275,16 +326,28 @@ IF !ERRORLEVEL! EQU 0 (
         )
     ) ELSE (
         CALL :LOG_MESSAGE "PowerShell module method failed, trying direct download..." "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "This may occur on older Windows versions or restricted environments" "INFO" "LAUNCHER"
         
         REM Fallback to direct MSIX bundle download
         SET "WINGET_URL=https://aka.ms/getwingetpreview"
         SET "WINGET_FILE=%TEMP%\Microsoft.DesktopAppInstaller.msixbundle"
         
-        powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
+        CALL :LOG_MESSAGE "Downloading from: !WINGET_URL!" "DEBUG" "LAUNCHER"
+        CALL :LOG_MESSAGE "Download target: !WINGET_FILE!" "DEBUG" "LAUNCHER"
+        
+        powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; if (Test-Path '!WINGET_FILE!') { Write-Host 'DOWNLOAD_SUCCESS' } else { throw 'File not found after download' } } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
         
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "Installing winget package..." "INFO" "LAUNCHER"
-            powershell -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WINGET_FILE%' -ErrorAction Stop; Write-Host 'INSTALL_SUCCESS' } catch { Write-Host 'INSTALL_FAILED'; Write-Error $_.Exception.Message }"
+            CALL :LOG_MESSAGE "Installing from file: !WINGET_FILE!" "DEBUG" "LAUNCHER"
+            
+            REM Verify file exists before trying to install
+            IF EXIST "!WINGET_FILE!" (
+                powershell -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '!WINGET_FILE!' -ErrorAction Stop; Write-Host 'INSTALL_SUCCESS' } catch { Write-Host 'INSTALL_FAILED'; Write-Error $_.Exception.Message }"
+            ) ELSE (
+                CALL :LOG_MESSAGE "Downloaded file not found: !WINGET_FILE!" "ERROR" "LAUNCHER"
+                ECHO INSTALL_FAILED
+            )
             
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "Winget installed successfully" "SUCCESS" "LAUNCHER"
@@ -297,13 +360,15 @@ IF !ERRORLEVEL! EQU 0 (
                     CALL :LOG_MESSAGE "Winget installation verification failed" "WARN" "LAUNCHER"
                 )
             ) ELSE (
-                CALL :LOG_MESSAGE "Winget installation failed" "ERROR" "LAUNCHER"
+                CALL :LOG_MESSAGE "Winget installation failed - continuing without winget" "ERROR" "LAUNCHER"
+                CALL :LOG_MESSAGE "Some features may not be available without winget" "WARN" "LAUNCHER"
             )
             
             REM Cleanup
             DEL /F /Q "%WINGET_FILE%" >nul 2>&1
         ) ELSE (
-            CALL :LOG_MESSAGE "Failed to download winget" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "Failed to download winget - continuing without winget" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "Check internet connection and firewall settings" "INFO" "LAUNCHER"
         )
     )
 )
@@ -413,23 +478,23 @@ REM Step 7: Launch PowerShell Orchestrator with Admin Rights
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "All dependencies installed - launching PowerShell orchestrator..." "INFO" "LAUNCHER"
 
-REM Set environment variables for orchestrator
+REM =============================================================================
+REM Launch PowerShell Orchestrator with Enhanced Environment
+REM =============================================================================
+REM Set environment variables for orchestrator to inherit
 SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
-
-REM Check for orchestrator file
-SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
-IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-    SET "ORCHESTRATOR_PATH=%WORKING_DIR%script.ps1"
-    IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-        CALL :LOG_MESSAGE "ERROR: No PowerShell orchestrator found" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE "Expected: %WORKING_DIR%MaintenanceOrchestrator.ps1 or %WORKING_DIR%script.ps1" "ERROR" "LAUNCHER"
-        GOTO :HANDLE_ERROR
-    )
-)
+SET "MAINTENANCE_SCRIPT_ROOT=%WORKING_DIR%"
 
 CALL :LOG_MESSAGE "Launching orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Using PowerShell executable: %PS_EXECUTABLE%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Environment variables set for orchestrator:" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "  WORKING_DIRECTORY=%WORKING_DIRECTORY%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "  SCRIPT_LOG_FILE=%SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "  MAINTENANCE_SCRIPT_ROOT=%MAINTENANCE_SCRIPT_ROOT%" "DEBUG" "LAUNCHER"
+
+REM Change to working directory before launching orchestrator
+CD /D "%WORKING_DIR%"
 
 REM Launch orchestrator with admin rights using preferred PowerShell version
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%"
