@@ -60,6 +60,7 @@ param(
     [string]$TaskNumbers,
     [string]$ModuleName,
     [switch]$EnableDetailedLogging,
+    [switch]$ValidatePaths,
     [switch]$ForceAllModules
 )
 
@@ -281,6 +282,45 @@ function Find-MaintenanceStructure {
     }
     
     return $structure
+}
+
+# Validates that essential repository paths (orchestrator, config, modules) exist.
+function Validate-RepositoryPaths {
+    param([string]$BaseDirectory)
+
+    $structure = Find-MaintenanceStructure -BaseDirectory $BaseDirectory
+    if (-not $structure.IsComplete) {
+        Write-Error "Repository structure incomplete under '$BaseDirectory'. Expected 'config' and 'modules' subfolders and an orchestrator file."
+        return $false
+    }
+
+    # Additional explicit checks
+    $orchestrator = Join-Path $BaseDirectory 'MaintenanceOrchestrator.ps1'
+    $config = Join-Path $BaseDirectory 'config'
+    $modules = Join-Path $BaseDirectory 'modules'
+
+    if (-not (Test-Path $orchestrator)) {
+        Write-Error "Missing orchestrator file: $orchestrator"
+        return $false
+    }
+    if (-not (Test-Path $config)) {
+        Write-Error "Missing config directory: $config"
+        return $false
+    }
+    if (-not (Test-Path $modules)) {
+        Write-Error "Missing modules directory: $modules"
+        return $false
+    }
+
+    Write-Verbose "Repository paths validated successfully under '$BaseDirectory'"
+    return $true
+}
+
+# If caller requested only path validation, perform and exit with appropriate code.
+if ($ValidatePaths) {
+    $base = if ($ConfigPath) { Split-Path -Parent $ConfigPath } elseif ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
+    $ok = Validate-RepositoryPaths -BaseDirectory $base
+    if ($ok) { Exit 0 } else { Exit 2 }
 }
 
 # Discover maintenance structure

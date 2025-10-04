@@ -272,8 +272,34 @@ REM Step 5: Dependency Installation (Using cmd/PowerShell 5 syntax until PS7 ava
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Starting dependency installation phase..." "INFO" "LAUNCHER"
 
-REM Temp directory creation is handled by the PowerShell orchestrator (MaintenanceOrchestrator.ps1)
-REM Do NOT create `temp_files` here to avoid race conditions; the orchestrator will create and manage the folder.
+REM Ensure the repository files (orchestrator, config, modules) are present before
+REM attempting to install heavy system-level dependencies. Installing before the
+REM repository is available has caused destructive cleanup in some environments.
+IF NOT EXIST "%ORCHESTRATOR_PATH%" (
+    CALL :LOG_MESSAGE "Orchestrator not found in script directory - aborting dependency installation to avoid accidental deletions" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Expected orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+IF NOT EXIST "%CONFIG_DIR%" (
+    CALL :LOG_MESSAGE "Config directory not found - aborting dependency installation" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Expected config dir: %CONFIG_DIR%" "DEBUG" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+IF NOT EXIST "%MODULES_DIR%" (
+    CALL :LOG_MESSAGE "Modules directory not found - aborting dependency installation" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Expected modules dir: %MODULES_DIR%" "DEBUG" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+
+REM Create a dedicated temporary folder for installer downloads to ensure we
+REM never accidentally write or delete files in the script directory.
+IF "%TEMP%"=="" SET "TEMP=%USERPROFILE%\AppData\Local\Temp"
+SET "MAINT_INSTALL_DIR=%TEMP%\maintenance_installer\"
+IF NOT EXIST "%MAINT_INSTALL_DIR%" MD "%MAINT_INSTALL_DIR%" >nul 2>&1
+
+REM Temp directory creation is handled by the PowerShell orchestrator for runtime
+REM artifacts (temp_files). The launcher will only use %MAINT_INSTALL_DIR% for
+REM transient installer downloads to avoid race conditions with the repo.
 
 REM -----------------------------------------------------------------------------
 REM 5.1: Install Windows Package Manager (winget) - First Priority Dependency
@@ -306,8 +332,8 @@ IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "This may occur on older Windows versions or restricted environments" "INFO" "LAUNCHER"
         
         REM Fallback to direct MSIX bundle download
-        SET "WINGET_URL=https://aka.ms/getwingetpreview"
-        SET "WINGET_FILE=%TEMP%\Microsoft.DesktopAppInstaller.msixbundle"
+    SET "WINGET_URL=https://aka.ms/getwingetpreview"
+    SET "WINGET_FILE=%MAINT_INSTALL_DIR%Microsoft.DesktopAppInstaller.msixbundle"
         
         CALL :LOG_MESSAGE "Downloading from: !WINGET_URL!" "DEBUG" "LAUNCHER"
         CALL :LOG_MESSAGE "Download target: !WINGET_FILE!" "DEBUG" "LAUNCHER"
@@ -342,7 +368,7 @@ IF !ERRORLEVEL! EQU 0 (
             )
             
             REM Cleanup
-            DEL /F /Q "%WINGET_FILE%" >nul 2>&1
+            IF EXIST "%WINGET_FILE%" DEL /F /Q "%WINGET_FILE%" >nul 2>&1
         ) ELSE (
             CALL :LOG_MESSAGE "Failed to download winget - continuing without winget" "ERROR" "LAUNCHER"
             CALL :LOG_MESSAGE "Check internet connection and firewall settings" "INFO" "LAUNCHER"
@@ -368,7 +394,7 @@ IF !ERRORLEVEL! EQU 0 (
     ) ELSE (
         SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.3/PowerShell-7.5.3-win-x86.msi"
     )
-    SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.3.msi"
+    SET "PS7_INSTALLER=%MAINT_INSTALL_DIR%PowerShell-7.5.3.msi"
     
     REM Download PowerShell 7.5.3
     CALL :LOG_MESSAGE "Downloading PowerShell 7.5.3..." "INFO" "LAUNCHER"
@@ -392,7 +418,7 @@ IF !ERRORLEVEL! EQU 0 (
         )
         
         REM Cleanup
-        DEL /F /Q "%PS7_INSTALLER%" >nul 2>&1
+    IF EXIST "%PS7_INSTALLER%" DEL /F /Q "%PS7_INSTALLER%" >nul 2>&1
     ) ELSE (
         CALL :LOG_MESSAGE "Failed to download PowerShell 7" "ERROR" "LAUNCHER"
     )
@@ -502,6 +528,33 @@ CALL :LOG_MESSAGE "  MAINTENANCE_SCRIPT_ROOT=%MAINTENANCE_SCRIPT_ROOT%" "DEBUG" 
 
 REM Change to working directory before launching orchestrator
 CD /D "%WORKING_DIR%"
+
+REM Wait for repository extraction to complete (orchestrator file present) before validation
+SET "REPO_WAIT_TIMEOUT=120"    REM seconds (configurable)
+SET "REPO_WAIT_INTERVAL=2"     REM seconds between polls
+SET /A REPO_WAIT_ELAPSED=0
+CALL :LOG_MESSAGE "Waiting up to %REPO_WAIT_TIMEOUT% seconds for repository files to appear..." "INFO" "LAUNCHER"
+:WAIT_FOR_REPO
+IF EXIST "%ORCHESTRATOR_PATH%" GOTO :REPO_READY
+IF %REPO_WAIT_ELAPSED% GEQ %REPO_WAIT_TIMEOUT% (
+    CALL :LOG_MESSAGE "Timeout waiting for repository extraction (orchestrator not found): %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+REM Sleep for interval seconds
+PING -n %REPO_WAIT_INTERVAL% 127.0.0.1 >nul 2>&1
+SET /A REPO_WAIT_ELAPSED+=%REPO_WAIT_INTERVAL%
+GOTO :WAIT_FOR_REPO
+
+:REPO_READY
+CALL :LOG_MESSAGE "Repository file detected: %ORCHESTRATOR_PATH% (waited %REPO_WAIT_ELAPSED% seconds)" "INFO" "LAUNCHER"
+
+REM Validate repository structure using orchestrator's validation mode before full launch
+CALL :LOG_MESSAGE "Validating repository paths via orchestrator (-ValidatePaths)" "INFO" "LAUNCHER"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -ValidatePaths
+IF %ERRORLEVEL% NEQ 0 (
+    CALL :LOG_MESSAGE "Repository validation failed - aborting orchestrator launch" "ERROR" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
 
 REM Launch orchestrator with admin rights using preferred PowerShell version
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%"

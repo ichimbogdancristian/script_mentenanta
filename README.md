@@ -7,6 +7,16 @@
 
 > 🚀 **Streamlined Windows Maintenance Automation** - A modular, PowerShell 7-based system for comprehensive Windows maintenance, optimization, and management.
 
+## Changelog
+
+- v2.1.1 - Launcher safety fix
+  - Fixed an issue in `script.bat` where the launcher could attempt to install PowerShell
+    before repository files were present. This could lead to installer downloads or cleanup
+    operations targeting the script directory (including `script.bat` and `maintenance.log`).
+    The launcher now verifies core repo files exist, uses a dedicated temporary folder for
+    installer downloads (`%TEMP%\maintenance_installer`), and only deletes installer files
+    when they exist.
+
 ## 📋 Overview
 
 This is a **production-ready** Windows maintenance automation system built on a **modular architecture**. After comprehensive cleanup (October 2025), the project contains only actively used components, ensuring maximum efficiency and maintainability.
