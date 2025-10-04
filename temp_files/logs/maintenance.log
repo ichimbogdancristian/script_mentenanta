@@ -1,0 +1,43 @@
+[2025-10-04 18:24:48] [INFO] [ORCHESTRATOR] Windows Maintenance Automation - Enhanced Orchestrator v2.1 started
+[2025-10-04 18:24:48] [INFO] [ORCHESTRATOR] Execution mode set to: Enhanced
+[2025-10-04 18:24:48] [INFO] [ORCHESTRATOR] DRY-RUN MODE activated - no changes will be applied
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: SystemInventory
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: BloatwareDetection
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: SecurityAudit
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: BloatwareRemoval
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: EssentialApps
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: WindowsUpdates
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: TelemetryDisable
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: SystemOptimization
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: SecurityServicesOptimization
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Registering module: ReportGeneration
+[2025-10-04 18:24:48] [INFO] [ORCHESTRATOR] Starting enhanced module execution engine with 4 selected modules
+[2025-10-04 18:24:48] [INFO] [ORCHESTRATOR] Executing modules: SystemInventory, BloatwareDetection, SecurityAudit, ReportGeneration
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Starting module execution engine
+[2025-10-04 18:24:48] [SUCCESS] [MODULE_EXECUTOR] Dependency resolution completed. Execution order: SystemInventory → SecurityAudit → SystemOptimization → SecurityServicesOptimization → WindowsUpdates → TelemetryDisable → ReportGeneration → EssentialApps → BloatwareDetection → BloatwareRemoval
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Filtered execution to selected modules: SystemInventory, SecurityAudit, ReportGeneration, BloatwareDetection
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Executing module: SystemInventory
+[2025-10-04 18:24:48] [INFO] [SystemInventory] Starting execution of SystemInventory
+[2025-10-04 18:24:48] [INFO] [MODULE_EXECUTOR] Loading module: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\type1\SystemInventory.psm1
+[2025-10-04 18:24:48] [INFO] [SystemInventory] Loading module from path: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\type1\SystemInventory.psm1
+[2025-10-04 18:24:58] [SUCCESS] [MODULE_EXECUTOR] Module 'SystemInventory' completed with status: SUCCESS (Duration: 9.3s)
+[2025-10-04 18:24:58] [SUCCESS] [SystemInventory] Execution completed with status: SUCCESS (Duration: 9.3s)
+[2025-10-04 18:24:58] [INFO] [MODULE_EXECUTOR] Executing module: SecurityAudit
+[2025-10-04 18:24:58] [INFO] [SecurityAudit] Starting execution of SecurityAudit
+[2025-10-04 18:24:58] [INFO] [MODULE_EXECUTOR] Loading module: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\type1\SecurityAudit.psm1
+[2025-10-04 18:24:58] [INFO] [SecurityAudit] Loading module from path: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\type1\SecurityAudit.psm1
+[2025-10-04 18:25:02] [SUCCESS] [MODULE_EXECUTOR] Module 'SecurityAudit' completed with status: SUCCESS (Duration: 4.55s)
+[2025-10-04 18:25:02] [SUCCESS] [SecurityAudit] Execution completed with status: SUCCESS (Duration: 4.55s)
+[2025-10-04 18:25:02] [INFO] [MODULE_EXECUTOR] Executing module: ReportGeneration
+[2025-10-04 18:25:02] [INFO] [ReportGeneration] Starting execution of ReportGeneration
+[2025-10-04 18:25:02] [INFO] [MODULE_EXECUTOR] Loading module: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\type1\ReportGeneration.psm1
+[2025-10-04 18:25:02] [INFO] [ReportGeneration] Loading module from path: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\type1\ReportGeneration.psm1
+[2025-10-04 18:25:09] [SUCCESS] [MODULE_EXECUTOR] Module 'ReportGeneration' completed with status: SUCCESS (Duration: 6.99s)
+[2025-10-04 18:25:09] [SUCCESS] [ReportGeneration] Execution completed with status: SUCCESS (Duration: 6.99s)
+[2025-10-04 18:25:09] [INFO] [MODULE_EXECUTOR] Executing module: BloatwareDetection
+[2025-10-04 18:25:09] [INFO] [BloatwareDetection] Starting execution of BloatwareDetection
+[2025-10-04 18:25:09] [INFO] [MODULE_EXECUTOR] Loading module: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\type1\BloatwareDetection.psm1
+[2025-10-04 18:25:09] [INFO] [BloatwareDetection] Loading module from path: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\modules\type1\BloatwareDetection.psm1
+[2025-10-04 18:25:09] [SUCCESS] [MODULE_EXECUTOR] Module 'BloatwareDetection' completed with status: SUCCESS (Duration: 0.05s)
+[2025-10-04 18:25:09] [SUCCESS] [BloatwareDetection] Execution completed with status: SUCCESS (Duration: 0.05s)
+[2025-10-04 18:25:09] [INFO] [MODULE_EXECUTOR] Module execution engine completed. Total modules: 4, Successful: 4, Failed: 0

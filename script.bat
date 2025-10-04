@@ -296,10 +296,67 @@ IF NOT EXIST "%MODULES_DIR%" (
     SET "REPO_PRESENT=0"
 )
 
-REM If the repository isn't present, skip the heavy dependency installation
+REM If the repository isn't present, attempt to download it
 IF "%REPO_PRESENT%"=="0" (
-    CALL :LOG_MESSAGE "Repository not present - skipping heavy dependency installation. Continue with launcher setup; dependencies should be installed after extraction or by the orchestrator." "INFO" "LAUNCHER"
-    GOTO :SKIP_DEP_INSTALL
+    CALL :LOG_MESSAGE "Repository not present - attempting to download from GitHub..." "INFO" "LAUNCHER"
+    
+    REM Set minimal PowerShell executable for download
+    pwsh.exe -Version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        SET "PS_EXECUTABLE=pwsh.exe"
+    ) ELSE (
+        SET "PS_EXECUTABLE=powershell.exe"
+    )
+    
+    REM Download repository ZIP from GitHub
+    SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
+    SET "REPO_ZIP=!WORKING_DIR!script_mentenanta.zip"
+    
+    CALL :LOG_MESSAGE "Downloading repository from: !REPO_URL!" "INFO" "LAUNCHER"
+    !PS_EXECUTABLE! -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!REPO_URL!' -OutFile '!REPO_ZIP!' -UseBasicParsing; Write-Host 'REPO_DOWNLOAD_SUCCESS' } catch { Write-Host 'REPO_DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
+    
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Repository downloaded successfully - extracting..." "SUCCESS" "LAUNCHER"
+        
+        REM Extract ZIP file
+        !PS_EXECUTABLE! -ExecutionPolicy Bypass -Command "try { Expand-Archive -Path '!REPO_ZIP!' -DestinationPath '!WORKING_DIR!temp_extract' -Force; Write-Host 'EXTRACT_SUCCESS' } catch { Write-Host 'EXTRACT_FAILED'; Write-Error $_.Exception.Message }"
+        
+        IF !ERRORLEVEL! EQU 0 (
+            REM Move files from extracted folder to working directory
+            !PS_EXECUTABLE! -ExecutionPolicy Bypass -Command "try { $source = '!WORKING_DIR!temp_extract\script_mentenanta-main\*'; $dest = '!WORKING_DIR!'; Copy-Item -Path $source -Destination $dest -Recurse -Force; Write-Host 'MOVE_SUCCESS' } catch { Write-Host 'MOVE_FAILED'; Write-Error $_.Exception.Message }"
+            
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_MESSAGE "Repository extracted and ready" "SUCCESS" "LAUNCHER"
+                
+                REM Cleanup temporary files
+                IF EXIST "!REPO_ZIP!" DEL /F /Q "!REPO_ZIP!" >nul 2>&1
+                IF EXIST "!WORKING_DIR!temp_extract" RD /S /Q "!WORKING_DIR!temp_extract" >nul 2>&1
+                
+                REM Re-check repository presence
+                IF EXIST "!ORCHESTRATOR_PATH!" (
+                    IF EXIST "!CONFIG_DIR!" (
+                        IF EXIST "!MODULES_DIR!" (
+                            SET "REPO_PRESENT=1"
+                            CALL :LOG_MESSAGE "Repository download and extraction completed successfully" "SUCCESS" "LAUNCHER"
+                        )
+                    )
+                )
+            ) ELSE (
+                CALL :LOG_MESSAGE "Failed to move repository files" "ERROR" "LAUNCHER"
+            )
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to extract repository ZIP" "ERROR" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to download repository from GitHub" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Continuing with launcher setup; dependencies should be installed after manual extraction." "INFO" "LAUNCHER"
+    )
+    
+    REM If still no repository, skip dependency installation
+    IF "!REPO_PRESENT!"=="0" (
+        CALL :LOG_MESSAGE "Repository still not available - skipping heavy dependency installation" "WARN" "LAUNCHER"
+        GOTO :SKIP_DEP_INSTALL
+    )
 )
 
 REM Create a dedicated temporary folder for installer downloads to ensure we
@@ -492,7 +549,11 @@ IF !ERRORLEVEL! EQU 0 (
 REM -----------------------------------------------------------------------------
 REM Step 7: Launch PowerShell Orchestrator with Admin Rights
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "All dependencies installed - launching PowerShell orchestrator..." "INFO" "LAUNCHER"
+IF "!REPO_PRESENT!"=="1" (
+    CALL :LOG_MESSAGE "All dependencies installed - launching PowerShell orchestrator..." "INFO" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Dependency installation skipped (repository not present) - attempting orchestrator launch..." "INFO" "LAUNCHER"
+)
 
 REM =============================================================================
 REM Validate Project Structure Before Launch

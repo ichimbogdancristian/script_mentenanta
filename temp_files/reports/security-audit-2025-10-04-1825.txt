@@ -1,0 +1,30 @@
+WINDOWS SECURITY AUDIT REPORT
+==============================
+Generated: 10/04/2025 18:24:58
+Computer: LAPTOP-BOGDAN
+Overall Score: 92/100 (92%)
+Risk Level: Low
+
+CATEGORY DETAILS:
+
+Firewall Security Assessment:
+  Score: 20/20
+
+UAC Security Assessment:
+  Score: 17/15
+
+WindowsDefender Security Assessment:
+  Score: 25/25
+
+Updates Security Assessment:
+  Score: 20/20
+
+Services Security Assessment:
+  Score: 10/20
+  Issues:
+    - Critical security service 'Windows Update' is not set to automatic startup
+    - Critical security service 'Windows Defender Network Inspection Service' is not set to automatic startup
+
+RECOMMENDATIONS:
+[Low] Review and address security configuration
+[Low] Review and address security configuration
