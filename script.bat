@@ -86,6 +86,18 @@ CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v3.0" "INFO"
 CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Script location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 
+REM Check if this is a post-restart execution
+IF "%1"=="POST_RESTART" (
+    CALL :LOG_MESSAGE "Post-restart execution detected - cleaning up startup task" "INFO" "LAUNCHER"
+    schtasks /delete /tn "ScriptMentenantaStartup" /f >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task removed successfully after restart" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to remove startup task (may not exist)" "WARN" "LAUNCHER"
+    )
+    CALL :LOG_MESSAGE "Continuing maintenance execution after system restart" "INFO" "LAUNCHER"
+)
+
 REM -----------------------------------------------------------------------------
 REM Step 2: Administrator Privilege Check (Second Priority)
 REM -----------------------------------------------------------------------------
@@ -177,10 +189,10 @@ IF !ERRORLEVEL! EQU 0 SET "PENDING_RESTART=YES"
 IF "%PENDING_RESTART%"=="YES" (
     CALL :LOG_MESSAGE "Pending restart detected - creating startup task and restarting system" "WARN" "LAUNCHER"
     
-    REM Create startup task to continue after restart
+    REM Create startup task to continue after restart (using original working approach)
     CALL :LOG_MESSAGE "Creating startup task to continue maintenance after restart..." "INFO" "LAUNCHER"
-    SET "STARTUP_WRAPPER=!SCRIPT_DIR!startup-wrapper.bat"
-    schtasks /create /tn "!STARTUP_TASK_NAME!" /tr "\"!STARTUP_WRAPPER!\"" /sc ONSTART /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
+    CALL :LOG_MESSAGE "Creating startup task with script path: !SCRIPT_PATH!" "DEBUG" "LAUNCHER"
+    schtasks /create /tn "!STARTUP_TASK_NAME!" /tr "'!SCRIPT_PATH!' POST_RESTART" /sc ONLOGON /ru "!COMPUTERNAME!\!USERNAME!" /rl HIGHEST /delay 0001:00 /f
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
         
