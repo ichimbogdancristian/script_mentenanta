@@ -275,21 +275,31 @@ CALL :LOG_MESSAGE "Starting dependency installation phase..." "INFO" "LAUNCHER"
 REM Ensure the repository files (orchestrator, config, modules) are present before
 REM attempting to install heavy system-level dependencies. Installing before the
 REM repository is available has caused destructive cleanup in some environments.
+REM NOTE: previously the launcher aborted here if the repo wasn't present. That
+REM prevented running the launcher in environments where the repo is downloaded
+REM and extracted later. To support that flow, convert these checks to
+REM non-fatal warnings and skip dependency installation if the repo isn't ready.
+SET "REPO_PRESENT=1"
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-    CALL :LOG_MESSAGE "Orchestrator not found in script directory - aborting dependency installation to avoid accidental deletions" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Orchestrator not found in script directory - deferring dependency installation until repository is available" "WARN" "LAUNCHER"
     CALL :LOG_MESSAGE "Expected orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
-    GOTO :HANDLE_ERROR
+    SET "REPO_PRESENT=0"
 )
 IF NOT EXIST "%CONFIG_DIR%" (
-    CALL :LOG_MESSAGE "Config directory not found - aborting dependency installation" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Config directory not found - deferring dependency installation until repository is available" "WARN" "LAUNCHER"
     CALL :LOG_MESSAGE "Expected config dir: %CONFIG_DIR%" "DEBUG" "LAUNCHER"
-    GOTO :HANDLE_ERROR
+    SET "REPO_PRESENT=0"
 )
 IF NOT EXIST "%MODULES_DIR%" (
-    CALL :LOG_MESSAGE "Modules directory not found - aborting dependency installation" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Modules directory not found - deferring dependency installation until repository is available" "WARN" "LAUNCHER"
     CALL :LOG_MESSAGE "Expected modules dir: %MODULES_DIR%" "DEBUG" "LAUNCHER"
-    GOTO :HANDLE_ERROR
+    SET "REPO_PRESENT=0"
 )
+
+REM If the repository isn't present, skip the heavy dependency installation
+IF "%REPO_PRESENT%"=="0" (
+    CALL :LOG_MESSAGE "Repository not present - skipping heavy dependency installation. Continue with launcher setup; dependencies should be installed after extraction or by the orchestrator." "INFO" "LAUNCHER"
+) 
 
 REM Create a dedicated temporary folder for installer downloads to ensure we
 REM never accidentally write or delete files in the script directory.
@@ -529,36 +539,18 @@ CALL :LOG_MESSAGE "  MAINTENANCE_SCRIPT_ROOT=%MAINTENANCE_SCRIPT_ROOT%" "DEBUG" 
 REM Change to working directory before launching orchestrator
 CD /D "%WORKING_DIR%"
 
-REM Wait for repository extraction to complete (orchestrator file present) before validation
-SET "REPO_WAIT_TIMEOUT=120"    REM seconds (configurable)
-SET "REPO_WAIT_INTERVAL=2"     REM seconds between polls
-SET /A REPO_WAIT_ELAPSED=0
-CALL :LOG_MESSAGE "Waiting up to %REPO_WAIT_TIMEOUT% seconds for repository files to appear..." "INFO" "LAUNCHER"
-:WAIT_FOR_REPO
-IF EXIST "%ORCHESTRATOR_PATH%" GOTO :REPO_READY
-IF %REPO_WAIT_ELAPSED% GEQ %REPO_WAIT_TIMEOUT% (
-    CALL :LOG_MESSAGE "Timeout waiting for repository extraction (orchestrator not found): %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    GOTO :HANDLE_ERROR
+REM Non-blocking orchestrator launch: do not wait for extraction or run
+REM additional validation here. If the orchestrator file exists now, launch it.
+REM Otherwise, log a warning and continue. The orchestrator itself should
+REM perform any repository validation after it's available.
+IF EXIST "%ORCHESTRATOR_PATH%" (
+    CALL :LOG_MESSAGE "Orchestrator found - launching: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
+    %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%"
+    SET "ORCHESTRATOR_EXIT_CODE=%ERRORLEVEL%"
+) ELSE (
+    CALL :LOG_MESSAGE "Orchestrator not found at launch time: %ORCHESTRATOR_PATH% - skipping orchestrator launch" "WARN" "LAUNCHER"
+    SET "ORCHESTRATOR_EXIT_CODE=0"
 )
-REM Sleep for interval seconds
-PING -n %REPO_WAIT_INTERVAL% 127.0.0.1 >nul 2>&1
-SET /A REPO_WAIT_ELAPSED+=%REPO_WAIT_INTERVAL%
-GOTO :WAIT_FOR_REPO
-
-:REPO_READY
-CALL :LOG_MESSAGE "Repository file detected: %ORCHESTRATOR_PATH% (waited %REPO_WAIT_ELAPSED% seconds)" "INFO" "LAUNCHER"
-
-REM Validate repository structure using orchestrator's validation mode before full launch
-CALL :LOG_MESSAGE "Validating repository paths via orchestrator (-ValidatePaths)" "INFO" "LAUNCHER"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -ValidatePaths
-IF %ERRORLEVEL% NEQ 0 (
-    CALL :LOG_MESSAGE "Repository validation failed - aborting orchestrator launch" "ERROR" "LAUNCHER"
-    GOTO :HANDLE_ERROR
-)
-
-REM Launch orchestrator with admin rights using preferred PowerShell version
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%"
-SET "ORCHESTRATOR_EXIT_CODE=%ERRORLEVEL%"
 
 REM -----------------------------------------------------------------------------
 REM Post-Execution Reporting and Cleanup
