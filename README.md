@@ -399,4 +399,46 @@ Export-ModuleMember -Function 'Invoke-MyTask'
 
 > **💡 Pro Tip**: Always run with `-DryRun` first to see what changes will be made before executing them on your system.
 
+## 📍 Path Discovery and POST_EXTRACT
+
+This project avoids hard-coded paths and discovers its environment dynamically.
+
+- Launcher (`script.bat`) derives paths from its own location:
+  - `WORKING_DIR` = folder containing `script.bat`
+  - `ORCHESTRATOR_PATH` = `WORKING_DIR\MaintenanceOrchestrator.ps1`
+  - `CONFIG_DIR` = `WORKING_DIR\config\`
+  - `MODULES_DIR` = `WORKING_DIR\modules\`
+  - Installer temp folder: `%TEMP%\maintenance_installer\` (created if needed)
+
+- Orchestrator (`MaintenanceOrchestrator.ps1`) uses self-discovery:
+  - `$PSScriptRoot` / `MyInvocation` to determine `ScriptRoot`
+  - `MAINTENANCE_ROOT` to override base directory (optional)
+  - `Find-MaintenanceStructure` checks direct/parent/sibling/env-var strategies and a short recursive search (no absolute fallbacks)
+
+### Env Vars You Can Use
+- `MAINTENANCE_ROOT`: override base repository directory for orchestrator
+- `MAINTENANCE_CONFIG`: override config directory
+- `MAINTENANCE_MODULES`: override modules directory
+
+### POST_EXTRACT Flow (Deployment)
+
+When the repository is extracted after the launcher starts, call the launcher with `POST_EXTRACT` to perform final validation and start the orchestrator:
+
+```powershell
+# From PowerShell after extraction completes
+& 'C:\path\to\script.bat' POST_EXTRACT
+
+# Optionally specify the repo root if script.bat is not next to the repo
+& 'C:\path\to\script.bat' POST_EXTRACT 'C:\path\to\script_mentenanta\'
+```
+
+- The launcher will elevate if needed, validate `MaintenanceOrchestrator.ps1`, `config\`, and `modules\` under the selected root, then launch with PowerShell 7 if available (fallback to Windows PowerShell).
+- If `RepoRoot` is provided, it is used for validation and as the working directory before launch.
+
+### Logging Language
+
+- Pre-launch checks in `script.bat` are non-fatal to support pre-extraction flows.
+- The launcher logs: "Dependencies configured. Attempting to launch orchestrator if present..."
+- Final, authoritative validation happens via `POST_EXTRACT`.
+
 **🏁 Ready to optimize your Windows system? Run `script.bat` and let the automation begin!**

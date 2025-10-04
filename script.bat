@@ -494,32 +494,29 @@ CALL :LOG_MESSAGE "All dependencies installed - launching PowerShell orchestrato
 REM =============================================================================
 REM Validate Project Structure Before Launch
 REM =============================================================================
-CALL :LOG_MESSAGE "Validating project structure before orchestrator launch..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Pre-launch structure pre-check (non-fatal) before orchestrator launch..." "INFO" "LAUNCHER"
 
-REM Check for essential files and directories
+REM Check for essential files and directories (non-fatal; final validation
+REM is performed by POST_EXTRACT). Log warnings if items are missing.
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-    CALL :LOG_MESSAGE "ERROR: PowerShell orchestrator not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "This typically indicates the script is not running from the correct location" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please ensure MaintenanceOrchestrator.ps1 exists in the script directory" "ERROR" "LAUNCHER"
-    GOTO :HANDLE_ERROR
+    CALL :LOG_MESSAGE "WARN: PowerShell orchestrator not found (will defer final validation to POST_EXTRACT): %ORCHESTRATOR_PATH%" "WARN" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Orchestrator present: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
 )
 
 IF NOT EXIST "%CONFIG_DIR%" (
-    CALL :LOG_MESSAGE "ERROR: Config directory not found: %CONFIG_DIR%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please ensure the config/ directory exists with required configuration files" "ERROR" "LAUNCHER"
-    GOTO :HANDLE_ERROR
+    CALL :LOG_MESSAGE "WARN: Config directory not found (will defer final validation to POST_EXTRACT): %CONFIG_DIR%" "WARN" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Config dir present: %CONFIG_DIR%" "INFO" "LAUNCHER"
 )
 
 IF NOT EXIST "%MODULES_DIR%" (
-    CALL :LOG_MESSAGE "ERROR: Modules directory not found: %MODULES_DIR%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please ensure the modules/ directory exists with required PowerShell modules" "ERROR" "LAUNCHER"
-    GOTO :HANDLE_ERROR
+    CALL :LOG_MESSAGE "WARN: Modules directory not found (will defer final validation to POST_EXTRACT): %MODULES_DIR%" "WARN" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Modules dir present: %MODULES_DIR%" "INFO" "LAUNCHER"
 )
 
-CALL :LOG_MESSAGE "Project structure validated successfully" "SUCCESS" "LAUNCHER"
-CALL :LOG_MESSAGE "  Orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "  Config dir: %CONFIG_DIR%" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "  Modules dir: %MODULES_DIR%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Pre-launch structure check complete; final validation will be performed on POST_EXTRACT if invoked." "INFO" "LAUNCHER"
 
 REM =============================================================================
 REM Launch PowerShell Orchestrator with Enhanced Environment
@@ -529,7 +526,7 @@ SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 SET "MAINTENANCE_SCRIPT_ROOT=%WORKING_DIR%"
 
-CALL :LOG_MESSAGE "All dependencies and structure validated - launching orchestrator..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Dependencies configured. Attempting to launch orchestrator if present..." "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Using PowerShell executable: %PS_EXECUTABLE%" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Environment variables set for orchestrator:" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "  WORKING_DIRECTORY=%WORKING_DIRECTORY%" "DEBUG" "LAUNCHER"
@@ -538,6 +535,72 @@ CALL :LOG_MESSAGE "  MAINTENANCE_SCRIPT_ROOT=%MAINTENANCE_SCRIPT_ROOT%" "DEBUG" 
 
 REM Change to working directory before launching orchestrator
 CD /D "%WORKING_DIR%"
+
+REM -----------------------------------------------------------------------------
+REM POST_EXTRACT handler
+REM If extraction process calls: script.bat POST_EXTRACT
+REM then perform final validation and launch orchestrator (last step).
+REM -----------------------------------------------------------------------------
+IF "%1"=="POST_EXTRACT" (
+    CALL :LOG_MESSAGE "POST_EXTRACT invoked - performing final validation and launching orchestrator" "INFO" "LAUNCHER"
+
+    REM Ensure elevated instance present; relaunch elevated if necessary
+    SET "_ELEVATED_FLAG=0"
+    FOR %%i IN (%*) DO (
+        IF "%%i"=="ELEVATED_INSTANCE" SET "_ELEVATED_FLAG=1"
+    )
+    IF "%_ELEVATED_FLAG%"=="0" (
+        CALL :LOG_MESSAGE "POST_EXTRACT requires elevation - relaunching elevated" "INFO" "LAUNCHER"
+        powershell -NoProfile -Command "$argsList = @('/c','\"%SCRIPT_PATH%\"','POST_EXTRACT'); if ('%~2' -ne '') { $argsList += ('\"%~2\"') }; $argsList += 'ELEVATED_INSTANCE'; Start-Process cmd -ArgumentList $argsList -Verb RunAs"
+        IF !ERRORLEVEL! NEQ 0 (
+            CALL :LOG_MESSAGE "Elevation failed or was cancelled by user (POST_EXTRACT)" "ERROR" "LAUNCHER"
+            GOTO :HANDLE_ERROR
+        )
+        EXIT /B 0
+    )
+
+    REM Determine target repository root (use provided RepoRoot if supplied)
+    SET "POST_ROOT=%~2"
+    IF "%POST_ROOT%"=="" SET "POST_ROOT=%WORKING_DIR%"
+    REM Ensure POST_ROOT ends with backslash
+    IF NOT "%POST_ROOT:~-1%"=="\" SET "POST_ROOT=%POST_ROOT%\"
+
+    CALL :LOG_MESSAGE "POST_EXTRACT target root: %POST_ROOT%" "DEBUG" "LAUNCHER"
+
+    REM Compute target paths from the selected root
+    SET "POST_ORCHESTRATOR=%POST_ROOT%MaintenanceOrchestrator.ps1"
+    SET "POST_CONFIG_DIR=%POST_ROOT%config\"
+    SET "POST_MODULES_DIR=%POST_ROOT%modules\"
+
+    REM Final validation of repository structure
+    IF NOT EXIST "%POST_ORCHESTRATOR%" (
+        CALL :LOG_MESSAGE "ERROR: Orchestrator not found during POST_EXTRACT: %POST_ORCHESTRATOR%" "ERROR" "LAUNCHER"
+        EXIT /B 2
+    )
+    IF NOT EXIST "%POST_CONFIG_DIR%" (
+        CALL :LOG_MESSAGE "ERROR: Config directory missing during POST_EXTRACT: %POST_CONFIG_DIR%" "ERROR" "LAUNCHER"
+        EXIT /B 3
+    )
+    IF NOT EXIST "%POST_MODULES_DIR%" (
+        CALL :LOG_MESSAGE "ERROR: Modules directory missing during POST_EXTRACT: %POST_MODULES_DIR%" "ERROR" "LAUNCHER"
+        EXIT /B 4
+    )
+
+    REM Pick PowerShell executable (prefer pwsh)
+    pwsh.exe -Version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        SET "PS_EXECUTABLE=pwsh.exe"
+    ) ELSE (
+        SET "PS_EXECUTABLE=powershell.exe"
+    )
+
+    CALL :LOG_MESSAGE "Repository validated (POST_EXTRACT). Launching orchestrator: %POST_ORCHESTRATOR%" "SUCCESS" "LAUNCHER"
+    CD /D "%POST_ROOT%"
+    %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%POST_ORCHESTRATOR%"
+    SET "ORCHESTRATOR_EXIT_CODE=%ERRORLEVEL%"
+    CALL :LOG_MESSAGE "Orchestrator exited with code %ORCHESTRATOR_EXIT_CODE% (POST_EXTRACT)" "INFO" "LAUNCHER"
+    EXIT /B %ORCHESTRATOR_EXIT_CODE%
+)
 
 REM Non-blocking orchestrator launch: do not wait for extraction or run
 REM additional validation here. If the orchestrator file exists now, launch it.

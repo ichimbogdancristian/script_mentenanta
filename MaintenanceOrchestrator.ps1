@@ -233,17 +233,7 @@ function Find-MaintenanceStructure {
             Config  = if ($env:MAINTENANCE_CONFIG) { $env:MAINTENANCE_CONFIG } else { $null }
             Modules = if ($env:MAINTENANCE_MODULES) { $env:MAINTENANCE_MODULES } else { $null }
         },
-        # Strategy 5: Common installation locations
-        @{
-            Config  = "C:\MaintenanceAutomation\config"
-            Modules = "C:\MaintenanceAutomation\modules"
-        },
-        # Strategy 6: User profile locations  
-        @{
-            Config  = Join-Path $env:USERPROFILE "MaintenanceAutomation\config"
-            Modules = Join-Path $env:USERPROFILE "MaintenanceAutomation\modules"
-        },
-        # Strategy 7: Recursive search up to 3 levels
+        # Strategy 5: Recursive search up to 3 levels
         @{
             Config  = $null  # Will be populated by recursive search
             Modules = $null
@@ -261,7 +251,7 @@ function Find-MaintenanceStructure {
         }
     }
     
-    # Strategy 7 implementation: Recursive search
+    # Strategy 5 implementation: Recursive search
     $searchRoot = $BaseDirectory
     for ($level = 0; $level -lt 3; $level++) {
         Get-ChildItem -Path $searchRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
