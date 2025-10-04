@@ -284,8 +284,8 @@ function Find-MaintenanceStructure {
     return $structure
 }
 
-# Validates that essential repository paths (orchestrator, config, modules) exist.
-function Validate-RepositoryPaths {
+# Tests that essential repository paths (orchestrator, config, modules) exist.
+function Test-RepositoryPaths {
     param([string]$BaseDirectory)
 
     $structure = Find-MaintenanceStructure -BaseDirectory $BaseDirectory
@@ -319,7 +319,7 @@ function Validate-RepositoryPaths {
 # If caller requested only path validation, perform and exit with appropriate code.
 if ($ValidatePaths) {
     $base = if ($ConfigPath) { Split-Path -Parent $ConfigPath } elseif ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
-    $ok = Validate-RepositoryPaths -BaseDirectory $base
+    $ok = Test-RepositoryPaths -BaseDirectory $base
     if ($ok) { Exit 0 } else { Exit 2 }
 }
 
