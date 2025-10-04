@@ -32,29 +32,31 @@ This is a **production-ready** Windows maintenance automation system built on a 
 ## 🚀 Quick Start
 
 ### For End Users
-```bash
-# Download and run (PowerShell/Admin Console)
-script.bat
 
-# Interactive mode with menus
-script.bat
+Run the launcher `script.bat`. It performs initial checks and will invoke the PowerShell orchestrator.
 
-# Silent automation
+Windows (double-click or run in elevated command prompt):
+
+```powershell
+script.bat
+# Non-interactive:
 script.bat -NonInteractive
-
-# Test mode (no changes made)
+# Dry-run (safe testing):
 script.bat -NonInteractive -DryRun
 ```
 
 ### For Developers
+
+Run the orchestrator directly for development or debugging (PowerShell 7+):
+
 ```powershell
-# Run orchestrator directly (requires elevated PowerShell 7+)
+# Interactive orchestrator
 .\MaintenanceOrchestrator.ps1
 
-# Run specific tasks
-.\MaintenanceOrchestrator.ps1 -TaskNumbers "1,2,3"
+# Execute specific module
+.\MaintenanceOrchestrator.ps1 -ModuleName "SystemInventory"
 
-# Dry run testing
+# Dry-run safe testing
 .\MaintenanceOrchestrator.ps1 -DryRun
 ```
 
@@ -266,47 +268,31 @@ C:\SomeFolder\script_mentenanta\script.bat
 
 ### Adding New Tasks
 
-1. **Create Module** in appropriate directory (`modules/type1/` or `modules/type2/`)
-2. **Register Task** in `MaintenanceOrchestrator.ps1`:
-```powershell
-@{
-    Name = 'MyNewTask'
-    Description = 'Description of what this task does'
-    ModulePath = Join-Path $ModulesPath 'type2\MyModule.psm1'
-    Function = 'Invoke-MyFunction'
-    Type = 'Type2'
-    Category = 'Optimization'
-}
-```
+1. Create a module in `modules/type1/` (read-only inventory/reporting) or `modules/type2/` (system modifications).
+2. Follow the module pattern (export a single public function and implement `SupportsShouldProcess` for Type2 modules).
+3. Register the task in `MaintenanceOrchestrator.ps1`'s module registry when adding new built-in tasks.
 
 ### Module Development Pattern
 ```powershell
+```powershell
 #Requires -Version 7.0
 
-<#
-.SYNOPSIS
-    Module description
-.NOTES
-    Module Type: Type1 or Type2
-    Dependencies: List any required modules
-#>
+function Invoke-MyTask {
+  [CmdletBinding(SupportsShouldProcess)]
+  param(
+    [switch]$DryRun
+  )
 
-function Main-Function {
-    [CmdletBinding(SupportsShouldProcess)]
-    param(
-        [switch]$DryRun
-    )
-    
-    # Implementation here
-    
-    # Type 1: Return data object
-    return @{ Results = $data }
-    
-    # Type 2: Return success/failure  
-    return $true
+  if ($PSCmdlet.ShouldProcess("Target", "Action description")) {
+    # Perform actions here
+  }
+
+  # Type1 modules should return structured data (hashtable/PSCustomObject)
+  # Type2 modules should return a standardized result object or boolean
 }
 
-Export-ModuleMember -Function 'Main-Function'
+Export-ModuleMember -Function 'Invoke-MyTask'
+```
 ```
 
 ### Testing
