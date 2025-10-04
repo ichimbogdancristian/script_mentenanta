@@ -111,33 +111,10 @@ CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Current directory: %CD%" "INFO" "LAUNCHER"
 
 REM =============================================================================
-REM Path Validation and Environment Check
+REM Basic Environment Setup (Full validation happens before orchestrator launch)
 REM =============================================================================
-CALL :LOG_MESSAGE "Validating project structure..." "INFO" "LAUNCHER"
-
-REM Check for essential files
-IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-    CALL :LOG_MESSAGE "ERROR: PowerShell orchestrator not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please ensure MaintenanceOrchestrator.ps1 exists in the script directory" "ERROR" "LAUNCHER"
-    GOTO :HANDLE_ERROR
-)
-
-IF NOT EXIST "%CONFIG_DIR%" (
-    CALL :LOG_MESSAGE "ERROR: Config directory not found: %CONFIG_DIR%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please ensure the config/ directory exists with required configuration files" "ERROR" "LAUNCHER"
-    GOTO :HANDLE_ERROR
-)
-
-IF NOT EXIST "%MODULES_DIR%" (
-    CALL :LOG_MESSAGE "ERROR: Modules directory not found: %MODULES_DIR%" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please ensure the modules/ directory exists with required PowerShell modules" "ERROR" "LAUNCHER"
-    GOTO :HANDLE_ERROR
-)
-
-CALL :LOG_MESSAGE "Project structure validated successfully" "SUCCESS" "LAUNCHER"
-CALL :LOG_MESSAGE "Orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Config dir: %CONFIG_DIR%" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Modules dir: %MODULES_DIR%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Basic environment setup completed" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "INFO" "LAUNCHER"
 
 REM Check if this is a post-restart execution
 IF "%1"=="POST_RESTART" (
@@ -479,6 +456,36 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "All dependencies installed - launching PowerShell orchestrator..." "INFO" "LAUNCHER"
 
 REM =============================================================================
+REM Validate Project Structure Before Launch
+REM =============================================================================
+CALL :LOG_MESSAGE "Validating project structure before orchestrator launch..." "INFO" "LAUNCHER"
+
+REM Check for essential files and directories
+IF NOT EXIST "%ORCHESTRATOR_PATH%" (
+    CALL :LOG_MESSAGE "ERROR: PowerShell orchestrator not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "This typically indicates the script is not running from the correct location" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please ensure MaintenanceOrchestrator.ps1 exists in the script directory" "ERROR" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+
+IF NOT EXIST "%CONFIG_DIR%" (
+    CALL :LOG_MESSAGE "ERROR: Config directory not found: %CONFIG_DIR%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please ensure the config/ directory exists with required configuration files" "ERROR" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+
+IF NOT EXIST "%MODULES_DIR%" (
+    CALL :LOG_MESSAGE "ERROR: Modules directory not found: %MODULES_DIR%" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please ensure the modules/ directory exists with required PowerShell modules" "ERROR" "LAUNCHER"
+    GOTO :HANDLE_ERROR
+)
+
+CALL :LOG_MESSAGE "Project structure validated successfully" "SUCCESS" "LAUNCHER"
+CALL :LOG_MESSAGE "  Orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "  Config dir: %CONFIG_DIR%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "  Modules dir: %MODULES_DIR%" "INFO" "LAUNCHER"
+
+REM =============================================================================
 REM Launch PowerShell Orchestrator with Enhanced Environment
 REM =============================================================================
 REM Set environment variables for orchestrator to inherit
@@ -486,7 +493,7 @@ SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 SET "MAINTENANCE_SCRIPT_ROOT=%WORKING_DIR%"
 
-CALL :LOG_MESSAGE "Launching orchestrator: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "All dependencies and structure validated - launching orchestrator..." "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Using PowerShell executable: %PS_EXECUTABLE%" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Environment variables set for orchestrator:" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "  WORKING_DIRECTORY=%WORKING_DIRECTORY%" "DEBUG" "LAUNCHER"
