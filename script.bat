@@ -141,10 +141,10 @@ SET "MONTHLY_TASK_NAME=ScriptMentenantaMonthly"
 
 REM Always check for and remove existing startup task first (clean slate approach)
 CALL :LOG_MESSAGE "Checking for existing startup task..." "INFO" "LAUNCHER"
-schtasks /query /tn "%STARTUP_TASK_NAME%" >nul 2>&1
+schtasks /query /tn "!STARTUP_TASK_NAME!" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Found existing startup task - removing for clean slate" "INFO" "LAUNCHER"
-    schtasks /delete /tn "%STARTUP_TASK_NAME%" /f >nul 2>&1
+    schtasks /delete /tn "!STARTUP_TASK_NAME!" /f >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Successfully removed existing startup task" "SUCCESS" "LAUNCHER"
     ) ELSE (
@@ -179,7 +179,8 @@ IF "%PENDING_RESTART%"=="YES" (
     
     REM Create startup task to continue after restart
     CALL :LOG_MESSAGE "Creating startup task to continue maintenance after restart..." "INFO" "LAUNCHER"
-    schtasks /create /tn "%STARTUP_TASK_NAME%" /tr "cmd.exe /c \"cd /d \"%SCRIPT_DIR%\" && \"%SCRIPT_PATH%\" ELEVATED_INSTANCE\"" /sc ONSTART /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
+    SET "STARTUP_WRAPPER=!SCRIPT_DIR!startup-wrapper.bat"
+    schtasks /create /tn "!STARTUP_TASK_NAME!" /tr "\"!STARTUP_WRAPPER!\"" /sc ONSTART /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
         
@@ -209,14 +210,15 @@ REM ----------------------------------------------------------------------------
 REM Create Monthly Maintenance Scheduled Task
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Setting up monthly maintenance scheduled task..." "INFO" "LAUNCHER"
-schtasks /query /tn "%MONTHLY_TASK_NAME%" >nul 2>&1
+schtasks /query /tn "!MONTHLY_TASK_NAME!" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Monthly task already exists - updating it" "INFO" "LAUNCHER"
-    schtasks /delete /tn "%MONTHLY_TASK_NAME%" /f >nul 2>&1
+    schtasks /delete /tn "!MONTHLY_TASK_NAME!" /f >nul 2>&1
 )
 
 REM Create monthly task for first day of month at 1AM
-schtasks /create /tn "%MONTHLY_TASK_NAME%" /tr "cmd.exe /c \"cd /d \"%SCRIPT_DIR%\" && \"%SCRIPT_PATH%\" ELEVATED_INSTANCE\"" /sc MONTHLY /d 1 /st 01:00 /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
+SET "MONTHLY_WRAPPER=!SCRIPT_DIR!startup-wrapper.bat"
+schtasks /create /tn "!MONTHLY_TASK_NAME!" /tr "\"!MONTHLY_WRAPPER!\"" /sc MONTHLY /d 1 /st 01:00 /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Monthly maintenance task created successfully (1st of month at 1AM)" "SUCCESS" "LAUNCHER"
 ) ELSE (
@@ -247,7 +249,7 @@ IF !ERRORLEVEL! EQU 0 (
     SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     SET "WINGET_FILE=%TEMP%\Microsoft.DesktopAppInstaller.msixbundle"
     
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%WINGET_URL%' -OutFile '%WINGET_FILE%' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
+    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
     
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Installing winget package..." "INFO" "LAUNCHER"
@@ -296,7 +298,7 @@ IF !ERRORLEVEL! EQU 0 (
     
     REM Download PowerShell 7.5.2
     CALL :LOG_MESSAGE "Downloading PowerShell 7.5.2..." "INFO" "LAUNCHER"
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PS7_URL%' -OutFile '%PS7_INSTALLER%' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
+    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
     
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Installing PowerShell 7..." "INFO" "LAUNCHER"
@@ -342,7 +344,7 @@ REM ----------------------------------------------------------------------------
 REM 6.1: Install NuGet PackageProvider (Auto-confirm with Y)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Installing NuGet PackageProvider..." "INFO" "LAUNCHER"
-ECHO Y | %PS_EXECUTABLE% -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:`$false; Write-Host 'NUGET_INSTALLED' } else { Write-Host 'NUGET_EXISTS' } } catch { Write-Host 'NUGET_FAILED'; Write-Error $_.Exception.Message }"
+ECHO Y | %PS_EXECUTABLE% -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -Confirm:$false; Write-Host 'NUGET_INSTALLED' } else { Write-Host 'NUGET_EXISTS' } } catch { Write-Host 'NUGET_FAILED'; Write-Error $_.Exception.Message }"
 
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "NuGet PackageProvider configured successfully" "SUCCESS" "LAUNCHER"
@@ -366,7 +368,7 @@ REM ----------------------------------------------------------------------------
 REM 6.3: Install PSWindowsUpdate PowerShell module
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Installing PSWindowsUpdate module..." "INFO" "LAUNCHER"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -Command "try { if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Repository PSGallery -Confirm:`$false; Write-Host 'PSWINDOWSUPDATE_INSTALLED' } else { Write-Host 'PSWINDOWSUPDATE_EXISTS' } } catch { Write-Host 'PSWINDOWSUPDATE_FAILED'; Write-Error $_.Exception.Message }"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -Command "try { if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) { Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -Repository PSGallery -Confirm:$false; Write-Host 'PSWINDOWSUPDATE_INSTALLED' } else { Write-Host 'PSWINDOWSUPDATE_EXISTS' } } catch { Write-Host 'PSWINDOWSUPDATE_FAILED'; Write-Error $_.Exception.Message }"
 
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "PSWindowsUpdate module configured successfully" "SUCCESS" "LAUNCHER"

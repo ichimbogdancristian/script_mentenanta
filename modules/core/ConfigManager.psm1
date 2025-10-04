@@ -780,7 +780,7 @@ function Get-InventoryFolder {
     
     # Determine base working directory
     $workingDir = if ($PSScriptRoot) {
-        Join-Path $PSScriptRoot '..\..\..' | Resolve-Path -ErrorAction SilentlyContinue
+        Join-Path $PSScriptRoot '..\..' | Resolve-Path -ErrorAction SilentlyContinue
     } else {
         Get-Location
     }
