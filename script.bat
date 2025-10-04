@@ -5,6 +5,15 @@ REM  Purpose: Universal launcher for modular Windows maintenance system
 REM  Flow: Logging → Admin Check → Scheduled Tasks → Restart Handling → Dependencies → Orchestrator
 REM  Requirements: Windows 10/11, Administrator privileges
 REM  Author: Windows Maintenance Automation Project
+REM 
+REM  Supported Environment Variables (Path Overrides):
+REM    MAINTENANCE_ROOT      - Override base repository directory
+REM    MAINTENANCE_CONFIG    - Override config directory path
+REM    MAINTENANCE_MODULES   - Override modules directory path  
+REM    MAINTENANCE_LOGS      - Override logs directory path
+REM    MAINTENANCE_INVENTORY - Override inventory directory path
+REM    MAINTENANCE_TEMP      - Override temp files directory path
+REM    MAINTENANCE_REPORTS   - Override reports directory path
 REM ============================================================================
 
 SETLOCAL ENABLEDELAYEDEXPANSION
@@ -31,15 +40,27 @@ CD /D "%WORKING_DIR%" 2>nul || (
     EXIT /B 1
 )
 
+REM Determine repository location dynamically
+SET "REPO_DIR=%WORKING_DIR%"
+REM If orchestrator not in working dir, look for extracted folder
+IF NOT EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
+    REM Check for script_mentenanta-main folder (downloaded archive)
+    IF EXIST "%WORKING_DIR%script_mentenanta-main\" (
+        IF EXIST "%WORKING_DIR%script_mentenanta-main\MaintenanceOrchestrator.ps1" (
+            SET "REPO_DIR=%WORKING_DIR%script_mentenanta-main\"
+        )
+    )
+)
+
 REM Validate critical paths exist
-SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
-SET "CONFIG_DIR=%WORKING_DIR%config\"
-SET "MODULES_DIR=%WORKING_DIR%modules\"
+SET "ORCHESTRATOR_PATH=%REPO_DIR%MaintenanceOrchestrator.ps1"
+SET "CONFIG_DIR=%REPO_DIR%config\"
+SET "MODULES_DIR=%REPO_DIR%modules\"
 SET "LOG_FILE=%WORKING_DIR%maintenance.log"
 
 REM Create environment variables for the orchestrator to inherit
-SET "SCRIPT_HOME=%WORKING_DIR%"
-SET "MAINTENANCE_ROOT=%WORKING_DIR%"
+SET "SCRIPT_HOME=%REPO_DIR%"
+SET "MAINTENANCE_ROOT=%REPO_DIR%"
 
 REM Create maintenance.log if it doesn't exist
 IF NOT EXIST "%LOG_FILE%" (
@@ -322,8 +343,8 @@ IF "%REPO_PRESENT%"=="0" (
         !PS_EXECUTABLE! -ExecutionPolicy Bypass -Command "try { Expand-Archive -Path '!REPO_ZIP!' -DestinationPath '!WORKING_DIR!temp_extract' -Force; Write-Host 'EXTRACT_SUCCESS' } catch { Write-Host 'EXTRACT_FAILED'; Write-Error $_.Exception.Message }"
         
         IF !ERRORLEVEL! EQU 0 (
-            REM Move files from extracted folder to working directory
-            !PS_EXECUTABLE! -ExecutionPolicy Bypass -Command "try { $source = '!WORKING_DIR!temp_extract\script_mentenanta-main\*'; $dest = '!WORKING_DIR!'; Copy-Item -Path $source -Destination $dest -Recurse -Force; Write-Host 'MOVE_SUCCESS' } catch { Write-Host 'MOVE_FAILED'; Write-Error $_.Exception.Message }"
+            REM Move the extracted folder with its original name (script_mentenanta-main)
+            !PS_EXECUTABLE! -ExecutionPolicy Bypass -Command "try { Move-Item -Path '!WORKING_DIR!temp_extract\script_mentenanta-main' -Destination '!WORKING_DIR!' -Force; Write-Host 'MOVE_SUCCESS' } catch { Write-Host 'MOVE_FAILED'; Write-Error $_.Exception.Message }"
             
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "Repository extracted and ready" "SUCCESS" "LAUNCHER"
@@ -331,6 +352,14 @@ IF "%REPO_PRESENT%"=="0" (
                 REM Cleanup temporary files
                 IF EXIST "!REPO_ZIP!" DEL /F /Q "!REPO_ZIP!" >nul 2>&1
                 IF EXIST "!WORKING_DIR!temp_extract" RD /S /Q "!WORKING_DIR!temp_extract" >nul 2>&1
+                
+                REM Update paths to point to the extracted repository
+                SET "REPO_DIR=!WORKING_DIR!script_mentenanta-main\"
+                SET "ORCHESTRATOR_PATH=!REPO_DIR!MaintenanceOrchestrator.ps1"
+                SET "CONFIG_DIR=!REPO_DIR!config\"
+                SET "MODULES_DIR=!REPO_DIR!modules\"
+                SET "SCRIPT_HOME=!REPO_DIR!"
+                SET "MAINTENANCE_ROOT=!REPO_DIR!"
                 
                 REM Re-check repository presence
                 IF EXIST "!ORCHESTRATOR_PATH!" (
@@ -588,7 +617,7 @@ REM ============================================================================
 REM Set environment variables for orchestrator to inherit
 SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
-SET "MAINTENANCE_SCRIPT_ROOT=%WORKING_DIR%"
+SET "MAINTENANCE_SCRIPT_ROOT=%SCRIPT_HOME%"
 
 CALL :LOG_MESSAGE "Dependencies configured. Attempting to launch orchestrator if present..." "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Using PowerShell executable: %PS_EXECUTABLE%" "INFO" "LAUNCHER"
@@ -599,6 +628,9 @@ CALL :LOG_MESSAGE "  MAINTENANCE_SCRIPT_ROOT=%MAINTENANCE_SCRIPT_ROOT%" "DEBUG" 
 
 REM Change to working directory before launching orchestrator
 CD /D "%WORKING_DIR%"
+CALL :LOG_MESSAGE "Changed to working directory: %WORKING_DIR%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "About to check for POST_EXTRACT or direct orchestrator launch..." "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "First parameter is: '%1'" "DEBUG" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM POST_EXTRACT handler
@@ -610,9 +642,7 @@ IF "%1"=="POST_EXTRACT" (
 
     REM Ensure elevated instance present; relaunch elevated if necessary
     SET "_ELEVATED_FLAG=0"
-    FOR %%i IN (%*) DO (
-        IF "%%i"=="ELEVATED_INSTANCE" SET "_ELEVATED_FLAG=1"
-    )
+    ECHO %* | FINDSTR /C:"ELEVATED_INSTANCE" >nul 2>&1 && SET "_ELEVATED_FLAG=1"
     IF "%_ELEVATED_FLAG%"=="0" (
         CALL :LOG_MESSAGE "POST_EXTRACT requires elevation - relaunching elevated" "INFO" "LAUNCHER"
         powershell -NoProfile -Command "$argsList = @('/c','\"%SCRIPT_PATH%\"','POST_EXTRACT'); if ('%~2' -ne '') { $argsList += ('\"%~2\"') }; $argsList += 'ELEVATED_INSTANCE'; Start-Process cmd -ArgumentList $argsList -Verb RunAs"
@@ -666,14 +696,19 @@ IF "%1"=="POST_EXTRACT" (
     EXIT /B %ORCHESTRATOR_EXIT_CODE%
 )
 
+CALL :LOG_MESSAGE "Skipped POST_EXTRACT block, proceeding to direct orchestrator launch..." "DEBUG" "LAUNCHER"
+
 REM Non-blocking orchestrator launch: do not wait for extraction or run
 REM additional validation here. If the orchestrator file exists now, launch it.
 REM Otherwise, log a warning and continue. The orchestrator itself should
 REM perform any repository validation after it's available.
+CALL :LOG_MESSAGE "Checking for orchestrator existence at: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 IF EXIST "%ORCHESTRATOR_PATH%" (
     CALL :LOG_MESSAGE "Orchestrator found - launching: %ORCHESTRATOR_PATH%" "INFO" "LAUNCHER"
-    %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%"
+    CALL :LOG_MESSAGE "Launching orchestrator with NonInteractive mode..." "INFO" "LAUNCHER"
+    %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
     SET "ORCHESTRATOR_EXIT_CODE=%ERRORLEVEL%"
+    CALL :LOG_MESSAGE "Orchestrator execution completed with exit code: !ORCHESTRATOR_EXIT_CODE!" "INFO" "LAUNCHER"
 ) ELSE (
     CALL :LOG_MESSAGE "Orchestrator not found at launch time: %ORCHESTRATOR_PATH% - skipping orchestrator launch" "WARN" "LAUNCHER"
     SET "ORCHESTRATOR_EXIT_CODE=0"
