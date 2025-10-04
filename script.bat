@@ -179,7 +179,7 @@ IF "%PENDING_RESTART%"=="YES" (
     
     REM Create startup task to continue after restart
     CALL :LOG_MESSAGE "Creating startup task to continue maintenance after restart..." "INFO" "LAUNCHER"
-    schtasks /create /tn "%STARTUP_TASK_NAME%" /tr "\"%SCRIPT_PATH%\" ELEVATED_INSTANCE" /sc ONSTART /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
+    schtasks /create /tn "%STARTUP_TASK_NAME%" /tr "cmd.exe /c \"cd /d \"%SCRIPT_DIR%\" && \"%SCRIPT_PATH%\" ELEVATED_INSTANCE\"" /sc ONSTART /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Startup task created successfully" "SUCCESS" "LAUNCHER"
         
@@ -216,7 +216,7 @@ IF !ERRORLEVEL! EQU 0 (
 )
 
 REM Create monthly task for first day of month at 1AM
-schtasks /create /tn "%MONTHLY_TASK_NAME%" /tr "\"%SCRIPT_PATH%\" ELEVATED_INSTANCE" /sc MONTHLY /d 1 /st 01:00 /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
+schtasks /create /tn "%MONTHLY_TASK_NAME%" /tr "cmd.exe /c \"cd /d \"%SCRIPT_DIR%\" && \"%SCRIPT_PATH%\" ELEVATED_INSTANCE\"" /sc MONTHLY /d 1 /st 01:00 /ru "SYSTEM" /rl HIGHEST /f >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Monthly maintenance task created successfully (1st of month at 1AM)" "SUCCESS" "LAUNCHER"
 ) ELSE (
