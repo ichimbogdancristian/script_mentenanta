@@ -1,0 +1,15 @@
+# Ignore local test folder used for isolated experiments
+TestFolder/
+
+# Ignore FileObserver results and temp files
+FileObserver-*.log
+FileObserverResults-*.json
+
+# Ignore editor/IDE files
+.vscode/
+*.code-workspace
+
+# Ignore OS / user-specific files
+Thumbs.db
+Desktop.ini
+*.DS_Store

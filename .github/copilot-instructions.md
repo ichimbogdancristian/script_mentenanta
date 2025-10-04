@@ -22,18 +22,23 @@ Launcher Modes and Path Discovery
     - `script.bat POST_EXTRACT [RepoRoot]`
     - Ensures elevation, validates `MaintenanceOrchestrator.ps1`, `config`, `modules` under RepoRoot (or `WORKING_DIR` if omitted), then launches orchestrator.
 
-Environment Variables
+Environment Variables (Path Override System)
 - `MAINTENANCE_ROOT`: override base repo directory for orchestrator
-- `MAINTENANCE_CONFIG`: override config directory
-- `MAINTENANCE_MODULES`: override modules directory
+- `MAINTENANCE_CONFIG`: override config directory path
+- `MAINTENANCE_MODULES`: override modules directory path
+- `MAINTENANCE_LOGS`: override logs directory path
+- `MAINTENANCE_INVENTORY`: override inventory directory path
+- `MAINTENANCE_TEMP`: override temp files directory path
+- `MAINTENANCE_REPORTS`: override reports directory path
 
 Notes
-- Avoid hard-coded absolute paths. Use `$PSScriptRoot`, `$MyInvocation.MyCommand.Path`, or `%~dp0`.
-- Keep destructive operations gated by repo presence or use orchestrator-driven validation.
+- Use standardized `Get-ModuleEnvironment` function from ConfigManager.psm1 for all path discovery
+- Avoid hard-coded absolute paths. Always use relative path discovery from module location
+- Keep destructive operations gated by repo presence or use orchestrator-driven validation
 
 ### Critical Design Patterns
 
-1. **Universal Path Discovery**: All scripts use `Get-ScriptEnvironment` function to work from any location. Never assume working directory.
+1. **Standardized Path Discovery**: All modules use `Get-ModuleEnvironment` function from ConfigManager.psm1. Never assume working directory or hardcode paths.
 
 2. **Module Manifest System**: Each module is registered in `MaintenanceOrchestrator.ps1` with metadata:
    ```powershell
@@ -56,7 +61,8 @@ Notes
 ### Configuration Management
 - All config in JSON format under `config/` directory
 - Use `ConfigManager.psm1` functions: `Get-MainConfiguration`, `Get-BloatwareConfiguration`, `Get-EssentialAppsConfiguration`
-- Configuration is auto-discovered relative to script location, never hardcoded paths
+- Use `Get-ModuleEnvironment` for standardized path discovery with fallback strategies
+- Configuration paths auto-discovered using universal path discovery system
 
 ### Testing & Debugging
 ```powershell
@@ -109,11 +115,21 @@ Write-Host "✅ Operation completed" -ForegroundColor Green
 
 ## Critical Implementation Notes
 
-### Self-Discovery Pattern
-Always use relative paths from script location:
+### Standardized Path Discovery Pattern
+Always use the universal path discovery system:
 ```powershell
-$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$configPath = Join-Path $scriptRoot "config"
+# Import ConfigManager and use standardized discovery
+Import-Module (Join-Path $PSScriptRoot '..\core\ConfigManager.psm1') -Force
+$env = Get-ModuleEnvironment -ModuleType 'Type1'  # Core/Type1/Type2
+
+# Use discovered paths
+$configPath = $env.ConfigPath
+$logsPath = $env.LogsPath
+$inventoryPath = $env.InventoryPath
+$repositoryRoot = $env.RepositoryRoot
+
+# Environment variables automatically override paths
+# SET MAINTENANCE_LOGS=C:\CustomLogs applies automatically
 ```
 
 ### Dry-Run Implementation
@@ -138,3 +154,63 @@ Each module receives standardized execution context with:
 - `CancellationToken`: Timeout and cancellation support
 
 When modifying core execution logic, always maintain backward compatibility with existing module interface patterns.
+
+## Standardized Path Discovery System
+
+### Universal Path Discovery
+All modules now use the standardized `Get-ModuleEnvironment` function for consistent path discovery:
+
+```powershell
+# Standard pattern for all modules
+Import-Module (Join-Path $PSScriptRoot '..\core\ConfigManager.psm1') -Force
+$moduleEnv = Get-ModuleEnvironment -ModuleType 'Type1'  # Core/Type1/Type2
+
+# Access standardized paths
+$repositoryRoot = $moduleEnv.RepositoryRoot
+$configPath = $moduleEnv.ConfigPath
+$modulesPath = $moduleEnv.ModulesPath
+$logsPath = $moduleEnv.LogsPath
+$inventoryPath = $moduleEnv.InventoryPath
+$tempPath = $moduleEnv.TempPath
+$isValidStructure = $moduleEnv.IsValidStructure
+```
+
+### Environment Variable Overrides
+Users can override any path using environment variables:
+- `MAINTENANCE_ROOT` - Base repository directory
+- `MAINTENANCE_CONFIG` - Config directory path
+- `MAINTENANCE_MODULES` - Modules directory path
+- `MAINTENANCE_LOGS` - Logs directory path
+- `MAINTENANCE_INVENTORY` - Inventory directory path
+- `MAINTENANCE_TEMP` - Temp files directory path
+- `MAINTENANCE_REPORTS` - Reports directory path
+
+### Enhanced Fallback Strategies
+The system includes robust fallback mechanisms for:
+- Network paths (`\\server\share`)
+- Missing directories (auto-creation)
+- Permission issues (fallback to accessible locations)
+- Repository structure validation (recursive search)
+- Cross-platform path handling
+
+### Module Implementation Requirements
+1. **Import Pattern**: Always import ConfigManager from relative path
+2. **Path Discovery**: Use `Get-ModuleEnvironment` instead of hardcoded paths
+3. **Fallback Handling**: Wrap path discovery in try-catch with graceful degradation
+4. **Module Type**: Specify correct module type (Core/Type1/Type2) for proper path calculation
+
+### Testing and Validation
+Use TestFolder for isolated testing to observe file behaviors:
+- Copy `script.bat` to TestFolder for clean environment testing
+- Use `FileObserver.ps1` to monitor file creation/deletion during execution
+- Validate path discovery across different scenarios
+- Test environment variable overrides
+- Generate comprehensive reports of file system changes
+- Ensure reproducible testing conditions with clean state each run
+
+### TestFolder Environment Setup
+1. Clean TestFolder: Remove all existing files
+2. Copy fresh `script.bat` from main repository
+3. Run `FileObserver.ps1` to start monitoring
+4. Execute `script.bat` in separate terminal
+5. Review file behavior analysis and logs
