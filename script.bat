@@ -299,7 +299,8 @@ IF NOT EXIST "%MODULES_DIR%" (
 REM If the repository isn't present, skip the heavy dependency installation
 IF "%REPO_PRESENT%"=="0" (
     CALL :LOG_MESSAGE "Repository not present - skipping heavy dependency installation. Continue with launcher setup; dependencies should be installed after extraction or by the orchestrator." "INFO" "LAUNCHER"
-) 
+    GOTO :SKIP_DEP_INSTALL
+)
 
 REM Create a dedicated temporary folder for installer downloads to ensure we
 REM never accidentally write or delete files in the script directory.
@@ -485,6 +486,8 @@ IF !ERRORLEVEL! EQU 0 (
 ) ELSE (
     CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed" "WARN" "LAUNCHER"
 )
+
+:SKIP_DEP_INSTALL
 
 REM -----------------------------------------------------------------------------
 REM Step 7: Launch PowerShell Orchestrator with Admin Rights

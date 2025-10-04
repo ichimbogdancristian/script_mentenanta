@@ -14,6 +14,23 @@ This is a **modular Windows maintenance automation system** built on PowerShell 
 ### Execution Flow
 Entry point: `script.bat` → `MaintenanceOrchestrator.ps1` → Module Loading → Dependency Resolution → Task Execution → Report Generation
 
+Launcher Modes and Path Discovery
+- `script.bat` discovers its own directory using `%~dp0` and derives:
+    - `WORKING_DIR` (script folder), `ORCHESTRATOR_PATH`, `CONFIG_DIR`, `MODULES_DIR`, `LOG_FILE`
+- Pre-launch checks are non-fatal (to support pre-extraction deployments). The orchestrator is launched if present; otherwise the launcher logs and exits cleanly.
+- Final validation occurs via `POST_EXTRACT` (or `POST_DEPLOY`) invoked by the extraction process:
+    - `script.bat POST_EXTRACT [RepoRoot]`
+    - Ensures elevation, validates `MaintenanceOrchestrator.ps1`, `config`, `modules` under RepoRoot (or `WORKING_DIR` if omitted), then launches orchestrator.
+
+Environment Variables
+- `MAINTENANCE_ROOT`: override base repo directory for orchestrator
+- `MAINTENANCE_CONFIG`: override config directory
+- `MAINTENANCE_MODULES`: override modules directory
+
+Notes
+- Avoid hard-coded absolute paths. Use `$PSScriptRoot`, `$MyInvocation.MyCommand.Path`, or `%~dp0`.
+- Keep destructive operations gated by repo presence or use orchestrator-driven validation.
+
 ### Critical Design Patterns
 
 1. **Universal Path Discovery**: All scripts use `Get-ScriptEnvironment` function to work from any location. Never assume working directory.
