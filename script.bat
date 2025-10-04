@@ -16,6 +16,8 @@ REM Set up paths first
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
+REM Ensure SCRIPT_DIR ends with backslash
+IF NOT "%SCRIPT_DIR:~-1%"=="\" SET "SCRIPT_DIR=%SCRIPT_DIR%\"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 SET "LOG_FILE=%WORKING_DIR%maintenance.log"
 
@@ -255,41 +257,59 @@ IF !ERRORLEVEL! EQU 0 (
     FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
     CALL :LOG_MESSAGE "Winget already available: !WINGET_VERSION!" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Winget not found - downloading and installing..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Winget not found - installing using multiple methods..." "INFO" "LAUNCHER"
     
-    REM Download winget from Microsoft GitHub
-    SET "WINGET_URL=https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-    SET "WINGET_FILE=%TEMP%\Microsoft.DesktopAppInstaller.msixbundle"
-    
-    powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
+    REM Try modern PowerShell method first (recommended by Microsoft)
+    CALL :LOG_MESSAGE "Attempting Microsoft.WinGet.Client PowerShell module installation..." "INFO" "LAUNCHER"
+    powershell -ExecutionPolicy Bypass -Command "try { Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Repair-WinGetPackageManager -AllUsers -ErrorAction Stop; Write-Host 'PS_MODULE_SUCCESS' } catch { Write-Host 'PS_MODULE_FAILED'; Write-Error $_.Exception.Message }"
     
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Installing winget package..." "INFO" "LAUNCHER"
-        powershell -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WINGET_FILE%' -ErrorAction Stop; Write-Host 'INSTALL_SUCCESS' } catch { Write-Host 'INSTALL_FAILED'; Write-Error $_.Exception.Message }"
+        CALL :LOG_MESSAGE "WinGet installed via PowerShell module successfully" "SUCCESS" "LAUNCHER"
+        REM Refresh PATH and verify installation
+        CALL :REFRESH_PATH
+        winget --version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO CALL :LOG_MESSAGE "WinGet confirmed: %%i" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "WinGet installation verification failed" "WARN" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "PowerShell module method failed, trying direct download..." "WARN" "LAUNCHER"
+        
+        REM Fallback to direct MSIX bundle download
+        SET "WINGET_URL=https://aka.ms/getwingetpreview"
+        SET "WINGET_FILE=%TEMP%\Microsoft.DesktopAppInstaller.msixbundle"
+        
+        powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!WINGET_URL!' -OutFile '!WINGET_FILE!' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
         
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Winget installed successfully" "SUCCESS" "LAUNCHER"
-            REM Refresh PATH and verify installation
-            CALL :REFRESH_PATH
-            winget --version >nul 2>&1
+            CALL :LOG_MESSAGE "Installing winget package..." "INFO" "LAUNCHER"
+            powershell -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WINGET_FILE%' -ErrorAction Stop; Write-Host 'INSTALL_SUCCESS' } catch { Write-Host 'INSTALL_FAILED'; Write-Error $_.Exception.Message }"
+            
             IF !ERRORLEVEL! EQU 0 (
-                FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO CALL :LOG_MESSAGE "Winget confirmed: %%i" "SUCCESS" "LAUNCHER"
+                CALL :LOG_MESSAGE "Winget installed successfully" "SUCCESS" "LAUNCHER"
+                REM Refresh PATH and verify installation
+                CALL :REFRESH_PATH
+                winget --version >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO CALL :LOG_MESSAGE "Winget confirmed: %%i" "SUCCESS" "LAUNCHER"
+                ) ELSE (
+                    CALL :LOG_MESSAGE "Winget installation verification failed" "WARN" "LAUNCHER"
+                )
             ) ELSE (
-                CALL :LOG_MESSAGE "Winget installation verification failed" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "Winget installation failed" "ERROR" "LAUNCHER"
             )
+            
+            REM Cleanup
+            DEL /F /Q "%WINGET_FILE%" >nul 2>&1
         ) ELSE (
-            CALL :LOG_MESSAGE "Winget installation failed" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "Failed to download winget" "ERROR" "LAUNCHER"
         )
-        
-        REM Cleanup
-        DEL /F /Q "%WINGET_FILE%" >nul 2>&1
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to download winget" "ERROR" "LAUNCHER"
     )
 )
 
 REM -----------------------------------------------------------------------------
-REM 5.2: Install PowerShell 7 (pwsh v7.5.2) - Second Priority Dependency  
+REM 5.2: Install PowerShell 7 (pwsh v7.5.3) - Second Priority Dependency  
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking PowerShell 7..." "INFO" "LAUNCHER"
 
@@ -298,18 +318,18 @@ IF !ERRORLEVEL! EQU 0 (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
     CALL :LOG_MESSAGE "PowerShell 7 already available: !PS7_VERSION!" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "PowerShell 7 not found - downloading and installing v7.5.2..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7 not found - downloading and installing v7.5.3..." "INFO" "LAUNCHER"
     
     REM Set architecture-specific download URL
     IF "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
-        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x64.msi"
+        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.3/PowerShell-7.5.3-win-x64.msi"
     ) ELSE (
-        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.2/PowerShell-7.5.2-win-x86.msi"
+        SET "PS7_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.5.3/PowerShell-7.5.3-win-x86.msi"
     )
-    SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.2.msi"
+    SET "PS7_INSTALLER=%TEMP%\PowerShell-7.5.3.msi"
     
-    REM Download PowerShell 7.5.2
-    CALL :LOG_MESSAGE "Downloading PowerShell 7.5.2..." "INFO" "LAUNCHER"
+    REM Download PowerShell 7.5.3
+    CALL :LOG_MESSAGE "Downloading PowerShell 7.5.3..." "INFO" "LAUNCHER"
     powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '!PS7_URL!' -OutFile '!PS7_INSTALLER!' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message }"
     
     IF !ERRORLEVEL! EQU 0 (
