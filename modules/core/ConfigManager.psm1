@@ -23,6 +23,372 @@ $script:ConfigPaths = @{}
 $script:BloatwareLists = @{}
 $script:EssentialApps = @{}
 
+#region Universal Path Discovery
+
+<#
+.SYNOPSIS
+    Gets standardized module environment paths with comprehensive fallbacks
+
+.DESCRIPTION
+    Universal function for discovering module locations and repository structure.
+    Handles various deployment scenarios including extraction, network paths, and
+    different working directory contexts with robust fallback strategies.
+
+.PARAMETER ModulePath
+    Optional override for the module's path (uses $PSScriptRoot if not specified)
+
+.PARAMETER ModuleType
+    The type of module: Core, Type1, or Type2 (for relative path calculations)
+
+.EXAMPLE
+    $env = Get-ModuleEnvironment -ModuleType 'Core'
+    
+.EXAMPLE
+    $env = Get-ModuleEnvironment -ModulePath $MyInvocation.MyCommand.Path -ModuleType 'Type1'
+#>
+function Get-ModuleEnvironment {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$ModulePath,
+        
+        [Parameter()]
+        [ValidateSet('Core', 'Type1', 'Type2')]
+        [string]$ModuleType = 'Core'
+    )
+    
+    $environment = @{
+        ModuleRoot = $null
+        RepositoryRoot = $null
+        ConfigPath = $null
+        ModulesPath = $null
+        LogsPath = $null
+        InventoryPath = $null
+        TempPath = $null
+        IsNetworkPath = $false
+        IsValidStructure = $false
+        ModuleType = $ModuleType
+    }
+    
+    try {
+        # Determine module root with multiple fallback strategies
+        if ($ModulePath) {
+            if (Test-Path $ModulePath -PathType Leaf) {
+                $environment.ModuleRoot = Split-Path -Parent $ModulePath
+            } else {
+                $environment.ModuleRoot = $ModulePath
+            }
+        }
+        elseif ($PSScriptRoot) {
+            $environment.ModuleRoot = $PSScriptRoot
+        }
+        elseif ($MyInvocation.MyCommand.Path) {
+            $environment.ModuleRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+        }
+        elseif ($MyInvocation.MyCommand.Definition) {
+            $environment.ModuleRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+        }
+        else {
+            # Last resort: use current location
+            $environment.ModuleRoot = (Get-Location).Path
+        }
+        
+        # Resolve to absolute path
+        if (Test-Path $environment.ModuleRoot) {
+            $environment.ModuleRoot = Resolve-Path $environment.ModuleRoot -ErrorAction SilentlyContinue
+            if ($environment.ModuleRoot) {
+                $environment.ModuleRoot = $environment.ModuleRoot.Path
+            }
+        }
+        
+        # Network path detection
+        $environment.IsNetworkPath = $environment.ModuleRoot -like "\\*"
+        
+        # Calculate repository root based on module type
+        switch ($ModuleType) {
+            'Core'  { $environment.RepositoryRoot = Join-Path $environment.ModuleRoot '..\..'}
+            'Type1' { $environment.RepositoryRoot = Join-Path $environment.ModuleRoot '..\..'}
+            'Type2' { $environment.RepositoryRoot = Join-Path $environment.ModuleRoot '..\..'}
+        }
+        
+        # Resolve repository root
+        if (Test-Path $environment.RepositoryRoot) {
+            $environment.RepositoryRoot = Resolve-Path $environment.RepositoryRoot -ErrorAction SilentlyContinue
+            if ($environment.RepositoryRoot) {
+                $environment.RepositoryRoot = $environment.RepositoryRoot.Path
+            }
+        }
+        
+        # Environment variable overrides with fallbacks
+        $environment.RepositoryRoot = if ($env:MAINTENANCE_ROOT) { 
+            $env:MAINTENANCE_ROOT 
+        } else { 
+            $environment.RepositoryRoot 
+        }
+        
+        # Set standard paths with environment variable overrides
+        $environment.ConfigPath = if ($env:MAINTENANCE_CONFIG) {
+            $env:MAINTENANCE_CONFIG
+        } else {
+            Join-Path $environment.RepositoryRoot 'config'
+        }
+        
+        $environment.ModulesPath = if ($env:MAINTENANCE_MODULES) {
+            $env:MAINTENANCE_MODULES
+        } else {
+            Join-Path $environment.RepositoryRoot 'modules'
+        }
+        
+        $environment.LogsPath = if ($env:MAINTENANCE_LOGS) {
+            $env:MAINTENANCE_LOGS
+        } else {
+            Join-Path $environment.RepositoryRoot 'temp_files\logs'
+        }
+        
+        $environment.InventoryPath = if ($env:MAINTENANCE_INVENTORY) {
+            $env:MAINTENANCE_INVENTORY
+        } else {
+            Join-Path $environment.RepositoryRoot 'temp_files\inventory'
+        }
+        
+        $environment.TempPath = if ($env:MAINTENANCE_TEMP) {
+            $env:MAINTENANCE_TEMP
+        } else {
+            Join-Path $environment.RepositoryRoot 'temp_files'
+        }
+        
+        # Validate repository structure
+        $requiredPaths = @('config', 'modules')
+        $foundPaths = 0
+        
+        foreach ($reqPath in $requiredPaths) {
+            $testPath = Join-Path $environment.RepositoryRoot $reqPath
+            if (Test-Path $testPath) {
+                $foundPaths++
+            }
+        }
+        
+        $environment.IsValidStructure = ($foundPaths -eq $requiredPaths.Count)
+        
+        # Additional validation for orchestrator presence
+        $orchestratorPath = Join-Path $environment.RepositoryRoot 'MaintenanceOrchestrator.ps1'
+        if (Test-Path $orchestratorPath) {
+            $environment.IsValidStructure = $true
+        }
+        
+        # Fallback search if structure not found
+        if (-not $environment.IsValidStructure) {
+            $searchResult = Find-MaintenanceStructure -BaseDirectory $environment.RepositoryRoot
+            if ($searchResult.IsComplete) {
+                $environment.RepositoryRoot = Split-Path $searchResult.ConfigPath -Parent
+                $environment.ConfigPath = $searchResult.ConfigPath
+                $environment.ModulesPath = $searchResult.ModulesPath
+                $environment.IsValidStructure = $true
+            }
+        }
+        
+        # Enhanced fallback strategies for edge cases
+        if (-not $environment.IsValidStructure) {
+            Write-Verbose "Applying enhanced fallback strategies for path discovery..."
+            
+            # Strategy 1: Check common extraction patterns
+            $extractionPatterns = @(
+                'script_mentenanta-main',
+                'script_mentenanta-master', 
+                'Windows-Maintenance-Automation',
+                'maintenance'
+            )
+            
+            $searchBase = Split-Path $environment.ModuleRoot -Parent
+            for ($level = 0; $level -lt 2; $level++) {
+                foreach ($pattern in $extractionPatterns) {
+                    $testPath = Join-Path $searchBase $pattern
+                    if (Test-Path $testPath) {
+                        $testResult = Find-MaintenanceStructure -BaseDirectory $testPath
+                        if ($testResult.IsComplete) {
+                            $environment.RepositoryRoot = $testPath
+                            $environment.ConfigPath = $testResult.ConfigPath
+                            $environment.ModulesPath = $testResult.ModulesPath
+                            $environment.IsValidStructure = $true
+                            break
+                        }
+                    }
+                }
+                if ($environment.IsValidStructure) { break }
+                $searchBase = Split-Path $searchBase -Parent
+                if (-not $searchBase) { break }
+            }
+        }
+        
+        # Strategy 2: Network path handling
+        if ($environment.IsNetworkPath -and -not $environment.IsValidStructure) {
+            Write-Verbose "Applying network path fallback strategies..."
+            # For network paths, be more permissive and create structure if needed
+            $minimalPaths = @('config', 'modules\core', 'modules\type1', 'modules\type2')
+            $allExist = $true
+            foreach ($path in $minimalPaths) {
+                if (-not (Test-Path (Join-Path $environment.RepositoryRoot $path))) {
+                    $allExist = $false
+                    break
+                }
+            }
+            if ($allExist) {
+                $environment.IsValidStructure = $true
+            }
+        }
+        
+        # Strategy 3: Permission-aware fallback
+        if (-not $environment.IsValidStructure) {
+            Write-Verbose "Applying permission-aware fallback strategies..."
+            try {
+                # Test write access to temp directory
+                $testFile = Join-Path $environment.TempPath 'write-test.tmp'
+                $null = New-Item -Path (Split-Path $testFile -Parent) -ItemType Directory -Force -ErrorAction SilentlyContinue
+                'test' | Out-File -FilePath $testFile -Force -ErrorAction Stop
+                Remove-Item $testFile -Force -ErrorAction SilentlyContinue
+                
+                # If we can write to temp, the structure is usable even if not perfect
+                if (Test-Path $environment.RepositoryRoot) {
+                    $environment.IsValidStructure = $true
+                }
+            } catch {
+                # If we can't write to our preferred temp location, fallback to system temp
+                $environment.TempPath = $env:TEMP
+                $environment.LogsPath = Join-Path $env:TEMP 'MaintenanceLogs'
+                $environment.InventoryPath = Join-Path $env:TEMP 'MaintenanceInventory'
+            }
+        }
+        
+        # Final validation and directory creation
+        $criticalPaths = @($environment.LogsPath, $environment.InventoryPath, $environment.TempPath)
+        foreach ($path in $criticalPaths) {
+            if ($path -and -not (Test-Path $path)) {
+                try {
+                    New-Item -Path $path -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+                } catch {
+                    Write-Verbose "Could not create directory: $path"
+                }
+            }
+        }
+        
+    } catch {
+        Write-Warning "Error in Get-ModuleEnvironment: $_"
+        # Ensure we return a valid structure even on error
+        if (-not $environment.ModuleRoot) {
+            $environment.ModuleRoot = (Get-Location).Path
+        }
+        
+        # Emergency fallback - use system temp directories
+        if (-not $environment.RepositoryRoot) {
+            $environment.RepositoryRoot = $environment.ModuleRoot
+        }
+        if (-not $environment.TempPath) {
+            $environment.TempPath = $env:TEMP
+        }
+        if (-not $environment.LogsPath) {
+            $environment.LogsPath = Join-Path $env:TEMP 'MaintenanceLogs'
+        }
+        if (-not $environment.InventoryPath) {
+            $environment.InventoryPath = Join-Path $env:TEMP 'MaintenanceInventory'
+        }
+    }
+    
+    return $environment
+}
+
+<#
+.SYNOPSIS
+    Finds maintenance automation structure from any base directory
+
+.DESCRIPTION
+    Searches for config and modules directories using multiple strategies.
+    This is the same function used by MaintenanceOrchestrator.ps1 but
+    made available to all modules for consistency.
+
+.PARAMETER BaseDirectory
+    Starting directory for the search
+
+.EXAMPLE
+    $structure = Find-MaintenanceStructure -BaseDirectory $PWD
+#>
+function Find-MaintenanceStructure {
+    param([string]$BaseDirectory)
+    
+    $structure = @{
+        ConfigPath  = $null
+        ModulesPath = $null
+        IsComplete  = $false
+    }
+    
+    # Enhanced search strategies for any PC/path scenario
+    $searchStrategies = @(
+        # Strategy 1: Direct subdirectories
+        @{
+            Config  = Join-Path $BaseDirectory 'config'
+            Modules = Join-Path $BaseDirectory 'modules'
+        },
+        # Strategy 2: Parent directory (extracted zip scenario)
+        @{
+            Config  = Join-Path (Split-Path $BaseDirectory -Parent) 'config'
+            Modules = Join-Path (Split-Path $BaseDirectory -Parent) 'modules'
+        },
+        # Strategy 3: Sibling directories
+        @{
+            Config  = Join-Path (Split-Path $BaseDirectory -Parent) 'config'
+            Modules = Join-Path (Split-Path $BaseDirectory -Parent) 'modules'
+        }
+    )
+    
+    # Test each strategy
+    foreach ($strategy in $searchStrategies) {
+        if ((Test-Path $strategy.Config) -and (Test-Path $strategy.Modules)) {
+            $structure.ConfigPath = $strategy.Config
+            $structure.ModulesPath = $strategy.Modules
+            $structure.IsComplete = $true
+            return $structure
+        }
+    }
+    
+    # Environment variable strategy
+    if ($env:MAINTENANCE_CONFIG -and $env:MAINTENANCE_MODULES) {
+        if ((Test-Path $env:MAINTENANCE_CONFIG) -and (Test-Path $env:MAINTENANCE_MODULES)) {
+            $structure.ConfigPath = $env:MAINTENANCE_CONFIG
+            $structure.ModulesPath = $env:MAINTENANCE_MODULES
+            $structure.IsComplete = $true
+            return $structure
+        }
+    }
+    
+    # Recursive search (limited depth for performance)
+    $searchRoot = $BaseDirectory
+    for ($level = 0; $level -lt 3; $level++) {
+        try {
+            Get-ChildItem -Path $searchRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                $testConfig = Join-Path $_.FullName 'config'
+                $testModules = Join-Path $_.FullName 'modules'
+                
+                if ((Test-Path $testConfig) -and (Test-Path $testModules)) {
+                    $structure.ConfigPath = $testConfig
+                    $structure.ModulesPath = $testModules  
+                    $structure.IsComplete = $true
+                    return $structure
+                }
+            }
+        } catch {
+            # Ignore search errors and continue
+        }
+        
+        # Move up one level
+        $parentPath = Split-Path $searchRoot -Parent
+        if (-not $parentPath -or $parentPath -eq $searchRoot) { break }
+        $searchRoot = $parentPath
+    }
+    
+    return $structure
+}
+
+#endregion
+
 #region Public Functions
 
 <#
@@ -778,22 +1144,20 @@ function Get-InventoryFolder {
         Get-MainConfiguration 
     }
     
-    # Determine base working directory
-    $workingDir = if ($PSScriptRoot) {
-        Join-Path $PSScriptRoot '..\..' | Resolve-Path -ErrorAction SilentlyContinue
-    } else {
-        Get-Location
-    }
+    # Use standardized path discovery
+    $moduleEnv = Get-ModuleEnvironment -ModuleType 'Core'
     
-    # Get inventory folder path from config
-    $inventoryFolder = if ($config.paths.inventoryFolder) {
+    # Get inventory folder path from config with environment variable override
+    $inventoryFolder = if ($env:MAINTENANCE_INVENTORY) {
+        $env:MAINTENANCE_INVENTORY
+    } elseif ($config.paths.inventoryFolder) {
         if ([System.IO.Path]::IsPathRooted($config.paths.inventoryFolder)) {
             $config.paths.inventoryFolder
         } else {
-            Join-Path $workingDir $config.paths.inventoryFolder
+            Join-Path $moduleEnv.RepositoryRoot $config.paths.inventoryFolder
         }
     } else {
-        Join-Path $workingDir 'temp_files\inventory'
+        $moduleEnv.InventoryPath
     }
     
     # Ensure directory exists
@@ -906,18 +1270,16 @@ function Get-ModuleLogPath {
         [string]$LogDirectory
     )
     
-    # Determine log directory
+    # Determine log directory using standardized path discovery
     if (-not $LogDirectory) {
-        if ($Global:MaintenanceLogFile) {
+        if ($env:MAINTENANCE_LOGS) {
+            $LogDirectory = $env:MAINTENANCE_LOGS
+        } elseif ($Global:MaintenanceLogFile) {
             $LogDirectory = Split-Path $Global:MaintenanceLogFile -Parent
         } else {
-            # Fallback to temp_files/logs in working directory
-            $workingDir = if ($PSScriptRoot) { 
-                Join-Path $PSScriptRoot '..\..\..' | Resolve-Path -ErrorAction SilentlyContinue
-            } else {
-                Get-Location
-            }
-            $LogDirectory = Join-Path $workingDir 'temp_files\logs'
+            # Use standardized path discovery
+            $moduleEnv = Get-ModuleEnvironment -ModuleType 'Core'
+            $LogDirectory = $moduleEnv.LogsPath
         }
     }
     
@@ -943,6 +1305,8 @@ function Get-ModuleLogPath {
 
 # Export module functions
 Export-ModuleMember -Function @(
+    'Get-ModuleEnvironment',
+    'Find-MaintenanceStructure',
     'Initialize-ConfigSystem',
     'Get-MainConfiguration',
     'Get-LoggingConfiguration', 

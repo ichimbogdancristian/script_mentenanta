@@ -336,8 +336,14 @@ class ModuleExecutor {
                     $logDir = Split-Path $Global:MaintenanceLogFile -Parent
                     $Global:ModuleLogFile = Join-Path $logDir ($Manifest.Name + '.log')
                 } else {
-                    # Fallback: place module log in temp_files/logs under working directory if determinable
-                    $fallbackLogDir = Join-Path (Split-Path $context.ModulePath -Parent) '..\..\temp_files\logs'
+                    # Fallback: use standardized path discovery for logs
+                    try {
+                        Import-Module (Join-Path (Split-Path $context.ModulePath -Parent) 'ConfigManager.psm1') -Force -ErrorAction Stop
+                        $moduleEnv = Get-ModuleEnvironment -ModuleType 'Core'
+                        $fallbackLogDir = $moduleEnv.LogsPath
+                    } catch {
+                        $fallbackLogDir = Join-Path (Split-Path $context.ModulePath -Parent) '..\..\temp_files\logs'
+                    }
                     $Global:ModuleLogFile = Join-Path $fallbackLogDir ($Manifest.Name + '.log')
                 }
             } catch {

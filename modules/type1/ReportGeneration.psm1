@@ -67,9 +67,21 @@ function New-MaintenanceReport {
     # Provide default values for parameters when not specified
     if (-not $OutputPath -or $OutputPath -eq "") {
         $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        # Use the temp_files/reports directory
-        $rootDir = Join-Path $PSScriptRoot "..\.."
-        $reportsDir = Join-Path $rootDir "temp_files\reports"
+        # Use standardized path discovery for reports directory
+        try {
+            Import-Module (Join-Path $PSScriptRoot '..\core\ConfigManager.psm1') -Force -ErrorAction SilentlyContinue
+            $moduleEnv = Get-ModuleEnvironment -ModuleType 'Type1'
+            $reportsDir = if ($env:MAINTENANCE_REPORTS) { 
+                $env:MAINTENANCE_REPORTS 
+            } else { 
+                Join-Path $moduleEnv.RepositoryRoot "temp_files\reports" 
+            }
+        } catch {
+            # Fallback to original approach
+            $rootDir = Join-Path $PSScriptRoot "..\.."
+            $reportsDir = Join-Path $rootDir "temp_files\reports"
+        }
+        
         # Ensure reports directory exists
         if (-not (Test-Path $reportsDir)) {
             New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
@@ -131,8 +143,13 @@ function New-MaintenanceReport {
         }
         
         # Generate HTML report (alongside repository folder for easy access)
-        $repoRootDir = Join-Path $PSScriptRoot "..\.." | Resolve-Path
-        $parentDir = Split-Path $repoRootDir -Parent
+        try {
+            $moduleEnv = Get-ModuleEnvironment -ModuleType 'Type1'
+            $parentDir = Split-Path $moduleEnv.RepositoryRoot -Parent
+        } catch {
+            $repoRootDir = Join-Path $PSScriptRoot "..\.." | Resolve-Path
+            $parentDir = Split-Path $repoRootDir -Parent
+        }
         $htmlFilename = Split-Path $OutputPath -Leaf
         $htmlPath = Join-Path $parentDir "$htmlFilename.html"
         Write-Host "  📄 Creating HTML report alongside repository: $htmlPath" -ForegroundColor Gray

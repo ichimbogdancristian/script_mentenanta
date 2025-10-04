@@ -242,8 +242,14 @@ function Export-SystemInventory {
             Import-Module (Join-Path $PSScriptRoot '..\core\ConfigManager.psm1') -Force -ErrorAction Stop
             $paths = Get-StandardInventoryPath -ModuleName $ModuleName -Format $Format
         } catch {
-            Write-Warning "Could not load ConfigManager for standardized paths, falling back to default"
-            $defaultFolder = Join-Path $PSScriptRoot '..\..\temp_files\inventory'
+            Write-Warning "Could not load ConfigManager for standardized paths, falling back to standardized discovery"
+            # Use standardized path discovery as fallback
+            try {
+                $moduleEnv = Get-ModuleEnvironment -ModuleType 'Type1'
+                $defaultFolder = $moduleEnv.InventoryPath
+            } catch {
+                $defaultFolder = Join-Path $PSScriptRoot '..\..\temp_files\inventory'
+            }
             if (-not (Test-Path $defaultFolder)) {
                 New-Item -Path $defaultFolder -ItemType Directory -Force | Out-Null
             }

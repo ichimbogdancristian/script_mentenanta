@@ -677,8 +677,22 @@ function Get-IssueRecommendation {
 function New-SecurityReport {
     param($AuditResults)
     
-    # Use global temp folder or fallback to temp_files/reports
-    $tempBase = if ($global:TempFolder) { $global:TempFolder } else { Join-Path $PSScriptRoot "..\..\temp_files\reports" }
+    # Use global temp folder or standardized path discovery
+    if ($global:TempFolder) {
+        $tempBase = $global:TempFolder
+    } else {
+        try {
+            Import-Module (Join-Path $PSScriptRoot '..\core\ConfigManager.psm1') -Force -ErrorAction SilentlyContinue
+            $moduleEnv = Get-ModuleEnvironment -ModuleType 'Type1'
+            $tempBase = if ($env:MAINTENANCE_REPORTS) { 
+                $env:MAINTENANCE_REPORTS 
+            } else { 
+                Join-Path $moduleEnv.RepositoryRoot "temp_files\reports" 
+            }
+        } catch {
+            $tempBase = Join-Path $PSScriptRoot "..\..\temp_files\reports"
+        }
+    }
     
     # Ensure directory exists
     if (-not (Test-Path $tempBase)) {
