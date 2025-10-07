@@ -205,7 +205,12 @@ SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
     
-    REM Copy files to working directory if needed
+    REM Update working directory to extracted folder for proper module loading
+    SET "WORKING_DIR=%EXTRACTED_PATH%\"
+    SET "WORKING_DIRECTORY=%WORKING_DIR%"
+    CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
+    
+    REM Set orchestrator path within the extracted folder
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
         SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1"
         CALL :LOG_MESSAGE "Using extracted orchestrator" "INFO" "LAUNCHER"
@@ -362,7 +367,9 @@ CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAU
 
 REM First run the orchestrator to initialize
 CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%ORCHESTRATOR_PATH%\"" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "LAUNCHER"
 
+CD /D "%WORKING_DIR%"
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%"
 SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
 
@@ -371,6 +378,7 @@ CALL :LOG_MESSAGE "PowerShell orchestrator initialization completed with exit co
 REM Check if running in non-interactive mode from command line
 IF "%1"=="-NonInteractive" (
     CALL :LOG_MESSAGE "Non-interactive mode - executing all tasks unattended" "INFO" "LAUNCHER"
+    CD /D "%WORKING_DIR%"
     %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
     SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
     GOTO :FINAL_CLEANUP
@@ -444,24 +452,28 @@ GOTO :EXECUTE_INSERTED_DRYRUN
 
 :EXECUTE_ALL
 CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
+CD /D "%WORKING_DIR%"
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_INSERTED
 CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
+CD /D "%WORKING_DIR%"
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_ALL_DRYRUN
 CALL :LOG_MESSAGE "Executing all tasks in dry-run unattended..." "INFO" "LAUNCHER"
+CD /D "%WORKING_DIR%"
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_INSERTED_DRYRUN
 CALL :LOG_MESSAGE "Executing selected tasks in dry-run: %TASKNUMS%..." "INFO" "LAUNCHER"
+CD /D "%WORKING_DIR%"
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
