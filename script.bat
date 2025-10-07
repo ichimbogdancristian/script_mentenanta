@@ -83,13 +83,13 @@ CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHEC
 
 IF "%IS_ADMIN%"=="NO" (
     CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
-    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -Wait"
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
         PAUSE
         EXIT /B 1
     )
-    EXIT /B 0
+    exit
 )
 
 CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
@@ -360,21 +360,122 @@ IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
 
 CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
 
-REM Launch the PowerShell orchestrator
-CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%ORCHESTRATOR_PATH%\" %PS_ARGS%" "DEBUG" "LAUNCHER"
+REM First run the orchestrator to initialize
+CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%ORCHESTRATOR_PATH%\"" "DEBUG" "LAUNCHER"
 
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%"
 SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
 
+CALL :LOG_MESSAGE "PowerShell orchestrator initialization completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
+
+REM Check if running in non-interactive mode from command line
+IF "%1"=="-NonInteractive" (
+    CALL :LOG_MESSAGE "Non-interactive mode - executing all tasks unattended" "INFO" "LAUNCHER"
+    %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
+    SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+    GOTO :FINAL_CLEANUP
+)
+
+REM -----------------------------------------------------------------------------
+REM Post-Orchestrator Execution Logic: Interactive Menu with Countdown
+REM -----------------------------------------------------------------------------
+:POST_ORCHESTRATOR_MENU
+ECHO.
+ECHO ===============================
+ECHO  Select Execution Mode (20s):
+ECHO ===============================
+ECHO 1. Execute script normally (unattended)
+ECHO 2. Execute script in dry-run mode (unattended)
+ECHO.
+ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
+CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
+SET "MAIN_CHOICE=%ERRORLEVEL%"
+IF "%MAIN_CHOICE%"=="2" GOTO :DRYRUN_MENU
+REM Default or Option 1 selected
+GOTO :NORMAL_MENU
+
+:NORMAL_MENU
+ECHO.
+ECHO ===============================
+ECHO  Select Task Execution (20s):
+ECHO ===============================
+ECHO 1. Execute all tasks unattended
+ECHO 2. Execute only specific task numbers
+ECHO.
+ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
+CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
+SET "NORMAL_CHOICE=%ERRORLEVEL%"
+IF "%NORMAL_CHOICE%"=="2" GOTO :NORMAL_INSERTED
+REM Default or Sub-option 1 selected
+GOTO :EXECUTE_ALL
+
+:NORMAL_INSERTED
+ECHO.
+SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
+IF "%TASKNUMS%"=="" (
+    ECHO No task numbers entered. Executing all tasks...
+    GOTO :EXECUTE_ALL
+)
+GOTO :EXECUTE_INSERTED
+
+:DRYRUN_MENU
+ECHO.
+ECHO ===============================
+ECHO  Select Dry-Run Execution (20s):
+ECHO ===============================
+ECHO 1. Execute all tasks in dry-run unattended
+ECHO 2. Execute only specific task numbers in dry-run
+ECHO.
+ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
+CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
+SET "DRYRUN_CHOICE=%ERRORLEVEL%"
+IF "%DRYRUN_CHOICE%"=="2" GOTO :DRYRUN_INSERTED
+REM Default or Sub-option 1 selected
+GOTO :EXECUTE_ALL_DRYRUN
+
+:DRYRUN_INSERTED
+ECHO.
+SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
+IF "%TASKNUMS%"=="" (
+    ECHO No task numbers entered. Executing all tasks in dry-run...
+    GOTO :EXECUTE_ALL_DRYRUN
+)
+GOTO :EXECUTE_INSERTED_DRYRUN
+
+:EXECUTE_ALL
+CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
+SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+GOTO :FINAL_CLEANUP
+
+:EXECUTE_INSERTED
+CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
+SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+GOTO :FINAL_CLEANUP
+
+:EXECUTE_ALL_DRYRUN
+CALL :LOG_MESSAGE "Executing all tasks in dry-run unattended..." "INFO" "LAUNCHER"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun
+SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+GOTO :FINAL_CLEANUP
+
+:EXECUTE_INSERTED_DRYRUN
+CALL :LOG_MESSAGE "Executing selected tasks in dry-run: %TASKNUMS%..." "INFO" "LAUNCHER"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun -TaskNumbers "%TASKNUMS%"
+SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+GOTO :FINAL_CLEANUP
+
+:FINAL_CLEANUP
 REM -----------------------------------------------------------------------------
 REM Post-Execution Cleanup and Reporting
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "PowerShell orchestrator completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "PowerShell orchestrator final execution completed with exit code: %FINAL_EXIT_CODE%" "INFO" "LAUNCHER"
 
-IF %ORCHESTRATOR_EXIT_CODE% EQU 0 (
+IF %FINAL_EXIT_CODE% EQU 0 (
     CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Maintenance execution completed with errors (exit code: %ORCHESTRATOR_EXIT_CODE%)" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "Maintenance execution completed with errors (exit code: %FINAL_EXIT_CODE%)" "WARN" "LAUNCHER"
 )
 
 REM Check for generated reports
@@ -384,15 +485,9 @@ IF EXIST "%WORKING_DIR%temp_files\reports" (
     )
 )
 
-REM Auto-close behavior
-IF "%1"=="-NonInteractive" (
-    CALL :LOG_MESSAGE "Non-interactive mode - closing automatically" "INFO" "LAUNCHER"
-    EXIT /B %ORCHESTRATOR_EXIT_CODE%
-) ELSE (
-    CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
-    PAUSE >nul
-    EXIT /B %ORCHESTRATOR_EXIT_CODE%
-)
+CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
+PAUSE >nul
+EXIT /B %FINAL_EXIT_CODE%
 
 REM -----------------------------------------------------------------------------
 REM End of Script
