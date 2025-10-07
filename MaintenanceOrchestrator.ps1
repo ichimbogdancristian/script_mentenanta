@@ -65,22 +65,26 @@ Write-Host "Windows Maintenance Automation - Central Orchestrator v2.0.0" -Foreg
 Write-Host "Working Directory: $WorkingDirectory" -ForegroundColor Gray
 Write-Host "Script Root: $ScriptRoot" -ForegroundColor Gray
 
-# Detect configuration path
+# Detect configuration path (always relative to script location)
 if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $WorkingDirectory 'config'
+    $ConfigPath = Join-Path $ScriptRoot 'config'
     if (-not (Test-Path $ConfigPath)) {
-        $ConfigPath = Join-Path $ScriptRoot 'config'
+        # Fallback to working directory if set by batch script
+        $fallbackConfigPath = Join-Path $WorkingDirectory 'config'
+        if (Test-Path $fallbackConfigPath) {
+            $ConfigPath = $fallbackConfigPath
+        }
     }
 }
 
 if (-not (Test-Path $ConfigPath)) {
-    throw "Configuration directory not found. Expected at: $ConfigPath"
+    throw "Configuration directory not found. Expected at: $ConfigPath or $(Join-Path $WorkingDirectory 'config')"
 }
 
 Write-Host "Configuration Path: $ConfigPath" -ForegroundColor Gray
 
-# Set up temp directories
-$TempRoot = Join-Path $WorkingDirectory 'temp_files'
+# Set up temp directories (always relative to script location, not working directory)
+$TempRoot = Join-Path $ScriptRoot 'temp_files'
 $ReportsDir = Join-Path $TempRoot 'reports'
 $LogsDir = Join-Path $TempRoot 'logs'
 $InventoryDir = Join-Path $TempRoot 'inventory'
@@ -88,16 +92,18 @@ $InventoryDir = Join-Path $TempRoot 'inventory'
 @($TempRoot, $ReportsDir, $LogsDir, $InventoryDir) | ForEach-Object {
     if (-not (Test-Path $_)) {
         New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        Write-Verbose "Created directory: $_"
+        Write-Host "Created directory: $_" -ForegroundColor Green
     }
 }
+
+Write-Host "Temp Root Directory: $TempRoot" -ForegroundColor Gray
 
 # Set up log file
 if (-not $LogFilePath) {
     $LogFilePath = if ($env:SCRIPT_LOG_FILE) { 
         $env:SCRIPT_LOG_FILE 
     } else { 
-        Join-Path $WorkingDirectory 'maintenance.log' 
+        Join-Path $ScriptRoot 'maintenance.log' 
     }
 }
 
@@ -109,9 +115,18 @@ Write-Host "Log File: $LogFilePath" -ForegroundColor Gray
 
 Write-Host "`nLoading modules..." -ForegroundColor Yellow
 
-# Import core modules
-$ModulesPath = Join-Path $WorkingDirectory 'modules'
+# Import core modules (always relative to script location)
+$ModulesPath = Join-Path $ScriptRoot 'modules'
+if (-not (Test-Path $ModulesPath)) {
+    # Fallback to working directory if set by batch script
+    $fallbackModulesPath = Join-Path $WorkingDirectory 'modules'
+    if (Test-Path $fallbackModulesPath) {
+        $ModulesPath = $fallbackModulesPath
+    }
+}
 $CoreModulesPath = Join-Path $ModulesPath 'core'
+
+Write-Host "Modules Path: $ModulesPath" -ForegroundColor Gray
 
 $CoreModules = @(
     'ConfigManager',

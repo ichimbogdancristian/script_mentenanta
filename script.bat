@@ -122,37 +122,86 @@ REM Project Structure Discovery and Validation
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Discovering project structure..." "INFO" "LAUNCHER"
 
-REM Check for required components
+REM Check for required components with detailed verification
 SET "STRUCTURE_VALID=YES"
 SET "ORCHESTRATOR_PATH="
+SET "COMPONENTS_FOUND=0"
 
 REM Look for MaintenanceOrchestrator.ps1
 IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
-    CALL :LOG_MESSAGE "Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "✓ Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
+    SET /A COMPONENTS_FOUND+=1
 ) ELSE IF EXIST "%WORKING_DIR%script.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "✓ Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
+    SET /A COMPONENTS_FOUND+=1
 ) ELSE (
-    CALL :LOG_MESSAGE "No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "✗ No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
-REM Check for config directory
+REM Check for config directory and its contents
 IF EXIST "%WORKING_DIR%config" (
-    CALL :LOG_MESSAGE "Found configuration directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "✓ Found configuration directory" "SUCCESS" "LAUNCHER"
+    SET /A COMPONENTS_FOUND+=1
+    
+    IF EXIST "%WORKING_DIR%config\main-config.json" (
+        CALL :LOG_MESSAGE "  ✓ main-config.json present" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "  ✗ main-config.json missing" "WARN" "LAUNCHER"
+    )
+    
+    IF EXIST "%WORKING_DIR%config\bloatware-lists" (
+        CALL :LOG_MESSAGE "  ✓ bloatware-lists directory present" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "  ✗ bloatware-lists directory missing" "WARN" "LAUNCHER"
+    )
 ) ELSE (
-    CALL :LOG_MESSAGE "Configuration directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "✗ Configuration directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
-REM Check for modules directory
+REM Check for modules directory and core modules
 IF EXIST "%WORKING_DIR%modules" (
-    CALL :LOG_MESSAGE "Found modules directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "✓ Found modules directory" "SUCCESS" "LAUNCHER"
+    SET /A COMPONENTS_FOUND+=1
+    
+    IF EXIST "%WORKING_DIR%modules\core" (
+        CALL :LOG_MESSAGE "  ✓ Core modules directory present" "SUCCESS" "LAUNCHER"
+        
+        IF EXIST "%WORKING_DIR%modules\core\ConfigManager.psm1" (
+            CALL :LOG_MESSAGE "    ✓ ConfigManager.psm1 present" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "    ✗ ConfigManager.psm1 missing" "WARN" "LAUNCHER"
+        )
+        
+        IF EXIST "%WORKING_DIR%modules\core\MenuSystem.psm1" (
+            CALL :LOG_MESSAGE "    ✓ MenuSystem.psm1 present" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "    ✗ MenuSystem.psm1 missing" "WARN" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "  ✗ Core modules directory missing" "WARN" "LAUNCHER"
+    )
+    
+    IF EXIST "%WORKING_DIR%modules\type1" (
+        CALL :LOG_MESSAGE "  ✓ Type1 modules directory present" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "  ✗ Type1 modules directory missing" "WARN" "LAUNCHER"
+    )
+    
+    IF EXIST "%WORKING_DIR%modules\type2" (
+        CALL :LOG_MESSAGE "  ✓ Type2 modules directory present" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "  ✗ Type2 modules directory missing" "WARN" "LAUNCHER"
+    )
 ) ELSE (
-    CALL :LOG_MESSAGE "Modules directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "✗ Modules directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
+
+CALL :LOG_MESSAGE "Project structure verification: %COMPONENTS_FOUND%/3 major components found" "INFO" "LAUNCHER"
 
 IF "%STRUCTURE_VALID%"=="NO" (
     CALL :LOG_MESSAGE "Project structure incomplete. Attempting repository download..." "INFO" "LAUNCHER"
@@ -296,12 +345,18 @@ CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
 SET "TASK_NAME=WindowsMaintenanceAutomation"
 SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
 
-REM Check existing scheduled task
+REM Check existing monthly scheduled task
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Scheduled task exists: %TASK_NAME%" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Monthly scheduled task exists: %TASK_NAME%" "SUCCESS" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr "Task To Run"') DO (
+        CALL :LOG_MESSAGE "Task command: %%i" "INFO" "LAUNCHER"
+    )
+    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr "Next Run Time"') DO (
+        CALL :LOG_MESSAGE "Next run: %%i" "INFO" "LAUNCHER"
+    )
 ) ELSE (
-    CALL :LOG_MESSAGE "Creating scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
@@ -313,9 +368,9 @@ IF !ERRORLEVEL! EQU 0 (
         /F >nul 2>&1
         
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Scheduled task created successfully" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Monthly scheduled task created successfully" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "Scheduled task creation failed - continuing without scheduling" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Monthly scheduled task creation failed - continuing without scheduling" "WARN" "LAUNCHER"
     )
 )
 
