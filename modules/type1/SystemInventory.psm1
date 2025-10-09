@@ -353,7 +353,55 @@ function Get-InstalledSoftwareInfo {
 #>
 function Get-ServicesInfo {
     try {
-        $services = Get-Service -ErrorAction Stop
+        # Use WMI/CIM first as it has better permission handling than Get-Service
+        try {
+            Write-Verbose "Querying services using CIM (WMI) for better permission handling"
+            $wmiServices = Get-CimInstance -ClassName Win32_Service -ErrorAction Stop
+            $services = $wmiServices | ForEach-Object {
+                [PSCustomObject]@{
+                    Name = $_.Name
+                    DisplayName = $_.DisplayName
+                    Status = if ($_.State -eq 'Running') { 'Running' } else { 'Stopped' }
+                    StartType = $_.StartMode
+                }
+            }
+        }
+        catch {
+            Write-Verbose "CIM approach failed, trying selective Get-Service: $_"
+            # Fallback to Get-Service but with error handling for individual services
+            $services = @()
+            $allServiceNames = (Get-Service -ErrorAction SilentlyContinue).Name
+            
+            foreach ($serviceName in $allServiceNames) {
+                try {
+                    $service = Get-Service -Name $serviceName -ErrorAction Stop
+                    $services += [PSCustomObject]@{
+                        Name = $service.Name
+                        DisplayName = $service.DisplayName
+                        Status = $service.Status
+                        StartType = $service.StartType
+                    }
+                }
+                catch {
+                    # Skip services that can't be queried (like WaaSMedicSvc)
+                    Write-Verbose "Skipping service '$serviceName' due to permission restriction"
+                    continue
+                }
+            }
+        }
+        
+        if ($services.Count -eq 0) {
+            Write-Warning "No services could be queried. This may indicate permission restrictions."
+            return @{
+                TotalCount = 0
+                RunningCount = 0
+                StoppedCount = 0
+                RunningServices = @()
+                CriticalServices = @()
+                Note = "Limited permissions - service details unavailable"
+            }
+        }
+        
         $runningServices = $services | Where-Object { $_.Status -eq 'Running' }
         $stoppedServices = $services | Where-Object { $_.Status -eq 'Stopped' }
         
@@ -382,7 +430,14 @@ function Get-ServicesInfo {
     }
     catch {
         Write-Warning "Failed to collect services info: $_"
-        return @{}
+        return @{
+            TotalCount = 0
+            RunningCount = 0
+            StoppedCount = 0
+            RunningServices = @()
+            CriticalServices = @()
+            Error = $_.Exception.Message
+        }
     }
 }
 

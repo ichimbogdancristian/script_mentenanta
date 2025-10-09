@@ -212,7 +212,7 @@ function Get-AppsNotInstalled {
     # Get system inventory for duplicate detection
     $inventory = Get-SystemInventory -UseCache
     
-    if (-not $inventory.InstalledApps) {
+    if (-not $inventory.InstalledSoftware) {
         Write-Warning "No system inventory available, cannot check for duplicates"
         return $AppList
     }
@@ -220,7 +220,7 @@ function Get-AppsNotInstalled {
     # Build lookup table of installed apps
     $installedApps = [HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     
-    foreach ($app in $inventory.InstalledApps) {
+    foreach ($app in $inventory.InstalledSoftware) {
         if ($app.Name) { $installedApps.Add($app.Name) | Out-Null }
         if ($app.DisplayName) { $installedApps.Add($app.DisplayName) | Out-Null }
         if ($app.Id) { $installedApps.Add($app.Id) | Out-Null }

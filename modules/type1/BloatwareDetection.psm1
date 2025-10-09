@@ -189,12 +189,12 @@ function Get-AppXBloatware {
     
     try {
         $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledApps) {
+        if (-not $appInventory.InstalledSoftware) {
             Write-Warning "No app inventory available for AppX scan"
             return @()
         }
         
-        $appXApps = $appInventory.InstalledApps | Where-Object { $_.Source -eq 'AppX' }
+        $appXApps = $appInventory.InstalledSoftware | Where-Object { $_.Source -eq 'AppX' }
         
         $found = @()
         foreach ($app in $appXApps) {
@@ -247,12 +247,12 @@ function Get-WingetBloatware {
     
     try {
         $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledApps) {
+        if (-not $appInventory.InstalledSoftware) {
             Write-Warning "No app inventory available for Winget scan"
             return @()
         }
         
-        $wingetApps = $appInventory.InstalledApps | Where-Object { $_.Source -eq 'Winget' }
+        $wingetApps = $appInventory.InstalledSoftware | Where-Object { $_.Source -eq 'Winget' }
         
         $found = @()
         foreach ($app in $wingetApps) {
@@ -305,12 +305,12 @@ function Get-ChocolateyBloatware {
     
     try {
         $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledApps) {
+        if (-not $appInventory.InstalledSoftware) {
             Write-Warning "No app inventory available for Chocolatey scan"
             return @()
         }
         
-        $chocoApps = $appInventory.InstalledApps | Where-Object { $_.Source -eq 'Chocolatey' }
+        $chocoApps = $appInventory.InstalledSoftware | Where-Object { $_.Source -eq 'Chocolatey' }
         
         $found = @()
         foreach ($app in $chocoApps) {
