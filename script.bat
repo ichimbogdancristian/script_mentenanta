@@ -95,8 +95,93 @@ IF "%IS_ADMIN%"=="NO" (
 CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
+REM Startup Task Cleanup and Pending Restart Handling (Always check first)
+REM -----------------------------------------------------------------------------
+SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
+CALL :LOG_MESSAGE "Checking existing startup scheduled task..." "INFO" "LAUNCHER"
+
+REM Clean slate: remove existing startup task if present
+schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "Existing startup task found. Removing: %STARTUP_TASK_NAME%" "INFO" "LAUNCHER"
+    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task removed successfully" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to remove startup task (continuing)" "WARN" "LAUNCHER"
+    )
+)
+
+REM Detect pending restart (from Windows Update or servicing)
+CALL :LOG_MESSAGE "Checking for pending restart..." "INFO" "LAUNCHER"
+FOR /F "tokens=*" %%i IN ('powershell -NoProfile -Command "($null -ne (Get-Item 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired' -ErrorAction SilentlyContinue)) -or ($null -ne (Get-Item 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending' -ErrorAction SilentlyContinue)) -or ($null -ne ((Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager' -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue).PendingFileRenameOperations))" 2^>nul') DO SET "PENDING_RESTART=%%i"
+
+IF /I "%PENDING_RESTART%"=="True" (
+    CALL :LOG_MESSAGE "Pending restart detected. Creating startup task and restarting system..." "WARN" "LAUNCHER"
+
+    REM Create startup task that relaunches this script with highest privileges at system startup
+    schtasks /Create ^
+        /SC ONSTART ^
+        /TN "%STARTUP_TASK_NAME%" ^
+        /TR "\"%SCRIPT_PATH%\"" ^
+        /RL HIGHEST ^
+        /RU SYSTEM ^
+        /F >nul 2>&1
+
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task created: %STARTUP_TASK_NAME%" "SUCCESS" "LAUNCHER"
+        FOR /F "tokens=*" %%s IN ('schtasks /Query /TN "%STARTUP_TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
+            CALL :LOG_MESSAGE "Startup task detail: %%s" "INFO" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to create startup task. Aborting automatic restart to prevent lockout." "ERROR" "LAUNCHER"
+        GOTO :SYSTEM_REQUIREMENTS
+    )
+
+    REM Restart the system; the script will resume from startup task after reboot
+    CALL :LOG_MESSAGE "Restarting in 5 seconds to complete updates..." "INFO" "LAUNCHER"
+    shutdown /r /t 5 /c "System restart required to complete updates. Maintenance will resume automatically." >nul 2>&1
+    EXIT /B 0
+)
+
+REM No pending restart; continue normal execution
+
+REM Create/Verify monthly maintenance scheduled task before continuing
+SET "TASK_NAME=WindowsMaintenanceAutomation"
+CALL :LOG_MESSAGE "Ensuring monthly maintenance task exists..." "INFO" "LAUNCHER"
+
+schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "Monthly scheduled task exists: %TASK_NAME%" "SUCCESS" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
+        CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME% (1st of each month at 01:00)" "INFO" "LAUNCHER"
+    schtasks /Create ^
+        /SC MONTHLY ^
+        /MO 1 ^
+        /D 1 ^
+        /TN "%TASK_NAME%" ^
+        /TR "\"%SCRIPT_PATH%\" -NonInteractive" ^
+        /ST 01:00 ^
+        /RL HIGHEST ^
+        /RU SYSTEM ^
+        /F >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Monthly scheduled task created successfully" "SUCCESS" "LAUNCHER"
+        FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
+            CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Monthly scheduled task creation failed - continuing without scheduling" "WARN" "LAUNCHER"
+    )
+)
+
+REM -----------------------------------------------------------------------------
 REM System Requirements Verification
 REM -----------------------------------------------------------------------------
+:SYSTEM_REQUIREMENTS
 CALL :LOG_MESSAGE "Verifying system requirements..." "INFO" "LAUNCHER"
 
 REM Windows version detection
@@ -365,45 +450,73 @@ CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
 SET "TASK_NAME=WindowsMaintenanceAutomation"
 SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
 
-REM Check existing monthly scheduled task
+REM Report monthly task status only (creation handled earlier)
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly scheduled task exists: %TASK_NAME%" "SUCCESS" "LAUNCHER"
-    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr "Task To Run"') DO (
-        CALL :LOG_MESSAGE "Task command: %%i" "INFO" "LAUNCHER"
-    )
-    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr "Next Run Time"') DO (
-        CALL :LOG_MESSAGE "Next run: %%i" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Monthly scheduled task present: %TASK_NAME%" "SUCCESS" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
+        CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
-    schtasks /Create ^
-        /SC MONTHLY ^
-        /MO 1 ^
-        /TN "%TASK_NAME%" ^
-        /TR "\"%SCRIPT_PATH%\" -NonInteractive" ^
-        /ST 02:00 ^
-        /RL HIGHEST ^
-        /RU SYSTEM ^
-        /F >nul 2>&1
-        
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Monthly scheduled task created successfully" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Monthly scheduled task creation failed - continuing without scheduling" "WARN" "LAUNCHER"
-    )
+    CALL :LOG_MESSAGE "Monthly scheduled task not found (was expected to exist)." "WARN" "LAUNCHER"
 )
 
-REM Clean up any startup tasks (shouldn't normally exist)
+REM Clean up startup task if it still exists (e.g., after reboot resume)
 schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Removing temporary startup task" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Cleaning up startup task: %STARTUP_TASK_NAME%" "INFO" "LAUNCHER"
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
 )
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Orchestrator Launch
 REM -----------------------------------------------------------------------------
+REM -----------------------------------------------------------------------------
+REM System Restore Point Creation (before orchestrator execution)
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Ensuring System Protection is enabled on the system drive..." "INFO" "LAUNCHER"
+
+SET "SYS_DRIVE=%SystemDrive%"
+FOR /F "usebackq tokens=* delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $drive=$env:SystemDrive.TrimEnd('\\'); $reg=Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore' -ErrorAction SilentlyContinue; $disabled = $reg -and ($reg.DisableSR -ne 0); if ($disabled) { try { Enable-ComputerRestore -Drive \"$drive\\\" -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; $res = Invoke-CimMethod -InputObject $sr -MethodName Enable -Arguments @{ Drive = \"$drive\\\" }; if ($res.ReturnValue -eq 0) { Write-Host 'SR_ENABLED' } else { Write-Host ('SR_ENABLE_FAILED_CODE ' + $res.ReturnValue); exit 1 } } catch { Write-Host 'SR_ENABLE_FAILED'; exit 1 } } } else { Write-Host 'SR_ALREADY_ENABLED' }"`) DO SET "SR_STATUS=%%i"
+
+IF /I "!SR_STATUS!"=="SR_ENABLED" (
+    CALL :LOG_MESSAGE "System Protection was disabled and is now enabled on %SYS_DRIVE%" "SUCCESS" "LAUNCHER"
+) ELSE IF /I "!SR_STATUS!"=="SR_ALREADY_ENABLED" (
+    CALL :LOG_MESSAGE "System Protection already enabled on %SYS_DRIVE%" "SUCCESS" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Unable to confirm System Protection enablement (marker: !SR_STATUS!). Proceeding." "WARN" "LAUNCHER"
+)
+
+CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
+
+FOR /F "usebackq tokens=*" %%i IN (`powershell -NoProfile -Command "[guid]::NewGuid().ToString()" 2^>nul`) DO SET "RESTORE_GUID=%%i"
+SET "RESTORE_DESC=MaintenanceRP-!RESTORE_GUID!"
+
+REM Try creating via Checkpoint-Computer, fallback to CIM if needed
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; Write-Host 'RESTORE_CREATED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; $result = Invoke-CimMethod -InputObject $sr -MethodName CreateRestorePoint -Arguments @{ Description='!RESTORE_DESC!'; RestorePointType=10; EventType=100 }; if ($result.ReturnValue -eq 0) { Write-Host 'RESTORE_CREATED' } else { Write-Host ('RESTORE_FAILED_CODE ' + $result.ReturnValue); exit 1 } } catch { Write-Host 'RESTORE_FAILED'; Write-Error $_; exit 1 } }"
+
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "System restore point created: !RESTORE_DESC!" "SUCCESS" "LAUNCHER"
+
+    REM Verify restore point exists and capture details
+    SET "VERIFY_MARK="
+    SET "RESTORE_SEQ="
+    SET "RESTORE_TIME="
+    FOR /F "usebackq tokens=1,2,* delims=|" %%A IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$d='!RESTORE_DESC!'; $rp = Get-ComputerRestorePoint | Where-Object Description -eq $d | Sort-Object SequenceNumber -Descending | Select-Object -First 1; if ($rp) { Write-Host ('RESTORE_VERIFIED|' + $rp.SequenceNumber + '|' + $rp.CreationTime) } else { Write-Host 'RESTORE_NOT_FOUND' }" 2^>nul`) DO (
+        SET "VERIFY_MARK=%%A"
+        SET "RESTORE_SEQ=%%B"
+        SET "RESTORE_TIME=%%C"
+    )
+
+    IF /I "!VERIFY_MARK!"=="RESTORE_VERIFIED" (
+        CALL :LOG_MESSAGE "Restore point verified (Seq=!RESTORE_SEQ!, Time=!RESTORE_TIME!)" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Restore point verification could not locate the entry (proceeding)" "WARN" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "Failed to create system restore point (System Protection may be disabled). Continuing." "WARN" "LAUNCHER"
+)
+
 CALL :LOG_MESSAGE "Preparing to launch PowerShell orchestrator..." "INFO" "LAUNCHER"
 
 IF "%ORCHESTRATOR_PATH%"=="" (
