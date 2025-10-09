@@ -54,6 +54,36 @@ function Get-SystemInventory {
     
     Write-Host "🔍 Starting system inventory collection..." -ForegroundColor Cyan
     
+    # Check for cached inventory data if UseCache is enabled
+    if ($UseCache) {
+        $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+        $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
+        
+        if (Test-Path $inventoryDir) {
+            # Find the most recent inventory file
+            $recentInventory = Get-ChildItem -Path $inventoryDir -Filter "system-inventory-*.json" |
+                               Sort-Object LastWriteTime -Descending |
+                               Select-Object -First 1
+                               
+            if ($recentInventory) {
+                $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
+                if ($cacheAge.TotalMinutes -le $CacheTimeout) {
+                    try {
+                        Write-Host "  🗂️  Using cached inventory data (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes)" -ForegroundColor Green
+                        $cachedData = Get-Content -Path $recentInventory.FullName -Raw | ConvertFrom-Json -AsHashtable
+                        return $cachedData
+                    }
+                    catch {
+                        Write-Warning "Failed to load cached inventory data: $_. Collecting fresh data."
+                    }
+                }
+                else {
+                    Write-Host "  ⏰ Cached inventory data expired (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes > $CacheTimeout minutes)" -ForegroundColor Yellow
+                }
+            }
+        }
+    }
+    
     $startTime = Get-Date
     $inventoryData = @{}
     
@@ -100,6 +130,28 @@ function Get-SystemInventory {
         
         $duration = [math]::Round($inventoryData.Metadata.Duration, 2)
         Write-Host "  ✅ System inventory completed in $duration seconds" -ForegroundColor Green
+        
+        # Auto-save inventory data to temp_files/inventory folder if available
+        $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
+        
+        if (Test-Path $inventoryDir) {
+            try {
+                $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+                $inventoryPath = Join-Path $inventoryDir "system-inventory-$timestamp"
+                
+                Write-Host "  💾 Saving inventory data to: $inventoryPath.json" -ForegroundColor Gray
+                Export-SystemInventory -InventoryData $inventoryData -OutputPath $inventoryPath -Format JSON
+                
+                # Also save installed software as a separate list for easier comparison
+                $installedAppsPath = Join-Path $inventoryDir "installed-software-$timestamp.json"
+                $inventoryData.InstalledSoftware | ConvertTo-Json -Depth 5 | Out-File -FilePath $installedAppsPath -Encoding UTF8
+                Write-Host "  📦 Installed software list saved to: $installedAppsPath" -ForegroundColor Gray
+            }
+            catch {
+                Write-Warning "Failed to save inventory data: $_"
+            }
+        }
         
         return $inventoryData
     }

@@ -239,6 +239,7 @@ function Get-AppsNotInstalled {
     
     # Filter out already installed apps
     $notInstalled = @()
+    $alreadyInstalled = @()
     foreach ($app in $AppList) {
         $isInstalled = $false
         
@@ -248,26 +249,345 @@ function Get-AppsNotInstalled {
             continue
         }
         
-        # Check multiple identifiers
-        $identifiersToCheck = @()
-        if ($app.Name) { $identifiersToCheck += $app.Name }
-        if ($app.Winget) { $identifiersToCheck += $app.Winget }
-        if ($app.Chocolatey) { $identifiersToCheck += $app.Chocolatey }
-        
-        foreach ($identifier in $identifiersToCheck) {
-            if ($installedApps.Contains($identifier) -or 
-                ($installedApps | Where-Object { $_ -like "*$identifier*" }).Count -gt 0) {
-                $isInstalled = $true
-                break
-            }
-        }
+        # Enhanced detection with multiple matching strategies
+        $isInstalled = Test-AppInstallationStatus -App $app -InstalledApps $installedApps -InstalledPrograms $inventory.InstalledSoftware.Programs
         
         if (-not $isInstalled) {
             $notInstalled += $app
+        } else {
+            $alreadyInstalled += $app
         }
     }
     
+    # Save diff lists to temp_files folder for analysis
+    Save-AppDiffLists -EssentialApps $AppList -InstalledApps $alreadyInstalled -MissingApps $notInstalled -InstalledSoftware $inventory.InstalledSoftware
+    
     return $notInstalled
+}
+
+<#
+.SYNOPSIS
+    Saves app comparison diff lists to temp_files folder
+    
+.DESCRIPTION
+    Creates comprehensive diff lists showing essential apps vs installed apps
+    and saves them to the temp_files folder for analysis and reporting.
+    
+.PARAMETER EssentialApps
+    Complete list of essential apps from configuration
+    
+.PARAMETER InstalledApps
+    Essential apps that are already installed
+    
+.PARAMETER MissingApps
+    Essential apps that are missing/not installed
+    
+.PARAMETER InstalledSoftware
+    Complete system inventory of installed software
+#>
+function Save-AppDiffLists {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [Array]$EssentialApps,
+        
+        [Parameter(Mandatory)]
+        [Array]$InstalledApps,
+        
+        [Parameter(Mandatory)]
+        [Array]$MissingApps,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$InstalledSoftware
+    )
+    
+    try {
+        # Get temp_files directory
+        $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $tempDir = Join-Path $scriptRoot 'temp_files'
+        
+        if (-not (Test-Path $tempDir)) {
+            Write-Verbose "temp_files directory not found: $tempDir"
+            return
+        }
+        
+        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        
+        # Create diff analysis object
+        $diffAnalysis = @{
+            Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+            Summary = @{
+                TotalEssentialApps = $EssentialApps.Count
+                AlreadyInstalled = $InstalledApps.Count
+                MissingApps = $MissingApps.Count
+                InstallationRate = [math]::Round(($InstalledApps.Count / $EssentialApps.Count) * 100, 2)
+            }
+            EssentialApps = $EssentialApps
+            AlreadyInstalled = $InstalledApps
+            MissingApps = $MissingApps
+            DetailedAnalysis = @{
+                ByCategory = @{}
+                ByPackageManager = @{}
+                RecommendedActions = @()
+            }
+        }
+        
+        # Analyze by category
+        $categories = $EssentialApps | Group-Object { $_.Category -replace '^$', 'Uncategorized' }
+        foreach ($category in $categories) {
+            $categoryName = $category.Name
+            $categoryApps = $category.Group
+            $categoryInstalled = $InstalledApps | Where-Object { ($_.Category -replace '^$', 'Uncategorized') -eq $categoryName }
+            $categoryMissing = $MissingApps | Where-Object { ($_.Category -replace '^$', 'Uncategorized') -eq $categoryName }
+            
+            $diffAnalysis.DetailedAnalysis.ByCategory[$categoryName] = @{
+                Total = $categoryApps.Count
+                Installed = $categoryInstalled.Count
+                Missing = $categoryMissing.Count
+                InstallationRate = if ($categoryApps.Count -gt 0) { [math]::Round(($categoryInstalled.Count / $categoryApps.Count) * 100, 2) } else { 0 }
+                MissingAppNames = $categoryMissing | ForEach-Object { $_.Name }
+            }
+        }
+        
+        # Analyze by package manager preference
+        $wingetApps = $MissingApps | Where-Object { $_.Winget }
+        $chocoApps = $MissingApps | Where-Object { -not $_.Winget -and $_.Chocolatey }
+        $manualApps = $MissingApps | Where-Object { -not $_.Winget -and -not $_.Chocolatey }
+        
+        $diffAnalysis.DetailedAnalysis.ByPackageManager = @{
+            Winget = @{
+                Count = $wingetApps.Count
+                Apps = $wingetApps | ForEach-Object { @{ Name = $_.Name; Id = $_.Winget } }
+            }
+            Chocolatey = @{
+                Count = $chocoApps.Count  
+                Apps = $chocoApps | ForEach-Object { @{ Name = $_.Name; Id = $_.Chocolatey } }
+            }
+            Manual = @{
+                Count = $manualApps.Count
+                Apps = $manualApps | ForEach-Object { @{ Name = $_.Name; Description = $_.Description } }
+            }
+        }
+        
+        # Generate recommendations
+        if ($MissingApps.Count -gt 0) {
+            $diffAnalysis.DetailedAnalysis.RecommendedActions += "Install $($MissingApps.Count) missing essential applications"
+            if ($wingetApps.Count -gt 0) {
+                $diffAnalysis.DetailedAnalysis.RecommendedActions += "Use Winget to install $($wingetApps.Count) apps: $($wingetApps.Name -join ', ')"
+            }
+            if ($chocoApps.Count -gt 0) {
+                $diffAnalysis.DetailedAnalysis.RecommendedActions += "Use Chocolatey to install $($chocoApps.Count) apps: $($chocoApps.Name -join ', ')"
+            }
+            if ($manualApps.Count -gt 0) {
+                $diffAnalysis.DetailedAnalysis.RecommendedActions += "Manually install $($manualApps.Count) apps: $($manualApps.Name -join ', ')"
+            }
+        } else {
+            $diffAnalysis.DetailedAnalysis.RecommendedActions += "All essential applications are installed"
+        }
+        
+        # Save comprehensive diff analysis
+        $diffPath = Join-Path $tempDir "essential-apps-diff-$timestamp.json"
+        $diffAnalysis | ConvertTo-Json -Depth 10 | Out-File -FilePath $diffPath -Encoding UTF8
+        Write-Host "  📋 App diff analysis saved to: $diffPath" -ForegroundColor Gray
+        
+        # Save missing apps list (for easy processing)
+        if ($MissingApps.Count -gt 0) {
+            $missingAppsPath = Join-Path $tempDir "missing-apps-$timestamp.json"
+            $MissingApps | ConvertTo-Json -Depth 5 | Out-File -FilePath $missingAppsPath -Encoding UTF8
+            Write-Host "  ❌ Missing apps list saved to: $missingAppsPath" -ForegroundColor Yellow
+            
+            # Also create a simple install script
+            $installScriptPath = Join-Path $tempDir "install-missing-apps-$timestamp.ps1"
+            $installScript = @"
+# Auto-generated script to install missing essential apps
+# Generated on: $((Get-Date).ToString("yyyy-MM-dd HH:mm:ss"))
+
+Write-Host "Installing $($MissingApps.Count) missing essential applications..." -ForegroundColor Cyan
+
+"@
+            
+            if ($wingetApps.Count -gt 0) {
+                $installScript += @"
+
+# Install via Winget
+Write-Host "Installing $($wingetApps.Count) apps via Winget..." -ForegroundColor Blue
+"@
+                foreach ($app in $wingetApps) {
+                    $installScript += "winget install --id '$($app.Winget)' --silent --accept-package-agreements --accept-source-agreements`n"
+                }
+            }
+            
+            if ($chocoApps.Count -gt 0) {
+                $installScript += @"
+
+# Install via Chocolatey
+Write-Host "Installing $($chocoApps.Count) apps via Chocolatey..." -ForegroundColor Brown
+"@
+                foreach ($app in $chocoApps) {
+                    $installScript += "choco install '$($app.Chocolatey)' -y`n"
+                }
+            }
+            
+            if ($manualApps.Count -gt 0) {
+                $installScript += @"
+
+# Manual installation required for these apps:
+"@
+                foreach ($app in $manualApps) {
+                    $installScript += "# - $($app.Name): $($app.Description)`n"
+                }
+            }
+            
+            $installScript | Out-File -FilePath $installScriptPath -Encoding UTF8
+            Write-Host "  🔧 Install script created: $installScriptPath" -ForegroundColor Green
+        }
+        
+        # Save installed apps list
+        if ($InstalledApps.Count -gt 0) {
+            $installedAppsPath = Join-Path $tempDir "installed-essential-apps-$timestamp.json"
+            $InstalledApps | ConvertTo-Json -Depth 5 | Out-File -FilePath $installedAppsPath -Encoding UTF8
+            Write-Host "  ✅ Installed essential apps list saved to: $installedAppsPath" -ForegroundColor Green
+        }
+        
+    }
+    catch {
+        Write-Warning "Failed to save app diff lists: $_"
+    }
+}
+
+<#
+.SYNOPSIS
+    Enhanced application installation status detection
+    
+.DESCRIPTION
+    Uses multiple detection strategies to accurately determine if an application
+    is already installed, including exact matches, partial matches, and common variations.
+    
+.PARAMETER App
+    Essential app object to check
+    
+.PARAMETER InstalledApps
+    HashSet of installed app names for fast lookup
+    
+.PARAMETER InstalledPrograms
+    Complete list of installed programs from system inventory
+#>
+function Test-AppInstallationStatus {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$App,
+        
+        [Parameter(Mandatory)]
+        $InstalledApps,
+        
+        [Parameter(Mandatory)]
+        [Array]$InstalledPrograms
+    )
+    
+    # Strategy 1: Exact name matches
+    $identifiersToCheck = @()
+    if ($App.Name) { $identifiersToCheck += $App.Name }
+    if ($App.Winget) { $identifiersToCheck += $App.Winget }
+    if ($App.Chocolatey) { $identifiersToCheck += $App.Chocolatey }
+    
+    foreach ($identifier in $identifiersToCheck) {
+        if ($InstalledApps.Contains($identifier)) {
+            Write-Verbose "Found exact match for '$($App.Name)': $identifier"
+            return $true
+        }
+    }
+    
+    # Strategy 2: Partial matches with wildcards
+    foreach ($identifier in $identifiersToCheck) {
+        $matchingApps = $InstalledApps | Where-Object { $_ -like "*$identifier*" }
+        if ($matchingApps.Count -gt 0) {
+            Write-Verbose "Found partial match for '$($App.Name)': $($matchingApps -join ', ')"
+            return $true
+        }
+    }
+    
+    # Strategy 3: Enhanced detection for specific apps with known variations
+    $appName = $App.Name.ToLower()
+    
+    # Common app name variations and aliases
+    $appVariations = @{
+        'visual studio code' = @('code', 'vscode', 'vs code')
+        'git for windows' = @('git', 'git for windows')
+        'powershell 7' = @('powershell', 'powershell core', 'pwsh')
+        'windows terminal' = @('terminal', 'windows terminal', 'wt')
+        'java runtime environment' = @('java', 'jre', 'java runtime', 'oracle java')
+        'python 3' = @('python', 'python3', 'python 3')
+        'node.js' = @('node', 'nodejs', 'node.js')
+        'vlc media player' = @('vlc', 'vlc player', 'vlc media player')
+        '7-zip' = @('7zip', '7-zip')
+        'libreoffice' = @('libreoffice', 'libre office')
+        'microsoft teams' = @('teams', 'microsoft teams')
+        'google chrome' = @('chrome', 'google chrome')
+        'mozilla firefox' = @('firefox', 'mozilla firefox')
+        'gimp' = @('gimp', 'gnu image manipulation program')
+    }
+    
+    # Check if this app has known variations
+    $variations = @()
+    foreach ($knownApp in $appVariations.Keys) {
+        if ($appName -like "*$knownApp*") {
+            $variations += $appVariations[$knownApp]
+            break
+        }
+    }
+    
+    # Add original identifiers to variations
+    $variations += $identifiersToCheck
+    
+    # Strategy 4: Check variations against installed programs with enhanced matching
+    foreach ($variation in $variations) {
+        if (-not $variation) { continue }
+        
+        $matchingPrograms = $InstalledPrograms | Where-Object {
+            ($_.Name -and ($_.Name -like "*$variation*" -or $_.Name -eq $variation)) -or
+            ($_.DisplayName -and ($_.DisplayName -like "*$variation*" -or $_.DisplayName -eq $variation)) -or
+            ($_.Publisher -and $variation -like "*$($_.Publisher)*") -or
+            ($_.Id -and ($_.Id -like "*$variation*" -or $_.Id -eq $variation))
+        }
+        
+        if ($matchingPrograms.Count -gt 0) {
+            Write-Verbose "Found enhanced match for '$($App.Name)' using variation '$variation': $($matchingPrograms[0].Name -or $matchingPrograms[0].DisplayName)"
+            return $true
+        }
+    }
+    
+    # Strategy 5: Publisher-based detection for Microsoft apps
+    if ($App.Name -like "*Microsoft*" -or $App.Winget -like "*Microsoft*") {
+        $microsoftPrograms = $InstalledPrograms | Where-Object { 
+            $_.Publisher -like "*Microsoft*" -and 
+            ($_.Name -or $_.DisplayName) -and
+            (($_.Name -like "*$($App.Name.Replace('Microsoft ', ''))*") -or 
+             ($_.DisplayName -like "*$($App.Name.Replace('Microsoft ', ''))*"))
+        }
+        
+        if ($microsoftPrograms.Count -gt 0) {
+            Write-Verbose "Found Microsoft app match for '$($App.Name)': $($microsoftPrograms[0].Name -or $microsoftPrograms[0].DisplayName)"
+            return $true
+        }
+    }
+    
+    # Strategy 6: Version-agnostic matching (remove version numbers and check again)
+    $cleanAppName = $App.Name -replace '\s+\d+(\.\d+)*(\s|$)', '' -replace '\s+$', ''
+    if ($cleanAppName -ne $App.Name) {
+        $versionAgnosticMatch = $InstalledPrograms | Where-Object {
+            ($_.Name -and $_.Name -like "*$cleanAppName*") -or
+            ($_.DisplayName -and $_.DisplayName -like "*$cleanAppName*")
+        }
+        
+        if ($versionAgnosticMatch.Count -gt 0) {
+            Write-Verbose "Found version-agnostic match for '$($App.Name)' using '$cleanAppName': $($versionAgnosticMatch[0].Name -or $versionAgnosticMatch[0].DisplayName)"
+            return $true
+        }
+    }
+    
+    Write-Verbose "No installation found for '$($App.Name)'"
+    return $false
 }
 
 #endregion
