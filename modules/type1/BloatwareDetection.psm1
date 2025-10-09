@@ -82,22 +82,22 @@ function Find-InstalledBloatware {
         # Scan AppX packages
         Write-Host "  📱 Scanning AppX packages..." -ForegroundColor Gray
         $appxBloatware = Get-AppXBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
-        $allBloatware.AddRange($appxBloatware)
+        if ($appxBloatware) { $allBloatware.AddRange($appxBloatware) }
         
         # Scan Winget packages
         Write-Host "  📦 Scanning Winget packages..." -ForegroundColor Gray
         $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
-        $allBloatware.AddRange($wingetBloatware)
+        if ($wingetBloatware) { $allBloatware.AddRange($wingetBloatware) }
         
         # Scan Chocolatey packages
         Write-Host "  🍫 Scanning Chocolatey packages..." -ForegroundColor Gray
         $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
-        $allBloatware.AddRange($chocoBloatware)
+        if ($chocoBloatware) { $allBloatware.AddRange($chocoBloatware) }
         
         # Scan Registry entries
         Write-Host "  📋 Scanning Registry entries..." -ForegroundColor Gray
         $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
-        $allBloatware.AddRange($registryBloatware)
+        if ($registryBloatware) { $allBloatware.AddRange($registryBloatware) }
         
         # Remove duplicates and sort results
         $uniqueBloatware = $allBloatware | 
