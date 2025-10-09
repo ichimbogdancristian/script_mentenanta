@@ -421,13 +421,25 @@ IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     EXIT /B 4
 )
 
-REM Determine PowerShell executable to use - Orchestrator requires PowerShell 7+
+REM Determine PowerShell executable and check version - Orchestrator requires PowerShell 7+
 SET "PS_EXECUTABLE="
+SET "AUTO_NONINTERACTIVE=NO"
+
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    SET "PS_EXECUTABLE=pwsh.exe"
-    CALL :LOG_MESSAGE "Using PowerShell 7 for execution" "INFO" "LAUNCHER"
+    REM PowerShell 7+ is available, check version
+    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+    
+    IF !PS_MAJOR_VERSION! GEQ 7 (
+        SET "PS_EXECUTABLE=pwsh.exe"
+        SET "AUTO_NONINTERACTIVE=YES"
+        CALL :LOG_MESSAGE "PowerShell !PS_MAJOR_VERSION! detected - enabling automatic unattended execution" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "PowerShell version !PS_MAJOR_VERSION! is too old, requires 7+" "ERROR" "LAUNCHER"
+        GOTO :PS7_ERROR
+    )
 ) ELSE (
+    :PS7_ERROR
     CALL :LOG_MESSAGE "PowerShell 7 is required but not available" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "The MaintenanceOrchestrator.ps1 requires PowerShell Core 7.0 or higher" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please ensure PowerShell 7 is properly installed and available in PATH" "ERROR" "LAUNCHER"
@@ -448,6 +460,12 @@ REM Parse command line arguments for the orchestrator
 SET "PS_ARGS="
 IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
 IF "%1"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
+IF "%AUTO_NONINTERACTIVE%"=="YES" (
+    IF NOT "%1"=="-NonInteractive" (
+        SET "PS_ARGS=%PS_ARGS% -NonInteractive"
+        CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
+    )
+)
 IF "%2"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
 IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
 

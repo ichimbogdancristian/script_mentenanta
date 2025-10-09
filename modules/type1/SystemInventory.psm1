@@ -313,6 +313,65 @@ function Get-InstalledSoftwareInfo {
     try {
         $installedPrograms = @()
         
+        # Get AppX packages
+        try {
+            $appxPackages = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Microsoft*" -or $_.Name -like "*Microsoft.Office*" }
+            foreach ($package in $appxPackages) {
+                $installedPrograms += @{
+                    Name = $package.Name
+                    DisplayName = $package.PackageFullName
+                    Version = $package.Version
+                    Publisher = $package.Publisher
+                    InstallLocation = $package.InstallLocation
+                    Source = 'AppX'
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Failed to collect AppX packages: $_"
+        }
+        
+        # Get Winget packages
+        try {
+            $wingetOutput = winget list --accept-source-agreements 2>$null
+            if ($wingetOutput) {
+                $wingetLines = $wingetOutput | Select-Object -Skip 2 | Where-Object { $_ -and $_ -notmatch "^-+" }
+                foreach ($line in $wingetLines) {
+                    if ($line -match '^(.+?)\s+(.+?)\s+(.+?)\s+(.+?)$') {
+                        $installedPrograms += @{
+                            Name = $matches[1].Trim()
+                            Version = $matches[2].Trim()
+                            Publisher = $matches[4].Trim()
+                            Source = 'Winget'
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Failed to collect Winget packages: $_"
+        }
+        
+        # Get Chocolatey packages
+        try {
+            if (Get-Command choco -ErrorAction SilentlyContinue) {
+                $chocoOutput = choco list --local-only --no-progress 2>$null
+                foreach ($line in $chocoOutput) {
+                    if ($line -match '^(.+?)\s+(.+?)$') {
+                        $installedPrograms += @{
+                            Name = $matches[1].Trim()
+                            Version = $matches[2].Trim()
+                            Publisher = 'Chocolatey'
+                            Source = 'Chocolatey'
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Failed to collect Chocolatey packages: $_"
+        }
+        
         # Get programs from registry (both 32-bit and 64-bit)
         $registryPaths = @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -326,12 +385,14 @@ function Get-InstalledSoftwareInfo {
             foreach ($program in $programs) {
                 $installedPrograms += @{
                     Name = $program.DisplayName
+                    DisplayName = $program.DisplayName
                     Version = $program.DisplayVersion
                     Publisher = $program.Publisher
                     InstallDate = $program.InstallDate
                     InstallLocation = $program.InstallLocation
                     UninstallString = $program.UninstallString
                     Size = $program.EstimatedSize
+                    Source = 'Registry'
                 }
             }
         }

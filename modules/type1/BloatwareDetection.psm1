@@ -79,24 +79,35 @@ function Find-InstalledBloatware {
         # Initialize results collection
         $allBloatware = [List[PSCustomObject]]::new()
         
+        # Get system inventory once to avoid repeated calls
+        Write-Host "  📊 Collecting system inventory..." -ForegroundColor Gray
+        $systemInventory = Get-SystemInventory -UseCache:$UseCache
+        
+        if (-not $systemInventory.InstalledSoftware -or -not $systemInventory.InstalledSoftware.Programs) {
+            Write-Warning "No installed software inventory found"
+            return @()
+        }
+        
+        $installedPrograms = $systemInventory.InstalledSoftware.Programs
+        
         # Scan AppX packages
         Write-Host "  📱 Scanning AppX packages..." -ForegroundColor Gray
-        $appxBloatware = Get-AppXBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
+        $appxBloatware = Get-AppXBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($appxBloatware) { $allBloatware.AddRange($appxBloatware) }
         
         # Scan Winget packages
         Write-Host "  📦 Scanning Winget packages..." -ForegroundColor Gray
-        $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
+        $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($wingetBloatware) { $allBloatware.AddRange($wingetBloatware) }
         
         # Scan Chocolatey packages
         Write-Host "  🍫 Scanning Chocolatey packages..." -ForegroundColor Gray
-        $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
+        $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($chocoBloatware) { $allBloatware.AddRange($chocoBloatware) }
         
         # Scan Registry entries
         Write-Host "  📋 Scanning Registry entries..." -ForegroundColor Gray
-        $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -Context $Context -UseCache:$UseCache
+        $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($registryBloatware) { $allBloatware.AddRange($registryBloatware) }
         
         # Remove duplicates and sort results
@@ -181,20 +192,19 @@ function Get-AppXBloatware {
         [string[]]$BloatwarePatterns,
         
         [Parameter()]
-        [string]$Context = "AppX Scan",
+        [array]$InstalledPrograms,
         
         [Parameter()]
-        [switch]$UseCache
+        [string]$Context = "AppX Scan"
     )
     
     try {
-        $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledSoftware) {
+        if (-not $InstalledPrograms) {
             Write-Warning "No app inventory available for AppX scan"
             return @()
         }
         
-        $appXApps = $appInventory.InstalledSoftware | Where-Object { $_.Source -eq 'AppX' }
+        $appXApps = $InstalledPrograms | Where-Object { $_.Source -eq 'AppX' }
         
         $found = @()
         foreach ($app in $appXApps) {
@@ -239,20 +249,19 @@ function Get-WingetBloatware {
         [string[]]$BloatwarePatterns,
         
         [Parameter()]
-        [string]$Context = "Winget Scan",
+        [array]$InstalledPrograms,
         
         [Parameter()]
-        [switch]$UseCache
+        [string]$Context = "Winget Scan"
     )
     
     try {
-        $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledSoftware) {
+        if (-not $InstalledPrograms) {
             Write-Warning "No app inventory available for Winget scan"
             return @()
         }
         
-        $wingetApps = $appInventory.InstalledSoftware | Where-Object { $_.Source -eq 'Winget' }
+        $wingetApps = $InstalledPrograms | Where-Object { $_.Source -eq 'Winget' }
         
         $found = @()
         foreach ($app in $wingetApps) {
@@ -297,20 +306,19 @@ function Get-ChocolateyBloatware {
         [string[]]$BloatwarePatterns,
         
         [Parameter()]
-        [string]$Context = "Chocolatey Scan",
+        [array]$InstalledPrograms,
         
         [Parameter()]
-        [switch]$UseCache
+        [string]$Context = "Chocolatey Scan"
     )
     
     try {
-        $appInventory = Get-SystemInventory -UseCache:$UseCache
-        if (-not $appInventory.InstalledSoftware) {
+        if (-not $InstalledPrograms) {
             Write-Warning "No app inventory available for Chocolatey scan"
             return @()
         }
         
-        $chocoApps = $appInventory.InstalledSoftware | Where-Object { $_.Source -eq 'Chocolatey' }
+        $chocoApps = $InstalledPrograms | Where-Object { $_.Source -eq 'Chocolatey' }
         
         $found = @()
         foreach ($app in $chocoApps) {
@@ -355,50 +363,38 @@ function Get-RegistryBloatware {
         [string[]]$BloatwarePatterns,
         
         [Parameter()]
-        [string]$Context = "Registry Scan",
+        [array]$InstalledPrograms,
         
         [Parameter()]
-        [switch]$UseCache
+        [string]$Context = "Registry Scan"
     )
     
     try {
-        $registryPaths = @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
-        )
+        if (-not $InstalledPrograms) {
+            Write-Warning "No app inventory available for Registry scan"
+            return @()
+        }
+        
+        $registryApps = $InstalledPrograms | Where-Object { $_.Source -eq 'Registry' }
         
         $found = @()
-        foreach ($path in $registryPaths) {
-            try {
-                $apps = Get-ItemProperty $path -ErrorAction SilentlyContinue |
-                    Where-Object { 
-                        $_.DisplayName -and 
-                        $_.DisplayName -notmatch '^KB[0-9]+' -and
-                        $_.DisplayName -notmatch '^Update for'
+        foreach ($app in $registryApps) {
+            foreach ($pattern in $BloatwarePatterns) {
+                if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
+                    $found += [PSCustomObject]@{
+                        Name           = $app.Name
+                        DisplayName    = $app.DisplayName
+                        Version        = $app.Version
+                        Publisher      = $app.Publisher
+                        InstallDate    = $app.InstallDate
+                        Source         = 'Registry'
+                        MatchedPattern = $pattern
+                        Context        = $Context
+                        RemovalMethod  = 'Registry-based uninstall'
+                        UninstallString = $app.UninstallString
                     }
-                
-                foreach ($app in $apps) {
-                    foreach ($pattern in $BloatwarePatterns) {
-                        if ($app.DisplayName -like "*$pattern*" -or $app.PSChildName -like "*$pattern*") {
-                            $found += [PSCustomObject]@{
-                                Name           = $app.PSChildName
-                                DisplayName    = $app.DisplayName
-                                Version        = $app.DisplayVersion
-                                Publisher      = $app.Publisher
-                                InstallDate    = $app.InstallDate
-                                Source         = 'Registry'
-                                MatchedPattern = $pattern
-                                Context        = $Context
-                                RemovalMethod  = 'Registry-based uninstall'
-                                UninstallString = $app.UninstallString
-                            }
-                            break  # Only match first pattern to avoid duplicates
-                        }
-                    }
+                    break  # Only match first pattern to avoid duplicates
                 }
-            }
-            catch {
-                Write-Warning "Error accessing registry path ${path}: $_"
             }
         }
         

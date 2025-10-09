@@ -212,7 +212,7 @@ function Get-AppsNotInstalled {
     # Get system inventory for duplicate detection
     $inventory = Get-SystemInventory -UseCache
     
-    if (-not $inventory.InstalledSoftware) {
+    if (-not $inventory.InstalledSoftware -or -not $inventory.InstalledSoftware.Programs) {
         Write-Warning "No system inventory available, cannot check for duplicates"
         return $AppList
     }
@@ -220,16 +220,33 @@ function Get-AppsNotInstalled {
     # Build lookup table of installed apps
     $installedApps = [HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     
-    foreach ($app in $inventory.InstalledSoftware) {
+    foreach ($app in $inventory.InstalledSoftware.Programs) {
         if ($app.Name) { $installedApps.Add($app.Name) | Out-Null }
         if ($app.DisplayName) { $installedApps.Add($app.DisplayName) | Out-Null }
         if ($app.Id) { $installedApps.Add($app.Id) | Out-Null }
+        # Also add publisher information for better matching
+        if ($app.Publisher) { $installedApps.Add($app.Publisher) | Out-Null }
+    }
+    
+    # Check for Microsoft Office installation for LibreOffice logic
+    $hasMicrosoftOffice = $inventory.InstalledSoftware.Programs | Where-Object {
+        $_.Name -like "*Microsoft Office*" -or 
+        $_.DisplayName -like "*Microsoft Office*" -or
+        $_.Publisher -like "*Microsoft*" -and ($_.Name -like "*Office*" -or $_.DisplayName -like "*Office*") -or
+        $_.Name -like "*Microsoft 365*" -or
+        $_.DisplayName -like "*Microsoft 365*"
     }
     
     # Filter out already installed apps
     $notInstalled = @()
     foreach ($app in $AppList) {
         $isInstalled = $false
+        
+        # Special logic for LibreOffice: Skip if Microsoft Office is installed
+        if ($app.Name -like "*LibreOffice*" -and $hasMicrosoftOffice) {
+            Write-Host "    🏢 Skipping LibreOffice: Microsoft Office detected" -ForegroundColor Yellow
+            continue
+        }
         
         # Check multiple identifiers
         $identifiersToCheck = @()
