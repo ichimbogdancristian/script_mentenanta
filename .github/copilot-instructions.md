@@ -40,6 +40,52 @@ Targets: Windows 10/11. Many operations require Administrator privileges and net
 - **Package manager calls**: Modules should use their own package manager abstractions. WindowsUpdates module handles update suppression automatically.
 - **Configuration changes**: Edit JSON files in `config/` directory rather than hardcoding values in modules.
 
+### MANDATORY: Testing Guidelines and TestFolder Usage
+
+**🔴 MANDATORY REQUIREMENT**: When developing, testing, or creating any test scripts, you MUST use the designated TestFolder.
+
+**TestFolder Location**: `../TestFolder` (parallel to script_mentenanta directory)
+- Full path: The TestFolder is located at the same level as the script_mentenanta project folder
+- Purpose: Isolated testing environment to prevent interference with the main project
+
+**Required Testing Workflow**:
+1. **Clean the TestFolder first**: Always start by removing all contents from TestFolder to ensure a clean testing environment
+   ```powershell
+   Remove-Item "C:\Users\<USER>\OneDrive\Desktop\Projects\TestFolder\*" -Recurse -Force
+   ```
+
+2. **Copy the latest script.bat**: Copy the current version of `script.bat` to TestFolder for testing
+   ```powershell
+   Copy-Item ".\script.bat" "..\TestFolder\script.bat"
+   ```
+
+3. **Execute and observe**: Run the copied script and watch the project unfold in the isolated environment
+   ```powershell
+   cd "..\TestFolder"
+   .\script.bat
+   ```
+
+**Why This Is Mandatory**:
+- **Isolation**: Prevents test runs from interfering with the main development environment
+- **Clean State**: Each test starts with a pristine environment
+- **Safety**: Protects the main project from potential test-related modifications
+- **Reproducibility**: Ensures consistent testing conditions
+- **Self-Discovery Testing**: Tests the launcher's ability to download and set up the complete environment
+
+**Testing Scenarios to Use TestFolder For**:
+- Testing launcher functionality (`script.bat`)
+- Verifying dependency installation workflows
+- Testing repository download and extraction
+- Validating scheduled task creation
+- Testing the complete bootstrap process
+- Verifying self-discovery and path detection features
+
+**NEVER**:
+- Run test scripts directly in the main script_mentenanta directory
+- Create test files in the main project folders
+- Skip the clean-up step before testing
+- Assume previous test state when starting new tests
+
 ### Patterns and conventions to follow
 
 - **Task registry entries**: Add tasks to the `$Tasks` array in `MaintenanceOrchestrator.ps1` as hashtables with Name, Description, ModulePath, Function, Type, and Category.
