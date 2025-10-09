@@ -19,6 +19,13 @@
 using namespace System.Collections.Generic
 using namespace System.Collections.Concurrent
 
+# Import required modules
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$BloatwareDetectionPath = Join-Path $ModuleRoot 'type1\BloatwareDetection.psm1'
+if (Test-Path $BloatwareDetectionPath) {
+    Import-Module $BloatwareDetectionPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -60,7 +67,7 @@ function Remove-DetectedBloatware {
         [switch]$Force,
         
         [Parameter()]
-        [string[]]$Categories = @('OEM', 'Windows', 'Gaming', 'Security')
+        [string[]]$Categories = @('all')
     )
     
     Write-Host "🗑️  Starting bloatware removal process..." -ForegroundColor Yellow

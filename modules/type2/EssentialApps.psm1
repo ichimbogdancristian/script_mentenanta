@@ -19,6 +19,13 @@
 using namespace System.Collections.Generic
 using namespace System.Collections.Concurrent
 
+# Import required modules
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$SystemInventoryPath = Join-Path $ModuleRoot 'type1\SystemInventory.psm1'
+if (Test-Path $SystemInventoryPath) {
+    Import-Module $SystemInventoryPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -55,13 +62,13 @@ function Install-EssentialApplications {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
     param(
         [Parameter()]
-        [string[]]$Categories = @('Browsers', 'Productivity', 'Media', 'Development'),
+        [string[]]$Categories = @('all'),
         
         [Parameter()]
         [string[]]$CustomApps = @(),
         
         [Parameter()]
-        [switch]$SkipDuplicates = $true,
+        [switch]$SkipDuplicates,
         
         [Parameter()]
         [switch]$DryRun,
@@ -75,7 +82,7 @@ function Install-EssentialApplications {
     $startTime = Get-Date
     
     # Get essential apps from configuration
-    $essentialApps = Get-UnifiedEssentialAppsList -Categories $Categories
+    $essentialApps = Get-UnifiedEssentialAppsList -IncludeCategories $Categories
     
     # Add custom apps if specified
     if ($CustomApps.Count -gt 0) {
@@ -107,11 +114,11 @@ function Install-EssentialApplications {
         Write-Host "  🧪 DRY RUN MODE - No installations will be performed" -ForegroundColor Magenta
     }
     
-    # Filter out duplicates if requested
-    $appsToInstall = if ($SkipDuplicates) {
-        Get-AppsNotInstalled -AppList $essentialApps
-    } else {
+    # Filter out duplicates by default (skip duplicates unless explicitly disabled)
+    $appsToInstall = if ($PSBoundParameters.ContainsKey('SkipDuplicates') -and -not $SkipDuplicates) {
         $essentialApps
+    } else {
+        Get-AppsNotInstalled -AppList $essentialApps
     }
     
     if ($appsToInstall.Count -eq 0) {

@@ -174,15 +174,64 @@ try {
     $BloatwareLists = Get-BloatwareConfiguration
     $EssentialApps = Get-EssentialAppsConfiguration
     
-    $totalBloatware = ($BloatwareLists.Values | Measure-Object -Sum { $_.Count }).Sum
-    $totalEssentialApps = ($EssentialApps.Values | Measure-Object -Sum { $_.Count }).Sum
+    $totalBloatware = if ($BloatwareLists.ContainsKey('all')) { $BloatwareLists['all'].Count } else { 0 }
+    $totalEssentialApps = if ($EssentialApps.ContainsKey('all')) { $EssentialApps['all'].Count } else { 0 }
     
-    Write-Host "  ✓ Bloatware lists: $($BloatwareLists.Keys.Count) categories, $totalBloatware total entries" -ForegroundColor Green
-    Write-Host "  ✓ Essential apps: $($EssentialApps.Keys.Count) categories, $totalEssentialApps total entries" -ForegroundColor Green
+    Write-Host "  ✓ Bloatware list: $totalBloatware total entries" -ForegroundColor Green
+    Write-Host "  ✓ Essential apps: $totalEssentialApps total entries" -ForegroundColor Green
 }
 catch {
     Write-Error "Failed to load app configurations: $_"
     exit 1
+}
+
+#endregion
+
+#region Helper Functions
+
+function Invoke-TaskWithParameters {
+    param(
+        [string]$TaskName,
+        [string]$FunctionName,
+        [switch]$DryRun
+    )
+    
+    # Prepare task-specific parameters
+    switch ($TaskName) {
+        'ReportGeneration' {
+            $reportPath = Join-Path $TempRoot "reports\maintenance-report-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+            $params = @{
+                OutputPath = $reportPath
+                SystemInventory = $null  # Will be populated by the function if needed
+                TaskResults = $TaskResults
+                Configuration = $MainConfig
+            }
+            return & $FunctionName @params
+        }
+        'EssentialApps' {
+            $params = @{}
+            if ($DryRun) { $params.DryRun = $true }
+            return & $FunctionName @params
+        }
+        'BloatwareRemoval' {
+            $params = @{}
+            if ($DryRun) { $params.DryRun = $true }
+            return & $FunctionName @params
+        }
+        'TelemetryDisable' {
+            $params = @{}
+            if ($DryRun) { $params.DryRun = $true }
+            return & $FunctionName @params
+        }
+        'BloatwareDetection' {
+            # Call with default parameters
+            return & $FunctionName
+        }
+        default {
+            # For other tasks, call without parameters
+            return & $FunctionName
+        }
+    }
 }
 
 #endregion
@@ -205,7 +254,7 @@ $MaintenanceTasks = @(
         Name = 'BloatwareDetection'
         Description = 'Scan for bloatware applications and system components'
         ModulePath = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
-        Function = 'Find-BloatwareApplications'
+        Function = 'Find-InstalledBloatware'
         Type = 'Type1'
         Category = 'Detection'
     },
@@ -213,7 +262,7 @@ $MaintenanceTasks = @(
         Name = 'BloatwareRemoval'
         Description = 'Remove detected bloatware applications using multiple methods'
         ModulePath = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
-        Function = 'Remove-BloatwareApplications'
+        Function = 'Remove-DetectedBloatware'
         Type = 'Type2'
         Category = 'Cleanup'
     },
@@ -237,7 +286,7 @@ $MaintenanceTasks = @(
         Name = 'TelemetryDisable'
         Description = 'Disable Windows telemetry and privacy-invasive features'
         ModulePath = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
-        Function = 'Disable-TelemetryFeatures'
+        Function = 'Disable-WindowsTelemetry'
         Type = 'Type2'
         Category = 'Privacy'
     },
@@ -261,7 +310,7 @@ $MaintenanceTasks = @(
         Name = 'ReportGeneration'
         Description = 'Generate comprehensive HTML and text reports of all operations'
         ModulePath = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
-        Function = 'Generate-MaintenanceReport'
+        Function = 'New-MaintenanceReport'
         Type = 'Type1'
         Category = 'Reporting'
     }
@@ -410,14 +459,14 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
             throw "Module not found: $($task.ModulePath)"
         }
         
-        # Execute the task function
+        # Execute the task function with appropriate parameters
         if ($ExecutionParams.DryRun) {
             Write-Host "  ▶ Simulating: $($task.Function)" -ForegroundColor Blue
             # In dry-run mode, we could call with -WhatIf parameter if supported
             $result = "DRY-RUN: Task would be executed"
         } else {
             Write-Host "  ▶ Executing: $($task.Function)" -ForegroundColor Green
-            $result = & $task.Function
+            $result = Invoke-TaskWithParameters -TaskName $task.Name -FunctionName $task.Function -DryRun:$ExecutionParams.DryRun
         }
         
         $taskResult.Success = $true

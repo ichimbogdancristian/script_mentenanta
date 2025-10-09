@@ -18,6 +18,13 @@
 using namespace System.Collections.Generic
 using namespace System.Collections.Concurrent
 
+# Import required modules
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$SystemInventoryPath = Join-Path $ModuleRoot 'type1\SystemInventory.psm1'
+if (Test-Path $SystemInventoryPath) {
+    Import-Module $SystemInventoryPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -50,7 +57,7 @@ function Find-InstalledBloatware {
         [switch]$UseCache,
         
         [Parameter()]
-        [string[]]$Categories = @('OEM', 'Windows', 'Gaming', 'Security'),
+        [string[]]$Categories = @('all'),
         
         [Parameter()]
         [string]$Context = "Bloatware Detection"
@@ -61,7 +68,7 @@ function Find-InstalledBloatware {
     
     try {
         # Get bloatware patterns from configuration
-        $bloatwareList = Get-UnifiedBloatwareList -Categories $Categories
+        $bloatwareList = Get-UnifiedBloatwareList -IncludeCategories $Categories
         if (-not $bloatwareList -or $bloatwareList.Count -eq 0) {
             Write-Warning "No bloatware patterns found in configuration"
             return @()

@@ -56,16 +56,16 @@ function Initialize-ConfigSystem {
         Root = $ConfigRootPath
         MainConfig = Join-Path $ConfigRootPath 'main-config.json'
         LoggingConfig = Join-Path $ConfigRootPath 'logging-config.json'
-        BloatwareLists = Join-Path $ConfigRootPath 'bloatware-lists'
-        EssentialApps = Join-Path $ConfigRootPath 'essential-apps'
+        BloatwareList = Join-Path $ConfigRootPath 'bloatware-list.json'
+        EssentialApps = Join-Path $ConfigRootPath 'essential-apps.json'
     }
     
     # Validate required paths
-    $requiredPaths = @('MainConfig', 'BloatwareLists', 'EssentialApps')
+    $requiredPaths = @('MainConfig', 'BloatwareList', 'EssentialApps')
     foreach ($pathKey in $requiredPaths) {
         $path = $script:ConfigPaths[$pathKey]
         if (-not (Test-Path $path)) {
-            throw "Required configuration path does not exist: $path"
+            throw "Required configuration file does not exist: $path"
         }
     }
     
@@ -172,43 +172,31 @@ function Get-BloatwareConfiguration {
         return $script:BloatwareLists
     }
     
-    $bloatwareDir = $script:ConfigPaths.BloatwareLists
+    $bloatwareFile = Join-Path $script:ConfigPaths.Root "bloatware-list.json"
     
-    if (-not (Test-Path $bloatwareDir)) {
-        Write-Warning "Bloatware configuration directory not found: $bloatwareDir"
+    if (-not (Test-Path $bloatwareFile)) {
+        Write-Warning "Bloatware configuration file not found: $bloatwareFile"
         return @{}
     }
     
     try {
-        Write-Verbose "Loading bloatware configurations from: $bloatwareDir"
+        Write-Verbose "Loading bloatware configuration from: $bloatwareFile"
         
-        $bloatwareFiles = Get-ChildItem -Path $bloatwareDir -Filter "*.json" -ErrorAction Stop
+        $configJson = Get-Content $bloatwareFile -Raw -ErrorAction Stop
+        $bloatwareList = $configJson | ConvertFrom-Json -ErrorAction Stop
         
-        foreach ($file in $bloatwareFiles) {
-            try {
-                $categoryName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-                $configJson = Get-Content $file.FullName -Raw -ErrorAction Stop
-                $categoryList = $configJson | ConvertFrom-Json -ErrorAction Stop
-                
-                # Convert to array if it's not already
-                if ($categoryList -is [Array]) {
-                    $script:BloatwareLists[$categoryName] = $categoryList
-                } else {
-                    $script:BloatwareLists[$categoryName] = @($categoryList)
-                }
-                
-                Write-Verbose "Loaded bloatware category '$categoryName' with $($script:BloatwareLists[$categoryName].Count) entries"
-            }
-            catch {
-                Write-Warning "Failed to load bloatware configuration from $($file.FullName): $_"
-            }
+        # Convert to array if it's not already
+        if ($bloatwareList -is [Array]) {
+            $script:BloatwareLists['all'] = $bloatwareList
+        } else {
+            $script:BloatwareLists['all'] = @($bloatwareList)
         }
         
-        Write-Verbose "Loaded $($script:BloatwareLists.Keys.Count) bloatware categories"
+        Write-Verbose "Loaded bloatware list with $($script:BloatwareLists['all'].Count) entries"
         return $script:BloatwareLists
     }
     catch {
-        Write-Error "Failed to load bloatware configurations: $_"
+        Write-Error "Failed to load bloatware configuration: $_"
         return @{}
     }
 }
@@ -231,43 +219,31 @@ function Get-EssentialAppsConfiguration {
         return $script:EssentialApps
     }
     
-    $appsDir = $script:ConfigPaths.EssentialApps
+    $appsFile = Join-Path $script:ConfigPaths.Root "essential-apps.json"
     
-    if (-not (Test-Path $appsDir)) {
-        Write-Warning "Essential apps configuration directory not found: $appsDir"
+    if (-not (Test-Path $appsFile)) {
+        Write-Warning "Essential apps configuration file not found: $appsFile"
         return @{}
     }
     
     try {
-        Write-Verbose "Loading essential apps configurations from: $appsDir"
+        Write-Verbose "Loading essential apps configuration from: $appsFile"
         
-        $appFiles = Get-ChildItem -Path $appsDir -Filter "*.json" -ErrorAction Stop
+        $configJson = Get-Content $appsFile -Raw -ErrorAction Stop
+        $essentialAppsList = $configJson | ConvertFrom-Json -ErrorAction Stop
         
-        foreach ($file in $appFiles) {
-            try {
-                $categoryName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-                $configJson = Get-Content $file.FullName -Raw -ErrorAction Stop
-                $categoryApps = $configJson | ConvertFrom-Json -ErrorAction Stop
-                
-                # Convert to array if it's not already
-                if ($categoryApps -is [Array]) {
-                    $script:EssentialApps[$categoryName] = $categoryApps
-                } else {
-                    $script:EssentialApps[$categoryName] = @($categoryApps)
-                }
-                
-                Write-Verbose "Loaded essential apps category '$categoryName' with $($script:EssentialApps[$categoryName].Count) entries"
-            }
-            catch {
-                Write-Warning "Failed to load essential apps configuration from $($file.FullName): $_"
-            }
+        # Convert to array if it's not already
+        if ($essentialAppsList -is [Array]) {
+            $script:EssentialApps['all'] = $essentialAppsList
+        } else {
+            $script:EssentialApps['all'] = @($essentialAppsList)
         }
         
-        Write-Verbose "Loaded $($script:EssentialApps.Keys.Count) essential apps categories"
+        Write-Verbose "Loaded essential apps list with $($script:EssentialApps['all'].Count) entries"
         return $script:EssentialApps
     }
     catch {
-        Write-Error "Failed to load essential apps configurations: $_"
+        Write-Error "Failed to load essential apps configuration: $_"
         return @{}
     }
 }
@@ -294,27 +270,13 @@ function Get-UnifiedBloatwareList {
     )
     
     $bloatwareLists = Get-BloatwareConfiguration
-    $unifiedList = [List[string]]::new()
     
-    $categoriesToProcess = if ($IncludeCategories.Count -gt 0) { 
-        $IncludeCategories 
-    } else { 
-        $bloatwareLists.Keys 
+    if ($bloatwareLists.ContainsKey('all')) {
+        return $bloatwareLists['all'] | Sort-Object
+    } else {
+        Write-Warning "No bloatware patterns found in configuration"
+        return @()
     }
-    
-    foreach ($category in $categoriesToProcess) {
-        if ($bloatwareLists.ContainsKey($category)) {
-            foreach ($item in $bloatwareLists[$category]) {
-                if (-not $unifiedList.Contains($item)) {
-                    $unifiedList.Add($item)
-                }
-            }
-        } else {
-            Write-Warning "Bloatware category not found: $category"
-        }
-    }
-    
-    return $unifiedList.ToArray() | Sort-Object
 }
 
 <#
@@ -339,39 +301,13 @@ function Get-UnifiedEssentialAppsList {
     )
     
     $appLists = Get-EssentialAppsConfiguration
-    $unifiedList = [List[PSCustomObject]]::new()
     
-    $categoriesToProcess = if ($IncludeCategories.Count -gt 0) { 
-        $IncludeCategories 
-    } else { 
-        $appLists.Keys 
+    if ($appLists.ContainsKey('all')) {
+        return $appLists['all']
+    } else {
+        Write-Warning "No essential apps found in configuration"
+        return @()
     }
-    
-    foreach ($category in $categoriesToProcess) {
-        if ($appLists.ContainsKey($category)) {
-            foreach ($app in $appLists[$category]) {
-                # Ensure each app has the source category
-                if ($app -is [PSCustomObject]) {
-                    $app | Add-Member -NotePropertyName 'SourceCategory' -NotePropertyValue $category -Force
-                    $unifiedList.Add($app)
-                } else {
-                    # Handle string entries by converting to objects
-                    $appObj = [PSCustomObject]@{
-                        name = $app
-                        winget = $null
-                        choco = $null
-                        category = 'Unknown'
-                        SourceCategory = $category
-                    }
-                    $unifiedList.Add($appObj)
-                }
-            }
-        } else {
-            Write-Warning "Essential apps category not found: $category"
-        }
-    }
-    
-    return $unifiedList.ToArray()
 }
 
 <#

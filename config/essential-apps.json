@@ -1,0 +1,156 @@
+[
+  {
+    "name": "Git for Windows",
+    "winget": "Git.Git",
+    "choco": "git",
+    "category": "Development",
+    "description": "Version control system"
+  },
+  {
+    "name": "Visual Studio Code",
+    "winget": "Microsoft.VisualStudioCode",
+    "choco": "vscode",
+    "category": "Development",
+    "description": "Code editor by Microsoft"
+  },
+  {
+    "name": "PowerShell 7",
+    "winget": "Microsoft.Powershell",
+    "choco": "powershell",
+    "category": "System",
+    "description": "Modern PowerShell cross-platform"
+  },
+  {
+    "name": "Windows Terminal",
+    "winget": "Microsoft.WindowsTerminal",
+    "choco": "microsoft-windows-terminal",
+    "category": "System",
+    "description": "Modern terminal application"
+  },
+  {
+    "name": "Java Runtime Environment",
+    "winget": "Oracle.JavaRuntimeEnvironment",
+    "choco": "javaruntime",
+    "category": "Runtime",
+    "description": "Java runtime environment"
+  },
+  {
+    "name": "Python 3",
+    "winget": "Python.Python.3",
+    "choco": "python",
+    "category": "Development",
+    "description": "Python programming language"
+  },
+  {
+    "name": "Node.js",
+    "winget": "OpenJS.NodeJS",
+    "choco": "nodejs",
+    "category": "Development",
+    "description": "JavaScript runtime environment"
+  },
+  {
+    "name": "VLC Media Player",
+    "winget": "VideoLAN.VLC",
+    "choco": "vlc",
+    "category": "Media",
+    "description": "Free multimedia player"
+  },
+  {
+    "name": "Spotify",
+    "winget": "Spotify.Spotify",
+    "choco": "spotify",
+    "category": "Music",
+    "description": "Music streaming service"
+  },
+  {
+    "name": "GIMP",
+    "winget": "GIMP.GIMP",
+    "choco": "gimp",
+    "category": "Graphics",
+    "description": "Free image editor"
+  },
+  {
+    "name": "HandBrake",
+    "winget": "HandBrake.HandBrake",
+    "choco": "handbrake",
+    "category": "Video",
+    "description": "Video transcoder"
+  },
+  {
+    "name": "Audacity",
+    "winget": "Audacity.Audacity",
+    "choco": "audacity",
+    "category": "Audio",
+    "description": "Free audio editor"
+  },
+  {
+    "name": "LibreOffice",
+    "winget": "TheDocumentFoundation.LibreOffice",
+    "choco": "libreoffice",
+    "category": "Office",
+    "description": "Free and open-source office suite"
+  },
+  {
+    "name": "Microsoft Office",
+    "winget": "Microsoft.Office",
+    "choco": null,
+    "category": "Office",
+    "description": "Microsoft Office Suite (requires license)"
+  },
+  {
+    "name": "Adobe Acrobat Reader",
+    "winget": "Adobe.Acrobat.Reader.64-bit",
+    "choco": "adobereader",
+    "category": "Document",
+    "description": "PDF reader and editor"
+  },
+  {
+    "name": "PDF24 Creator",
+    "winget": "geeksoftwareGmbH.PDF24Creator",
+    "choco": "pdf24",
+    "category": "Document",
+    "description": "Free PDF creator and editor"
+  },
+  {
+    "name": "Notepad++",
+    "winget": "Notepad++.Notepad++",
+    "choco": "notepadplusplus",
+    "category": "Editor",
+    "description": "Advanced text and code editor"
+  },
+  {
+    "name": "Microsoft Teams",
+    "winget": "Microsoft.Teams",
+    "choco": "microsoft-teams",
+    "category": "Communication",
+    "description": "Team collaboration and communication"
+  },
+  {
+    "name": "Google Chrome",
+    "winget": "Google.Chrome",
+    "choco": "googlechrome",
+    "category": "Browser",
+    "description": "Fast, secure web browser by Google"
+  },
+  {
+    "name": "Mozilla Firefox",
+    "winget": "Mozilla.Firefox",
+    "choco": "firefox",
+    "category": "Browser",
+    "description": "Open source web browser with privacy focus"
+  },
+  {
+    "name": "Microsoft Edge",
+    "winget": "Microsoft.Edge",
+    "choco": "microsoft-edge",
+    "category": "Browser",
+    "description": "Modern web browser by Microsoft"
+  },
+  {
+    "name": "Opera",
+    "winget": "Opera.Opera",
+    "choco": "opera",
+    "category": "Browser",
+    "description": "Feature-rich web browser with VPN"
+  }
+]
