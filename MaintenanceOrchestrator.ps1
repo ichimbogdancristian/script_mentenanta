@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -PSEdition Core -Version 7.0
 
 using namespace System.Collections.Generic
 

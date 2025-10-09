@@ -294,7 +294,7 @@ REM PowerShell 7 Detection and Installation
 CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "PowerShell 7 not found. Checking installation options..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "INFO" "LAUNCHER"
     
     REM Check if winget is available for PS7 installation
     winget --version >nul 2>&1
@@ -303,11 +303,31 @@ IF !ERRORLEVEL! NEQ 0 (
         winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
+            
+            REM Refresh environment variables to pick up new PATH
+            CALL :LOG_MESSAGE "Refreshing environment variables..." "INFO" "LAUNCHER"
+            FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul`) DO SET "SYSTEM_PATH=%%B"
+            FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKCU\Environment" /v PATH 2^>nul`) DO SET "USER_PATH=%%B"
+            IF DEFINED USER_PATH (
+                SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
+            ) ELSE (
+                SET "PATH=%SYSTEM_PATH%"
+            )
+            
+            REM Verify installation worked
+            pwsh.exe -Version >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_MESSAGE "PowerShell 7 is now available after installation" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell 7 installation completed but pwsh.exe still not found in PATH" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "You may need to restart your command prompt or add PowerShell to PATH manually" "WARN" "LAUNCHER"
+            )
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
         )
     ) ELSE (
-        CALL :LOG_MESSAGE "Winget not available for PowerShell 7 installation" "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Winget not available for PowerShell 7 installation" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Please install PowerShell 7 manually from: https://github.com/PowerShell/PowerShell/releases" "INFO" "LAUNCHER"
     )
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
@@ -401,14 +421,27 @@ IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     EXIT /B 4
 )
 
-REM Determine PowerShell executable to use
-SET "PS_EXECUTABLE=powershell.exe"
+REM Determine PowerShell executable to use - Orchestrator requires PowerShell 7+
+SET "PS_EXECUTABLE="
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "PS_EXECUTABLE=pwsh.exe"
     CALL :LOG_MESSAGE "Using PowerShell 7 for execution" "INFO" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Using Windows PowerShell for execution" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7 is required but not available" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "The MaintenanceOrchestrator.ps1 requires PowerShell Core 7.0 or higher" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please ensure PowerShell 7 is properly installed and available in PATH" "ERROR" "LAUNCHER"
+    ECHO.
+    ECHO ===============================================
+    ECHO   ERROR: PowerShell 7 Required
+    ECHO ===============================================
+    ECHO The maintenance orchestrator requires PowerShell 7.0 or higher.
+    ECHO Please install PowerShell 7 and ensure pwsh.exe is in your PATH.
+    ECHO.
+    ECHO Download: https://github.com/PowerShell/PowerShell/releases
+    ECHO.
+    PAUSE
+    EXIT /B 1
 )
 
 REM Parse command line arguments for the orchestrator
