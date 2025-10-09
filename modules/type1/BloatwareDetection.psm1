@@ -209,7 +209,35 @@ function Get-AppXBloatware {
         $found = @()
         foreach ($app in $appXApps) {
             foreach ($pattern in $BloatwarePatterns) {
-                if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
+                $matched = $false
+                $matchType = ""
+                
+                # Exact match (highest priority)
+                if ($app.Name -eq $pattern -or $app.DisplayName -eq $pattern) {
+                    $matched = $true
+                    $matchType = "Exact"
+                }
+                # Publisher + partial name match
+                elseif ($app.Publisher -and $pattern -match '(\w+)\.(.+)') {
+                    $publisherPart = $matches[1]
+                    $namePart = $matches[2]
+                    if ($app.Publisher -like "*$publisherPart*" -and ($app.Name -like "*$namePart*" -or $app.DisplayName -like "*$namePart*")) {
+                        $matched = $true
+                        $matchType = "Publisher+Name"
+                    }
+                }
+                # Wildcard match
+                elseif ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
+                    $matched = $true
+                    $matchType = "Wildcard"
+                }
+                # Publisher contains pattern
+                elseif ($app.Publisher -and $app.Publisher -like "*$pattern*") {
+                    $matched = $true
+                    $matchType = "Publisher"
+                }
+                
+                if ($matched) {
                     $found += [PSCustomObject]@{
                         Name           = $app.Name
                         DisplayName    = $app.DisplayName
@@ -218,8 +246,16 @@ function Get-AppXBloatware {
                         InstallDate    = $app.InstallDate
                         Source         = 'AppX'
                         MatchedPattern = $pattern
+                        MatchType      = $matchType
                         Context        = $Context
                         RemovalMethod  = 'Remove-AppxPackage'
+                        Confidence     = switch ($matchType) { 
+                            "Exact" { 100 } 
+                            "Publisher+Name" { 95 } 
+                            "Wildcard" { 80 } 
+                            "Publisher" { 70 } 
+                            default { 50 } 
+                        }
                     }
                     break  # Only match first pattern to avoid duplicates
                 }
@@ -266,7 +302,35 @@ function Get-WingetBloatware {
         $found = @()
         foreach ($app in $wingetApps) {
             foreach ($pattern in $BloatwarePatterns) {
-                if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
+                $matched = $false
+                $matchType = ""
+                
+                # Exact match (highest priority)
+                if ($app.Name -eq $pattern -or $app.DisplayName -eq $pattern) {
+                    $matched = $true
+                    $matchType = "Exact"
+                }
+                # Publisher + partial name match
+                elseif ($app.Publisher -and $pattern -match '(\w+)\.(.+)') {
+                    $publisherPart = $matches[1]
+                    $namePart = $matches[2]
+                    if ($app.Publisher -like "*$publisherPart*" -and ($app.Name -like "*$namePart*" -or $app.DisplayName -like "*$namePart*")) {
+                        $matched = $true
+                        $matchType = "Publisher+Name"
+                    }
+                }
+                # Wildcard match
+                elseif ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
+                    $matched = $true
+                    $matchType = "Wildcard"
+                }
+                # Publisher contains pattern
+                elseif ($app.Publisher -and $app.Publisher -like "*$pattern*") {
+                    $matched = $true
+                    $matchType = "Publisher"
+                }
+                
+                if ($matched) {
                     $found += [PSCustomObject]@{
                         Name           = $app.Name
                         DisplayName    = $app.DisplayName
@@ -275,8 +339,16 @@ function Get-WingetBloatware {
                         InstallDate    = $app.InstallDate
                         Source         = 'Winget'
                         MatchedPattern = $pattern
+                        MatchType      = $matchType
                         Context        = $Context
                         RemovalMethod  = 'winget uninstall'
+                        Confidence     = switch ($matchType) { 
+                            "Exact" { 100 } 
+                            "Publisher+Name" { 95 } 
+                            "Wildcard" { 80 } 
+                            "Publisher" { 70 } 
+                            default { 50 } 
+                        }
                     }
                     break  # Only match first pattern to avoid duplicates
                 }

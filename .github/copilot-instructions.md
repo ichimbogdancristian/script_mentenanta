@@ -40,6 +40,51 @@ Targets: Windows 10/11. Many operations require Administrator privileges and net
 - **Package manager calls**: Modules should use their own package manager abstractions. WindowsUpdates module handles update suppression automatically.
 - **Configuration changes**: Edit JSON files in `config/` directory rather than hardcoding values in modules.
 
+### MANDATORY Testing Procedures
+
+**⚠️ CRITICAL: All testing must be conducted in the TestFolder**
+
+When you need to create test scripts, run tests, or verify functionality, you **MUST** use the TestFolder located at the same path level as script_mentenanta:
+
+```
+Desktop\Projects\
+├── script_mentenanta\     (main project)
+└── TestFolder\            (testing environment - USE THIS)
+```
+
+**Mandatory Testing Workflow:**
+1. **Clean TestFolder**: Always start by cleaning the TestFolder from any previous contents
+2. **Copy launcher**: Copy the latest version of `script.bat` from script_mentenanta to TestFolder
+3. **Execute from TestFolder**: Run `script.bat` from within the TestFolder directory
+4. **Observe project unfolding**: Watch the complete project download, setup, and execution process
+
+**Commands for testing workflow:**
+```powershell
+# 1. Clean the TestFolder
+Remove-Item "C:\Users\Bogdan\OneDrive\Desktop\Projects\TestFolder\*" -Recurse -Force -ErrorAction SilentlyContinue
+
+# 2. Copy the latest script.bat
+Copy-Item "C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\script.bat" "C:\Users\Bogdan\OneDrive\Desktop\Projects\TestFolder\"
+
+# 3. Execute from TestFolder
+cd "C:\Users\Bogdan\OneDrive\Desktop\Projects\TestFolder"
+.\script.bat
+
+# 4. Watch the complete bootstrap and execution process
+```
+
+**Why this is mandatory:**
+- Tests the complete deployment workflow (download, extract, setup)
+- Verifies script.bat launcher functionality in isolated environment
+- Ensures system works correctly from fresh deployment
+- Prevents test artifacts from contaminating main development folder
+- Simulates real-world user experience
+
+**Never:**
+- Run tests directly in the script_mentenanta folder unless specifically testing local development
+- Create test files in the main project directory
+- Skip the TestFolder workflow when verifying functionality
+
 ### Patterns and conventions to follow
 
 - **Task registry entries**: Add tasks to the `$Tasks` array in `MaintenanceOrchestrator.ps1` as hashtables with Name, Description, ModulePath, Function, Type, and Category.

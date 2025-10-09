@@ -80,16 +80,87 @@ function Remove-DetectedBloatware {
     
     if (-not $BloatwareList -or $BloatwareList.Count -eq 0) {
         Write-Host "  ✅ No bloatware detected for removal" -ForegroundColor Green
+        
+        # Create empty diff files in temp folder for tracking
+        $tempPath = Join-Path $PSScriptRoot '..\..\temp_files\bloatware'
+        if (-not (Test-Path $tempPath)) {
+            New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
+        }
+        
+        $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $emptyDiffPath = Join-Path $tempPath "bloatware-diff-empty-$timestamp.json"
+        @{
+            Timestamp = $startTime
+            DetectedBloatware = @()
+            Categories = $Categories
+            TotalItems = 0
+            Status = "No bloatware detected"
+        } | ConvertTo-Json -Depth 3 | Set-Content -Path $emptyDiffPath -Encoding UTF8
+        
+        Write-Host "  📄 Empty diff file saved: $emptyDiffPath" -ForegroundColor Gray
+        
         return @{
             TotalProcessed = 0
             Successful = 0
             Failed = 0
             Skipped = 0
             DryRun = $DryRun.IsPresent
+            DiffFilePath = $emptyDiffPath
         }
     }
     
     Write-Host "  📋 Found $($BloatwareList.Count) bloatware items for removal" -ForegroundColor Cyan
+    
+    # Create diff files in temp folder
+    $tempPath = Join-Path $PSScriptRoot '..\..\temp_files\bloatware'
+    if (-not (Test-Path $tempPath)) {
+        New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
+        Write-Host "  📁 Created bloatware temp directory: $tempPath" -ForegroundColor Gray
+    }
+    
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $diffFilePath = Join-Path $tempPath "bloatware-diff-$timestamp.json"
+    
+    # Create comprehensive diff data
+    $diffData = @{
+        Timestamp = $startTime
+        Categories = $Categories
+        DetectedBloatware = $BloatwareList
+        TotalItems = $BloatwareList.Count
+        BySource = ($BloatwareList | Group-Object Source | ForEach-Object { @{ $_.Name = $_.Count } })
+        ByCategory = ($BloatwareList | Group-Object MatchedPattern | ForEach-Object { @{ $_.Name = $_.Count } })
+        Status = "Ready for removal"
+        DryRun = $DryRun.IsPresent
+    }
+    
+    # Save diff file
+    $diffData | ConvertTo-Json -Depth 4 | Set-Content -Path $diffFilePath -Encoding UTF8
+    Write-Host "  📄 Diff file created: $diffFilePath" -ForegroundColor Green
+    
+    # Create human-readable summary
+    $summaryPath = Join-Path $tempPath "bloatware-summary-$timestamp.txt"
+    $summaryContent = @"
+BLOATWARE REMOVAL SUMMARY
+========================
+Generated: $(Get-Date)
+Categories: $($Categories -join ', ')
+Total Items: $($BloatwareList.Count)
+Dry Run: $($DryRun.IsPresent)
+
+ITEMS BY SOURCE:
+"@
+
+    foreach ($sourceGroup in ($BloatwareList | Group-Object Source)) {
+        $summaryContent += "`n$($sourceGroup.Name): $($sourceGroup.Count) items"
+    }
+
+    $summaryContent += "`n`nDETAILED LIST:"
+    foreach ($item in $BloatwareList) {
+        $summaryContent += "`n- $($item.Name) [$($item.Source)] - Pattern: $($item.MatchedPattern)"
+    }
+
+    $summaryContent | Set-Content -Path $summaryPath -Encoding UTF8
+    Write-Host "  📝 Summary file created: $summaryPath" -ForegroundColor Green
     
     if ($DryRun) {
         Write-Host "  🧪 DRY RUN MODE - No changes will be made" -ForegroundColor Magenta
@@ -135,12 +206,21 @@ function Remove-DetectedBloatware {
     }
     
     $results.TotalProcessed = $BloatwareList.Count
+    $results.DiffFilePath = $diffFilePath
+    $results.SummaryPath = $summaryPath
     $duration = ((Get-Date) - $startTime).TotalSeconds
+    
+    # Update diff file with results
+    $diffData.Results = $results
+    $diffData.Duration = $duration
+    $diffData | ConvertTo-Json -Depth 4 | Set-Content -Path $diffFilePath -Encoding UTF8
+    Write-Host "  📄 Updated diff file with results: $diffFilePath" -ForegroundColor Gray
     
     # Summary output
     $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
     Write-Host "  $statusIcon Bloatware removal completed in $([math]::Round($duration, 2))s" -ForegroundColor Green
     Write-Host "    📊 Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -ForegroundColor Gray
+    Write-Host "    📄 Files created: JSON diff, TXT summary" -ForegroundColor Gray
     
     if ($results.Failed -gt 0) {
         Write-Host "    ❌ Some items could not be removed. Check logs for details." -ForegroundColor Yellow
