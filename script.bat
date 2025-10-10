@@ -469,15 +469,55 @@ IF !ERRORLEVEL! EQU 0 (
 )
 
 REM -----------------------------------------------------------------------------
-REM PowerShell Orchestrator Launch
+REM PowerShell Executable Detection (before system operations)
 REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Detecting PowerShell executable for system operations..." "INFO" "LAUNCHER"
+
+SET "PS_EXECUTABLE="
+SET "AUTO_NONINTERACTIVE=NO"
+
+REM Check PowerShell 7+ first
+pwsh.exe -Version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+    
+    IF !PS_MAJOR_VERSION! GEQ 7 (
+        SET "PS_EXECUTABLE=pwsh.exe"
+        SET "AUTO_NONINTERACTIVE=YES"
+        FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+        CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected - will use for system operations" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "PowerShell version !PS_MAJOR_VERSION! detected but version 7+ required" "WARN" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "PowerShell 7+ (pwsh.exe) not available, checking Windows PowerShell..." "INFO" "LAUNCHER"
+    
+    REM Fallback to Windows PowerShell for system operations only
+    powershell.exe -Command "$PSVersionTable.PSVersion.Major" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        FOR /F "tokens=*" %%i IN ('powershell.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        IF !PS_MAJOR_VERSION! GEQ 5 (
+            SET "PS_EXECUTABLE=powershell.exe"
+            CALL :LOG_MESSAGE "Windows PowerShell !PS_MAJOR_VERSION! will be used for system operations only" "INFO" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Windows PowerShell version !PS_MAJOR_VERSION! too old" "WARN" "LAUNCHER"
+        )
+    )
+)
+
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "No suitable PowerShell found for system operations" "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 1
+)
+
 REM -----------------------------------------------------------------------------
 REM System Restore Point Creation (before orchestrator execution)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Ensuring System Protection is enabled on the system drive..." "INFO" "LAUNCHER"
 
 SET "SYS_DRIVE=%SystemDrive%"
-FOR /F "usebackq tokens=* delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $drive=$env:SystemDrive.TrimEnd('\\'); $reg=Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore' -ErrorAction SilentlyContinue; $disabled = $reg -and ($reg.DisableSR -ne 0); if ($disabled) { try { Enable-ComputerRestore -Drive \"$drive\\\" -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; $res = Invoke-CimMethod -InputObject $sr -MethodName Enable -Arguments @{ Drive = \"$drive\\\" }; if ($res.ReturnValue -eq 0) { Write-Host 'SR_ENABLED' } else { Write-Host ('SR_ENABLE_FAILED_CODE ' + $res.ReturnValue); exit 1 } } catch { Write-Host 'SR_ENABLE_FAILED'; exit 1 } } } else { Write-Host 'SR_ALREADY_ENABLED' }"`) DO SET "SR_STATUS=%%i"
+FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $drive=$env:SystemDrive.TrimEnd('\\'); $reg=Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore' -ErrorAction SilentlyContinue; $disabled = $reg -and ($reg.DisableSR -ne 0); if ($disabled) { try { Enable-ComputerRestore -Drive \"$drive\\\" -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; $res = Invoke-CimMethod -InputObject $sr -MethodName Enable -Arguments @{ Drive = \"$drive\\\" }; if ($res.ReturnValue -eq 0) { Write-Host 'SR_ENABLED' } else { Write-Host ('SR_ENABLE_FAILED_CODE ' + $res.ReturnValue); exit 1 } } catch { Write-Host 'SR_ENABLE_FAILED'; exit 1 } } } else { Write-Host 'SR_ALREADY_ENABLED' }"`) DO SET "SR_STATUS=%%i"
 
 IF /I "!SR_STATUS!"=="SR_ENABLED" (
     CALL :LOG_MESSAGE "System Protection was disabled and is now enabled on %SYS_DRIVE%" "SUCCESS" "LAUNCHER"
@@ -489,11 +529,11 @@ IF /I "!SR_STATUS!"=="SR_ENABLED" (
 
 CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
 
-FOR /F "usebackq tokens=*" %%i IN (`powershell -NoProfile -Command "[guid]::NewGuid().ToString()" 2^>nul`) DO SET "RESTORE_GUID=%%i"
+FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]::NewGuid().ToString()" 2^>nul`) DO SET "RESTORE_GUID=%%i"
 SET "RESTORE_DESC=MaintenanceRP-!RESTORE_GUID!"
 
 REM Try creating via Checkpoint-Computer, fallback to CIM if needed
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; Write-Host 'RESTORE_CREATED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; $result = Invoke-CimMethod -InputObject $sr -MethodName CreateRestorePoint -Arguments @{ Description='!RESTORE_DESC!'; RestorePointType=10; EventType=100 }; if ($result.ReturnValue -eq 0) { Write-Host 'RESTORE_CREATED' } else { Write-Host ('RESTORE_FAILED_CODE ' + $result.ReturnValue); exit 1 } } catch { Write-Host 'RESTORE_FAILED'; Write-Error $_; exit 1 } }"
+%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; Write-Host 'RESTORE_CREATED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; $result = Invoke-CimMethod -InputObject $sr -MethodName CreateRestorePoint -Arguments @{ Description='!RESTORE_DESC!'; RestorePointType=10; EventType=100 }; if ($result.ReturnValue -eq 0) { Write-Host 'RESTORE_CREATED' } else { Write-Host ('RESTORE_FAILED_CODE ' + $result.ReturnValue); exit 1 } } catch { Write-Host 'RESTORE_FAILED'; Write-Error $_; exit 1 } }"
 
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "System restore point created: !RESTORE_DESC!" "SUCCESS" "LAUNCHER"
@@ -502,7 +542,7 @@ IF !ERRORLEVEL! EQU 0 (
     SET "VERIFY_MARK="
     SET "RESTORE_SEQ="
     SET "RESTORE_TIME="
-    FOR /F "usebackq tokens=1,2,* delims=|" %%A IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$d='!RESTORE_DESC!'; $rp = Get-ComputerRestorePoint | Where-Object Description -eq $d | Sort-Object SequenceNumber -Descending | Select-Object -First 1; if ($rp) { Write-Host ('RESTORE_VERIFIED|' + $rp.SequenceNumber + '|' + $rp.CreationTime) } else { Write-Host 'RESTORE_NOT_FOUND' }" 2^>nul`) DO (
+    FOR /F "usebackq tokens=1,2,* delims=|" %%A IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "$d='!RESTORE_DESC!'; $rp = Get-ComputerRestorePoint | Where-Object Description -eq $d | Sort-Object SequenceNumber -Descending | Select-Object -First 1; if ($rp) { Write-Host ('RESTORE_VERIFIED|' + $rp.SequenceNumber + '|' + $rp.CreationTime) } else { Write-Host 'RESTORE_NOT_FOUND' }" 2^>nul`) DO (
         SET "VERIFY_MARK=%%A"
         SET "RESTORE_SEQ=%%B"
         SET "RESTORE_TIME=%%C"
@@ -517,6 +557,9 @@ IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Failed to create system restore point (System Protection may be disabled). Continuing." "WARN" "LAUNCHER"
 )
 
+REM -----------------------------------------------------------------------------
+REM PowerShell Orchestrator Launch
+REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Preparing to launch PowerShell orchestrator..." "INFO" "LAUNCHER"
 
 IF "%ORCHESTRATOR_PATH%"=="" (
@@ -534,40 +577,29 @@ IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     EXIT /B 4
 )
 
-REM Determine PowerShell executable and check version - Orchestrator requires PowerShell 7+
-SET "PS_EXECUTABLE="
-SET "AUTO_NONINTERACTIVE=NO"
-
-pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    REM PowerShell 7+ is available, check version
-    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
-    
-    IF !PS_MAJOR_VERSION! GEQ 7 (
-        SET "PS_EXECUTABLE=pwsh.exe"
-        SET "AUTO_NONINTERACTIVE=YES"
-        CALL :LOG_MESSAGE "PowerShell !PS_MAJOR_VERSION! detected - enabling automatic unattended execution" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell version !PS_MAJOR_VERSION! is too old, requires 7+" "ERROR" "LAUNCHER"
-        GOTO :PS7_ERROR
-    )
-) ELSE (
-    :PS7_ERROR
-    CALL :LOG_MESSAGE "PowerShell 7 is required but not available" "ERROR" "LAUNCHER"
+REM Check if we have PowerShell 7+ for the orchestrator (required)
+IF NOT "%PS_EXECUTABLE%"=="pwsh.exe" (
+    CALL :LOG_MESSAGE "PowerShell 7+ is required for the orchestrator but not available" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "The MaintenanceOrchestrator.ps1 requires PowerShell Core 7.0 or higher" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please ensure PowerShell 7 is properly installed and available in PATH" "ERROR" "LAUNCHER"
-    ECHO.
-    ECHO ===============================================
-    ECHO   ERROR: PowerShell 7 Required
-    ECHO ===============================================
-    ECHO The maintenance orchestrator requires PowerShell 7.0 or higher.
-    ECHO Please install PowerShell 7 and ensure pwsh.exe is in your PATH.
-    ECHO.
-    ECHO Download: https://github.com/PowerShell/PowerShell/releases
-    ECHO.
-    PAUSE
+    
+    REM Only show interactive error if not in unattended mode
+    IF NOT "%1"=="-NonInteractive" (
+        ECHO.
+        ECHO ===============================================
+        ECHO   ERROR: PowerShell 7 Required
+        ECHO ===============================================
+        ECHO The maintenance orchestrator requires PowerShell 7.0 or higher.
+        ECHO Please install PowerShell 7 and ensure pwsh.exe is in your PATH.
+        ECHO.
+        ECHO Download: https://github.com/PowerShell/PowerShell/releases
+        ECHO.
+        PAUSE
+    )
     EXIT /B 1
 )
+
+CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
 REM Parse command line arguments for the orchestrator
 SET "PS_ARGS="
@@ -594,9 +626,15 @@ SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
 
 CALL :LOG_MESSAGE "PowerShell orchestrator initialization completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
 
-REM Check if running in non-interactive mode from command line
+REM Check if running in non-interactive mode from command line OR auto-enabling due to PS7+
 IF "%1"=="-NonInteractive" (
     CALL :LOG_MESSAGE "Non-interactive mode - executing all tasks unattended" "INFO" "LAUNCHER"
+    CD /D "%WORKING_DIR%"
+    %PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
+    SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+    GOTO :FINAL_CLEANUP
+) ELSE IF "%AUTO_NONINTERACTIVE%"=="YES" (
+    CALL :LOG_MESSAGE "PowerShell 7+ detected - enabling automatic unattended execution" "INFO" "LAUNCHER"
     CD /D "%WORKING_DIR%"
     %PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
     SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
