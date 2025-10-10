@@ -83,7 +83,7 @@ CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHEC
 
 IF "%IS_ADMIN%"=="NO" (
     CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
-    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
         PAUSE
@@ -123,7 +123,7 @@ IF /I "%PENDING_RESTART%"=="True" (
     schtasks /Create ^
         /SC ONSTART ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "\"%SCRIPT_PATH%\"" ^
+        /TR "cmd.exe /c start \"Windows Maintenance\" /wait \"\"%SCRIPT_PATH%\"\"" ^
         /RL HIGHEST ^
         /RU SYSTEM ^
         /F >nul 2>&1
@@ -163,7 +163,7 @@ IF !ERRORLEVEL! EQU 0 (
         /MO 1 ^
         /D 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "\"%SCRIPT_PATH%\" -NonInteractive" ^
+        /TR "cmd.exe /c start \"Windows Maintenance\" /wait \"\"%SCRIPT_PATH%\" -NonInteractive\"" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
@@ -589,7 +589,7 @@ CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%O
 CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "LAUNCHER"
 
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%"
 SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
 
 CALL :LOG_MESSAGE "PowerShell orchestrator initialization completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
@@ -598,7 +598,7 @@ REM Check if running in non-interactive mode from command line
 IF "%1"=="-NonInteractive" (
     CALL :LOG_MESSAGE "Non-interactive mode - executing all tasks unattended" "INFO" "LAUNCHER"
     CD /D "%WORKING_DIR%"
-    %PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
+    %PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
     SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
     GOTO :FINAL_CLEANUP
 )
@@ -672,28 +672,28 @@ GOTO :EXECUTE_INSERTED_DRYRUN
 :EXECUTE_ALL
 CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_INSERTED
 CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_ALL_DRYRUN
 CALL :LOG_MESSAGE "Executing all tasks in dry-run unattended..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_INSERTED_DRYRUN
 CALL :LOG_MESSAGE "Executing selected tasks in dry-run: %TASKNUMS%..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun -TaskNumbers "%TASKNUMS%"
+%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
