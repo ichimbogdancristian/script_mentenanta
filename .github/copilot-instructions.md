@@ -11,7 +11,7 @@
 7. [Integration & Dependencies](./copilot-instructions.md#integration--dependencies)
 8. [Reference Guide](./copilot-instructions.md#reference-guide)
 
----
+-- -
 
 ## 🏗️ Repository Overview
 
@@ -20,29 +20,29 @@ This repository contains a **Windows maintenance automation system** built on a 
 ### System Components
 
 | Component | Purpose | Key Features |
-|-----------|---------|--------------|
-| `script.bat` | Launcher & Bootstrapper | Elevation, dependency installation (winget, pwsh, choco, PSWindowsUpdate), scheduled tasks, repo download |
-| `MaintenanceOrchestrator.ps1` | Central Orchestrator | Module loading, configuration, interactive menus, task execution coordination (PowerShell 7+ required) |
-| `modules/type1/` | Inventory & Reporting | Read-only operations for system analysis |
-| `modules/type2/` | System Modification | Write operations that change system state |
-| `modules/core/` | Infrastructure | Configuration, menus, dependencies, scheduling |
-| `config/*.json` | Configuration System | JSON-based settings and data |
+| ---------- - | -------- - | -------------- |
+| `script.bat`  | Launcher & Bootstrapper | Elevation, dependency installation (winget, pwsh, choco, PSWindowsUpdate), scheduled tasks, repo download |
+| `MaintenanceOrchestrator.ps1`  | Central Orchestrator | Module loading, configuration, interactive menus, task execution coordination (PowerShell 7+ required) |
+| `modules/type1/`  | Inventory & Reporting | Read-only operations for system analysis |
+| `modules/type2/`  | System Modification | Write operations that change system state |
+| `modules/core/`  | Infrastructure | Configuration, menus, dependencies, scheduling |
+| `config/*.json`  | Configuration System | JSON-based settings and data |
 
 ### Target Environment
 
-- **Platforms**: Windows 10/11
-- **Requirements**: Administrator privileges, network access
-- **Design**: Location-agnostic launcher with self-discovery
+- * * Platforms**: Windows 10/11
+- * * Requirements**: Administrator privileges, network access
+- * * Design**: Location-agnostic launcher with self-discovery
 
 ### Project Evolution
 
 This project underwent a **complete architectural transformation** from a monolithic script to a modular system:
-- **Original monolithic files** preserved in `archive/` directory for reference
-- **Current architecture** fully modular with specialized PowerShell modules
-- **Migration complete**: All functionality extracted from the original 11,353-line `script.ps1`
-- **Production ready**: New system is the current active implementation
+- * * Original monolithic files** preserved in `archive/` directory for reference
+- * * Current architecture** fully modular with specialized PowerShell modules
+- * * Migration complete**: All functionality extracted from the original 11, 353-line `script.ps1`
+- * * Production ready**: New system is the current active implementation
 
----
+-- -
 
 ## 🎯 Architecture & Core Concepts
 
@@ -50,14 +50,14 @@ This project underwent a **complete architectural transformation** from a monoli
 
 #### 🔧 Modular Architecture
 The system is built from specialized PowerShell modules, each with a single responsibility:
-- **Type 1 modules**: Inventory/reporting (read-only operations)
-- **Type 2 modules**: System modifications (write operations)
-- **Core modules**: Infrastructure (configuration, menus, dependencies, scheduling)
+- * * Type 1 modules**: Inventory/reporting (read-only operations)
+- * * Type 2 modules**: System modifications (write operations)
+- * * Core modules**: Infrastructure (configuration, menus, dependencies, scheduling)
 
 #### 🚀 Launcher → Orchestrator Design
 - `script.bat` prepares environment (elevation, dependency bootstrap, scheduled tasks, downloads)
 - Delegates to `MaintenanceOrchestrator.ps1` for actual task execution
-- **Important**: Avoid editing elevation logic in PowerShell — it's centralized in the batch launcher
+- * * Important**: Avoid editing elevation logic in PowerShell — it's centralized in the batch launcher
 
 #### ⚙️ Configuration-Driven
 - All settings, app lists, and behaviors controlled through JSON configuration files in `config/` directory
@@ -612,6 +612,117 @@ Invoke-ScriptAnalyzer -Path . -Recurse -IncludeRule PSUseApprovedVerbs,PSAvoidUs
 | `PSAvoidUsingPositionalParameters` | Use named parameters | `-Path $file` not just `$file` |
 | `PSUseDeclaredVarsMoreThanAssignments` | Remove unused variables | Clean up unused declarations |
 
+#### 🚨 **CRITICAL: Current Code Quality Status (Oct 2025)**
+
+**As of October 11, 2025, the project has 3,080 PSScriptAnalyzer violations:**
+- **926 Warnings** (high priority fixes needed)
+- **2,154 Information** (style and consistency improvements)
+- **0 Errors** (good - no syntax or critical issues)
+
+**Priority 1 - Critical Warnings to Fix:**
+
+1. **PSAvoidUsingWriteHost (67 violations in TelemetryDisable.psm1, 25 in WindowsUpdates.psm1)**
+   ```powershell
+   # ❌ WRONG: Write-Host is not PowerShell best practice
+   Write-Host "✓ Success" -ForegroundColor Green
+   Write-Host "❌ Failed" -ForegroundColor Red
+   
+   # ✅ CORRECT: Use appropriate PowerShell streams
+   Write-Information "✓ Success" -InformationAction Continue
+   Write-Warning "⚠️ Warning message"
+   Write-Error "❌ Error message"
+   Write-Verbose "🔍 Debug information"
+   
+   # For user-facing output in functions
+   Write-Output "Operation completed successfully"
+   ```
+
+2. **PSUseSingularNouns (7 violations)**
+   ```powershell
+   # ❌ WRONG: Plural nouns in function names
+   function Test-PrivacySettings { }
+   function Set-TelemetryRegistrySettings { }
+   function Disable-TelemetryServices { }
+   
+   # ✅ CORRECT: Singular nouns
+   function Test-PrivacySetting { }
+   function Set-TelemetryRegistrySetting { }
+   function Disable-TelemetryService { }
+   ```
+
+3. **PSUseShouldProcessForStateChangingFunctions (1 violation)**
+   ```powershell
+   # ❌ WRONG: Missing ShouldProcess for state changes
+   function Set-TelemetryRegistrySetting {
+       [CmdletBinding()]
+       param($Setting, $Value)
+       Set-ItemProperty -Path $Path -Name $Setting -Value $Value
+   }
+   
+   # ✅ CORRECT: Include ShouldProcess support
+   function Set-TelemetryRegistrySetting {
+       [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+       param($Setting, $Value)
+       
+       if ($PSCmdlet.ShouldProcess($Setting, 'Set registry value')) {
+           Set-ItemProperty -Path $Path -Name $Setting -Value $Value
+           return $true
+       }
+       return $false
+   }
+   ```
+
+4. **PSUseOutputTypeCorrectly (9 violations)**
+   ```powershell
+   # ❌ WRONG: Missing OutputType attribute
+   function Get-SystemInfo {
+       [CmdletBinding()]
+       param()
+       return @{ Status = 'Success'; Data = $data }
+   }
+   
+   # ✅ CORRECT: Explicit OutputType declaration
+   function Get-SystemInfo {
+       [CmdletBinding()]
+       [OutputType([hashtable])]
+       param()
+       return @{ Status = 'Success'; Data = $data }
+   }
+   ```
+
+**Priority 2 - Style and Consistency Issues:**
+
+1. **PSAvoidTrailingWhitespace (2,154 violations)**
+   - Remove all trailing spaces and tabs from line endings
+   - Configure VS Code to show and auto-remove trailing whitespace
+
+2. **PSUseBOMForUnicodeEncodedFile (2 violations)**
+   ```powershell
+   # Fix encoding for TelemetryDisable.psm1 and WindowsUpdates.psm1
+   # Save files with UTF-8 BOM encoding
+   ```
+
+3. **PSAvoidDefaultValueSwitchParameter (6 violations in WindowsUpdates.psm1)**
+   ```powershell
+   # ❌ WRONG: Switch parameters should not default to $true
+   [Parameter()]
+   [switch]$EnableFeature = $true
+   
+   # ✅ CORRECT: Let switches default to $false naturally
+   [Parameter()]
+   [switch]$EnableFeature
+   ```
+
+#### 🛠️ **Immediate Action Required**
+
+**Before any new development, address these violations in this order:**
+
+1. **TelemetryDisable.psm1** - 67 Write-Host + trailing whitespace + plural nouns
+2. **WindowsUpdates.psm1** - 25 Write-Host + switch parameter defaults + unused parameters
+3. **All modules** - Add OutputType attributes to functions
+4. **All modules** - Remove trailing whitespace (can be automated)
+5. **All modules** - Add comprehensive comment-based help
+
 ### Code Review Checklist
 
 Use this checklist before committing PowerShell code:
@@ -629,14 +740,241 @@ Use this checklist before committing PowerShell code:
 - [ ] **PSScriptAnalyzer**: All high-severity issues resolved
 - [ ] **Consistent style**: Indentation and formatting match project standards
 - [ ] **Module exports**: Function added to `Export-ModuleMember`
+- [ ] **No Write-Host**: Use Write-Information, Write-Output, Write-Verbose instead
+- [ ] **OutputType**: All functions have proper `[OutputType()]` attributes
+- [ ] **No trailing whitespace**: Lines are clean and properly formatted
 
----
+### 🏗️ **Standardized Patterns & Templates**
+
+#### **Standard Function Template**
+
+All new functions must follow this template:
+
+```powershell
+<#
+.SYNOPSIS
+    Brief one-line description of what the function does.
+
+.DESCRIPTION
+    Detailed description explaining the function's purpose, behavior, and any
+important implementation details.
+
+.PARAMETER ParameterName
+Description of what this parameter does and expected values.
+
+.EXAMPLE
+FunctionName -Parameter "Value"
+Description of what this example does.
+
+.EXAMPLE
+FunctionName -Parameter "Value" -WhatIf
+Description of dry-run example.
+
+.OUTPUTS
+[PSCustomObject] for Type 1 modules (data objects)
+[bool] for Type 2 modules (success/failure)
+
+.NOTES
+Author: Windows Maintenance Automation Project
+Module Type: Core/Type1/Type2
+Dependencies: List any module dependencies
+Version: 1.0.0
+#>
+function Verb-SingularNoun {
+    [CmdletBinding(SupportsShouldProcess = $true)]  # For Type 2 modules only
+    [OutputType([PSCustomObject])]  # Adjust type as appropriate
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [ValidateNotNullOrEmpty()]
+        [string]$RequiredParameter,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Option1', 'Option2', 'Option3')]
+        [string]$OptionalParameter = 'Option1',
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$Force
+    )
+    
+    begin {
+        Write-Verbose "Starting $($MyInvocation.MyCommand.Name)"
+        
+        # Initialize variables
+        $results = @()
+    }
+    
+    process {
+        try {
+            $ErrorActionPreference = 'Stop'
+            
+            # Type 2 modules: Check ShouldProcess
+            if ($PSCmdlet.ShouldProcess($RequiredParameter, 'Perform operation')) {
+                Write-Verbose "Processing: $RequiredParameter"
+                
+                # Main logic here
+                $operationResult = Invoke-SomeOperation -Parameter $RequiredParameter
+                
+                Write-Verbose "Operation completed successfully"
+                
+                # Type 1: Return data object
+                return [PSCustomObject]@{
+                    Status    = 'Success'
+                    Data      = $operationResult
+                    Timestamp = Get-Date
+                }
+                
+                # Type 2: Return boolean
+                # return $true
+            }
+            else {
+                Write-Information "⏭️ Skipped operation (WhatIf mode)" -InformationAction Continue
+                return $false  # Type 2 modules
+            }
+        }
+        catch {
+            Write-Error "Operation failed: $_"
+            Write-Verbose $_.Exception.Message
+            
+            # Type 1: Return null or error object
+            return $null
+            
+            # Type 2: Return false
+            # return $false
+        }
+    }
+    
+    end {
+        Write-Verbose "Completed $($MyInvocation.MyCommand.Name)"
+    }
+}
+```
+
+#### **Standard Error Handling Pattern**
+
+```powershell
+# Consistent error handling across all modules
+try {
+    $ErrorActionPreference = 'Stop'
+    Write-Verbose "Starting operation: $operationName"
+    
+    # Perform operation
+    $result = Invoke-Operation -Parameters $params
+    
+    # Log success
+    Write-Verbose "✓ Operation succeeded: $operationName"
+    Write-Information "✓ $successMessage" -InformationAction Continue
+    
+    return $result  # or $true for Type 2
+}
+catch {
+    # Comprehensive error logging
+    $errorMessage = "❌ Operation failed: $operationName - $($_.Exception.Message)"
+    Write-Error $errorMessage
+    Write-Verbose "Error details: $($_.Exception.ToString())"
+    
+    # Optional: Add to error collection for reporting
+    if ($ErrorCollection) {
+        $ErrorCollection.Add(@{
+                Operation = $operationName
+                Error     = $_.Exception.Message
+                Timestamp = Get-Date
+            })
+    }
+    
+    return $null  # or $false for Type 2
+}
+finally {
+    # Cleanup code here
+    $ErrorActionPreference = 'Continue'
+}
+```
+
+#### **Standard Output Patterns**
+
+```powershell
+# ✅ CORRECT: User-facing messages
+Write-Information "🔄 Starting system analysis..." -InformationAction Continue
+Write-Information "✓ Analysis completed successfully" -InformationAction Continue
+Write-Information "⚠️ Some items require attention" -InformationAction Continue
+
+# ✅ CORRECT: Debug and verbose logging
+Write-Verbose "Processing item: $itemName"
+Write-Debug "Variable state: $($variable | ConvertTo-Json)"
+
+# ✅ CORRECT: Warnings and errors
+Write-Warning "⚠️ Configuration file not found, using defaults"
+Write-Error "❌ Critical operation failed: $errorDetails"
+
+# ✅ CORRECT: Function return values
+Write-Output $resultObject  # For pipeline compatibility
+return $resultObject        # For direct function calls
+```
+
+### 🧪 **Testing Framework Requirements**
+
+#### **Pester Test Structure**
+
+Create comprehensive tests following this structure:
+
+```
+tests/
+├── Core.Tests.ps1              # Core module tests
+├── Type1Modules.Tests.ps1      # Read-only module tests
+├── Type2Modules.Tests.ps1      # System modification tests
+├── Integration.Tests.ps1       # End-to-end workflow tests
+└── Helpers/
+├── MockData.ps1           # Test data and mock objects
+└── TestUtilities.ps1      # Shared test functions
+```
+
+#### **Test Template Example**
+
+```powershell
+# Example: ConfigManager.Tests.ps1
+Describe "ConfigManager Module Tests" {
+    BeforeAll {
+        Import-Module "$PSScriptRoot\..\modules\core\ConfigManager.psm1" -Force
+        $testConfigPath = "$PSScriptRoot\TestData\config"
+    }
+    
+    Describe "Initialize-ConfigSystem" {
+        It "Should initialize with valid config path" {
+            { Initialize-ConfigSystem -ConfigRootPath $testConfigPath } | Should -Not -Throw
+        }
+        
+        It "Should throw for invalid path" {
+            { Initialize-ConfigSystem -ConfigRootPath "C:\NonExistent" } | Should -Throw
+        }
+    }
+    
+    Describe "Get-MainConfiguration" {
+        It "Should return configuration object" {
+            $config = Get-MainConfiguration
+            $config | Should -Not -BeNullOrEmpty
+            $config.execution | Should -Not -BeNullOrEmpty
+        }
+    }
+}
+```
+
+#### **Mock Strategy for System Operations**
+
+```powershell
+# Mock external dependencies in Type 2 tests
+BeforeAll {
+    Mock Get-AppxPackage { return @{ Name = "TestApp"; Version = "1.0" } }
+    Mock Remove-AppxPackage { return $true }
+    Mock Set-ItemProperty { return $true }
+}
+```
+
+-- -
 
 ## 🧪 Testing Guidelines
 
 ### MANDATORY Testing Procedures
 
-**⚠️ CRITICAL: All testing must be conducted in the TestFolder**
+* * ⚠️ CRITICAL: All testing must be conducted in the TestFolder**
 
 When you need to create test scripts, run tests, or verify functionality, you **MUST** use the TestFolder located at the same path level as script_mentenanta:
 
@@ -647,10 +985,10 @@ Desktop\Projects\
 ```
 
 **Mandatory Testing Workflow:**
-1. **Clean TestFolder**: Always start by cleaning the TestFolder from any previous contents
-2. **Copy launcher**: Copy the latest version of `script.bat` from script_mentenanta to TestFolder
-3. **Execute from TestFolder**: Run `script.bat` from within the TestFolder directory
-4. **Observe project unfolding**: Watch the complete project download, setup, and execution process
+1. * * Clean TestFolder**: Always start by cleaning the TestFolder from any previous contents
+2. * * Copy launcher**: Copy the latest version of `script.bat` from script_mentenanta to TestFolder
+3. * * Execute from TestFolder**: Run `script.bat` from within the TestFolder directory
+4. * * Observe project unfolding**: Watch the complete project download, setup, and execution process
 
 **Commands for testing workflow:**
 ```powershell
@@ -692,7 +1030,7 @@ Invoke-Pester -Path ".\tests\BloatwareRemoval.Tests.ps1"
 Invoke-Pester -Path ".\tests\" -CodeCoverage ".\modules\**\*.psm1" -OutputFormat NUnitXml
 ```
 
----
+-- -
 
 ## 🔗 Integration & Dependencies
 
@@ -701,7 +1039,7 @@ Invoke-Pester -Path ".\tests\" -CodeCoverage ".\modules\**\*.psm1" -OutputFormat
 The system relies on several external tools managed by the `DependencyManager` module:
 
 | Tool | Purpose | Installation Order |
-|------|---------|-------------------|
+| ------ | -------- - | ------------------ - |
 | **winget** | Windows Package Manager | 1st (bootstrapped by script.bat) |
 | **pwsh** | PowerShell 7+ | 2nd (required for orchestrator) |
 | **NuGet** | PowerShell package provider | 3rd (for PSGallery) |
@@ -744,19 +1082,19 @@ $essentialApps = Get-EssentialApps  # From config/essential-apps.json
 
 **Critical**: Core modules must load before Type 1/Type 2 modules:
 
-1. **Core modules** (infrastructure):
-   - `ConfigManager.psm1` — Configuration loading
-   - `MenuSystem.psm1` — Interactive menus
-   - `DependencyManager.psm1` — Package management
-   - `TaskScheduler.psm1` — Scheduled tasks
+1. * * Core modules** (infrastructure):
+- `ConfigManager.psm1` — Configuration loading
+- `MenuSystem.psm1` — Interactive menus
+- `DependencyManager.psm1` — Package management
+- `TaskScheduler.psm1` — Scheduled tasks
 
-2. **Type 1 modules** (read-only operations):
-   - Can depend on Core modules only
-   - No dependencies on Type 2 modules
+2. * * Type 1 modules** (read-only operations):
+- Can depend on Core modules only
+- No dependencies on Type 2 modules
 
-3. **Type 2 modules** (system modifications):
-   - Can depend on Core and Type 1 modules
-   - May query Type 1 modules for data before modifications
+3. * * Type 2 modules** (system modifications):
+- Can depend on Core and Type 1 modules
+- May query Type 1 modules for data before modifications
 
 ### Registry & Windows APIs
 
@@ -789,7 +1127,7 @@ catch {
 - Coordinate any repo structure changes with batch script updates
 - Repository URL: `https://github.com/ichimbogdancristian/script_mentenanta`
 
----
+-- -
 
 ## 📖 Reference Guide
 
@@ -856,7 +1194,7 @@ Use consistent icons for output messages:
 
 ```powershell
 # Check module path
-$env:PSModulePath -split ';'
+$env:PSModulePath -split '; '
 
 # Import with verbose to see details
 Import-Module ".\modules\core\ConfigManager.psm1" -Force -Verbose
@@ -915,21 +1253,22 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ### When to Ask for Clarification
 
 If you're unsure about:
-1. **Environment constraints**: Local dev vs managed enterprise endpoint vs air-gapped system
-2. **Permissions**: Whether modifying scheduled task behavior or restart policy is permitted
-3. **Feature toggles**: Whether new features should be enabled by default or opt-in
-4. **Breaking changes**: Impact of modifying configuration schemas or return value contracts
-5. **Security implications**: Changes affecting elevation, registry access, or system modifications
+1. * * Environment constraints**: Local dev vs managed enterprise endpoint vs air-gapped system
+2. * * Permissions**: Whether modifying scheduled task behavior or restart policy is permitted
+3. * * Feature toggles**: Whether new features should be enabled by default or opt-in
+4. * * Breaking changes**: Impact of modifying configuration schemas or return value contracts
+5. * * Security implications**: Changes affecting elevation, registry access, or system modifications
 
----
+-- -
 
 ## 📝 Document Maintenance
 
-**Last Updated**: October 10, 2025  
-**Document Version**: 2.0  
+* * Last Updated**: October 11, 2025  
+**Document Version**: 2.1  
 **Project Version**: Modular Architecture (Post-Migration)
 
 ### Changelog
 
-- **v2.0 (Oct 2025)**: Complete restructure with TOC, expanded PowerShell best practices, added comprehensive code examples
-- **v1.0 (Initial)**: Basic structure with core concepts and workflows
+- * * v2.1 (Oct 11, 2025)**: Added comprehensive code quality guidelines, PSScriptAnalyzer violation fixes, standardized templates, testing framework requirements
+- * * v2.0 (Oct 2025)**: Complete restructure with TOC, expanded PowerShell best practices, added comprehensive code examples
+- * * v1.0 (Initial)**: Basic structure with core concepts and workflows

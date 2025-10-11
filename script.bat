@@ -40,6 +40,21 @@ SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 
+REM Robust Script Path Detection for Scheduled Tasks (use the exact running script path)
+SET "SCHEDULED_TASK_SCRIPT_PATH="
+IF EXIST "%SCRIPT_PATH%" (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
+    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+)
+IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH IF EXIST "%SCRIPT_DIR%script.bat" (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
+    CALL :LOG_MESSAGE "Scheduled tasks will use directory script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+)
+IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
+    CALL :LOG_MESSAGE "Using fallback script path for scheduled tasks: %SCHEDULED_TASK_SCRIPT_PATH%" "WARN" "LAUNCHER"
+)
+
 REM Detect if running from a network location
 IF "%SCRIPT_PATH:~0,2%"=="\\" (
     SET "IS_NETWORK_LOCATION=YES"
@@ -112,44 +127,54 @@ IF !ERRORLEVEL! EQU 0 (
     )
 )
 
-REM Detect pending restart (from Windows Update or servicing)
-CALL :LOG_MESSAGE "Checking for pending restart..." "INFO" "LAUNCHER"
-FOR /F "tokens=*" %%i IN ('powershell -NoProfile -Command "($null -ne (Get-Item 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired' -ErrorAction SilentlyContinue)) -or ($null -ne (Get-Item 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending' -ErrorAction SilentlyContinue)) -or ($null -ne ((Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager' -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue).PendingFileRenameOperations))" 2^>nul') DO SET "PENDING_RESTART=%%i"
+REM Detect pending restart specifically due to Windows Updates
+CALL :LOG_MESSAGE "Checking for pending restart due to Windows Updates..." "INFO" "LAUNCHER"
+SET "RESTART_NEEDED=NO"
 
-IF /I "%PENDING_RESTART%"=="True" (
-    CALL :LOG_MESSAGE "Pending restart detected. Creating startup task and restarting system..." "WARN" "LAUNCHER"
+REM Prefer PSWindowsUpdate if available for accurate detection
+powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
+IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 2 (
+    CALL :LOG_MESSAGE "PSWindowsUpdate not available. Falling back to registry reboot flags." "INFO" "LAUNCHER"
+    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+)
 
-    REM Create startup task that relaunches this script with highest privileges at system startup
+IF /I "%RESTART_NEEDED%"=="YES" (
+    CALL :LOG_MESSAGE "Pending restart detected for updates. Creating startup task and restarting..." "WARN" "LAUNCHER"
+
+    REM Ensure any previous startup task is removed
+    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
+
+    REM Create startup task to resume after user logon with admin rights
+    CALL :LOG_MESSAGE "Creating ONLOGON startup task with script: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
     schtasks /Create ^
-        /SC ONSTART ^
+        /SC ONLOGON ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "\"%ComSpec%\" /c \"\"%SCRIPT_PATH%\" -NonInteractive\"" ^
+        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
         /RL HIGHEST ^
-        /RU SYSTEM ^
-        /DELAY 0002:00 ^
+        /RU "%USERNAME%" ^
+        /DELAY 0001:00 ^
         /F >nul 2>&1
 
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task created: %STARTUP_TASK_NAME%" "SUCCESS" "LAUNCHER"
-        FOR /F "tokens=*" %%s IN ('schtasks /Query /TN "%STARTUP_TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
-            CALL :LOG_MESSAGE "Startup task detail: %%s" "INFO" "LAUNCHER"
-        )
+        CALL :LOG_MESSAGE "Startup task created successfully. Restarting system in 10 seconds..." "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Press Ctrl+C to cancel restart." "INFO" "LAUNCHER"
+        timeout /t 10 >nul 2>&1
+        shutdown /r /t 5 /c "System restart required to complete Windows Updates. Maintenance will resume automatically." >nul 2>&1
+        EXIT /B 0
     ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create startup task. Aborting automatic restart to prevent lockout." "ERROR" "LAUNCHER"
-        GOTO :SYSTEM_REQUIREMENTS
+        CALL :LOG_MESSAGE "Failed to create startup task. Continuing without automatic restart." "ERROR" "LAUNCHER"
     )
-
-    REM Restart the system; the script will resume from startup task after reboot
-    CALL :LOG_MESSAGE "Restarting in 5 seconds to complete updates..." "INFO" "LAUNCHER"
-    shutdown /r /t 5 /c "System restart required to complete updates. Maintenance will resume automatically." >nul 2>&1
-    EXIT /B 0
 )
 
 REM No pending restart; continue normal execution
 
 REM Create/Verify monthly maintenance scheduled task before continuing
 SET "TASK_NAME=WindowsMaintenanceAutomation"
-CALL :LOG_MESSAGE "Ensuring monthly maintenance task exists..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Ensuring monthly maintenance task exists (1st day 01:00)..." "INFO" "LAUNCHER"
 
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
@@ -158,13 +183,13 @@ IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME% (1st of each month at 01:00)" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
         /D 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "\"%ComSpec%\" /c \"\"%SCRIPT_PATH%\" -NonInteractive\"" ^
+        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^

@@ -23,70 +23,71 @@ using namespace System.Collections.Generic
 <#
 .SYNOPSIS
     Performs comprehensive system optimization
-    
+
 .DESCRIPTION
     Optimizes system performance through disk cleanup, registry optimization,
     UI tweaks, startup optimization, and system configuration improvements.
-    
+
 .PARAMETER CleanupTemp
     Clean temporary files and folders
-    
+
 .PARAMETER OptimizeStartup
     Optimize startup programs and services
-    
+
 .PARAMETER OptimizeUI
     Optimize Windows UI and visual effects
-    
+
 .PARAMETER OptimizeRegistry
     Clean and optimize Windows registry
-    
+
 .PARAMETER OptimizeDisk
     Perform disk optimization tasks
-    
+
 .PARAMETER OptimizeNetwork
     Apply network performance optimizations
-    
+
 .PARAMETER DryRun
     Simulate optimizations without applying changes
-    
+
 .EXAMPLE
     $results = Optimize-SystemPerformance
-    
+
 .EXAMPLE
     $results = Optimize-SystemPerformance -OptimizeStartup -OptimizeUI -DryRun
 #>
 function Optimize-SystemPerformance {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$CleanupTemp,
-        
+
         [Parameter()]
         [switch]$OptimizeStartup,
-        
+
         [Parameter()]
         [switch]$OptimizeUI,
-        
+
         [Parameter()]
         [switch]$OptimizeRegistry,
-        
+
         [Parameter()]
         [switch]$OptimizeDisk,
-        
+
         [Parameter()]
         [switch]$OptimizeNetwork,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
-    Write-Host "⚡ Starting comprehensive system optimization..." -ForegroundColor Cyan
+
+    Write-Information "⚡ Starting comprehensive system optimization..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     if ($DryRun) {
-        Write-Host "  🧪 DRY RUN MODE - No changes will be applied" -ForegroundColor Magenta
+        Write-Information "  🧪 DRY RUN MODE - No changes will be applied" -InformationAction Continue
     }
-    
+
     # Initialize results tracking
     $results = @{
         TotalOperations = 0
@@ -104,66 +105,66 @@ function Optimize-SystemPerformance {
             NetworkOptimization  = @{ Success = 0; Failed = 0; SettingsApplied = 0 }
         }
     }
-    
+
     try {
         # Temporary files cleanup (default: enabled)
         if ($CleanupTemp -or (-not $PSBoundParameters.ContainsKey('CleanupTemp'))) {
-            Write-Host "  🧹 Cleaning temporary files..." -ForegroundColor Gray
-            $tempResults = Clear-TemporaryFiles -DryRun:$DryRun
-            Merge-OptimizationResults -Results $results -NewResults $tempResults -Category 'TempCleanup'
+            Write-Information "  🧹 Cleaning temporary files..." -InformationAction Continue
+            $tempResults = Clear-TemporaryFile -DryRun:$DryRun
+            Merge-OptimizationResult -Results $results -NewResults $tempResults -Category 'TempCleanup'
         }
-        
+
         # Startup optimization (default: enabled)
         if ($OptimizeStartup -or (-not $PSBoundParameters.ContainsKey('OptimizeStartup'))) {
-            Write-Host "  🚀 Optimizing startup programs..." -ForegroundColor Gray
-            $startupResults = Optimize-StartupPrograms -DryRun:$DryRun
-            Merge-OptimizationResults -Results $results -NewResults $startupResults -Category 'StartupOptimization'
+            Write-Information "  🚀 Optimizing startup programs..." -InformationAction Continue
+            $startupResults = Optimize-StartupProgram -DryRun:$DryRun
+            Merge-OptimizationResult -Results $results -NewResults $startupResults -Category 'StartupOptimization'
         }
-        
+
         # UI optimization (default: enabled)
         if ($OptimizeUI -or (-not $PSBoundParameters.ContainsKey('OptimizeUI'))) {
-            Write-Host "  🎨 Optimizing user interface..." -ForegroundColor Gray
+            Write-Information "  🎨 Optimizing user interface..." -InformationAction Continue
             $uiResults = Optimize-UserInterface -DryRun:$DryRun
-            Merge-OptimizationResults -Results $results -NewResults $uiResults -Category 'UIOptimization'
+            Merge-OptimizationResult -Results $results -NewResults $uiResults -Category 'UIOptimization'
         }
-        
+
         # Registry optimization (default: disabled)
         if ($OptimizeRegistry) {
-            Write-Host "  📋 Optimizing registry..." -ForegroundColor Gray
+            Write-Information "  📋 Optimizing registry..." -InformationAction Continue
             $registryResults = Optimize-WindowsRegistry -DryRun:$DryRun
-            Merge-OptimizationResults -Results $results -NewResults $registryResults -Category 'RegistryOptimization'
+            Merge-OptimizationResult -Results $results -NewResults $registryResults -Category 'RegistryOptimization'
         }
-        
+
         # Disk optimization (default: enabled)
         if ($OptimizeDisk -or (-not $PSBoundParameters.ContainsKey('OptimizeDisk'))) {
-            Write-Host "  💽 Optimizing disk performance..." -ForegroundColor Gray
+            Write-Information "  💽 Optimizing disk performance..." -InformationAction Continue
             $diskResults = Optimize-DiskPerformance -DryRun:$DryRun
-            Merge-OptimizationResults -Results $results -NewResults $diskResults -Category 'DiskOptimization'
+            Merge-OptimizationResult -Results $results -NewResults $diskResults -Category 'DiskOptimization'
         }
-        
+
         # Network optimization (default: disabled)
         if ($OptimizeNetwork) {
-            Write-Host "  🌐 Optimizing network settings..." -ForegroundColor Gray
-            $networkResults = Optimize-NetworkSettings -DryRun:$DryRun
-            Merge-OptimizationResults -Results $results -NewResults $networkResults -Category 'NetworkOptimization'
+            Write-Information "  🌐 Optimizing network settings..." -InformationAction Continue
+            $networkResults = Optimize-NetworkSetting -DryRun:$DryRun
+            Merge-OptimizationResult -Results $results -NewResults $networkResults -Category 'NetworkOptimization'
         }
-        
+
         $duration = ((Get-Date) - $startTime).TotalSeconds
         $spaceFreedMB = [math]::Round($results.SpaceFreed / 1MB, 2)
-        
+
         # Summary output
         $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
-        Write-Host "  $statusIcon System optimization completed in $([math]::Round($duration, 2))s" -ForegroundColor Green
-        Write-Host "    📊 Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -ForegroundColor Gray
-        
+        Write-Information "  $statusIcon System optimization completed in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "    📊 Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
+
         if ($results.SpaceFreed -gt 0) {
-            Write-Host "    💾 Disk space freed: ${spaceFreedMB} MB" -ForegroundColor Blue
+            Write-Information "    💾 Disk space freed: ${spaceFreedMB} MB" -InformationAction Continue
         }
-        
+
         if ($results.Failed -gt 0) {
-            Write-Host "    ❌ Some optimizations failed. Check logs for details." -ForegroundColor Yellow
+            Write-Information "    ❌ Some optimizations failed. Check logs for details." -InformationAction Continue
         }
-        
+
         return $results
     }
     catch {
@@ -175,22 +176,23 @@ function Optimize-SystemPerformance {
 <#
 .SYNOPSIS
     Gets current system performance metrics
-    
+
 .DESCRIPTION
     Evaluates current system performance and identifies optimization opportunities.
-    
+
 .EXAMPLE
-    $metrics = Get-SystemPerformanceMetrics
+    $metrics = Get-SystemPerformanceMetric
 #>
-function Get-SystemPerformanceMetrics {
+function Get-SystemPerformanceMetric {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
-    
-    Write-Host "📊 Analyzing system performance..." -ForegroundColor Cyan
-    
+
+    Write-Information "📊 Analyzing system performance..." -InformationAction Continue
+
     $metrics = @{
         Timestamp       = Get-Date
-        DiskUsage       = Get-DiskUsageMetrics
+        DiskUsage       = Get-DiskUsageMetric
         StartupPrograms = Get-StartupProgramCount
         TemporaryFiles  = Get-TemporaryFilesSize
         RegistrySize    = Get-RegistrySize
@@ -199,25 +201,25 @@ function Get-SystemPerformanceMetrics {
         MemoryUsage     = Get-MemoryUsagePercent
         Recommendations = [List[string]]::new()
     }
-    
+
     # Generate recommendations based on metrics
     if ($metrics.TemporaryFiles -gt 500MB) {
         $metrics.Recommendations.Add("High temporary file usage detected ($([math]::Round($metrics.TemporaryFiles/1MB)) MB)")
     }
-    
+
     if ($metrics.StartupPrograms -gt 15) {
         $metrics.Recommendations.Add("Many startup programs detected ($($metrics.StartupPrograms))")
     }
-    
+
     if ($metrics.MemoryUsage -gt 80) {
         $metrics.Recommendations.Add("High memory usage detected ($($metrics.MemoryUsage)%)")
     }
-    
-    Write-Host "  💽 Disk Usage: $($metrics.DiskUsage.UsedPercentage)%" -ForegroundColor Gray
-    Write-Host "  🚀 Startup Programs: $($metrics.StartupPrograms)" -ForegroundColor Gray
-    Write-Host "  🗂️  Temporary Files: $([math]::Round($metrics.TemporaryFiles/1MB)) MB" -ForegroundColor Gray
-    Write-Host "  💡 Recommendations: $($metrics.Recommendations.Count)" -ForegroundColor Gray
-    
+
+    Write-Information "  💽 Disk Usage: $($metrics.DiskUsage.UsedPercentage)%" -InformationAction Continue
+    Write-Information "  🚀 Startup Programs: $($metrics.StartupPrograms)" -InformationAction Continue
+    Write-Information "  🗂️  Temporary Files: $([math]::Round($metrics.TemporaryFiles/1MB)) MB" -InformationAction Continue
+    Write-Information "  💡 Recommendations: $($metrics.Recommendations.Count)" -InformationAction Continue
+
     return $metrics
 }
 
@@ -229,20 +231,21 @@ function Get-SystemPerformanceMetrics {
 .SYNOPSIS
     Cleans temporary files and folders
 #>
-function Clear-TemporaryFiles {
-    [CmdletBinding()]
+function Clear-TemporaryFile {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Success    = 0
         Failed     = 0
         SpaceFreed = 0
         Details    = [List[PSCustomObject]]::new()
     }
-    
+
     # Define cleanup targets
     $cleanupTargets = @(
         @{ Path = "$env:TEMP\*"; Name = "User Temp Files"; Recurse = $true }
@@ -252,7 +255,7 @@ function Clear-TemporaryFiles {
         @{ Path = "$env:LOCALAPPDATA\Microsoft\Windows\INetCache\*"; Name = "Internet Cache"; Recurse = $true }
         @{ Path = "C:\Windows\SoftwareDistribution\Download\*"; Name = "Windows Update Cache"; Recurse = $true }
     )
-    
+
     foreach ($target in $cleanupTargets) {
         $cleanupResult = @{
             Name       = $target.Name
@@ -261,26 +264,26 @@ function Clear-TemporaryFiles {
             SpaceFreed = 0
             Error      = $null
         }
-        
+
         try {
             # Calculate size before cleanup
             $beforeSize = 0
             if (Test-Path (Split-Path $target.Path -Parent)) {
                 $items = Get-ChildItem -Path $target.Path -Force -ErrorAction SilentlyContinue
                 if ($target.Recurse) {
-                    $beforeSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue | 
+                    $beforeSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue |
                         Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                 }
                 else {
-                    $beforeSize = ($items | Where-Object { -not $_.PSIsContainer } | 
+                    $beforeSize = ($items | Where-Object { -not $_.PSIsContainer } |
                         Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                 }
             }
-            
+
             if ($DryRun) {
                 $cleanupResult.SpaceFreed = $beforeSize ?? 0
                 $cleanupResult.Success = $true
-                Write-Host "    [DRY RUN] Would clean $($target.Name): $([math]::Round($cleanupResult.SpaceFreed/1MB, 2)) MB" -ForegroundColor DarkYellow
+                Write-Information "    [DRY RUN] Would clean $($target.Name): $([math]::Round($cleanupResult.SpaceFreed/1MB, 2)) MB" -InformationAction Continue
             }
             else {
                 # Perform actual cleanup
@@ -296,29 +299,29 @@ function Clear-TemporaryFiles {
                         Remove-Item -Path $target.Path -Force -ErrorAction SilentlyContinue
                     }
                 }
-                
+
                 # Calculate space freed
                 $afterSize = 0
                 if (Test-Path (Split-Path $target.Path -Parent)) {
                     $items = Get-ChildItem -Path $target.Path -Force -ErrorAction SilentlyContinue
                     if ($target.Recurse) {
-                        $afterSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue | 
+                        $afterSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue |
                             Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                     }
                     else {
-                        $afterSize = ($items | Where-Object { -not $_.PSIsContainer } | 
+                        $afterSize = ($items | Where-Object { -not $_.PSIsContainer } |
                             Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                     }
                 }
-                
+
                 $cleanupResult.SpaceFreed = [math]::Max(0, ($beforeSize ?? 0) - ($afterSize ?? 0))
                 $cleanupResult.Success = $true
-                
+
                 if ($cleanupResult.SpaceFreed -gt 0) {
-                    Write-Host "    🧹 Cleaned $($target.Name): $([math]::Round($cleanupResult.SpaceFreed/1MB, 2)) MB" -ForegroundColor Green
+                    Write-Information "    🧹 Cleaned $($target.Name): $([math]::Round($cleanupResult.SpaceFreed/1MB, 2)) MB" -InformationAction Continue
                 }
             }
-            
+
             $results.Success++
             $results.SpaceFreed += $cleanupResult.SpaceFreed
         }
@@ -327,10 +330,10 @@ function Clear-TemporaryFiles {
             $results.Failed++
             Write-Warning "Failed to clean $($target.Name): $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$cleanupResult)
     }
-    
+
     return $results
 }
 
@@ -342,20 +345,21 @@ function Clear-TemporaryFiles {
 .SYNOPSIS
     Optimizes startup programs and services
 #>
-function Optimize-StartupPrograms {
-    [CmdletBinding()]
+function Optimize-StartupProgram {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Success        = 0
         Failed         = 0
         ItemsOptimized = 0
         Details        = [List[PSCustomObject]]::new()
     }
-    
+
     # Get startup programs from registry
     $startupLocations = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
@@ -363,28 +367,28 @@ function Optimize-StartupPrograms {
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
     )
-    
+
     # Programs that are generally safe to disable
     $safeToDisable = @(
         '*Adobe*Updater*', '*Adobe*Update*', '*iTunesHelper*', '*QuickTime*',
         '*Spotify*', '*Skype*Update*', '*Steam*', '*Discord*Update*',
         '*CCleaner*', '*WinRAR*', '*7-Zip*', '*VLC*Update*'
     )
-    
+
     foreach ($location in $startupLocations) {
         if (Test-Path $location) {
             try {
                 $startupItems = Get-ItemProperty -Path $location -ErrorAction SilentlyContinue
-                
+
                 if ($startupItems) {
-                    $properties = $startupItems.PSObject.Properties | Where-Object { 
-                        $_.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider') 
+                    $properties = $startupItems.PSObject.Properties | Where-Object {
+                        $_.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')
                     }
-                    
+
                     foreach ($property in $properties) {
                         $itemName = $property.Name
                         $itemValue = $property.Value
-                        
+
                         # Check if this item should be optimized
                         $shouldOptimize = $false
                         foreach ($pattern in $safeToDisable) {
@@ -393,7 +397,7 @@ function Optimize-StartupPrograms {
                                 break
                             }
                         }
-                        
+
                         if ($shouldOptimize) {
                             $optimizationResult = @{
                                 Name     = $itemName
@@ -402,10 +406,10 @@ function Optimize-StartupPrograms {
                                 Action   = 'Disabled'
                                 Success  = $false
                             }
-                            
+
                             try {
                                 if ($DryRun) {
-                                    Write-Host "    [DRY RUN] Would disable startup item: $itemName" -ForegroundColor DarkYellow
+                                    Write-Information "    [DRY RUN] Would disable startup item: $itemName" -InformationAction Continue
                                     $optimizationResult.Success = $true
                                 }
                                 else {
@@ -415,13 +419,13 @@ function Optimize-StartupPrograms {
                                         New-Item -Path $backupPath -Force | Out-Null
                                     }
                                     Set-ItemProperty -Path $backupPath -Name $itemName -Value $itemValue -Force
-                                    
+
                                     # Remove from startup
                                     Remove-ItemProperty -Path $location -Name $itemName -Force
                                     $optimizationResult.Success = $true
-                                    Write-Host "    🚀 Disabled startup item: $itemName" -ForegroundColor Yellow
+                                    Write-Information "    🚀 Disabled startup item: $itemName" -InformationAction Continue
                                 }
-                                
+
                                 $results.Success++
                                 $results.ItemsOptimized++
                             }
@@ -430,7 +434,7 @@ function Optimize-StartupPrograms {
                                 $results.Failed++
                                 Write-Warning "Failed to disable startup item $itemName`: $_"
                             }
-                            
+
                             $results.Details.Add([PSCustomObject]$optimizationResult)
                         }
                     }
@@ -442,7 +446,7 @@ function Optimize-StartupPrograms {
             }
         }
     }
-    
+
     return $results
 }
 
@@ -455,19 +459,20 @@ function Optimize-StartupPrograms {
     Optimizes Windows user interface and visual effects
 #>
 function Optimize-UserInterface {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Success         = 0
         Failed          = 0
         SettingsChanged = 0
         Details         = [List[PSCustomObject]]::new()
     }
-    
+
     # UI optimization settings
     $uiOptimizations = @{
         # Disable visual effects for performance
@@ -495,7 +500,7 @@ function Optimize-UserInterface {
             'MinAnimate' = '0'            # Disable minimize/maximize animations
         }
     }
-    
+
     foreach ($registryPath in $uiOptimizations.Keys) {
         foreach ($setting in $uiOptimizations[$registryPath].GetEnumerator()) {
             $settingResult = @{
@@ -505,10 +510,10 @@ function Optimize-UserInterface {
                 Success = $false
                 Error   = $null
             }
-            
+
             try {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -InformationAction Continue
                     $settingResult.Success = $true
                 }
                 else {
@@ -516,13 +521,13 @@ function Optimize-UserInterface {
                     if (-not (Test-Path $registryPath)) {
                         New-Item -Path $registryPath -Force | Out-Null
                     }
-                    
+
                     # Set the value
                     Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
                     $settingResult.Success = $true
-                    Write-Host "    🎨 Applied UI optimization: $($setting.Key)" -ForegroundColor Green
+                    Write-Information "    🎨 Applied UI optimization: $($setting.Key)" -InformationAction Continue
                 }
-                
+
                 $results.Success++
                 $results.SettingsChanged++
             }
@@ -531,11 +536,11 @@ function Optimize-UserInterface {
                 $results.Failed++
                 Write-Warning "Failed to apply UI setting $($setting.Key): $_"
             }
-            
+
             $results.Details.Add([PSCustomObject]$settingResult)
         }
     }
-    
+
     return $results
 }
 
@@ -553,16 +558,16 @@ function Optimize-WindowsRegistry {
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Success          = 0
         Failed           = 0
         EntriesProcessed = 0
         Details          = [List[PSCustomObject]]::new()
     }
-    
+
     Write-Warning "Registry optimization requires careful implementation and is currently limited to safe operations"
-    
+
     # Safe registry optimizations only
     $safeOptimizations = @{
         # Clear recent documents
@@ -572,11 +577,11 @@ function Optimize-WindowsRegistry {
         }
         # Clear run history
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU'     = @{
-            Action      = 'ClearEntries' 
+            Action      = 'ClearEntries'
             Description = 'Clear run command history'
         }
     }
-    
+
     foreach ($registryPath in $safeOptimizations.Keys) {
         $optimization = $safeOptimizations[$registryPath]
         $optimizationResult = @{
@@ -585,11 +590,11 @@ function Optimize-WindowsRegistry {
             Success     = $false
             Error       = $null
         }
-        
+
         try {
             if (Test-Path $registryPath) {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would $($optimization.Description.ToLower())" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would $($optimization.Description.ToLower())" -InformationAction Continue
                     $optimizationResult.Success = $true
                 }
                 else {
@@ -598,11 +603,11 @@ function Optimize-WindowsRegistry {
                     foreach ($item in $items) {
                         Remove-Item -Path $item.PSPath -Force -ErrorAction SilentlyContinue
                     }
-                    
+
                     $optimizationResult.Success = $true
-                    Write-Host "    📋 $($optimization.Description)" -ForegroundColor Green
+                    Write-Information "    📋 $($optimization.Description)" -InformationAction Continue
                 }
-                
+
                 $results.Success++
                 $results.EntriesProcessed++
             }
@@ -612,10 +617,10 @@ function Optimize-WindowsRegistry {
             $results.Failed++
             Write-Warning "Failed registry optimization $($optimization.Description): $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$optimizationResult)
     }
-    
+
     return $results
 }
 
@@ -633,21 +638,21 @@ function Optimize-DiskPerformance {
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Success        = 0
         Failed         = 0
         TasksCompleted = 0
         Details        = [List[PSCustomObject]]::new()
     }
-    
+
     # Disk optimization tasks
     $diskTasks = @(
         @{ Name = 'Disable Indexing on System Drive'; Action = 'DisableIndexing' }
         @{ Name = 'Optimize Page File Settings'; Action = 'OptimizePageFile' }
         @{ Name = 'Enable Write Caching'; Action = 'EnableWriteCache' }
     )
-    
+
     foreach ($task in $diskTasks) {
         $taskResult = @{
             Name    = $task.Name
@@ -655,32 +660,32 @@ function Optimize-DiskPerformance {
             Success = $false
             Error   = $null
         }
-        
+
         try {
             if ($DryRun) {
-                Write-Host "    [DRY RUN] Would execute: $($task.Name)" -ForegroundColor DarkYellow
+                Write-Information "    [DRY RUN] Would execute: $($task.Name)" -InformationAction Continue
                 $taskResult.Success = $true
             }
             else {
                 switch ($task.Action) {
                     'DisableIndexing' {
                         # This is a placeholder - actual implementation would be more complex
-                        Write-Host "    💽 $($task.Name) (placeholder)" -ForegroundColor Blue
+                        Write-Information "    💽 $($task.Name) (placeholder)" -InformationAction Continue
                         $taskResult.Success = $true
                     }
                     'OptimizePageFile' {
                         # This is a placeholder - actual implementation would be more complex
-                        Write-Host "    💽 $($task.Name) (placeholder)" -ForegroundColor Blue
+                        Write-Information "    💽 $($task.Name) (placeholder)" -InformationAction Continue
                         $taskResult.Success = $true
                     }
                     'EnableWriteCache' {
                         # This is a placeholder - actual implementation would be more complex
-                        Write-Host "    💽 $($task.Name) (placeholder)" -ForegroundColor Blue
+                        Write-Information "    💽 $($task.Name) (placeholder)" -InformationAction Continue
                         $taskResult.Success = $true
                     }
                 }
             }
-            
+
             $results.Success++
             $results.TasksCompleted++
         }
@@ -689,10 +694,10 @@ function Optimize-DiskPerformance {
             $results.Failed++
             Write-Warning "Failed disk optimization task $($task.Name): $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$taskResult)
     }
-    
+
     return $results
 }
 
@@ -704,20 +709,20 @@ function Optimize-DiskPerformance {
 .SYNOPSIS
     Optimizes network settings for better performance
 #>
-function Optimize-NetworkSettings {
+function Optimize-NetworkSetting {
     [CmdletBinding()]
     param(
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Success         = 0
         Failed          = 0
         SettingsApplied = 0
         Details         = [List[PSCustomObject]]::new()
     }
-    
+
     # Network optimization settings (registry-based)
     $networkOptimizations = @{
         'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' = @{
@@ -725,7 +730,7 @@ function Optimize-NetworkSettings {
             'TCPNoDelay'      = 1
         }
     }
-    
+
     foreach ($registryPath in $networkOptimizations.Keys) {
         foreach ($setting in $networkOptimizations[$registryPath].GetEnumerator()) {
             $settingResult = @{
@@ -735,22 +740,22 @@ function Optimize-NetworkSettings {
                 Success = $false
                 Error   = $null
             }
-            
+
             try {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would set network setting: $($setting.Key)" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would set network setting: $($setting.Key)" -InformationAction Continue
                     $settingResult.Success = $true
                 }
                 else {
                     if (-not (Test-Path $registryPath)) {
                         New-Item -Path $registryPath -Force | Out-Null
                     }
-                    
+
                     Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
                     $settingResult.Success = $true
-                    Write-Host "    🌐 Applied network optimization: $($setting.Key)" -ForegroundColor Green
+                    Write-Information "    🌐 Applied network optimization: $($setting.Key)" -InformationAction Continue
                 }
-                
+
                 $results.Success++
                 $results.SettingsApplied++
             }
@@ -759,11 +764,11 @@ function Optimize-NetworkSettings {
                 $results.Failed++
                 Write-Warning "Failed to apply network setting $($setting.Key): $_"
             }
-            
+
             $results.Details.Add([PSCustomObject]$settingResult)
         }
     }
-    
+
     return $results
 }
 
@@ -771,7 +776,7 @@ function Optimize-NetworkSettings {
 
 #region Helper Functions
 
-function Get-DiskUsageMetrics {
+function Get-DiskUsageMetric {
     try {
         $systemDrive = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DeviceID -eq 'C:' }
         return @{
@@ -787,24 +792,28 @@ function Get-DiskUsageMetrics {
 }
 
 function Get-StartupProgramCount {
+    [CmdletBinding()]
+    [OutputType([int])]
+    param()
+    
     try {
         $count = 0
         $locations = @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
             'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
         )
-        
+
         foreach ($location in $locations) {
             if (Test-Path $location) {
                 $items = Get-ItemProperty -Path $location -ErrorAction SilentlyContinue
                 if ($items) {
-                    $count += ($items.PSObject.Properties | Where-Object { 
-                            $_.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider') 
+                    $count += ($items.PSObject.Properties | Where-Object {
+                            $_.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')
                         }).Count
                 }
             }
         }
-        
+
         return $count
     }
     catch {
@@ -813,18 +822,22 @@ function Get-StartupProgramCount {
 }
 
 function Get-TemporaryFilesSize {
+    [CmdletBinding()]
+    [OutputType([long])]
+    param()
+    
     try {
         $tempPaths = @($env:TEMP, "$env:LOCALAPPDATA\Temp", "C:\Windows\Temp")
         $totalSize = 0
-        
+
         foreach ($path in $tempPaths) {
             if (Test-Path $path) {
-                $size = (Get-ChildItem -Path $path -Recurse -Force -ErrorAction SilentlyContinue | 
+                $size = (Get-ChildItem -Path $path -Recurse -Force -ErrorAction SilentlyContinue |
                     Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                 $totalSize += $size ?? 0
             }
         }
-        
+
         return $totalSize
     }
     catch {
@@ -833,11 +846,19 @@ function Get-TemporaryFilesSize {
 }
 
 function Get-RegistrySize {
+    [CmdletBinding()]
+    [OutputType([long])]
+    param()
+    
     # This is a placeholder - actual registry size calculation is complex
     return 0
 }
 
 function Get-MemoryUsagePercent {
+    [CmdletBinding()]
+    [OutputType([double])]
+    param()
+    
     try {
         $memory = Get-CimInstance -ClassName Win32_OperatingSystem
         return [math]::Round((($memory.TotalVisibleMemorySize - $memory.FreePhysicalMemory) / $memory.TotalVisibleMemorySize) * 100, 1)
@@ -847,14 +868,16 @@ function Get-MemoryUsagePercent {
     }
 }
 
-function Merge-OptimizationResults {
+function Merge-OptimizationResult {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
     param($Results, $NewResults, $Category)
-    
+
     $Results.TotalOperations += ($NewResults.Success ?? 0) + ($NewResults.Failed ?? 0)
     $Results.Successful += ($NewResults.Success ?? 0)
     $Results.Failed += ($NewResults.Failed ?? 0)
     $Results.SpaceFreed += ($NewResults.SpaceFreed ?? 0)
-    
+
     if ($Results.Categories.ContainsKey($Category)) {
         $Results.Categories[$Category].Success = ($NewResults.Success ?? 0)
         $Results.Categories[$Category].Failed = ($NewResults.Failed ?? 0)
@@ -872,5 +895,5 @@ function Merge-OptimizationResults {
 # Export module functions
 Export-ModuleMember -Function @(
     'Optimize-SystemPerformance',
-    'Get-SystemPerformanceMetrics'
+    'Get-SystemPerformanceMetric'
 )

@@ -28,13 +28,13 @@ $script:EssentialApps = @{}
 <#
 .SYNOPSIS
     Initializes the configuration system
-    
+
 .DESCRIPTION
     Sets up configuration paths and performs initial validation of config directory structure.
-    
+
 .PARAMETER ConfigRootPath
     Root path to the config directory
-    
+
 .EXAMPLE
     Initialize-ConfigSystem -ConfigRootPath "C:\MaintenanceScript\config"
 #>
@@ -44,13 +44,13 @@ function Initialize-ConfigSystem {
         [Parameter(Mandatory)]
         [string]$ConfigRootPath
     )
-    
+
     Write-Verbose "Initializing configuration system with root path: $ConfigRootPath"
-    
+
     if (-not (Test-Path $ConfigRootPath)) {
         throw "Configuration root path does not exist: $ConfigRootPath"
     }
-    
+
     # Set up configuration paths
     $script:ConfigPaths = @{
         Root = $ConfigRootPath
@@ -59,7 +59,7 @@ function Initialize-ConfigSystem {
         BloatwareList = Join-Path $ConfigRootPath 'bloatware-list.json'
         EssentialApps = Join-Path $ConfigRootPath 'essential-apps.json'
     }
-    
+
     # Validate required paths
     $requiredPaths = @('MainConfig', 'BloatwareList', 'EssentialApps')
     foreach ($pathKey in $requiredPaths) {
@@ -68,44 +68,44 @@ function Initialize-ConfigSystem {
             throw "Required configuration file does not exist: $path"
         }
     }
-    
+
     Write-Verbose "Configuration system initialized successfully"
 }
 
 <#
 .SYNOPSIS
     Loads the main configuration file
-    
+
 .DESCRIPTION
     Reads and validates the main configuration JSON file, applying defaults for missing values.
-    
+
 .EXAMPLE
     $config = Get-MainConfiguration
 #>
 function Get-MainConfiguration {
     [CmdletBinding()]
     param()
-    
+
     if ($null -ne $script:LoadedConfig) {
         return $script:LoadedConfig
     }
-    
+
     $configPath = $script:ConfigPaths.MainConfig
-    
+
     if (-not (Test-Path $configPath)) {
         Write-Warning "Main configuration file not found at: $configPath. Using defaults."
         $script:LoadedConfig = Get-DefaultConfiguration
         return $script:LoadedConfig
     }
-    
+
     try {
         Write-Verbose "Loading main configuration from: $configPath"
         $configJson = Get-Content $configPath -Raw -ErrorAction Stop
         $config = $configJson | ConvertFrom-Json -ErrorAction Stop
-        
+
         # Merge with defaults to ensure all required properties exist
         $script:LoadedConfig = Merge-ConfigurationWithDefaults -Config $config
-        
+
         Write-Verbose "Main configuration loaded successfully"
         return $script:LoadedConfig
     }
@@ -120,29 +120,29 @@ function Get-MainConfiguration {
 <#
 .SYNOPSIS
     Loads logging configuration
-    
+
 .DESCRIPTION
     Reads the logging configuration file and returns logging settings.
-    
+
 .EXAMPLE
     $loggingConfig = Get-LoggingConfiguration
 #>
 function Get-LoggingConfiguration {
     [CmdletBinding()]
     param()
-    
+
     $configPath = $script:ConfigPaths.LoggingConfig
-    
+
     if (-not (Test-Path $configPath)) {
         Write-Verbose "Logging configuration file not found. Using defaults."
         return Get-DefaultLoggingConfiguration
     }
-    
+
     try {
         Write-Verbose "Loading logging configuration from: $configPath"
         $configJson = Get-Content $configPath -Raw -ErrorAction Stop
         $config = $configJson | ConvertFrom-Json -ErrorAction Stop
-        
+
         # Merge with defaults
         $defaultConfig = Get-DefaultLoggingConfiguration
         return Merge-HashTables -Default $defaultConfig -Override $config
@@ -157,41 +157,41 @@ function Get-LoggingConfiguration {
 <#
 .SYNOPSIS
     Loads all bloatware lists from configuration files
-    
+
 .DESCRIPTION
     Reads all JSON files in the bloatware-lists directory and combines them into categories.
-    
+
 .EXAMPLE
     $bloatwareLists = Get-BloatwareConfiguration
 #>
 function Get-BloatwareConfiguration {
     [CmdletBinding()]
     param()
-    
+
     if ($script:BloatwareLists.Count -gt 0) {
         return $script:BloatwareLists
     }
-    
+
     $bloatwareFile = Join-Path $script:ConfigPaths.Root "bloatware-list.json"
-    
+
     if (-not (Test-Path $bloatwareFile)) {
         Write-Warning "Bloatware configuration file not found: $bloatwareFile"
         return @{}
     }
-    
+
     try {
         Write-Verbose "Loading bloatware configuration from: $bloatwareFile"
-        
+
         $configJson = Get-Content $bloatwareFile -Raw -ErrorAction Stop
         $bloatwareList = $configJson | ConvertFrom-Json -ErrorAction Stop
-        
+
         # Convert to array if it's not already
         if ($bloatwareList -is [Array]) {
             $script:BloatwareLists['all'] = $bloatwareList
         } else {
             $script:BloatwareLists['all'] = @($bloatwareList)
         }
-        
+
         Write-Verbose "Loaded bloatware list with $($script:BloatwareLists['all'].Count) entries"
         return $script:BloatwareLists
     }
@@ -204,41 +204,41 @@ function Get-BloatwareConfiguration {
 <#
 .SYNOPSIS
     Loads all essential apps lists from configuration files
-    
+
 .DESCRIPTION
     Reads all JSON files in the essential-apps directory and combines them into categories.
-    
+
 .EXAMPLE
     $essentialApps = Get-EssentialAppsConfiguration
 #>
 function Get-EssentialAppsConfiguration {
     [CmdletBinding()]
     param()
-    
+
     if ($script:EssentialApps.Count -gt 0) {
         return $script:EssentialApps
     }
-    
+
     $appsFile = Join-Path $script:ConfigPaths.Root "essential-apps.json"
-    
+
     if (-not (Test-Path $appsFile)) {
         Write-Warning "Essential apps configuration file not found: $appsFile"
         return @{}
     }
-    
+
     try {
         Write-Verbose "Loading essential apps configuration from: $appsFile"
-        
+
         $configJson = Get-Content $appsFile -Raw -ErrorAction Stop
         $essentialAppsList = $configJson | ConvertFrom-Json -ErrorAction Stop
-        
+
         # Convert to array if it's not already
         if ($essentialAppsList -is [Array]) {
             $script:EssentialApps['all'] = $essentialAppsList
         } else {
             $script:EssentialApps['all'] = @($essentialAppsList)
         }
-        
+
         Write-Verbose "Loaded essential apps list with $($script:EssentialApps['all'].Count) entries"
         return $script:EssentialApps
     }
@@ -251,13 +251,13 @@ function Get-EssentialAppsConfiguration {
 <#
 .SYNOPSIS
     Gets a unified bloatware list from all categories
-    
+
 .DESCRIPTION
     Combines all bloatware categories into a single deduplicated list.
-    
+
 .PARAMETER IncludeCategories
     Specific categories to include (default: all)
-    
+
 .EXAMPLE
     $allBloatware = Get-UnifiedBloatwareList
     $oemOnly = Get-UnifiedBloatwareList -IncludeCategories @('oem-bloatware')
@@ -268,9 +268,9 @@ function Get-UnifiedBloatwareList {
         [Parameter()]
         [string[]]$IncludeCategories = @()
     )
-    
+
     $bloatwareLists = Get-BloatwareConfiguration
-    
+
     if ($bloatwareLists.ContainsKey('all')) {
         return $bloatwareLists['all'] | Sort-Object
     } else {
@@ -282,13 +282,13 @@ function Get-UnifiedBloatwareList {
 <#
 .SYNOPSIS
     Gets a unified essential apps list from all categories
-    
+
 .DESCRIPTION
     Combines all essential apps categories into a single list with metadata.
-    
+
 .PARAMETER IncludeCategories
     Specific categories to include (default: all)
-    
+
 .EXAMPLE
     $allApps = Get-UnifiedEssentialAppsList
     $browsersOnly = Get-UnifiedEssentialAppsList -IncludeCategories @('web-browsers')
@@ -299,9 +299,9 @@ function Get-UnifiedEssentialAppsList {
         [Parameter()]
         [string[]]$IncludeCategories = @()
     )
-    
+
     $appLists = Get-EssentialAppsConfiguration
-    
+
     if ($appLists.ContainsKey('all')) {
         return $appLists['all']
     } else {
@@ -313,13 +313,13 @@ function Get-UnifiedEssentialAppsList {
 <#
 .SYNOPSIS
     Saves the current configuration back to files
-    
+
 .DESCRIPTION
     Writes the current configuration state back to the JSON configuration files.
-    
+
 .PARAMETER Configuration
     The configuration object to save
-    
+
 .EXAMPLE
     Save-Configuration -Configuration $modifiedConfig
 #>
@@ -329,17 +329,17 @@ function Save-Configuration {
         [Parameter(Mandatory)]
         [PSCustomObject]$Configuration
     )
-    
+
     $configPath = $script:ConfigPaths.MainConfig
-    
+
     if ($PSCmdlet.ShouldProcess($configPath, "Save Configuration")) {
         try {
             $configJson = $Configuration | ConvertTo-Json -Depth 10 -ErrorAction Stop
             $configJson | Out-File -FilePath $configPath -Encoding UTF8 -ErrorAction Stop
-            
+
             # Update loaded config
             $script:LoadedConfig = $Configuration
-            
+
             Write-Verbose "Configuration saved to: $configPath"
         }
         catch {
@@ -455,7 +455,7 @@ function Merge-ConfigurationWithDefaults {
     param(
         [PSCustomObject]$Config
     )
-    
+
     $defaults = Get-DefaultConfiguration
     return Merge-PSCustomObjects -Default $defaults -Override $Config
 }
@@ -469,9 +469,9 @@ function Merge-PSCustomObjects {
         [PSCustomObject]$Default,
         [PSCustomObject]$Override
     )
-    
+
     $result = $Default.PSObject.Copy()
-    
+
     foreach ($property in $Override.PSObject.Properties) {
         if ($result.PSObject.Properties.Name -contains $property.Name) {
             if ($property.Value -is [PSCustomObject] -and $result.($property.Name) -is [PSCustomObject]) {
@@ -483,7 +483,7 @@ function Merge-PSCustomObjects {
             $result | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value
         }
     }
-    
+
     return $result
 }
 
@@ -496,9 +496,9 @@ function Merge-HashTables {
         [hashtable]$Default,
         [PSCustomObject]$Override
     )
-    
+
     $result = $Default.Clone()
-    
+
     foreach ($property in $Override.PSObject.Properties) {
         if ($result.ContainsKey($property.Name)) {
             if ($property.Value -is [PSCustomObject] -and $result[$property.Name] -is [hashtable]) {
@@ -515,7 +515,7 @@ function Merge-HashTables {
             $result[$property.Name] = $property.Value
         }
     }
-    
+
     return $result
 }
 
@@ -525,7 +525,7 @@ function Merge-HashTables {
 Export-ModuleMember -Function @(
     'Initialize-ConfigSystem',
     'Get-MainConfiguration',
-    'Get-LoggingConfiguration', 
+    'Get-LoggingConfiguration',
     'Get-BloatwareConfiguration',
     'Get-EssentialAppsConfiguration',
     'Get-UnifiedBloatwareList',

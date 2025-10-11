@@ -30,23 +30,23 @@ if (Test-Path $SystemInventoryPath) {
 <#
 .SYNOPSIS
     Performs comprehensive bloatware detection across all sources
-    
+
 .DESCRIPTION
     Scans AppX packages, Winget, Chocolatey, and registry entries to identify
     potentially unwanted software based on configurable pattern lists.
-    
+
 .PARAMETER UseCache
     Use cached system inventory data if available
-    
+
 .PARAMETER Categories
     Specific bloatware categories to check (OEM, Windows, Gaming, Security)
-    
+
 .PARAMETER Context
     Context for logging and progress tracking
-    
+
 .EXAMPLE
     $bloatware = Find-InstalledBloatware -Categories @('OEM', 'Windows')
-    
+
 .EXAMPLE
     $allBloatware = Find-InstalledBloatware -UseCache
 #>
@@ -55,17 +55,17 @@ function Find-InstalledBloatware {
     param(
         [Parameter()]
         [switch]$UseCache,
-        
+
         [Parameter()]
         [string[]]$Categories = @('all'),
-        
+
         [Parameter()]
         [string]$Context = "Bloatware Detection"
     )
-    
-    Write-Host "🔍 Scanning for installed bloatware..." -ForegroundColor Cyan
+
+    Write-Information "🔍 Scanning for installed bloatware..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     try {
         # Get bloatware patterns from configuration
         $bloatwareList = Get-UnifiedBloatwareList -IncludeCategories $Categories
@@ -73,55 +73,55 @@ function Find-InstalledBloatware {
             Write-Warning "No bloatware patterns found in configuration"
             return @()
         }
-        
-        Write-Host "  📋 Loaded $($bloatwareList.Count) bloatware patterns from $($Categories.Count) categories" -ForegroundColor Gray
-        
+
+        Write-Information "  📋 Loaded $($bloatwareList.Count) bloatware patterns from $($Categories.Count) categories" -InformationAction Continue
+
         # Initialize results collection
         $allBloatware = [List[PSCustomObject]]::new()
-        
+
         # Get system inventory once to avoid repeated calls
-        Write-Host "  📊 Collecting system inventory..." -ForegroundColor Gray
+        Write-Information "  📊 Collecting system inventory..." -InformationAction Continue
         $systemInventory = Get-SystemInventory -UseCache:$UseCache
-        
+
         if (-not $systemInventory.InstalledSoftware -or -not $systemInventory.InstalledSoftware.Programs) {
             Write-Warning "No installed software inventory found"
             return @()
         }
-        
+
         $installedPrograms = $systemInventory.InstalledSoftware.Programs
-        
+
         # Scan AppX packages
-        Write-Host "  📱 Scanning AppX packages..." -ForegroundColor Gray
+        Write-Information "  📱 Scanning AppX packages..." -InformationAction Continue
         $appxBloatware = Get-AppXBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($appxBloatware) { $allBloatware.AddRange($appxBloatware) }
-        
+
         # Scan Winget packages
-        Write-Host "  📦 Scanning Winget packages..." -ForegroundColor Gray
+        Write-Information "  📦 Scanning Winget packages..." -InformationAction Continue
         $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($wingetBloatware) { $allBloatware.AddRange($wingetBloatware) }
-        
+
         # Scan Chocolatey packages
-        Write-Host "  🍫 Scanning Chocolatey packages..." -ForegroundColor Gray
+        Write-Information "  🍫 Scanning Chocolatey packages..." -InformationAction Continue
         $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($chocoBloatware) { $allBloatware.AddRange($chocoBloatware) }
-        
+
         # Scan Registry entries
-        Write-Host "  📋 Scanning Registry entries..." -ForegroundColor Gray
+        Write-Information "  📋 Scanning Registry entries..." -InformationAction Continue
         $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($registryBloatware) { $allBloatware.AddRange($registryBloatware) }
-        
+
         # Remove duplicates and sort results
-        $uniqueBloatware = $allBloatware | 
-            Sort-Object Name, Source | 
-            Group-Object Name | 
+        $uniqueBloatware = $allBloatware |
+            Sort-Object Name, Source |
+            Group-Object Name |
             ForEach-Object { $_.Group | Select-Object -First 1 }
-        
+
         $duration = ((Get-Date) - $startTime).TotalSeconds
         $sourceStats = $allBloatware | Group-Object Source | ForEach-Object { "$($_.Name): $($_.Count)" }
-        
-        Write-Host "  ✅ Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -ForegroundColor Green
-        Write-Host "  📊 Sources: $($sourceStats -join ', ')" -ForegroundColor Gray
-        
+
+        Write-Information "  ✅ Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "  📊 Sources: $($sourceStats -join ', ')" -InformationAction Continue
+
         return $uniqueBloatware
     }
     catch {
@@ -133,23 +133,23 @@ function Find-InstalledBloatware {
 <#
 .SYNOPSIS
     Gets bloatware detection summary statistics
-    
+
 .DESCRIPTION
     Provides statistical analysis of detected bloatware by source, category, and risk level.
-    
+
 .PARAMETER BloatwareList
     Array of detected bloatware items
-    
+
 .EXAMPLE
     $stats = Get-BloatwareStatistics -BloatwareList $detectedBloatware
 #>
-function Get-BloatwareStatistics {
+function Get-BloatwareStatistic {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [Array]$BloatwareList
     )
-    
+
     if ($BloatwareList.Count -eq 0) {
         return @{
             TotalItems = 0
@@ -158,15 +158,15 @@ function Get-BloatwareStatistics {
             TotalSizeEstimate = "Unknown"
         }
     }
-    
+
     $bySource = $BloatwareList | Group-Object Source | ForEach-Object {
         @{ $_.Name = $_.Count }
     } | ForEach-Object { $_ }
-    
+
     $byCategory = $BloatwareList | Group-Object MatchedPattern | ForEach-Object {
         @{ $_.Name = $_.Count }
     } | ForEach-Object { $_ }
-    
+
     return @{
         TotalItems = $BloatwareList.Count
         BySource = $bySource
@@ -190,28 +190,28 @@ function Get-AppXBloatware {
     param(
         [Parameter()]
         [string[]]$BloatwarePatterns,
-        
+
         [Parameter()]
         [array]$InstalledPrograms,
-        
+
         [Parameter()]
         [string]$Context = "AppX Scan"
     )
-    
+
     try {
         if (-not $InstalledPrograms) {
             Write-Warning "No app inventory available for AppX scan"
             return @()
         }
-        
+
         $appXApps = $InstalledPrograms | Where-Object { $_.Source -eq 'AppX' }
-        
+
         $found = @()
         foreach ($app in $appXApps) {
             foreach ($pattern in $BloatwarePatterns) {
                 $matched = $false
                 $matchType = ""
-                
+
                 # Exact match (highest priority)
                 if ($app.Name -eq $pattern -or $app.DisplayName -eq $pattern) {
                     $matched = $true
@@ -236,7 +236,7 @@ function Get-AppXBloatware {
                     $matched = $true
                     $matchType = "Publisher"
                 }
-                
+
                 if ($matched) {
                     $found += [PSCustomObject]@{
                         Name           = $app.Name
@@ -249,19 +249,19 @@ function Get-AppXBloatware {
                         MatchType      = $matchType
                         Context        = $Context
                         RemovalMethod  = 'Remove-AppxPackage'
-                        Confidence     = switch ($matchType) { 
-                            "Exact" { 100 } 
-                            "Publisher+Name" { 95 } 
-                            "Wildcard" { 80 } 
-                            "Publisher" { 70 } 
-                            default { 50 } 
+                        Confidence     = switch ($matchType) {
+                            "Exact" { 100 }
+                            "Publisher+Name" { 95 }
+                            "Wildcard" { 80 }
+                            "Publisher" { 70 }
+                            default { 50 }
                         }
                     }
                     break  # Only match first pattern to avoid duplicates
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -283,28 +283,28 @@ function Get-WingetBloatware {
     param(
         [Parameter()]
         [string[]]$BloatwarePatterns,
-        
+
         [Parameter()]
         [array]$InstalledPrograms,
-        
+
         [Parameter()]
         [string]$Context = "Winget Scan"
     )
-    
+
     try {
         if (-not $InstalledPrograms) {
             Write-Warning "No app inventory available for Winget scan"
             return @()
         }
-        
+
         $wingetApps = $InstalledPrograms | Where-Object { $_.Source -eq 'Winget' }
-        
+
         $found = @()
         foreach ($app in $wingetApps) {
             foreach ($pattern in $BloatwarePatterns) {
                 $matched = $false
                 $matchType = ""
-                
+
                 # Exact match (highest priority)
                 if ($app.Name -eq $pattern -or $app.DisplayName -eq $pattern) {
                     $matched = $true
@@ -329,7 +329,7 @@ function Get-WingetBloatware {
                     $matched = $true
                     $matchType = "Publisher"
                 }
-                
+
                 if ($matched) {
                     $found += [PSCustomObject]@{
                         Name           = $app.Name
@@ -342,19 +342,19 @@ function Get-WingetBloatware {
                         MatchType      = $matchType
                         Context        = $Context
                         RemovalMethod  = 'winget uninstall'
-                        Confidence     = switch ($matchType) { 
-                            "Exact" { 100 } 
-                            "Publisher+Name" { 95 } 
-                            "Wildcard" { 80 } 
-                            "Publisher" { 70 } 
-                            default { 50 } 
+                        Confidence     = switch ($matchType) {
+                            "Exact" { 100 }
+                            "Publisher+Name" { 95 }
+                            "Wildcard" { 80 }
+                            "Publisher" { 70 }
+                            default { 50 }
                         }
                     }
                     break  # Only match first pattern to avoid duplicates
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -376,22 +376,22 @@ function Get-ChocolateyBloatware {
     param(
         [Parameter()]
         [string[]]$BloatwarePatterns,
-        
+
         [Parameter()]
         [array]$InstalledPrograms,
-        
+
         [Parameter()]
         [string]$Context = "Chocolatey Scan"
     )
-    
+
     try {
         if (-not $InstalledPrograms) {
             Write-Warning "No app inventory available for Chocolatey scan"
             return @()
         }
-        
+
         $chocoApps = $InstalledPrograms | Where-Object { $_.Source -eq 'Chocolatey' }
-        
+
         $found = @()
         foreach ($app in $chocoApps) {
             foreach ($pattern in $BloatwarePatterns) {
@@ -411,7 +411,7 @@ function Get-ChocolateyBloatware {
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -433,22 +433,22 @@ function Get-RegistryBloatware {
     param(
         [Parameter()]
         [string[]]$BloatwarePatterns,
-        
+
         [Parameter()]
         [array]$InstalledPrograms,
-        
+
         [Parameter()]
         [string]$Context = "Registry Scan"
     )
-    
+
     try {
         if (-not $InstalledPrograms) {
             Write-Warning "No app inventory available for Registry scan"
             return @()
         }
-        
+
         $registryApps = $InstalledPrograms | Where-Object { $_.Source -eq 'Registry' }
-        
+
         $found = @()
         foreach ($app in $registryApps) {
             foreach ($pattern in $BloatwarePatterns) {
@@ -469,7 +469,7 @@ function Get-RegistryBloatware {
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -492,7 +492,7 @@ function Test-BloatwareDetection {
         [Parameter(Mandatory)]
         [Array]$DetectedItems
     )
-    
+
     $validationResults = @{
         TotalItems = $DetectedItems.Count
         ValidItems = 0
@@ -500,30 +500,30 @@ function Test-BloatwareDetection {
         MissingProperties = @()
         Sources = @()
     }
-    
+
     $requiredProperties = @('Name', 'Source', 'MatchedPattern')
-    
+
     foreach ($item in $DetectedItems) {
         $isValid = $true
-        
+
         foreach ($property in $requiredProperties) {
             if (-not $item.$property) {
                 $validationResults.MissingProperties += "$($item.Name ?? 'Unknown') missing $property"
                 $isValid = $false
             }
         }
-        
+
         if ($isValid) {
             $validationResults.ValidItems++
         } else {
             $validationResults.InvalidItems++
         }
-        
+
         if ($item.Source -notin $validationResults.Sources) {
             $validationResults.Sources += $item.Source
         }
     }
-    
+
     return $validationResults
 }
 

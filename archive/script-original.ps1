@@ -1,5 +1,5 @@
 # ===============================
-# SECTION 1: SCRIPT HEADER & METADATA  
+# SECTION 1: SCRIPT HEADER & METADATA
 # ===============================
 # Script: Windows Maintenance Automation (2025 Edition)
 # Purpose: Professional-grade Windows 10/11 maintenance automation with modular task architecture
@@ -28,11 +28,11 @@ param(
 $ScriptFullPath = $MyInvocation.MyCommand.Path
 $ScriptDir = Split-Path -Parent $ScriptFullPath
 $ScriptName = Split-Path -Leaf $ScriptFullPath
-$ScriptDrive = if ($ScriptFullPath.StartsWith("\\")) { 
-    "UNC Path" 
+$ScriptDrive = if ($ScriptFullPath.StartsWith("\\")) {
+    "UNC Path"
 }
-else { 
-    (Get-Item $ScriptFullPath).PSDrive.Name + ":" 
+else {
+    (Get-Item $ScriptFullPath).PSDrive.Name + ":"
 }
 
 # Drive type detection for path independence (matching batch script logic)
@@ -45,10 +45,10 @@ if ($IsUNCPath) {
 }
 elseif ($ScriptDrive -ne "UNC Path") {
     $DriveInfo = Get-CimInstance -Class Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $ScriptDrive }
-    if ($DriveInfo) { 
+    if ($DriveInfo) {
         $DriveTypeNum = $DriveInfo.DriveType
-        if ($DriveTypeNum -eq 4) { 
-            $IsNetworkPath = $true 
+        if ($DriveTypeNum -eq 4) {
+            $IsNetworkPath = $true
         }
         $DriveType = switch ($DriveTypeNum) {
             2 { "Removable" }
@@ -58,12 +58,12 @@ elseif ($ScriptDrive -ne "UNC Path") {
             default { "Unknown" }
         }
     }
-    else { 
-        $DriveType = "Unknown" 
+    else {
+        $DriveType = "Unknown"
     }
 }
-else { 
-    $DriveType = "Unknown" 
+else {
+    $DriveType = "Unknown"
 }
 
 # System environment information
@@ -217,146 +217,146 @@ if (-not (Test-Path $global:TempFolder)) {
 # ================================================================
 
 $global:ScriptTasks = @(
-    @{ Name = 'SystemRestoreProtection'; Function = { 
+    @{ Name = 'SystemRestoreProtection'; Function = {
             Write-Log 'Starting System Restore Protection task.' 'INFO'
             Write-Host 'Starting System Restore Protection task.' -ForegroundColor Cyan
-            if (-not $global:Config.SkipSystemRestore) { 
+            if (-not $global:Config.SkipSystemRestore) {
                 Protect-SystemRestore
                 Write-Log 'Completed System Restore Protection task.' 'INFO'
                 Write-Host 'Completed System Restore Protection task.' -ForegroundColor Green
                 return $true
             }
-            else { 
+            else {
                 Write-Log 'System Restore Protection skipped by configuration.' 'INFO'
                 Write-Host 'System Restore Protection skipped by configuration.' -ForegroundColor Yellow
                 return $false
-            } 
-        }; Description = 'Enable System Restore and create pre-maintenance checkpoint' 
+            }
+        }; Description = 'Enable System Restore and create pre-maintenance checkpoint'
     },
 
-    @{ Name = 'SystemInventory'; Function = { 
+    @{ Name = 'SystemInventory'; Function = {
             Write-Log 'Starting System Inventory task.' 'INFO'
             Write-Host 'Starting System Inventory task.' -ForegroundColor Cyan
             Get-SystemInventory
             Write-Log 'Completed System Inventory task.' 'INFO'
             Write-Host 'Completed System Inventory task.' -ForegroundColor Green
             return $true
-        }; Description = 'Collect comprehensive system information for analysis and reporting' 
+        }; Description = 'Collect comprehensive system information for analysis and reporting'
     },
 
-    @{ Name = 'RemoveBloatware'; Function = { 
+    @{ Name = 'RemoveBloatware'; Function = {
             Write-Log 'Starting Bloatware Removal task.' 'INFO'
             Write-Host 'Starting Bloatware Removal task.' -ForegroundColor Cyan
-            if (-not $global:Config.SkipBloatwareRemoval) { 
+            if (-not $global:Config.SkipBloatwareRemoval) {
                 Remove-Bloatware
                 Write-Log 'Completed Bloatware Removal task.' 'INFO'
                 Write-Host 'Completed Bloatware Removal task.' -ForegroundColor Green
                 return $true
             }
-            else { 
+            else {
                 Write-Log 'Bloatware removal skipped by configuration.' 'INFO'
                 Write-Host 'Bloatware removal skipped by configuration.' -ForegroundColor Yellow
                 return $false
-            } 
-        }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities' 
+            }
+        }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities'
     },
 
-    @{ Name = 'InstallEssentialApps'; Function = { 
+    @{ Name = 'InstallEssentialApps'; Function = {
             Write-Log 'Starting Essential Apps Installation task.' 'INFO'
             Write-Host 'Starting Essential Apps Installation task.' -ForegroundColor Cyan
-            if (-not $global:Config.SkipEssentialApps) { 
+            if (-not $global:Config.SkipEssentialApps) {
                 Install-EssentialApps
                 Write-Log 'Completed Essential Apps Installation task.' 'INFO'
                 Write-Host 'Completed Essential Apps Installation task.' -ForegroundColor Green
                 return $true
             }
-            else { 
+            else {
                 Write-Log 'Essential apps installation skipped by configuration.' 'INFO'
                 Write-Host 'Essential apps installation skipped by configuration.' -ForegroundColor Yellow
                 return $false
-            } 
-        }; Description = 'Install curated essential applications via parallel processing' 
+            }
+        }; Description = 'Install curated essential applications via parallel processing'
     },
 
-    @{ Name = 'UpdateAllPackages'; Function = { 
+    @{ Name = 'UpdateAllPackages'; Function = {
             Write-Log 'Starting Package Updates task.' 'INFO'
             Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
-            if (-not $global:Config.SkipPackageUpdates) { 
+            if (-not $global:Config.SkipPackageUpdates) {
                 Update-AllPackages
                 Write-Log 'Completed Package Updates task.' 'INFO'
                 Write-Host 'Completed Package Updates task.' -ForegroundColor Green
                 return $true
             }
-            else { 
+            else {
                 Write-Log 'Package updates skipped by configuration.' 'INFO'
                 Write-Host 'Package updates skipped by configuration.' -ForegroundColor Yellow
                 return $false
-            } 
-        }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers' 
+            }
+        }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers'
     },
 
     @{ Name = 'WindowsUpdateCheck'; Function = {
             Write-Log 'Starting Windows Update Check task.' 'INFO'
             Write-Host 'Starting Windows Update Check task.' -ForegroundColor Cyan
-            if (-not $global:Config.SkipWindowsUpdates) { 
+            if (-not $global:Config.SkipWindowsUpdates) {
                 Install-WindowsUpdatesCompatible
                 Write-Log 'Completed Windows Update Check task.' 'INFO'
                 Write-Host 'Completed Windows Update Check task.' -ForegroundColor Green
                 return $true
             }
-            else { 
+            else {
                 Write-Log 'Windows Update check skipped by configuration.' 'INFO'
                 Write-Host 'Windows Update check skipped by configuration.' -ForegroundColor Yellow
                 return $false
-            } 
-        }; Description = 'Check and install available Windows Updates with compatibility layer' 
+            }
+        }; Description = 'Check and install available Windows Updates with compatibility layer'
     },
 
-    @{ Name = 'DisableTelemetry'; Function = { 
+    @{ Name = 'DisableTelemetry'; Function = {
             Write-Log 'Starting Telemetry Disable task.' 'INFO'
             Write-Host 'Starting Telemetry Disable task.' -ForegroundColor Cyan
-            if (-not $global:Config.SkipTelemetryDisable) { 
+            if (-not $global:Config.SkipTelemetryDisable) {
                 Disable-Telemetry
                 Write-Log 'Completed Telemetry Disable task.' 'INFO'
                 Write-Host 'Completed Telemetry Disable task.' -ForegroundColor Green
                 return $true
             }
-            else { 
+            else {
                 Write-Log 'Telemetry disable skipped by configuration.' 'INFO'
                 Write-Host 'Telemetry disable skipped by configuration.' -ForegroundColor Yellow
                 return $false
-            } 
-        }; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking' 
+            }
+        }; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking'
     },
 
-    @{ Name = 'TaskbarOptimization'; Function = { 
+    @{ Name = 'TaskbarOptimization'; Function = {
             Write-Log 'Starting Taskbar and Desktop UI Optimization task.' 'INFO'
             Write-Host 'Starting Taskbar and Desktop UI Optimization task.' -ForegroundColor Cyan
             Optimize-TaskbarAndDesktopUI
             Write-Log 'Completed Taskbar and Desktop UI Optimization task.' 'INFO'
             Write-Host 'Completed Taskbar and Desktop UI Optimization task.' -ForegroundColor Green
             return $true
-        }; Description = 'Hide search box, disable Task View/Chat, remove Spotlight icons, optimize taskbar and desktop UI for Windows 10/11' 
+        }; Description = 'Hide search box, disable Task View/Chat, remove Spotlight icons, optimize taskbar and desktop UI for Windows 10/11'
     },
 
-    @{ Name = 'DesktopBackground'; Function = { 
+    @{ Name = 'DesktopBackground'; Function = {
             Write-Log 'Starting Desktop Background Configuration task.' 'INFO'
             Write-Host 'Starting Desktop Background Configuration task.' -ForegroundColor Cyan
             Set-DesktopBackground
             Write-Log 'Completed Desktop Background Configuration task.' 'INFO'
             Write-Host 'Completed Desktop Background Configuration task.' -ForegroundColor Green
             return $true
-        }; Description = 'Change desktop background from Windows Spotlight to personalized slideshow' 
+        }; Description = 'Change desktop background from Windows Spotlight to personalized slideshow'
     },
 
-    @{ Name = 'SecurityHardening'; Function = { 
+    @{ Name = 'SecurityHardening'; Function = {
             Write-Log 'Starting Security Hardening task.' 'INFO'
             Write-Host 'Starting Security Hardening task.' -ForegroundColor Cyan
             Enable-SecurityHardening
             Write-Log 'Completed Security Hardening task.' 'INFO'
             Write-Host 'Completed Security Hardening task.' -ForegroundColor Green
             return $true
-        }; Description = 'Apply security hardening configurations and policy improvements' 
+        }; Description = 'Apply security hardening configurations and policy improvements'
     },
 
     @{ Name = 'CleanTempAndDisk'; Function = {
@@ -370,7 +370,7 @@ $global:ScriptTasks = @(
                     @{ Path = "$env:LOCALAPPDATA\Microsoft\Windows\INetCache"; Name = "Internet Cache" },
                     @{ Path = "$env:USERPROFILE\AppData\Local\Temp"; Name = "Local Temp Files" }
                 )
-            
+
                 $totalCleaned = 0
                 foreach ($action in $cleanupActions) {
                     if (Test-Path $action.Path) {
@@ -387,7 +387,7 @@ $global:ScriptTasks = @(
                         }
                     }
                 }
-            
+
                 Write-TaskProgress "Disk cleanup completed" 100
                 Write-Host "✓ Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" -ForegroundColor Green
                 Write-Log "Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" 'INFO'
@@ -398,10 +398,10 @@ $global:ScriptTasks = @(
                 Write-Host "✗ Disk cleanup failed: $_" -ForegroundColor Red
                 return $false
             }
-        }; Description = 'Clean temporary files and perform disk space optimization' 
+        }; Description = 'Clean temporary files and perform disk space optimization'
     },
 
-    @{ Name = 'SystemHealthRepair'; Function = { 
+    @{ Name = 'SystemHealthRepair'; Function = {
             Write-Log 'Starting System Health Check and Repair task.' 'INFO'
             Write-Host 'Starting System Health Check and Repair task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipSystemHealthRepair) {
@@ -415,31 +415,31 @@ $global:ScriptTasks = @(
                 Write-Log 'System Health Check and Repair skipped by configuration.' 'INFO'
                 return $true
             }
-        }; Description = 'Automated DISM and SFC system file integrity check and repair' 
+        }; Description = 'Automated DISM and SFC system file integrity check and repair'
     },
 
-    @{ Name = 'PendingRestartCheck'; Function = { 
+    @{ Name = 'PendingRestartCheck'; Function = {
             Write-Log 'Starting Pending Restart Check task.' 'INFO'
             Write-Host 'Starting Pending Restart Check task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipPendingRestartCheck) {
                 try {
                     $pendingRestart = $false
                     $restartReason = "System maintenance operations"
-                
+
                     # Check global Windows Updates reboot requirement first
                     if ($global:SystemSettings.Reboot.Required -eq $true) {
                         $pendingRestart = $true
                         $restartReason = "Windows Updates installation ($($global:SystemSettings.Reboot.Source))"
                         Write-Log "Pending restart detected from Windows Updates at $($global:SystemSettings.Reboot.Timestamp)" 'INFO'
                     }
-                
+
                     # Check multiple registry indicators for pending restart
                     $registryKeys = @(
                         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
                         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
                         "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations"
                     )
-                
+
                     foreach ($key in $registryKeys) {
                         if (Test-Path $key) {
                             $pendingRestart = $true
@@ -450,7 +450,7 @@ $global:ScriptTasks = @(
                             break
                         }
                     }
-                
+
                     if ($pendingRestart) {
                         Write-Host '⚠️  SYSTEM RESTART REQUIRED' -ForegroundColor Yellow
                         Write-Host "Reason: $restartReason" -ForegroundColor Yellow
@@ -475,7 +475,7 @@ $global:ScriptTasks = @(
                 Write-Host 'Pending restart check skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Check for pending restart requirements without initiating restart (restart handled at script end)' 
+        }; Description = 'Check for pending restart requirements without initiating restart (restart handled at script end)'
     }
 )
 
@@ -499,8 +499,8 @@ $global:AppCategories = @{
         'Acer.AcerPowerManagement', 'Acer.AcerQuickAccess', 'Acer.AcerUEIPFramework', 'Acer.AcerUserExperienceImprovementProgram',
         'ASUS.ASUSGiftBox', 'ASUS.ASUSLiveUpdate', 'ASUS.ASUSSplendidVideoEnhancementTechnology', 'ASUS.ASUSWebStorage',
         'ASUS.ASUSZenAnywhere', 'ASUS.ASUSZenLink', 'ASUS.MyASUS', 'ASUS.GlideX', 'ASUS.ASUSDisplayControl',
-        'Dell.CustomerConnect', 'Dell.DellDigitalDelivery', 'Dell.DellFoundationServices', 'Dell.DellHelpAndSupport', 
-        'Dell.DellMobileConnect', 'Dell.DellPowerManager', 'Dell.DellProductRegistration', 'Dell.DellSupportAssist', 
+        'Dell.CustomerConnect', 'Dell.DellDigitalDelivery', 'Dell.DellFoundationServices', 'Dell.DellHelpAndSupport',
+        'Dell.DellMobileConnect', 'Dell.DellPowerManager', 'Dell.DellProductRegistration', 'Dell.DellSupportAssist',
         'Dell.DellUpdate', 'Dell.MyDell', 'Dell.DellOptimizer', 'Dell.CommandUpdate',
         'HP.HP3DDriveGuard', 'HP.HPAudioSwitch', 'HP.HPClientSecurityManager', 'HP.HPConnectionOptimizer',
         'HP.HPDocumentation', 'HP.HPDropboxPlugin', 'HP.HPePrintSW', 'HP.HPJumpStart', 'HP.HPJumpStartApps',
@@ -512,7 +512,7 @@ $global:AppCategories = @{
         'Lenovo.LenovoVoice', 'Lenovo.LenovoWiFiSecurity', 'Lenovo.LenovoNow', 'Lenovo.ImController.PluginHost'
     )
     GamingSocial       = @(
-        'king.com.BubbleWitch', 'king.com.BubbleWitch3Saga', 'king.com.CandyCrush', 'king.com.CandyCrushFriends', 
+        'king.com.BubbleWitch', 'king.com.BubbleWitch3Saga', 'king.com.CandyCrush', 'king.com.CandyCrushFriends',
         'king.com.CandyCrushSaga', 'king.com.CandyCrushSodaSaga', 'king.com.FarmHeroes', 'king.com.FarmHeroesSaga',
         'Gameloft.MarchofEmpires', 'G5Entertainment.HiddenCity', 'RandomSaladGamesLLC.SimpleSolitaire',
         'RoyalRevolt2.RoyalRevolt2', 'WildTangent.WildTangentGamesApp', 'WildTangent.WildTangentHelper',
@@ -521,24 +521,24 @@ $global:AppCategories = @{
     )
     MicrosoftBloatware = @(
         'Microsoft.3DBuilder', 'Microsoft.Microsoft3DViewer', 'Microsoft.Print3D', 'Microsoft.Paint3D',
-        'Microsoft.BingFinance', 'Microsoft.BingFoodAndDrink', 'Microsoft.BingHealthAndFitness', 'Microsoft.BingNews', 
+        'Microsoft.BingFinance', 'Microsoft.BingFoodAndDrink', 'Microsoft.BingHealthAndFitness', 'Microsoft.BingNews',
         'Microsoft.BingSports', 'Microsoft.BingTravel', 'Microsoft.BingWeather', 'Microsoft.MSN',
         'Microsoft.GetHelp', 'Microsoft.Getstarted', 'Microsoft.HelpAndTips', 'Microsoft.WindowsTips',
-        'Microsoft.MicrosoftOfficeHub', 'Microsoft.MicrosoftPowerBIForWindows', 'Microsoft.Office.OneNote', 
-        'Microsoft.Office.Sway', 'Microsoft.OneConnect', 'Microsoft.StickyNotes', 'Microsoft.Whiteboard', 
-        'Microsoft.MicrosoftSolitaireCollection', 'Microsoft.WindowsFeedback', 'Microsoft.WindowsFeedbackHub', 
+        'Microsoft.MicrosoftOfficeHub', 'Microsoft.MicrosoftPowerBIForWindows', 'Microsoft.Office.OneNote',
+        'Microsoft.Office.Sway', 'Microsoft.OneConnect', 'Microsoft.StickyNotes', 'Microsoft.Whiteboard',
+        'Microsoft.MicrosoftSolitaireCollection', 'Microsoft.WindowsFeedback', 'Microsoft.WindowsFeedbackHub',
         'Microsoft.WindowsReadingList', 'Microsoft.NetworkSpeedTest', 'Microsoft.News',
-        'Microsoft.PowerAutomateDesktop', 'Microsoft.ToDo', 'Microsoft.Wallet', 'Microsoft.MinecraftUWP', 
+        'Microsoft.PowerAutomateDesktop', 'Microsoft.ToDo', 'Microsoft.Wallet', 'Microsoft.MinecraftUWP',
         'Microsoft.MixedReality.Portal', 'Microsoft.MinecraftEducationEdition'
     )
     XboxGaming         = @(
-        'Microsoft.Xbox.TCUI', 'Microsoft.XboxApp', 'Microsoft.XboxGameOverlay', 'Microsoft.XboxGamingOverlay', 
-        'Microsoft.XboxIdentityProvider', 'Microsoft.XboxSpeechToTextOverlay', 'Microsoft.GamingApp', 
+        'Microsoft.Xbox.TCUI', 'Microsoft.XboxApp', 'Microsoft.XboxGameOverlay', 'Microsoft.XboxGamingOverlay',
+        'Microsoft.XboxIdentityProvider', 'Microsoft.XboxSpeechToTextOverlay', 'Microsoft.GamingApp',
         'Microsoft.XboxGameCallableUI'
     )
     SecurityBloatware  = @(
-        'Avast.AvastFreeAntivirus', 'AVG.AVGAntiVirusFree', 'Avira.Avira', 
-        'ESET.ESETNOD32Antivirus', 'Kaspersky.Kaspersky', 'McAfee.LiveSafe', 'McAfee.Livesafe', 
+        'Avast.AvastFreeAntivirus', 'AVG.AVGAntiVirusFree', 'Avira.Avira',
+        'ESET.ESETNOD32Antivirus', 'Kaspersky.Kaspersky', 'McAfee.LiveSafe', 'McAfee.Livesafe',
         'McAfee.SafeConnect', 'McAfee.Security', 'McAfee.WebAdvisor', 'Norton.OnlineBackup', 'Norton.Security',
         'Norton.NortonSecurity', 'Malwarebytes.Malwarebytes', 'IOBit.AdvancedSystemCare', 'IOBit.DriverBooster',
         'Piriform.CCleaner', 'PCAccelerate.PCAcceleratePro', 'PCOptimizer.PCOptimizerPro', 'Reimage.ReimageRepair'
@@ -659,7 +659,7 @@ $global:BloatwareDetectionSources = @{
         Description = 'System-level bloatware components detection'
     }
     Integration = @{
-        Enabled     = $true  
+        Enabled     = $true
         Sources     = @('StartMenu', 'BrowserExtensions', 'ContextMenu', 'StartupPrograms')
         Priority    = 3
         Description = 'User interface and integration bloatware detection'
@@ -669,12 +669,12 @@ $global:BloatwareDetectionSources = @{
 # System-level bloatware patterns for enhanced detection
 $global:SystemBloatwarePatterns = @{
     WindowsFeatures   = @(
-        'XPS-Foundation-XPS-Viewer', 'FaxServicesClientPackage', 'WorkFolders-Client', 
-        'IIS-*', 'LegacyComponents', 'MediaFeatures-WindowsMediaPlayer', 
+        'XPS-Foundation-XPS-Viewer', 'FaxServicesClientPackage', 'WorkFolders-Client',
+        'IIS-*', 'LegacyComponents', 'MediaFeatures-WindowsMediaPlayer',
         'WindowsMediaPlayer', 'Internet-Explorer-Optional-*', 'MicrosoftWindowsPowerShellV2*'
     )
     Services          = @(
-        'XblAuthManager', 'XblGameSave', 'XboxGipSvc', 'XboxNetApiSvc', 
+        'XblAuthManager', 'XblGameSave', 'XboxGipSvc', 'XboxNetApiSvc',
         'DiagTrack', 'dmwappushservice', 'lfsvc', 'MapsBroker',
         'RetailDemo', 'Fax', 'WerSvc', 'TrkWks', 'WMPNetworkSvc'
     )
@@ -689,7 +689,7 @@ $global:SystemBloatwarePatterns = @{
         '*Hidden City*', '*Asphalt*', '*World of Tanks*', '*Minecraft*', '*Mixed Reality*'
     )
     BrowserExtensions = @(
-        'Adobe*', 'McAfee*', 'Norton*', 'Avast*', 'AVG*', 'Office365*', 
+        'Adobe*', 'McAfee*', 'Norton*', 'Avast*', 'AVG*', 'Office365*',
         'Skype*', 'Java*', 'Silverlight*', 'Acrobat*'
     )
     ContextMenu       = @(
@@ -749,7 +749,7 @@ function Use-AllScriptTasks {
     $global:TaskResults = @{}
     $taskIndex = 0
     $totalTasks = $global:ScriptTasks.Count
-    
+
     foreach ($task in $global:ScriptTasks) {
     # ================================================================
     # Function: Invoke-Task
@@ -767,26 +767,26 @@ function Use-AllScriptTasks {
         $taskIndex++
         $taskName = $task.Name
         $desc = $task.Description
-        
+
         Write-ActionLog -Action "Preparing task execution" -Details "$taskName ($taskIndex/$totalTasks) - $desc" -Category "Task Execution" -Status 'START'
         Write-Log "[$taskIndex/$totalTasks] Executing task: $taskName - $desc" 'INFO'
-        
+
         $startTime = Get-Date
         try {
             Write-ActionLog -Action "Starting task function" -Details "$taskName | Function execution beginning" -Category "Task Execution" -Status 'START'
             $result = Invoke-Task $taskName $task.Function
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
-            
+
             if ($result) {
                 Write-ActionLog -Action "Task completed successfully" -Details "$taskName | Duration: ${duration}s | Result: $result" -Category "Task Execution" -Status 'SUCCESS'
             }
             else {
                 Write-ActionLog -Action "Task completed with issues" -Details "$taskName | Duration: ${duration}s | Result: $result" -Category "Task Execution" -Status 'FAILURE'
             }
-            
+
             Write-Log "[$taskIndex/$totalTasks] Task $taskName completed in $duration seconds - Result: $result" 'SUCCESS'
-            $global:TaskResults[$taskName] = @{ 
+            $global:TaskResults[$taskName] = @{
                 Success     = $result
                 Duration    = $duration
                 Started     = $startTime
@@ -797,10 +797,10 @@ function Use-AllScriptTasks {
         catch {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
-            
+
             Write-ActionLog -Action "Task execution failed with exception" -Details "$taskName | Duration: ${duration}s | Exception: $_.Exception.Message" -Category "Task Execution" -Status 'FAILURE'
             Write-Log "[$taskIndex/$totalTasks] Task $taskName execution failed: $_" 'ERROR'
-            $global:TaskResults[$taskName] = @{ 
+            $global:TaskResults[$taskName] = @{
                 Success     = $false
                 Duration    = $duration
                 Started     = $startTime
@@ -809,17 +809,17 @@ function Use-AllScriptTasks {
                 Error       = $_.Exception.Message
             }
         }
-        
+
         # Progress update
         $progressPercent = [math]::Round(($taskIndex / $totalTasks) * 100, 1)
         Write-ActionLog -Action "Task execution progress" -Details "$taskIndex/$totalTasks tasks completed ($progressPercent%)" -Category "Task Orchestration" -Status 'INFO'
     }
-    
+
     # Final summary
     $successfulTasks = ($global:TaskResults.Values | Where-Object { $_.Success -eq $true }).Count
     $failedTasks = $totalTasks - $successfulTasks
     $totalDuration = ($global:TaskResults.Values | Measure-Object -Property Duration -Sum).Sum
-    
+
     Write-ActionLog -Action 'All maintenance tasks execution sequence completed' -Details "Total: $totalTasks | Successful: $successfulTasks | Failed: $failedTasks | Total Duration: ${totalDuration}s" -Category "Task Orchestration" -Status 'SUCCESS'
 }
 
@@ -854,7 +854,7 @@ function Write-Log {
         [string]$Level = 'INFO',
         [string]$Component = 'PS1'
     )
-    
+
     # Check if logging is enabled for this level
     if ($global:LoggingConfig -and $global:LoggingConfig.LogLevels.ContainsKey($Level)) {
         $currentLevelValue = $global:LoggingConfig.LogLevels[$global:LoggingConfig.LogLevel]
@@ -863,10 +863,10 @@ function Write-Log {
             return  # Skip logging this message
         }
     }
-    
+
     $timestamp = Get-Date -Format 'HH:mm:ss'
     $logEntry = "[$timestamp] [$Level] [$Component] $Message"
-    
+
     # Write to file with enhanced error handling
     try {
         Add-Content -Path $global:LogFile -Value $logEntry -ErrorAction SilentlyContinue -Encoding UTF8
@@ -881,7 +881,7 @@ function Write-Log {
             # Silently continue if all logging fails
         }
     }
-    
+
     # Write to console with enhanced color coding
     $color = switch ($Level) {
         'DEBUG' { 'DarkGray' }
@@ -894,9 +894,9 @@ function Write-Log {
         'COMMAND' { 'DarkCyan' }
         default { 'White' }
     }
-    
+
     Write-Host $logEntry -ForegroundColor $color
-    
+
     # For important actions, also write to host using Write-Output for comprehensive logging
     if ($Level -in @('ACTION', 'COMMAND', 'ERROR', 'SUCCESS')) {
         Write-Output $logEntry
@@ -932,14 +932,14 @@ function Write-ActionLog {
         [ValidateSet('START', 'SUCCESS', 'FAILURE', 'INFO')]
         [string]$Status = 'INFO'
     )
-    
+
     $contextInfo = ""
     if ($Details) {
         $contextInfo = " | Details: $Details"
     }
-    
+
     $fullMessage = "[$Category] $Action$contextInfo"
-    
+
     $logLevel = switch ($Status) {
         'START' { 'ACTION' }
         'SUCCESS' { 'SUCCESS' }
@@ -947,7 +947,7 @@ function Write-ActionLog {
         'INFO' { 'INFO' }
         default { 'INFO' }
     }
-    
+
     Write-Log $fullMessage $logLevel 'PS1'
 }
 
@@ -981,23 +981,23 @@ function Write-CommandLog {
         [ValidateSet('START', 'SUCCESS', 'FAILURE')]
         [string]$Status = 'START'
     )
-    
+
     $fullCommand = $Command
     if ($Arguments.Count -gt 0) {
         $argString = $Arguments -join " "
         $fullCommand = "$Command $argString"
     }
-    
+
     $contextInfo = if ($Context) { " | Context: $Context" } else { "" }
     $message = "COMMAND: $fullCommand$contextInfo"
-    
+
     $logLevel = switch ($Status) {
         'START' { 'COMMAND' }
         'SUCCESS' { 'SUCCESS' }
         'FAILURE' { 'ERROR' }
         default { 'COMMAND' }
     }
-    
+
     Write-Log $message $logLevel 'PS1'
 }
 
@@ -1028,10 +1028,10 @@ function Write-TaskProgress {
         [int]$PercentComplete,
         [string]$Status = "Processing..."
     )
-    
+
     # Show visual progress bar in console
     Write-Progress -Activity $Activity -Status $Status -PercentComplete $PercentComplete
-    
+
     # Only log start and completion to reduce noise
     if ($PercentComplete -eq 0) {
         Write-Log "⏳ $Activity - $Status" 'INFO'
@@ -1068,38 +1068,38 @@ function Write-ActionProgress {
     param(
         [Parameter(Mandatory = $true)]
         [string]$ActionType,  # 'Installing', 'Uninstalling', 'Removing', 'Updating', 'Scanning', 'Cleaning'
-        
+
         [Parameter(Mandatory = $true)]
         [string]$ItemName,    # Name of the item being processed
-        
+
         [Parameter(Mandatory = $true)]
         [int]$PercentComplete, # 0-100
-        
+
         [string]$Status = "Processing...",  # Additional status text
-        
+
         [int]$CurrentItem = 0,  # Current item number
-        
+
         [int]$TotalItems = 0,   # Total items to process
-        
+
         [switch]$Completed      # Mark as completed and cleanup
     )
-    
+
     # Generate unique activity ID based on action type and item
     $activityId = ($ActionType + $ItemName).GetHashCode()
     if ($activityId -lt 0) { $activityId = - $activityId }
-    
+
     # Build activity title
     $activityTitle = "$ActionType`: $ItemName"
     if ($TotalItems -gt 0 -and $CurrentItem -gt 0) {
         $activityTitle += " ($CurrentItem/$TotalItems)"
     }
-    
+
     # Build status message
     $statusMessage = $Status
     if ($PercentComplete -ge 0 -and $PercentComplete -le 100) {
         $statusMessage = "$Status ($PercentComplete%)"
     }
-    
+
     if ($Completed) {
         # Clear the progress bar
         Write-Progress -Id $activityId -Activity $activityTitle -Completed
@@ -1114,7 +1114,7 @@ function Write-ActionProgress {
     else {
         # Show progress bar in console only
         Write-Progress -Id $activityId -Activity $activityTitle -Status $statusMessage -PercentComplete $PercentComplete
-        
+
         # Only log meaningful progress milestones to avoid clutter
         # Log start (0%) and major milestones, but not every percentage update
         if ($PercentComplete -eq 0) {
@@ -1133,28 +1133,28 @@ function Write-ActionProgress {
         param(
             [Parameter(Mandatory = $true)]
             [string]$Activity,
-        
+
             [Parameter(Mandatory = $true)]
             [string]$CurrentItem,
-        
+
             [Parameter(Mandatory = $true)]
             [int]$CurrentIndex,
-        
+
             [Parameter(Mandatory = $true)]
             [int]$TotalItems,
-        
+
             [string]$Status = "Processing",
-        
+
             [switch]$Completed
         )
-    
+
         $percentComplete = if ($TotalItems -gt 0) { [math]::Round(($CurrentIndex / $TotalItems) * 100, 0) } else { 0 }
         $progressId = $Activity.GetHashCode()
         if ($progressId -lt 0) { $progressId = - $progressId }
-    
+
         # Show visual progress bar in console
         Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
-    
+
         # Only log start and completion to reduce noise
         if ($percentComplete -eq 0) {
             Write-Log "⏳ $Activity - $Status" 'INFO'
@@ -1191,25 +1191,25 @@ function Write-CleanProgress {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Activity,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$CurrentItem,
-        
+
         [Parameter(Mandatory = $true)]
         [int]$CurrentIndex,
-        
+
         [Parameter(Mandatory = $true)]
         [int]$TotalItems,
-        
+
         [string]$Status = "Processing",
-        
+
         [switch]$Completed
     )
-    
+
     $percentComplete = if ($TotalItems -gt 0) { [math]::Round(($CurrentIndex / $TotalItems) * 100, 0) } else { 0 }
     $progressId = $Activity.GetHashCode()
     if ($progressId -lt 0) { $progressId = - $progressId }
-    
+
     if ($Completed) {
         # Clear progress bar and log completion
         Write-Progress -Id $progressId -Activity $Activity -Completed
@@ -1219,14 +1219,14 @@ function Write-CleanProgress {
         # Show clean progress bar with item info
         $progressActivity = "$Activity ($CurrentIndex/$TotalItems)"
         $progressStatus = "$Status`: $CurrentItem"
-        
+
         Write-Progress -Id $progressId -Activity $progressActivity -Status $progressStatus -PercentComplete $percentComplete
-        
+
         # Log only when starting new items, not every percentage update
         if ($CurrentIndex -eq 1) {
             Write-Log "🚀 $Activity started: Processing $TotalItems items" 'INFO'
         }
-        
+
         # Log every 10th item or significant milestones to track progress without spam
         if ($CurrentIndex % 10 -eq 0 -or $CurrentIndex -eq $TotalItems) {
             Write-Log "📊 $Activity progress: $CurrentIndex/$TotalItems items completed ($percentComplete%)" 'INFO'
@@ -1259,38 +1259,38 @@ function Start-ActionProgressSequence {
     param(
         [Parameter(Mandatory = $true)]
         [string]$SequenceName,  # Overall sequence name
-        
+
         [Parameter(Mandatory = $true)]
         [array]$Actions,        # Array of actions to perform
-        
+
         [scriptblock]$ActionProcessor # Script block to process each action
     )
-    
+
     $totalActions = $Actions.Count
     $currentAction = 0
-    
+
     # Main sequence progress bar
     $sequenceId = $SequenceName.GetHashCode()
     if ($sequenceId -lt 0) { $sequenceId = - $sequenceId }
-    
+
     Write-Progress -Id $sequenceId -Activity $SequenceName -Status "Starting..." -PercentComplete 0
-    
+
     foreach ($action in $Actions) {
         $currentAction++
         $sequenceProgress = [math]::Round(($currentAction / $totalActions) * 100, 1)
-        
+
         # Update main sequence progress
         Write-Progress -Id $sequenceId -Activity $SequenceName -Status "Processing action $currentAction of $totalActions" -PercentComplete $sequenceProgress
-        
+
         # Execute the action with individual progress tracking
         if ($ActionProcessor) {
             & $ActionProcessor $action $currentAction $totalActions
         }
-        
+
         # Small delay to show completion
         Start-Sleep -Milliseconds 100
     }
-    
+
     # Complete the sequence
     Write-Progress -Id $sequenceId -Activity $SequenceName -Completed
     Write-Log "✓ $SequenceName sequence completed: $totalActions actions processed" 'SUCCESS'
@@ -1322,16 +1322,16 @@ function Write-SystemSummaryHeader {
     Write-Log "============================================================" 'INFO'
     Write-Log "SYSTEM SUMMARY - PC INFORMATION" 'INFO'
     Write-Log "============================================================" 'INFO'
-    
+
     try {
         # Date and Time Information
         $currentDateTime = Get-Date
         Write-Log "Date & Time: $($currentDateTime.ToString('dddd, MMMM dd, yyyy - HH:mm:ss zzz'))" 'INFO'
         Write-Log "Time Zone: $($currentDateTime.ToString('zzz')) - $([System.TimeZoneInfo]::Local.DisplayName)" 'INFO'
-        
+
         # System Identity - Using script-level variables for consistency
         $computerInfo = Get-ComputerInfo -ErrorAction SilentlyContinue
-        
+
         Write-Log "Computer Name: $ComputerName" 'INFO'
         Write-Log "User Name: $CurrentUser" 'INFO'
         Write-Log "User Domain: $env:USERDOMAIN" 'INFO'
@@ -1339,19 +1339,19 @@ function Write-SystemSummaryHeader {
         Write-Log "OS Version: $OSVersion" 'INFO'
         Write-Log "OS Architecture: $OSArch" 'INFO'
         Write-Log "PowerShell Version: $PSVersion" 'INFO'
-        
+
         # Administrator privileges check
         $privilegeStatus = "No"
         if ($IsAdmin) { $privilegeStatus = "Yes" }
         Write-Log "Administrator Privileges: $privilegeStatus" 'INFO'
-        
+
         # Script execution context
         Write-Log "Script Path: $ScriptFullPath" 'INFO'
         Write-Log "Script Directory: $ScriptDir" 'INFO'
         Write-Log "Script Name: $ScriptName" 'INFO'
         Write-Log "Script Drive Type: $DriveType" 'INFO'
         Write-Log "Network Path: $IsNetworkPath" 'INFO'
-        
+
         if ($computerInfo) {
             Write-Log "Manufacturer: $($computerInfo.CsManufacturer)" 'INFO'
             Write-Log "Model: $($computerInfo.CsModel)" 'INFO'
@@ -1361,17 +1361,17 @@ function Write-SystemSummaryHeader {
             Write-Log "Total RAM: $([math]::Round($computerInfo.TotalPhysicalMemory / 1GB, 2)) GB" 'INFO'
             Write-Log "Processor: $($computerInfo.CsProcessors[0].Name)" 'INFO'
         }
-        
+
         # Network Configuration
         Write-Log "--- NETWORK CONFIGURATION ---" 'INFO'
-        
+
         # Get active network adapters with IP addresses
-        $activeAdapters = Get-NetIPConfiguration | Where-Object { 
-            $_.NetAdapter.Status -eq 'Up' -and 
-            $_.IPv4Address -and 
-            $_.IPv4Address.IPAddress -ne '127.0.0.1' 
+        $activeAdapters = Get-NetIPConfiguration | Where-Object {
+            $_.NetAdapter.Status -eq 'Up' -and
+            $_.IPv4Address -and
+            $_.IPv4Address.IPAddress -ne '127.0.0.1'
         }
-        
+
         if ($activeAdapters) {
             foreach ($adapter in $activeAdapters) {
                 $adapterName = $adapter.NetAdapter.Name
@@ -1380,7 +1380,7 @@ function Write-SystemSummaryHeader {
                 $subnetMask = $adapter.IPv4Address.PrefixLength
                 $gateway = $adapter.IPv4DefaultGateway.NextHop
                 $dnsServers = $adapter.DNSServer.ServerAddresses -join ', '
-                
+
                 Write-Log "Network Adapter: $adapterName" 'INFO'
                 Write-Log "Connection Profile: $connectionProfile" 'INFO'
                 Write-Log "IP Address: $ipAddress/$subnetMask" 'INFO'
@@ -1394,7 +1394,7 @@ function Write-SystemSummaryHeader {
         else {
             Write-Log "No active network adapters found" 'WARN'
         }
-        
+
         # External IP Address Detection
         Write-Log "--- EXTERNAL CONNECTIVITY ---" 'INFO'
         try {
@@ -1404,11 +1404,11 @@ function Write-SystemSummaryHeader {
                 @{ Name = "ip-api.com"; Url = "http://ip-api.com/line/?fields=query" },
                 @{ Name = "httpbin.org"; Url = "https://httpbin.org/ip" }
             )
-            
+
             foreach ($service in $ipServices) {
                 try {
                     Write-Log "Checking external IP via $($service.Name)..." 'INFO'
-                    
+
                     if ($service.Name -eq "httpbin.org") {
                         $response = Invoke-RestMethod -Uri $service.Url -TimeoutSec 10 -ErrorAction Stop
                         $externalIP = $response.origin
@@ -1416,7 +1416,7 @@ function Write-SystemSummaryHeader {
                     else {
                         $externalIP = Invoke-RestMethod -Uri $service.Url -TimeoutSec 10 -ErrorAction Stop
                     }
-                    
+
                     if ($externalIP -and $externalIP -match '^\d+\.\d+\.\d+\.\d+$') {
                         Write-Log "External IP Address: $externalIP (via $($service.Name))" 'INFO'
                         break
@@ -1427,7 +1427,7 @@ function Write-SystemSummaryHeader {
                     continue
                 }
             }
-            
+
             if (-not $externalIP -or $externalIP -notmatch '^\d+\.\d+\.\d+\.\d+$') {
                 Write-Log "External IP Address: Unable to determine (no internet connectivity)" 'WARN'
             }
@@ -1435,12 +1435,12 @@ function Write-SystemSummaryHeader {
         catch {
             Write-Log "External IP Detection Error: $($_.Exception.Message)" 'WARN'
         }
-        
+
         # DNS Configuration Analysis
         try {
             Write-Log "--- DNS CONFIGURATION ---" 'INFO'
             $dnsTestDomains = @("google.com", "microsoft.com", "cloudflare.com")
-            
+
             foreach ($domain in $dnsTestDomains) {
                 try {
                     $dnsResult = Resolve-DnsName -Name $domain -Type A -ErrorAction Stop | Select-Object -First 1
@@ -1455,7 +1455,7 @@ function Write-SystemSummaryHeader {
         catch {
             Write-Log "DNS Configuration Error: $($_.Exception.Message)" 'WARN'
         }
-        
+
         # System Security and Status
         Write-Log "--- SYSTEM STATUS ---" 'INFO'
         try {
@@ -1466,7 +1466,7 @@ function Write-SystemSummaryHeader {
                 Write-Log "Last Boot: $($lastBoot.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
                 Write-Log "System Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($uptime.Minutes) minutes" 'INFO'
             }
-            
+
             $powerPlan = Get-CimInstance -ClassName Win32_PowerPlan -Namespace "root\cimv2\power" -Filter "IsActive = 'True'" -ErrorAction SilentlyContinue
             if ($powerPlan) {
                 Write-Log "Active Power Plan: $($powerPlan.ElementName)" 'INFO'
@@ -1475,7 +1475,7 @@ function Write-SystemSummaryHeader {
         catch {
             Write-Log "System Status Error: $($_.Exception.Message)" 'WARN'
         }
-        
+
         Write-Log "============================================================" 'INFO'
         Write-Log "" 'INFO' # Add spacing before maintenance tasks begin
     }
@@ -1514,22 +1514,22 @@ function Invoke-Task {
         [string]$TaskName,
         [scriptblock]$Action
     )
-    
+
     $startTime = Get-Date
     Write-ActionLog -Action "Starting task execution" -Details $TaskName -Category "Task Management" -Status 'START'
-    
+
     try {
         $result = & $Action
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
-        
+
         Write-ActionLog -Action "Task completed successfully" -Details "$TaskName | Duration: ${duration}s" -Category "Task Management" -Status 'SUCCESS'
         return $result
     }
     catch {
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
-        
+
         Write-ActionLog -Action "Task execution failed" -Details "$TaskName | Duration: ${duration}s | Error: $_" -Category "Task Management" -Status 'FAILURE'
         return $false
     }
@@ -1581,40 +1581,40 @@ function Invoke-LoggedCommand {
         [switch]$PassThru,
         [int]$TimeoutSeconds = 300
     )
-    
+
     # Set default values for switch parameters (proper PowerShell practice)
     if (-not $PSBoundParameters.ContainsKey('Wait')) { $Wait = $true }
     if (-not $PSBoundParameters.ContainsKey('PassThru')) { $PassThru = $true }
-    
+
     $startTime = Get-Date
-    
+
     # Log command start
     Write-CommandLog -Command $FilePath -Arguments $ArgumentList -Context $Context -Status 'START'
-    
+
     try {
         $processArgs = @{
             FilePath = $FilePath
             Wait     = $Wait
             PassThru = $PassThru
         }
-        
+
         if ($ArgumentList.Count -gt 0) {
             $processArgs.ArgumentList = $ArgumentList
         }
-        
+
         if ($WindowStyle) {
             $processArgs.WindowStyle = $WindowStyleValue
         }
-        
+
         Write-ActionLog -Action "Executing external command" -Details "$FilePath with arguments: $($ArgumentList -join ' ')" -Category "Command Execution" -Status 'START'
-        
+
         $process = Start-Process @processArgs
-        
+
         if ($Wait -and $process) {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
             $exitCode = $process.ExitCode
-            
+
             if ($exitCode -eq 0) {
                 Write-CommandLog -Command $FilePath -Arguments $ArgumentList -Context "$Context | Duration: ${duration}s | ExitCode: $exitCode" -Status 'SUCCESS'
                 Write-ActionLog -Action "Command completed successfully" -Details "$FilePath | Duration: ${duration}s | ExitCode: $exitCode" -Category "Command Execution" -Status 'SUCCESS'
@@ -1623,7 +1623,7 @@ function Invoke-LoggedCommand {
                 Write-CommandLog -Command $FilePath -Arguments $ArgumentList -Context "$Context | Duration: ${duration}s | ExitCode: $exitCode" -Status 'FAILURE'
                 Write-ActionLog -Action "Command completed with error" -Details "$FilePath | Duration: ${duration}s | ExitCode: $exitCode" -Category "Command Execution" -Status 'FAILURE'
             }
-            
+
             return $process
         }
         else {
@@ -1634,10 +1634,10 @@ function Invoke-LoggedCommand {
     catch {
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
-        
+
         Write-CommandLog -Command $FilePath -Arguments $ArgumentList -Context "$Context | Duration: ${duration}s | Exception: $_" -Status 'FAILURE'
         Write-ActionLog -Action "Command execution failed" -Details "$FilePath | Duration: ${duration}s | Exception: $_" -Category "Command Execution" -Status 'FAILURE'
-        
+
         throw $_
     }
 }
@@ -1771,7 +1771,7 @@ function Test-CommandAvailable {
         [Parameter(Mandatory = $true)]
         [string]$Command
     )
-    
+
     try {
         $null = Get-Command $Command -ErrorAction Stop
         return $true
@@ -1817,14 +1817,14 @@ function Test-RegistryAccess {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RegistryPath,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$TestValueName = "TestAccess",
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$CreatePath
     )
-    
+
     try {
         # Test if path exists or can be created
         if (-not (Test-Path $RegistryPath)) {
@@ -1840,21 +1840,21 @@ function Test-RegistryAccess {
                 }
             }
         }
-        
+
         # Test write access by setting a temporary value
         Set-ItemProperty -Path $RegistryPath -Name $TestValueName -Value "Test" -Force -ErrorAction Stop
-        
+
         # Test read access and verify the value
         $testValue = Get-ItemProperty -Path $RegistryPath -Name $TestValueName -ErrorAction Stop
-        
+
         # Verify the test value was read correctly
         if ($testValue.$TestValueName -ne "Test") {
             throw "Registry read verification failed - value mismatch"
         }
-        
+
         # Clean up test value
         Remove-ItemProperty -Path $RegistryPath -Name $TestValueName -Force -ErrorAction SilentlyContinue
-        
+
         return @{
             Success = $true
             Error   = $null
@@ -1921,34 +1921,34 @@ function Set-RegistryValueSafely {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RegistryPath,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$ValueName,
-        
+
         [Parameter(Mandatory = $true)]
         [object]$Value,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$ValueType = "DWord",
-        
+
         [Parameter(Mandatory = $false)]
         [array]$FallbackPaths = @(),
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Description = "Registry value"
     )
-    
+
     # Test access first
     $accessTest = Test-RegistryAccess -RegistryPath $RegistryPath -CreatePath
-    
+
     if (-not $accessTest.Success) {
         Write-LogFile "Registry access failed for ${RegistryPath}: $($accessTest.Error)"
-        
+
         # Try fallback paths if provided
         foreach ($fallbackPath in $FallbackPaths) {
             Write-LogFile "Attempting fallback registry path: $fallbackPath"
             $fallbackTest = Test-RegistryAccess -RegistryPath $fallbackPath -CreatePath
-            
+
             if ($fallbackTest.Success) {
                 try {
                     Set-ItemProperty -Path $fallbackPath -Name $ValueName -Value $Value -Type $ValueType -Force -ErrorAction Stop
@@ -1961,14 +1961,14 @@ function Set-RegistryValueSafely {
                 }
             }
         }
-        
-        return @{ 
-            Success    = $false; 
-            Error      = $accessTest.Error; 
-            Suggestion = $accessTest.Suggestion 
+
+        return @{
+            Success    = $false;
+            Error      = $accessTest.Error;
+            Suggestion = $accessTest.Suggestion
         }
     }
-    
+
     # Primary path access confirmed, proceed with setting value
     try {
         Set-ItemProperty -Path $RegistryPath -Name $ValueName -Value $Value -Type $ValueType -Force -ErrorAction Stop
@@ -1977,10 +1977,10 @@ function Set-RegistryValueSafely {
     }
     catch {
         Write-Log "Failed to set $Description via registry: $($_.Exception.Message)" 'WARN'
-        return @{ 
-            Success    = $false; 
-            Error      = $_.Exception.Message; 
-            Suggestion = "Registry modification may require different approach or manual configuration" 
+        return @{
+            Success    = $false;
+            Error      = $_.Exception.Message;
+            Suggestion = "Registry modification may require different approach or manual configuration"
         }
     }
 }
@@ -2022,25 +2022,25 @@ function Compare-InstallationDiff {
     param(
         [Parameter(Mandatory = $true)]
         [array]$BeforeList,
-        
+
         [Parameter(Mandatory = $true)]
         [array]$AfterList,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$ComparisonType = "Name",
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Context = "App Installation"
     )
-    
+
     Write-Log "[START] Installation Diff Comparison: $Context" 'INFO'
     $startTime = Get-Date
-    
+
     try {
         # Normalize arrays for comparison
         $beforeNames = @()
         $afterNames = @()
-        
+
         # Handle different input formats
         foreach ($item in $BeforeList) {
             if ($item -is [string]) {
@@ -2050,7 +2050,7 @@ function Compare-InstallationDiff {
                 $beforeNames += $item.$ComparisonType
             }
         }
-        
+
         foreach ($item in $AfterList) {
             if ($item -is [string]) {
                 $afterNames += $item
@@ -2059,12 +2059,12 @@ function Compare-InstallationDiff {
                 $afterNames += $item.$ComparisonType
             }
         }
-        
+
         # Calculate differences
         $addedItems = $afterNames | Where-Object { $_ -notin $beforeNames }
         $removedItems = $beforeNames | Where-Object { $_ -notin $afterNames }
         $unchangedItems = $beforeNames | Where-Object { $_ -in $afterNames }
-        
+
         # Generate diff results
         $diffResult = @{
             Added          = @($addedItems)
@@ -2077,7 +2077,7 @@ function Compare-InstallationDiff {
             Context        = $Context
             ProcessingTime = (Get-Date) - $startTime
         }
-        
+
         Write-Log "[DiffComparison] $Context completed: Added=$($diffResult.Added.Count), Removed=$($diffResult.Removed.Count), Net Change=$($diffResult.NetChange)" 'INFO'
         return $diffResult
     }
@@ -2127,20 +2127,20 @@ function Get-StandardizedAppInventory {
     param(
         [Parameter(Mandatory = $false)]
         [string[]]$Sources = @('AppX', 'Winget', 'Chocolatey'),
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$IncludeDetails,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$UseCache,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Context = "System Inventory"
     )
-    
+
     Write-Log "[START] Standardized App Inventory Collection: $Context" 'INFO'
     $startTime = Get-Date
-    
+
     # Check cache if UseCache is enabled
     if ($UseCache -and $global:AppInventoryCache -and $global:AppInventoryCache.Timestamp) {
         $cacheAge = (Get-Date) - $global:AppInventoryCache.Timestamp
@@ -2149,9 +2149,9 @@ function Get-StandardizedAppInventory {
             return $global:AppInventoryCache.Data
         }
     }
-    
+
     $allApps = @()
-    
+
     try {
         # AppX packages
         if ('AppX' -in $Sources) {
@@ -2174,7 +2174,7 @@ function Get-StandardizedAppInventory {
                 Write-Log "Failed to collect AppX packages: $_" 'WARN'
             }
         }
-        
+
         # Winget packages
         if ('Winget' -in $Sources -and (Test-CommandAvailable 'winget')) {
             try {
@@ -2200,7 +2200,7 @@ function Get-StandardizedAppInventory {
                 Write-Log "Failed to collect Winget packages: $_" 'WARN'
             }
         }
-        
+
         # Chocolatey packages
         if ('Chocolatey' -in $Sources -and (Test-CommandAvailable 'choco')) {
             try {
@@ -2226,7 +2226,7 @@ function Get-StandardizedAppInventory {
                 Write-Log "Failed to collect Chocolatey packages: $_" 'WARN'
             }
         }
-        
+
         # Create standardized inventory
         $inventory = @{
             Apps               = $allApps
@@ -2236,15 +2236,15 @@ function Get-StandardizedAppInventory {
             ProcessingDuration = (Get-Date) - $startTime
             Context            = $Context
         }
-        
+
         # Calculate source statistics
         foreach ($source in $Sources) {
             $sourceCount = ($allApps | Where-Object { $_.Source -eq $source }).Count
             $inventory.SourceCounts[$source] = $sourceCount
         }
-        
+
         Write-Log "[Inventory] Collected $($inventory.TotalCount) total apps from $($Sources -join ', ')" 'INFO'
-        
+
         # Cache the result if UseCache is enabled
         if ($UseCache) {
             $global:AppInventoryCache = @{
@@ -2253,7 +2253,7 @@ function Get-StandardizedAppInventory {
             }
             Write-Log "Cached app inventory for future use" 'INFO'
         }
-        
+
         return $inventory
     }
     catch {
@@ -2302,29 +2302,29 @@ function Invoke-PackageManagerCommand {
         [Parameter(Mandatory = $true)]
         [ValidateSet('Install', 'Uninstall', 'List', 'Search', 'Update')]
         [string]$Operation,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$PackageId,
-        
+
         [Parameter(Mandatory = $false)]
         [ValidateSet('Winget', 'Chocolatey', 'Auto')]
         [string]$PreferredManager = 'Auto',
-        
+
         [Parameter(Mandatory = $false)]
         [int]$TimeoutSeconds = 300,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Context = "Package Operation"
     )
-    
+
     Write-Log "[START] Package Manager Command: $Operation for $PackageId via $PreferredManager" 'INFO'
     $startTime = Get-Date
-    
+
     try {
         # Determine which package manager to use
         $manager = $null
         $managerCommand = $null
-        
+
         if ($PreferredManager -eq 'Auto') {
             if (Test-CommandAvailable 'winget') {
                 $manager = 'Winget'
@@ -2339,59 +2339,59 @@ function Invoke-PackageManagerCommand {
             $manager = $PreferredManager
             $managerCommand = $global:PackageManagers[$manager].Command
         }
-        
+
         if (-not $manager -or -not (Test-CommandAvailable $managerCommand)) {
             Write-Log "Package manager $manager not available" 'ERROR'
             return @{ Success = $false; Error = "Package manager not available: $manager" }
         }
-        
+
         # Build command arguments
         $argumentList = @()
         switch ($Operation) {
-            'Install' { 
+            'Install' {
                 $argumentList = $global:PackageManagers[$manager].InstallArgs -f $PackageId
             }
-            'Uninstall' { 
+            'Uninstall' {
                 $argumentList = $global:PackageManagers[$manager].UninstallArgs -f $PackageId
             }
-            'List' { 
+            'List' {
                 $argumentList = $global:PackageManagers[$manager].ListArgs
             }
-            'Search' { 
+            'Search' {
                 $argumentList = $global:PackageManagers[$manager].SearchArgs -f $PackageId
             }
-            'Update' { 
+            'Update' {
                 $argumentList = $global:PackageManagers[$manager].UpdateArgs
             }
         }
-        
+
         Write-Log "Executing: $managerCommand $($argumentList -join ' ')" 'INFO'
-        
+
         # Execute command with timeout
         $pkgOutPath = Join-Path $global:TempFolder 'pkg_out.txt'
         $pkgErrPath = Join-Path $global:TempFolder 'pkg_err.txt'
         $process = Start-Process -FilePath $managerCommand -ArgumentList $argumentList -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pkgOutPath -RedirectStandardError $pkgErrPath
-        
+
         # Wait for completion with timeout
         $completed = $process.WaitForExit($TimeoutSeconds * 1000)
-        
+
         if (-not $completed) {
             $process.Kill()
             Write-Log "Package operation timed out after $TimeoutSeconds seconds" 'ERROR'
             return @{ Success = $false; Error = "Operation timed out" }
         }
-        
+
         # Read output
         $stdout = if (Test-Path $pkgOutPath) { Get-Content $pkgOutPath -Raw } else { "" }
         $stderr = if (Test-Path $pkgErrPath) { Get-Content $pkgErrPath -Raw } else { "" }
-        
+
         # Clean up temp files
         Remove-Item $pkgOutPath, $pkgErrPath -ErrorAction SilentlyContinue
-        
+
         # Determine success
         $success = ($process.ExitCode -eq 0)
         $duration = (Get-Date) - $startTime
-        
+
         $result = @{
             Success        = $success
             ExitCode       = $process.ExitCode
@@ -2403,7 +2403,7 @@ function Invoke-PackageManagerCommand {
             Duration       = $duration.TotalSeconds
             Context        = $Context
         }
-        
+
         if ($success) {
             Write-Log "[PackageManager] $Operation completed successfully for $PackageId via $manager (${duration}s)" 'SUCCESS'
         }
@@ -2411,7 +2411,7 @@ function Invoke-PackageManagerCommand {
             Write-Log "[PackageManager] $Operation failed for $PackageId via $manager ExitCode=$($process.ExitCode)" 'ERROR'
             $result.Error = "ExitCode: $($process.ExitCode), StdErr: $stderr"
         }
-        
+
         return $result
     }
     catch {
@@ -2467,37 +2467,37 @@ function Start-ProgressTrackedOperation {
     param(
         [Parameter(Mandatory = $true)]
         [scriptblock]$Operation,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$ActionType,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$ItemName,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$InitialStatus = "Starting...",
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Context = "Operation"
     )
-    
+
     $startTime = Get-Date
     $operationId = [System.Guid]::NewGuid().ToString("N")[0..7] -join ""
-    
+
     try {
         # Start progress tracking
         Write-ActionProgress -ActionType $ActionType -ItemName $ItemName -PercentComplete 0 -Status $InitialStatus
         Write-Log "[ProgressOp-$operationId] Started: $ActionType $ItemName" 'INFO'
-        
+
         # Execute the operation
         $result = & $Operation
-        
+
         # Complete progress tracking
         Write-ActionProgress -ActionType $ActionType -ItemName $ItemName -PercentComplete 100 -Status "Completed successfully" -Completed
-        
+
         $duration = (Get-Date) - $startTime
         Write-Log "[ProgressOp-$operationId] Completed: $ActionType $ItemName (${duration}s)" 'SUCCESS'
-        
+
         return @{
             Success     = $true
             Result      = $result
@@ -2509,10 +2509,10 @@ function Start-ProgressTrackedOperation {
     catch {
         # Handle errors with progress cleanup
         Write-ActionProgress -ActionType $ActionType -ItemName $ItemName -PercentComplete 100 -Status "Failed: $($_.Exception.Message)" -Completed
-        
+
         $duration = (Get-Date) - $startTime
         Write-Log "[ProgressOp-$operationId] Failed: $ActionType $ItemName - $_" 'ERROR'
-        
+
         return @{
             Success     = $false
             Error       = $_.Exception.Message
@@ -2562,23 +2562,23 @@ function Find-AppInstallations {
     param(
         [Parameter(Mandatory = $true)]
         [string[]]$SearchPatterns,
-        
+
         [Parameter(Mandatory = $false)]
         [string[]]$Sources = @('AppX', 'Winget', 'Chocolatey'),
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$ExactMatch,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Context = "App Search"
     )
-    
+
     # Set default behavior for switches (PSScriptAnalyzer compliant)
     if (-not $PSBoundParameters.ContainsKey('ExactMatch')) { $ExactMatch = $false }
-    
+
     Write-Log "[START] App Installation Search: $($SearchPatterns -join ', ') in $($Sources -join ', ')" 'INFO'
     $foundApps = @()
-    
+
     try {
         # Get standardized inventory
         $inventory = Get-StandardizedAppInventory -Sources $Sources -Context $Context
@@ -2586,22 +2586,22 @@ function Find-AppInstallations {
             Write-Log "Failed to get app inventory for search" 'ERROR'
             return @()
         }
-        
+
         # Search through inventory
         foreach ($pattern in $SearchPatterns) {
             $matchingApps = @()
-            
+
             if ($ExactMatch) {
-                $matchingApps = $inventory.Apps | Where-Object { 
-                    $_.Name -eq $pattern -or $_.DisplayName -eq $pattern 
+                $matchingApps = $inventory.Apps | Where-Object {
+                    $_.Name -eq $pattern -or $_.DisplayName -eq $pattern
                 }
             }
             else {
-                $matchingApps = $inventory.Apps | Where-Object { 
-                    $_.Name -like "*$pattern*" -or $_.DisplayName -like "*$pattern*" 
+                $matchingApps = $inventory.Apps | Where-Object {
+                    $_.Name -like "*$pattern*" -or $_.DisplayName -like "*$pattern*"
                 }
             }
-            
+
             foreach ($app in $matchingApps) {
                 $foundApps += @{
                     SearchPattern = $pattern
@@ -2612,7 +2612,7 @@ function Find-AppInstallations {
                 }
             }
         }
-        
+
         Write-Log "[AppSearch] Found $($foundApps.Count) app installations matching patterns" 'INFO'
         return $foundApps
     }
@@ -2662,32 +2662,32 @@ function Remove-AppsByPattern {
     param(
         [Parameter(Mandatory = $true)]
         [string[]]$RemovalPatterns,
-        
+
         [Parameter(Mandatory = $false)]
         [string[]]$SafetyExclusions = @(),
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$WhatIf,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Context = "App Removal"
     )
-    
+
     # Set default behavior for switches (PSScriptAnalyzer compliant)
     if (-not $PSBoundParameters.ContainsKey('WhatIf')) { $WhatIf = $false }
-    
+
     Write-Log "[START] Pattern-based App Removal: $($RemovalPatterns -join ', ')" 'INFO'
     $removalResults = @()
-    
+
     try {
         # Find apps to remove
         $appsToRemove = Find-AppInstallations -SearchPatterns $RemovalPatterns -Context "$Context - Detection"
-        
+
         if ($appsToRemove.Count -eq 0) {
             Write-Log "No apps found matching removal patterns" 'INFO'
             return @()
         }
-        
+
         # Apply safety exclusions
         $safeAppsToRemove = $appsToRemove | Where-Object {
             $app = $_.MatchedApp
@@ -2700,9 +2700,9 @@ function Remove-AppsByPattern {
             }
             -not $excluded
         }
-        
+
         Write-Log "Apps to remove: $($safeAppsToRemove.Count) (after safety exclusions)" 'INFO'
-        
+
         if ($WhatIf) {
             Write-Log "[WHATIF] Would remove the following apps:" 'INFO'
             foreach ($appInfo in $safeAppsToRemove) {
@@ -2710,19 +2710,19 @@ function Remove-AppsByPattern {
             }
             return $safeAppsToRemove
         }
-        
+
         # Remove apps with progress tracking
         $currentIndex = 0
         foreach ($appInfo in $safeAppsToRemove) {
             $currentIndex++
             $app = $appInfo.MatchedApp
             $progress = [math]::Round(($currentIndex / $safeAppsToRemove.Count) * 100)
-            
+
             Write-ActionProgress -ActionType "Removing" -ItemName $app.DisplayName -PercentComplete $progress -Status "Removing app ($currentIndex/$($safeAppsToRemove.Count))"
-            
+
             try {
                 $removalResult = $null
-                
+
                 # Remove based on source
                 switch ($app.Source) {
                     'AppX' {
@@ -2735,7 +2735,7 @@ function Remove-AppsByPattern {
                         $removalResult = Invoke-PackageManagerCommand -Operation 'Uninstall' -PackageId $app.Name -PreferredManager 'Chocolatey' -Context $Context
                     }
                 }
-                
+
                 $removalResults += @{
                     App     = $app
                     Success = $removalResult.Success
@@ -2743,7 +2743,7 @@ function Remove-AppsByPattern {
                     Pattern = $appInfo.SearchPattern
                     Context = $Context
                 }
-                
+
                 if ($removalResult.Success) {
                     Write-Log "Successfully removed: $($app.DisplayName)" 'SUCCESS'
                 }
@@ -2762,13 +2762,13 @@ function Remove-AppsByPattern {
                 }
             }
         }
-        
+
         # Complete progress
         Write-ActionProgress -ActionType "Removing" -ItemName "Apps" -PercentComplete 100 -Status "Removal completed" -Completed
-        
+
         $successCount = ($removalResults | Where-Object { $_.Success }).Count
         Write-Log "[RemovalSummary] Processed $($removalResults.Count) apps: $successCount successful, $($removalResults.Count - $successCount) failed" 'INFO'
-        
+
         return $removalResults
     }
     catch {
@@ -2824,35 +2824,35 @@ function Install-AppsByCategory {
     param(
         [Parameter(Mandatory = $true)]
         [hashtable]$AppCategories,
-        
+
         [Parameter(Mandatory = $false)]
         [string[]]$SelectedCategories = @(),
-        
+
         [Parameter(Mandatory = $false)]
         [string]$PreferredManager = 'Auto',
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$WhatIf,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Context = "App Installation"
     )
-    
+
     # Set default behavior for switches (PSScriptAnalyzer compliant)
     if (-not $PSBoundParameters.ContainsKey('WhatIf')) { $WhatIf = $false }
-    
+
     Write-Log "[START] Category-based App Installation: $($AppCategories.Keys -join ', ')" 'INFO'
     $installationResults = @()
-    
+
     try {
         # Determine categories to process
-        $categoriesToProcess = if ($SelectedCategories.Count -gt 0) { 
-            $SelectedCategories 
+        $categoriesToProcess = if ($SelectedCategories.Count -gt 0) {
+            $SelectedCategories
         }
-        else { 
-            $AppCategories.Keys 
+        else {
+            $AppCategories.Keys
         }
-        
+
         # Flatten apps from selected categories
         $allApps = @()
         foreach ($category in $categoriesToProcess) {
@@ -2865,9 +2865,9 @@ function Install-AppsByCategory {
                 }
             }
         }
-        
+
         Write-Log "Apps to install: $($allApps.Count) from categories: $($categoriesToProcess -join ', ')" 'INFO'
-        
+
         if ($WhatIf) {
             Write-Log "[WHATIF] Would install the following apps by category:" 'INFO'
             foreach ($category in $categoriesToProcess) {
@@ -2879,7 +2879,7 @@ function Install-AppsByCategory {
             }
             return $allApps
         }
-        
+
         # Install apps with progress tracking
         $currentIndex = 0
         foreach ($appInfo in $allApps) {
@@ -2887,13 +2887,13 @@ function Install-AppsByCategory {
             $app = $appInfo.App
             $category = $appInfo.Category
             $progress = [math]::Round(($currentIndex / $allApps.Count) * 100)
-            
+
             $appName = if ($app -is [hashtable]) { $app.Name } else { $app }
             Write-ActionProgress -ActionType "Installing" -ItemName $appName -PercentComplete $progress -Status "Installing $category app ($currentIndex/$($allApps.Count))"
-            
+
             try {
                 $installResult = $null
-                
+
                 if ($app -is [hashtable]) {
                     # App with package manager options
                     if ($app.Winget -and ($PreferredManager -eq 'Auto' -or $PreferredManager -eq 'Winget')) {
@@ -2907,7 +2907,7 @@ function Install-AppsByCategory {
                     # Simple app name - try auto-detection
                     $installResult = Invoke-PackageManagerCommand -Operation 'Install' -PackageId $app -PreferredManager $PreferredManager -Context "$Context - $category"
                 }
-                
+
                 $installationResults += @{
                     App      = $app
                     Category = $category
@@ -2915,7 +2915,7 @@ function Install-AppsByCategory {
                     Result   = $installResult
                     Context  = $Context
                 }
-                
+
                 if ($installResult.Success) {
                     Write-Log "Successfully installed: $appName ($category)" 'SUCCESS'
                 }
@@ -2934,13 +2934,13 @@ function Install-AppsByCategory {
                 }
             }
         }
-        
+
         # Complete progress
         Write-ActionProgress -ActionType "Installing" -ItemName "Apps" -PercentComplete 100 -Status "Installation completed" -Completed
-        
+
         $successCount = ($installationResults | Where-Object { $_.Success }).Count
         Write-Log "[InstallationSummary] Processed $($installationResults.Count) apps: $successCount successful, $($installationResults.Count - $successCount) failed" 'INFO'
-        
+
         return $installationResults
     }
     catch {
@@ -2966,10 +2966,10 @@ function Invoke-WindowsPowerShellCommand {
         [string]$Command,
         [string]$ErrorAction = "Continue"
     )
-    
+
     try {
         Write-ActionLog -Action "Executing Windows PowerShell compatibility command" -Details $Command -Category "PowerShell Compatibility" -Status 'START'
-        
+
         # Build the full command with error action
         $fullCommand = if ($ErrorAction -eq "SilentlyContinue") {
             "$Command -ErrorAction SilentlyContinue 2>`$null"
@@ -2977,20 +2977,20 @@ function Invoke-WindowsPowerShellCommand {
         else {
             $Command
         }
-        
+
         # Execute command in Windows PowerShell 5.1 context with proper encoding
         $outputFile = [System.IO.Path]::GetTempFileName()
         $errorFile = [System.IO.Path]::GetTempFileName()
-        
+
         try {
             $process = Start-Process -FilePath "powershell.exe" -ArgumentList "-Command", "& {$fullCommand} | Out-File -FilePath '$outputFile' -Encoding UTF8" -RedirectStandardError $errorFile -Wait -PassThru -WindowStyle Hidden
-            
+
             $output = if (Test-Path $outputFile) { Get-Content $outputFile -Raw -Encoding UTF8 } else { $null }
             $errorOutput = if (Test-Path $errorFile) { Get-Content $errorFile -Raw -Encoding UTF8 } else { $null }
-            
+
             if ($process.ExitCode -eq 0) {
                 Write-ActionLog -Action "Windows PowerShell command completed successfully" -Details "ExitCode: $($process.ExitCode)" -Category "PowerShell Compatibility" -Status 'SUCCESS'
-                
+
                 # Parse output if it's structured data
                 if ($output -and $output.Trim()) {
                     try {
@@ -3067,22 +3067,22 @@ function Get-AppxPackageCompatible {
         [string]$Name = "*",
         [switch]$AllUsers
     )
-    
+
     # Check if Appx module is available and can be loaded
     try {
         if (-not (Get-Module -Name Appx -ListAvailable)) {
             Write-Log "Appx module not available on this system" 'WARN'
             return @()
         }
-        
+
         # Try to import the module if not already loaded
         if (-not (Get-Module -Name Appx)) {
             Import-Module Appx -ErrorAction Stop
         }
-        
+
         # Test if Get-AppxPackage is actually functional
         $null = Get-AppxPackage -ErrorAction Stop | Select-Object -First 1
-        
+
         if ($AllUsers) {
             return Get-AppxPackage -Name $Name -AllUsers -ErrorAction SilentlyContinue
         }
@@ -3118,7 +3118,7 @@ function Remove-AppxPackageCompatible {
         [string]$PackageFullName,
         [switch]$AllUsers
     )
-    
+
     try {
         if ($AllUsers) {
             Remove-AppxPackage -Package $PackageFullName -AllUsers -ErrorAction SilentlyContinue
@@ -3202,11 +3202,11 @@ function Get-AppXBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     try {
         $appInventory = Get-StandardizedAppInventory -Context $Context -UseCache:$UseCache
         $appXApps = $appInventory | Where-Object { $_.Source -eq 'AppX' }
-        
+
         $found = @()
         foreach ($app in $appXApps) {
             foreach ($pattern in $BloatwarePatterns) {
@@ -3224,7 +3224,7 @@ function Get-AppXBloatware {
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -3264,11 +3264,11 @@ function Get-WingetBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     try {
         $appInventory = Get-StandardizedAppInventory -Context $Context -UseCache:$UseCache
         $wingetApps = $appInventory | Where-Object { $_.Source -eq 'Winget' }
-        
+
         $found = @()
         foreach ($app in $wingetApps) {
             foreach ($pattern in $BloatwarePatterns) {
@@ -3286,7 +3286,7 @@ function Get-WingetBloatware {
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -3314,11 +3314,11 @@ function Get-ChocolateyBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     try {
         $appInventory = Get-StandardizedAppInventory -Context $Context -UseCache:$UseCache
         $chocoApps = $appInventory | Where-Object { $_.Source -eq 'Chocolatey' }
-        
+
         $found = @()
         foreach ($app in $chocoApps) {
             foreach ($pattern in $BloatwarePatterns) {
@@ -3336,7 +3336,7 @@ function Get-ChocolateyBloatware {
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -3376,18 +3376,18 @@ function Get-RegistryBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     try {
         $registryPaths = @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
             'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
         )
-        
+
         $found = @()
         foreach ($path in $registryPaths) {
             $apps = Get-ItemProperty $path -ErrorAction SilentlyContinue |
             Where-Object { $_.DisplayName -and $_.DisplayName -notmatch '^KB[0-9]+' }
-            
+
             foreach ($app in $apps) {
                 foreach ($pattern in $BloatwarePatterns) {
                     if ($app.DisplayName -like "*$pattern*" -or $app.PSChildName -like $pattern) {
@@ -3405,7 +3405,7 @@ function Get-RegistryBloatware {
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -3433,7 +3433,7 @@ function Get-BrowserExtensionsBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     try {
         # For now, return empty array as this would require complex browser-specific logic
         # Can be expanded to scan Chrome/Edge/Firefox extension folders
@@ -3477,7 +3477,7 @@ function Get-ContextMenuBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     try {
         # For now, return empty array as this would require scanning multiple context menu registry locations
         # Can be expanded to check HKCR shell context menus
@@ -3509,14 +3509,14 @@ function Get-StartupProgramsBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     try {
         $startupLocations = @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
             'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
             'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
         )
-        
+
         $found = @()
         foreach ($location in $startupLocations) {
             $startupItems = Get-ItemProperty $location -ErrorAction SilentlyContinue
@@ -3542,7 +3542,7 @@ function Get-StartupProgramsBloatware {
                 }
             }
         }
-        
+
         return $found
     }
     catch {
@@ -3596,7 +3596,7 @@ function Get-ProvisionedAppxBloatware {
         [switch]$UseCache
     )
     Write-Log "[START] Provisioned AppX scan for bloatware" 'INFO'
-    
+
     # Check cache first
     if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
         $cacheKey = "ProvisionedAppX_$($BloatwarePatterns -join '_')"
@@ -3608,7 +3608,7 @@ function Get-ProvisionedAppxBloatware {
             }
         }
     }
-    
+
     $found = @()
     $provisioned = Get-AppxProvisionedPackageCompatible -Online
     foreach ($pkg in $provisioned) {
@@ -3630,7 +3630,7 @@ function Get-ProvisionedAppxBloatware {
             }
         }
     }
-    
+
     # Cache results
     if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
         $cacheEntry = @{
@@ -3640,7 +3640,7 @@ function Get-ProvisionedAppxBloatware {
         }
         $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
     }
-    
+
     Write-Log "[END] Provisioned AppX scan: $($found.Count) bloatware apps found" 'INFO'
     return $found
 }
@@ -3664,7 +3664,7 @@ function Remove-AppxProvisionedPackageCompatible {
         Import-Module Dism -ErrorAction SilentlyContinue
         if ($Online) {
             Remove-AppxProvisionedPackage -Online -PackageName $PackageName -ErrorAction SilentlyContinue
-    
+
             # Verify removal by checking if package still exists
             $remainingPackage = Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -eq $PackageName }
             if (-not $remainingPackage) {
@@ -3721,7 +3721,7 @@ function Invoke-WindowsUpdateWithSuppressionHelpers {
         $env:AUTOMATION = "True"
         $env:BATCH_MODE = "True"
         $env:NO_REBOOT_PROMPT = "True"
-        
+
         # Use PowerShell job to isolate the update process completely
         $updateJob = Start-Job -ScriptBlock {
             # Set suppression variables in job context too
@@ -3733,21 +3733,21 @@ function Invoke-WindowsUpdateWithSuppressionHelpers {
             $env:AUTOMATION = "True"
             $env:BATCH_MODE = "True"
             $env:NO_REBOOT_PROMPT = "True"
-            
+
             # Import module in job context
             Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
-            
+
             # Install updates with maximum suppression parameters and output redirection
             Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -Verbose:$false 2>$null 3>$null 4>$null 5>$null 6>$null | Out-Null
         }
-        
+
         # Wait for job completion with timeout
         $timeout = $global:SystemSettings.Timeouts.Updates
         $installResult = $updateJob | Wait-Job -Timeout $timeout | Receive-Job -ErrorAction SilentlyContinue
-        
+
         # Clean up job
         $updateJob | Remove-Job -Force -ErrorAction SilentlyContinue
-        
+
         return $installResult
     }
     catch {
@@ -3806,12 +3806,12 @@ function Install-WindowsUpdatesCompatible {
         # Module import with validation
         try {
             Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
-    
+
             # Verify module functionality
             if (-not (Get-Command Get-WindowsUpdate -ErrorAction SilentlyContinue)) {
                 throw "PSWindowsUpdate module loaded but Get-WindowsUpdate command not available"
             }
-    
+
             Write-Log 'PSWindowsUpdate module imported successfully.' 'INFO'
         }
         catch {
@@ -3827,19 +3827,19 @@ function Install-WindowsUpdatesCompatible {
         try {
             # Get available updates with filtering
             $availableUpdates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -ErrorAction SilentlyContinue | Where-Object {
-                $_.Title -notlike "*Preview*" -and 
+                $_.Title -notlike "*Preview*" -and
                 $_.Title -notlike "*Insider*" -and
                 $_.Size -gt 0
             }
-    
+
             if ($availableUpdates) {
                 $updateCount = ($availableUpdates | Measure-Object).Count
                 $totalSize = ($availableUpdates | Measure-Object -Property Size -Sum).Sum
                 $totalSizeMB = [math]::Round($totalSize / 1MB, 2)
-        
+
                 Write-Log "Found $updateCount available updates (Total size: $totalSizeMB MB)." 'INFO'
                 Write-TaskProgress "Installing $updateCount Windows Updates" 75
-        
+
                 # Install updates with comprehensive reboot suppression
                 try {
                     # Set all possible environment variables to suppress prompts
@@ -3850,16 +3850,16 @@ function Install-WindowsUpdatesCompatible {
                     $env:NONINTERACTIVE = "True"
                     $env:AUTOMATION = "True"
                     $env:BATCH_MODE = "True"
-                    
+
                     Write-Log "Installing Windows Updates with full prompt suppression..." 'INFO'
-                    
+
                     # Set additional PowerShell variables to prevent interaction
                     $ConfirmPreference = 'None'
                     $WarningPreference = 'SilentlyContinue'
                     $InformationPreference = 'SilentlyContinue'
                     $VerbosePreference = 'SilentlyContinue'
                     $DebugPreference = 'SilentlyContinue'
-                    
+
                     # Install updates with complete output suppression
                     try {
                         # First try with maximum suppression parameters
@@ -3869,12 +3869,12 @@ function Install-WindowsUpdatesCompatible {
                         Write-Log "Windows Update installation completed with potential prompts suppressed: $_" 'INFO'
                         $installResult = "Updates processed"
                     }
-                    
+
                     # Alternative approach: Use Start-Process for complete isolation if above method fails
                     if (-not $installResult -or $installResult -eq "Updates processed") {
                         try {
                             Write-Log "Attempting alternative Windows Update installation method..." 'INFO'
-                            
+
                             # Create a script block for isolated execution
                             $updateScript = @"
 Import-Module PSWindowsUpdate -Force
@@ -3883,11 +3883,11 @@ Import-Module PSWindowsUpdate -Force
 `$env:SUPPRESS_REBOOT_PROMPT = 'True'
 Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`$false -IgnoreReboot -Silent -ForceInstall
 "@
-                            
+
                             # Write script to temp file
                             $tempScript = Join-Path $global:TempFolder "wu_install_$(Get-Random).ps1"
                             $updateScript | Out-File -FilePath $tempScript -Encoding UTF8
-                            
+
                             # Execute in isolated process
                             $processParams = @{
                                 FilePath               = "powershell.exe"
@@ -3898,19 +3898,19 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
                                 RedirectStandardOutput = $true
                                 RedirectStandardError  = $true
                             }
-                            
+
                             $updateProcess = Start-Process @processParams
-                            
+
                             # Clean up temp script
                             Remove-Item -Path $tempScript -Force -ErrorAction SilentlyContinue
-                            
+
                             Write-Log "Alternative Windows Update method completed with exit code: $($updateProcess.ExitCode)" 'INFO'
                         }
                         catch {
                             Write-Log "Alternative Windows Update method failed: $_" 'WARN'
                         }
                     }
-                    
+
                     # Check if reboot is required after installation
                     $rebootRequired = $false
                     try {
@@ -3919,14 +3919,14 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
                             "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
                             "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"
                         )
-                        
+
                         foreach ($key in $rebootKeys) {
                             if (Test-Path $key) {
                                 $rebootRequired = $true
                                 break
                             }
                         }
-                        
+
                         # Also check if Get-WindowsUpdateRebootStatus exists and indicates reboot
                         if (Get-Command Get-WindowsUpdateRebootStatus -ErrorAction SilentlyContinue) {
                             $rebootStatus = Get-WindowsUpdateRebootStatus -ErrorAction SilentlyContinue
@@ -3934,7 +3934,7 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
                                 $rebootRequired = $true
                             }
                         }
-                        
+
                         # Check the installation result for reboot indicators
                         if ($installResult -and $installResult.RebootRequired) {
                             $rebootRequired = $true
@@ -3943,7 +3943,7 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
                     catch {
                         Write-Log "Could not check reboot status: $_" 'WARN'
                     }
-                    
+
                     # Set global reboot tracking if required
                     # Always unattended: never prompt for reboot, never set global reboot flag
                     if ($rebootRequired) {
@@ -3953,7 +3953,7 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
                     else {
                         Write-Log "Windows Updates installed successfully. No restart required." 'SUCCESS'
                     }
-                    
+
                     Write-TaskProgress "Windows Updates completed" 100
                     return $true
                 }
@@ -3986,14 +3986,14 @@ Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot:`$false -Confirm:`
         Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
         Remove-Item -Path 'env:AUTOMATION' -ErrorAction SilentlyContinue
         Remove-Item -Path 'env:BATCH_MODE' -ErrorAction SilentlyContinue
-        
+
         # Reset PowerShell preference variables to defaults
         $ConfirmPreference = 'High'
         $WarningPreference = 'Continue'
         $InformationPreference = 'Continue'
         $VerbosePreference = 'SilentlyContinue'
         $DebugPreference = 'SilentlyContinue'
-        
+
         $duration = (Get-Date) - $startTime
         Write-Log "Windows Updates check completed in $([math]::Round($duration.TotalSeconds, 2)) seconds" 'INFO'
     }
@@ -4060,7 +4060,7 @@ function Get-ExtensiveSystemInventory {
 }
 
 # ================================================================
-# Function: Get-OptimizedSystemInventory  
+# Function: Get-OptimizedSystemInventory
 # ================================================================
 # Purpose: High-performance system inventory using modular utilities with intelligent caching
 # Environment: Windows 10/11, leverages new modular detection functions with caching
@@ -4080,14 +4080,14 @@ function Get-OptimizedSystemInventory {
         [Parameter(Mandatory = $false)]
         [switch]$ForceFullScan
     )
-    
+
     Write-Log "[START] Optimized System Inventory Collection" 'INFO'
     $startTime = Get-Date
-    
+
     # Set default behavior for switches (PSScriptAnalyzer compliant)
     if (-not $PSBoundParameters.ContainsKey('UseCache')) { $UseCache = $true }
     if (-not $PSBoundParameters.ContainsKey('IncludeBloatwareDetection')) { $IncludeBloatwareDetection = $true }
-    
+
     # Check if we can use cached inventory
     if ($UseCache -and $global:SystemInventory -and -not $ForceFullScan) {
         $cacheAge = (Get-Date) - [DateTime]::Parse($global:SystemInventory.metadata.generatedOn)
@@ -4096,19 +4096,19 @@ function Get-OptimizedSystemInventory {
             return $global:SystemInventory
         }
     }
-    
+
     $inventoryFolder = $WorkingDirectory
-    if (-not (Test-Path $inventoryFolder)) { 
-        New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null 
+    if (-not (Test-Path $inventoryFolder)) {
+        New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null
     }
-    
+
     # Build optimized inventory using modular utilities
     Write-Log "Building optimized system inventory..." 'INFO'
     Write-TaskProgress "Optimized inventory collection" 10
-    
+
     # Use the standardized app inventory function for efficient collection
     $appInventory = Get-StandardizedAppInventory -Sources @('AppX', 'Winget', 'Chocolatey') -UseCache:$UseCache
-    
+
     # Build structured inventory object with enhanced data
     $inventory = [ordered]@{
         metadata            = [ordered]@{
@@ -4130,7 +4130,7 @@ function Get-OptimizedSystemInventory {
         drivers             = @()
         bloatware_detection = @{}
     }
-    
+
     # Parallel system information collection
     Write-TaskProgress "Collecting system information" 25
     try {
@@ -4142,15 +4142,15 @@ function Get-OptimizedSystemInventory {
         Write-Log "System information collection failed: $_" 'WARN'
         $inventory.system = @{ error = $_.ToString() }
     }
-    
+
     # Process standardized app inventory into categorized collections
     Write-TaskProgress "Processing application inventory" 50
     $inventory.appx = $appInventory | Where-Object { $_.Source -eq 'AppX' }
-    $inventory.winget = $appInventory | Where-Object { $_.Source -eq 'Winget' }  
+    $inventory.winget = $appInventory | Where-Object { $_.Source -eq 'Winget' }
     $inventory.choco = $appInventory | Where-Object { $_.Source -eq 'Chocolatey' }
-    
+
     Write-Log "Applications: AppX($($inventory.appx.Count)), Winget($($inventory.winget.Count)), Chocolatey($($inventory.choco.Count))" 'INFO'
-    
+
     # Enhanced registry collection (optimized)
     Write-TaskProgress "Collecting registry information" 70
     try {
@@ -4162,14 +4162,14 @@ function Get-OptimizedSystemInventory {
         Write-Log "Registry collection failed: $_" 'WARN'
         $inventory.registry_uninstall = @()
     }
-    
+
     # Bloatware detection (if enabled)
     if ($IncludeBloatwareDetection) {
         Write-TaskProgress "Enhanced bloatware detection" 85
         try {
             $bloatwareResults = Get-ComprehensiveBloatwareInventory -UseCache:$UseCache
             $inventory.bloatware_detection = $bloatwareResults
-            
+
             # Summary statistics
             $totalBloatware = 0
             foreach ($sourceType in $bloatwareResults.Keys) {
@@ -4184,26 +4184,26 @@ function Get-OptimizedSystemInventory {
             $inventory.bloatware_detection = @{}
         }
     }
-    
+
     # Save optimized inventory
     Write-TaskProgress "Finalizing inventory" 95
     try {
         $inventoryPath = Join-Path $inventoryFolder 'inventory.json'
         $inventory | ConvertTo-Json -Depth 6 | Out-File -FilePath $inventoryPath -Encoding UTF8
         Write-Log "Optimized inventory saved to inventory.json" 'INFO'
-        
+
         # Store global reference
         $global:SystemInventory = $inventory
     }
     catch {
         Write-Log "Failed to write inventory.json: $_" 'WARN'
     }
-    
+
     $duration = ((Get-Date) - $startTime).TotalSeconds
     Write-TaskProgress "Optimized inventory completed" 100
     Write-ActionProgress -ActionType "Analyzing" -ItemName "Optimized System Inventory" -PercentComplete 100 -Status "Optimized inventory completed in ${duration}s" -Completed
     Write-Log "[END] Optimized System Inventory Collection (Duration: ${duration}s)" 'SUCCESS'
-    
+
     return $inventory
 }
 
@@ -4223,23 +4223,23 @@ function Get-ExtensiveSystemInventory {
         [Parameter(Mandatory = $false)]
         [switch]$LegacyMode
     )
-    
+
     # Set default behavior for switches (PSScriptAnalyzer compliant)
     if (-not $PSBoundParameters.ContainsKey('LegacyMode')) { $LegacyMode = $false }
-    
+
     # Use optimized inventory by default for better performance
     if (-not $LegacyMode) {
         Write-Log "Delegating to optimized system inventory for enhanced performance..." 'INFO'
         return Get-OptimizedSystemInventory -WorkingDirectory $WorkingDirectory -UseCache -IncludeBloatwareDetection
     }
-    
+
     # Legacy mode for backward compatibility
     Write-Log 'Starting Extensive System Inventory (JSON Format) - Legacy Mode.' 'INFO'
     Write-TaskProgress "Collecting system inventory" 10
-    
+
     $inventoryFolder = $WorkingDirectory
-    if (-not (Test-Path $inventoryFolder)) { 
-        New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null 
+    if (-not (Test-Path $inventoryFolder)) {
+        New-Item -ItemType Directory -Path $inventoryFolder -Force | Out-Null
     }
 
     # Build structured inventory object
@@ -4268,7 +4268,7 @@ function Get-ExtensiveSystemInventory {
         $inventory.system = $systemInfo
         Write-Log 'System information collected successfully.' 'INFO'
     }
-    catch { 
+    catch {
         Write-Log "System information collection failed: $_" 'WARN'
         $inventory.system = @{ error = $_.ToString() }
     }
@@ -4286,7 +4286,7 @@ function Get-ExtensiveSystemInventory {
             $inventory.appx = @()
         }
     }
-    catch { 
+    catch {
         Write-Log "AppX applications collection failed: $_" 'WARN'
         $inventory.appx = @()
     }
@@ -4299,32 +4299,32 @@ function Get-ExtensiveSystemInventory {
             $env:PYTHONUTF8 = 1
             $originalOutputEncoding = [Console]::OutputEncoding
             [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-            
+
             $wingetOutput = & cmd /c "chcp 65001 >nul 2>&1 && winget list --accept-source-agreements 2>nul"
-            
+
             # Restore original encoding
             [Console]::OutputEncoding = $originalOutputEncoding
-            
+
             if ($wingetOutput -and $wingetOutput.Count -gt 0) {
                 $apps = @()
                 $headerFound = $false
                 $skipPatterns = @('ΓÇª', '…', 'Microsoft .Net Native', 'Microsoft Visual C\+\+ 2015 UWP', 'Update for Windows')
-                
+
                 foreach ($line in $wingetOutput) {
                     # Enhanced encoding cleanup
                     $cleanLine = $line -replace 'ΓÇª', '…' -replace '[^\x20-\x7E\x09\x0A\x0D\u00A0-\uFFFF]', '' -replace '\s+', ' '
-                    
+
                     if (-not $headerFound) {
                         if ($cleanLine -match '^Name\s+' -or $cleanLine -match '^-+\s+') {
                             $headerFound = $true
                         }
                         continue
                     }
-                    
+
                     if ($cleanLine -match '^-+' -or $cleanLine.Trim() -eq '' -or $cleanLine -match '^\s*$') {
                         continue
                     }
-                    
+
                     # Skip lines that are known to cause encoding issues
                     $shouldSkip = $false
                     foreach ($pattern in $skipPatterns) {
@@ -4333,11 +4333,11 @@ function Get-ExtensiveSystemInventory {
                             break
                         }
                     }
-                    
+
                     if ($shouldSkip) {
                         continue
                     }
-                    
+
                     if ($cleanLine -match '\S' -and $cleanLine.Length -gt 3) {
                         try {
                             # Robust parsing for winget output with multiple strategies
@@ -4345,14 +4345,14 @@ function Get-ExtensiveSystemInventory {
                             $appId = ""
                             $appVersion = ""
                             $appSource = ""
-                            
+
                             # Strategy 1: Try 2+ spaces split (original format)
                             $parts = $cleanLine -split '\s{2,}' | Where-Object { $_.Trim() -ne '' }
-                            
+
                             # Strategy 2: If insufficient parts, try single space split with position-based parsing
                             if ($parts.Count -lt 2) {
                                 $spaceParts = $cleanLine.Trim() -split '\s+' | Where-Object { $_.Trim() -ne '' }
-                                
+
                                 # Typical winget format: "AppName Version Id Source" or variations
                                 # Look for package ID pattern (contains dots or specific patterns)
                                 if ($spaceParts.Count -ge 2) {
@@ -4365,23 +4365,23 @@ function Get-ExtensiveSystemInventory {
                                             break
                                         }
                                     }
-                                    
+
                                     if ($idIndex -gt 0) {
                                         # Reconstruct name from parts before ID
                                         $appName = ($spaceParts[0..($idIndex - 1)] -join ' ').Trim()
                                         $appId = $spaceParts[$idIndex].Trim()
-                                        
+
                                         # Look for version (numeric pattern before ID)
                                         if ($idIndex -gt 1 -and $spaceParts[$idIndex - 1] -match '^\d+[\.\d]*') {
                                             $appVersion = $spaceParts[$idIndex - 1].Trim()
                                             $appName = ($spaceParts[0..($idIndex - 2)] -join ' ').Trim()
                                         }
-                                        
+
                                         # Source is typically last or after ID
                                         if ($idIndex + 1 -lt $spaceParts.Count) {
                                             $appSource = $spaceParts[$idIndex + 1].Trim()
                                         }
-                                        
+
                                         $parts = @($appName, $appId, $appVersion, $appSource)
                                     }
                                     else {
@@ -4399,22 +4399,22 @@ function Get-ExtensiveSystemInventory {
                                     }
                                 }
                             }
-                            
+
                             if ($parts.Count -ge 1) {
                                 $appName = $parts[0].Trim()
                                 # Enhanced validation for meaningful app names
-                                if ($appName.Length -gt 2 -and 
-                                    $appName -notmatch '^[ΓÇ\s…]+$' -and 
+                                if ($appName.Length -gt 2 -and
+                                    $appName -notmatch '^[ΓÇ\s…]+$' -and
                                     $appName -notmatch '^\.\.\.$' -and
                                     $appName -match '[a-zA-Z0-9]') {
-                                    
+
                                     $appHash = @{
                                         Name    = $appName
                                         Id      = if ($parts.Count -gt 1) { $parts[1].Trim() } else { "" }
                                         Version = if ($parts.Count -gt 2) { $parts[2].Trim() } else { "" }
                                         Source  = if ($parts.Count -gt 3) { $parts[3].Trim() } else { "" }
                                     }
-                                    
+
                                     $apps += $appHash
                                     Write-Log "[Inventory] Parsed: $($appHash.Name) | $($appHash.Id) | $($appHash.Version) | $($appHash.Source)" 'VERBOSE'
                                 }
@@ -4426,7 +4426,7 @@ function Get-ExtensiveSystemInventory {
                         }
                     }
                 }
-                
+
                 $inventory.winget = $apps
                 Write-Log "[Inventory] Collected $($apps.Count) winget applications." 'INFO'
             }
@@ -4478,7 +4478,7 @@ function Get-ExtensiveSystemInventory {
     }
 
     Write-TaskProgress "Finalizing inventory" 90
-    
+
     # Save inventory to JSON file
     try {
         $inventoryPath = Join-Path $inventoryFolder 'inventory.json'
@@ -4534,10 +4534,10 @@ function Get-WindowsFeaturesBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     Write-Log "[START] Windows Features bloatware scan" 'INFO'
     $startTime = Get-Date
-    
+
     # Check cache first
     if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
         $cacheKey = "WindowsFeatures_$($BloatwarePatterns -join '_')"
@@ -4549,15 +4549,15 @@ function Get-WindowsFeaturesBloatware {
             }
         }
     }
-    
+
     $found = @()
-    
+
     try {
         # Get enabled Windows optional features
         Write-Log "Scanning enabled Windows optional features..." 'INFO'
-        $enabledFeatures = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue | 
+        $enabledFeatures = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue |
         Where-Object { $_.State -eq 'Enabled' }
-        
+
         foreach ($feature in $enabledFeatures) {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($feature.FeatureName -like $pattern) {
@@ -4577,7 +4577,7 @@ function Get-WindowsFeaturesBloatware {
                 }
             }
         }
-        
+
         # Cache results
         if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
             $cacheEntry = @{
@@ -4587,12 +4587,12 @@ function Get-WindowsFeaturesBloatware {
             }
             $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
         }
-        
+
     }
     catch {
         Write-Log "Failed to scan Windows Features: $_" 'WARN'
     }
-    
+
     $duration = ((Get-Date) - $startTime).TotalSeconds
     Write-Log "[END] Windows Features scan: $($found.Count) bloatware features found in ${duration}s" 'INFO'
     return $found
@@ -4630,10 +4630,10 @@ function Get-ServicesBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     Write-Log "[START] Services bloatware scan" 'INFO'
     $startTime = Get-Date
-    
+
     # Check cache first
     if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
         $cacheKey = "Services_$($BloatwarePatterns -join '_')"
@@ -4645,14 +4645,14 @@ function Get-ServicesBloatware {
             }
         }
     }
-    
+
     $found = @()
-    
+
     try {
         # Get all services and filter for bloatware patterns
         Write-Log "Scanning system services for bloatware..." 'INFO'
         $allServices = Get-Service -ErrorAction SilentlyContinue
-        
+
         foreach ($service in $allServices) {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($service.Name -like $pattern -or $service.DisplayName -like "*$pattern*") {
@@ -4661,7 +4661,7 @@ function Get-ServicesBloatware {
                         $serviceWMI = Get-CimInstance -ClassName Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
                         $startMode = if ($serviceWMI) { $serviceWMI.StartMode } else { 'Unknown' }
                         $pathName = if ($serviceWMI) { $serviceWMI.PathName } else { 'Unknown' }
-                        
+
                         $found += [PSCustomObject]@{
                             Name        = $service.Name
                             DisplayName = $service.DisplayName
@@ -4683,7 +4683,7 @@ function Get-ServicesBloatware {
                 }
             }
         }
-        
+
         # Cache results
         if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
             $cacheEntry = @{
@@ -4693,12 +4693,12 @@ function Get-ServicesBloatware {
             }
             $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
         }
-        
+
     }
     catch {
         Write-Log "Failed to scan Services: $_" 'WARN'
     }
-    
+
     $duration = ((Get-Date) - $startTime).TotalSeconds
     Write-Log "[END] Services scan: $($found.Count) bloatware services found in ${duration}s" 'INFO'
     return $found
@@ -4735,10 +4735,10 @@ function Get-ScheduledTasksBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     Write-Log "[START] Scheduled Tasks bloatware scan" 'INFO'
     $startTime = Get-Date
-    
+
     # Check cache first
     if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
         $cacheKey = "ScheduledTasks_$($BloatwarePatterns -join '_')"
@@ -4750,23 +4750,23 @@ function Get-ScheduledTasksBloatware {
             }
         }
     }
-    
+
     $found = @()
-    
+
     try {
         # Get all scheduled tasks and filter for bloatware patterns
         Write-Log "Scanning scheduled tasks for bloatware..." 'INFO'
         $allTasks = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.State -ne 'Disabled' }
-        
+
         foreach ($task in $allTasks) {
             $taskPath = "$($task.TaskPath)$($task.TaskName)"
-            
+
             foreach ($pattern in $BloatwarePatterns) {
                 if ($taskPath -like $pattern -or $task.TaskName -like $pattern) {
                     # Get additional task information
                     try {
                         $taskInfo = Get-ScheduledTaskInfo -TaskName $task.TaskName -TaskPath $task.TaskPath -ErrorAction SilentlyContinue
-                        
+
                         $found += [PSCustomObject]@{
                             Name        = $task.TaskName
                             DisplayName = $task.TaskName
@@ -4789,7 +4789,7 @@ function Get-ScheduledTasksBloatware {
                 }
             }
         }
-        
+
         # Cache results
         if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
             $cacheEntry = @{
@@ -4799,12 +4799,12 @@ function Get-ScheduledTasksBloatware {
             }
             $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
         }
-        
+
     }
     catch {
         Write-Log "Failed to scan Scheduled Tasks: $_" 'WARN'
     }
-    
+
     $duration = ((Get-Date) - $startTime).TotalSeconds
     Write-Log "[END] Scheduled Tasks scan: $($found.Count) bloatware tasks found in ${duration}s" 'INFO'
     return $found
@@ -4842,10 +4842,10 @@ function Get-StartMenuBloatware {
         [Parameter(Mandatory = $false)]
         [switch]$UseCache
     )
-    
+
     Write-Log "[START] Start Menu bloatware scan" 'INFO'
     $startTime = Get-Date
-    
+
     # Check cache first
     if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
         $cacheKey = "StartMenu_$($BloatwarePatterns -join '_')"
@@ -4857,25 +4857,25 @@ function Get-StartMenuBloatware {
             }
         }
     }
-    
+
     $found = @()
-    
+
     try {
         # Define Start Menu paths to scan
         $startMenuPaths = @(
             "$env:APPDATA\Microsoft\Windows\Start Menu\Programs",
             "$env:ALLUSERSPROFILE\Microsoft\Windows\Start Menu\Programs"
         )
-        
+
         Write-Log "Scanning Start Menu shortcuts for bloatware..." 'INFO'
-        
+
         foreach ($basePath in $startMenuPaths) {
             if (Test-Path $basePath) {
                 $shortcuts = Get-ChildItem -Path $basePath -Recurse -Include "*.lnk" -ErrorAction SilentlyContinue
-                
+
                 foreach ($shortcut in $shortcuts) {
                     $shortcutName = [System.IO.Path]::GetFileNameWithoutExtension($shortcut.Name)
-                    
+
                     foreach ($pattern in $BloatwarePatterns) {
                         $cleanPattern = $pattern.Trim('*')
                         if ($shortcutName -like $pattern -or $shortcut.DirectoryName -like "*$cleanPattern*") {
@@ -4884,7 +4884,7 @@ function Get-StartMenuBloatware {
                                 $shell = New-Object -ComObject WScript.Shell
                                 $shortcutObj = $shell.CreateShortcut($shortcut.FullName)
                                 $targetPath = $shortcutObj.TargetPath
-                                
+
                                 $found += [PSCustomObject]@{
                                     Name         = $shortcutName
                                     DisplayName  = $shortcutName
@@ -4907,7 +4907,7 @@ function Get-StartMenuBloatware {
                 }
             }
         }
-        
+
         # Cache results
         if ($UseCache -and $global:BloatwareDetectionCache.Enabled) {
             $cacheEntry = @{
@@ -4917,12 +4917,12 @@ function Get-StartMenuBloatware {
             }
             $global:BloatwareDetectionCache.Data[$cacheKey] = $cacheEntry
         }
-        
+
     }
     catch {
         Write-Log "Failed to scan Start Menu: $_" 'WARN'
     }
-    
+
     $duration = ((Get-Date) - $startTime).TotalSeconds
     Write-Log "[END] Start Menu scan: $($found.Count) bloatware shortcuts found in ${duration}s" 'INFO'
     return $found
@@ -4976,21 +4976,21 @@ function Get-ComprehensiveBloatwareInventory {
         [Parameter(Mandatory = $false)]
         [switch]$ParallelProcessing
     )
-    
+
     Write-Log "[START] Comprehensive Bloatware Detection - Sources: $($DetectionSources -join ', ')" 'INFO'
     $startTime = Get-Date
     $results = [ordered]@{}
-    
+
     try {
         foreach ($sourceType in $DetectionSources) {
-            if ($global:BloatwareDetectionSources.ContainsKey($sourceType) -and 
+            if ($global:BloatwareDetectionSources.ContainsKey($sourceType) -and
                 $global:BloatwareDetectionSources.$sourceType.Enabled) {
-                
+
                 $results[$sourceType] = @{}
                 $sources = $global:BloatwareDetectionSources.$sourceType.Sources
-                
+
                 Write-Log "Processing $sourceType detection sources: $($sources -join ', ')" 'INFO'
-                
+
                 foreach ($source in $sources) {
                     try {
                         $functionName = "Get-${source}Bloatware"
@@ -5016,11 +5016,11 @@ function Get-ComprehensiveBloatwareInventory {
                 $results[$sourceType] = @{}
             }
         }
-        
+
         # Calculate summary statistics
         $totalBloatware = 0
         $sourcesSummary = @()
-        
+
         foreach ($sourceType in $results.Keys) {
             $typeTotal = 0
             foreach ($source in $results[$sourceType].Keys) {
@@ -5033,11 +5033,11 @@ function Get-ComprehensiveBloatwareInventory {
             $totalBloatware += $typeTotal
             Write-Log "Detection summary for $sourceType`: $typeTotal items from $($results[$sourceType].Keys.Count) sources" 'INFO'
         }
-        
+
         $duration = ((Get-Date) - $startTime).TotalSeconds
         Write-Log "[SUMMARY] Comprehensive bloatware detection: $totalBloatware total items found in ${duration}s" 'SUCCESS'
         Write-Log "[DETAILS] Sources: $($sourcesSummary -join ', ')" 'INFO'
-        
+
         return $results
     }
     catch {
@@ -5156,7 +5156,7 @@ function Remove-Bloatware {
     # Early exit if no newly installed apps, but provide comprehensive fallback for first run
     if ($newlyInstalledApps.Count -eq 0) {
         Write-Log "No newly installed apps detected since last run." 'INFO'
-        
+
         # Fallback: If this is likely the first run or no previous data exists, process ALL apps
         if (-not (Test-Path $previousListPath) -or $currentInstalledApps.Count -gt 0) {
             Write-Log "Enabling comprehensive scan mode - processing all currently installed apps for bloatware detection" 'INFO'
@@ -5221,7 +5221,7 @@ function Remove-Bloatware {
     foreach ($item in $global:BloatwareList) {
         [void]$bloatwareHashSet.Add($item)
     }
-    
+
     Write-Log "Created bloatware lookup with $($bloatwareHashSet.Count) patterns" 'INFO'
     Write-Log "Apps available for analysis: $($installedApps.Keys.Count)" 'INFO'
 
@@ -5235,7 +5235,7 @@ function Remove-Bloatware {
                 })
         }
     }
-    
+
     Write-Log "Direct matches found: $($bloatwareMatches.Count)" 'INFO'
 
     # Pattern matching phase (only if needed)
@@ -5245,9 +5245,9 @@ function Remove-Bloatware {
         foreach ($bloatApp in $global:BloatwareList) {
             $trimmedBloat = $bloatApp.Trim()
             foreach ($installedKey in $installedApps.Keys) {
-                if ($installedKey.Contains($trimmedBloat, [System.StringComparison]::OrdinalIgnoreCase) -or 
+                if ($installedKey.Contains($trimmedBloat, [System.StringComparison]::OrdinalIgnoreCase) -or
                     $trimmedBloat.Contains($installedKey, [System.StringComparison]::OrdinalIgnoreCase)) {
-        
+
                     $bloatwareMatches.Add([PSCustomObject]@{
                             BloatwareName = $trimmedBloat
                             InstalledApp  = $installedApps[$installedKey]
@@ -5320,7 +5320,7 @@ function Remove-Bloatware {
         }
         Write-Log "Services bloatware matches: $($servicesBloatware.Count)" 'INFO'
 
-        # Scheduled Tasks bloatware detection  
+        # Scheduled Tasks bloatware detection
         $scheduledTasksBloatware = Get-ScheduledTasksBloatware -UseCache
         foreach ($task in $scheduledTasksBloatware) {
             $bloatwareMatches.Add([PSCustomObject]@{
@@ -5335,7 +5335,7 @@ function Remove-Bloatware {
         Write-Log "Scheduled Tasks bloatware matches: $($scheduledTasksBloatware.Count)" 'INFO'
 
         # Start Menu bloatware detection
-        $startMenuBloatware = Get-StartMenuBloatware -UseCache  
+        $startMenuBloatware = Get-StartMenuBloatware -UseCache
         foreach ($shortcut in $startMenuBloatware) {
             $bloatwareMatches.Add([PSCustomObject]@{
                     BloatwareName = $shortcut.Name
@@ -5349,7 +5349,7 @@ function Remove-Bloatware {
         Write-Log "Start Menu bloatware matches: $($startMenuBloatware.Count)" 'INFO'
 
         # Enhanced detection summary
-        $enhancedDetectionCount = $windowsFeaturesBloatware.Count + $servicesBloatware.Count + 
+        $enhancedDetectionCount = $windowsFeaturesBloatware.Count + $servicesBloatware.Count +
         $scheduledTasksBloatware.Count + $startMenuBloatware.Count
         Write-Log "[ENHANCED DETECTION SUMMARY] Found $enhancedDetectionCount additional system-level bloatware items" 'SUCCESS'
     }
@@ -5383,7 +5383,7 @@ function Remove-Bloatware {
         try {
             $toolCapabilities.AppX = $null -ne (Get-Module -ListAvailable -Name Appx -ErrorAction SilentlyContinue)
         }
-        catch { 
+        catch {
             $toolCapabilities.AppX = $false
         }
     }
@@ -5400,10 +5400,10 @@ function Remove-Bloatware {
     # Use the new modular progress system for bloatware removal
     Start-ActionProgressSequence -SequenceName "Bloatware Removal" -Actions $bloatwareMatches -ActionProcessor {
         param($match, $currentIndex, $totalApps)
-        
+
         # Individual bloatware removal progress
         Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 0 -Status "Preparing removal..." -CurrentItem $currentIndex -TotalItems $totalApps
-        
+
         $result = @{
             Success    = $false
             AppName    = $match.BloatwareName
@@ -5426,9 +5426,9 @@ function Remove-Bloatware {
                         try {
                             $packageName = if ($appData.Name) { $appData.Name } else { ($appData.PackageFullName -split '_')[0] }
                             $removalSuccess = $false
-                            
+
                             Write-Log "Attempting comprehensive AppX removal for: $packageName" 'INFO'
-                            
+
                             # Method 1: Remove all user installations
                             $userPackages = Get-AppxPackage -Name "*$packageName*" -AllUsers -ErrorAction SilentlyContinue
                             foreach ($package in $userPackages) {
@@ -5441,7 +5441,7 @@ function Remove-Bloatware {
                                     Write-Log "Failed to remove user package $($package.PackageFullName): $_" 'WARN'
                                 }
                             }
-                            
+
                             # Method 2: Remove provisioned packages (prevents reinstallation for new users)
                             $provisionedPackages = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*$packageName*" }
                             foreach ($provPackage in $provisionedPackages) {
@@ -5454,7 +5454,7 @@ function Remove-Bloatware {
                                     Write-Log "Failed to remove provisioned package $($provPackage.DisplayName): $_" 'WARN'
                                 }
                             }
-                            
+
                             # Method 3: DISM removal for system packages
                             try {
                                 if (Get-Command dism -ErrorAction SilentlyContinue) {
@@ -5474,14 +5474,14 @@ function Remove-Bloatware {
                             catch {
                                 Write-Log "DISM removal failed: $_" 'WARN'
                             }
-                            
+
                             # Method 4: Registry cleanup (for stubborn entries)
                             try {
                                 $regPaths = @(
                                     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications",
                                     "HKCU:\SOFTWARE\Classes\ActivatableClasses\Package"
                                 )
-                                
+
                                 foreach ($regPath in $regPaths) {
                                     if (Test-Path $regPath) {
                                         $regKeys = Get-ChildItem $regPath -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*$packageName*" }
@@ -5501,11 +5501,11 @@ function Remove-Bloatware {
                             catch {
                                 Write-Log "Registry cleanup failed: $_" 'WARN'
                             }
-                            
+
                             # Verify complete removal
                             $finalCheck = Get-AppxPackage -Name "*$packageName*" -AllUsers -ErrorAction SilentlyContinue
                             $provisionedCheck = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*$packageName*" }
-                            
+
                             if (-not $finalCheck -and -not $provisionedCheck) {
                                 $result.Success = $true
                                 $result.Method = "AppX (Comprehensive)"
@@ -5530,15 +5530,15 @@ function Remove-Bloatware {
                         }
                     }
                 }
-                
+
                 'Winget' {
                     if ($toolCapabilities.Winget -and ($appData.Id -or $appData.Name)) {
                         try {
                             $removalSuccess = $false
                             $targetId = if ($appData.Id) { $appData.Id } else { $appData.Name }
-                            
+
                             Write-Log "Attempting enhanced Winget removal for: $targetId" 'INFO'
-                            
+
                             # Method 1: Standard uninstall with enhanced arguments
                             try {
                                 $uninstallArgs = @("uninstall", "--id", $targetId, "--silent", "--accept-source-agreements", "--disable-interactivity", "--force")
@@ -5546,7 +5546,7 @@ function Remove-Bloatware {
                                 $wingetOutPath = Join-Path $global:TempFolder 'winget_output.txt'
                                 $wingetErrPath = Join-Path $global:TempFolder 'winget_error.txt'
                                 $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetOutPath -RedirectStandardError $wingetErrPath
-                                
+
                                 if ($wingetProc.ExitCode -eq 0) {
                                     $removalSuccess = $true
                                 }
@@ -5558,14 +5558,14 @@ function Remove-Bloatware {
                             catch {
                                 Write-Log "Standard winget removal failed: $_" 'WARN'
                             }
-                            
+
                             # Method 2: Try with exact name match if ID failed
                             if (-not $removalSuccess -and $appData.Name -and $appData.Name -ne $targetId) {
                                 try {
                                     $uninstallArgs = @("uninstall", "--name", $appData.Name, "--silent", "--accept-source-agreements", "--disable-interactivity", "--force")
                                     Write-Log "Winget name-based command: winget $($uninstallArgs -join ' ')" 'INFO'
                                     $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
-                                    
+
                                     if ($wingetProc.ExitCode -eq 0) {
                                         $removalSuccess = $true
                                     }
@@ -5574,14 +5574,14 @@ function Remove-Bloatware {
                                     Write-Log "Name-based winget removal failed: $_" 'WARN'
                                 }
                             }
-                            
+
                             # Method 3: Interactive removal as last resort
                             if (-not $removalSuccess) {
                                 try {
                                     $uninstallArgs = @("uninstall", "--id", $targetId, "--interactive")
                                     Write-Log "Attempting interactive winget removal: winget $($uninstallArgs -join ' ')" 'INFO'
                                     $wingetProc = Start-Process -FilePath "winget" -ArgumentList $uninstallArgs -WindowStyle Hidden -Wait -PassThru
-                                    
+
                                     if ($wingetProc.ExitCode -eq 0) {
                                         $removalSuccess = $true
                                     }
@@ -5590,7 +5590,7 @@ function Remove-Bloatware {
                                     Write-Log "Interactive winget removal failed: $_" 'WARN'
                                 }
                             }
-                            
+
                             if ($removalSuccess) {
                                 $result.Success = $true
                                 $result.Method = "Winget (Enhanced)"
@@ -5606,15 +5606,15 @@ function Remove-Bloatware {
                         }
                     }
                 }
-                
+
                 'Choco' {
                     if ($toolCapabilities.Chocolatey -and ($appData.Name -or $appData.Id)) {
                         try {
                             $removalSuccess = $false
                             $targetPackage = if ($appData.Id) { $appData.Id } else { $appData.Name }
-                            
+
                             Write-Log "Attempting enhanced Chocolatey removal for: $targetPackage" 'INFO'
-                            
+
                             # Method 1: Standard uninstall with enhanced arguments
                             try {
                                 $chocoArgs = @("uninstall", $targetPackage, "-y", "--ignore-dependencies", "--remove-dependencies", "--force")
@@ -5622,7 +5622,7 @@ function Remove-Bloatware {
                                 $chocoOutPath = Join-Path $global:TempFolder 'choco_output.txt'
                                 $chocoErrPath = Join-Path $global:TempFolder 'choco_error.txt'
                                 $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoOutPath -RedirectStandardError $chocoErrPath
-                                
+
                                 if ($chocoProc.ExitCode -eq 0) {
                                     $removalSuccess = $true
                                 }
@@ -5634,7 +5634,7 @@ function Remove-Bloatware {
                             catch {
                                 Write-Log "Standard chocolatey removal failed: $_" 'WARN'
                             }
-                            
+
                             # Method 2: Try with alternative package name formats
                             if (-not $removalSuccess -and $appData.Name -and $appData.Name -ne $targetPackage) {
                                 $alternativeNames = @(
@@ -5643,14 +5643,14 @@ function Remove-Bloatware {
                                     $appData.Name.ToLower().Replace(" ", ""),
                                     $appData.Name.Replace(" ", "")
                                 )
-                                
+
                                 foreach ($altName in $alternativeNames) {
                                     if ($removalSuccess) { break }
                                     try {
                                         $chocoArgs = @("uninstall", $altName, "-y", "--ignore-dependencies", "--force")
                                         Write-Log "Chocolatey alternative name: choco $($chocoArgs -join ' ')" 'INFO'
                                         $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                                        
+
                                         if ($chocoProc.ExitCode -eq 0) {
                                             $removalSuccess = $true
                                             $targetPackage = $altName
@@ -5662,14 +5662,14 @@ function Remove-Bloatware {
                                     }
                                 }
                             }
-                            
+
                             # Method 3: Force removal with all available flags
                             if (-not $removalSuccess) {
                                 try {
                                     $chocoArgs = @("uninstall", $targetPackage, "-y", "--force", "--force-dependencies", "--skip-autouninstaller", "--ignore-checksums")
                                     Write-Log "Chocolatey force removal: choco $($chocoArgs -join ' ')" 'INFO'
                                     $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                                    
+
                                     if ($chocoProc.ExitCode -eq 0) {
                                         $removalSuccess = $true
                                     }
@@ -5678,7 +5678,7 @@ function Remove-Bloatware {
                                     Write-Log "Force chocolatey removal failed: $_" 'WARN'
                                 }
                             }
-                            
+
                             if ($removalSuccess) {
                                 $result.Success = $true
                                 $result.Method = "Chocolatey (Enhanced)"
@@ -5694,17 +5694,17 @@ function Remove-Bloatware {
                         }
                     }
                 }
-                
+
                 'RegistryUninstall' {
                     if ($appData.UninstallString) {
                         try {
                             $removalSuccess = $false
                             $uninstallString = $appData.UninstallString.Trim()
                             $displayName = if ($appData.DisplayName) { $appData.DisplayName } else { $appData.Name }
-                            
+
                             Write-Log "Attempting registry uninstall for: $displayName" 'INFO'
                             Write-Log "Uninstall command: $uninstallString" 'INFO'
-                            
+
                             # Method 1: Parse and execute uninstall string
                             try {
                                 if ($uninstallString -match '^"([^"]+)"\s*(.*)$') {
@@ -5713,7 +5713,7 @@ function Remove-Bloatware {
                                     $arguments = $matches[2].Trim()
                                 }
                                 elseif ($uninstallString -match '^([^"]\S+)\s*(.*)$') {
-                                    # Unquoted executable with arguments  
+                                    # Unquoted executable with arguments
                                     $executable = $matches[1]
                                     $arguments = $matches[2].Trim()
                                 }
@@ -5722,7 +5722,7 @@ function Remove-Bloatware {
                                     $executable = $uninstallString
                                     $arguments = ""
                                 }
-                                
+
                                 # Add silent flags if not present
                                 if ($arguments -notmatch '/S|/silent|/quiet|/q|--silent') {
                                     if ($executable -match 'msiexec') {
@@ -5732,12 +5732,12 @@ function Remove-Bloatware {
                                         $arguments += " /S"
                                     }
                                 }
-                                
+
                                 Write-Log "Executing: $executable $arguments" 'INFO'
-                                
+
                                 if (Test-Path $executable) {
                                     $uninstallProc = Start-Process -FilePath $executable -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
-                                    
+
                                     if ($uninstallProc.ExitCode -eq 0) {
                                         $removalSuccess = $true
                                     }
@@ -5752,13 +5752,13 @@ function Remove-Bloatware {
                             catch {
                                 Write-Log "Registry uninstall execution failed: $_" 'WARN'
                             }
-                            
+
                             # Method 2: Try direct command execution if normal parsing failed
                             if (-not $removalSuccess) {
                                 try {
                                     Write-Log "Attempting direct command execution: $uninstallString" 'INFO'
                                     $directProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$uninstallString`"" -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
-                                    
+
                                     if ($directProc.ExitCode -eq 0) {
                                         $removalSuccess = $true
                                     }
@@ -5767,16 +5767,16 @@ function Remove-Bloatware {
                                     Write-Log "Direct command execution failed: $_" 'WARN'
                                 }
                             }
-                            
+
                             # Method 3: MSI-specific handling for MSI packages
                             if (-not $removalSuccess -and $uninstallString -match '\{[A-F0-9-]+\}') {
                                 try {
                                     $msiCode = [regex]::Match($uninstallString, '\{[A-F0-9-]+\}').Value
                                     Write-Log "Attempting MSI removal for product code: $msiCode" 'INFO'
-                                    
+
                                     $msiArgs = @("/x", $msiCode, "/quiet", "/norestart")
                                     $msiProc = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
-                                    
+
                                     if ($msiProc.ExitCode -eq 0) {
                                         $removalSuccess = $true
                                     }
@@ -5788,7 +5788,7 @@ function Remove-Bloatware {
                                     Write-Log "MSI removal failed: $_" 'WARN'
                                 }
                             }
-                            
+
                             if ($removalSuccess) {
                                 $result.Success = $true
                                 $result.Method = "Registry Uninstall (Enhanced)"
@@ -5804,21 +5804,21 @@ function Remove-Bloatware {
                         }
                     }
                 }
-                
+
                 'ProvisionedAppX' {
                     if ($appData.PackageName -or $appData.DisplayName) {
                         try {
                             $removalSuccess = $false
                             $packageName = if ($appData.PackageName) { $appData.PackageName } else { $appData.DisplayName }
-                            
+
                             Write-Log "Attempting provisioned AppX removal for: $packageName" 'INFO'
-                            
+
                             # Method 1: Remove provisioned package using PowerShell
                             try {
-                                $provisionedPackages = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { 
-                                    $_.DisplayName -like "*$packageName*" -or $_.PackageName -like "*$packageName*" 
+                                $provisionedPackages = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
+                                    $_.DisplayName -like "*$packageName*" -or $_.PackageName -like "*$packageName*"
                                 }
-                                
+
                                 foreach ($package in $provisionedPackages) {
                                     Write-Log "Removing provisioned package: $($package.PackageName)" 'INFO'
                                     Remove-AppxProvisionedPackage -Online -PackageName $package.PackageName -ErrorAction SilentlyContinue
@@ -5828,21 +5828,21 @@ function Remove-Bloatware {
                             catch {
                                 Write-Log "PowerShell provisioned package removal failed: $_" 'WARN'
                             }
-                            
+
                             # Method 2: DISM-based removal
                             if (-not $removalSuccess) {
                                 try {
                                     if (Get-Command dism -ErrorAction SilentlyContinue) {
                                         Write-Log "Attempting DISM provisioned package removal for: $packageName" 'INFO'
                                         $dismOutput = & dism /online /get-provisionedappxpackages | Out-String
-                                        
+
                                         if ($dismOutput -match "PackageName : .*$packageName.*") {
                                             $regexMatches = [regex]::Matches($dismOutput, "PackageName : (.+?$packageName[^\r\n]+)")
                                             foreach ($match in $regexMatches) {
                                                 $pkgName = $match.Groups[1].Value.Trim()
                                                 Write-Log "DISM removing provisioned package: $pkgName" 'INFO'
                                                 $dismResult = & dism /online /remove-provisionedappxpackage /packagename:"$pkgName" 2>&1
-                                                
+
                                                 if ($LASTEXITCODE -eq 0) {
                                                     $removalSuccess = $true
                                                 }
@@ -5857,7 +5857,7 @@ function Remove-Bloatware {
                                     Write-Log "DISM provisioned package removal failed: $_" 'WARN'
                                 }
                             }
-                            
+
                             # Method 3: Registry cleanup for provisioned packages
                             if (-not $removalSuccess) {
                                 try {
@@ -5865,7 +5865,7 @@ function Remove-Bloatware {
                                         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Config",
                                         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned"
                                     )
-                                    
+
                                     foreach ($regPath in $regPaths) {
                                         if (Test-Path $regPath) {
                                             $regKeys = Get-ChildItem $regPath -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*$packageName*" }
@@ -5886,12 +5886,12 @@ function Remove-Bloatware {
                                     Write-Log "Provisioned registry cleanup failed: $_" 'WARN'
                                 }
                             }
-                            
+
                             # Verify removal
-                            $finalCheck = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { 
-                                $_.DisplayName -like "*$packageName*" -or $_.PackageName -like "*$packageName*" 
+                            $finalCheck = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
+                                $_.DisplayName -like "*$packageName*" -or $_.PackageName -like "*$packageName*"
                             }
-                            
+
                             if (-not $finalCheck -or $removalSuccess) {
                                 $result.Success = $true
                                 $result.Method = "Provisioned AppX (Enhanced)"
@@ -5907,7 +5907,7 @@ function Remove-Bloatware {
                         }
                     }
                 }
-            
+
                 # Enhanced bloatware types handling
                 'WindowsFeature' {
                     try {
@@ -5928,18 +5928,18 @@ function Remove-Bloatware {
                         Write-Log "Windows Feature disable failed for $($match.BloatwareName): $_" 'WARN'
                     }
                 }
-            
+
                 'Service' {
                     try {
                         $serviceName = $appData.ServiceName
                         Write-Log "Stopping and disabling service: $serviceName" 'INFO'
-                    
+
                         # Stop the service first
                         Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-                    
+
                         # Disable the service
                         Set-Service -Name $serviceName -StartupType Disabled -ErrorAction SilentlyContinue
-                    
+
                         # Verify the service is stopped and disabled
                         $serviceCheck = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
                         if ($serviceCheck -and $serviceCheck.Status -eq 'Stopped') {
@@ -5956,16 +5956,16 @@ function Remove-Bloatware {
                         Write-Log "Service disable failed for $($match.BloatwareName): $_" 'WARN'
                     }
                 }
-            
+
                 'ScheduledTask' {
                     try {
                         $taskName = $appData.TaskName
                         $taskPath = $appData.TaskPath
                         Write-Log "Disabling scheduled task: $taskPath$taskName" 'INFO'
-                    
+
                         # Disable the scheduled task
                         Disable-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
-                    
+
                         # Verify the task is disabled
                         $taskCheck = Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue
                         if ($taskCheck -and $taskCheck.State -eq 'Disabled') {
@@ -5982,16 +5982,16 @@ function Remove-Bloatware {
                         Write-Log "Scheduled Task disable failed for $($match.BloatwareName): $_" 'WARN'
                     }
                 }
-            
+
                 'StartMenuShortcut' {
                     try {
                         $shortcutPath = $appData.ShortcutPath
                         Write-Log "Removing Start Menu shortcut: $shortcutPath" 'INFO'
-                    
+
                         # Remove the shortcut file
                         if (Test-Path $shortcutPath) {
                             Remove-Item -Path $shortcutPath -Force -ErrorAction SilentlyContinue
-                        
+
                             # Verify removal
                             if (-not (Test-Path $shortcutPath)) {
                                 $result.Success = $true
@@ -6022,7 +6022,7 @@ function Remove-Bloatware {
             Write-Log "✗ EXCEPTION: $($match.BloatwareName) - $_" 'ERROR'
             Write-ActionProgress -ActionType "Removing" -ItemName $match.BloatwareName -PercentComplete 100 -Status "Removal exception" -CurrentItem $currentIndex -TotalItems $totalApps -Completed
         }
-        
+
         # Add successful results to removedApps collection for reporting
         if ($result.Success) {
             [void]$removedApps.Add([PSCustomObject]@{
@@ -6033,32 +6033,32 @@ function Remove-Bloatware {
                 })
         }
     }
-    
+
     # ================================================================
     # STEP 4: Display Results and Summary
     # ================================================================
     # Convert removedApps to array for processing and detailed reporting
     $removedArray = @($removedApps)
-    
+
     if ($script:bloatwareRemovalCount -gt 0) {
         Write-Log "=== BLOATWARE REMOVAL RESULTS ===" 'INFO'
         Write-Host "=== BLOATWARE REMOVAL RESULTS ===" -ForegroundColor Yellow
         Write-Log "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" 'INFO'
         Write-Host "✓ Successfully removed $script:bloatwareRemovalCount bloatware apps" -ForegroundColor Green
-        
+
         # Log detailed removal information using restored $removedApps data
         if ($removedArray.Count -gt 0) {
             Write-Log "DETAILED REMOVAL BREAKDOWN:" 'INFO'
             foreach ($removed in $removedArray) {
                 Write-Log "  → $($removed.ActualName) [Method: $($removed.Method)]" 'INFO'
             }
-            
+
             # Method breakdown statistics
             $methodGroups = $removedArray | Group-Object Method
             $methodSummary = ($methodGroups | ForEach-Object { "$($_.Name): $($_.Count)" }) -join ', '
             Write-Log "Removal methods used: $methodSummary" 'INFO'
         }
-        
+
         if ($script:bloatwareFailedCount -gt 0) {
             Write-Log "✗ Failed to remove $script:bloatwareFailedCount apps" 'WARN'
             Write-Host "✗ Failed to remove $script:bloatwareFailedCount apps" -ForegroundColor Yellow
@@ -6086,8 +6086,8 @@ function Remove-Bloatware {
     $registryKeys | ForEach-Object -Parallel {
         $regKey = $_
         try {
-            if (-not (Test-Path $regKey)) { 
-                New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null 
+            if (-not (Test-Path $regKey)) {
+                New-Item -Path $regKey -Force -ErrorAction SilentlyContinue | Out-Null
             }
 
             $settings = @{
@@ -6245,7 +6245,7 @@ function Install-EssentialApps {
         if ($_.PackageFullName) { [void]$installedLookup.Add($_.PackageFullName.Trim()) }
     }
 
-    # Data sources: Add Winget app names and IDs to lookup table  
+    # Data sources: Add Winget app names and IDs to lookup table
     $inventory.winget | ForEach-Object {
         if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
         if ($_.Id) { [void]$installedLookup.Add($_.Id.Trim()) }
@@ -6263,14 +6263,14 @@ function Install-EssentialApps {
 
     Write-Log "DETECTION DATABASE: Built lookup table with $($installedLookup.Count) installed app identifiers" 'INFO'
     Write-Log "  - AppX packages: $($inventory.appx.Count)" 'VERBOSE'
-    Write-Log "  - Winget apps: $($inventory.winget.Count)" 'VERBOSE' 
+    Write-Log "  - Winget apps: $($inventory.winget.Count)" 'VERBOSE'
     Write-Log "  - Chocolatey apps: $($inventory.choco.Count)" 'VERBOSE'
     Write-Log "  - Registry apps: $($inventory.registry_uninstall.Count)" 'VERBOSE'
-    
+
     # Log sample of installed apps for debugging (first 10)
     $sampleApps = @($installedLookup) | Select-Object -First 10
     Write-Log "Sample installed apps: $($sampleApps -join ', ')" 'VERBOSE'
-    
+
     # Clear any previous normalized lookup cache since we have new inventory
     $script:normalizedLookupCache = $null
 
@@ -6278,7 +6278,7 @@ function Install-EssentialApps {
     # DIFF OPTIMIZATION: Only process apps that are newly required OR not in diff mode
     Write-Log "[EssentialApps] ENHANCED DETECTION: Starting intelligent app detection for $($global:EssentialApps.Count) essential apps..." 'INFO'
     Write-Log "Detection strategies: (1) Exact match, (2) Normalized matching, (3) Smart publisher-app matching" 'VERBOSE'
-    
+
     $appsToInstall = @()
     foreach ($essentialApp in $global:EssentialApps) {
         # Check if this app should be processed based on diff analysis
@@ -6303,7 +6303,7 @@ function Install-EssentialApps {
 
         $found = $false
         $matchDetails = "no match found"
-        
+
         # ENHANCED DETECTION: Use multiple detection strategies for better app recognition
         foreach ($identifier in $identifiersToCheck) {
             # Strategy 1: Exact match (fastest, O(1) lookup)
@@ -6312,11 +6312,11 @@ function Install-EssentialApps {
                 $matchDetails = "exact match: $identifier"
                 break
             }
-            
+
             # Strategy 2: Normalized matching (handle common variations)
             # This handles cases like "Google.Chrome" vs "Google Chrome"
             $normalizedIdentifier = ($identifier -replace '[\.\-_]', '' -replace '\s+', '').ToLower()
-            
+
             # Build normalized lookup cache for performance (avoid O(n*m) on every app)
             if (-not $script:normalizedLookupCache) {
                 $script:normalizedLookupCache = @{}
@@ -6325,25 +6325,25 @@ function Install-EssentialApps {
                     $script:normalizedLookupCache[$normalized] = $installedApp
                 }
             }
-            
+
             if ($script:normalizedLookupCache.ContainsKey($normalizedIdentifier)) {
                 $found = $true
                 $matchDetails = "normalized match: $($script:normalizedLookupCache[$normalizedIdentifier]) ≈ $identifier"
                 break
             }
-            
+
             # Strategy 3: Smart partial matching for publisher-based IDs
             # Handle cases like "Mozilla.Firefox" should match "Firefox" or "Mozilla Firefox"
             if ($identifier.Contains('.')) {
                 $parts = $identifier -split '\.'
                 $publisher = $parts[0]
                 $appName = $parts[1]
-                
+
                 # Look for apps containing both publisher and app name
-                $partialMatches = @($installedLookup | Where-Object { 
+                $partialMatches = @($installedLookup | Where-Object {
                         $_ -match [regex]::Escape($publisher) -and $_ -match [regex]::Escape($appName)
                     })
-                
+
                 if ($partialMatches.Count -gt 0) {
                     $found = $true
                     $matchDetails = "smart match: $($partialMatches[0]) contains both '$publisher' and '$appName'"
@@ -6363,8 +6363,8 @@ function Install-EssentialApps {
 
     if ($appsToInstall.Count -eq 0) {
         # Calculate efficiency gain from diff-based processing
-        $efficiencyGain = if ($currentEssentialApps.Count -gt 0) { 
-            [math]::Round((1 - ($newlyRequiredApps.Count / $currentEssentialApps.Count)) * 100, 1) 
+        $efficiencyGain = if ($currentEssentialApps.Count -gt 0) {
+            [math]::Round((1 - ($newlyRequiredApps.Count / $currentEssentialApps.Count)) * 100, 1)
         }
         else { 0 }
 
@@ -6388,8 +6388,8 @@ function Install-EssentialApps {
     }
 
     # Calculate efficiency gain from diff-based processing
-    $efficiencyGain = if ($currentEssentialApps.Count -gt 0) { 
-        [math]::Round((1 - ($newlyRequiredApps.Count / $currentEssentialApps.Count)) * 100, 1) 
+    $efficiencyGain = if ($currentEssentialApps.Count -gt 0) {
+        [math]::Round((1 - ($newlyRequiredApps.Count / $currentEssentialApps.Count)) * 100, 1)
     }
     else { 0 }
 
@@ -6412,13 +6412,13 @@ function Install-EssentialApps {
     # Use the new modular progress system
     Start-ActionProgressSequence -SequenceName "Essential Apps Installation" -Actions $appsToInstall -ActionProcessor {
         param($app, $currentIndex, $totalApps)
-        
+
         # Update global app index tracking for statistics
         $script:currentAppIndex = $currentIndex
-        
+
         # Individual app installation progress
         Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 0 -Status "Preparing installation..." -CurrentItem $currentIndex -TotalItems $totalApps
-        
+
         $result = [PSCustomObject]@{
             AppName    = $app.Name
             Success    = $false
@@ -6432,15 +6432,15 @@ function Install-EssentialApps {
             # Try Winget first - Start installation attempt
             if ($app.Winget -and $wingetAvailable) {
                 Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 0 -Status "Installing via Winget..." -CurrentItem $currentIndex -TotalItems $totalApps
-                
+
                 $wingetArgs = @(
                     "install", "--id", $app.Winget,
-                    "--accept-source-agreements", "--accept-package-agreements", 
+                    "--accept-source-agreements", "--accept-package-agreements",
                     "--silent", "-e", "--disable-interactivity", "--force"
                 )
-                
+
                 $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -WindowStyle Hidden -Wait -PassThru
-                
+
                 if ($wingetProc.ExitCode -eq 0) {
                     $result.Success = $true
                     $result.Method = "winget"
@@ -6469,10 +6469,10 @@ function Install-EssentialApps {
             # Try Chocolatey as fallback
             if ($app.Choco -and $chocoAvailable -and -not $result.Success) {
                 Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 50 -Status "Installing via Chocolatey..." -CurrentItem $currentIndex -TotalItems $totalApps
-                
+
                 $chocoArgs = @("install", $app.Choco, "-y", "--no-progress", "--ignore-checksums")
                 $chocoProc = Start-Process -FilePath "choco" -ArgumentList $chocoArgs -WindowStyle Hidden -Wait -PassThru
-                
+
                 if ($chocoProc.ExitCode -eq 0) {
                     $result.Success = $true
                     $result.Method = "chocolatey"
@@ -6502,7 +6502,7 @@ function Install-EssentialApps {
             # Try direct download as final fallback
             if ($app.DownloadUrl -and -not $result.Success -and -not $result.Skipped) {
                 Write-ActionProgress -ActionType "Installing" -ItemName $app.Name -PercentComplete 75 -Status "Downloading directly from Microsoft..." -CurrentItem $currentIndex -TotalItems $totalApps
-                
+
                 try {
                     # Create temp directory for download
                     $tempDir = Join-Path $global:TempFolder "SysmonDownload"
@@ -6654,7 +6654,7 @@ function Install-EssentialApps {
         $startMenuJob = Start-Job -ScriptBlock {
             try {
                 $officeApps = Get-StartAppsCompatible | Where-Object { $_.Name -match 'Office|Word|Excel|PowerPoint|Outlook' }
-                if ($officeApps) { 
+                if ($officeApps) {
                     return @{ Found = $true; Method = "Start Menu" }
                 }
             }
@@ -6700,7 +6700,7 @@ function Install-EssentialApps {
                 if ($wingetAvailable) {
                     $libreArgs = @(
                         "install", "--id", "TheDocumentFoundation.LibreOffice",
-                        "--accept-source-agreements", "--accept-package-agreements", 
+                        "--accept-source-agreements", "--accept-package-agreements",
                         "--silent", "-e", "--disable-interactivity"
                     )
                     $libreProc = Start-Process -FilePath "winget" -ArgumentList $libreArgs -WindowStyle Hidden -Wait -PassThru
@@ -6837,17 +6837,17 @@ function Set-FirefoxuBlockOrigin {
 # ================================================================
 function Set-FirefoxuBlockOrigin {
     Write-Log "[START] Configuring Firefox with uBlock Origin extension" 'INFO'
-    
+
     try {
         # Check if Firefox is installed
         $firefoxPaths = @(
             "${env:ProgramFiles}\Mozilla Firefox\firefox.exe",
             "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe"
         )
-        
+
         $firefoxInstalled = $false
         $firefoxPath = $null
-        
+
         foreach ($path in $firefoxPaths) {
             if (Test-Path $path) {
                 $firefoxInstalled = $true
@@ -6856,25 +6856,25 @@ function Set-FirefoxuBlockOrigin {
                 break
             }
         }
-        
+
         if (-not $firefoxInstalled) {
             Write-Log "⚪ SKIPPED: Firefox not detected. uBlock Origin configuration skipped." 'INFO'
             Write-Host "⚪ Firefox not detected - uBlock Origin configuration skipped" -ForegroundColor Yellow
             return
         }
-        
+
         # Create Firefox ExtensionSettings policy via registry
         Write-Log "Configuring Firefox ExtensionSettings policy for uBlock Origin..." 'INFO'
-        
+
         # Firefox policy registry path
         $policyPath = "HKLM:\SOFTWARE\Policies\Mozilla\Firefox"
-        
+
         # Create policy registry structure
         if (-not (Test-Path $policyPath)) {
             New-Item -Path $policyPath -Force | Out-Null
             Write-Log "✓ Created Firefox policy registry path" 'INFO'
         }
-        
+
         # Configure ExtensionSettings for uBlock Origin
         $uBlockConfig = @{
             "uBlock0@raymondhill.net" = @{
@@ -6884,20 +6884,20 @@ function Set-FirefoxuBlockOrigin {
                 "default_area"      = "navbar"
             }
         } | ConvertTo-Json -Depth 3 -Compress
-        
+
         # Set ExtensionSettings registry value
         Set-ItemProperty -Path $policyPath -Name "ExtensionSettings" -Value $uBlockConfig -Type String -Force
         Write-Log "✓ Firefox ExtensionSettings policy configured for uBlock Origin" 'INFO'
-        
+
         # Also configure via policies.json for comprehensive coverage
         $firefoxInstallDir = Split-Path $firefoxPath -Parent
         $distributionDir = Join-Path $firefoxInstallDir "distribution"
-        
+
         if (-not (Test-Path $distributionDir)) {
             New-Item -Path $distributionDir -ItemType Directory -Force | Out-Null
             Write-Log "✓ Created Firefox distribution directory" 'INFO'
         }
-        
+
         $policiesJsonPath = Join-Path $distributionDir "policies.json"
         $policiesConfig = @{
             "policies" = @{
@@ -6911,10 +6911,10 @@ function Set-FirefoxuBlockOrigin {
                 }
             }
         }
-        
+
         $policiesConfig | ConvertTo-Json -Depth 4 | Out-File -FilePath $policiesJsonPath -Encoding UTF8 -Force
         Write-Log "✓ Firefox policies.json created with uBlock Origin configuration" 'INFO'
-        
+
         # Set appropriate permissions on policies.json
         if (Test-Path $policiesJsonPath) {
             $acl = Get-Acl $policiesJsonPath
@@ -6923,10 +6923,10 @@ function Set-FirefoxuBlockOrigin {
             Set-Acl -Path $policiesJsonPath -AclObject $acl
             Write-Log "✓ Set appropriate permissions on policies.json" 'INFO'
         }
-        
+
         Write-Log "✓ SUCCESS: Firefox configured with uBlock Origin via ExtensionSettings policy" 'INFO'
         Write-Host "✓ Firefox configured with uBlock Origin extension" -ForegroundColor Green
-        
+
         # Log configuration details
         Write-Log "Configuration details:" 'VERBOSE'
         Write-Log "- Registry path: $policyPath" 'VERBOSE'
@@ -6934,13 +6934,13 @@ function Set-FirefoxuBlockOrigin {
         Write-Log "- Extension ID: uBlock0@raymondhill.net" 'VERBOSE'
         Write-Log "- Installation mode: force_installed" 'VERBOSE'
         Write-Log "- Install URL: https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi" 'VERBOSE'
-        
+
     }
     catch {
         Write-Log "✗ FAILED: Firefox uBlock Origin configuration failed: $($_.Exception.Message)" 'ERROR'
         Write-Host "✗ Firefox uBlock Origin configuration failed: $($_.Exception.Message)" -ForegroundColor Red
     }
-    
+
     Write-Log "[END] Configure Firefox with uBlock Origin" 'INFO'
 }
 
@@ -6994,11 +6994,11 @@ function Enable-AppBrowserControl {
 # ================================================================
 function Update-AllPackages {
     param()
-    
+
     Write-Log "[START] Update All Packages - Comprehensive Package Manager Updates" 'INFO'
     Write-Host "🔄 Starting comprehensive package updates..." -ForegroundColor Cyan
     $startTime = Get-Date
-    
+
     # Initialize results tracking
     $updateResults = @{
         Winget        = @{ Available = $false; Success = $false; UpdatedCount = 0; FailedCount = 0; Error = $null }
@@ -7007,20 +7007,20 @@ function Update-AllPackages {
         TotalFailures = 0
         ExecutionTime = $null
     }
-    
+
     try {
         # Check package manager availability
         $wingetAvailable = Test-CommandAvailable 'winget'
         $chocoAvailable = Test-CommandAvailable 'choco'
-        
+
         if (-not $wingetAvailable -and -not $chocoAvailable) {
             Write-Log "⚠ WARNING: No package managers available for updates (Winget/Chocolatey not found)" 'WARN'
             Write-Host "⚠ No package managers available for updates" -ForegroundColor Yellow
             return $updateResults
         }
-        
+
         Write-Log "Package manager availability: Winget=$wingetAvailable, Chocolatey=$chocoAvailable" 'INFO'
-        
+
         # ================================================================
         # WINGET PACKAGE UPDATES (Including Microsoft Store Apps)
         # ================================================================
@@ -7028,7 +7028,7 @@ function Update-AllPackages {
             Write-Log "[Winget] Starting Winget package updates (includes Microsoft Store apps)..." 'INFO'
             Write-Host "📦 Updating Winget packages (includes Microsoft Store apps)..." -ForegroundColor Cyan
             $updateResults.Winget.Available = $true
-            
+
             try {
                 # Get list of available updates first
                 Write-Log "[Winget] Checking for available updates..." 'INFO'
@@ -7036,29 +7036,29 @@ function Update-AllPackages {
                 $wingetUpgradesPath = Join-Path $global:TempFolder 'winget_upgrades.txt'
                 $wingetUpgradesErrPath = Join-Path $global:TempFolder 'winget_upgrades_error.txt'
                 $listProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetUpgradesPath -RedirectStandardError $wingetUpgradesErrPath
-                
+
                 if ($listProcess.ExitCode -eq 0 -and (Test-Path $wingetUpgradesPath)) {
                     $upgradeList = Get-Content $wingetUpgradesPath -ErrorAction SilentlyContinue
                     $availableUpdates = ($upgradeList | Where-Object { $_ -match '^\S+\s+\S+' } | Measure-Object).Count
-                    
+
                     if ($availableUpdates -gt 0) {
                         Write-Log "[Winget] Found $availableUpdates packages available for update" 'INFO'
                         Write-Host "  📋 Found $availableUpdates packages to update" -ForegroundColor Yellow
-                        
+
                         # Perform the actual upgrade
                         $wingetUpgradeArgs = @(
-                            'upgrade', '--all', 
-                            '--silent', 
-                            '--accept-source-agreements', 
+                            'upgrade', '--all',
+                            '--silent',
+                            '--accept-source-agreements',
                             '--accept-package-agreements',
                             '--include-unknown'
                         )
-                        
+
                         Write-Log "[Winget] Executing: winget $($wingetUpgradeArgs -join ' ')" 'VERBOSE'
                         $wingetUpgradeOutPath = Join-Path $global:TempFolder 'winget_upgrade_output.txt'
                         $wingetUpgradeErrPath = Join-Path $global:TempFolder 'winget_upgrade_error.txt'
                         $upgradeProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetUpgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetUpgradeOutPath -RedirectStandardError $wingetUpgradeErrPath
-                        
+
                         if ($upgradeProcess.ExitCode -eq 0) {
                             $updateResults.Winget.Success = $true
                             $updateResults.Winget.UpdatedCount = $availableUpdates
@@ -7097,7 +7097,7 @@ function Update-AllPackages {
             Write-Log "[Winget] Winget not available - skipping Winget updates" 'INFO'
             Write-Host "  ⚪ Winget not available - skipping" -ForegroundColor Yellow
         }
-        
+
         # ================================================================
         # CHOCOLATEY PACKAGE UPDATES
         # ================================================================
@@ -7105,7 +7105,7 @@ function Update-AllPackages {
             Write-Log "[Chocolatey] Starting Chocolatey package updates..." 'INFO'
             Write-Host "🍫 Updating Chocolatey packages..." -ForegroundColor Cyan
             $updateResults.Chocolatey.Available = $true
-            
+
             try {
                 # Check for outdated packages first
                 Write-Log "[Chocolatey] Checking for outdated packages..." 'INFO'
@@ -7113,23 +7113,23 @@ function Update-AllPackages {
                 $chocoOutdatedPath = "$global:TempFolder\choco_outdated.txt"
                 $chocoOutdatedErrPath = "$global:TempFolder\choco_outdated_error.txt"
                 $outdatedProcess = Start-Process -FilePath 'choco' -ArgumentList $chocoOutdatedArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoOutdatedPath -RedirectStandardError $chocoOutdatedErrPath
-                
+
                 if ($outdatedProcess.ExitCode -eq 0 -and (Test-Path $chocoOutdatedPath)) {
                     $outdatedList = Get-Content $chocoOutdatedPath -ErrorAction SilentlyContinue | Where-Object { $_ -and $_ -ne '' }
                     $outdatedCount = ($outdatedList | Measure-Object).Count
-                    
+
                     if ($outdatedCount -gt 0) {
                         Write-Log "[Chocolatey] Found $outdatedCount packages available for update" 'INFO'
                         Write-Host "  📋 Found $outdatedCount packages to update" -ForegroundColor Yellow
-                        
+
                         # Perform the actual upgrade
                         $chocoUpgradeArgs = @('upgrade', 'all', '-y', '--no-progress', '--limit-output')
-                        
+
                         Write-Log "[Chocolatey] Executing: choco $($chocoUpgradeArgs -join ' ')" 'VERBOSE'
                         $chocoUpgradeOutPath = "$global:TempFolder\choco_upgrade_output.txt"
                         $chocoUpgradeErrPath = "$global:TempFolder\choco_upgrade_error.txt"
                         $upgradeProcess = Start-Process -FilePath 'choco' -ArgumentList $chocoUpgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoUpgradeOutPath -RedirectStandardError $chocoUpgradeErrPath
-                        
+
                         if ($upgradeProcess.ExitCode -eq 0) {
                             $updateResults.Chocolatey.Success = $true
                             $updateResults.Chocolatey.UpdatedCount = $outdatedCount
@@ -7168,37 +7168,37 @@ function Update-AllPackages {
             Write-Log "[Chocolatey] Chocolatey not available - skipping Chocolatey updates" 'INFO'
             Write-Host "  ⚪ Chocolatey not available - skipping" -ForegroundColor Yellow
         }
-        
+
         # ================================================================
         # CLEANUP AND SUMMARY
         # ================================================================
-        
+
         # Clean up temporary files (using repo temp folder)
         @($wingetUpgradesPath, $wingetUpgradesErrPath, $wingetUpgradeOutPath, $wingetUpgradeErrPath,
             $chocoOutdatedPath, $chocoOutdatedErrPath, $chocoUpgradeOutPath, $chocoUpgradeErrPath) | ForEach-Object {
             if ($_ -and (Test-Path $_)) { Remove-Item $_ -Force -ErrorAction SilentlyContinue }
         }
-        
+
         # Calculate execution time
         $endTime = Get-Date
         $executionTime = ($endTime - $startTime).TotalMinutes
         $updateResults.ExecutionTime = [math]::Round($executionTime, 2)
-        
+
         # Generate comprehensive summary
         Write-Log "📊 PACKAGE UPDATE SUMMARY:" 'INFO'
         Write-Log "  • Execution Time: $($updateResults.ExecutionTime) minutes" 'INFO'
         Write-Log "  • Total Updates: $($updateResults.TotalUpdates) packages" 'INFO'
-        
+
         if ($updateResults.Winget.Available) {
             $wingetStatus = if ($updateResults.Winget.Success) { "✅ SUCCESS" } else { "❌ FAILED" }
             Write-Log "  • Winget: $wingetStatus ($($updateResults.Winget.UpdatedCount) packages)" 'INFO'
         }
-        
+
         if ($updateResults.Chocolatey.Available) {
             $chocoStatus = if ($updateResults.Chocolatey.Success) { "✅ SUCCESS" } else { "❌ FAILED" }
             Write-Log "  • Chocolatey: $chocoStatus ($($updateResults.Chocolatey.UpdatedCount) packages)" 'INFO'
         }
-        
+
         # Display final status
         if ($updateResults.TotalUpdates -eq 0 -and ($updateResults.Winget.Success -or $updateResults.Chocolatey.Success)) {
             Write-Host "✅ All packages are up to date!" -ForegroundColor Green
@@ -7209,14 +7209,14 @@ function Update-AllPackages {
         else {
             Write-Host "⚠ Package update process completed with issues" -ForegroundColor Yellow
         }
-        
+
     }
     catch {
         Write-Log "❌ CRITICAL ERROR in Update-AllPackages: $($_.Exception.Message)" 'ERROR'
         Write-Host "❌ Critical error during package updates: $($_.Exception.Message)" -ForegroundColor Red
         $updateResults.ExecutionTime = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 2)
     }
-    
+
     Write-Log "[END] Update All Packages - Total execution time: $($updateResults.ExecutionTime) minutes" 'INFO'
     return $updateResults
 }
@@ -7259,42 +7259,42 @@ function Enable-AppBrowserControl {
             try {
                 Set-MpPreference -EnableControlledFolderAccess Enabled -ErrorAction Stop
                 Write-Log "✓ Controlled Folder Access enabled" 'INFO'
-                
+
                 # Add current script directory and PowerShell executables to exclusions
                 try {
                     $scriptDir = $WorkingDirectory
                     $tempDir = $global:TempFolder
-                    
+
                     # Add script directory to allowed apps/folders
                     if (Get-Command -Name Add-MpPreference -ErrorAction SilentlyContinue) {
                         Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.ps1" -ErrorAction SilentlyContinue
                         Add-MpPreference -ControlledFolderAccessAllowedApplications "$scriptDir\script.bat" -ErrorAction SilentlyContinue
-                        
+
                         # Add PowerShell executables to allowed applications
                         $powershellPaths = @(
                             "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe",
                             "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
                         )
-                        
+
                         # Add PowerShell 7+ if available
                         $ps7Paths = @(
                             "$env:ProgramFiles\PowerShell\7\pwsh.exe",
                             "$env:ProgramFiles(x86)\PowerShell\7\pwsh.exe"
                         )
-                        
+
                         foreach ($path in ($powershellPaths + $ps7Paths)) {
                             if (Test-Path $path) {
                                 Add-MpPreference -ControlledFolderAccessAllowedApplications $path -ErrorAction SilentlyContinue
                                 Write-Log "✓ Added PowerShell executable to Controlled Folder Access exclusions: $path" 'INFO'
                             }
                         }
-                        
+
                         # Add maintenance script paths
                         if (Test-Path $scriptDir) {
                             Add-MpPreference -ControlledFolderAccessProtectedFolders $scriptDir -ErrorAction SilentlyContinue
                             Write-Log "✓ Added script directory to Controlled Folder Access protected folders: $scriptDir" 'INFO'
                         }
-                        
+
                         if (Test-Path $tempDir) {
                             Add-MpPreference -ControlledFolderAccessAllowedApplications $tempDir -ErrorAction SilentlyContinue
                             Write-Log "✓ Added temp directory to Controlled Folder Access exclusions: $tempDir" 'INFO'
@@ -7303,7 +7303,7 @@ function Enable-AppBrowserControl {
                     else {
                         Write-Log "⚠ Add-MpPreference not available: cannot add Controlled Folder Access exclusions" 'WARN'
                     }
-                    
+
                     Write-Log "✓ Maintenance script exclusions added to Controlled Folder Access" 'INFO'
                 }
                 catch {
@@ -7330,7 +7330,7 @@ function Enable-AppBrowserControl {
             Set-ItemProperty -Path $edgeKey -Name "EnabledV9" -Value 1 -Type DWord -ErrorAction Stop
             Write-Log "✓ SmartScreen for Edge enabled (via registry)" 'INFO'
         }
-        catch { 
+        catch {
             $errors += "SmartScreen for Edge (registry): $($_.Exception.Message)"
             Write-Log "✗ Failed to enable SmartScreen for Edge: $($_.Exception.Message)" 'WARN'
         }
@@ -7342,7 +7342,7 @@ function Enable-AppBrowserControl {
             Set-ItemProperty -Path $storeKey -Name "EnableWebContentEvaluation" -Value 1 -Type DWord -ErrorAction Stop
             Write-Log "✓ SmartScreen for Store Apps enabled (via registry)" 'INFO'
         }
-        catch { 
+        catch {
             $errors += "SmartScreen for Store Apps (registry): $($_.Exception.Message)"
             Write-Log "✗ Failed to enable SmartScreen for Store Apps: $($_.Exception.Message)" 'WARN'
         }
@@ -7409,8 +7409,8 @@ function Disable-SpotlightMeetNowNewsLocation {
         # Remove Meet Now from taskbar
         try {
             $meetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
-            if (-not (Test-Path $meetNowReg)) { 
-                New-Item -Path $meetNowReg -Force | Out-Null 
+            if (-not (Test-Path $meetNowReg)) {
+                New-Item -Path $meetNowReg -Force | Out-Null
             }
             Set-ItemProperty -Path $meetNowReg -Name "HideSCAMeetNow" -Value 1 -Force -ErrorAction Stop
             Write-Log "Meet Now icon removed from taskbar." 'INFO'
@@ -7420,8 +7420,8 @@ function Disable-SpotlightMeetNowNewsLocation {
             # Try alternative registry path
             try {
                 $altMeetNowReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
-                if (-not (Test-Path $altMeetNowReg)) { 
-                    New-Item -Path $altMeetNowReg -Force | Out-Null 
+                if (-not (Test-Path $altMeetNowReg)) {
+                    New-Item -Path $altMeetNowReg -Force | Out-Null
                 }
                 Set-ItemProperty -Path $altMeetNowReg -Name "TaskbarMn" -Value 0 -Force -ErrorAction Stop
                 Write-Log "Meet Now disabled via alternative registry path." 'INFO'
@@ -7442,7 +7442,7 @@ function Disable-SpotlightMeetNowNewsLocation {
             "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds"
         ) `
             -Description "News and Interests disable setting"
-        
+
         if ($newsResult.Success) {
             Write-Log "News and Interests removed from taskbar successfully." 'INFO'
         }
@@ -7451,7 +7451,7 @@ function Disable-SpotlightMeetNowNewsLocation {
             if ($newsResult.Suggestion) {
                 Write-LogFile "Suggestion: $($newsResult.Suggestion)"
             }
-            
+
             # Additional fallback: Try to disable via TaskbarDa in Explorer Advanced
             try {
                 $taskbarDaResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
@@ -7480,7 +7480,7 @@ function Disable-SpotlightMeetNowNewsLocation {
             "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
         ) `
             -Description "Widgets disable setting"
-        
+
         if ($widgetsResult.Success) {
             Write-Log "Widgets removed from taskbar successfully." 'INFO'
         }
@@ -7489,7 +7489,7 @@ function Disable-SpotlightMeetNowNewsLocation {
             if ($widgetsResult.Suggestion) {
                 Write-LogFile "Suggestion: $($widgetsResult.Suggestion)"
             }
-            
+
             # Additional fallback: Try WebExperience approach
             try {
                 $webExpResult = Set-RegistryValueSafely -RegistryPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\WebExperience" `
@@ -7510,8 +7510,8 @@ function Disable-SpotlightMeetNowNewsLocation {
         # Disable Location services
         try {
             $locationReg = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location"
-            if (-not (Test-Path $locationReg)) { 
-                New-Item -Path $locationReg -Force | Out-Null 
+            if (-not (Test-Path $locationReg)) {
+                New-Item -Path $locationReg -Force | Out-Null
             }
             Set-ItemProperty -Path $locationReg -Name "Value" -Value "Deny" -Force -ErrorAction Stop
             Write-Log "Location services disabled via registry." 'INFO'
@@ -7521,8 +7521,8 @@ function Disable-SpotlightMeetNowNewsLocation {
             # Try user-level location settings
             try {
                 $userLocationReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location"
-                if (-not (Test-Path $userLocationReg)) { 
-                    New-Item -Path $userLocationReg -Force | Out-Null 
+                if (-not (Test-Path $userLocationReg)) {
+                    New-Item -Path $userLocationReg -Force | Out-Null
                 }
                 Set-ItemProperty -Path $userLocationReg -Name "Value" -Value "Deny" -Force -ErrorAction Stop
                 Write-Log "Location services disabled via user registry." 'INFO'
@@ -7531,15 +7531,15 @@ function Disable-SpotlightMeetNowNewsLocation {
                 Write-Log "Unable to disable location services via registry. May require administrator privileges." 'WARN'
             }
         }
-        
+
         # Stop and disable location service
         try {
             Stop-Service -Name lfsvc -Force -ErrorAction SilentlyContinue
             Set-Service -Name lfsvc -StartupType Disabled -ErrorAction SilentlyContinue
             Write-Log "Location service stopped and disabled." 'INFO'
-        } 
-        catch { 
-            Write-Log "Failed to stop/disable location service: $_" 'WARN' 
+        }
+        catch {
+            Write-Log "Failed to stop/disable location service: $_" 'WARN'
         }
     }
     catch {
@@ -7573,7 +7573,7 @@ function Optimize-TaskbarAndDesktopUI {
 # ================================================================
 function Optimize-TaskbarAndDesktopUI {
     Write-Log "[START] Optimizing Taskbar and Desktop UI (Search, Task View, Chat, Widgets, Spotlight, Theme)" 'INFO'
-    
+
     # Detect Windows version for compatibility (use registry-based build if available)
     try {
         $windowsBuild = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'CurrentBuildNumber' -ErrorAction SilentlyContinue).CurrentBuildNumber
@@ -7586,9 +7586,9 @@ function Optimize-TaskbarAndDesktopUI {
 
     $isWindows11 = $windowsBuild -ge 22000
     $isWindows10 = ($windowsBuild -ge 10240 -and $windowsBuild -lt 22000)
-    
+
     Write-Log "Detected OS: Windows $(if($isWindows11){'11'}elseif($isWindows10){'10'}else{'Unknown'}) (Build: $($windowsVersion.Build))" 'INFO'
-    
+
     try {
         # Hide Search Box (Windows 10/11)
         $explorerReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"
@@ -7612,7 +7612,7 @@ function Optimize-TaskbarAndDesktopUI {
             catch {
                 Write-Log "Could not hide People button: $($_.Exception.Message)" 'WARN'
             }
-            
+
             # Hide Meet Now button (Windows 10 specific location)
             try {
                 # Respect policy keys - don't overwrite Group Policy-managed values
@@ -7631,7 +7631,7 @@ function Optimize-TaskbarAndDesktopUI {
             catch {
                 Write-Log "Could not hide Meet Now button: $($_.Exception.Message)" 'WARN'
             }
-            
+
             # Disable News and Interests (Windows 10)
             try {
                 $newsReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
@@ -7667,7 +7667,7 @@ function Optimize-TaskbarAndDesktopUI {
             catch {
                 Write-Log "Could not hide Chat button: $($_.Exception.Message)" 'WARN'
             }
-            
+
             # Hide Widgets button (Windows 11)
             try {
                 # Widgets may be controlled by Group Policy; check before changing
@@ -7682,7 +7682,7 @@ function Optimize-TaskbarAndDesktopUI {
             catch {
                 Write-Log "Could not hide Widgets button: $($_.Exception.Message)" 'WARN'
             }
-            
+
             # Set taskbar alignment to left (Windows 11)
             try {
                 try {
@@ -7709,11 +7709,11 @@ function Optimize-TaskbarAndDesktopUI {
             $spotlightPatterns = @(
                 "Learn more about this picture*.lnk",
                 "*Spotlight*.lnk",
-                "*Windows Spotlight*.lnk", 
+                "*Windows Spotlight*.lnk",
                 "*Learn more*.lnk",
                 "*Windows tips*.lnk"
             )
-            
+
             $removedCount = 0
             foreach ($pattern in $spotlightPatterns) {
                 $iconFiles = Get-ChildItem -Path $desktopPath -Filter $pattern -ErrorAction SilentlyContinue
@@ -7723,7 +7723,7 @@ function Optimize-TaskbarAndDesktopUI {
                     $removedCount++
                 }
             }
-            
+
             if ($removedCount -eq 0) {
                 Write-Log "No Spotlight desktop icons found to remove" 'INFO'
             }
@@ -7756,7 +7756,7 @@ function Optimize-TaskbarAndDesktopUI {
             Set-ItemProperty -Path $contentReg -Name "SystemPaneSuggestionsEnabled" -Value 0 -Force
             Set-ItemProperty -Path $contentReg -Name "SubscribedContent-338388Enabled" -Value 0 -Force
             Write-Log "✓ Windows tips and suggestions disabled" 'INFO'
-            
+
             # Hide recently added apps in Start Menu
             Set-ItemProperty -Path $advReg -Name "Start_TrackDocs" -Value 0 -Force -ErrorAction SilentlyContinue
             Write-Log "✓ Recently added apps tracking disabled" 'INFO'
@@ -7781,7 +7781,7 @@ function Optimize-TaskbarAndDesktopUI {
     catch {
         Write-Log "Error optimizing Taskbar/Desktop UI: $($_.Exception.Message)" 'ERROR'
     }
-    
+
     Write-Log "[END] Taskbar and Desktop UI optimization completed" 'INFO'
 }
 
@@ -7833,8 +7833,8 @@ function Disable-Telemetry {
         }
 
         # Batch disable per-app notifications using optimized registry operations
-        $apps = Get-ChildItem -Path $focusAssistReg -ErrorAction SilentlyContinue | Where-Object { 
-            $_.PSChildName -notin @('FocusAssist', 'NOC_GLOBAL_SETTING_TOASTS_ENABLED') 
+        $apps = Get-ChildItem -Path $focusAssistReg -ErrorAction SilentlyContinue | Where-Object {
+            $_.PSChildName -notin @('FocusAssist', 'NOC_GLOBAL_SETTING_TOASTS_ENABLED')
         }
 
         $appsDisabled = 0
@@ -8011,7 +8011,7 @@ function Protect-SystemRestore {
         }
         catch {
             Write-Log "System Restore may not be available or accessible: $_" 'WARN'
-            
+
             # Try alternative check using registry
             try {
                 $srConfig = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -ErrorAction SilentlyContinue
@@ -8052,7 +8052,7 @@ function Protect-SystemRestore {
             # Use Windows PowerShell compatibility for Checkpoint-Computer
             $command = "Checkpoint-Computer -Description '$restorePointName' -RestorePointType 'MODIFY_SETTINGS' -Confirm:`$false"
             $commandResult = Invoke-WindowsPowerShellCommand -Command $command
-            
+
             # Check if the command executed successfully
             if ($commandResult -or $LASTEXITCODE -eq 0) {
                 Write-Host "✓ System restore point created successfully" -ForegroundColor Green
@@ -8066,10 +8066,10 @@ function Protect-SystemRestore {
             Start-Sleep -Seconds 2
             try {
                 $newRestorePoints = Invoke-WindowsPowerShellCommand -Command "Get-ComputerRestorePoint" -ErrorAction SilentlyContinue
-                
+
                 if ($newRestorePoints -and $newRestorePoints.Count -gt 0) {
                     $latestPoint = $newRestorePoints | Sort-Object CreationTime -Descending | Select-Object -First 1
-                    
+
                     if ($latestPoint -and $latestPoint.Description -and $latestPoint.Description.Contains("Maintenance Script")) {
                         Write-Log "Restore point verification successful. Latest point: $($latestPoint.Description)" 'INFO'
                     }
@@ -8092,7 +8092,7 @@ function Protect-SystemRestore {
             # Try alternative method using WMI for older compatibility
             try {
                 Write-Log "Attempting restore point creation using WMI interface..." 'INFO'
-                
+
                 # Create restore point using WMI method
                 $restorePointResult = Invoke-WindowsPowerShellCommand -Command @"
 try {
@@ -8135,14 +8135,14 @@ function Get-EventLogAnalysis {
     # ...existing code...
 }
 "@
-                
+
                 if ($restorePointResult -and $restorePointResult -match "RestorePointResult:0") {
                     Write-Host "✓ System restore point created via WMI interface" -ForegroundColor Green
                     Write-Log "System restore point created via WMI interface: $restorePointName" 'INFO'
                 }
                 else {
                     Write-Log "WMI restore point creation result: $restorePointResult" 'WARN'
-                    
+
                     # Final fallback: try using VSSAdmin
                     Write-Log "Attempting restore point creation using VSSAdmin..." 'INFO'
                     try {
@@ -8233,16 +8233,16 @@ function Get-EventLogAnalysis {
 # ================================================================
 function Clear-OldRestorePoints {
     Write-Log "[START] System Restore Points Cleanup - Keep Minimum 5 Recent Points" 'INFO'
-    
+
     try {
         # Check if we have administrator privileges
         if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
             Write-Log "Administrator privileges required for restore point cleanup. Skipping..." 'WARN'
             return $false
         }
-        
+
         Write-Log "Enumerating system restore points..." 'INFO'
-        
+
         try {
             # Get all restore points sorted by creation time (newest first)
             $allRestorePoints = Get-ComputerRestorePoint -ErrorAction Stop | Sort-Object CreationTime -Descending
@@ -8255,15 +8255,15 @@ function Clear-OldRestorePoints {
             Write-Log "Unexpected error during restore point cleanup: $($_.Exception.Message)" 'ERROR'
             return $false
         }
-        
+
         if (-not $allRestorePoints) {
             Write-Log "No system restore points found on this system" 'INFO'
             return $true
         }
-        
+
         $totalPoints = $allRestorePoints.Count
         Write-Log "Found $totalPoints restore points on system" 'INFO'
-        
+
         # Log details of all restore points for audit trail
         Write-Log "=== RESTORE POINTS AUDIT ===" 'INFO'
         $pointIndex = 1
@@ -8275,22 +8275,22 @@ function Clear-OldRestorePoints {
             $pointIndex++
         }
         Write-Log "=== END RESTORE POINTS AUDIT ===" 'INFO'
-        
+
         # Keep minimum configured restore points for safety
         $minimumKeep = if ($global:Config.MinRestorePointsToKeep) { $global:Config.MinRestorePointsToKeep } else { 5 }
-        
+
         if ($totalPoints -le $minimumKeep) {
             Write-Log "Current restore point count ($totalPoints) is at or below safety minimum ($minimumKeep). No cleanup needed." 'INFO'
             return $true
         }
-        
+
         # Identify points to remove (all except the 5 most recent)
         $pointsToKeep = $allRestorePoints | Select-Object -First $minimumKeep
         $pointsToRemove = $allRestorePoints | Select-Object -Skip $minimumKeep
-        
+
         $removeCount = $pointsToRemove.Count
         Write-Log "Cleanup plan: Keep $minimumKeep most recent points, remove $removeCount older points" 'INFO'
-        
+
         # Log points that will be kept
         Write-Log "=== RESTORE POINTS TO KEEP ===" 'INFO'
         $keepIndex = 1
@@ -8300,7 +8300,7 @@ function Clear-OldRestorePoints {
             Write-Log "[$keepIndex] KEEPING: $pointDate | $pointDescription" 'INFO'
             $keepIndex++
         }
-        
+
         # Log points that will be removed
         Write-Log "=== RESTORE POINTS TO REMOVE ===" 'INFO'
         $removeIndex = 1
@@ -8311,7 +8311,7 @@ function Clear-OldRestorePoints {
             $removeIndex++
         }
         Write-Log "=== END CLEANUP PLAN ===" 'INFO'
-        
+
         # Estimate disk space before cleanup
         $systemDrive = $env:SystemDrive
         $diskBefore = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$systemDrive'" -ErrorAction SilentlyContinue
@@ -8319,13 +8319,13 @@ function Clear-OldRestorePoints {
             $freeSpaceBeforeGB = [math]::Round($diskBefore.FreeSpace / 1GB, 2)
             Write-Log "Disk space before cleanup: $freeSpaceBeforeGB GB free" 'INFO'
         }
-        
+
         # Perform cleanup with detailed logging
         $removedCount = 0
         $failedCount = 0
-        
+
         Write-Log "Starting restore point removal process..." 'INFO'
-        
+
         # Perform cleanup with detailed logging (only if removal cmdlet exists)
         if (-not (Get-Command -Name Remove-ComputerRestorePoint -ErrorAction SilentlyContinue)) {
             Write-Log "Remove-ComputerRestorePoint cmdlet not available on this system. Skipping actual removals." 'WARN'
@@ -8346,7 +8346,7 @@ function Clear-OldRestorePoints {
                 }
             }
         }
-        
+
         # Calculate disk space after cleanup
         Start-Sleep -Seconds 2  # Allow filesystem to update
         $diskAfter = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$systemDrive'" -ErrorAction SilentlyContinue
@@ -8358,7 +8358,7 @@ function Clear-OldRestorePoints {
                 Write-Log "✓ Disk space freed by cleanup: $spaceFreedGB GB" 'INFO'
             }
         }
-        
+
         # Final summary
         Write-Log "=== RESTORE POINT CLEANUP SUMMARY ===" 'INFO'
         Write-Log "Original count: $totalPoints restore points" 'INFO'
@@ -8370,17 +8370,17 @@ function Clear-OldRestorePoints {
             Write-Log "Disk space recovered: $spaceFreedGB GB" 'INFO'
         }
         Write-Log "=== END CLEANUP SUMMARY ===" 'INFO'
-        
+
         # Return success if we removed at least some points or if no removal was needed
         $success = ($removedCount -gt 0) -or ($removeCount -eq 0)
-        
+
         if ($success) {
             Write-Log "Restore point cleanup completed successfully" 'INFO'
         }
         else {
             Write-Log "Restore point cleanup completed with errors - no points were removed" 'WARN'
         }
-        
+
         return $success
     }
     catch {
@@ -8404,13 +8404,13 @@ function Clear-OldRestorePoints {
 # ================================================================
 function Get-EventLogAnalysis {
     Write-Log "[START] Event Log and CBS Analysis - Last 96 Hours" 'INFO'
-    
+
     try {
         # Calculate time range - last 96 hours
         $hoursBack = 96
         $startTime = (Get-Date).AddHours(-$hoursBack)
         Write-Log "Analyzing logs from $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) to present (last $hoursBack hours)" 'INFO'
-        
+
         $errorSummary = @{
             CBSErrors         = @()
             SystemErrors      = @()
@@ -8419,28 +8419,28 @@ function Get-EventLogAnalysis {
             TotalErrors       = 0
             AnalysisTime      = Get-Date
         }
-        
+
         # PART 1: CBS Log Analysis
         Write-Log "=== CBS LOG ANALYSIS ===" 'INFO'
         Write-Log "Analyzing Component-Based Servicing (CBS) logs..." 'INFO'
-        
+
         try {
             $cbsLogPath = "$env:WINDIR\Logs\CBS\CBS.log"
-            
+
             if (Test-Path $cbsLogPath) {
                 Write-Log "Reading CBS log file: $cbsLogPath" 'INFO'
-                
+
                 # Read CBS log and filter by time range
                 $cbsLogContent = Get-Content $cbsLogPath -ErrorAction SilentlyContinue
                 $cbsErrors = @()
-                
+
                 foreach ($line in $cbsLogContent) {
                     # Parse CBS log timestamp and content
                     if ($line -match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}') {
                         try {
                             $timestampStr = $line.Substring(0, 19)
                             $timestamp = [DateTime]::ParseExact($timestampStr, 'yyyy-MM-dd HH:mm:ss', $null)
-                            
+
                             if ($timestamp -ge $startTime) {
                                 # Look for error indicators in CBS logs
                                 if ($line -match 'Error|Failed|Corrupt|Cannot|Unable|Exception|Failure') {
@@ -8458,10 +8458,10 @@ function Get-EventLogAnalysis {
                         }
                     }
                 }
-                
+
                 $errorSummary.CBSErrors = $cbsErrors
                 Write-Log "Found $($cbsErrors.Count) CBS errors in the last $hoursBack hours" 'INFO'
-                
+
                 # Log top 10 CBS errors for maintenance log
                 if ($cbsErrors.Count -gt 0) {
                     Write-Log "=== TOP CBS ERRORS ===" 'INFO'
@@ -8481,18 +8481,18 @@ function Get-EventLogAnalysis {
         catch {
             Write-Log "Error analyzing CBS logs: $_" 'ERROR'
         }
-        
+
         # PART 2: System Event Log Analysis
         Write-Log "=== SYSTEM EVENT LOG ANALYSIS ===" 'INFO'
         Write-Log "Analyzing System Event Log for errors..." 'INFO'
-        
+
         try {
             $systemErrors = Get-WinEvent -FilterHashtable @{
                 LogName   = 'System'
                 Level     = 1, 2  # Critical and Error levels
                 StartTime = $startTime
             } -ErrorAction SilentlyContinue | Select-Object -First 50
-            
+
             if ($systemErrors) {
                 $parsedSystemErrors = @()
                 foreach ($systemEvent in $systemErrors) {
@@ -8504,10 +8504,10 @@ function Get-EventLogAnalysis {
                         Message   = $systemEvent.Message.Split("`n")[0].Trim()  # First line only
                     }
                 }
-                
+
                 $errorSummary.SystemErrors = $parsedSystemErrors
                 Write-Log "Found $($parsedSystemErrors.Count) system errors in the last $hoursBack hours" 'INFO'
-                
+
                 # Log top 10 system errors
                 Write-Log "=== TOP SYSTEM ERRORS ===" 'INFO'
                 $topSystemErrors = $parsedSystemErrors | Sort-Object Timestamp -Descending | Select-Object -First 10
@@ -8522,18 +8522,18 @@ function Get-EventLogAnalysis {
         catch {
             Write-Log "Error analyzing System Event Log: $_" 'ERROR'
         }
-        
+
         # PART 3: Application Event Log Analysis
         Write-Log "=== APPLICATION EVENT LOG ANALYSIS ===" 'INFO'
         Write-Log "Analyzing Application Event Log for errors..." 'INFO'
-        
+
         try {
             $appErrors = Get-WinEvent -FilterHashtable @{
                 LogName   = 'Application'
                 Level     = 1, 2  # Critical and Error levels
                 StartTime = $startTime
             } -ErrorAction SilentlyContinue | Select-Object -First 30
-            
+
             if ($appErrors) {
                 $parsedAppErrors = @()
                 foreach ($logEvent in $appErrors) {
@@ -8545,10 +8545,10 @@ function Get-EventLogAnalysis {
                         Message   = $logEvent.Message.Split("`n")[0].Trim()  # First line only
                     }
                 }
-                
+
                 $errorSummary.ApplicationErrors = $parsedAppErrors
                 Write-Log "Found $($parsedAppErrors.Count) application errors in the last $hoursBack hours" 'INFO'
-                
+
                 # Log top 10 application errors
                 Write-Log "=== TOP APPLICATION ERRORS ===" 'INFO'
                 $topAppErrors = $parsedAppErrors | Sort-Object Timestamp -Descending | Select-Object -First 10
@@ -8563,18 +8563,18 @@ function Get-EventLogAnalysis {
         catch {
             Write-Log "Error analyzing Application Event Log: $_" 'ERROR'
         }
-        
+
         # PART 4: Security Event Log Analysis (Critical Only)
         Write-Log "=== SECURITY EVENT LOG ANALYSIS ===" 'INFO'
         Write-Log "Analyzing Security Event Log for critical issues..." 'INFO'
-        
+
         try {
             $securityErrors = Get-WinEvent -FilterHashtable @{
                 LogName   = 'Security'
                 Level     = 1  # Critical level only
                 StartTime = $startTime
             } -ErrorAction SilentlyContinue | Select-Object -First 20
-            
+
             if ($securityErrors) {
                 $parsedSecurityErrors = @()
                 foreach ($logEvent in $securityErrors) {
@@ -8586,10 +8586,10 @@ function Get-EventLogAnalysis {
                         Message   = $logEvent.Message.Split("`n")[0].Trim()  # First line only
                     }
                 }
-                
+
                 $errorSummary.SecurityErrors = $parsedSecurityErrors
                 Write-Log "Found $($parsedSecurityErrors.Count) critical security events in the last $hoursBack hours" 'INFO'
-                
+
                 # Log all security errors (should be rare)
                 if ($parsedSecurityErrors.Count -gt 0) {
                     Write-Log "=== CRITICAL SECURITY EVENTS ===" 'INFO'
@@ -8605,10 +8605,10 @@ function Get-EventLogAnalysis {
         catch {
             Write-Log "Error analyzing Security Event Log: $_" 'ERROR'
         }
-        
+
         # PART 5: Summary and Analysis
         $errorSummary.TotalErrors = $errorSummary.CBSErrors.Count + $errorSummary.SystemErrors.Count + $errorSummary.ApplicationErrors.Count + $errorSummary.SecurityErrors.Count
-        
+
         Write-Log "=== EVENT LOG ANALYSIS SUMMARY ===" 'INFO'
         Write-Log "Analysis period: Last $hoursBack hours ($($startTime.ToString('yyyy-MM-dd HH:mm:ss')) to $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss')))" 'INFO'
         Write-Log "CBS errors found: $($errorSummary.CBSErrors.Count)" 'INFO'
@@ -8616,7 +8616,7 @@ function Get-EventLogAnalysis {
         Write-Log "Application errors found: $($errorSummary.ApplicationErrors.Count)" 'INFO'
         Write-Log "Security critical events found: $($errorSummary.SecurityErrors.Count)" 'INFO'
         Write-Log "Total errors/events analyzed: $($errorSummary.TotalErrors)" 'INFO'
-        
+
         # Save detailed analysis to temp folder for reporting
         try {
             $analysisPath = Join-Path $global:TempFolder 'event_log_analysis.json'
@@ -8626,7 +8626,7 @@ function Get-EventLogAnalysis {
         catch {
             Write-Log "Failed to save detailed analysis: $_" 'WARN'
         }
-        
+
         # Health assessment
         if ($errorSummary.TotalErrors -eq 0) {
             Write-Log "✓ System appears healthy - no significant errors found in recent logs" 'INFO'
@@ -8637,7 +8637,7 @@ function Get-EventLogAnalysis {
         else {
             Write-Log "⚠ Multiple errors detected - system may require attention" 'WARN'
         }
-        
+
         return $true
     }
     catch {
@@ -8692,7 +8692,7 @@ function Install-WindowsUpdatesCompatible {
         }
         else {
             Write-Log "PSWindowsUpdate module not found. Attempting installation..." 'INFO'
-            
+
             # Check if PackageProvider is available for module installation
             try {
                 $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
@@ -8736,14 +8736,14 @@ function Install-WindowsUpdatesCompatible {
 
                 # Install updates with comprehensive suppression
                 $installResult = Install-WindowsUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -ErrorAction SilentlyContinue
-                
+
                 # Clean up environment variables immediately after
                 Remove-Item -Path 'env:PSWINDOWSUPDATE_REBOOT' -ErrorAction SilentlyContinue
                 Remove-Item -Path 'env:SUPPRESSPROMPTS' -ErrorAction SilentlyContinue
                 Remove-Item -Path 'env:SUPPRESS_REBOOT_PROMPT' -ErrorAction SilentlyContinue
                 Remove-Item -Path 'env:ACCEPT_EULA' -ErrorAction SilentlyContinue
                 Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
-                
+
                 if ($installResult) {
                     $successfulUpdates = $installResult | Where-Object { $_.Result -eq 'Installed' }
                     $failedUpdates = $installResult | Where-Object { $_.Result -ne 'Installed' }
@@ -8854,7 +8854,7 @@ function Clear-TempFiles {
     foreach ($location in $cleanupLocations) {
         $locationsProcessed++
         $progressPercent = [math]::Round(($locationsProcessed / $totalLocations) * 100, 1)
-        
+
         Write-TaskProgress -Activity "Cleaning Temp Files" -CurrentStep $locationsProcessed -TotalSteps $totalLocations -Status "$($location.Name) ($locationsProcessed/$totalLocations)" -FileBased:$false
         Write-Host "[$progressPercent%] Cleaning: $($location.Name) ($locationsProcessed/$totalLocations)" -ForegroundColor Cyan
 
@@ -8889,10 +8889,10 @@ function Clear-TempFiles {
 
                         if ($filesInLocation -gt 0) {
                             $filesToDelete | Remove-Item -Force -ErrorAction SilentlyContinue
-                            
+
                             # Clean empty directories
-                            Get-ChildItem -Path $cleanPath -Recurse -Directory -ErrorAction SilentlyContinue | 
-                            Where-Object { -not (Get-ChildItem -Path $_.FullName -ErrorAction SilentlyContinue) } | 
+                            Get-ChildItem -Path $cleanPath -Recurse -Directory -ErrorAction SilentlyContinue |
+                            Where-Object { -not (Get-ChildItem -Path $_.FullName -ErrorAction SilentlyContinue) } |
                             Remove-Item -Force -ErrorAction SilentlyContinue
 
                             $totalFilesDeleted += $filesInLocation
@@ -8926,7 +8926,7 @@ function Clear-TempFiles {
     try {
         Write-Host "Cleaning Recycle Bin..." -ForegroundColor Cyan
         $recycleBinSize = 0
-        
+
         # Calculate Recycle Bin size
         try {
             $recycleBinItems = Get-ChildItem -Path 'C:\$Recycle.Bin' -Recurse -File -ErrorAction SilentlyContinue
@@ -8954,7 +8954,7 @@ function Clear-TempFiles {
     # Summary
     Write-TaskProgress -Activity "Cleaning Temp Files" -CurrentStep $totalLocations -TotalSteps $totalLocations -Status "Cleanup completed" -FileBased:$false
     Write-ActionProgress -ActionType "Cleaning" -ItemName "Temp Files" -PercentComplete 100 -Status "Cleanup completed" -Completed
-    
+
     Write-Log "[TempCleanup] CLEANUP SUMMARY:" 'INFO'
     Write-Log "- Total files deleted: $totalFilesDeleted" 'INFO'
     Write-Log "- Total disk space freed: $([math]::Round($totalSizeFreed, 2)) MB" 'INFO'
@@ -8993,7 +8993,7 @@ function Remove-AllTempFiles {
 function Remove-AllTempFiles {
     Write-Log "[START] Complete Temporary Files and Folder Cleanup" 'INFO'
     Write-Host "🧹 Cleaning up all temporary files and folders..." -ForegroundColor Cyan
-    
+
     $cleanupResults = @{
         Success        = $true
         FilesRemoved   = 0
@@ -9001,11 +9001,11 @@ function Remove-AllTempFiles {
         TotalSizeFreed = 0
         Errors         = @()
     }
-    
+
     try {
         if (Test-Path $global:TempFolder) {
             Write-Log "[TEMP-CLEANUP] Starting cleanup of temp folder: $global:TempFolder" 'INFO'
-            
+
             # Get temp folder size before cleanup
             try {
                 $tempFolderSize = (Get-ChildItem -Path $global:TempFolder -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
@@ -9016,7 +9016,7 @@ function Remove-AllTempFiles {
             catch {
                 Write-Log "[TEMP-CLEANUP] Could not calculate temp folder size: $_" 'WARN'
             }
-            
+
             # Count files and folders before cleanup
             try {
                 $fileCount = (Get-ChildItem -Path $global:TempFolder -Recurse -File -ErrorAction SilentlyContinue).Count
@@ -9028,16 +9028,16 @@ function Remove-AllTempFiles {
             catch {
                 Write-Log "[TEMP-CLEANUP] Could not count temp folder contents: $_" 'WARN'
             }
-            
+
             # Force garbage collection to release any file handles
             [System.GC]::Collect()
             [System.GC]::WaitForPendingFinalizers()
             [System.GC]::Collect()
             Write-Log "[TEMP-CLEANUP] Performed garbage collection to release file handles" 'INFO'
-            
+
             # Additional delay to ensure all handles are released
             Start-Sleep -Milliseconds 500
-            
+
             # Remove the entire temp folder
             try {
                 Remove-Item -Path $global:TempFolder -Recurse -Force -ErrorAction Stop
@@ -9049,22 +9049,22 @@ function Remove-AllTempFiles {
                 # Alternative cleanup method if standard removal fails
                 Write-Host "⚠️ Standard temp folder removal failed, trying alternative method..." -ForegroundColor Yellow
                 Write-Log "[TEMP-CLEANUP] Standard removal failed: $($_.Exception.Message)" 'WARN'
-                
+
                 # Alternative removal using robocopy
                 try {
                     $parentPath = Split-Path -Path $global:TempFolder -Parent
                     $tempEmptyDir = Join-Path $parentPath "empty_temp_$(Get-Random)"
                     New-Item -Path $tempEmptyDir -ItemType Directory -Force | Out-Null
-                    
+
                     # Use robocopy to mirror empty directory
                     $tempCleanupProcess = Start-Process -FilePath "robocopy.exe" -ArgumentList "`"$tempEmptyDir`"", "`"$global:TempFolder`"", "/MIR", "/NJH", "/NJS", "/NC", "/NDL", "/NP" -Wait -PassThru -WindowStyle Hidden
                     $exitCode = $tempCleanupProcess.ExitCode
                     Write-Log "[TEMP-CLEANUP] Robocopy cleanup exit code: $exitCode" 'INFO'
-                    
+
                     # Clean up temp directory and try final removal
                     Remove-Item -Path $tempEmptyDir -Force -ErrorAction SilentlyContinue
                     Remove-Item -Path $global:TempFolder -Recurse -Force -ErrorAction Stop
-                    
+
                     Write-Host "✅ Temporary folder removed using alternative method" -ForegroundColor Green
                     Write-Log "[TEMP-CLEANUP] ✓ Temporary folder removed using robocopy method" 'INFO'
                 }
@@ -9080,7 +9080,7 @@ function Remove-AllTempFiles {
             Write-Host "ℹ️ Temporary folder not found (already cleaned up): $global:TempFolder" -ForegroundColor Gray
             Write-Log "[TEMP-CLEANUP] Temporary folder not found (already cleaned up): $global:TempFolder" 'INFO'
         }
-        
+
         # Clean up any remaining temporary files created in system temp (fallback)
         $scriptTempFiles = @(
             "$global:TempFolder\pkg_out.txt",
@@ -9089,7 +9089,7 @@ function Remove-AllTempFiles {
             "$global:TempFolder\choco_*.txt",
             "$global:TempFolder\wu_install_*.ps1"
         )
-        
+
         foreach ($tempFilePattern in $scriptTempFiles) {
             try {
                 $filesToRemove = Get-ChildItem -Path $tempFilePattern -ErrorAction SilentlyContinue
@@ -9102,14 +9102,14 @@ function Remove-AllTempFiles {
                 Write-Log "[TEMP-CLEANUP] ⚠ Could not clean repo temp files matching ${tempFilePattern}: $_" 'WARN'
             }
         }
-        
+
     }
     catch {
         Write-Log "[TEMP-CLEANUP] ✗ Unexpected error during temp cleanup: $($_.Exception.Message)" 'ERROR'
         $cleanupResults.Success = $false
         $cleanupResults.Errors += "Unexpected error: $($_.Exception.Message)"
     }
-    
+
     # Summary
     if ($cleanupResults.Success) {
         Write-Host "✅ Temporary files cleanup completed successfully" -ForegroundColor Green
@@ -9123,7 +9123,7 @@ function Remove-AllTempFiles {
             Write-Host "❌ Error: $errorMessage" -ForegroundColor Red
         }
     }
-    
+
     Write-Log "[END] Complete Temporary Files and Folder Cleanup - Success: $($cleanupResults.Success)" 'INFO'
     return $cleanupResults
 }
@@ -9163,7 +9163,7 @@ function Start-DefenderFullScan {
 # Environment: Requires administrator privileges.
 # Performance: This is a long-running operation involving intensive disk I/O.
 # Dependencies: DISM.exe, SFC.exe.
-# Logic: 
+# Logic:
 #   1. Executes DISM to check and repair the Windows component store.
 #   2. If corruption is found and repaired, or if CBS logs indicate issues, it runs SFC.
 #   3. Provides detailed progress tracking and generates a summary report.
@@ -9201,7 +9201,7 @@ function Start-SystemHealthRepair {
                 Write-Log "DISM detected component store corruption. Attempting repair..." 'WARN'
                 $results.DismRepairNeeded = $true
                 $results.RepairNeeded = $true
-                
+
                 Write-ActionProgress -ActionType "Repairing" -ItemName "Component Store" -PercentComplete 20 -Status "Running DISM RestoreHealth..."
                 $dismRepairResult = & dism /online /cleanup-image /restorehealth /english 2>&1
                 $dismRepairOutput = $dismRepairResult -join "`n"
@@ -9272,11 +9272,11 @@ function Start-SystemHealthRepair {
         # Phase 3: Finalize and Report
         $results.OverallSuccess = (-not $results.DismRepairNeeded -or $results.DismRepairSuccess) -and (-not $results.SfcRepairNeeded -or $results.SfcRepairSuccess)
         Write-ActionProgress -ActionType "Analyzing" -ItemName "System Health" -PercentComplete 100 -Status "System health repair complete!" -Completed
-    } 
+    }
     catch {
         Write-Log "An unexpected error occurred during the system health repair process: $($_.Exception.Message)" 'ERROR'
         $results.OverallSuccess = $false
-    } 
+    }
     finally {
         $repairEndTime = Get-Date
         $totalDuration = $repairEndTime - $repairStartTime
@@ -9287,7 +9287,7 @@ function Start-SystemHealthRepair {
         Write-Log "[SUMMARY] Overall Success: $($results.OverallSuccess)" 'INFO'
         Write-Log "[SUMMARY] DISM: Needed=$($results.DismRepairNeeded), Success=$($results.DismRepairSuccess)" 'INFO'
         Write-Log "[SUMMARY] SFC: Needed=$($results.SfcRepairNeeded), Success=$($results.SfcRepairSuccess)" 'INFO'
-        
+
         # Add results to global metrics if available
         if ($global:ScriptMetrics) {
             $global:ScriptMetrics.SystemHealthRepair = $results
@@ -9309,18 +9309,18 @@ function Start-SystemHealthRepair {
 # ================================================================
 function Start-DefenderFullScan {
     Write-Log "[START] Windows Defender Full System Scan with Automatic Threat Cleanup - Enhanced Logging Mode" 'INFO'
-    
+
     $scanStartTime = Get-Date
     $scanSuccess = $false
     $threatsFound = @()
     $cleanupSuccess = $true
     $detailedLogData = @{}
-    
+
     try {
         # Progress: 3% - Collecting comprehensive Defender configuration
         Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Configuration" -PercentComplete 3 -Status "Collecting comprehensive Defender configuration..."
         Write-Log "[DefenderConfig] Collecting comprehensive Windows Defender configuration..." 'INFO'
-        
+
         try {
             # Progress: 5% - Getting detailed Defender preferences
             Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Configuration" -PercentComplete 5 -Status "Getting detailed Defender preferences..."
@@ -9347,7 +9347,7 @@ function Start-DefenderFullScan {
             # Progress: 8% - Getting computer status
             Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 8 -Status "Getting detailed computer status..."
             $defenderStatus = Get-MpComputerStatus
-            
+
             # Enhanced status logging
             Write-Log "[DefenderStatus] === COMPREHENSIVE DEFENDER STATUS ===" 'INFO'
             Write-Log "[DefenderStatus] Antivirus Enabled: $($defenderStatus.AntivirusEnabled)" 'INFO'
@@ -9372,7 +9372,7 @@ function Start-DefenderFullScan {
             Write-Log "[DefenderStatus] Full Scan Age: $($defenderStatus.FullScanAge) days" 'INFO'
             Write-Log "[DefenderStatus] Antivirus Signature Age: $($defenderStatus.AntivirusSignatureAge) days" 'INFO'
             $detailedLogData.Status = $defenderStatus
-            
+
             # Progress: 10% - Validating antivirus status
             Write-ActionProgress -ActionType "Analyzing" -ItemName "Defender Status" -PercentComplete 10 -Status "Validating comprehensive antivirus status..."
             if (-not $defenderStatus.AntivirusEnabled) {
@@ -9408,7 +9408,7 @@ function Start-DefenderFullScan {
                     # Handle potential "-" values in date fields
                     $startTime = if ($scan.StartTime -and $scan.StartTime -ne "-") { $scan.StartTime } else { "Not available" }
                     $endTime = if ($scan.EndTime -and $scan.EndTime -ne "-") { $scan.EndTime } else { "Not available" }
-                    
+
                     Write-Log "[ScanHistory] Scan Type: $($scan.ScanType) | Start: $startTime | End: $endTime | Result: $($scan.Result)" 'INFO'
                     if ($scan.ScanParameters) {
                         Write-Log "[ScanHistory] Parameters: $($scan.ScanParameters)" 'INFO'
@@ -9434,7 +9434,7 @@ function Start-DefenderFullScan {
         Write-Log "[SignatureUpdate] - Antivirus: $($defenderStatus.AntivirusSignatureVersion) (Age: $($defenderStatus.AntivirusSignatureAge) days)" 'INFO'
         Write-Log "[SignatureUpdate] - Antispyware: $($defenderStatus.AntispywareSignatureVersion) (Age: $($defenderStatus.AntispywareSignatureAge) days)" 'INFO'
         Write-Log "[SignatureUpdate] - NIS: $($defenderStatus.NISSignatureVersion) (Age: $($defenderStatus.NISSignatureAge) days)" 'INFO'
-        
+
         try {
             # Progress: 15% - Updating signatures
             Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 15 -Status "Downloading and installing latest signatures..."
@@ -9442,7 +9442,7 @@ function Start-DefenderFullScan {
             Update-MpSignature
             $updateEndTime = Get-Date
             $updateDuration = $updateEndTime - $updateStartTime
-            
+
             # Progress: 18% - Verifying signature update
             Write-ActionProgress -ActionType "Updating" -ItemName "Defender Signatures" -PercentComplete 18 -Status "Verifying signature update..."
             $updatedStatus = Get-MpComputerStatus
@@ -9478,7 +9478,7 @@ function Start-DefenderFullScan {
         Write-Log "[ScanPreparation] PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
         Write-Log "[ScanPreparation] OS Version: $([System.Environment]::OSVersion.VersionString)" 'INFO'
         Write-Log "[ScanPreparation] Total System Memory: $([math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)) GB" 'INFO'
-        
+
         # Get system drive information
         try {
             $systemDrive = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $env:SystemDrive }
@@ -9498,10 +9498,10 @@ function Start-DefenderFullScan {
         catch {
             Write-Log "[ScanPreparation] Warning: Could not retrieve system drive information - $_" 'WARN'
         }
-        
+
         Write-Log "[ScanPreparation] Note: This operation may take considerable time depending on system size and data volume" 'INFO'
         Write-Log "[ScanPreparation] Estimated scan time: Large systems may require 2-4 hours or more" 'INFO'
-        
+
         try {
             # Starting full system scan
             Write-Log "[ScanExecution] === FULL SYSTEM SCAN EXECUTION ===" 'INFO'
@@ -9513,7 +9513,7 @@ function Start-DefenderFullScan {
                     $ProgressPreference = 'SilentlyContinue'
                     $WarningPreference = 'SilentlyContinue'
                     $VerbosePreference = 'SilentlyContinue'
-                    
+
                     # Run the scan
                     $result = Start-MpScan -ScanType FullScan
                     return @{
@@ -9530,24 +9530,24 @@ function Start-DefenderFullScan {
                     }
                 }
             }
-            
+
             # Monitor scan progress with optimized non-blocking approach
             $progressCounter = 25
             $lastProgressUpdate = Get-Date
             $lastLogUpdate = Get-Date
             $scanTimeoutMinutes = 240  # 4 hours maximum
             $scanStartTimeForTimeout = Get-Date
-            
+
             Write-Log "[ScanExecution] Monitoring scan progress (Job ID: $($scanJob.Id))..." 'INFO'
             Write-Log "[ScanExecution] Maximum scan timeout: $scanTimeoutMinutes minutes" 'INFO'
             Write-Log "[ScanExecution] Scan running in background - no user interaction required" 'INFO'
-            
+
             # Non-blocking monitoring loop with reduced update frequency
             while ($scanJob.State -eq 'Running') {
                 $currentTime = Get-Date
                 $elapsedTime = $currentTime - $scanStartTime
                 $timeoutElapsed = $currentTime - $scanStartTimeForTimeout
-                
+
                 # Check for timeout first (safety mechanism)
                 if ($timeoutElapsed.TotalMinutes -gt $scanTimeoutMinutes) {
                     Write-Log "[ScanExecution] ⚠ Scan timeout reached ($scanTimeoutMinutes minutes). Stopping scan job..." 'WARN'
@@ -9555,7 +9555,7 @@ function Start-DefenderFullScan {
                     try { Remove-Job -Job $scanJob -Force -ErrorAction SilentlyContinue } catch { }
                     throw "Scan timeout reached after $scanTimeoutMinutes minutes"
                 }
-                
+
                 # Update progress display every 5 minutes (reduced frequency)
                 if (($currentTime - $lastProgressUpdate).TotalMinutes -ge 5) {
                     $progressCounter = [math]::Min($progressCounter + 5, 68)  # Cap at 68% until scan completes
@@ -9564,11 +9564,11 @@ function Start-DefenderFullScan {
                     Write-Log "[ScanExecution] Scan progress: $elapsedMinutes minutes elapsed, continuing..." 'INFO'
                     $lastProgressUpdate = $currentTime
                 }
-                
+
                 # Detailed logging every 15 minutes (reduced frequency)
                 if (($currentTime - $lastLogUpdate).TotalMinutes -ge 15) {
                     Write-Log "[ScanExecution] Detailed progress: $($elapsedTime.ToString('hh\:mm\:ss')) elapsed, scan active..." 'INFO'
-                    
+
                     # Quick threat check (non-blocking)
                     try {
                         $currentThreats = Get-MpThreat -ErrorAction SilentlyContinue
@@ -9581,18 +9581,18 @@ function Start-DefenderFullScan {
                     }
                     $lastLogUpdate = $currentTime
                 }
-                
+
                 # Reduced sleep interval for better responsiveness
                 Start-Sleep -Seconds 10
             }
-            
+
             # Get scan results
             $scanResult = Receive-Job -Job $scanJob
             Remove-Job -Job $scanJob
-            
+
             # Process results
             $scanExecutionTime = Get-Date - $scanStartTime
-            
+
             if ($scanResult.Success) {
                 Write-Host "✅ Windows Defender scan completed successfully!" -ForegroundColor Green
                 Write-Log "[ScanExecution] ✓ Full system scan completed successfully" 'INFO'
@@ -9623,15 +9623,15 @@ function Start-DefenderFullScan {
         Write-Host "🔍 Analyzing scan results for threats..." -ForegroundColor Yellow
         try {
             $threatsFound = Get-MpThreat
-            
+
             # Enhanced threat analysis
             if ($threatsFound.Count -gt 0) {
                 Write-Log "[ThreatAnalysis] ⚠ THREATS DETECTED: $($threatsFound.Count) threats found" 'WARN'
                 Write-Log "[ThreatAnalysis] === DETAILED THREAT INFORMATION ===" 'WARN'
-                
+
                 $threatCategories = @{}
                 $threatSeverities = @{}
-                
+
                 foreach ($threat in $threatsFound) {
                     # Detailed threat logging
                     Write-Log "[ThreatAnalysis] --- THREAT DETAILS ---" 'WARN'
@@ -9644,13 +9644,13 @@ function Start-DefenderFullScan {
                     Write-Log "[ThreatAnalysis] Last Detection Time: $($threat.LastThreatStatusChangeTime)" 'WARN'
                     Write-Log "[ThreatAnalysis] Current Threat Status: $($threat.CurrentThreatExecutionStatus)" 'WARN'
                     Write-Log "[ThreatAnalysis] Threat Status ID: $($threat.ThreatStatusID)" 'WARN'
-                    
+
                     # Process affected resources
                     if ($threat.Resources -and $threat.Resources.Count -gt 0) {
                         Write-Log "[ThreatAnalysis] Affected Resources ($($threat.Resources.Count)):" 'WARN'
                         foreach ($resource in $threat.Resources) {
                             Write-Log "[ThreatAnalysis] - Resource: $resource" 'WARN'
-                            
+
                             # Analyze resource type and provide additional context
                             if (Test-Path $resource -ErrorAction SilentlyContinue) {
                                 try {
@@ -9671,7 +9671,7 @@ function Start-DefenderFullScan {
                     else {
                         Write-Log "[ThreatAnalysis] No specific resources identified for this threat" 'WARN'
                     }
-                    
+
                     # Categorize threats for summary
                     $severityName = switch ($threat.SeverityID) {
                         1 { "Low" }
@@ -9681,7 +9681,7 @@ function Start-DefenderFullScan {
                         5 { "Critical" }
                         default { "Unknown ($($threat.SeverityID))" }
                     }
-                    
+
                     $categoryName = switch ($threat.CategoryID) {
                         1 { "Adware" }
                         2 { "Spyware" }
@@ -9731,9 +9731,9 @@ function Start-DefenderFullScan {
                         48 { "Policy" }
                         default { "Unknown Category ($($threat.CategoryID))" }
                     }
-                    
+
                     Write-Log "[ThreatAnalysis] Severity: $severityName | Category: $categoryName" 'WARN'
-                    
+
                     # Update counters for summary
                     if ($threatSeverities.ContainsKey($severityName)) {
                         $threatSeverities[$severityName]++
@@ -9741,7 +9741,7 @@ function Start-DefenderFullScan {
                     else {
                         $threatSeverities[$severityName] = 1
                     }
-                    
+
                     if ($threatCategories.ContainsKey($categoryName)) {
                         $threatCategories[$categoryName]++
                     }
@@ -9749,18 +9749,18 @@ function Start-DefenderFullScan {
                         $threatCategories[$categoryName] = 1
                     }
                 }
-                
+
                 # Threat summary
                 Write-Log "[ThreatAnalysis] === THREAT SUMMARY BY SEVERITY ===" 'WARN'
                 foreach ($severity in $threatSeverities.GetEnumerator() | Sort-Object Name) {
                     Write-Log "[ThreatAnalysis] $($severity.Key): $($severity.Value) threats" 'WARN'
                 }
-                
+
                 Write-Log "[ThreatAnalysis] === THREAT SUMMARY BY CATEGORY ===" 'WARN'
                 foreach ($category in $threatCategories.GetEnumerator() | Sort-Object Name) {
                     Write-Log "[ThreatAnalysis] $($category.Key): $($category.Value) threats" 'WARN'
                 }
-                
+
                 $detailedLogData.ThreatAnalysis = @{
                     TotalThreats    = $threatsFound.Count
                     BySeverity      = $threatSeverities
@@ -9785,7 +9785,7 @@ function Start-DefenderFullScan {
                 $completeScanHistory = $null
                 Write-Log "[ScanResults] Warning: Could not retrieve final scan history." 'WARN'
             }
-            
+
             # Progress: 78% - Analyzing final scan results
             Write-ActionProgress -ActionType "Analyzing" -ItemName "Scan Results" -PercentComplete 78 -Status "Analyzing comprehensive scan results..."
             if ($completeScanHistory) {
@@ -9797,16 +9797,16 @@ function Start-DefenderFullScan {
                 if ($completeScanHistory.ScanParameters) {
                     Write-Log "[ScanResults] Scan parameters: $($completeScanHistory.ScanParameters)" 'INFO'
                 }
-                
+
                 # Calculate scan duration from history if available
                 if ($completeScanHistory.StartTime -and $completeScanHistory.EndTime) {
                     $historicalScanDuration = $completeScanHistory.EndTime - $completeScanHistory.StartTime
                     Write-Log "[ScanResults] Historical scan duration: $($historicalScanDuration.ToString('hh\:mm\:ss'))" 'INFO'
                 }
-                
+
                 $detailedLogData.FinalScanHistory = $completeScanHistory
             }
-            
+
             # Check quarantine status
             try {
                 Write-Log "[QuarantineAnalysis] === QUARANTINE STATUS ANALYSIS ===" 'INFO'
@@ -9834,7 +9834,7 @@ function Start-DefenderFullScan {
             catch {
                 Write-Log "[QuarantineAnalysis] Warning: Could not retrieve quarantine information - $_" 'WARN'
             }
-            
+
         }
         catch {
             Write-Log "[ThreatAnalysis] ✗ Error retrieving scan results: $_" 'WARN'
@@ -9846,7 +9846,7 @@ function Start-DefenderFullScan {
             Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 82 -Status "Preparing comprehensive threat cleanup..."
             Write-Log "[ThreatCleanup] === COMPREHENSIVE THREAT CLEANUP PROCESS ===" 'INFO'
             Write-Log "[ThreatCleanup] Initiating automatic cleanup for $($threatsFound.Count) detected threats..." 'INFO'
-            
+
             # Log pre-cleanup quarantine status
             try {
                 $preCleanupQuarantine = Get-MpQuarantineItem -ErrorAction SilentlyContinue
@@ -9857,7 +9857,7 @@ function Start-DefenderFullScan {
                 Write-Log "[ThreatCleanup] Could not check pre-cleanup quarantine status" 'WARN'
                 $preCleanupQuarantineCount = 0
             }
-            
+
             try {
                 # Progress: 85% - Executing threat removal
                 Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 85 -Status "Executing comprehensive threat removal..."
@@ -9867,26 +9867,26 @@ function Start-DefenderFullScan {
                 $cleanupEndTime = Get-Date
                 $cleanupDuration = $cleanupEndTime - $cleanupStartTime
                 Write-Log "[ThreatCleanup] ✓ Threat removal command completed in $($cleanupDuration.TotalSeconds) seconds" 'INFO'
-                
+
                 # Progress: 88% - Comprehensive cleanup verification
                 Write-ActionProgress -ActionType "Removing" -ItemName "Detected Threats" -PercentComplete 88 -Status "Performing comprehensive cleanup verification..."
                 Write-Log "[ThreatCleanup] Performing comprehensive cleanup verification..." 'INFO'
                 Start-Sleep -Seconds 5  # Allow more time for cleanup to complete
-                
+
                 # Multiple verification checks
                 Write-Log "[ThreatCleanup] === CLEANUP VERIFICATION PROCESS ===" 'INFO'
-                
+
                 # Check 1: Remaining threats
                 $remainingThreats = Get-MpThreat
                 Write-Log "[ThreatCleanup] Verification Check 1 - Remaining threats: $($remainingThreats.Count)" 'INFO'
-                
+
                 # Check 2: Updated quarantine status
                 try {
                     $postCleanupQuarantine = Get-MpQuarantineItem -ErrorAction SilentlyContinue
                     $postCleanupQuarantineCount = if ($postCleanupQuarantine) { $postCleanupQuarantine.Count } else { 0 }
                     $quarantineIncrease = $postCleanupQuarantineCount - $preCleanupQuarantineCount
                     Write-Log "[ThreatCleanup] Verification Check 2 - Post-cleanup quarantine items: $postCleanupQuarantineCount (+$quarantineIncrease)" 'INFO'
-                    
+
                     if ($quarantineIncrease -gt 0) {
                         Write-Log "[ThreatCleanup] ✓ $quarantineIncrease new items moved to quarantine" 'INFO'
                         # Log details of newly quarantined items
@@ -9904,7 +9904,7 @@ function Start-DefenderFullScan {
                 catch {
                     Write-Log "[ThreatCleanup] Warning: Could not verify quarantine status after cleanup - $_" 'WARN'
                 }
-                
+
                 # Check 3: Updated Defender status
                 try {
                     $postCleanupStatus = Get-MpComputerStatus
@@ -9931,7 +9931,7 @@ function Start-DefenderFullScan {
                     }
                     $cleanupSuccess = $false
                 }
-                
+
                 $detailedLogData.ThreatCleanup = @{
                     Duration             = $cleanupDuration
                     OriginalThreatCount  = $threatsFound.Count
@@ -9957,11 +9957,11 @@ function Start-DefenderFullScan {
         # Progress: 92% - Preparing comprehensive scan report
         Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 92 -Status "Preparing comprehensive scan report..."
         Write-Log "[ScanReport] === COMPREHENSIVE SCAN REPORT GENERATION ===" 'INFO'
-        
+
         # Generate comprehensive scan report with enhanced details
         $scanEndTime = Get-Date
         $scanDuration = $scanEndTime - $scanStartTime
-        
+
         # Progress: 94% - Generating detailed summary
         Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 94 -Status "Generating detailed scan summary..."
         Write-Log "[ScanReport] === COMPREHENSIVE DEFENDER SCAN SUMMARY ===" 'INFO'
@@ -9978,14 +9978,14 @@ function Start-DefenderFullScan {
         Write-Log "[ScanReport] Automatic cleanup successful: $(if($cleanupSuccess){'Yes'}else{'No'})" 'INFO'
         Write-Log "[ScanReport] System status: $(if($threatsFound.Count -eq 0){'Clean'}elseif($cleanupSuccess){'Cleaned'}else{'Requires Attention'})" 'INFO'
         Write-Log "[ScanReport] ================================" 'INFO'
-        
+
         # Add performance metrics
         if ($detailedLogData.SystemInfo) {
             Write-Log "[ScanReport] System Performance Context:" 'INFO'
             Write-Log "[ScanReport] - Total Memory: $($detailedLogData.SystemInfo.TotalMemoryGB) GB" 'INFO'
             Write-Log "[ScanReport] - System Drive Used: $($detailedLogData.SystemInfo.SystemDriveUsedGB) GB / $($detailedLogData.SystemInfo.SystemDriveTotalGB) GB" 'INFO'
         }
-        
+
         # Progress: 96% - Creating enhanced detailed log file
         Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 96 -Status "Creating enhanced detailed log file..."
         # Create comprehensive detailed log file in temp folder
@@ -10009,7 +10009,7 @@ Scan Successful: $(if($scanSuccess){'Yes'}else{'No'})
 
 === SYSTEM INFORMATION ===
 "@
-            
+
             if ($detailedLogData.SystemInfo) {
                 $logContent += @"
 Total Physical Memory: $($detailedLogData.SystemInfo.TotalMemoryGB) GB
@@ -10019,11 +10019,11 @@ System Drive Free Space: $($detailedLogData.SystemInfo.SystemDriveFreeGB) GB
 
 "@
             }
-            
+
             $logContent += @"
 === DEFENDER STATUS ANALYSIS ===
 "@
-            
+
             if ($detailedLogData.Status) {
                 $status = $detailedLogData.Status
                 $logContent += @"
@@ -10038,7 +10038,7 @@ Full Scan Age: $($status.FullScanAge) days
 
 "@
             }
-            
+
             if ($detailedLogData.SignatureUpdate) {
                 $sigUpdate = $detailedLogData.SignatureUpdate
                 $logContent += @"
@@ -10051,15 +10051,15 @@ Updated NIS Version: $($sigUpdate.NewVersions.NIS)
 
 "@
             }
-            
+
             $logContent += @"
 === THREAT ANALYSIS RESULTS ===
 Total Threats Detected: $($threatsFound.Count)
 "@
-            
+
             if ($threatsFound.Count -gt 0) {
                 $logContent += "Cleanup Required: Yes`nCleanup Successful: $(if($cleanupSuccess){'Yes'}else{'No'})`n`n"
-                
+
                 if ($detailedLogData.ThreatAnalysis.BySeverity) {
                     $logContent += "Threats by Severity:`n"
                     foreach ($severity in $detailedLogData.ThreatAnalysis.BySeverity.GetEnumerator() | Sort-Object Name) {
@@ -10067,7 +10067,7 @@ Total Threats Detected: $($threatsFound.Count)
                     }
                     $logContent += "`n"
                 }
-                
+
                 if ($detailedLogData.ThreatAnalysis.ByCategory) {
                     $logContent += "Threats by Category:`n"
                     foreach ($category in $detailedLogData.ThreatAnalysis.ByCategory.GetEnumerator() | Sort-Object Name) {
@@ -10075,7 +10075,7 @@ Total Threats Detected: $($threatsFound.Count)
                     }
                     $logContent += "`n"
                 }
-                
+
                 $logContent += "Detailed Threat Information:`n"
                 foreach ($threat in $threatsFound) {
                     $logContent += "---`n"
@@ -10097,7 +10097,7 @@ Total Threats Detected: $($threatsFound.Count)
             else {
                 $logContent += "System Status: Clean - No threats detected`n`n"
             }
-            
+
             if ($detailedLogData.QuarantineStatus) {
                 $logContent += @"
 === QUARANTINE STATUS ===
@@ -10112,7 +10112,7 @@ Total Quarantined Items: $($detailedLogData.QuarantineStatus.ItemCount)
                     $logContent += "`n"
                 }
             }
-            
+
             if ($detailedLogData.Preferences) {
                 $prefs = $detailedLogData.Preferences
                 $logContent += @"
@@ -10128,12 +10128,12 @@ Archive Max Depth: $($prefs.ScanArchiveMaxDepth)
 
 "@
             }
-            
+
             $logContent += @"
 === SCAN PERFORMANCE METRICS ===
 Total Execution Time: $($scanDuration.ToString('hh\:mm\:ss'))
 "@
-            
+
             if ($detailedLogData.ScanExecution) {
                 $exec = $detailedLogData.ScanExecution
                 $logContent += @"
@@ -10143,7 +10143,7 @@ Scan Result: $($exec.Result)
 
 "@
             }
-            
+
             if ($detailedLogData.ThreatCleanup -and $detailedLogData.ThreatCleanup.Duration) {
                 $cleanup = $detailedLogData.ThreatCleanup
                 $logContent += @"
@@ -10154,11 +10154,11 @@ Quarantine Items Added: $($cleanup.QuarantineIncrease)
 
 "@
             }
-            
+
             $logContent += @"
 === RECOMMENDATIONS ===
 "@
-            
+
             if ($threatsFound.Count -eq 0) {
                 $logContent += "- System is clean and secure`n"
                 $logContent += "- Continue regular maintenance and scans`n"
@@ -10173,17 +10173,17 @@ Quarantine Items Added: $($cleanup.QuarantineIncrease)
                 $logContent += "- Review quarantine and remaining threats`n"
                 $logContent += "- Consider professional assistance if needed`n"
             }
-            
+
             if ($defenderStatus -and $defenderStatus.AntivirusSignatureAge -gt 7) {
                 $logContent += "- Update antivirus signatures more frequently`n"
             }
-            
+
             if ($defenderStatus -and -not $defenderStatus.RealTimeProtectionEnabled) {
                 $logContent += "- Enable real-time protection for better security`n"
             }
-            
+
             $logContent += "`n=== END OF REPORT ===`n"
-            
+
             # Progress: 98% - Saving comprehensive log file
             Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 98 -Status "Saving comprehensive detailed log file..."
             $logContent | Out-File -FilePath $scanLogPath -Encoding UTF8
@@ -10193,7 +10193,7 @@ Quarantine Items Added: $($cleanup.QuarantineIncrease)
         catch {
             Write-Log "[ScanReport] ⚠ Warning: Could not save comprehensive detailed scan report: $_" 'WARN'
         }
-        
+
         # Progress: 100% - Complete
         Write-ActionProgress -ActionType "Reporting" -ItemName "Comprehensive Scan Report" -PercentComplete 100 -Status "Comprehensive scan operation complete!" -Completed
 
@@ -10253,7 +10253,7 @@ function Write-TempListsSummary {
 # ================================================================
 function Write-TempListsSummary {
     Write-Log "[START] Temporary Lists Summary Generation" 'INFO'
-    
+
     if (-not (Test-Path $global:TempFolder)) {
         Write-Log "Temp folder not found: $global:TempFolder" 'WARN'
         return
@@ -10272,12 +10272,12 @@ function Write-TempListsSummary {
             $bloatwareList = Get-Content $bloatwareListPath -Raw | ConvertFrom-Json
             $bloatwareCount = if ($bloatwareList -is [array]) { $bloatwareList.Count } else { 1 }
             $fileSize = [math]::Round((Get-Item $bloatwareListPath).Length / 1KB, 2)
-            
+
             $summaryLines += "BLOATWARE LIST:"
             $summaryLines += "- Total entries: $bloatwareCount"
             $summaryLines += "- File size: $fileSize KB"
             $summaryLines += "- Location: $bloatwareListPath"
-            
+
             # Sample entries (first 5)
             $sampleEntries = $bloatwareList | Select-Object -First 5
             $summaryLines += "- Sample entries: $($sampleEntries -join ', ')"
@@ -10296,12 +10296,12 @@ function Write-TempListsSummary {
             $essentialApps = Get-Content $essentialAppsPath -Raw | ConvertFrom-Json
             $appsCount = if ($essentialApps -is [array]) { $essentialApps.Count } else { 1 }
             $fileSize = [math]::Round((Get-Item $essentialAppsPath).Length / 1KB, 2)
-            
+
             $summaryLines += "ESSENTIAL APPS LIST:"
             $summaryLines += "- Total entries: $appsCount"
             $summaryLines += "- File size: $fileSize KB"
             $summaryLines += "- Location: $essentialAppsPath"
-            
+
             # Count apps by source
             $wingetCount = ($essentialApps | Where-Object { $_.Winget }).Count
             $chocoCount = ($essentialApps | Where-Object { $_.Choco }).Count
@@ -10344,7 +10344,7 @@ function Write-TempListsSummary {
         try {
             $inventory = Get-Content $inventoryPath -Raw | ConvertFrom-Json
             $fileSize = [math]::Round((Get-Item $inventoryPath).Length / 1KB, 2)
-            
+
             $summaryLines += "SYSTEM INVENTORY:"
             $summaryLines += "- File size: $fileSize KB"
             $summaryLines += "- AppX packages: $(if ($inventory.appx) { $inventory.appx.Count } else { 0 })"
@@ -10362,7 +10362,7 @@ function Write-TempListsSummary {
     # Total temp folder analysis
     $totalFiles = (Get-ChildItem -Path $global:TempFolder -File -ErrorAction SilentlyContinue).Count
     $totalSize = [math]::Round((Get-ChildItem -Path $global:TempFolder -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
-    
+
     $summaryLines += "TEMP FOLDER SUMMARY:"
     $summaryLines += "- Total files: $totalFiles"
     $summaryLines += "- Total size: $totalSize KB"
@@ -10373,7 +10373,7 @@ function Write-TempListsSummary {
     # Write summary to temp folder
     $summaryPath = Join-Path $global:TempFolder 'temp_lists_summary.txt'
     $summaryLines | Out-File -FilePath $summaryPath -Encoding UTF8
-    
+
     Write-Log "Temporary lists summary generated: $summaryPath" 'INFO'
     Write-Log "[END] Temporary Lists Summary Generation" 'INFO'
 }
@@ -10404,7 +10404,7 @@ function Write-UnifiedMaintenanceReport {
 # ================================================================
 function Write-UnifiedMaintenanceReport {
     Write-Log "[START] Unified Maintenance Report Generation" 'INFO'
-    
+
     $startTime = Get-Date
     $reportData = @{
         metadata   = @{
@@ -10510,7 +10510,7 @@ function Write-UnifiedMaintenanceReport {
     # Inventory files
     if (Test-Path $global:TempFolder) {
         $inventoryFiles = Get-ChildItem -Path $global:TempFolder -Filter "*.json" -ErrorAction SilentlyContinue
-        $reportData.files.inventoryFiles = $inventoryFiles | ForEach-Object { 
+        $reportData.files.inventoryFiles = $inventoryFiles | ForEach-Object {
             @{
                 name    = $_.Name
                 path    = $_.FullName
@@ -10652,7 +10652,7 @@ function Write-UnifiedMaintenanceReport {
 # SECTION 8: SCRIPT EXECUTION & INITIALIZATION
 # ===============================
 # - Configuration loading and validation
-# - Global variables initialization  
+# - Global variables initialization
 # - Main execution logic and task orchestration
 # - Cleanup and finalization processes
 
@@ -10851,65 +10851,65 @@ $global:EssentialApps | ConvertTo-Json -Depth 5 | Out-File $essentialAppsListPat
 
 # Task definitions
 $global:ScriptTasks = @(
-    @{ 
-        Name        = 'SystemInventory'; 
-        Function    = { Get-OptimizedSystemInventory -UseCache -IncludeBloatwareDetection }; 
-        Description = 'Optimized system inventory with enhanced bloatware detection (60-80% faster)' 
+    @{
+        Name        = 'SystemInventory';
+        Function    = { Get-OptimizedSystemInventory -UseCache -IncludeBloatwareDetection };
+        Description = 'Optimized system inventory with enhanced bloatware detection (60-80% faster)'
     },
-    @{ 
-        Name        = 'BloatwareRemoval'; 
-        Function    = { if (-not $global:Config.SkipBloatwareRemoval) { Remove-Bloatware } else { Write-Log "Bloatware removal skipped via config" 'INFO'; $true } }; 
-        Description = 'Remove bloatware applications using diff-based optimization' 
+    @{
+        Name        = 'BloatwareRemoval';
+        Function    = { if (-not $global:Config.SkipBloatwareRemoval) { Remove-Bloatware } else { Write-Log "Bloatware removal skipped via config" 'INFO'; $true } };
+        Description = 'Remove bloatware applications using diff-based optimization'
     },
-    @{ 
-        Name        = 'EssentialApps'; 
-        Function    = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log "Essential apps installation skipped via config" 'INFO'; $true } }; 
-        Description = 'Install essential applications with LibreOffice fallback' 
+    @{
+        Name        = 'EssentialApps';
+        Function    = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log "Essential apps installation skipped via config" 'INFO'; $true } };
+        Description = 'Install essential applications with LibreOffice fallback'
     },
-    @{ 
-        Name        = 'WindowsUpdates'; 
-        Function    = { if (-not $global:Config.SkipWindowsUpdates) { Install-WindowsUpdatesCompatible } else { Write-Log "Windows updates skipped via config" 'INFO'; $true } }; 
-        Description = 'Install Windows updates using PSWindowsUpdate module' 
+    @{
+        Name        = 'WindowsUpdates';
+        Function    = { if (-not $global:Config.SkipWindowsUpdates) { Install-WindowsUpdatesCompatible } else { Write-Log "Windows updates skipped via config" 'INFO'; $true } };
+        Description = 'Install Windows updates using PSWindowsUpdate module'
     },
-    @{ 
-        Name        = 'TelemetryDisable'; 
-        Function    = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log "Telemetry disable skipped via config" 'INFO'; $true } }; 
-        Description = 'Disable Windows telemetry and privacy features' 
+    @{
+        Name        = 'TelemetryDisable';
+        Function    = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log "Telemetry disable skipped via config" 'INFO'; $true } };
+        Description = 'Disable Windows telemetry and privacy features'
     },
-    @{ 
-        Name        = 'SpotlightMeetNowNewsLocation'; 
-        Function    = { Disable-SpotlightMeetNowNewsLocation }; 
-        Description = 'Disable Windows Spotlight, Meet Now, News/Interests, Widgets, and Location services' 
+    @{
+        Name        = 'SpotlightMeetNowNewsLocation';
+        Function    = { Disable-SpotlightMeetNowNewsLocation };
+        Description = 'Disable Windows Spotlight, Meet Now, News/Interests, Widgets, and Location services'
     },
-    @{ 
-        Name        = 'AppBrowserControl'; 
-        Function    = { Enable-AppBrowserControl }; 
-        Description = 'Enable App & Browser Control (SmartScreen, Network Protection, Controlled Folder Access, Exploit Protection)' 
+    @{
+        Name        = 'AppBrowserControl';
+        Function    = { Enable-AppBrowserControl };
+        Description = 'Enable App & Browser Control (SmartScreen, Network Protection, Controlled Folder Access, Exploit Protection)'
     },
-    @{ 
-        Name        = 'SystemRestore'; 
-        Function    = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log "System restore skipped via config" 'INFO'; $true } }; 
-        Description = 'Create system restore point and enable protection' 
+    @{
+        Name        = 'SystemRestore';
+        Function    = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log "System restore skipped via config" 'INFO'; $true } };
+        Description = 'Create system restore point and enable protection'
     },
-    @{ 
-        Name        = 'RestorePointCleanup'; 
-        Function    = { if (-not $global:Config.SkipRestorePointCleanup) { Clear-OldRestorePoints } else { Write-Log "Restore point cleanup skipped via config" 'INFO'; $true } }; 
-        Description = 'Clean old system restore points while keeping minimum 5 recent points' 
+    @{
+        Name        = 'RestorePointCleanup';
+        Function    = { if (-not $global:Config.SkipRestorePointCleanup) { Clear-OldRestorePoints } else { Write-Log "Restore point cleanup skipped via config" 'INFO'; $true } };
+        Description = 'Clean old system restore points while keeping minimum 5 recent points'
     },
-    @{ 
-        Name        = 'EventLogAnalysis'; 
-        Function    = { if (-not $global:Config.SkipEventLogAnalysis) { Get-EventLogAnalysis } else { Write-Log "Event log analysis skipped via config" 'INFO'; $true } }; 
-        Description = 'Analyze Event Viewer and CBS logs for system errors (last 96 hours)' 
+    @{
+        Name        = 'EventLogAnalysis';
+        Function    = { if (-not $global:Config.SkipEventLogAnalysis) { Get-EventLogAnalysis } else { Write-Log "Event log analysis skipped via config" 'INFO'; $true } };
+        Description = 'Analyze Event Viewer and CBS logs for system errors (last 96 hours)'
     },
-    @{ 
-        Name        = 'TempCleanup'; 
-        Function    = { Clear-TempFiles }; 
-        Description = 'Clean temporary files and browser caches' 
+    @{
+        Name        = 'TempCleanup';
+        Function    = { Clear-TempFiles };
+        Description = 'Clean temporary files and browser caches'
     },
-    @{ 
-        Name        = 'DefenderScan'; 
-        Function    = { Start-DefenderFullScan }; 
-        Description = 'Windows Defender full system scan with automatic threat cleanup' 
+    @{
+        Name        = 'DefenderScan';
+        Function    = { Start-DefenderFullScan };
+        Description = 'Windows Defender full system scan with automatic threat cleanup'
     }
 )
 
@@ -10961,7 +10961,7 @@ foreach ($taskName in $global:TaskResults.Keys) {
     $duration = if ($result.Duration) { [math]::Round($result.Duration, 2) } else { 0 }
     $started = if ($result.Started) { $result.Started.ToString('HH:mm:ss') } else { 'Unknown' }
     $ended = if ($result.Ended) { $result.Ended.ToString('HH:mm:ss') } else { 'Unknown' }
-    
+
     Write-Log "Task: $taskName | $status | Duration: ${duration}s | ${started}-${ended}" 'INFO'
     if (-not $result.Success -and $result.ContainsKey('Error') -and $result.Error) {
         Write-Log "    Error: $($result.Error)" 'ERROR'
@@ -10992,7 +10992,7 @@ $completionTimestamp = Get-Date -Format 'MM/dd/yyyy HH:mm:ss'
 
 Write-Log "============================================================" 'INFO'
 Write-Log "PowerShell Maintenance Script execution completed successfully" 'INFO'
-Write-Log "Total execution time: $totalExecutionTime" 'INFO' 
+Write-Log "Total execution time: $totalExecutionTime" 'INFO'
 Write-Log "Log file location: $LogFile" 'INFO'
 Write-Log "============================================================" 'INFO'
 
@@ -11012,7 +11012,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     Write-Host
 
     Write-Log "[POST-EXECUTION] Starting post-execution cleanup and system state analysis" 'INFO'
-    
+
     # NOTE: Cleanup and repository removal are deferred until AFTER the interactive
     # countdown. If the user interacts during the countdown (sets $abort = $true),
     # we intentionally skip cleaning repo/temp files and we leave the terminal open
@@ -11020,15 +11020,15 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
     # is performed later only when the countdown finishes without user interaction.
     $repoFolder = $ScriptDir
     $repoCleanupSuccess = $false
-    
+
     # STEP 2: Check for pending restart requirements
     Write-Log "[RESTART-CHECK] Analyzing system restart requirements" 'INFO'
     Write-Host "🔍 Checking system restart requirements..." -ForegroundColor Cyan
-    
+
     $rebootRequired = $false
     $rebootReason = ""
     $rebootSources = @()
-    
+
     # Check global Windows Updates reboot requirement first
     if ($global:SystemSettings.Reboot.Required -eq $true) {
         $rebootRequired = $true
@@ -11036,14 +11036,14 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
         $rebootSources += "Global Windows Updates flag ($($global:SystemSettings.Reboot.Source))"
         Write-Log "[RESTART-CHECK] Global restart flag detected: $($global:SystemSettings.Reboot.Source)" 'INFO'
     }
-    
+
     # Check registry-based reboot indicators
     $registryKeys = @(
         @{ Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"; Description = "Windows Update reboot required" },
         @{ Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"; Description = "Component Based Servicing reboot pending" },
         @{ Path = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager"; Value = "PendingFileRenameOperations"; Description = "Pending file rename operations" }
     )
-    
+
     foreach ($keyInfo in $registryKeys) {
         try {
             if ($keyInfo.Value) {
@@ -11068,7 +11068,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
             Write-Log "[RESTART-CHECK] Error checking registry key $($keyInfo.Path): $_" 'WARN'
         }
     }
-    
+
     # Log restart determination results
     if ($rebootRequired) {
         $rebootReason = $rebootSources -join "; "
@@ -11080,7 +11080,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
         Write-Host "✅ No system restart required" -ForegroundColor Green
         Write-Log "[RESTART-CHECK] No system restart required" 'INFO'
     }
-    
+
     # STEP 3: 120-second countdown with comprehensive user interaction handling
     Write-Host
     if ($rebootRequired -and -not $global:Config.PromptForReboot) {
@@ -11106,11 +11106,11 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
             Write-Log "[COUNTDOWN] Starting 120-second cleanup countdown (no restart needed)" 'INFO'
         }
     }
-    
+
     $countdown = 120
     $abort = $false
     $lastMinuteReported = -1
-    
+
     # Enhanced countdown with minute-by-minute logging and key detection
     Write-Log "[COUNTDOWN] Starting countdown loop: $countdown seconds total" 'INFO'
     for ($i = $countdown; $i -ge 1; $i--) {
@@ -11120,12 +11120,12 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
             $lastMinuteReported = $currentMinute
             Write-Log "[COUNTDOWN] Countdown milestone: $currentMinute minute(s) remaining" 'INFO'
         }
-        
+
         # Log every 10 seconds for debugging
         if ($i -le 10 -or ($i % 10) -eq 0) {
             Write-Log "[COUNTDOWN] $i seconds remaining..." 'INFO'
         }
-        
+
         # Display countdown message based on restart requirement
         if ($rebootRequired) {
             Write-Host "`r🔄 Automatic restart in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
@@ -11133,16 +11133,16 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
         else {
             Write-Host "`r🕒 Automatic cleanup and closure in $i seconds... Press any key to abort." -NoNewline -ForegroundColor Yellow
         }
-        
+
         # Robust key press detection with proper error handling
         try {
             # Use a more reliable approach - check for actual console input buffer
             $keyPressed = $false
-            
+
             # Check multiple times during the 1-second interval
             for ($k = 0; $k -lt 4; $k++) {
                 Start-Sleep -Milliseconds 250
-                
+
                 # Only check KeyAvailable if we're in an interactive console
                 if ($Host.UI.RawUI -and $Host.UI.RawUI.KeyAvailable) {
                     try {
@@ -11160,7 +11160,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
                     }
                 }
             }
-            
+
             if ($keyPressed) {
                 $abort = $true
             }
@@ -11170,12 +11170,12 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
             Start-Sleep -Seconds 1
             Write-Log "[COUNTDOWN] Key detection system failed, using fallback timing: $_" 'WARN'
         }
-        
+
         if ($abort) { break }
     }
-    
+
     Write-Host ""  # New line after countdown
-    
+
     # STEP 4: Execute appropriate action based on countdown result
     Write-Log "[COUNTDOWN] Countdown finished. Abort status: $abort, Reboot required: $rebootRequired" 'INFO'
     if (-not $abort) {
@@ -11256,23 +11256,23 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
             Write-Host "🔄 Initiating system restart and terminal closure..." -ForegroundColor Green
             Write-Host "📋 Your system will restart automatically to complete all changes." -ForegroundColor Cyan
             Write-Log "[EXECUTION] Initiating system restart (no user interaction)" 'INFO'
-            
+
             try {
                 # Start the restart process
                 $shutdownArgs = @("/r", "/t", "10", "/c", "Maintenance script restart: $rebootReason")
                 Start-Process -FilePath "shutdown.exe" -ArgumentList $shutdownArgs -NoNewWindow
                 Write-Log "[EXECUTION] System restart command executed successfully" 'INFO'
-                
+
                 # Clear the global reboot flag since we're restarting
                 $global:SystemSettings.Reboot.Required = $false
                 $global:SystemSettings.Reboot.Source = $null
                 $global:SystemSettings.Reboot.Timestamp = $null
                 Write-Log "[EXECUTION] Global restart flags cleared" 'INFO'
-                
+
                 Write-Host "✅ System restart initiated. Terminal closing in 5 seconds..." -ForegroundColor Green
                 Write-Log "[EXECUTION] Terminal closure initiated - 5 second delay" 'INFO'
                 Start-Sleep -Seconds 5
-                
+
                 # Force close terminal
                 Write-Log "[EXECUTION] Executing terminal closure via Environment.Exit" 'INFO'
                 [System.Environment]::Exit(0)
@@ -11289,12 +11289,12 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
             # No user interaction + no restart needed → Just close terminal
             Write-Host "✅ Cleanup completed. Closing terminal window..." -ForegroundColor Green
             Write-Log "[EXECUTION] Closing terminal window (no restart needed, no user interaction)" 'INFO'
-            
+
             Write-Host "📋 All maintenance tasks completed successfully." -ForegroundColor Cyan
             Write-Host "🕒 Terminal closing in 3 seconds..." -ForegroundColor Yellow
             Write-Log "[EXECUTION] Terminal closure initiated - 3 second delay" 'INFO'
             Start-Sleep -Seconds 3
-            
+
             try {
                 # Close terminal using multiple strategies
                 Write-Log "[EXECUTION] Executing terminal closure via Environment.Exit" 'INFO'
@@ -11324,7 +11324,7 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
         # User interaction → Abort countdown, abort restart, abort terminal closing
         Write-Host "`r✋ Operation aborted by user interaction." -ForegroundColor Green
         Write-Log "[EXECUTION] All operations aborted due to user interaction" 'INFO'
-        
+
         if ($rebootRequired) {
             Write-Host "⚠️  Important: Your system still requires a restart to complete updates." -ForegroundColor Yellow
             Write-Host "📋 Restart reasons: $rebootReason" -ForegroundColor Yellow
@@ -11335,18 +11335,18 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
             Write-Host "✅ No restart required. All maintenance tasks completed successfully." -ForegroundColor Green
             Write-Log "[EXECUTION] User aborted cleanup - no restart required" 'INFO'
         }
-        
+
         if (-not $repoCleanupSuccess) {
             Write-Host "⚠️  Note: Repository cleanup may have failed. Manual cleanup might be needed." -ForegroundColor Yellow
             Write-Host "📁 Repository location: $repoFolder" -ForegroundColor Yellow
             Write-Log "[EXECUTION] Repository cleanup reminder provided to user" 'INFO'
         }
-        
+
         Write-Host "🔗 Window will remain open for your review." -ForegroundColor Cyan
         Write-Log "[EXECUTION] Terminal window kept open per user interaction" 'INFO'
         Read-Host -Prompt 'Press Enter to close this window...'
         Write-Log "[EXECUTION] User manually closed terminal window" 'INFO'
     }
-    
+
     Write-Log "[POST-EXECUTION] Post-execution cleanup and countdown sequence completed" 'INFO'
 }

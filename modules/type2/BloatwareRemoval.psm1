@@ -31,62 +31,63 @@ if (Test-Path $BloatwareDetectionPath) {
 <#
 .SYNOPSIS
     Safely removes detected bloatware applications
-    
+
 .DESCRIPTION
     Orchestrates the removal of bloatware using appropriate methods for each source type.
     Supports dry run mode and provides detailed progress reporting.
-    
+
 .PARAMETER BloatwareList
     Array of detected bloatware items to remove
-    
+
 .PARAMETER DryRun
     When specified, simulates removal without making changes
-    
+
 .PARAMETER Force
     Forces removal even for items that might be needed
-    
+
 .PARAMETER Categories
     Specific bloatware categories to remove (OEM, Windows, Gaming, Security)
-    
+
 .EXAMPLE
     $results = Remove-DetectedBloatware -BloatwareList $detected -DryRun
-    
+
 .EXAMPLE
     $results = Remove-DetectedBloatware -Categories @('OEM', 'Gaming') -Force
 #>
 function Remove-DetectedBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [Array]$BloatwareList,
-        
+
         [Parameter()]
         [switch]$DryRun,
-        
+
         [Parameter()]
         [switch]$Force,
-        
+
         [Parameter()]
         [string[]]$Categories = @('all')
     )
-    
-    Write-Host "🗑️  Starting bloatware removal process..." -ForegroundColor Yellow
+
+    Write-Information "🗑️  Starting bloatware removal process..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     if (-not $BloatwareList) {
-        Write-Host "  🔍 No bloatware list provided, detecting automatically..." -ForegroundColor Gray
+        Write-Information "  🔍 No bloatware list provided, detecting automatically..." -InformationAction Continue
         $BloatwareList = Find-InstalledBloatware -Categories $Categories -UseCache
     }
-    
+
     if (-not $BloatwareList -or $BloatwareList.Count -eq 0) {
-        Write-Host "  ✅ No bloatware detected for removal" -ForegroundColor Green
-        
+        Write-Information "  ✅ No bloatware detected for removal" -InformationAction Continue
+
         # Create empty diff files in temp folder for tracking
         $tempPath = Join-Path $PSScriptRoot '..\..\temp_files\bloatware'
         if (-not (Test-Path $tempPath)) {
             New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
         }
-        
+
         $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
         $emptyDiffPath = Join-Path $tempPath "bloatware-diff-empty-$timestamp.json"
         @{
@@ -96,9 +97,9 @@ function Remove-DetectedBloatware {
             TotalItems = 0
             Status = "No bloatware detected"
         } | ConvertTo-Json -Depth 3 | Set-Content -Path $emptyDiffPath -Encoding UTF8
-        
-        Write-Host "  📄 Empty diff file saved: $emptyDiffPath" -ForegroundColor Gray
-        
+
+        Write-Information "  📄 Empty diff file saved: $emptyDiffPath" -InformationAction Continue
+
         return @{
             TotalProcessed = 0
             Successful = 0
@@ -108,19 +109,19 @@ function Remove-DetectedBloatware {
             DiffFilePath = $emptyDiffPath
         }
     }
-    
-    Write-Host "  📋 Found $($BloatwareList.Count) bloatware items for removal" -ForegroundColor Cyan
-    
+
+    Write-Information "  📋 Found $($BloatwareList.Count) bloatware items for removal" -InformationAction Continue
+
     # Create diff files in temp folder
     $tempPath = Join-Path $PSScriptRoot '..\..\temp_files\bloatware'
     if (-not (Test-Path $tempPath)) {
         New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
-        Write-Host "  📁 Created bloatware temp directory: $tempPath" -ForegroundColor Gray
+        Write-Information "  📁 Created bloatware temp directory: $tempPath" -InformationAction Continue
     }
-    
+
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $diffFilePath = Join-Path $tempPath "bloatware-diff-$timestamp.json"
-    
+
     # Create comprehensive diff data
     $diffData = @{
         Timestamp = $startTime
@@ -132,11 +133,11 @@ function Remove-DetectedBloatware {
         Status = "Ready for removal"
         DryRun = $DryRun.IsPresent
     }
-    
+
     # Save diff file
     $diffData | ConvertTo-Json -Depth 4 | Set-Content -Path $diffFilePath -Encoding UTF8
-    Write-Host "  📄 Diff file created: $diffFilePath" -ForegroundColor Green
-    
+    Write-Information "  📄 Diff file created: $diffFilePath" -InformationAction Continue
+
     # Create human-readable summary
     $summaryPath = Join-Path $tempPath "bloatware-summary-$timestamp.txt"
     $summaryContent = @"
@@ -160,12 +161,12 @@ ITEMS BY SOURCE:
     }
 
     $summaryContent | Set-Content -Path $summaryPath -Encoding UTF8
-    Write-Host "  📝 Summary file created: $summaryPath" -ForegroundColor Green
-    
+    Write-Information "  📝 Summary file created: $summaryPath" -InformationAction Continue
+
     if ($DryRun) {
-        Write-Host "  🧪 DRY RUN MODE - No changes will be made" -ForegroundColor Magenta
+        Write-Information "  🧪 DRY RUN MODE - No changes will be made" -InformationAction Continue
     }
-    
+
     # Initialize results tracking
     $results = @{
         TotalProcessed = 0
@@ -176,27 +177,27 @@ ITEMS BY SOURCE:
         Details = [List[PSCustomObject]]::new()
         BySource = @{}
     }
-    
+
     # Group by source for efficient removal
     $groupedBloatware = $BloatwareList | Group-Object Source
-    
+
     foreach ($sourceGroup in $groupedBloatware) {
         $source = $sourceGroup.Name
         $items = $sourceGroup.Group
-        
-        Write-Host "  🔧 Processing $($items.Count) items from $source..." -ForegroundColor Gray
-        
+
+        Write-Information "  🔧 Processing $($items.Count) items from $source..." -InformationAction Continue
+
         $sourceResults = switch ($source) {
             'AppX' { Remove-AppXBloatware -Items $items -DryRun:$DryRun }
             'Winget' { Remove-WingetBloatware -Items $items -DryRun:$DryRun }
             'Chocolatey' { Remove-ChocolateyBloatware -Items $items -DryRun:$DryRun }
             'Registry' { Remove-RegistryBloatware -Items $items -DryRun:$DryRun }
-            default { 
+            default {
                 Write-Warning "Unknown source type: $source"
                 @{ Successful = 0; Failed = $items.Count; Details = @() }
             }
         }
-        
+
         # Aggregate results
         $results.Successful += $sourceResults.Successful
         $results.Failed += $sourceResults.Failed
@@ -204,54 +205,55 @@ ITEMS BY SOURCE:
         $results.Details.AddRange($sourceResults.Details)
         $results.BySource[$source] = $sourceResults
     }
-    
+
     $results.TotalProcessed = $BloatwareList.Count
     $results.DiffFilePath = $diffFilePath
     $results.SummaryPath = $summaryPath
     $duration = ((Get-Date) - $startTime).TotalSeconds
-    
+
     # Update diff file with results
     $diffData.Results = $results
     $diffData.Duration = $duration
     $diffData | ConvertTo-Json -Depth 4 | Set-Content -Path $diffFilePath -Encoding UTF8
-    Write-Host "  📄 Updated diff file with results: $diffFilePath" -ForegroundColor Gray
-    
+    Write-Information "  📄 Updated diff file with results: $diffFilePath" -InformationAction Continue
+
     # Summary output
     $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
-    Write-Host "  $statusIcon Bloatware removal completed in $([math]::Round($duration, 2))s" -ForegroundColor Green
-    Write-Host "    📊 Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -ForegroundColor Gray
-    Write-Host "    📄 Files created: JSON diff, TXT summary" -ForegroundColor Gray
-    
+    Write-Information "  $statusIcon Bloatware removal completed in $([math]::Round($duration, 2))s" -InformationAction Continue
+    Write-Information "    📊 Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
+    Write-Information "    📄 Files created: JSON diff, TXT summary" -InformationAction Continue
+
     if ($results.Failed -gt 0) {
-        Write-Host "    ❌ Some items could not be removed. Check logs for details." -ForegroundColor Yellow
+        Write-Information "    ❌ Some items could not be removed. Check logs for details." -InformationAction Continue
     }
-    
+
     return $results
 }
 
 <#
 .SYNOPSIS
     Tests bloatware removal capabilities without making changes
-    
+
 .DESCRIPTION
     Performs a comprehensive test of removal capabilities for detected bloatware
     without actually removing anything.
-    
+
 .PARAMETER BloatwareList
     Array of detected bloatware items to test
-    
+
 .EXAMPLE
     $testResults = Test-BloatwareRemoval -BloatwareList $detected
 #>
 function Test-BloatwareRemoval {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [Array]$BloatwareList
     )
-    
-    Write-Host "🧪 Testing bloatware removal capabilities..." -ForegroundColor Cyan
-    
+
+    Write-Information "🧪 Testing bloatware removal capabilities..." -InformationAction Continue
+
     $testResults = @{
         TotalItems = $BloatwareList.Count
         RemovableItems = 0
@@ -259,20 +261,20 @@ function Test-BloatwareRemoval {
         BySource = @{}
         ToolAvailability = Get-RemovalToolAvailability
     }
-    
+
     $groupedBloatware = $BloatwareList | Group-Object Source
-    
+
     foreach ($sourceGroup in $groupedBloatware) {
         $source = $sourceGroup.Name
         $items = $sourceGroup.Group
-        
+
         $sourceTest = @{
             Total = $items.Count
             Removable = 0
             NonRemovable = 0
             Method = Get-PreferredRemovalMethod -Source $source
         }
-        
+
         foreach ($item in $items) {
             if (Test-ItemRemovable -Item $item) {
                 $sourceTest.Removable++
@@ -282,13 +284,13 @@ function Test-BloatwareRemoval {
                 $testResults.NonRemovableItems++
             }
         }
-        
+
         $testResults.BySource[$source] = $sourceTest
-        Write-Host "  📦 $source`: $($sourceTest.Removable)/$($sourceTest.Total) removable" -ForegroundColor Gray
+        Write-Information "  📦 $source`: $($sourceTest.Removable)/$($sourceTest.Total) removable" -InformationAction Continue
     }
-    
-    Write-Host "  📊 Overall: $($testResults.RemovableItems)/$($testResults.TotalItems) items can be removed" -ForegroundColor Green
-    
+
+    Write-Information "  📊 Overall: $($testResults.RemovableItems)/$($testResults.TotalItems) items can be removed" -InformationAction Continue
+
     return $testResults
 }
 
@@ -301,28 +303,29 @@ function Test-BloatwareRemoval {
     Removes AppX (Windows Store) packages
 #>
 function Remove-AppXBloatware {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [Array]$Items,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Successful = 0
         Failed = 0
         Skipped = 0
         Details = [List[PSCustomObject]]::new()
     }
-    
+
     if (-not (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue)) {
         Write-Warning "AppX module not available, skipping AppX removals"
         $results.Skipped = $Items.Count
         return $results
     }
-    
+
     foreach ($item in $Items) {
         $packageName = $item.Name
         $result = @{
@@ -332,30 +335,30 @@ function Remove-AppXBloatware {
             Action = if ($DryRun) { 'Simulated' } else { 'Removed' }
             Error = $null
         }
-        
+
         try {
             if ($DryRun) {
-                Write-Host "    [DRY RUN] Would remove AppX package: $packageName" -ForegroundColor DarkYellow
+                Write-Information "    [DRY RUN] Would remove AppX package: $packageName" -InformationAction Continue
                 $result.Success = $true
             } else {
-                Write-Host "    🗑️ Removing AppX package: $packageName" -ForegroundColor Yellow
-                
+                Write-Information "    🗑️ Removing AppX package: $packageName" -InformationAction Continue
+
                 # Try to remove for all users first
                 $package = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
                 if ($package) {
                     $package | Remove-AppxPackage -ErrorAction Stop
                 }
-                
+
                 # Remove provisioned package to prevent reinstallation
                 $provisionedPackage = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $packageName }
                 if ($provisionedPackage) {
                     Remove-AppxProvisionedPackage -Online -PackageName $provisionedPackage.PackageName -ErrorAction SilentlyContinue
                 }
-                
+
                 $result.Success = $true
-                Write-Host "      ✅ Successfully removed AppX package: $packageName" -ForegroundColor Green
+                Write-Information "      ✅ Successfully removed AppX package: $packageName" -InformationAction Continue
             }
-            
+
             $results.Successful++
         }
         catch {
@@ -363,10 +366,10 @@ function Remove-AppXBloatware {
             $results.Failed++
             Write-Warning "Failed to remove AppX package ${packageName}: $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$result)
     }
-    
+
     return $results
 }
 
@@ -379,28 +382,29 @@ function Remove-AppXBloatware {
     Removes packages using Winget package manager
 #>
 function Remove-WingetBloatware {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [Array]$Items,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Successful = 0
         Failed = 0
         Skipped = 0
         Details = [List[PSCustomObject]]::new()
     }
-    
+
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Warning "Winget not available, skipping Winget removals"
         $results.Skipped = $Items.Count
         return $results
     }
-    
+
     foreach ($item in $Items) {
         $packageName = $item.Name
         $result = @{
@@ -410,31 +414,31 @@ function Remove-WingetBloatware {
             Action = if ($DryRun) { 'Simulated' } else { 'Removed' }
             Error = $null
         }
-        
+
         try {
             if ($DryRun) {
-                Write-Host "    [DRY RUN] Would uninstall Winget package: $packageName" -ForegroundColor DarkYellow
+                Write-Information "    [DRY RUN] Would uninstall Winget package: $packageName" -InformationAction Continue
                 $result.Success = $true
             } else {
-                Write-Host "    🗑️ Uninstalling Winget package: $packageName" -ForegroundColor Yellow
-                
+                Write-Information "    🗑️ Uninstalling Winget package: $packageName" -InformationAction Continue
+
                 $wingetArgs = @(
                     'uninstall',
                     '--id', $packageName,
                     '--silent',
                     '--accept-source-agreements'
                 )
-                
+
                 $process = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
-                
+
                 if ($process.ExitCode -eq 0) {
                     $result.Success = $true
-                    Write-Host "      ✅ Successfully uninstalled Winget package: $packageName" -ForegroundColor Green
+                    Write-Information "      ✅ Successfully uninstalled Winget package: $packageName" -InformationAction Continue
                 } else {
                     throw "Winget uninstall failed with exit code $($process.ExitCode)"
                 }
             }
-            
+
             $results.Successful++
         }
         catch {
@@ -442,10 +446,10 @@ function Remove-WingetBloatware {
             $results.Failed++
             Write-Warning "Failed to uninstall Winget package ${packageName}: $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$result)
     }
-    
+
     return $results
 }
 
@@ -458,28 +462,29 @@ function Remove-WingetBloatware {
     Removes packages using Chocolatey package manager
 #>
 function Remove-ChocolateyBloatware {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [Array]$Items,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Successful = 0
         Failed = 0
         Skipped = 0
         Details = [List[PSCustomObject]]::new()
     }
-    
+
     if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
         Write-Warning "Chocolatey not available, skipping Chocolatey removals"
         $results.Skipped = $Items.Count
         return $results
     }
-    
+
     foreach ($item in $Items) {
         $packageName = $item.Name
         $result = @{
@@ -489,31 +494,31 @@ function Remove-ChocolateyBloatware {
             Action = if ($DryRun) { 'Simulated' } else { 'Removed' }
             Error = $null
         }
-        
+
         try {
             if ($DryRun) {
-                Write-Host "    [DRY RUN] Would uninstall Chocolatey package: $packageName" -ForegroundColor DarkYellow
+                Write-Information "    [DRY RUN] Would uninstall Chocolatey package: $packageName" -InformationAction Continue
                 $result.Success = $true
             } else {
-                Write-Host "    🗑️ Uninstalling Chocolatey package: $packageName" -ForegroundColor Yellow
-                
+                Write-Information "    🗑️ Uninstalling Chocolatey package: $packageName" -InformationAction Continue
+
                 $chocoArgs = @(
                     'uninstall',
                     $packageName,
                     '-y',
                     '--limit-output'
                 )
-                
+
                 $process = Start-Process -FilePath 'choco' -ArgumentList $chocoArgs -Wait -PassThru -NoNewWindow
-                
+
                 if ($process.ExitCode -eq 0) {
                     $result.Success = $true
-                    Write-Host "      ✅ Successfully uninstalled Chocolatey package: $packageName" -ForegroundColor Green
+                    Write-Information "      ✅ Successfully uninstalled Chocolatey package: $packageName" -InformationAction Continue
                 } else {
                     throw "Chocolatey uninstall failed with exit code $($process.ExitCode)"
                 }
             }
-            
+
             $results.Successful++
         }
         catch {
@@ -521,10 +526,10 @@ function Remove-ChocolateyBloatware {
             $results.Failed++
             Write-Warning "Failed to uninstall Chocolatey package ${packageName}: $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$result)
     }
-    
+
     return $results
 }
 
@@ -537,26 +542,27 @@ function Remove-ChocolateyBloatware {
     Removes applications using Registry uninstall strings
 #>
 function Remove-RegistryBloatware {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [Array]$Items,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Successful = 0
         Failed = 0
         Skipped = 0
         Details = [List[PSCustomObject]]::new()
     }
-    
+
     foreach ($item in $Items) {
         $appName = $item.DisplayName ?? $item.Name
         $uninstallString = $item.UninstallString
-        
+
         $result = @{
             Name = $appName
             Source = 'Registry'
@@ -564,18 +570,18 @@ function Remove-RegistryBloatware {
             Action = if ($DryRun) { 'Simulated' } else { 'Removed' }
             Error = $null
         }
-        
+
         try {
             if (-not $uninstallString) {
                 throw "No uninstall string available"
             }
-            
+
             if ($DryRun) {
-                Write-Host "    [DRY RUN] Would execute uninstaller: $appName" -ForegroundColor DarkYellow
+                Write-Information "    [DRY RUN] Would execute uninstaller: $appName" -InformationAction Continue
                 $result.Success = $true
             } else {
-                Write-Host "    🗑️ Executing uninstaller: $appName" -ForegroundColor Yellow
-                
+                Write-Information "    🗑️ Executing uninstaller: $appName" -InformationAction Continue
+
                 # Parse uninstall string to extract executable and arguments
                 if ($uninstallString -match '^"([^"]+)"(.*)') {
                     $executable = $matches[1]
@@ -585,22 +591,22 @@ function Remove-RegistryBloatware {
                     $executable = $parts[0]
                     $arguments = if ($parts.Count -gt 1) { $parts[1] } else { '' }
                 }
-                
+
                 # Add silent flags if not present
                 if ($arguments -notmatch '/S|/silent|/quiet|/q') {
                     $arguments += ' /S'
                 }
-                
+
                 $process = Start-Process -FilePath $executable -ArgumentList $arguments -Wait -PassThru -NoNewWindow
-                
+
                 if ($process.ExitCode -eq 0) {
                     $result.Success = $true
-                    Write-Host "      ✅ Successfully uninstalled: $appName" -ForegroundColor Green
+                    Write-Information "      ✅ Successfully uninstalled: $appName" -InformationAction Continue
                 } else {
                     throw "Uninstaller failed with exit code $($process.ExitCode)"
                 }
             }
-            
+
             $results.Successful++
         }
         catch {
@@ -608,10 +614,10 @@ function Remove-RegistryBloatware {
             $results.Failed++
             Write-Warning "Failed to uninstall ${appName}: $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$result)
     }
-    
+
     return $results
 }
 
@@ -638,7 +644,7 @@ function Get-RemovalToolAvailability {
 #>
 function Get-PreferredRemovalMethod {
     param([string]$Source)
-    
+
     switch ($Source) {
         'AppX' { 'Remove-AppxPackage' }
         'Winget' { 'winget uninstall' }
@@ -654,21 +660,21 @@ function Get-PreferredRemovalMethod {
 #>
 function Test-ItemRemovable {
     param([PSCustomObject]$Item)
-    
+
     switch ($Item.Source) {
-        'AppX' { 
+        'AppX' {
             return $null -ne (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue)
         }
-        'Winget' { 
+        'Winget' {
             return $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
         }
-        'Chocolatey' { 
+        'Chocolatey' {
             return $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
         }
-        'Registry' { 
+        'Registry' {
             return $null -ne $Item.UninstallString
         }
-        default { 
+        default {
             return $false
         }
     }

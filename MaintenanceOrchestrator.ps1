@@ -100,10 +100,10 @@ Write-Host "Temp Root Directory: $TempRoot" -ForegroundColor Gray
 
 # Set up log file
 if (-not $LogFilePath) {
-    $LogFilePath = if ($env:SCRIPT_LOG_FILE) { 
-        $env:SCRIPT_LOG_FILE 
-    } else { 
-        Join-Path $ScriptRoot 'maintenance.log' 
+    $LogFilePath = if ($env:SCRIPT_LOG_FILE) {
+        $env:SCRIPT_LOG_FILE
+    } else {
+        Join-Path $ScriptRoot 'maintenance.log'
     }
 }
 
@@ -160,7 +160,7 @@ try {
     Initialize-ConfigSystem -ConfigRootPath $ConfigPath
     $MainConfig = Get-MainConfiguration
     $null = Get-LoggingConfiguration  # Load logging config but don't store unused variable
-    
+
     Write-Host "  ✓ Main configuration loaded" -ForegroundColor Green
     Write-Host "  ✓ Logging configuration loaded" -ForegroundColor Green
 }
@@ -173,10 +173,10 @@ catch {
 try {
     $BloatwareLists = Get-BloatwareConfiguration
     $EssentialApps = Get-EssentialAppsConfiguration
-    
+
     $totalBloatware = if ($BloatwareLists.ContainsKey('all')) { $BloatwareLists['all'].Count } else { 0 }
     $totalEssentialApps = if ($EssentialApps.ContainsKey('all')) { $EssentialApps['all'].Count } else { 0 }
-    
+
     Write-Host "  ✓ Bloatware list: $totalBloatware total entries" -ForegroundColor Green
     Write-Host "  ✓ Essential apps: $totalEssentialApps total entries" -ForegroundColor Green
 }
@@ -195,7 +195,7 @@ function Invoke-TaskWithParameters {
         [string]$FunctionName,
         [switch]$DryRun
     )
-    
+
     # Prepare task-specific parameters
     switch ($TaskName) {
         'ReportGeneration' {
@@ -345,14 +345,14 @@ $ExecutionParams = @{
 
 if (-not $NonInteractive) {
     Write-Host "`nStarting interactive mode..." -ForegroundColor Yellow
-    
+
     # Configure menu system
     Set-MenuConfiguration -CountdownSeconds $MainConfig.execution.countdownSeconds
-    
+
     # Show main menu
     $mainSelection = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds
     $ExecutionParams.DryRun = $mainSelection.DryRun
-    
+
     # Show task selection menu if not overridden by parameter
     if (-not $TaskNumbers) {
         $taskSelection = Show-TaskSelectionMenu -IsDryRun $ExecutionParams.DryRun -AvailableTasks $AvailableTasks
@@ -371,7 +371,7 @@ if ($TaskNumbers) {
     try {
         $taskNumbersArray = $TaskNumbers -split ',' | ForEach-Object { [int]$_.Trim() }
         $selectedTasks = @()
-        
+
         foreach ($taskNum in $taskNumbersArray) {
             if ($taskNum -ge 1 -and $taskNum -le $AvailableTasks.Count) {
                 $selectedTasks += $AvailableTasks[$taskNum - 1]
@@ -379,7 +379,7 @@ if ($TaskNumbers) {
                 Write-Warning "Invalid task number: $taskNum (valid range: 1-$($AvailableTasks.Count))"
             }
         }
-        
+
         $ExecutionParams.SelectedTasks = $selectedTasks
         Write-Host "  ✓ Task selection: $($taskNumbersArray -join ', ')" -ForegroundColor Green
     }
@@ -426,16 +426,16 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     $task = $ExecutionParams.SelectedTasks[$i]
     $taskNumber = $i + 1
     $totalTasks = $ExecutionParams.SelectedTasks.Count
-    
+
     Write-Host ""
     Write-Host "[$taskNumber/$totalTasks] $($task.Name)" -ForegroundColor White -BackgroundColor DarkBlue
     Write-Host "Description: $($task.Description)" -ForegroundColor Gray
     Write-Host "Type: $($task.Type) | Category: $($task.Category)" -ForegroundColor Gray
-    
+
     if ($ExecutionParams.DryRun) {
         Write-Host "Mode: DRY-RUN (simulation)" -ForegroundColor Blue
     }
-    
+
     $taskStartTime = Get-Date
     $taskResult = @{
         TaskName = $task.Name
@@ -449,7 +449,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         Error = $null
         Duration = $null
     }
-    
+
     try {
         # Check if module exists and load it
         if (Test-Path $task.ModulePath) {
@@ -458,7 +458,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         } else {
             throw "Module not found: $($task.ModulePath)"
         }
-        
+
         # Execute the task function with appropriate parameters
         if ($ExecutionParams.DryRun) {
             Write-Host "  ▶ Simulating: $($task.Function)" -ForegroundColor Blue
@@ -468,11 +468,11 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
             Write-Host "  ▶ Executing: $($task.Function)" -ForegroundColor Green
             $result = Invoke-TaskWithParameters -TaskName $task.Name -FunctionName $task.Function -DryRun:$ExecutionParams.DryRun
         }
-        
+
         $taskResult.Success = $true
         $taskResult.Output = $result
         Write-Host "  ✓ Completed successfully" -ForegroundColor Green
-        
+
     }
     catch {
         $taskResult.Success = $false
@@ -482,7 +482,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     finally {
         $taskResult.Duration = ((Get-Date) - $taskStartTime).TotalSeconds
         $TaskResults += $taskResult
-        
+
         Write-Host "  Duration: $([math]::Round($taskResult.Duration, 2)) seconds" -ForegroundColor Gray
     }
 }
@@ -493,7 +493,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
 
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "    EXECUTION SUMMARY" -ForegroundColor White -BackgroundColor DarkBlue  
+Write-Host "    EXECUTION SUMMARY" -ForegroundColor White -BackgroundColor DarkBlue
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 
 $totalDuration = ((Get-Date) - $StartTime).TotalSeconds
@@ -503,7 +503,7 @@ $failedTasks = ($TaskResults | Where-Object { -not $_.Success }).Count
 Write-Host ""
 Write-Host "Execution Mode: " -NoNewline -ForegroundColor Gray
 Write-Host $executionMode -ForegroundColor $(if ($ExecutionParams.DryRun) { 'Blue' } else { 'Green' })
-Write-Host "Total Duration: " -NoNewline -ForegroundColor Gray  
+Write-Host "Total Duration: " -NoNewline -ForegroundColor Gray
 Write-Host "$([math]::Round($totalDuration, 2)) seconds" -ForegroundColor White
 Write-Host "Tasks Executed: " -NoNewline -ForegroundColor Gray
 Write-Host "$($TaskResults.Count)" -ForegroundColor White
@@ -520,11 +520,11 @@ foreach ($result in $TaskResults) {
     $status = if ($result.Success) { '✓' } else { '✗' }
     $statusColor = if ($result.Success) { 'Green' } else { 'Red' }
     $durationText = "$([math]::Round($result.Duration, 2))s"
-    
+
     Write-Host "  $status " -NoNewline -ForegroundColor $statusColor
     Write-Host "$($result.TaskName)" -NoNewline -ForegroundColor White
     Write-Host " ($durationText)" -ForegroundColor Gray
-    
+
     if (-not $result.Success -and $result.Error) {
         Write-Host "    Error: $($result.Error)" -ForegroundColor Red
     }

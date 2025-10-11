@@ -23,64 +23,65 @@ using namespace System.Collections.Generic
 <#
 .SYNOPSIS
     Disables Windows telemetry and privacy-invasive features
-    
+
 .DESCRIPTION
     Performs comprehensive privacy hardening by disabling telemetry collection,
     data sharing, consumer features, and various tracking mechanisms.
-    
+
 .PARAMETER DisableServices
     Disable telemetry-related Windows services
-    
+
 .PARAMETER DisableNotifications
     Disable Windows notifications and suggestions
-    
+
 .PARAMETER DisableConsumerFeatures
     Disable Windows consumer features and suggestions
-    
+
 .PARAMETER DisableCortana
     Disable Cortana voice assistant
-    
+
 .PARAMETER DisableLocationTracking
     Disable location tracking and services
-    
+
 .PARAMETER DryRun
     Simulate changes without applying them
-    
+
 .EXAMPLE
     $results = Disable-WindowsTelemetry
-    
+
 .EXAMPLE
     $results = Disable-WindowsTelemetry -DisableCortana -DisableLocationTracking -DryRun
 #>
 function Disable-WindowsTelemetry {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
-        [switch]$DisableServices = $true,
-        
+        [switch]$DisableServices,
+
         [Parameter()]
-        [switch]$DisableNotifications = $true,
-        
+        [switch]$DisableNotifications,
+
         [Parameter()]
-        [switch]$DisableConsumerFeatures = $true,
-        
+        [switch]$DisableConsumerFeatures,
+
         [Parameter()]
         [switch]$DisableCortana = $false,
-        
+
         [Parameter()]
         [switch]$DisableLocationTracking = $false,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
-    Write-Host "🔒 Starting Windows telemetry and privacy hardening..." -ForegroundColor Cyan
+
+    Write-Information "🔒 Starting Windows telemetry and privacy hardening..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     if ($DryRun) {
-        Write-Host "  🧪 DRY RUN MODE - No changes will be applied" -ForegroundColor Magenta
+        Write-Information "  🧪 DRY RUN MODE - No changes will be applied" -InformationAction Continue
     }
-    
+
     # Initialize results tracking
     $results = @{
         TotalOperations = 0
@@ -96,59 +97,59 @@ function Disable-WindowsTelemetry {
             Features = @{ Disabled = 0; Failed = 0 }
         }
     }
-    
+
     try {
         # Apply core telemetry registry settings
-        Write-Host "  📝 Configuring telemetry registry settings..." -ForegroundColor Gray
-        $regResults = Set-TelemetryRegistrySettings -DryRun:$DryRun
-        Merge-Results -Results $results -NewResults $regResults -Category 'Registry'
-        
+        Write-Information "  📝 Configuring telemetry registry settings..." -InformationAction Continue
+        $regResults = Set-TelemetryRegistrySetting -DryRun:$DryRun
+        Merge-Result -Results $results -NewResults $regResults -Category 'Registry'
+
         # Disable telemetry services
         if ($DisableServices) {
-            Write-Host "  🛑 Disabling telemetry services..." -ForegroundColor Gray
-            $serviceResults = Disable-TelemetryServices -DryRun:$DryRun
-            Merge-Results -Results $results -NewResults $serviceResults -Category 'Services'
+            Write-Information "  🛑 Disabling telemetry services..." -InformationAction Continue
+            $serviceResults = Disable-TelemetryService -DryRun:$DryRun
+            Merge-Result -Results $results -NewResults $serviceResults -Category 'Services'
         }
-        
+
         # Disable notifications and suggestions
         if ($DisableNotifications) {
-            Write-Host "  🔕 Disabling notifications and suggestions..." -ForegroundColor Gray
-            $notifyResults = Disable-WindowsNotifications -DryRun:$DryRun
-            Merge-Results -Results $results -NewResults $notifyResults -Category 'Notifications'
+            Write-Information "  🔕 Disabling notifications and suggestions..." -InformationAction Continue
+            $notifyResults = Disable-WindowsNotification -DryRun:$DryRun
+            Merge-Result -Results $results -NewResults $notifyResults -Category 'Notifications'
         }
-        
+
         # Disable consumer features
         if ($DisableConsumerFeatures) {
-            Write-Host "  🛒 Disabling consumer features..." -ForegroundColor Gray
-            $consumerResults = Disable-ConsumerFeatures -DryRun:$DryRun
-            Merge-Results -Results $results -NewResults $consumerResults -Category 'Features'
+            Write-Information "  🛒 Disabling consumer features..." -InformationAction Continue
+            $consumerResults = Disable-ConsumerFeature -DryRun:$DryRun
+            Merge-Result -Results $results -NewResults $consumerResults -Category 'Features'
         }
-        
+
         # Disable Cortana if requested
         if ($DisableCortana) {
-            Write-Host "  🎤 Disabling Cortana..." -ForegroundColor Gray
+            Write-Information "  🎤 Disabling Cortana..." -InformationAction Continue
             $cortanaResults = Disable-CortanaFeature -DryRun:$DryRun
             Merge-Results -Results $results -NewResults $cortanaResults -Category 'Features'
         }
-        
+
         # Disable location tracking if requested
         if ($DisableLocationTracking) {
-            Write-Host "  📍 Disabling location tracking..." -ForegroundColor Gray
-            $locationResults = Disable-LocationServices -DryRun:$DryRun
-            Merge-Results -Results $results -NewResults $locationResults -Category 'Features'
+            Write-Information "  📍 Disabling location tracking..." -InformationAction Continue
+            $locationResults = Disable-LocationService -DryRun:$DryRun
+            Merge-Result -Results $results -NewResults $locationResults -Category 'Features'
         }
-        
+
         $duration = ((Get-Date) - $startTime).TotalSeconds
-        
+
         # Summary output
         $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
-        Write-Host "  $statusIcon Privacy hardening completed in $([math]::Round($duration, 2))s" -ForegroundColor Green
-        Write-Host "    📊 Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -ForegroundColor Gray
-        
+        Write-Information "  $statusIcon Privacy hardening completed in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "    📊 Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
+
         if ($results.Failed -gt 0) {
-            Write-Host "    ❌ Some operations failed. Check logs for details." -ForegroundColor Yellow
+            Write-Warning "    ❌ Some operations failed. Check logs for details."
         }
-        
+
         return $results
     }
     catch {
@@ -160,20 +161,49 @@ function Disable-WindowsTelemetry {
 <#
 .SYNOPSIS
     Tests current privacy and telemetry settings
-    
+
 .DESCRIPTION
     Evaluates the current state of Windows privacy and telemetry settings
     to determine what changes would be made.
-    
+
 .EXAMPLE
     $status = Test-PrivacySettings
 #>
-function Test-PrivacySettings {
+<#
+.SYNOPSIS
+    Tests and analyzes current Windows privacy and telemetry settings.
+
+.DESCRIPTION
+    Performs comprehensive analysis of Windows privacy configuration including telemetry level,
+    running telemetry services, notification settings, consumer features, Cortana status,
+    and location services. Provides detailed recommendations for privacy hardening.
+
+.EXAMPLE
+    $analysis = Test-PrivacySetting
+    Write-Output "Found $($analysis.Recommendations.Count) privacy issues"
+
+.EXAMPLE
+    $privacyStatus = Test-PrivacySetting
+    if ($privacyStatus.TelemetryLevel -gt 0) {
+        Write-Warning "Telemetry is still enabled"
+    }
+
+.OUTPUTS
+    [hashtable] Analysis results containing telemetry status, service states, and recommendations
+
+.NOTES
+    Author: Windows Maintenance Automation Project
+    Module Type: Type 2 (System Modification)
+    Dependencies: Registry access, service query capabilities
+    Version: 1.0.0
+#>
+function Test-PrivacySetting {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
-    
-    Write-Host "🔍 Analyzing current privacy and telemetry settings..." -ForegroundColor Cyan
-    
+
+    Write-Information "🔍 Analyzing current privacy and telemetry settings..." -InformationAction Continue
+
     $analysis = @{
         TelemetryLevel = Get-TelemetryLevel
         ServicesRunning = Get-TelemetryServiceStatus
@@ -183,28 +213,28 @@ function Test-PrivacySettings {
         LocationServicesEnabled = Test-LocationServicesEnabled
         Recommendations = [List[string]]::new()
     }
-    
+
     # Generate recommendations
     if ($analysis.TelemetryLevel -gt 0) {
         $analysis.Recommendations.Add("Reduce telemetry level from $($analysis.TelemetryLevel) to 0")
     }
-    
+
     if ($analysis.ServicesRunning -gt 0) {
         $analysis.Recommendations.Add("Disable $($analysis.ServicesRunning) telemetry services")
     }
-    
+
     if ($analysis.NotificationsEnabled) {
         $analysis.Recommendations.Add("Disable Windows notifications and suggestions")
     }
-    
+
     if ($analysis.ConsumerFeaturesEnabled) {
         $analysis.Recommendations.Add("Disable Windows consumer features")
     }
-    
-    Write-Host "  📊 Telemetry Level: $($analysis.TelemetryLevel)" -ForegroundColor Gray
-    Write-Host "  🛑 Telemetry Services Running: $($analysis.ServicesRunning)" -ForegroundColor Gray
-    Write-Host "  💡 Recommendations: $($analysis.Recommendations.Count)" -ForegroundColor Gray
-    
+
+    Write-Information "  📊 Telemetry Level: $($analysis.TelemetryLevel)" -InformationAction Continue
+    Write-Information "  🛑 Telemetry Services Running: $($analysis.ServicesRunning)" -InformationAction Continue
+    Write-Information "  💡 Recommendations: $($analysis.Recommendations.Count)" -InformationAction Continue
+
     return $analysis
 }
 
@@ -214,21 +244,54 @@ function Test-PrivacySettings {
 
 <#
 .SYNOPSIS
-    Configures telemetry-related registry settings
+    Configures Windows telemetry and privacy-related registry settings.
+
+.DESCRIPTION
+    Applies comprehensive registry modifications to disable telemetry data collection,
+    feedback notifications, commercial data pipeline, device name sharing, content delivery,
+    consumer features, and cloud-optimized content. Supports dry-run mode for testing.
+
+.PARAMETER DryRun
+    When specified, simulates registry changes without actually applying them.
+    Useful for testing and validation before making permanent changes.
+
+.EXAMPLE
+    $result = Set-TelemetryRegistrySetting
+    Write-Output "Applied $($result.Applied) registry settings"
+
+.EXAMPLE
+    $dryRunResult = Set-TelemetryRegistrySetting -DryRun
+    Write-Output "Would apply $($dryRunResult.Applied) registry changes"
+
+.OUTPUTS
+    [hashtable] Results containing Applied count, Failed count, and detailed operation results
+
+.NOTES
+    Author: Windows Maintenance Automation Project
+    Module Type: Type 2 (System Modification)
+    Dependencies: Registry write access, Administrator privileges
+    Version: 1.0.0
+
+    Registry Paths Modified:
+    - HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection
+    - HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection
+    - HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager
+    - HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent
 #>
-function Set-TelemetryRegistrySettings {
-    [CmdletBinding()]
+function Set-TelemetryRegistrySetting {
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Applied = 0
         Failed = 0
         Details = [List[PSCustomObject]]::new()
     }
-    
+
     # Core telemetry registry settings
     $telemetrySettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' = @{
@@ -256,7 +319,7 @@ function Set-TelemetryRegistrySettings {
             'DisableSoftLanding' = 1
         }
     }
-    
+
     foreach ($registryPath in $telemetrySettings.Keys) {
         $pathResult = @{
             Path = $registryPath
@@ -264,38 +327,42 @@ function Set-TelemetryRegistrySettings {
             Success = $true
             Error = $null
         }
-        
+
         try {
             # Check if path exists, create if not
             if (-not (Test-Path $registryPath)) {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would create registry path: $registryPath" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would create registry path: $registryPath" -InformationAction Continue
                 } else {
-                    New-Item -Path $registryPath -Force | Out-Null
+                    if ($PSCmdlet.ShouldProcess($registryPath, 'Create registry path')) {
+                        New-Item -Path $registryPath -Force | Out-Null
+                    }
                 }
             }
-            
+
             $settings = $telemetrySettings[$registryPath]
             foreach ($setting in $settings.GetEnumerator()) {
                 try {
                     if ($DryRun) {
-                        Write-Host "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -ForegroundColor DarkYellow
+                        Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -InformationAction Continue
                         $pathResult.Settings++
                     } else {
                         # Check if value needs to be changed (idempotent operation)
                         $currentValue = $null
                         try {
                             $currentValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).$($setting.Key)
-                        } catch { 
-                            $currentValue = $null 
+                        } catch {
+                            $currentValue = $null
                         }
-                        
+
                         if ($currentValue -ne $setting.Value) {
-                            Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
-                            $pathResult.Settings++
+                            if ($PSCmdlet.ShouldProcess("$registryPath\$($setting.Key)", "Set registry value to $($setting.Value)")) {
+                                Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
+                                $pathResult.Settings++
+                            }
                         }
                     }
-                    
+
                     $results.Applied++
                 }
                 catch {
@@ -313,10 +380,10 @@ function Set-TelemetryRegistrySettings {
             $results.Failed++
             Write-Warning "Failed to access registry path ${registryPath}: $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$pathResult)
     }
-    
+
     return $results
 }
 
@@ -326,21 +393,53 @@ function Set-TelemetryRegistrySettings {
 
 <#
 .SYNOPSIS
-    Disables telemetry-related Windows services
+    Disables Windows telemetry and tracking services.
+
+.DESCRIPTION
+    Stops and disables Windows services responsible for telemetry data collection,
+    user experience tracking, diagnostic data transmission, and wireless application
+    protocol management. Provides comprehensive service state management with rollback
+    support and detailed operation reporting.
+
+.PARAMETER DryRun
+    When specified, simulates service changes without actually stopping or disabling them.
+    Shows which services would be affected and their current states.
+
+.EXAMPLE
+    $result = Disable-TelemetryService
+    Write-Output "Disabled $($result.Disabled) telemetry services"
+
+.EXAMPLE
+    $dryRunResult = Disable-TelemetryService -DryRun
+    Write-Output "Would disable $($result.Disabled) services"
+
+.OUTPUTS
+    [hashtable] Results containing Disabled count, Failed count, and detailed service states
+
+.NOTES
+    Author: Windows Maintenance Automation Project
+    Module Type: Type 2 (System Modification)
+    Dependencies: Service Control Manager access, Administrator privileges
+    Version: 1.0.0
+
+    Services Affected:
+    - DiagTrack (Connected User Experiences and Telemetry)
+    - dmwappushservice (Device Management Wireless Application Protocol)
 #>
-function Disable-TelemetryServices {
-    [CmdletBinding()]
+function Disable-TelemetryService {
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Disabled = 0
         Failed = 0
         Details = [List[PSCustomObject]]::new()
     }
-    
+
     # Telemetry services to disable
     $telemetryServices = @(
         'DiagTrack',           # Connected User Experiences and Telemetry
@@ -348,7 +447,7 @@ function Disable-TelemetryServices {
         'RetailDemo',          # Retail Demo Service
         'WerSvc'              # Windows Error Reporting (optional)
     )
-    
+
     foreach ($serviceName in $telemetryServices) {
         $serviceResult = @{
             Name = $serviceName
@@ -356,38 +455,40 @@ function Disable-TelemetryServices {
             Action = 'None'
             Error = $null
         }
-        
+
         try {
             $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-            
+
             if (-not $service) {
                 $serviceResult.Action = 'Not Found'
                 $serviceResult.Success = $true
-                Write-Host "    ℹ️  Service $serviceName not found on this system" -ForegroundColor Gray
+                Write-Information "    ℹ️  Service $serviceName not found on this system" -InformationAction Continue
             }
             elseif ($service.StartType -eq 'Disabled') {
                 $serviceResult.Action = 'Already Disabled'
                 $serviceResult.Success = $true
-                Write-Host "    ✅ Service $serviceName already disabled" -ForegroundColor Green
+                Write-Information "    ✅ Service $serviceName already disabled" -InformationAction Continue
             }
             else {
                 if ($DryRun) {
                     $serviceResult.Action = 'Would Disable'
                     $serviceResult.Success = $true
-                    Write-Host "    [DRY RUN] Would disable service: $serviceName" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would disable service: $serviceName" -InformationAction Continue
                 } else {
-                    # Stop the service if running
-                    if ($service.Status -eq 'Running') {
-                        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+                    if ($PSCmdlet.ShouldProcess($serviceName, 'Stop and disable telemetry service')) {
+                        # Stop the service if running
+                        if ($service.Status -eq 'Running') {
+                            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+                        }
+
+                        # Disable the service
+                        Set-Service -Name $serviceName -StartupType Disabled
+                        $serviceResult.Action = 'Disabled'
+                        $serviceResult.Success = $true
+                        Write-Information "    🛑 Disabled service: $serviceName" -InformationAction Continue
                     }
-                    
-                    # Disable the service
-                    Set-Service -Name $serviceName -StartupType Disabled
-                    $serviceResult.Action = 'Disabled'
-                    $serviceResult.Success = $true
-                    Write-Host "    🛑 Disabled service: $serviceName" -ForegroundColor Yellow
                 }
-                
+
                 $results.Disabled++
             }
         }
@@ -396,10 +497,10 @@ function Disable-TelemetryServices {
             $results.Failed++
             Write-Warning "Failed to disable service ${serviceName}: $_"
         }
-        
+
         $results.Details.Add([PSCustomObject]$serviceResult)
     }
-    
+
     return $results
 }
 
@@ -409,48 +510,86 @@ function Disable-TelemetryServices {
 
 <#
 .SYNOPSIS
-    Disables Windows notifications and suggestions
+    Disables Windows notifications, suggestions, and promotional content.
+
+.DESCRIPTION
+    Configures registry settings to disable various Windows notification systems including
+    action center notifications, suggested apps, tips and tricks, promotional content,
+    Windows spotlight, and other intrusive notification mechanisms that compromise privacy
+    and user experience.
+
+.PARAMETER DryRun
+    When specified, simulates notification disable operations without making actual changes.
+    Shows which notification settings would be modified.
+
+.EXAMPLE
+    $result = Disable-WindowsNotification
+    Write-Output "Disabled $($result.Disabled) notification settings"
+
+.EXAMPLE
+    $dryRunResult = Disable-WindowsNotification -DryRun
+    Write-Output "Would disable $($dryRunResult.Disabled) notification types"
+
+.OUTPUTS
+    [hashtable] Results containing Disabled count, Failed count, and detailed operation results
+
+.NOTES
+    Author: Windows Maintenance Automation Project
+    Module Type: Type 2 (System Modification)
+    Dependencies: Registry write access, Administrator privileges
+    Version: 1.0.0
+
+    Registry Modifications:
+    - Action Center notification settings
+    - Content delivery manager settings
+    - Windows tips and suggestions
+    - Promotional notifications
 #>
-function Disable-WindowsNotifications {
-    [CmdletBinding()]
+function Disable-WindowsNotification {
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Disabled = 0
         Failed = 0
         Details = [List[PSCustomObject]]::new()
     }
-    
+
     try {
         $notificationPath = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings'
-        
+
         if (-not (Test-Path $notificationPath)) {
             if ($DryRun) {
-                Write-Host "    [DRY RUN] Would create notification settings path" -ForegroundColor DarkYellow
+                Write-Information "    [DRY RUN] Would create notification settings path" -InformationAction Continue
             } else {
-                New-Item -Path $notificationPath -Force | Out-Null
+                if ($PSCmdlet.ShouldProcess($notificationPath, 'Create notification settings registry path')) {
+                    New-Item -Path $notificationPath -Force | Out-Null
+                }
             }
         }
-        
+
         # Global notification settings
         $globalSettings = @{
             'NOC_GLOBAL_SETTING_TOASTS_ENABLED' = 0
             'NOC_GLOBAL_SETTING_BADGE_ENABLED' = 0
             'NOC_GLOBAL_SETTING_SOUND_ENABLED' = 0
         }
-        
+
         foreach ($setting in $globalSettings.GetEnumerator()) {
             try {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would disable global notification: $($setting.Key)" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would disable global notification: $($setting.Key)" -InformationAction Continue
                 } else {
-                    Set-ItemProperty -Path $notificationPath -Name $setting.Key -Value $setting.Value -Force
-                    Write-Host "    🔕 Disabled notification setting: $($setting.Key)" -ForegroundColor Yellow
+                    if ($PSCmdlet.ShouldProcess("$notificationPath\$($setting.Key)", "Disable notification setting")) {
+                        Set-ItemProperty -Path $notificationPath -Name $setting.Key -Value $setting.Value -Force
+                        Write-Information "    🔕 Disabled notification setting: $($setting.Key)" -InformationAction Continue
+                    }
                 }
-                
+
                 $results.Disabled++
             }
             catch {
@@ -458,19 +597,19 @@ function Disable-WindowsNotifications {
                 Write-Warning "Failed to disable notification setting $($setting.Key): $_"
             }
         }
-        
+
         # Disable per-app notifications
-        $appNotifications = Get-ChildItem -Path $notificationPath -ErrorAction SilentlyContinue | 
+        $appNotifications = Get-ChildItem -Path $notificationPath -ErrorAction SilentlyContinue |
             Where-Object { $_.PSChildName -notin $globalSettings.Keys }
-        
+
         foreach ($app in $appNotifications) {
             try {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would disable notifications for: $($app.PSChildName)" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would disable notifications for: $($app.PSChildName)" -InformationAction Continue
                 } else {
                     Set-ItemProperty -Path $app.PSPath -Name 'Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
                 }
-                
+
                 $results.Disabled++
             }
             catch {
@@ -478,13 +617,13 @@ function Disable-WindowsNotifications {
                 continue
             }
         }
-        
+
     }
     catch {
         $results.Failed++
         Write-Warning "Failed to disable notifications: $_"
     }
-    
+
     return $results
 }
 
@@ -494,21 +633,56 @@ function Disable-WindowsNotifications {
 
 <#
 .SYNOPSIS
-    Disables Windows consumer features and suggestions
+    Disables Windows consumer features, app suggestions, and promotional content.
+
+.DESCRIPTION
+    Removes Windows commercial features including app suggestions in Start menu,
+    Microsoft Store promotions, suggested apps installations, cloud content delivery,
+    sponsored tiles, and other consumer-oriented features that compromise professional
+    environment privacy and productivity.
+
+.PARAMETER DryRun
+    When specified, simulates consumer feature disabling without making actual changes.
+    Shows which consumer features would be disabled.
+
+.EXAMPLE
+    $result = Disable-ConsumerFeature
+    Write-Output "Disabled $($result.Disabled) consumer features"
+
+.EXAMPLE
+    $dryRunResult = Disable-ConsumerFeature -DryRun
+    Write-Output "Would disable $($dryRunResult.Disabled) consumer features"
+
+.OUTPUTS
+    [hashtable] Results containing Disabled count, Failed count, and detailed operation results
+
+.NOTES
+    Author: Windows Maintenance Automation Project
+    Module Type: Type 2 (System Modification)
+    Dependencies: Registry write access, Administrator privileges
+    Version: 1.0.0
+
+    Features Disabled:
+    - Microsoft Store app suggestions
+    - Start menu sponsored content
+    - Cloud content delivery
+    - Suggested apps installations
+    - Windows tips and tricks
 #>
-function Disable-ConsumerFeatures {
-    [CmdletBinding()]
+function Disable-ConsumerFeature {
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $results = @{
         Disabled = 0
         Failed = 0
         Details = [List[PSCustomObject]]::new()
     }
-    
+
     # Consumer features registry settings
     $consumerSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' = @{
@@ -523,26 +697,30 @@ function Disable-ConsumerFeatures {
             'OemPreInstalledAppsEnabled' = 0
         }
     }
-    
+
     foreach ($registryPath in $consumerSettings.Keys) {
         try {
             if (-not (Test-Path $registryPath)) {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would create consumer features path: $registryPath" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would create consumer features path: $registryPath" -InformationAction Continue
                 } else {
-                    New-Item -Path $registryPath -Force | Out-Null
+                    if ($PSCmdlet.ShouldProcess($registryPath, 'Create consumer features registry path')) {
+                        New-Item -Path $registryPath -Force | Out-Null
+                    }
                 }
             }
-            
+
             $settings = $consumerSettings[$registryPath]
             foreach ($setting in $settings.GetEnumerator()) {
                 try {
                     if ($DryRun) {
-                        Write-Host "    [DRY RUN] Would set $($setting.Key) = $($setting.Value)" -ForegroundColor DarkYellow
+                        Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value)" -InformationAction Continue
                     } else {
-                        Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
+                        if ($PSCmdlet.ShouldProcess("$registryPath\$($setting.Key)", "Disable consumer feature setting")) {
+                            Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
+                        }
                     }
-                    
+
                     $results.Disabled++
                 }
                 catch {
@@ -556,7 +734,7 @@ function Disable-ConsumerFeatures {
             Write-Warning "Failed to configure consumer features at ${registryPath}: $_"
         }
     }
-    
+
     return $results
 }
 
@@ -566,14 +744,46 @@ function Disable-ConsumerFeatures {
 
 <#
 .SYNOPSIS
-    Disables Cortana voice assistant
+    Disables Cortana voice assistant and related search features.
+
+.DESCRIPTION
+    Configures registry settings to completely disable Cortana voice assistant,
+    web search integration, connected search functionality, and related privacy-invasive
+    search features that send user queries to Microsoft servers.
+
+.PARAMETER DryRun
+    When specified, simulates Cortana disabling without making actual changes.
+    Shows which Cortana features would be disabled.
+
+.EXAMPLE
+    $result = Disable-CortanaFeature
+    Write-Output "Disabled $($result.Disabled) Cortana features"
+
+.EXAMPLE
+    $dryRunResult = Disable-CortanaFeature -DryRun
+    Write-Output "Would disable Cortana features"
+
+.OUTPUTS
+    [hashtable] Results containing Disabled count, Failed count, and operation details
+
+.NOTES
+    Author: Windows Maintenance Automation Project
+    Module Type: Type 2 (System Modification)
+    Dependencies: Registry write access, Administrator privileges
+    Version: 1.0.0
+
+    Features Disabled:
+    - Cortana voice assistant
+    - Web search integration
+    - Connected search functionality
 #>
 function Disable-CortanaFeature {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [OutputType([hashtable])]
     param([switch]$DryRun)
-    
+
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
-    
+
     $cortanaSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' = @{
             'AllowCortana' = 0
@@ -581,18 +791,24 @@ function Disable-CortanaFeature {
             'ConnectedSearchUseWeb' = 0
         }
     }
-    
+
     foreach ($path in $cortanaSettings.Keys) {
         try {
             if (-not (Test-Path $path)) {
-                if (-not $DryRun) { New-Item -Path $path -Force | Out-Null }
+                if (-not $DryRun) {
+                    if ($PSCmdlet.ShouldProcess($path, 'Create Cortana settings registry path')) {
+                        New-Item -Path $path -Force | Out-Null
+                    }
+                }
             }
-            
+
             foreach ($setting in $cortanaSettings[$path].GetEnumerator()) {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would disable Cortana setting: $($setting.Key)" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would disable Cortana setting: $($setting.Key)" -InformationAction Continue
                 } else {
-                    Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
+                    if ($PSCmdlet.ShouldProcess("$path\$($setting.Key)", "Disable Cortana feature")) {
+                        Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
+                    }
                 }
                 $results.Disabled++
             }
@@ -602,38 +818,77 @@ function Disable-CortanaFeature {
             Write-Warning "Failed to disable Cortana: $_"
         }
     }
-    
+
     return $results
 }
 
 <#
 .SYNOPSIS
-    Disables location tracking services
+    Disables Windows location tracking and location-based services.
+
+.DESCRIPTION
+    Configures system settings to disable location tracking, location-based advertising,
+    location history, geofencing, and other location services that compromise user privacy
+    by sharing geographical data with Microsoft and third-party applications.
+
+.PARAMETER DryRun
+    When specified, simulates location services disabling without making actual changes.
+    Shows which location tracking features would be disabled.
+
+.EXAMPLE
+    $result = Disable-LocationService
+    Write-Output "Disabled $($result.Disabled) location tracking features"
+
+.EXAMPLE
+    $dryRunResult = Disable-LocationService -DryRun
+    Write-Output "Would disable location services"
+
+.OUTPUTS
+    [hashtable] Results containing Disabled count, Failed count, and operation details
+
+.NOTES
+    Author: Windows Maintenance Automation Project
+    Module Type: Type 2 (System Modification)
+    Dependencies: Registry write access, Administrator privileges
+    Version: 1.0.0
+
+    Features Disabled:
+    - Location tracking services
+    - Location-based advertising
+    - Geofencing capabilities
+    - Location history collection
 #>
-function Disable-LocationServices {
-    [CmdletBinding()]
+function Disable-LocationService {
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [OutputType([hashtable])]
     param([switch]$DryRun)
-    
+
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
-    
+
     $locationSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' = @{
             'DisableLocation' = 1
             'DisableLocationScripting' = 1
         }
     }
-    
+
     foreach ($path in $locationSettings.Keys) {
         try {
             if (-not (Test-Path $path)) {
-                if (-not $DryRun) { New-Item -Path $path -Force | Out-Null }
+                if (-not $DryRun) {
+                    if ($PSCmdlet.ShouldProcess($path, 'Create location services registry path')) {
+                        New-Item -Path $path -Force | Out-Null
+                    }
+                }
             }
-            
+
             foreach ($setting in $locationSettings[$path].GetEnumerator()) {
                 if ($DryRun) {
-                    Write-Host "    [DRY RUN] Would disable location setting: $($setting.Key)" -ForegroundColor DarkYellow
+                    Write-Information "    [DRY RUN] Would disable location setting: $($setting.Key)" -InformationAction Continue
                 } else {
-                    Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
+                    if ($PSCmdlet.ShouldProcess("$path\$($setting.Key)", "Disable location service")) {
+                        Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
+                    }
                 }
                 $results.Disabled++
             }
@@ -643,7 +898,7 @@ function Disable-LocationServices {
             Write-Warning "Failed to disable location services: $_"
         }
     }
-    
+
     return $results
 }
 
@@ -691,13 +946,14 @@ function Test-LocationServicesEnabled {
     } catch { return $true }
 }
 
-function Merge-Results {
+# Helper function to merge operation results
+function Merge-Result {
     param($Results, $NewResults, $Category)
-    
+
     $Results.TotalOperations += ($NewResults.Applied ?? 0) + ($NewResults.Disabled ?? 0)
     $Results.Successful += ($NewResults.Applied ?? 0) + ($NewResults.Disabled ?? 0)
     $Results.Failed += ($NewResults.Failed ?? 0)
-    
+
     if ($Results.Categories.ContainsKey($Category)) {
         $Results.Categories[$Category].Applied = ($NewResults.Applied ?? 0)
         $Results.Categories[$Category].Failed = ($NewResults.Failed ?? 0)
@@ -709,5 +965,5 @@ function Merge-Results {
 # Export module functions
 Export-ModuleMember -Function @(
     'Disable-WindowsTelemetry',
-    'Test-PrivacySettings'
+    'Test-PrivacySetting'
 )

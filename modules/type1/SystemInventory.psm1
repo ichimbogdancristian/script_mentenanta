@@ -5,7 +5,7 @@
     System Inventory Module - Type 1 (Inventory/Reporting)
 
 .DESCRIPTION
-    Collects comprehensive system information including hardware, software, 
+    Collects comprehensive system information including hardware, software,
     services, and configuration details for maintenance analysis and reporting.
 
 .NOTES
@@ -22,20 +22,20 @@ using namespace System.Collections.Generic
 <#
 .SYNOPSIS
     Collects comprehensive system inventory information
-    
+
 .DESCRIPTION
     Gathers detailed system information including hardware specs, installed software,
     running services, network configuration, and security settings.
-    
+
 .PARAMETER UseCache
     Use cached results if available and not expired
-    
+
 .PARAMETER CacheTimeout
     Cache timeout in minutes (default: 30)
-    
+
 .PARAMETER IncludeDetailed
     Include detailed information that may take longer to collect
-    
+
 .EXAMPLE
     $inventory = Get-SystemInventory -IncludeDetailed
 #>
@@ -44,27 +44,27 @@ function Get-SystemInventory {
     param(
         [Parameter()]
         [switch]$UseCache,
-        
+
         [Parameter()]
         [int]$CacheTimeout = 30,
-        
+
         [Parameter()]
         [switch]$IncludeDetailed
     )
-    
+
     Write-Host "🔍 Starting system inventory collection..." -ForegroundColor Cyan
-    
+
     # Check for cached inventory data if UseCache is enabled
     if ($UseCache) {
         $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
         $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
-        
+
         if (Test-Path $inventoryDir) {
             # Find the most recent inventory file
             $recentInventory = Get-ChildItem -Path $inventoryDir -Filter "system-inventory-*.json" |
                                Sort-Object LastWriteTime -Descending |
                                Select-Object -First 1
-                               
+
             if ($recentInventory) {
                 $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
                 if ($cacheAge.TotalMinutes -le $CacheTimeout) {
@@ -83,41 +83,41 @@ function Get-SystemInventory {
             }
         }
     }
-    
+
     $startTime = Get-Date
     $inventoryData = @{}
-    
+
     try {
         # Basic system information
         Write-Host "  📊 Collecting basic system information..." -ForegroundColor Gray
         $inventoryData.SystemInfo = Get-BasicSystemInfo
-        
+
         # Hardware information
         Write-Host "  🖥️ Collecting hardware information..." -ForegroundColor Gray
         $inventoryData.Hardware = Get-HardwareInfo
-        
+
         # Operating system details
         Write-Host "  💻 Collecting operating system details..." -ForegroundColor Gray
         $inventoryData.OperatingSystem = Get-OperatingSystemInfo
-        
+
         # Installed software
         Write-Host "  📦 Collecting installed software..." -ForegroundColor Gray
         $inventoryData.InstalledSoftware = Get-InstalledSoftwareInfo
-        
+
         # Running services
         Write-Host "  🔧 Collecting services information..." -ForegroundColor Gray
         $inventoryData.Services = Get-ServicesInfo
-        
+
         # Network configuration
         Write-Host "  🌐 Collecting network configuration..." -ForegroundColor Gray
         $inventoryData.Network = Get-NetworkInfo
-        
+
         if ($IncludeDetailed) {
             # Detailed information (slower to collect)
             Write-Host "  🔎 Collecting detailed information..." -ForegroundColor Gray
             $inventoryData.DetailedInfo = Get-DetailedSystemInfo
         }
-        
+
         # Add metadata
         $inventoryData.Metadata = @{
             CollectionTime = $startTime
@@ -127,22 +127,22 @@ function Get-SystemInventory {
             UserName = $env:USERNAME
             ModuleVersion = '1.0.0'
         }
-        
+
         $duration = [math]::Round($inventoryData.Metadata.Duration, 2)
         Write-Host "  ✅ System inventory completed in $duration seconds" -ForegroundColor Green
-        
+
         # Auto-save inventory data to temp_files/inventory folder if available
         $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
-        
+
         if (Test-Path $inventoryDir) {
             try {
                 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
                 $inventoryPath = Join-Path $inventoryDir "system-inventory-$timestamp"
-                
+
                 Write-Host "  💾 Saving inventory data to: $inventoryPath.json" -ForegroundColor Gray
                 Export-SystemInventory -InventoryData $inventoryData -OutputPath $inventoryPath -Format JSON
-                
+
                 # Also save installed software as a separate list for easier comparison
                 $installedAppsPath = Join-Path $inventoryDir "installed-software-$timestamp.json"
                 $inventoryData.InstalledSoftware | ConvertTo-Json -Depth 5 | Out-File -FilePath $installedAppsPath -Encoding UTF8
@@ -152,7 +152,7 @@ function Get-SystemInventory {
                 Write-Warning "Failed to save inventory data: $_"
             }
         }
-        
+
         return $inventoryData
     }
     catch {
@@ -164,19 +164,19 @@ function Get-SystemInventory {
 <#
 .SYNOPSIS
     Exports system inventory to various formats
-    
+
 .DESCRIPTION
     Saves the system inventory data to JSON, XML, or CSV formats for reporting and analysis.
-    
+
 .PARAMETER InventoryData
     The inventory data object to export
-    
+
 .PARAMETER OutputPath
     Base path for output files (without extension)
-    
+
 .PARAMETER Format
     Export format(s): JSON, XML, CSV, or All
-    
+
 .EXAMPLE
     Export-SystemInventory -InventoryData $inventory -OutputPath "C:\Reports\SystemInventory" -Format All
 #>
@@ -185,22 +185,22 @@ function Export-SystemInventory {
     param(
         [Parameter(Mandatory)]
         [hashtable]$InventoryData,
-        
+
         [Parameter(Mandatory)]
         [string]$OutputPath,
-        
+
         [Parameter()]
         [ValidateSet('JSON', 'XML', 'CSV', 'All')]
         [string]$Format = 'JSON'
     )
-    
+
     $baseDir = Split-Path $OutputPath -Parent
     if (-not (Test-Path $baseDir)) {
         New-Item -Path $baseDir -ItemType Directory -Force | Out-Null
     }
-    
+
     $exports = @()
-    
+
     if ($Format -eq 'All' -or $Format -eq 'JSON') {
         $jsonPath = "$OutputPath.json"
         if ($PSCmdlet.ShouldProcess($jsonPath, "Export to JSON")) {
@@ -209,7 +209,7 @@ function Export-SystemInventory {
             Write-Verbose "Exported to JSON: $jsonPath"
         }
     }
-    
+
     if ($Format -eq 'All' -or $Format -eq 'XML') {
         $xmlPath = "$OutputPath.xml"
         if ($PSCmdlet.ShouldProcess($xmlPath, "Export to XML")) {
@@ -218,14 +218,14 @@ function Export-SystemInventory {
             Write-Verbose "Exported to XML: $xmlPath"
         }
     }
-    
+
     if ($Format -eq 'All' -or $Format -eq 'CSV') {
         $csvDir = "$OutputPath-CSV"
         if ($PSCmdlet.ShouldProcess($csvDir, "Export to CSV")) {
             if (-not (Test-Path $csvDir)) {
                 New-Item -Path $csvDir -ItemType Directory -Force | Out-Null
             }
-            
+
             # Export each section to separate CSV files
             foreach ($section in $InventoryData.Keys) {
                 if ($section -ne 'Metadata' -and $InventoryData[$section] -is [Array]) {
@@ -237,7 +237,7 @@ function Export-SystemInventory {
             Write-Verbose "Exported to CSV directory: $csvDir"
         }
     }
-    
+
     return $exports
 }
 
@@ -253,7 +253,7 @@ function Get-BasicSystemInfo {
     try {
         $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
         $bios = Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop
-        
+
         return @{
             ComputerName = $computerSystem.Name
             Domain = $computerSystem.Domain
@@ -281,9 +281,9 @@ function Get-HardwareInfo {
         $processor = Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | Select-Object -First 1
         $memory = Get-CimInstance -ClassName Win32_PhysicalMemory -ErrorAction Stop
         $diskDrives = Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction Stop
-        $videoController = Get-CimInstance -ClassName Win32_VideoController -ErrorAction Stop | 
+        $videoController = Get-CimInstance -ClassName Win32_VideoController -ErrorAction Stop |
                           Where-Object { $_.Name -notlike "*Basic*" } | Select-Object -First 1
-        
+
         return @{
             Processor = @{
                 Name = $processor.Name
@@ -336,7 +336,7 @@ function Get-OperatingSystemInfo {
     try {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
         $timeZone = Get-TimeZone -ErrorAction Stop
-        
+
         return @{
             Caption = $os.Caption
             Version = $os.Version
@@ -364,7 +364,7 @@ function Get-OperatingSystemInfo {
 function Get-InstalledSoftwareInfo {
     try {
         $installedPrograms = @()
-        
+
         # Get AppX packages
         try {
             $appxPackages = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Microsoft*" -or $_.Name -like "*Microsoft.Office*" }
@@ -382,7 +382,7 @@ function Get-InstalledSoftwareInfo {
         catch {
             Write-Verbose "Failed to collect AppX packages: $_"
         }
-        
+
         # Get Winget packages
         try {
             $wingetOutput = winget list --accept-source-agreements 2>$null
@@ -403,7 +403,7 @@ function Get-InstalledSoftwareInfo {
         catch {
             Write-Verbose "Failed to collect Winget packages: $_"
         }
-        
+
         # Get Chocolatey packages
         try {
             if (Get-Command choco -ErrorAction SilentlyContinue) {
@@ -423,17 +423,17 @@ function Get-InstalledSoftwareInfo {
         catch {
             Write-Verbose "Failed to collect Chocolatey packages: $_"
         }
-        
+
         # Get programs from registry (both 32-bit and 64-bit)
         $registryPaths = @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
             'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
         )
-        
+
         foreach ($path in $registryPaths) {
             $programs = Get-ItemProperty $path -ErrorAction SilentlyContinue |
                        Where-Object { $_.DisplayName -and $_.DisplayName -notmatch '^KB[0-9]+' }
-            
+
             foreach ($program in $programs) {
                 $installedPrograms += @{
                     Name = $program.DisplayName
@@ -448,7 +448,7 @@ function Get-InstalledSoftwareInfo {
                 }
             }
         }
-        
+
         return @{
             TotalCount = $installedPrograms.Count
             Programs = $installedPrograms | Sort-Object Name
@@ -484,7 +484,7 @@ function Get-ServicesInfo {
             # Fallback to Get-Service but with error handling for individual services
             $services = @()
             $allServiceNames = (Get-Service -ErrorAction SilentlyContinue).Name
-            
+
             foreach ($serviceName in $allServiceNames) {
                 try {
                     $service = Get-Service -Name $serviceName -ErrorAction Stop
@@ -502,7 +502,7 @@ function Get-ServicesInfo {
                 }
             }
         }
-        
+
         if ($services.Count -eq 0) {
             Write-Warning "No services could be queried. This may indicate permission restrictions."
             return @{
@@ -514,10 +514,10 @@ function Get-ServicesInfo {
                 Note = "Limited permissions - service details unavailable"
             }
         }
-        
+
         $runningServices = $services | Where-Object { $_.Status -eq 'Running' }
         $stoppedServices = $services | Where-Object { $_.Status -eq 'Stopped' }
-        
+
         return @{
             TotalCount = $services.Count
             RunningCount = $runningServices.Count
@@ -530,8 +530,8 @@ function Get-ServicesInfo {
                     StartType = $_.StartType
                 }
             }
-            CriticalServices = $runningServices | Where-Object { 
-                $_.Name -in @('Winlogon', 'CSRSS', 'Wininit', 'Services', 'Lsass', 'Spooler') 
+            CriticalServices = $runningServices | Where-Object {
+                $_.Name -in @('Winlogon', 'CSRSS', 'Wininit', 'Services', 'Lsass', 'Spooler')
             } | ForEach-Object {
                 @{
                     Name = $_.Name
@@ -562,7 +562,7 @@ function Get-NetworkInfo {
     try {
         $adapters = Get-NetAdapter -Physical -ErrorAction Stop | Where-Object { $_.Status -eq 'Up' }
         $ipConfig = Get-NetIPConfiguration -ErrorAction Stop | Where-Object { $_.NetAdapter.Status -eq 'Up' }
-        
+
         return @{
             Adapters = $adapters | ForEach-Object {
                 $config = $ipConfig | Where-Object { $_.InterfaceAlias -eq $_.Name }
@@ -615,7 +615,7 @@ function Get-InstalledUpdatesInfo {
         $updates = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop |
                    Sort-Object InstalledOn -Descending |
                    Select-Object -First 20
-        
+
         return @{
             RecentCount = $updates.Count
             RecentUpdates = $updates | ForEach-Object {
@@ -641,7 +641,7 @@ function Get-InstalledUpdatesInfo {
 function Get-StartupProgramsInfo {
     try {
         $startupItems = @()
-        
+
         # Registry startup locations
         $startupPaths = @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
@@ -649,7 +649,7 @@ function Get-StartupProgramsInfo {
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce',
             'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
         )
-        
+
         foreach ($path in $startupPaths) {
             try {
                 $items = Get-ItemProperty $path -ErrorAction SilentlyContinue
@@ -669,7 +669,7 @@ function Get-StartupProgramsInfo {
                 # Skip inaccessible registry paths
             }
         }
-        
+
         return @{
             TotalCount = $startupItems.Count
             Items = $startupItems
@@ -690,7 +690,7 @@ function Get-ScheduledTasksInfo {
         $tasks = Get-ScheduledTask -ErrorAction Stop
         $runningTasks = $tasks | Where-Object { $_.State -eq 'Running' }
         $enabledTasks = $tasks | Where-Object { $_.State -eq 'Ready' }
-        
+
         return @{
             TotalCount = $tasks.Count
             RunningCount = $runningTasks.Count
@@ -718,13 +718,13 @@ function Get-EventLogSummary {
     try {
         $logs = @('System', 'Application', 'Security')
         $summary = @{}
-        
+
         foreach ($logName in $logs) {
             try {
                 $events = Get-WinEvent -LogName $logName -MaxEvents 1000 -ErrorAction Stop
                 $errors = $events | Where-Object { $_.LevelDisplayName -eq 'Error' }
                 $warnings = $events | Where-Object { $_.LevelDisplayName -eq 'Warning' }
-                
+
                 $summary[$logName] = @{
                     TotalEvents = $events.Count
                     ErrorCount = $errors.Count
@@ -743,7 +743,7 @@ function Get-EventLogSummary {
                 $summary[$logName] = @{ Error = "Access denied or log not available" }
             }
         }
-        
+
         return $summary
     }
     catch {
@@ -760,7 +760,7 @@ function Test-InternetConnectivity {
     try {
         $testSites = @('8.8.8.8', 'google.com', 'microsoft.com')
         $results = @{}
-        
+
         foreach ($site in $testSites) {
             try {
                 $result = Test-Connection -ComputerName $site -Count 1 -Quiet -TimeoutSeconds 5
@@ -770,7 +770,7 @@ function Test-InternetConnectivity {
                 $results[$site] = $false
             }
         }
-        
+
         return $results
     }
     catch {

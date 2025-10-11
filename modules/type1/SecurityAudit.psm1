@@ -23,32 +23,32 @@ using namespace System.Collections.Generic
 <#
 .SYNOPSIS
     Performs comprehensive security audit of the system
-    
+
 .DESCRIPTION
     Evaluates Windows security configurations including Windows Defender,
     Firewall, UAC, services, and provides detailed security recommendations.
-    
+
 .PARAMETER IncludeDefenderScan
     Include a Windows Defender scan in the audit
-    
+
 .PARAMETER CheckFirewall
     Check Windows Firewall configuration and status
-    
+
 .PARAMETER CheckUAC
     Check User Account Control settings
-    
+
 .PARAMETER CheckServices
     Audit security-related Windows services
-    
+
 .PARAMETER CheckUpdates
     Check Windows Update and security update status
-    
+
 .PARAMETER GenerateReport
     Generate a detailed security report
-    
+
 .EXAMPLE
     $audit = Start-SecurityAudit
-    
+
 .EXAMPLE
     $audit = Start-SecurityAudit -IncludeDefenderScan -GenerateReport
 #>
@@ -57,26 +57,26 @@ function Start-SecurityAudit {
     param(
         [Parameter()]
         [switch]$IncludeDefenderScan,
-        
+
         [Parameter()]
         [switch]$CheckFirewall,
-        
+
         [Parameter()]
         [switch]$CheckUAC,
-        
+
         [Parameter()]
         [switch]$CheckServices,
-        
+
         [Parameter()]
         [switch]$CheckUpdates,
-        
+
         [Parameter()]
         [switch]$GenerateReport
     )
-    
+
     Write-Host "🔒 Starting comprehensive security audit..." -ForegroundColor Cyan
     $startTime = Get-Date
-    
+
     # Initialize audit results
     $auditResults = @{
         Timestamp       = $startTime
@@ -87,14 +87,14 @@ function Start-SecurityAudit {
         Recommendations = [List[PSCustomObject]]::new()
         Summary         = @{}
     }
-    
+
     try {
         # Windows Defender Status
         Write-Host "  🛡️  Checking Windows Defender status..." -ForegroundColor Gray
         $defenderResults = Get-WindowsDefenderStatus -IncludeScan:$IncludeDefenderScan
         $auditResults.Categories['WindowsDefender'] = $defenderResults
         Update-SecurityScore -Results $auditResults -Category 'WindowsDefender' -Score $defenderResults.Score -MaxScore 25
-        
+
         # Firewall Configuration (default: enabled)
         if ($CheckFirewall -or (-not $PSBoundParameters.ContainsKey('CheckFirewall'))) {
             Write-Host "  🔥 Checking Windows Firewall..." -ForegroundColor Gray
@@ -102,7 +102,7 @@ function Start-SecurityAudit {
             $auditResults.Categories['Firewall'] = $firewallResults
             Update-SecurityScore -Results $auditResults -Category 'Firewall' -Score $firewallResults.Score -MaxScore 20
         }
-        
+
         # User Account Control (default: enabled)
         if ($CheckUAC -or (-not $PSBoundParameters.ContainsKey('CheckUAC'))) {
             Write-Host "  👤 Checking User Account Control..." -ForegroundColor Gray
@@ -110,7 +110,7 @@ function Start-SecurityAudit {
             $auditResults.Categories['UAC'] = $uacResults
             Update-SecurityScore -Results $auditResults -Category 'UAC' -Score $uacResults.Score -MaxScore 15
         }
-        
+
         # Security Services (default: enabled)
         if ($CheckServices -or (-not $PSBoundParameters.ContainsKey('CheckServices'))) {
             Write-Host "  ⚙️  Auditing security services..." -ForegroundColor Gray
@@ -118,7 +118,7 @@ function Start-SecurityAudit {
             $auditResults.Categories['Services'] = $servicesResults
             Update-SecurityScore -Results $auditResults -Category 'Services' -Score $servicesResults.Score -MaxScore 20
         }
-        
+
         # Windows Updates (default: enabled)
         if ($CheckUpdates -or (-not $PSBoundParameters.ContainsKey('CheckUpdates'))) {
             Write-Host "  📥 Checking security updates..." -ForegroundColor Gray
@@ -126,25 +126,25 @@ function Start-SecurityAudit {
             $auditResults.Categories['Updates'] = $updatesResults
             Update-SecurityScore -Results $auditResults -Category 'Updates' -Score $updatesResults.Score -MaxScore 20
         }
-        
+
         # Generate security recommendations
         $auditResults.Recommendations = Get-SecurityRecommendations -AuditResults $auditResults
-        
+
         # Calculate final security score percentage
         $auditResults.Summary = @{
             OverallScore         = $auditResults.SecurityScore
             MaxPossibleScore     = $auditResults.MaxScore
-            PercentageScore      = if ($auditResults.MaxScore -gt 0) { 
-                [math]::Round(($auditResults.SecurityScore / $auditResults.MaxScore) * 100, 1) 
+            PercentageScore      = if ($auditResults.MaxScore -gt 0) {
+                [math]::Round(($auditResults.SecurityScore / $auditResults.MaxScore) * 100, 1)
             }
             else { 0 }
             RiskLevel            = Get-RiskLevel -Score ($auditResults.SecurityScore / [Math]::Max($auditResults.MaxScore, 1) * 100)
             RecommendationsCount = $auditResults.Recommendations.Count
             CategoriesAudited    = $auditResults.Categories.Keys.Count
         }
-        
+
         $duration = ((Get-Date) - $startTime).TotalSeconds
-        
+
         # Display summary
         $riskColor = switch ($auditResults.Summary.RiskLevel) {
             'Low' { 'Green' }
@@ -152,18 +152,18 @@ function Start-SecurityAudit {
             'High' { 'Red' }
             default { 'Gray' }
         }
-        
+
         Write-Host "  ✅ Security audit completed in $([math]::Round($duration, 2))s" -ForegroundColor Green
         Write-Host "    📊 Security Score: $($auditResults.Summary.OverallScore)/$($auditResults.Summary.MaxPossibleScore) ($($auditResults.Summary.PercentageScore)%)" -ForegroundColor Gray
         Write-Host "    ⚠️  Risk Level: $($auditResults.Summary.RiskLevel)" -ForegroundColor $riskColor
         Write-Host "    💡 Recommendations: $($auditResults.Summary.RecommendationsCount)" -ForegroundColor Gray
-        
+
         # Generate report if requested (default: enabled)
         if ($GenerateReport -or (-not $PSBoundParameters.ContainsKey('GenerateReport'))) {
             $reportPath = New-SecurityReport -AuditResults $auditResults
             Write-Host "    📄 Security report: $reportPath" -ForegroundColor Blue
         }
-        
+
         return $auditResults
     }
     catch {
@@ -175,14 +175,14 @@ function Start-SecurityAudit {
 <#
 .SYNOPSIS
     Gets current Windows Defender status and configuration
-    
+
 .DESCRIPTION
     Evaluates Windows Defender antivirus status, configuration,
     and optionally performs a security scan.
-    
+
 .PARAMETER IncludeScan
     Perform a quick security scan
-    
+
 .EXAMPLE
     $defenderStatus = Get-WindowsDefenderStatus -IncludeScan
 #>
@@ -192,7 +192,7 @@ function Get-WindowsDefenderStatus {
         [Parameter()]
         [switch]$IncludeScan
     )
-    
+
     $results = @{
         Enabled                   = $false
         RealTimeProtectionEnabled = $false
@@ -204,18 +204,18 @@ function Get-WindowsDefenderStatus {
         Details                   = @{}
         Issues                    = [List[string]]::new()
     }
-    
+
     try {
         # Check if Defender module is available
         if (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue) {
             $defenderStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
-            
+
             if ($defenderStatus) {
                 $results.Enabled = $defenderStatus.AntivirusEnabled
                 $results.RealTimeProtectionEnabled = $defenderStatus.RealTimeProtectionEnabled
                 $results.DefinitionsUpToDate = ((Get-Date) - $defenderStatus.AntivirusSignatureLastUpdated).TotalDays -lt 7
                 $results.LastScanDate = $defenderStatus.FullScanStartTime
-                
+
                 $results.Details = @{
                     AntivirusEnabled          = $defenderStatus.AntivirusEnabled
                     AntispywareEnabled        = $defenderStatus.AntispywareEnabled
@@ -226,13 +226,13 @@ function Get-WindowsDefenderStatus {
                     SignatureLastUpdated      = $defenderStatus.AntivirusSignatureLastUpdated
                     EngineVersion             = $defenderStatus.AMEngineVersion
                 }
-                
+
                 # Calculate score based on security features
                 if ($results.Enabled) { $results.Score += 10 }
                 if ($results.RealTimeProtectionEnabled) { $results.Score += 8 }
                 if ($results.DefinitionsUpToDate) { $results.Score += 5 }
                 if ($defenderStatus.BehaviorMonitorEnabled) { $results.Score += 2 }
-                
+
                 # Check for issues
                 if (-not $results.Enabled) {
                     $results.Issues.Add("Windows Defender is not enabled")
@@ -247,7 +247,7 @@ function Get-WindowsDefenderStatus {
             else {
                 $results.Issues.Add("Unable to retrieve Windows Defender status")
             }
-            
+
             # Perform scan if requested
             if ($IncludeScan) {
                 Write-Host "    🔍 Performing quick security scan..." -ForegroundColor Gray
@@ -268,7 +268,7 @@ function Get-WindowsDefenderStatus {
     catch {
         $results.Issues.Add("Error checking Windows Defender: $_")
     }
-    
+
     return $results
 }
 
@@ -283,7 +283,7 @@ function Get-WindowsDefenderStatus {
 function Get-FirewallStatus {
     [CmdletBinding()]
     param()
-    
+
     $results = @{
         DomainEnabled  = $false
         PrivateEnabled = $false
@@ -293,37 +293,37 @@ function Get-FirewallStatus {
         Details        = @{}
         Issues         = [List[string]]::new()
     }
-    
+
     try {
         if (Get-Command Get-NetFirewallProfile -ErrorAction SilentlyContinue) {
             $profiles = Get-NetFirewallProfile
-            
+
             foreach ($firewallProfile in $profiles) {
                 $profileName = $firewallProfile.Name
                 $enabled = $firewallProfile.Enabled
-                
+
                 $results.Details[$profileName] = @{
                     Enabled               = $enabled
                     DefaultInboundAction  = $profile.DefaultInboundAction
                     DefaultOutboundAction = $profile.DefaultOutboundAction
                 }
-                
+
                 # Update status based on profile
                 switch ($profileName) {
-                    'Domain' { 
+                    'Domain' {
                         $results.DomainEnabled = $enabled
                         if ($enabled) { $results.Score += 5 }
                     }
-                    'Private' { 
+                    'Private' {
                         $results.PrivateEnabled = $enabled
                         if ($enabled) { $results.Score += 8 }
                     }
-                    'Public' { 
+                    'Public' {
                         $results.PublicEnabled = $enabled
                         if ($enabled) { $results.Score += 7 }
                     }
                 }
-                
+
                 if (-not $enabled) {
                     $results.Issues.Add("$profileName firewall profile is disabled")
                 }
@@ -336,18 +336,18 @@ function Get-FirewallStatus {
                 'Private' = 'HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\PrivateProfile'
                 'Public'  = 'HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\PublicProfile'
             }
-            
+
             foreach ($firewallProfile in $firewallKeys.Keys) {
                 try {
                     $enabled = (Get-ItemProperty -Path $firewallKeys[$firewallProfile] -Name EnableFirewall -ErrorAction SilentlyContinue).EnableFirewall -eq 1
                     $results.Details[$firewallProfile] = @{ Enabled = $enabled }
-                    
+
                     switch ($firewallProfile) {
                         'Domain' { $results.DomainEnabled = $enabled }
                         'Private' { $results.PrivateEnabled = $enabled }
                         'Public' { $results.PublicEnabled = $enabled }
                     }
-                    
+
                     if ($enabled) {
                         $results.Score += switch ($profile) { 'Domain' { 5 } 'Private' { 8 } 'Public' { 7 } }
                     }
@@ -364,7 +364,7 @@ function Get-FirewallStatus {
     catch {
         $results.Issues.Add("Error checking firewall status: $_")
     }
-    
+
     return $results
 }
 
@@ -379,7 +379,7 @@ function Get-FirewallStatus {
 function Get-UACStatus {
     [CmdletBinding()]
     param()
-    
+
     $results = @{
         Enabled  = $false
         Level    = 'Unknown'
@@ -388,26 +388,26 @@ function Get-UACStatus {
         Details  = @{}
         Issues   = [List[string]]::new()
     }
-    
+
     try {
         $uacPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
-        
+
         if (Test-Path $uacPath) {
             $enableLUA = (Get-ItemProperty -Path $uacPath -Name EnableLUA -ErrorAction SilentlyContinue).EnableLUA
             $consentPromptBehaviorAdmin = (Get-ItemProperty -Path $uacPath -Name ConsentPromptBehaviorAdmin -ErrorAction SilentlyContinue).ConsentPromptBehaviorAdmin
             $promptOnSecureDesktop = (Get-ItemProperty -Path $uacPath -Name PromptOnSecureDesktop -ErrorAction SilentlyContinue).PromptOnSecureDesktop
-            
+
             $results.Enabled = $enableLUA -eq 1
             $results.Details = @{
                 EnableLUA                  = $enableLUA
                 ConsentPromptBehaviorAdmin = $consentPromptBehaviorAdmin
                 PromptOnSecureDesktop      = $promptOnSecureDesktop
             }
-            
+
             # Determine UAC level
             if ($enableLUA -eq 1) {
                 $results.Score += 10
-                
+
                 switch ($consentPromptBehaviorAdmin) {
                     0 { $results.Level = 'Never notify'; $results.Score -= 5 }
                     1 { $results.Level = 'Prompt for credentials on secure desktop'; $results.Score += 3 }
@@ -415,7 +415,7 @@ function Get-UACStatus {
                     5 { $results.Level = 'Prompt for consent for non-Windows binaries'; $results.Score += 2 }
                     default { $results.Level = "Custom ($consentPromptBehaviorAdmin)" }
                 }
-                
+
                 if ($promptOnSecureDesktop -eq 1) {
                     $results.Score += 2
                 }
@@ -432,7 +432,7 @@ function Get-UACStatus {
     catch {
         $results.Issues.Add("Error checking UAC status: $_")
     }
-    
+
     return $results
 }
 
@@ -447,14 +447,14 @@ function Get-UACStatus {
 function Get-SecurityServicesStatus {
     [CmdletBinding()]
     param()
-    
+
     $results = @{
         Score    = 0
         MaxScore = 20
         Details  = @{}
         Issues   = [List[string]]::new()
     }
-    
+
     # Critical security services
     $securityServices = @{
         'WinDefend' = @{ Name = 'Windows Defender Antivirus Service'; Critical = $true; Points = 5 }
@@ -465,13 +465,13 @@ function Get-SecurityServicesStatus {
         'BITS'      = @{ Name = 'Background Intelligent Transfer Service'; Critical = $false; Points = 2 }
         'CryptSvc'  = @{ Name = 'Cryptographic Services'; Critical = $true; Points = 2 }
     }
-    
+
     foreach ($serviceName in $securityServices.Keys) {
         $serviceInfo = $securityServices[$serviceName]
-        
+
         try {
             $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-            
+
             if ($service) {
                 $serviceDetails = @{
                     DisplayName = $service.DisplayName
@@ -479,9 +479,9 @@ function Get-SecurityServicesStatus {
                     StartType   = $service.StartType
                     Critical    = $serviceInfo.Critical
                 }
-                
+
                 $results.Details[$serviceName] = $serviceDetails
-                
+
                 # Award points based on service status
                 if ($service.Status -eq 'Running' -and $service.StartType -eq 'Automatic') {
                     $results.Score += $serviceInfo.Points
@@ -504,7 +504,7 @@ function Get-SecurityServicesStatus {
             $results.Issues.Add("Error checking service $serviceName`: $_")
         }
     }
-    
+
     return $results
 }
 
@@ -519,7 +519,7 @@ function Get-SecurityServicesStatus {
 function Get-SecurityUpdatesStatus {
     [CmdletBinding()]
     param()
-    
+
     $results = @{
         Score           = 0
         MaxScore        = 20
@@ -528,7 +528,7 @@ function Get-SecurityUpdatesStatus {
         Details         = @{}
         Issues          = [List[string]]::new()
     }
-    
+
     try {
         # Check Windows Update service
         $wuService = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
@@ -538,13 +538,13 @@ function Get-SecurityUpdatesStatus {
         else {
             $results.Issues.Add("Windows Update service is not running")
         }
-        
+
         # Check for pending reboot
         $rebootKeys = @(
             "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
             "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"
         )
-        
+
         foreach ($key in $rebootKeys) {
             if (Test-Path $key) {
                 $results.PendingReboot = $true
@@ -552,20 +552,20 @@ function Get-SecurityUpdatesStatus {
                 break
             }
         }
-        
+
         if (-not $results.PendingReboot) {
             $results.Score += 5
         }
-        
+
         # Try to get last update installation date
         try {
-            $lastUpdate = Get-WmiObject -Class Win32_QuickFixEngineering -ErrorAction SilentlyContinue | 
+            $lastUpdate = Get-WmiObject -Class Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
             Sort-Object InstalledOn -Descending | Select-Object -First 1
-            
+
             if ($lastUpdate -and $lastUpdate.InstalledOn) {
                 $results.LastInstallDate = $lastUpdate.InstalledOn
                 $daysSinceUpdate = ((Get-Date) - $lastUpdate.InstalledOn).Days
-                
+
                 # Award points based on update recency
                 if ($daysSinceUpdate -le 7) { $results.Score += 10 }
                 elseif ($daysSinceUpdate -le 30) { $results.Score += 5 }
@@ -578,12 +578,12 @@ function Get-SecurityUpdatesStatus {
         catch {
             $results.Issues.Add("Unable to determine last update installation date")
         }
-        
+
     }
     catch {
         $results.Issues.Add("Error checking security updates: $_")
     }
-    
+
     return $results
 }
 
@@ -597,7 +597,7 @@ function Get-SecurityUpdatesStatus {
 #>
 function Update-SecurityScore {
     param($Results, $Category, $Score, $MaxScore)
-    
+
     $Results.SecurityScore += $Score
     $Results.MaxScore += $MaxScore
 }
@@ -608,7 +608,7 @@ function Update-SecurityScore {
 #>
 function Get-RiskLevel {
     param([double]$Score)
-    
+
     if ($Score -ge 80) { return 'Low' }
     elseif ($Score -ge 60) { return 'Medium' }
     else { return 'High' }
@@ -620,12 +620,12 @@ function Get-RiskLevel {
 #>
 function Get-SecurityRecommendations {
     param($AuditResults)
-    
+
     $recommendations = [List[PSCustomObject]]::new()
-    
+
     foreach ($category in $AuditResults.Categories.Keys) {
         $categoryData = $AuditResults.Categories[$category]
-        
+
         if ($categoryData.Issues -and $categoryData.Issues.Count -gt 0) {
             foreach ($issue in $categoryData.Issues) {
                 $recommendations.Add([PSCustomObject]@{
@@ -637,7 +637,7 @@ function Get-SecurityRecommendations {
             }
         }
     }
-    
+
     return $recommendations | Sort-Object Priority
 }
 
@@ -647,7 +647,7 @@ function Get-SecurityRecommendations {
 #>
 function Get-IssuePriority {
     param([string]$Issue)
-    
+
     if ($Issue -like "*disabled*" -or $Issue -like "*not enabled*") { return 'High' }
     elseif ($Issue -like "*outdated*" -or $Issue -like "*not running*") { return 'Medium' }
     else { return 'Low' }
@@ -659,7 +659,7 @@ function Get-IssuePriority {
 #>
 function Get-IssueRecommendation {
     param([string]$Issue)
-    
+
     switch -Wildcard ($Issue) {
         "*Defender*disabled*" { "Enable Windows Defender Antivirus" }
         "*firewall*disabled*" { "Enable Windows Firewall for all network profiles" }
@@ -677,9 +677,9 @@ function Get-IssueRecommendation {
 #>
 function New-SecurityReport {
     param($AuditResults)
-    
+
     $reportPath = Join-Path $global:TempFolder "security-audit-$(Get-Date -Format 'yyyy-MM-dd-HHmm').txt"
-    
+
     $report = @"
 WINDOWS SECURITY AUDIT REPORT
 ==============================
@@ -690,12 +690,12 @@ Risk Level: $($AuditResults.Summary.RiskLevel)
 
 CATEGORY DETAILS:
 "@
-    
+
     foreach ($category in $AuditResults.Categories.Keys) {
         $categoryData = $AuditResults.Categories[$category]
         $report += "`n`n$category Security Assessment:"
         $report += "`n  Score: $($categoryData.Score)/$($categoryData.MaxScore)"
-        
+
         if ($categoryData.Issues -and $categoryData.Issues.Count -gt 0) {
             $report += "`n  Issues:"
             foreach ($issue in $categoryData.Issues) {
@@ -703,14 +703,14 @@ CATEGORY DETAILS:
             }
         }
     }
-    
+
     if ($AuditResults.Recommendations.Count -gt 0) {
         $report += "`n`nRECOMMENDATIONS:"
         foreach ($rec in $AuditResults.Recommendations) {
             $report += "`n[$($rec.Priority)] $($rec.Recommendation)"
         }
     }
-    
+
     $report | Out-File -FilePath $reportPath -Encoding UTF8
     return $reportPath
 }

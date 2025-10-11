@@ -32,8 +32,7 @@ script_mentenanta/
 │   └── core/
 │       ├── ConfigManager.psm1
 │       ├── MenuSystem.psm1
-│       ├── DependencyManager.psm1
-│       └── TaskScheduler.psm1
+│       └── DependencyManager.psm1
 ├── config/
 │   ├── bloatware-list.json
 │   ├── essential-apps.json
@@ -214,7 +213,6 @@ graph TB
     ConfigMgr[ConfigManager.psm1<br/>Configuration Management]
     MenuSys[MenuSystem.psm1<br/>Interactive Menus]
     DepMgrMod[DependencyManager.psm1<br/>Package Management]
-    TaskSched[TaskScheduler.psm1<br/>Windows Task Scheduling]
   end
     
   LoadCore --> CoreMods
@@ -370,7 +368,7 @@ graph LR
 
 ## Module Guide (full)
 
-- Core modules: ConfigManager (Initialize-ConfigSystem, Get/Save-*Configuration), MenuSystem (Show-*Menu, Start-CountdownSelection), DependencyManager (Install-AllDependencies, Get-DependencyStatus), TaskScheduler (New/Get/Remove/Start-MaintenanceTask)
+- Core modules: ConfigManager (Initialize-ConfigSystem, Get/Save-*Configuration), MenuSystem (Show-*Menu, Start-CountdownSelection), DependencyManager (Install-AllDependencies, Get-DependencyStatus)
 - Type 1 modules (read-only):
   - SystemInventory: Get-SystemInventory, Export-SystemInventory
   - BloatwareDetection: Find-InstalledBloatware, Get-BloatwareStatistics, Test-BloatwareDetection

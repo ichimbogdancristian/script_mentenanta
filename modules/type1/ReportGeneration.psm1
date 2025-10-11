@@ -23,23 +23,23 @@ using namespace System.Text
 <#
 .SYNOPSIS
     Generates a comprehensive maintenance report
-    
+
 .DESCRIPTION
     Creates HTML and text reports from system inventory, task execution results,
     and configuration data with interactive charts and detailed sections.
-    
+
 .PARAMETER SystemInventory
     System inventory data collected during execution
-    
+
 .PARAMETER TaskResults
     Array of task execution results
-    
+
 .PARAMETER Configuration
     System configuration used during execution
-    
+
 .PARAMETER OutputPath
     Base path for generated reports (without extension)
-    
+
 .EXAMPLE
     New-MaintenanceReport -SystemInventory $inventory -TaskResults $results -OutputPath "C:\Reports\maintenance"
 #>
@@ -48,19 +48,19 @@ function New-MaintenanceReport {
     param(
         [Parameter()]
         [hashtable]$SystemInventory,
-        
+
         [Parameter()]
         [Array]$TaskResults = @(),
-        
+
         [Parameter()]
         [PSCustomObject]$Configuration,
-        
+
         [Parameter(Mandatory)]
         [string]$OutputPath
     )
-    
-    Write-Host "📋 Generating comprehensive maintenance report..." -ForegroundColor Cyan
-    
+
+    Write-Information "📋 Generating comprehensive maintenance report..." -InformationAction Continue
+
     $startTime = Get-Date
     $reportData = @{
         GenerationTime = $startTime
@@ -69,32 +69,32 @@ function New-MaintenanceReport {
         Configuration = $Configuration
         Summary = Get-ExecutionSummary -TaskResults $TaskResults
     }
-    
+
     try {
         # Ensure output directory exists
         $outputDir = Split-Path $OutputPath -Parent
         if (-not (Test-Path $outputDir)) {
             New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
         }
-        
+
         # Generate HTML report
         $htmlPath = "$OutputPath.html"
-        Write-Host "  📄 Creating HTML report..." -ForegroundColor Gray
+        Write-Information "  📄 Creating HTML report..." -InformationAction Continue
         New-HtmlReport -ReportData $reportData -OutputPath $htmlPath
-        
+
         # Generate text report
         $textPath = "$OutputPath.txt"
-        Write-Host "  📝 Creating text report..." -ForegroundColor Gray
+        Write-Information "  📝 Creating text report..." -InformationAction Continue
         New-TextReport -ReportData $reportData -OutputPath $textPath
-        
+
         # Generate JSON data export
         $jsonPath = "$OutputPath.json"
-        Write-Host "  📊 Creating JSON data export..." -ForegroundColor Gray
+        Write-Information "  📊 Creating JSON data export..." -InformationAction Continue
         $reportData | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonPath -Encoding UTF8
-        
+
         $duration = ((Get-Date) - $startTime).TotalSeconds
-        Write-Host "  ✅ Reports generated successfully in $([math]::Round($duration, 2)) seconds" -ForegroundColor Green
-        
+        Write-Information "  ✅ Reports generated successfully in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
+
         return @{
             HtmlReport = $htmlPath
             TextReport = $textPath
@@ -122,13 +122,13 @@ function New-HtmlReport {
     param(
         [Parameter(Mandatory)]
         [hashtable]$ReportData,
-        
+
         [Parameter(Mandatory)]
         [string]$OutputPath
     )
-    
+
     $html = [StringBuilder]::new()
-    
+
     # HTML header with CSS and JavaScript
     $html.AppendLine(@"
 <!DOCTYPE html>
@@ -148,22 +148,22 @@ function New-HtmlReport {
             --text-color: #323130;
             --border-color: #e1dfdd;
         }
-        
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             line-height: 1.6;
         }
-        
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
         }
-        
+
         .header {
             background: linear-gradient(135deg, var(--primary-color), #106ebe);
             color: white;
@@ -172,17 +172,17 @@ function New-HtmlReport {
             margin-bottom: 30px;
             text-align: center;
         }
-        
+
         .header h1 { font-size: 2.5em; margin-bottom: 10px; }
         .header p { font-size: 1.2em; opacity: 0.9; }
-        
+
         .summary-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
-        
+
         .summary-card {
             background: var(--card-bg);
             padding: 25px;
@@ -190,23 +190,23 @@ function New-HtmlReport {
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             text-align: center;
         }
-        
+
         .summary-card h3 {
             color: var(--primary-color);
             margin-bottom: 15px;
             font-size: 1.1em;
         }
-        
+
         .summary-value {
             font-size: 2.5em;
             font-weight: bold;
             margin-bottom: 10px;
         }
-        
+
         .success { color: var(--success-color); }
         .warning { color: var(--warning-color); }
         .error { color: var(--error-color); }
-        
+
         .section {
             background: var(--card-bg);
             border-radius: 8px;
@@ -214,7 +214,7 @@ function New-HtmlReport {
             overflow: hidden;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        
+
         .section-header {
             background: var(--primary-color);
             color: white;
@@ -224,32 +224,32 @@ function New-HtmlReport {
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .section-header:hover {
             background: #106ebe;
         }
-        
+
         .section-content {
             padding: 25px;
             display: none;
         }
-        
+
         .section.expanded .section-content {
             display: block;
         }
-        
+
         .toggle-icon {
             transition: transform 0.3s ease;
         }
-        
+
         .section.expanded .toggle-icon {
             transform: rotate(180deg);
         }
-        
+
         .task-list {
             list-style: none;
         }
-        
+
         .task-item {
             display: flex;
             align-items: center;
@@ -257,11 +257,11 @@ function New-HtmlReport {
             border-bottom: 1px solid var(--border-color);
             transition: background-color 0.3s ease;
         }
-        
+
         .task-item:hover {
             background-color: #f8f9fa;
         }
-        
+
         .task-status {
             width: 24px;
             height: 24px;
@@ -273,53 +273,53 @@ function New-HtmlReport {
             color: white;
             font-weight: bold;
         }
-        
+
         .task-details {
             flex: 1;
         }
-        
+
         .task-name {
             font-weight: 600;
             margin-bottom: 5px;
         }
-        
+
         .task-description {
             color: #666;
             font-size: 0.9em;
         }
-        
+
         .task-duration {
             color: #888;
             font-size: 0.8em;
             margin-left: auto;
         }
-        
+
         .info-table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 15px;
         }
-        
+
         .info-table th,
         .info-table td {
             text-align: left;
             padding: 12px;
             border-bottom: 1px solid var(--border-color);
         }
-        
+
         .info-table th {
             background-color: #f8f9fa;
             font-weight: 600;
             color: var(--primary-color);
         }
-        
+
         .footer {
             text-align: center;
             padding: 20px;
             color: #666;
             font-size: 0.9em;
         }
-        
+
         @media (max-width: 768px) {
             .container { padding: 10px; }
             .header { padding: 20px; }
@@ -332,7 +332,7 @@ function New-HtmlReport {
             const section = element.parentElement;
             section.classList.toggle('expanded');
         }
-        
+
         document.addEventListener('DOMContentLoaded', function() {
             // Expand first section by default
             const firstSection = document.querySelector('.section');
@@ -345,7 +345,7 @@ function New-HtmlReport {
 <body>
     <div class="container">
 "@) | Out-Null
-    
+
     # Report header
     $html.AppendLine(@"
         <div class="header">
@@ -354,7 +354,7 @@ function New-HtmlReport {
             <p>Computer: $env:COMPUTERNAME | User: $env:USERNAME</p>
         </div>
 "@) | Out-Null
-    
+
     # Summary cards
     $summary = $ReportData.Summary
     $html.AppendLine(@"
@@ -381,7 +381,7 @@ function New-HtmlReport {
             </div>
         </div>
 "@) | Out-Null
-    
+
     # Task execution results
     if ($ReportData.TaskResults.Count -gt 0) {
         $html.AppendLine(@"
@@ -393,13 +393,13 @@ function New-HtmlReport {
             <div class="section-content">
                 <ul class="task-list">
 "@) | Out-Null
-        
+
         foreach ($task in $ReportData.TaskResults) {
             $statusIcon = if ($task.Success) { '✓' } else { '✗' }
 
             $statusColor = if ($task.Success) { 'var(--success-color)' } else { 'var(--error-color)' }
             $duration = [math]::Round($task.Duration, 2)
-            
+
             $html.AppendLine(@"
                     <li class="task-item">
                         <div class="task-status" style="background-color: $statusColor">$statusIcon</div>
@@ -412,20 +412,20 @@ function New-HtmlReport {
                     </li>
 "@) | Out-Null
         }
-        
+
         $html.AppendLine(@"
                 </ul>
             </div>
         </div>
 "@) | Out-Null
     }
-    
+
     # System information
     if ($ReportData.SystemInventory) {
         $systemInfo = $ReportData.SystemInventory.SystemInfo
         $hardware = $ReportData.SystemInventory.Hardware
         $os = $ReportData.SystemInventory.OperatingSystem
-        
+
         $html.AppendLine(@"
         <div class="section">
             <div class="section-header" onclick="toggleSection(this)">
@@ -447,7 +447,7 @@ function New-HtmlReport {
         </div>
 "@) | Out-Null
     }
-    
+
     # Configuration section
     if ($ReportData.Configuration) {
         $html.AppendLine(@"
@@ -467,7 +467,7 @@ function New-HtmlReport {
         </div>
 "@) | Out-Null
     }
-    
+
     # Footer
     $html.AppendLine(@"
         <div class="footer">
@@ -478,7 +478,7 @@ function New-HtmlReport {
 </body>
 </html>
 "@) | Out-Null
-    
+
     # Write HTML to file
     $html.ToString() | Out-File -FilePath $OutputPath -Encoding UTF8
 }
@@ -496,13 +496,13 @@ function New-TextReport {
     param(
         [Parameter(Mandatory)]
         [hashtable]$ReportData,
-        
+
         [Parameter(Mandatory)]
         [string]$OutputPath
     )
-    
+
     $text = [StringBuilder]::new()
-    
+
     # Header
     $text.AppendLine("=" * 80)
     $text.AppendLine("                    WINDOWS MAINTENANCE REPORT")
@@ -512,7 +512,7 @@ function New-TextReport {
     $text.AppendLine("Computer: $env:COMPUTERNAME")
     $text.AppendLine("User: $env:USERNAME")
     $text.AppendLine("")
-    
+
     # Executive Summary
     $summary = $ReportData.Summary
     $text.AppendLine("EXECUTIVE SUMMARY")
@@ -522,34 +522,34 @@ function New-TextReport {
     $text.AppendLine("Failed: $($summary.FailedTasks)")
     $text.AppendLine("Total Duration: $([math]::Round($summary.TotalDuration, 2)) seconds")
     $text.AppendLine("")
-    
+
     # Task Results
     if ($ReportData.TaskResults.Count -gt 0) {
         $text.AppendLine("TASK EXECUTION RESULTS")
         $text.AppendLine("-" * 40)
-        
+
         foreach ($task in $ReportData.TaskResults) {
             $status = if ($task.Success) { "SUCCESS" } else { "FAILED" }
             $duration = [math]::Round($task.Duration, 2)
-            
+
             $text.AppendLine("[$status] $($task.TaskName) (${duration}s)")
             $text.AppendLine("  Description: $($task.Description)")
             $text.AppendLine("  Type: $($task.Type)")
             $text.AppendLine("  Category: $($task.Category)")
-            
+
             if (-not $task.Success -and $task.Error) {
                 $text.AppendLine("  Error: $($task.Error)")
             }
-            
+
             $text.AppendLine("")
         }
     }
-    
+
     # System Information
     if ($ReportData.SystemInventory) {
         $text.AppendLine("SYSTEM INFORMATION")
         $text.AppendLine("-" * 40)
-        
+
         $systemInfo = $ReportData.SystemInventory.SystemInfo
         if ($systemInfo) {
             $text.AppendLine("Computer Name: $($systemInfo.ComputerName)")
@@ -557,28 +557,28 @@ function New-TextReport {
             $text.AppendLine("Model: $($systemInfo.Model)")
             $text.AppendLine("Total Memory: $([math]::Round($systemInfo.TotalPhysicalMemory / 1GB, 2)) GB")
         }
-        
+
         $os = $ReportData.SystemInventory.OperatingSystem
         if ($os) {
             $text.AppendLine("Operating System: $($os.Caption)")
             $text.AppendLine("OS Version: $($os.Version)")
             $text.AppendLine("Architecture: $($os.Architecture)")
         }
-        
+
         $hardware = $ReportData.SystemInventory.Hardware
         if ($hardware -and $hardware.Processor) {
             $text.AppendLine("Processor: $($hardware.Processor.Name)")
             $text.AppendLine("Cores: $($hardware.Processor.NumberOfCores)")
         }
-        
+
         $text.AppendLine("")
     }
-    
+
     # Footer
     $text.AppendLine("=" * 80)
     $text.AppendLine("Report generated by Windows Maintenance Automation v2.0")
     $text.AppendLine("=" * 80)
-    
+
     # Write text to file
     $text.ToString() | Out-File -FilePath $OutputPath -Encoding UTF8
 }
@@ -593,18 +593,18 @@ function New-TextReport {
 #>
 function Get-ExecutionSummary {
     param([Array]$TaskResults)
-    
+
     $successful = $TaskResults | Where-Object { $_.Success }
     $failed = $TaskResults | Where-Object { -not $_.Success }
     $totalDuration = ($TaskResults | Measure-Object Duration -Sum).Sum
-    
+
     return @{
         TotalTasks = $TaskResults.Count
         SuccessfulTasks = $successful.Count
         FailedTasks = $failed.Count
         TotalDuration = $totalDuration
-        SuccessRate = if ($TaskResults.Count -gt 0) { 
-            [math]::Round(($successful.Count / $TaskResults.Count) * 100, 1) 
+        SuccessRate = if ($TaskResults.Count -gt 0) {
+            [math]::Round(($successful.Count / $TaskResults.Count) * 100, 1)
         } else { 0 }
     }
 }
