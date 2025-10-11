@@ -40,7 +40,6 @@ script_mentenanta/
 │       ├── ConfigManager.psm1
 │       ├── MenuSystem.psm1
 │       ├── DependencyManager.psm1
-│       ├── TaskScheduler.psm1
 │       └── LoggingManager.psm1 (🆕 Centralized logging system)
 ├── config/
 │   ├── bloatware-list.json

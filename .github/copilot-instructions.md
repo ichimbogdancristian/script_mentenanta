@@ -1205,7 +1205,7 @@ $essentialApps = Get-EssentialApps  # From config/essential-apps.json
 - `ConfigManager.psm1` — Configuration loading
 - `MenuSystem.psm1` — Interactive menus
 - `DependencyManager.psm1` — Package management
-- `TaskScheduler.psm1` — Scheduled tasks
+- `LoggingManager.psm1` — Centralized logging system
 
 2. * * Type 1 modules** (read-only operations):
 - Can depend on Core modules only
@@ -1276,7 +1276,7 @@ catch {
 │   │   ├── ConfigManager.psm1 ...... Configuration system
 │   │   ├── MenuSystem.psm1 ......... Interactive UI
 │   │   ├── DependencyManager.psm1 .. Package management
-│   │   └── TaskScheduler.psm1 ...... Task automation
+│   │   └── LoggingManager.psm1 ..... Centralized logging system
 │   ├── 📁 type1/ ................... Read-only operations
 │   └── 📁 type2/ ................... System modifications
 └── 📁 archive/ ..................... Original monolithic files
