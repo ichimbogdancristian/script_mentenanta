@@ -1,18 +1,4 @@
-[
-  {
-    "name": "Git for Windows",
-    "winget": "Git.Git",
-    "choco": "git",
-    "category": "Development",
-    "description": "Version control system"
-  },
-  {
-    "name": "Visual Studio Code",
-    "winget": "Microsoft.VisualStudioCode",
-    "choco": "vscode",
-    "category": "Development",
-    "description": "Code editor by Microsoft"
-  },
+[  
   {
     "name": "PowerShell 7",
     "winget": "Microsoft.Powershell",
@@ -33,55 +19,6 @@
     "choco": "javaruntime",
     "category": "Runtime",
     "description": "Java runtime environment"
-  },
-  {
-    "name": "Python 3",
-    "winget": "Python.Python.3",
-    "choco": "python",
-    "category": "Development",
-    "description": "Python programming language"
-  },
-  {
-    "name": "Node.js",
-    "winget": "OpenJS.NodeJS",
-    "choco": "nodejs",
-    "category": "Development",
-    "description": "JavaScript runtime environment"
-  },
-  {
-    "name": "VLC Media Player",
-    "winget": "VideoLAN.VLC",
-    "choco": "vlc",
-    "category": "Media",
-    "description": "Free multimedia player"
-  },
-  {
-    "name": "Spotify",
-    "winget": "Spotify.Spotify",
-    "choco": "spotify",
-    "category": "Music",
-    "description": "Music streaming service"
-  },
-  {
-    "name": "GIMP",
-    "winget": "GIMP.GIMP",
-    "choco": "gimp",
-    "category": "Graphics",
-    "description": "Free image editor"
-  },
-  {
-    "name": "HandBrake",
-    "winget": "HandBrake.HandBrake",
-    "choco": "handbrake",
-    "category": "Video",
-    "description": "Video transcoder"
-  },
-  {
-    "name": "Audacity",
-    "winget": "Audacity.Audacity",
-    "choco": "audacity",
-    "category": "Audio",
-    "description": "Free audio editor"
   },
   {
     "name": "LibreOffice",
@@ -119,13 +56,6 @@
     "description": "Advanced text and code editor"
   },
   {
-    "name": "Microsoft Teams",
-    "winget": "Microsoft.Teams",
-    "choco": "microsoft-teams",
-    "category": "Communication",
-    "description": "Team collaboration and communication"
-  },
-  {
     "name": "Google Chrome",
     "winget": "Google.Chrome",
     "choco": "googlechrome",
@@ -145,12 +75,5 @@
     "choco": "microsoft-edge",
     "category": "Browser",
     "description": "Modern web browser by Microsoft"
-  },
-  {
-    "name": "Opera",
-    "winget": "Opera.Opera",
-    "choco": "opera",
-    "category": "Browser",
-    "description": "Feature-rich web browser with VPN"
   }
 ]
