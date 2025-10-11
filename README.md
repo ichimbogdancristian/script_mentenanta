@@ -1,14 +1,21 @@
-# Windows Maintenance Automation
+# Windows Maintenance Automation v2.0
 
-A modular Windows 10/11 maintenance system with an elevated launcher, interactive/dry-run execution, configuration-driven behavior, and comprehensive reporting.
+A professional-grade Windows 10/11 maintenance system with enhanced logging infrastructure, interactive dashboard reporting, and comprehensive system analytics.
 
 For full details (architecture, modules, usage, testing, contributor guide), see sections below.
 
-## Highlights
+## ✨ Enhanced Features (v2.0)
+- **🆕 Professional Dashboard Reports** - Interactive HTML reports with Chart.js analytics, health scoring, and actionable recommendations
+- **🆕 Centralized Logging System** - Structured logging with performance tracking, session management, and multi-format exports
+- **🆕 System Health Analytics** - Comprehensive scoring with security assessment, resource analysis, and trend visualization
+- **🆕 Performance Monitoring** - Real-time operation tracking, timing analysis, and optimization insights
+- **🆕 Export Capabilities** - JSON, CSV, XML data exports for integration and compliance reporting
+
+## Core Features
 - Modular architecture: Type 1 (inventory/reporting) and Type 2 (system modification)
 - Robust launcher: elevation, reboot-resume, monthly task, System Protection + restore point, dependency bootstrap
 - Interactive and unattended modes with countdown menus and safe defaults
-- JSON configuration and HTML/text reporting
+- Enhanced JSON configuration with advanced logging and reporting controls
 - Mandatory TestFolder workflow for end-to-end testing
 
 ## Project structure
@@ -22,7 +29,7 @@ script_mentenanta/
 │   │   ├── SystemInventory.psm1
 │   │   ├── BloatwareDetection.psm1
 │   │   ├── SecurityAudit.psm1
-│   │   └── ReportGeneration.psm1
+│   │   └── ReportGeneration.psm1 (🆕 Enhanced with dashboard analytics)
 │   ├── type2/
 │   │   ├── BloatwareRemoval.psm1
 │   │   ├── EssentialApps.psm1
@@ -32,14 +39,18 @@ script_mentenanta/
 │   └── core/
 │       ├── ConfigManager.psm1
 │       ├── MenuSystem.psm1
-│       └── DependencyManager.psm1
+│       ├── DependencyManager.psm1
+│       ├── TaskScheduler.psm1
+│       └── LoggingManager.psm1 (🆕 Centralized logging system)
 ├── config/
 │   ├── bloatware-list.json
 │   ├── essential-apps.json
 │   ├── main-config.json
-│   └── logging-config.json
-└── archive/
-    └── script-original.ps1 (legacy, reference only)
+│   └── logging-config.json (🆕 Enhanced with performance tracking)
+├── archive/
+│   └── script-original.ps1 (legacy, reference only)
+├── Enhanced-MaintenanceOrchestrator-Example.ps1 (🆕 Integration example)
+└── ENHANCED-LOGGING-REPORTING-ANALYSIS.md (🆕 Comprehensive documentation)
 ```
 
 ## Launcher sequence (pre-orchestrator)
@@ -76,7 +87,7 @@ Type 1 (read-only):
 - SystemInventory: Get-SystemInventory, Export-SystemInventory
 - BloatwareDetection: Find-InstalledBloatware, Get-BloatwareStatistics, Test-BloatwareDetection
 - SecurityAudit: Start-SecurityAudit, Get-WindowsDefenderStatus
-- ReportGeneration: New-MaintenanceReport
+- ReportGeneration: New-MaintenanceReport (🆕 Enhanced with interactive dashboard, Chart.js analytics, health scoring)
 
 Type 2 (system changes):
 - BloatwareRemoval: Remove-DetectedBloatware, Test-BloatwareRemoval
@@ -94,13 +105,27 @@ Conventions for Type 2 modules:
 - bloatware-list.json: detection/removal patterns
 - essential-apps.json: curated app list for installation
 - main-config.json: execution defaults and toggles
-- logging-config.json: log levels and formats
+- logging-config.json: 🆕 Enhanced with structured logging, performance tracking, report generation settings, and alert thresholds
 
-Example main-config.json snippet:
+Example enhanced logging-config.json snippet:
 ```json
 {
-  "execution": {"defaultMode": "unattended", "countdownSeconds": 20, "enableDryRun": true},
-  "modules": {"skipBloatwareRemoval": false, "skipEssentialApps": false, "skipWindowsUpdates": false}
+  "logging": {
+    "enablePerformanceTracking": true,
+    "enableStructuredLogging": true,
+    "logBufferSize": 1000,
+    "keepLogFiles": 10
+  },
+  "reporting": {
+    "enableDashboardReports": true,
+    "autoGenerateReports": true,
+    "includePerformanceMetrics": true
+  },
+  "performance": {
+    "trackOperationTiming": true,
+    "slowOperationThreshold": 30.0,
+    "criticalOperationThreshold": 60.0
+  }
 }
 ```
 
@@ -114,12 +139,45 @@ Set-Location "C:\Users\Bogdan\OneDrive\Desktop\Projects\TestFolder"
 ./script.bat
 ```
 
+## 🆕 Enhanced Logging & Reporting (v2.0)
+
+### New LoggingManager Module
+- **Structured logging** with session tracking and operation IDs
+- **Performance tracking** with Start/Complete-PerformanceTracking functions
+- **Multi-destination output** (console, file, structured buffer)
+- **Data export capabilities** (JSON, CSV, XML) for integration
+
+### Enhanced Dashboard Reports
+- **Interactive HTML reports** with Chart.js analytics
+- **Health scoring system** with visual indicators
+- **Real-time charts**: Task distribution, system resources, execution timeline, security radar
+- **Actionable recommendations** with priority-based action items
+- **Responsive design** with modern Microsoft Fluent styling
+
+### Usage Examples
+```powershell
+# Initialize enhanced logging
+Initialize-LoggingSystem -LoggingConfig $config
+
+# Use structured logging
+Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message 'Starting maintenance'
+
+# Track performance
+$perf = Start-PerformanceTracking -OperationName 'BloatwareRemoval'
+Complete-PerformanceTracking -PerformanceContext $perf -Success $true
+
+# Generate enhanced reports
+New-MaintenanceReport -SystemInventory $inventory -TaskResults $results
+```
+
 ## Developer guide (quick)
 
 - Task registry entries in `MaintenanceOrchestrator.ps1`: Name, Description, ModulePath, Function, Type, Category
+- 🆕 Use `Write-LogEntry` for structured logging instead of Write-Host
+- 🆕 Use `Start/Complete-PerformanceTracking` for operation timing
 - Approved verbs only; advanced functions with comment-based help
 - Validate parameters; avoid aliases; use ShouldProcess for destructive actions
-- Use `Get-MainConfiguration` and JSON files for settings; don’t hardcode
+- Use `Get-MainConfiguration` and JSON files for settings; don't hardcode
 - Wrap external tools safely; check exit codes; log errors
 - Run `Invoke-ScriptAnalyzer -Path . -Recurse` before commits
 

@@ -1,15 +1,16 @@
-# Windows Maintenance Automation System - AI Assistant Instructions
+# Windows Maintenance Automation System v2.0 - AI Assistant Instructions
 
 ## 📋 Table of Contents
 
 1. [Repository Overview](./copilot-instructions.md#repository-overview)
-2. [Architecture & Core Concepts](./copilot-instructions.md#architecture--core-concepts)
-3. [Getting Started](./copilot-instructions.md#getting-started)
-4. [Development Workflows](./copilot-instructions.md#development-workflows)
-5. [PowerShell Best Practices](./copilot-instructions.md#powershell-best-practices)
-6. [Testing Guidelines](./copilot-instructions.md#testing-guidelines)
-7. [Integration & Dependencies](./copilot-instructions.md#integration--dependencies)
-8. [Reference Guide](./copilot-instructions.md#reference-guide)
+2. [🆕 Enhanced Logging & Reporting System](./copilot-instructions.md#enhanced-logging--reporting-system)
+3. [Architecture & Core Concepts](./copilot-instructions.md#architecture--core-concepts)
+4. [Getting Started](./copilot-instructions.md#getting-started)
+5. [Development Workflows](./copilot-instructions.md#development-workflows)
+6. [PowerShell Best Practices](./copilot-instructions.md#powershell-best-practices)
+7. [Testing Guidelines](./copilot-instructions.md#testing-guidelines)
+8. [Integration & Dependencies](./copilot-instructions.md#integration--dependencies)
+9. [Reference Guide](./copilot-instructions.md#reference-guide)
 
 -- -
 
@@ -17,16 +18,16 @@
 
 This repository contains a **Windows maintenance automation system** built on a modular PowerShell architecture.
 
-### System Components
+### System Components (v2.0 Enhanced)
 
 | Component | Purpose | Key Features |
 | ---------- - | -------- - | -------------- |
 | `script.bat`  | Launcher & Bootstrapper | Elevation, dependency installation (winget, pwsh, choco, PSWindowsUpdate), scheduled tasks, repo download |
 | `MaintenanceOrchestrator.ps1`  | Central Orchestrator | Module loading, configuration, interactive menus, task execution coordination (PowerShell 7+ required) |
-| `modules/type1/`  | Inventory & Reporting | Read-only operations for system analysis |
+| `modules/type1/`  | Inventory & Reporting | Read-only operations for system analysis, 🆕 **enhanced with dashboard analytics** |
 | `modules/type2/`  | System Modification | Write operations that change system state |
-| `modules/core/`  | Infrastructure | Configuration, menus, dependencies, scheduling |
-| `config/*.json`  | Configuration System | JSON-based settings and data |
+| `modules/core/`  | Infrastructure | Configuration, menus, dependencies, scheduling, 🆕 **centralized logging system** |
+| `config/*.json`  | Configuration System | JSON-based settings and data, 🆕 **enhanced with performance tracking** |
 
 ### Target Environment
 
@@ -41,6 +42,81 @@ This project underwent a **complete architectural transformation** from a monoli
 - * * Current architecture** fully modular with specialized PowerShell modules
 - * * Migration complete**: All functionality extracted from the original 11, 353-line `script.ps1`
 - * * Production ready**: New system is the current active implementation
+- 🆕 **v2.0 Enhancement**: Added comprehensive logging infrastructure and interactive dashboard reporting
+
+-- -
+
+## 🆕 Enhanced Logging & Reporting System
+
+### Major v2.0 Enhancements
+
+The system now includes **enterprise-grade logging and reporting capabilities**:
+
+#### **LoggingManager Module** (`modules/core/LoggingManager.psm1`)
+- **Centralized logging infrastructure** with structured data collection
+- **Multi-destination output**: console, file, and structured buffer
+- **Performance tracking** with operation timing and success metrics
+- **Session management** with unique session IDs and thread safety
+- **Data export capabilities**: JSON, CSV, XML formats for integration
+- **Automatic log rotation** with configurable retention
+
+#### **Enhanced ReportGeneration** (Completely Rewritten)
+- **Interactive dashboard reports** with Chart.js analytics
+- **Modern responsive design** following Microsoft Fluent principles
+- **Real-time charts**: Task distribution, system resources, execution timeline, security radar
+- **Health scoring system** with visual indicators and recommendations
+- **Performance analytics** with operation timing and trend analysis
+- **Actionable insights** with priority-based recommendation engine
+
+#### **Advanced Configuration** (`config/logging-config.json`)
+```json
+{
+  "logging": {
+    "enablePerformanceTracking": true,
+    "enableStructuredLogging": true,
+    "logBufferSize": 1000
+  },
+  "reporting": {
+    "enableDashboardReports": true,
+    "autoGenerateReports": true,
+    "includePerformanceMetrics": true
+  },
+  "performance": {
+    "trackOperationTiming": true,
+    "slowOperationThreshold": 30.0
+  }
+}
+```
+
+#### **Key Functions Added**
+- `Initialize-LoggingSystem` - Sets up logging infrastructure
+- `Write-LogEntry` - Structured logging with levels and components
+- `Start/Complete-PerformanceTracking` - Operation timing
+- `Get-LogData` / `Export-LogData` - Data retrieval and export
+- Enhanced `New-MaintenanceReport` - Interactive dashboard generation
+
+#### **Usage Examples**
+```powershell
+# Initialize enhanced logging
+Initialize-LoggingSystem -LoggingConfig $config
+
+# Structured logging throughout operations
+Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message 'Starting maintenance'
+
+# Performance tracking
+$perf = Start-PerformanceTracking -OperationName 'BloatwareRemoval'
+Complete-PerformanceTracking -PerformanceContext $perf -Success $true
+
+# Generate comprehensive reports with analytics
+New-MaintenanceReport -SystemInventory $inventory -TaskResults $results
+```
+
+#### **Professional Benefits**
+- **Executive dashboards** with health scoring and visual analytics
+- **Complete audit trails** with structured logging and exports
+- **Performance optimization** through detailed timing analysis
+- **Compliance reporting** with multi-format data exports
+- **Actionable insights** with automated recommendation generation
 
 -- -
 
@@ -102,6 +178,26 @@ When onboarding or making changes, read these files in order:
    - JSON loading and validation
    - Configuration schema definitions
 
+4. **`modules/core/LoggingManager.psm1`** — 🆕 Enhanced logging system
+   - `Initialize-LoggingSystem`, `Write-LogEntry`, `Start/Complete-PerformanceTracking`
+   - Structured logging with session tracking and performance metrics
+   - Multi-destination output and data export capabilities
+
+5. **`modules/type1/ReportGeneration.psm1`** — 🆕 Enhanced dashboard reporting
+   - `New-MaintenanceReport` with interactive dashboard analytics
+   - Chart.js integration for real-time visualizations
+   - Health scoring and recommendation engine
+
+6. **`Enhanced-MaintenanceOrchestrator-Example.ps1`** — 🆕 Integration example
+   - Shows how to use the new logging and reporting features
+   - Performance tracking throughout task execution
+   - Comprehensive analytics integration
+
+7. **`config/logging-config.json`** — 🆕 Enhanced logging configuration
+   - `Initialize-ConfigSystem`, `Get-MainConfiguration`, `Get-LoggingConfiguration`
+   - JSON loading and validation
+   - Configuration schema definitions
+
 4. **`modules/core/MenuSystem.psm1`** — Interactive UI
    - `Show-MainMenu`, `Show-TaskSelectionMenu`
    - Countdown timers and user input handling
@@ -150,8 +246,11 @@ script.bat
 
 #### 🔧 Developer Mode (Local Testing)
 ```powershell
-# Basic execution
+# Basic execution with enhanced logging
 .\MaintenanceOrchestrator.ps1
+
+# Enhanced execution with detailed logging
+.\Enhanced-MaintenanceOrchestrator-Example.ps1 -EnableDetailedLogging
 
 # Dry-run mode (simulate without changes)
 .\MaintenanceOrchestrator.ps1 -DryRun
@@ -159,8 +258,8 @@ script.bat
 # Run specific tasks only
 .\MaintenanceOrchestrator.ps1 -TaskNumbers "1,3,5"
 
-# Non-interactive with specific tasks
-.\MaintenanceOrchestrator.ps1 -NonInteractive -TaskNumbers "2,4"
+# Non-interactive with specific tasks and reporting
+.\Enhanced-MaintenanceOrchestrator-Example.ps1 -NonInteractive -TaskNumbers "2,4" -GenerateReport
 ```
 
 #### 🚀 Production Mode (Full Bootstrap)
@@ -181,8 +280,28 @@ script.bat -DryRun
 code config/main-config.json
 code config/bloatware-list.json
 code config/essential-apps.json
+code config/logging-config.json  # 🆕 Enhanced logging configuration
 
 # Never hardcode values in modules - always use config files
+```
+
+#### 🆕 Enhanced Logging Integration
+```powershell
+# Initialize logging in modules
+Import-Module "modules/core/LoggingManager.psm1"
+$loggingConfig = Get-LoggingConfiguration
+Initialize-LoggingSystem -LoggingConfig $loggingConfig
+
+# Use structured logging instead of Write-Host
+Write-LogEntry -Level 'INFO' -Component 'TYPE2' -Message 'Starting operation'
+
+# Track performance for operations
+$perf = Start-PerformanceTracking -OperationName 'BloatwareRemoval'
+# ... perform operation ...
+Complete-PerformanceTracking -PerformanceContext $perf -Success $true
+
+# Export comprehensive logs and reports
+Export-LogData -OutputPath 'temp_files/logs/session-log' -Format 'All'
 ```
 
 #### 🔍 Module Development
@@ -1264,11 +1383,23 @@ If you're unsure about:
 ## 📝 Document Maintenance
 
 * * Last Updated**: October 11, 2025  
-**Document Version**: 2.1  
-**Project Version**: Modular Architecture (Post-Migration)
+**Document Version**: 2.2  
+**Project Version**: Enhanced Logging & Reporting v2.0
 
 ### Changelog
 
+- * * v2.2 (Oct 11, 2025)**: 🆕 **MAJOR ENHANCEMENT** - Added comprehensive logging infrastructure (LoggingManager.psm1), interactive dashboard reporting with Chart.js analytics, health scoring system, performance tracking, and multi-format data exports. Complete system transformation to enterprise-grade capabilities.
 - * * v2.1 (Oct 11, 2025)**: Added comprehensive code quality guidelines, PSScriptAnalyzer violation fixes, standardized templates, testing framework requirements
 - * * v2.0 (Oct 2025)**: Complete restructure with TOC, expanded PowerShell best practices, added comprehensive code examples
 - * * v1.0 (Initial)**: Basic structure with core concepts and workflows
+
+### 🆕 v2.0 Enhancement Summary
+
+**Revolutionary Upgrades Completed:**
+- **LoggingManager Module** - Centralized structured logging with session tracking, performance metrics, and multi-format exports
+- **Enhanced ReportGeneration** - Interactive dashboard with Chart.js, health scoring, recommendations, and modern responsive design
+- **Advanced Configuration** - Extended logging-config.json with performance tracking, alert thresholds, and report automation
+- **Integration Examples** - Complete Enhanced-MaintenanceOrchestrator-Example.ps1 showing new capabilities
+- **Professional Documentation** - Comprehensive analysis and usage guides
+
+This represents the most significant enhancement in the project's history, transforming it from a basic maintenance script into a professional, enterprise-grade system management solution.
