@@ -1,44 +1,638 @@
-### Repo overview
+# Windows Maintenance Automation System - AI Assistant Instructions
 
-This repository contains a Windows maintenance automation system built on a **modular architecture** with the following components:
-- `script.bat` — Enhanced launcher/installer wrapper that ensures elevation, installs dependencies (winget, pwsh, choco, PSWindowsUpdate), manages scheduled tasks, downloads repos, and launches the orchestrator.
-- `MaintenanceOrchestrator.ps1` — Central coordination script (PowerShell 7+ required) that loads modules, handles configuration, presents interactive menus, and orchestrates task execution.
-- **Modular System**: Specialized PowerShell modules organized by function:
-  - `modules/type1/` — Inventory & Reporting modules (read-only operations)
-  - `modules/type2/` — System Modification modules (changes system state)
-  - `modules/core/` — Core infrastructure (config, menus, dependencies, scheduling)
-- **Configuration System**: JSON-based configuration files for all settings and data
-- **Interactive Execution**: Menu-driven interface with dry-run capabilities and task selection
+## 📋 Table of Contents
 
-Targets: Windows 10/11. Many operations require Administrator privileges and network access. The launcher is location-agnostic and uses self-discovery to work from any folder.
+1. [Repository Overview](#-repository-overview)
+2. [Architecture & Core Concepts](#-architecture--core-concepts)
+3. [Getting Started](#-getting-started)
+4. [Development Workflows](#-development-workflows)
+5. [PowerShell Best Practices](#-powershell-best-practices)
+6. [Testing Guidelines](#-testing-guidelines)
+7. [Integration & Dependencies](#-integration--dependencies)
+8. [Reference Guide](#-reference-guide)
 
-### Core concepts an AI should know (why the structure exists)
+---
 
-- **Modular Architecture**: The system is built from specialized PowerShell modules, each with a single responsibility. Type 1 modules handle inventory/reporting (read-only), Type 2 modules perform system modifications, and Core modules provide infrastructure.
-- **Launcher → Orchestrator Design**: `script.bat` prepares environment (elevation, dependency bootstrap, scheduled tasks, downloads) and delegates to `MaintenanceOrchestrator.ps1`. Avoid editing elevation logic in PowerShell — it's centralized in the batch launcher.
-- **Configuration-Driven**: All settings, app lists, and behaviors are controlled through JSON configuration files in the `config/` directory. Never hardcode data that should be configurable.
-- **Interactive + Non-Interactive Modes**: The system supports both menu-driven interactive use and unattended automation. All interactive prompts must have timeout fallbacks and non-interactive bypass options.
-- **Task Registry Pattern**: Tasks are defined as module function calls in `MaintenanceOrchestrator.ps1` rather than a global array. Each task specifies its module path, function name, type, and category.
-- **Dry-Run Architecture**: All system-modifying operations must support dry-run mode through `-DryRun` parameters or `-WhatIf` cmdlet binding.
+## 🏗️ Repository Overview
 
-### Files and key places to read first
+This repository contains a **Windows maintenance automation system** built on a modular PowerShell architecture.
 
-- `script.bat` — Read top-to-bottom to understand environment setup: admin checks, PowerShell detection, dependency install order (winget → pwsh → NuGet → PSGallery → PSWindowsUpdate → chocolatey), scheduled task creation, repository download/extract, and how it invokes `MaintenanceOrchestrator.ps1`.
-- `MaintenanceOrchestrator.ps1` — Start at the header and initialization sections. The task registry array defines all available tasks with their module paths and function names. Key functions: `Invoke-Task`, `Show-TaskMenu`, parameter parsing.
-- `modules/core/ConfigManager.psm1` — Configuration loading and management. Functions: `Initialize-ConfigSystem`, `Get-MainConfiguration`, `Get-LoggingConfiguration`.
-- `modules/core/MenuSystem.psm1` — Interactive menu system with countdown timers. Functions: `Show-MainMenu`, `Show-TaskSelectionMenu`.
-- Module architecture: Each `.psm1` file exports specific functions. Type 1 modules return data objects, Type 2 modules return success/failure booleans.
+### System Components
 
-### Common workflows & exact commands
+| Component | Purpose | Key Features |
+|-----------|---------|--------------|
+| `script.bat` | Launcher & Bootstrapper | Elevation, dependency installation (winget, pwsh, choco, PSWindowsUpdate), scheduled tasks, repo download |
+| `MaintenanceOrchestrator.ps1` | Central Orchestrator | Module loading, configuration, interactive menus, task execution coordination (PowerShell 7+ required) |
+| `modules/type1/` | Inventory & Reporting | Read-only operations for system analysis |
+| `modules/type2/` | System Modification | Write operations that change system state |
+| `modules/core/` | Infrastructure | Configuration, menus, dependencies, scheduling |
+| `config/*.json` | Configuration System | JSON-based settings and data |
 
-- **Run locally (developer)**: Open an elevated PowerShell 7+ console and run `.\MaintenanceOrchestrator.ps1` from the repository folder. The batch file is only necessary for full bootstrap behavior.
-- **Launch via launcher (production/operator)**: Run `script.bat` (double-click or elevated command prompt). The batch file ensures elevation and dependencies before launching the orchestrator.
-- **Interactive mode**: Default behavior shows countdown menus for execution mode and task selection.
-- **Non-interactive automation**: Use `script.bat -NonInteractive` or `MaintenanceOrchestrator.ps1 -NonInteractive` for unattended execution.
-- **Dry-run testing**: Use `-DryRun` parameter to simulate changes without system modification.
-- **Specific task execution**: Use `-TaskNumbers "1,3,5"` to run only specified tasks from the registry.
-- **Package manager calls**: Modules should use their own package manager abstractions. WindowsUpdates module handles update suppression automatically.
-- **Configuration changes**: Edit JSON files in `config/` directory rather than hardcoding values in modules.
+### Target Environment
+
+- **Platforms**: Windows 10/11
+- **Requirements**: Administrator privileges, network access
+- **Design**: Location-agnostic launcher with self-discovery
+
+### Project Evolution
+
+This project underwent a **complete architectural transformation** from a monolithic script to a modular system:
+- **Original monolithic files** preserved in `archive/` directory for reference
+- **Current architecture** fully modular with specialized PowerShell modules
+- **Migration complete**: All functionality extracted from the original 11,353-line `script.ps1`
+- **Production ready**: New system is the current active implementation
+
+---
+
+## 🎯 Architecture & Core Concepts
+
+### Why This Structure Exists
+
+#### 🔧 Modular Architecture
+The system is built from specialized PowerShell modules, each with a single responsibility:
+- **Type 1 modules**: Inventory/reporting (read-only operations)
+- **Type 2 modules**: System modifications (write operations)
+- **Core modules**: Infrastructure (configuration, menus, dependencies, scheduling)
+
+#### 🚀 Launcher → Orchestrator Design
+- `script.bat` prepares environment (elevation, dependency bootstrap, scheduled tasks, downloads)
+- Delegates to `MaintenanceOrchestrator.ps1` for actual task execution
+- **Important**: Avoid editing elevation logic in PowerShell — it's centralized in the batch launcher
+
+#### ⚙️ Configuration-Driven
+- All settings, app lists, and behaviors controlled through JSON configuration files in `config/` directory
+- **Never hardcode** data that should be configurable
+- Use `ConfigManager` module for all configuration access
+
+#### 🎮 Interactive + Non-Interactive Modes
+- Supports both menu-driven interactive use and unattended automation
+- All interactive prompts must have timeout fallbacks
+- Non-interactive bypass options required for automation scenarios
+
+#### 📋 Task Registry Pattern
+- Tasks defined as module function calls in `MaintenanceOrchestrator.ps1`
+- Each task specifies: module path, function name, type, and category
+- Enables dynamic task loading and execution tracking
+
+#### 🧪 Dry-Run Architecture
+- All system-modifying operations must support dry-run mode
+- Implement through `-DryRun` parameters or `-WhatIf` cmdlet binding
+- Essential for safe testing and validation
+
+### Critical Files to Read First
+
+When onboarding or making changes, read these files in order:
+
+1. **`script.bat`** — Environment setup foundation
+   - Admin checks and elevation logic
+   - PowerShell detection and version handling
+   - Dependency install order: winget → pwsh → NuGet → PSGallery → PSWindowsUpdate → chocolatey
+   - Scheduled task creation
+   - Repository download/extract process
+   - How it invokes `MaintenanceOrchestrator.ps1`
+
+2. **`MaintenanceOrchestrator.ps1`** — Central coordination
+   - Header and initialization sections
+   - Task registry array (`$Tasks`) with all available tasks
+   - Key functions: `Invoke-Task`, `Show-TaskMenu`
+   - Parameter parsing and validation
+
+3. **`modules/core/ConfigManager.psm1`** — Configuration system
+   - `Initialize-ConfigSystem`, `Get-MainConfiguration`, `Get-LoggingConfiguration`
+   - JSON loading and validation
+   - Configuration schema definitions
+
+4. **`modules/core/MenuSystem.psm1`** — Interactive UI
+   - `Show-MainMenu`, `Show-TaskSelectionMenu`
+   - Countdown timers and user input handling
+
+5. **Module architecture** — Understanding `.psm1` structure
+   - Type 1 modules: Return data objects
+   - Type 2 modules: Return success/failure booleans
+   - All modules: Use `Export-ModuleMember` for public functions
+
+---
+
+## 🚀 Getting Started
+
+### Development Environment Setup
+
+#### Prerequisites
+- Windows 10/11
+- Administrator privileges
+- PowerShell 7+ (installed automatically by `script.bat` if missing)
+- Network access for dependency downloads
+
+#### Quick Start for Developers
+
+```powershell
+# Clone the repository
+git clone https://github.com/ichimbogdancristian/script_mentenanta.git
+cd script_mentenanta
+
+# Run locally (developer mode)
+# Open elevated PowerShell 7+ console
+.\MaintenanceOrchestrator.ps1
+```
+
+#### Quick Start for Production/Operators
+
+```cmd
+# Simply run the launcher (handles all dependencies)
+script.bat
+```
+
+---
+
+## 💻 Development Workflows
+
+### Common Commands & Patterns
+
+#### 🔧 Developer Mode (Local Testing)
+```powershell
+# Basic execution
+.\MaintenanceOrchestrator.ps1
+
+# Dry-run mode (simulate without changes)
+.\MaintenanceOrchestrator.ps1 -DryRun
+
+# Run specific tasks only
+.\MaintenanceOrchestrator.ps1 -TaskNumbers "1,3,5"
+
+# Non-interactive with specific tasks
+.\MaintenanceOrchestrator.ps1 -NonInteractive -TaskNumbers "2,4"
+```
+
+#### 🚀 Production Mode (Full Bootstrap)
+```cmd
+REM Interactive with menus
+script.bat
+
+REM Non-interactive automation
+script.bat -NonInteractive
+
+REM Full bootstrap with dry-run
+script.bat -DryRun
+```
+
+#### 📝 Configuration Management
+```powershell
+# Edit configuration (use appropriate JSON file)
+code config/main-config.json
+code config/bloatware-list.json
+code config/essential-apps.json
+
+# Never hardcode values in modules - always use config files
+```
+
+#### 🔍 Module Development
+```powershell
+# Create new Type 1 module (read-only operations)
+New-Item "modules/type1/MyNewModule.psm1"
+
+# Create new Type 2 module (system modifications)
+New-Item "modules/type2/MyNewModule.psm1"
+
+# Test individual module
+Import-Module "./modules/type1/MyNewModule.psm1" -Force
+Test-MyNewFunction
+```
+
+### Adding New Tasks
+
+Follow this workflow when adding new maintenance tasks:
+
+1. **Create the module file**
+   ```powershell
+   # Choose appropriate type directory
+   $modulePath = "modules/type2/MyNewTask.psm1"  # or type1 for read-only
+   New-Item $modulePath
+   ```
+
+2. **Implement the module function**
+   - Follow PowerShell best practices (see section below)
+   - Include proper error handling
+   - Support `-DryRun` parameter for Type 2 modules
+   - Return appropriate data structure (object for Type 1, boolean for Type 2)
+
+3. **Register the task**
+   - Add entry to `$Tasks` array in `MaintenanceOrchestrator.ps1`
+   - Specify: Name, Description, ModulePath, Function, Type, Category
+
+4. **Test the task**
+   - Use TestFolder workflow (see Testing Guidelines section)
+   - Verify dry-run mode works correctly
+   - Test both interactive and non-interactive modes
+
+---
+
+## 📚 PowerShell Best Practices
+
+This section contains **project-specific** PowerShell coding standards. All code must follow these conventions.
+
+### Function Naming & Structure
+
+#### ✅ Use Approved Verbs Only
+
+PowerShell has an [approved verb list](https://learn.microsoft.com/en-us/powershell/scripting/developer/cmdlet/approved-verbs-for-windows-powershell-commands). **Always use approved verbs**.
+
+| ❌ Bad | ✅ Good | Verb Category |
+|--------|---------|---------------|
+| `Invoke-FetchData` | `Get-Data` | Common |
+| `Do-Cleanup` | `Clear-Cache` or `Remove-TempFiles` | Common |
+| `Handle-Error` | `Resolve-Error` or `Write-ErrorLog` | Diagnostic |
+| `Process-Items` | `Update-Items` or `Convert-Items` | Data |
+
+**Common approved verbs for this project:**
+- **Common**: Get, Set, New, Remove, Add, Clear, Copy, Move, Invoke
+- **Lifecycle**: Enable, Disable, Start, Stop, Install, Uninstall
+- **Diagnostic**: Test, Trace, Measure, Debug, Repair
+- **Data**: Import, Export, Backup, Restore, Publish
+
+```powershell
+# ❌ BAD: Non-approved verb
+function Fetch-SystemInfo { ... }
+
+# ✅ GOOD: Approved verb
+function Get-SystemInfo { ... }
+```
+
+#### 📋 Advanced Functions with CmdletBinding
+
+**All functions** in this project must be advanced functions with `[CmdletBinding()]` and comment-based help.
+
+```powershell
+<#
+.SYNOPSIS
+    Gets system information and returns a structured object.
+
+.DESCRIPTION
+    Collects detailed system information including hardware specs, OS version,
+    installed updates, and disk usage. Returns a structured PSCustomObject.
+
+.PARAMETER IncludeHardware
+    Include detailed hardware information in the output.
+
+.PARAMETER ComputerName
+    Target computer name. Defaults to local computer.
+
+.EXAMPLE
+    Get-SystemInfo
+    Gets system information for the local computer.
+
+.EXAMPLE
+    Get-SystemInfo -IncludeHardware -ComputerName "SERVER01"
+    Gets detailed system information including hardware for remote computer.
+
+.OUTPUTS
+    PSCustomObject with system information properties.
+
+.NOTES
+    Author: Maintenance Team
+    Type: Type1 (Read-only)
+    Requires: Administrator privileges for complete information
+#>
+function Get-SystemInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [switch]$IncludeHardware,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ComputerName = $env:COMPUTERNAME
+    )
+    
+    begin {
+        Write-Verbose "Starting system information collection for $ComputerName"
+    }
+    
+    process {
+        try {
+            # Implementation here
+            $result = [PSCustomObject]@{
+                ComputerName = $ComputerName
+                OSVersion = (Get-CimInstance Win32_OperatingSystem).Version
+                # ... more properties
+            }
+            return $result
+        }
+        catch {
+            Write-Error "Failed to get system info: $_"
+            return $null
+        }
+    }
+    
+    end {
+        Write-Verbose "System information collection completed"
+    }
+}
+```
+
+### Parameter Best Practices
+
+#### 🎯 Parameter Attributes
+
+Always use explicit parameter attributes for clarity and validation:
+
+```powershell
+param(
+    # Mandatory parameter with position
+    [Parameter(Mandatory=$true, Position=0)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ComputerName,
+    
+    # Pipeline input
+    [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+    [string[]]$Services,
+    
+    # Validated set of options
+    [Parameter(Mandatory=$false)]
+    [ValidateSet('Low', 'Medium', 'High', 'Critical')]
+    [string]$Priority = 'Medium',
+    
+    # Numeric range validation
+    [Parameter(Mandatory=$false)]
+    [ValidateRange(1, 100)]
+    [int]$Timeout = 30,
+    
+    # Path validation
+    [Parameter(Mandatory=$true)]
+    [ValidateScript({Test-Path $_ -PathType Container})]
+    [string]$OutputPath,
+    
+    # Switch parameter
+    [Parameter(Mandatory=$false)]
+    [switch]$Force
+)
+```
+
+#### 🚫 Avoid Positional Parameters in Public Functions
+
+```powershell
+# ❌ BAD: Relies on position
+Remove-Service "MyService" $true
+
+# ✅ GOOD: Named parameters
+Remove-Service -ServiceName "MyService" -Force
+```
+
+### Destructive Operations & ShouldProcess
+
+**All Type 2 modules** must support `-WhatIf` and `-Confirm` using `SupportsShouldProcess`.
+
+```powershell
+function Remove-BloatwareApp {
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppName,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$Force
+    )
+    
+    # Check if we should proceed
+    if ($PSCmdlet.ShouldProcess($AppName, 'Remove application')) {
+        try {
+            Write-Host "🔄 Removing $AppName..." -ForegroundColor Yellow
+            
+            # Actual removal logic here
+            $result = Get-AppxPackage -Name $AppName -AllUsers -ErrorAction SilentlyContinue
+            if ($result) {
+                $result | Remove-AppxPackage -AllUsers -ErrorAction Stop
+                Write-Host "✓ Successfully removed $AppName" -ForegroundColor Green
+                return $true
+            }
+            else {
+                Write-Host "⚠️ $AppName not found" -ForegroundColor Yellow
+                return $false
+            }
+        }
+        catch {
+            Write-Host "❌ Failed to remove $AppName`: $_" -ForegroundColor Red
+            return $false
+        }
+    }
+    else {
+        Write-Host "⏭️ Skipped removal of $AppName (WhatIf mode)" -ForegroundColor Cyan
+        return $false
+    }
+}
+
+# Usage examples:
+# Remove-BloatwareApp -AppName "Microsoft.BingWeather" -WhatIf  # Simulates
+# Remove-BloatwareApp -AppName "Microsoft.BingWeather" -Confirm  # Prompts
+# Remove-BloatwareApp -AppName "Microsoft.BingWeather" -Force    # No prompt
+```
+
+### Error Handling & Logging
+
+#### 🛡️ Comprehensive Error Handling
+
+```powershell
+function Install-RequiredApplication {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppId
+    )
+    
+    try {
+        Write-Host "🔄 Installing $AppId..." -ForegroundColor Yellow
+        
+        # Set error action to stop for try/catch
+        $ErrorActionPreference = 'Stop'
+        
+        # Execute installation
+        $result = winget install --id $AppId --silent --accept-package-agreements --accept-source-agreements
+        
+        # Check exit code
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ Successfully installed $AppId" -ForegroundColor Green
+            Write-Log "Installed application: $AppId" -Level 'INFO'
+            return $true
+        }
+        else {
+            Write-Host "❌ Installation failed with exit code: $LASTEXITCODE" -ForegroundColor Red
+            Write-Log "Installation failed for $AppId - Exit code: $LASTEXITCODE" -Level 'ERROR'
+            return $false
+        }
+    }
+    catch {
+        Write-Host "❌ Installation error: $_" -ForegroundColor Red
+        Write-Log "Installation exception for $AppId`: $_" -Level 'ERROR'
+        return $false
+    }
+    finally {
+        # Cleanup code here
+        $ErrorActionPreference = 'Continue'
+    }
+}
+```
+
+#### 📊 Return Value Contracts
+
+**Critical**: Respect module type return contracts:
+
+- **Type 1 modules**: Return data objects (`PSCustomObject`, hashtables, arrays)
+- **Type 2 modules**: Return boolean (`$true` for success, `$false` for failure)
+
+```powershell
+# Type 1 Module (Read-only) - Return data object
+function Get-InstalledBloatware {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        $bloatwareList = Get-AppxPackage | Where-Object { $_.Name -like "*Xbox*" }
+        
+        $results = $bloatwareList | ForEach-Object {
+            [PSCustomObject]@{
+                Name = $_.Name
+                Version = $_.Version
+                InstallLocation = $_.InstallLocation
+                IsProvisioned = $_.IsResourcePackage
+            }
+        }
+        
+        return $results  # Return data object
+    }
+    catch {
+        Write-Error "Failed to get bloatware list: $_"
+        return $null
+    }
+}
+
+# Type 2 Module (System modification) - Return boolean
+function Remove-AllBloatware {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param()
+    
+    try {
+        $bloatware = Get-InstalledBloatware
+        
+        foreach ($app in $bloatware) {
+            if ($PSCmdlet.ShouldProcess($app.Name, 'Remove')) {
+                Remove-AppxPackage -Package $app.Name -ErrorAction Stop
+            }
+        }
+        
+        return $true  # Return boolean for success
+    }
+    catch {
+        Write-Error "Failed to remove bloatware: $_"
+        return $false  # Return boolean for failure
+    }
+}
+```
+
+### Code Quality & Style
+
+#### 🚫 No Aliases in Scripts
+
+```powershell
+# ❌ BAD: Uses aliases
+gci C:\Windows | ? { $_.Length -gt 1MB } | % { rm $_ -Force }
+
+# ✅ GOOD: Full cmdlet names
+Get-ChildItem -Path C:\Windows | 
+    Where-Object { $_.Length -gt 1MB } | 
+    ForEach-Object { Remove-Item -Path $_.FullName -Force }
+```
+
+#### 📦 Splatting for Complex Commands
+
+```powershell
+# ❌ BAD: Long command line
+Invoke-Command -ComputerName "SERVER01" -ScriptBlock { Get-Service } -Credential $cred -Authentication Kerberos -ErrorAction Stop
+
+# ✅ GOOD: Use splatting
+$invokeParams = @{
+    ComputerName = "SERVER01"
+    ScriptBlock = { Get-Service }
+    Credential = $cred
+    Authentication = 'Kerberos'
+    ErrorAction = 'Stop'
+}
+Invoke-Command @invokeParams
+```
+
+#### 🔧 External Command Invocation
+
+```powershell
+# For external executables, use explicit argument arrays
+$wingetArgs = @(
+    'install'
+    '--id', 'Microsoft.PowerShell'
+    '--silent'
+    '--accept-package-agreements'
+    '--accept-source-agreements'
+)
+
+# Use Start-Process or custom wrapper
+$process = Start-Process -FilePath 'winget.exe' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
+
+if ($process.ExitCode -eq 0) {
+    Write-Host "✓ Installation successful" -ForegroundColor Green
+}
+else {
+    Write-Host "❌ Installation failed with exit code: $($process.ExitCode)" -ForegroundColor Red
+}
+```
+
+### Static Analysis with PSScriptAnalyzer
+
+#### 📐 Required Practice
+
+All code must pass PSScriptAnalyzer checks before commit:
+
+```powershell
+# Install PSScriptAnalyzer
+Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
+
+# Analyze entire project
+Invoke-ScriptAnalyzer -Path . -Recurse -ReportSummary
+
+# Analyze specific file
+Invoke-ScriptAnalyzer -Path ".\modules\type2\MyModule.psm1" -Severity Error,Warning
+
+# Analyze with specific rules
+Invoke-ScriptAnalyzer -Path . -Recurse -IncludeRule PSUseApprovedVerbs,PSAvoidUsingCmdletAliases
+```
+
+#### 🎯 Key Rules to Follow
+
+| Rule | Description | Example |
+|------|-------------|---------|
+| `PSUseApprovedVerbs` | Use only approved PowerShell verbs | `Get-Data` not `Fetch-Data` |
+| `PSAvoidUsingCmdletAliases` | No aliases in scripts | `Get-ChildItem` not `gci` |
+| `PSUseShouldProcessForStateChangingFunctions` | Use `-WhatIf` support | `[CmdletBinding(SupportsShouldProcess)]` |
+| `PSProvideCommentHelp` | Include comment-based help | `.SYNOPSIS`, `.DESCRIPTION`, etc. |
+| `PSAvoidUsingPositionalParameters` | Use named parameters | `-Path $file` not just `$file` |
+| `PSUseDeclaredVarsMoreThanAssignments` | Remove unused variables | Clean up unused declarations |
+
+### Code Review Checklist
+
+Use this checklist before committing PowerShell code:
+
+- [ ] **Verb usage**: Function uses an approved PowerShell verb
+- [ ] **CmdletBinding**: Function has `[CmdletBinding()]` attribute
+- [ ] **Comment help**: Includes `.SYNOPSIS`, `.DESCRIPTION`, `.PARAMETER`, `.EXAMPLE`
+- [ ] **Parameters**: All parameters have explicit attributes and validation
+- [ ] **Error handling**: Try/catch blocks with proper error logging
+- [ ] **Return values**: Type 1 returns objects, Type 2 returns boolean
+- [ ] **ShouldProcess**: Destructive operations support `-WhatIf` and `-Confirm`
+- [ ] **No aliases**: Full cmdlet names used (no `gci`, `ls`, `rm`, etc.)
+- [ ] **Splatting**: Complex commands use splatting for readability
+- [ ] **Exit codes**: External commands checked for success/failure
+- [ ] **PSScriptAnalyzer**: All high-severity issues resolved
+- [ ] **Consistent style**: Indentation and formatting match project standards
+- [ ] **Module exports**: Function added to `Export-ModuleMember`
+
+---
+
+## 🧪 Testing Guidelines
 
 ### MANDATORY Testing Procedures
 
@@ -85,164 +679,257 @@ cd "C:\Users\Bogdan\OneDrive\Desktop\Projects\TestFolder"
 - Create test files in the main project directory
 - Skip the TestFolder workflow when verifying functionality
 
-### Patterns and conventions to follow
+### Unit Testing Best Practices
 
-- **Task registry entries**: Add tasks to the `$Tasks` array in `MaintenanceOrchestrator.ps1` as hashtables with Name, Description, ModulePath, Function, Type, and Category.
-- **Module structure**: Each module exports specific functions using `Export-ModuleMember`. Type 1 modules return data objects, Type 2 modules return success/failure booleans.
-- **Configuration access**: Use `Get-MainConfiguration` and configuration-specific functions from ConfigManager module. Load settings from JSON files in `config/` directory.
-- **Progress reporting**: Use `Write-Host` with consistent formatting and color coding. Include operation status indicators (✓, ❌, ⚠️, 🔄).
-- **Dry-run support**: All Type 2 modules must support `-DryRun` parameter and use `ShouldProcess` for destructive operations.
-- **Error handling**: Use try/catch blocks with proper error messages. Return structured results with Success/Error properties.
-- **Dependency management**: Use `DependencyManager` module for package manager operations instead of direct winget/choco calls.
+```powershell
+# Install Pester (testing framework)
+Install-Module -Name Pester -Scope CurrentUser -Force
 
-### Integration & external dependencies
+# Run tests for specific module
+Invoke-Pester -Path ".\tests\BloatwareRemoval.Tests.ps1"
 
-- **External tools**: winget, pwsh (PowerShell 7), chocolatey, PSWindowsUpdate, NuGet provider. The `DependencyManager` module handles installation; modules should check dependencies using `Get-DependencyStatus`.
-- **Remote repo fetching**: `script.bat` downloads repo ZIP from GitHub. Self-update logic is in the batch file; coordinate changes with batch script updates.
-- **Windows APIs**: Registry keys used extensively for system configuration. Use appropriate error handling and validation when accessing registry.
-- **Module dependencies**: Core modules (ConfigManager, MenuSystem) are loaded first. Type 1/Type 2 modules are loaded on-demand by the orchestrator.
-- **Configuration system**: All configuration through JSON files. Use `ConfigManager` module functions for loading and validation.
+# Run all tests with coverage
+Invoke-Pester -Path ".\tests\" -CodeCoverage ".\modules\**\*.psm1" -OutputFormat NUnitXml
+```
 
-### Small actionable examples (copy/paste friendly guidance for agents)
+---
 
-- **Add a new maintenance task**:
-  1. Create a PowerShell module (.psm1) in appropriate `modules/type1/` or `modules/type2/` directory
-  2. Add task entry to `$Tasks` array in `MaintenanceOrchestrator.ps1` with ModulePath, Function, Type, Category
-  3. Use configuration from JSON files in `config/` directory instead of hardcoded values
-  4. Support `-DryRun` parameter for Type 2 modules using `[CmdletBinding(SupportsShouldProcess)]`
+## 🔗 Integration & Dependencies
 
-- **Run the orchestrator locally (developer)**:
-  - Open elevated PowerShell 7+ console: `.\MaintenanceOrchestrator.ps1`
-  - With parameters: `.\MaintenanceOrchestrator.ps1 -DryRun -TaskNumbers "1,3,5"`
+### External Tools & Package Managers
 
-- **Create a new module**:
-  - Follow existing module structure with `Export-ModuleMember` at end
-  - Type 1 modules return data objects, Type 2 modules return success/failure booleans
-  - Include proper error handling and progress reporting with colored output
+The system relies on several external tools managed by the `DependencyManager` module:
 
-### What not to change without careful review
+| Tool | Purpose | Installation Order |
+|------|---------|-------------------|
+| **winget** | Windows Package Manager | 1st (bootstrapped by script.bat) |
+| **pwsh** | PowerShell 7+ | 2nd (required for orchestrator) |
+| **NuGet** | PowerShell package provider | 3rd (for PSGallery) |
+| **PSGallery** | PowerShell module repository | 4th (for PSWindowsUpdate) |
+| **PSWindowsUpdate** | Windows Update management | 5th (module dependency) |
+| **chocolatey** | Alternative package manager | 6th (fallback option) |
 
-- **Elevation and scheduled-task logic in `script.bat`** — This is sensitive and relies on multiple Windows behaviors and admin rights.
-- **Module loading order in `MaintenanceOrchestrator.ps1`** — Core modules must load before Type 1/Type 2 modules due to dependencies.
-- **Configuration schema in JSON files** — Changes affect all modules; coordinate updates across the system.
-- **Task return value contracts** — Type 1 modules return data objects, Type 2 modules return success/failure booleans for orchestrator tracking.
-- **DryRun parameter handling** — All Type 2 modules must respect the `-DryRun` parameter for safe testing.
+#### Using Dependencies in Modules
 
-### Quick map to notable symbols & files
+```powershell
+# Check dependency status
+$wingetStatus = Get-DependencyStatus -DependencyName 'winget'
+if (-not $wingetStatus.IsInstalled) {
+    Write-Host "❌ winget is not installed" -ForegroundColor Red
+    return $false
+}
 
-- `script.bat` — Launcher and bootstrapper: admin checks, dependency installation order, scheduled tasks, repo download/extract, invocation of orchestrator.
-- `MaintenanceOrchestrator.ps1` — Central orchestrator: `$Tasks` registry, module loading, `Invoke-Task`, menu coordination, parameter parsing.
-- `modules/core/ConfigManager.psm1` — Configuration system: `Initialize-ConfigSystem`, `Get-MainConfiguration`, JSON loading/validation.
-- `modules/core/MenuSystem.psm1` — Interactive menus: `Show-MainMenu`, `Show-TaskSelectionMenu`, countdown timers.
-- `modules/core/DependencyManager.psm1` — Dependency management: `Install-AllDependencies`, `Get-DependencyStatus`, package manager detection.
-- `modules/core/TaskScheduler.psm1` — Task scheduling: `New-MaintenanceTask`, `Get-MaintenanceTasks`, Windows scheduled task automation.
+# Use DependencyManager for installations
+Install-PackageWithWinget -PackageId 'Microsoft.PowerShell' -Silent
+```
 
-### Project Evolution and Archive
+### Configuration System
 
-This project underwent a **complete architectural transformation** from a monolithic script to a modular system:
-- **Original monolithic files** are preserved in `archive/` directory for reference
-- **Current architecture** is fully modular with specialized PowerShell modules
-- **Migration complete**: All functionality extracted from the original 11,353-line `script.ps1`
-- **Production ready**: New system is the current active implementation
+All configuration is JSON-based and accessed through `ConfigManager`:
 
-### If something is missing or unclear
+```powershell
+# Load main configuration
+$config = Get-MainConfiguration
 
-- Ask for: (1) which environment you'll run in (local dev vs managed enterprise endpoint), (2) whether modifying scheduled task behavior or restart policy is permitted, and (3) whether new features should be toggled by default.
+# Access specific settings
+$logPath = $config.LogPath
+$timeout = $config.MenuTimeout
 
-Please review this draft and tell me any areas you want expanded (examples, command snippets, or additional file references). I'll iterate quickly.
+# Load specialized configurations
+$bloatware = Get-BloatwareList  # From config/bloatware-list.json
+$essentialApps = Get-EssentialApps  # From config/essential-apps.json
+```
 
-## PowerShell best practices (project-specific)
+### Module Dependencies & Load Order
 
-The following are concrete, discoverable conventions and snippets an AI agent should follow when editing or adding PowerShell code in this repository.
+**Critical**: Core modules must load before Type 1/Type 2 modules:
 
-- Use approved verbs only. Prefer the PowerShell approved verb list (Get, Set, New, Remove, Add, Install, Uninstall, Test, Start, Stop, Enable, Disable, Invoke, Export, Import). Avoid inventing verbs like Fetch, Do, Handle, Process. Example mapping:
-  - Bad: function Invoke-FetchUserData { ... }
-  - Good: function Get-UserData { ... }
+1. **Core modules** (infrastructure):
+   - `ConfigManager.psm1` — Configuration loading
+   - `MenuSystem.psm1` — Interactive menus
+   - `DependencyManager.psm1` — Package management
+   - `TaskScheduler.psm1` — Scheduled tasks
 
-- Always author advanced functions with CmdletBinding and comment-based help. This repository treats task functions as reusable building blocks.
+2. **Type 1 modules** (read-only operations):
+   - Can depend on Core modules only
+   - No dependencies on Type 2 modules
 
-  Example header template:
+3. **Type 2 modules** (system modifications):
+   - Can depend on Core and Type 1 modules
+   - May query Type 1 modules for data before modifications
 
-  ```powershell
-  function Get-Example {
-      [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
-      param(
-          [Parameter(Mandatory=$true, Position=0)]
-          [string]$Name,
+### Registry & Windows APIs
 
-          [Parameter()]
-          [switch]$WhatIf
-      )
+Many operations interact with Windows Registry:
 
-      <#
-      .SYNOPSIS
-      Short description.
+```powershell
+# Always use error handling for registry access
+try {
+    $regPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate"
+    
+    # Check if path exists before accessing
+    if (Test-Path $regPath) {
+        $value = Get-ItemProperty -Path $regPath -Name "DisableOSUpgrade" -ErrorAction Stop
+    }
+    else {
+        # Create path if it doesn't exist
+        New-Item -Path $regPath -Force | Out-Null
+        New-ItemProperty -Path $regPath -Name "DisableOSUpgrade" -Value 1 -PropertyType DWORD
+    }
+}
+catch {
+    Write-Error "Registry operation failed: $_"
+}
+```
 
-      .DESCRIPTION
-      Longer description.
+### Remote Repository Updates
 
-      .PARAMETER Name
-      The target name.
+- `script.bat` handles downloading the repository ZIP from GitHub
+- Self-update logic is in the batch file launcher
+- Coordinate any repo structure changes with batch script updates
+- Repository URL: `https://github.com/ichimbogdancristian/script_mentenanta`
 
-      .EXAMPLE
-      Get-Example -Name 'foo'
-      #>
+---
 
-      if ($PSCmdlet.ShouldProcess($Name, 'Read')) {
-          try {
-              # Implementation here
-              return $true
-          }
-          catch {
-              Write-Log "Get-Example failed: $_" 'ERROR'
-              return $false
-          }
-      }
-  }
-  ```
+## 📖 Reference Guide
 
-- Parameter best practices
-  - Use explicit parameter attributes: [Parameter(Mandatory=$true, Position=0, ValueFromPipeline=$true)].
-  - Validate input with attributes: [ValidateNotNullOrEmpty()], [ValidateSet()], [ValidateRange()].
-  - Avoid relying on positional parameters in public functions; prefer named parameters for clarity.
+### Critical Rules (Do Not Change Without Review)
 
-- Error handling and logging
-  - Catch terminating errors with try/catch and write problems using `Write-Log` / `Write-ActionLog` instead of `Write-Host` or suppressing exceptions.
-  - Normalize return values: tasks should return $true on success and $false on failure so the orchestrator can record results.
+| Component | Why It's Critical | Impact of Changes |
+|-----------|-------------------|-------------------|
+| **Elevation logic in `script.bat`** | Relies on Windows UAC behavior and admin rights | Can break entire system launch |
+| **Module load order** | Core modules provide functions for other modules | Breaks module dependencies |
+| **Configuration schemas** | Affects all modules reading config | System-wide breaking changes |
+| **Return value contracts** | Orchestrator tracks task success/failure | Breaks execution tracking |
+| **DryRun parameter** | Safety mechanism for testing | Removes test safety net |
 
-- Use ShouldProcess for destructive operations
-  - For actions which change system state (remove/uninstall/modify), use `SupportsShouldProcess=$true` and call `$PSCmdlet.ShouldProcess()` to respect WhatIf/Confirm semantics.
+### Key Files & Symbols Quick Reference
 
-- Avoid aliases and magic variables in scripts
-  - Do not use short aliases (e.g., `gci`, `ls`, `rm`, `sc`) inside committed scripts — use full cmdlet names (Get-ChildItem, Remove-Item). This improves readability and PSScriptAnalyzer compliance.
+```
+📁 Project Structure
+├── script.bat ...................... Launcher & bootstrapper
+├── MaintenanceOrchestrator.ps1 ..... Central coordinator
+├── 📁 config/
+│   ├── main-config.json ............ System settings
+│   ├── bloatware-list.json ......... Apps to remove
+│   ├── essential-apps.json ......... Apps to install
+│   └── logging-config.json ......... Log settings
+├── 📁 modules/
+│   ├── 📁 core/
+│   │   ├── ConfigManager.psm1 ...... Configuration system
+│   │   ├── MenuSystem.psm1 ......... Interactive UI
+│   │   ├── DependencyManager.psm1 .. Package management
+│   │   └── TaskScheduler.psm1 ...... Task automation
+│   ├── 📁 type1/ ................... Read-only operations
+│   └── 📁 type2/ ................... System modifications
+└── 📁 archive/ ..................... Original monolithic files
+```
 
-- Prefer splatting and explicit argument arrays for external commands
-  - Example:
+### Common Patterns & Conventions
 
-  ```powershell
-  $args = @('--silent','--accept-package-agreements','--accept-source-agreements')
-  Invoke-LoggedCommand -FilePath 'winget.exe' -ArgumentList $args -Context 'Install App'
-  ```
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| **Task registry entries** | Hashtable in `$Tasks` array | `@{Name='Task'; ModulePath='path'; Function='Func'}` |
+| **Module exports** | Explicit function exports | `Export-ModuleMember -Function Get-*, Set-*, Remove-*` |
+| **Progress reporting** | Colored console output with icons | `Write-Host "✓ Success" -ForegroundColor Green` |
+| **Configuration access** | Via ConfigManager functions | `Get-MainConfiguration`, `Get-BloatwareList` |
+| **Dependency checks** | Via DependencyManager | `Get-DependencyStatus -DependencyName 'winget'` |
 
-- Use PSScriptAnalyzer (static analysis)
-  - Add it to dev workflow and run `Invoke-ScriptAnalyzer -Path . -Recurse` before committing. Recommend installing with `Install-Module -Name PSScriptAnalyzer`.
-  - Common rules to enable: use-approved-verbs, avoid-using-aliases, use-shouldprocess-for-destructive-actions, provide-comment-based-help.
+### Status Icons Standard
 
-- Command invocation safety
-  - Wrap external invocations with `Invoke-LoggedCommand` (exists in `script.ps1`) to capture stdout/stderr and normalize errors.
-  - Never assume success; check ExitCode or returned result and log failures.
+Use consistent icons for output messages:
 
-- Formatting and style
-  - Keep functions small and single-responsibility. Return structured objects or booleans (don't print raw output and rely on parsing later).
-  - Use consistent indentation (2 spaces or keep existing file style). Prefer explicit `return` for clarity.
+| Icon | Meaning | Color | Usage |
+|------|---------|-------|-------|
+| ✓ | Success | Green | Operation completed successfully |
+| ❌ | Error/Failure | Red | Operation failed |
+| ⚠️ | Warning | Yellow | Non-critical issue or notice |
+| 🔄 | In Progress | Yellow | Operation is running |
+| ℹ️ | Information | Cyan | General information |
+| ⏭️ | Skipped | Cyan | Operation skipped (WhatIf, already done) |
+| 🔍 | Scanning/Detecting | Blue | Search or detection operation |
 
-### Quick checklist for PRs that change PowerShell code
+### Troubleshooting Common Issues
 
-1. Does every function use an approved verb and follow the Name-Verb noun pattern?
-2. Is there comment-based help for non-trivial functions?
-3. Are parameters validated and not relying on positional-only usage?
-4. Are destructive actions using ShouldProcess/WhatIf?
-5. Are external commands wrapped with `Invoke-LoggedCommand` or similar and their results checked?
-6. Did you run `Invoke-ScriptAnalyzer` and address high-severity findings?
+<details>
+<summary><b>Module import failures</b></summary>
 
-If you'd like, I can add a sample `.psscriptanalyzer.psd1` configuration and a small CI job example (PowerShell script) that runs `Invoke-ScriptAnalyzer` on PRs — tell me if you want that added.
+```powershell
+# Check module path
+$env:PSModulePath -split ';'
+
+# Import with verbose to see details
+Import-Module ".\modules\core\ConfigManager.psm1" -Force -Verbose
+
+# Check for syntax errors
+Test-ModuleManifest ".\modules\core\ConfigManager.psm1"
+```
+</details>
+
+<details>
+<summary><b>Configuration not loading</b></summary>
+
+```powershell
+# Verify JSON syntax
+Get-Content ".\config\main-config.json" | ConvertFrom-Json
+
+# Check file permissions
+Get-Acl ".\config\main-config.json"
+
+# Verify ConfigManager is loaded
+Get-Module ConfigManager
+```
+</details>
+
+<details>
+<summary><b>Dependency installation failures</b></summary>
+
+```powershell
+# Check winget availability
+winget --version
+
+# Test package manager access
+winget search Microsoft.PowerShell
+
+# Check execution policy
+Get-ExecutionPolicy -List
+
+# Set execution policy if needed
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+</details>
+
+### Quick Action Reference
+
+| Task | Command |
+|------|---------|
+| **Run full maintenance** | `.\script.bat` |
+| **Test without changes** | `.\MaintenanceOrchestrator.ps1 -DryRun` |
+| **Run specific tasks** | `.\MaintenanceOrchestrator.ps1 -TaskNumbers "1,3,5"` |
+| **Non-interactive mode** | `.\MaintenanceOrchestrator.ps1 -NonInteractive` |
+| **Check script quality** | `Invoke-ScriptAnalyzer -Path . -Recurse` |
+| **Edit main config** | `code .\config\main-config.json` |
+| **View task registry** | `Get-Content .\MaintenanceOrchestrator.ps1 \| Select-String '\$Tasks'` |
+| **Test in isolation** | Copy script.bat to TestFolder and run |
+
+### When to Ask for Clarification
+
+If you're unsure about:
+1. **Environment constraints**: Local dev vs managed enterprise endpoint vs air-gapped system
+2. **Permissions**: Whether modifying scheduled task behavior or restart policy is permitted
+3. **Feature toggles**: Whether new features should be enabled by default or opt-in
+4. **Breaking changes**: Impact of modifying configuration schemas or return value contracts
+5. **Security implications**: Changes affecting elevation, registry access, or system modifications
+
+---
+
+## 📝 Document Maintenance
+
+**Last Updated**: October 10, 2025  
+**Document Version**: 2.0  
+**Project Version**: Modular Architecture (Post-Migration)
+
+### Changelog
+
+- **v2.0 (Oct 2025)**: Complete restructure with TOC, expanded PowerShell best practices, added comprehensive code examples
+- **v1.0 (Initial)**: Basic structure with core concepts and workflows
