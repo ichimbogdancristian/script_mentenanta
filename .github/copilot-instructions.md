@@ -2,14 +2,14 @@
 
 ## 📋 Table of Contents
 
-1. [Repository Overview](#-repository-overview)
-2. [Architecture & Core Concepts](#-architecture--core-concepts)
-3. [Getting Started](#-getting-started)
-4. [Development Workflows](#-development-workflows)
-5. [PowerShell Best Practices](#-powershell-best-practices)
-6. [Testing Guidelines](#-testing-guidelines)
-7. [Integration & Dependencies](#-integration--dependencies)
-8. [Reference Guide](#-reference-guide)
+1. [Repository Overview](./copilot-instructions.md#repository-overview)
+2. [Architecture & Core Concepts](./copilot-instructions.md#architecture--core-concepts)
+3. [Getting Started](./copilot-instructions.md#getting-started)
+4. [Development Workflows](./copilot-instructions.md#development-workflows)
+5. [PowerShell Best Practices](./copilot-instructions.md#powershell-best-practices)
+6. [Testing Guidelines](./copilot-instructions.md#testing-guidelines)
+7. [Integration & Dependencies](./copilot-instructions.md#integration--dependencies)
+8. [Reference Guide](./copilot-instructions.md#reference-guide)
 
 ---
 

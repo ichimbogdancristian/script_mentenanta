@@ -389,23 +389,45 @@ IF !ERRORLEVEL! NEQ 0 (
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             
-            REM Refresh environment variables to pick up new PATH
+            REM Refresh environment variables to pick up new PATH (preserve critical paths and add fallbacks)
             CALL :LOG_MESSAGE "Refreshing environment variables..." "INFO" "LAUNCHER"
+            SET "SYSTEM_PATH="
+            SET "USER_PATH="
             FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul`) DO SET "SYSTEM_PATH=%%B"
             FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKCU\Environment" /v PATH 2^>nul`) DO SET "USER_PATH=%%B"
-            IF DEFINED USER_PATH (
-                SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
-            ) ELSE (
-                SET "PATH=%SYSTEM_PATH%"
+
+            SET "NEW_PATH="
+            IF DEFINED SYSTEM_PATH SET "NEW_PATH=%SYSTEM_PATH%"
+            IF DEFINED USER_PATH SET "NEW_PATH=%NEW_PATH%;%USER_PATH%"
+
+            REM Ensure WindowsApps (App Execution Aliases like winget, pwsh) is present in PATH
+            IF NOT DEFINED USER_PATH (
+                IF EXIST "%LocalAppData%\Microsoft\WindowsApps" SET "NEW_PATH=%NEW_PATH%;%LocalAppData%\Microsoft\WindowsApps"
             )
-            
-            REM Verify installation worked
-            pwsh.exe -Version >nul 2>&1
-            IF !ERRORLEVEL! EQU 0 (
-                CALL :LOG_MESSAGE "PowerShell 7 is now available after installation" "SUCCESS" "LAUNCHER"
+
+            REM If PowerShell 7 default install exists, ensure its folder is included for this session
+            IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" SET "NEW_PATH=%NEW_PATH%;%ProgramFiles%\PowerShell\7"
+
+            REM Only overwrite PATH if we actually built a path
+            IF DEFINED NEW_PATH (
+                SET "PATH=%NEW_PATH%"
             ) ELSE (
-                CALL :LOG_MESSAGE "PowerShell 7 installation completed but pwsh.exe still not found in PATH" "WARN" "LAUNCHER"
-                CALL :LOG_MESSAGE "You may need to restart your command prompt or add PowerShell to PATH manually" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "PATH refresh skipped (registry values unavailable); continuing with current PATH" "WARN" "LAUNCHER"
+            )
+
+            REM Verify installation worked (prefer absolute path first)
+            SET "PS7_ABSOLUTE="
+            IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" SET "PS7_ABSOLUTE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+            IF DEFINED PS7_ABSOLUTE (
+                CALL :LOG_MESSAGE "PowerShell 7 discovered at: %PS7_ABSOLUTE%" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                pwsh.exe -Version >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    CALL :LOG_MESSAGE "PowerShell 7 is now available after installation" "SUCCESS" "LAUNCHER"
+                ) ELSE (
+                    CALL :LOG_MESSAGE "PowerShell 7 installation completed but pwsh.exe still not found in PATH" "WARN" "LAUNCHER"
+                    CALL :LOG_MESSAGE "You may need to restart your command prompt or add PowerShell to PATH manually" "WARN" "LAUNCHER"
+                )
             )
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
@@ -428,7 +450,17 @@ IF !ERRORLEVEL! EQU 0 (
     FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
     CALL :LOG_MESSAGE "Winget available: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "Winget not available - some features may be limited" "INFO" "LAUNCHER"
+    REM Check typical location for App Execution Aliases
+    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+        FOR /F "tokens=*" %%i IN ('"%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version 2^>nul') DO SET WINGET_VERSION=%%i
+        IF DEFINED WINGET_VERSION (
+            CALL :LOG_MESSAGE "Winget available via WindowsApps path: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Winget appears installed but not yet ready (App Execution Alias may require session refresh)" "INFO" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget not available - some features may be limited" "INFO" "LAUNCHER"
+    )
 )
 
 REM Chocolatey  
@@ -476,31 +508,55 @@ CALL :LOG_MESSAGE "Detecting PowerShell executable for system operations..." "IN
 SET "PS_EXECUTABLE="
 SET "AUTO_NONINTERACTIVE=NO"
 
-REM Check PowerShell 7+ first
-pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
-    
+REM Check PowerShell 7+ first (absolute path, then PATH)
+SET "PS7_ABSOLUTE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+IF EXIST "%PS7_ABSOLUTE%" (
+    FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
     IF !PS_MAJOR_VERSION! GEQ 7 (
-        SET "PS_EXECUTABLE=pwsh.exe"
+        SET "PS_EXECUTABLE=%PS7_ABSOLUTE%"
         SET "AUTO_NONINTERACTIVE=YES"
-        FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
-        CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected - will use for system operations" "SUCCESS" "LAUNCHER"
+        FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+        CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected at default path - will use for system operations" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell version !PS_MAJOR_VERSION! detected but version 7+ required" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "PowerShell found at default path but version !PS_MAJOR_VERSION! < 7" "WARN" "LAUNCHER"
     )
-) ELSE (
-    CALL :LOG_MESSAGE "PowerShell 7+ (pwsh.exe) not available, checking Windows PowerShell..." "INFO" "LAUNCHER"
-    
-    REM Fallback to Windows PowerShell for system operations only
-    powershell.exe -Command "$PSVersionTable.PSVersion.Major" >nul 2>&1
+)
+IF "%PS_EXECUTABLE%"=="" (
+    pwsh.exe -Version >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        FOR /F "tokens=*" %%i IN ('powershell.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
-        IF !PS_MAJOR_VERSION! GEQ 5 (
-            SET "PS_EXECUTABLE=powershell.exe"
-            CALL :LOG_MESSAGE "Windows PowerShell !PS_MAJOR_VERSION! will be used for system operations only" "INFO" "LAUNCHER"
+        FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        IF !PS_MAJOR_VERSION! GEQ 7 (
+            SET "PS_EXECUTABLE=pwsh.exe"
+            SET "AUTO_NONINTERACTIVE=YES"
+            FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected - will use for system operations" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "Windows PowerShell version !PS_MAJOR_VERSION! too old" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell version !PS_MAJOR_VERSION! detected but version 7+ required" "WARN" "LAUNCHER"
+        )
+    )
+)
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "PowerShell 7+ (pwsh.exe) not available, checking Windows PowerShell..." "INFO" "LAUNCHER"
+    REM Fallback to Windows PowerShell for system operations only (absolute path, then PATH)
+    SET "PS51_ABSOLUTE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+    IF EXIST "%PS51_ABSOLUTE%" (
+        FOR /F "tokens=*" %%i IN ('"%PS51_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        IF !PS_MAJOR_VERSION! GEQ 5 (
+            SET "PS_EXECUTABLE=%PS51_ABSOLUTE%"
+            CALL :LOG_MESSAGE "Windows PowerShell !PS_MAJOR_VERSION! will be used for system operations only (absolute path)" "INFO" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Windows PowerShell version !PS_MAJOR_VERSION! too old at absolute path" "WARN" "LAUNCHER"
+        )
+    ) ELSE (
+        powershell.exe -Command "$PSVersionTable.PSVersion.Major" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            FOR /F "tokens=*" %%i IN ('powershell.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+            IF !PS_MAJOR_VERSION! GEQ 5 (
+                SET "PS_EXECUTABLE=powershell.exe"
+                CALL :LOG_MESSAGE "Windows PowerShell !PS_MAJOR_VERSION! will be used for system operations only" "INFO" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "Windows PowerShell version !PS_MAJOR_VERSION! too old" "WARN" "LAUNCHER"
+            )
         )
     )
 )
