@@ -123,9 +123,10 @@ IF /I "%PENDING_RESTART%"=="True" (
     schtasks /Create ^
         /SC ONSTART ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "cmd.exe /c start \"Windows Maintenance\" /wait \"\"%SCRIPT_PATH%\"\"" ^
+        /TR "\"%ComSpec%\" /c \"\"%SCRIPT_PATH%\" -NonInteractive\"" ^
         /RL HIGHEST ^
         /RU SYSTEM ^
+        /DELAY 0002:00 ^
         /F >nul 2>&1
 
     IF !ERRORLEVEL! EQU 0 (
@@ -163,7 +164,7 @@ IF !ERRORLEVEL! EQU 0 (
         /MO 1 ^
         /D 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "cmd.exe /c start \"Windows Maintenance\" /wait \"\"%SCRIPT_PATH%\" -NonInteractive\"" ^
+        /TR "\"%ComSpec%\" /c \"\"%SCRIPT_PATH%\" -NonInteractive\"" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
