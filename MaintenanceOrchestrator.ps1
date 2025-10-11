@@ -98,6 +98,28 @@ $InventoryDir = Join-Path $TempRoot 'inventory'
 
 Write-Host "Temp Root Directory: $TempRoot" -ForegroundColor Gray
 
+# Initialize Session-based Cache Management
+$SessionStartTime = Get-Date
+$CacheTimeoutMinutes = 5  # Cache inventory data for 5 minutes within same session
+$UseInventoryCache = $false
+
+# Check if recent inventory data exists and is within cache timeout
+$recentInventory = Get-ChildItem -Path $InventoryDir -Filter "system-inventory-*.json" -ErrorAction SilentlyContinue |
+                  Sort-Object LastWriteTime -Descending |
+                  Select-Object -First 1
+
+if ($recentInventory) {
+    $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
+    if ($cacheAge.TotalMinutes -le $CacheTimeoutMinutes) {
+        $UseInventoryCache = $true
+        Write-Host "  🗂️  Recent inventory data found (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes) - caching enabled" -ForegroundColor Green
+    } else {
+        Write-Host "  🔄 Inventory data is $([math]::Round($cacheAge.TotalMinutes, 1)) minutes old - will refresh" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  📋 No cached inventory data found - will collect fresh data" -ForegroundColor Cyan
+}
+
 # Set up log file
 if (-not $LogFilePath) {
     $LogFilePath = if ($env:SCRIPT_LOG_FILE) {
@@ -216,6 +238,7 @@ function Invoke-TaskWithParameters {
         'BloatwareRemoval' {
             $params = @{}
             if ($DryRun) { $params.DryRun = $true }
+            if ($UseInventoryCache) { $params.UseCache = $true }
             return & $FunctionName @params
         }
         'TelemetryDisable' {
@@ -224,8 +247,16 @@ function Invoke-TaskWithParameters {
             return & $FunctionName @params
         }
         'BloatwareDetection' {
-            # Call with default parameters
-            return & $FunctionName
+            # Call with intelligent caching
+            $params = @{}
+            if ($UseInventoryCache) { $params.UseCache = $true }
+            return & $FunctionName @params
+        }
+        'SystemInventory' {
+            # Call with detailed information and caching
+            $params = @{ IncludeDetailed = $true }
+            if ($UseInventoryCache) { $params.UseCache = $true }
+            return & $FunctionName @params
         }
         default {
             # For other tasks, call without parameters
@@ -270,7 +301,7 @@ $MaintenanceTasks = @(
         Name = 'EssentialApps'
         Description = 'Install essential applications from curated lists'
         ModulePath = Join-Path $ModulesPath 'type2\EssentialApps.psm1'
-        Function = 'Install-EssentialApplications'
+        Function = 'Install-EssentialApplication'
         Type = 'Type2'
         Category = 'Installation'
     },

@@ -534,35 +534,169 @@ CALL :LOG_MESSAGE "Detecting PowerShell executable for system operations..." "IN
 SET "PS_EXECUTABLE="
 SET "AUTO_NONINTERACTIVE=NO"
 
-REM Check PowerShell 7+ first (absolute path, then PATH)
+REM Check PowerShell 7+ first (primary installation path)
 SET "PS7_ABSOLUTE=%ProgramFiles%\PowerShell\7\pwsh.exe"
 IF EXIST "%PS7_ABSOLUTE%" (
-    FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
-    IF !PS_MAJOR_VERSION! GEQ 7 (
-        SET "PS_EXECUTABLE=%PS7_ABSOLUTE%"
-        SET "AUTO_NONINTERACTIVE=YES"
-        FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
-        CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected at default path - will use for system operations" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7 found at default installation path: %PS7_ABSOLUTE%" "DEBUG" "LAUNCHER"
+    
+    REM Test if the executable actually works
+    "%PS7_ABSOLUTE%" -Command "exit 0" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+            SET "PS_EXECUTABLE=%PS7_ABSOLUTE%"
+            SET "AUTO_NONINTERACTIVE=YES"
+            FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected at default path - will use for system operations" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "PowerShell found at default path but version !PS_MAJOR_VERSION! < 7" "WARN" "LAUNCHER"
+        )
     ) ELSE (
-        CALL :LOG_MESSAGE "PowerShell found at default path but version !PS_MAJOR_VERSION! < 7" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "PowerShell executable at default path is not functional" "WARN" "LAUNCHER"
     )
+) ELSE (
+    CALL :LOG_MESSAGE "PowerShell 7 not found at default installation path: %PS7_ABSOLUTE%" "DEBUG" "LAUNCHER"
 )
 IF "%PS_EXECUTABLE%"=="" (
+    REM Fallback Method 1: Try pwsh.exe from PATH with multiple validation approaches
+    CALL :LOG_MESSAGE "Trying pwsh.exe from PATH..." "DEBUG" "LAUNCHER"
+    
+    REM Test 1: Simple version check
     pwsh.exe -Version >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "pwsh.exe responds to -Version command" "DEBUG" "LAUNCHER"
         FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
-        IF !PS_MAJOR_VERSION! GEQ 7 (
+        IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
             SET "PS_EXECUTABLE=pwsh.exe"
             SET "AUTO_NONINTERACTIVE=YES"
             FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
-            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected - will use for system operations" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected via PATH - will use for system operations" "SUCCESS" "LAUNCHER"
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell version !PS_MAJOR_VERSION! detected but version 7+ required" "WARN" "LAUNCHER"
         )
+    ) ELSE (
+        CALL :LOG_MESSAGE "pwsh.exe -Version failed, trying alternative detection..." "DEBUG" "LAUNCHER"
+        
+        REM Test 2: Alternative command test
+        pwsh.exe -Command "exit 0" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "pwsh.exe responds to basic command" "DEBUG" "LAUNCHER"
+            FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+            IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                SET "PS_EXECUTABLE=pwsh.exe"
+                SET "AUTO_NONINTERACTIVE=YES"
+                FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+                CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected via alternative method - will use for system operations" "SUCCESS" "LAUNCHER"
+            )
+        )
     )
 )
+
+REM Fallback Method 2: Check additional common installation paths
 IF "%PS_EXECUTABLE%"=="" (
-    CALL :LOG_MESSAGE "PowerShell 7+ (pwsh.exe) not available, checking Windows PowerShell..." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Checking additional PowerShell 7 installation paths..." "DEBUG" "LAUNCHER"
+    
+    REM Check common installation paths
+    SET "PS7_PATHS[0]=%ProgramFiles%\PowerShell\7\pwsh.exe"
+    SET "PS7_PATHS[1]=%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
+    SET "PS7_PATHS[2]=%LocalAppData%\Microsoft\powershell\7\pwsh.exe"
+    SET "PS7_PATHS[3]=%ProgramData%\chocolatey\lib\powershell-core\tools\pwsh.exe"
+    
+    FOR %%P IN (0 1 2 3) DO (
+        IF "%PS_EXECUTABLE%"=="" (
+            CALL SET "TEST_PATH=%%PS7_PATHS[%%P]%%"
+            IF EXIST "!TEST_PATH!" (
+                CALL :LOG_MESSAGE "Testing PowerShell at: !TEST_PATH!" "DEBUG" "LAUNCHER"
+                FOR /F "tokens=*" %%i IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+                IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                    SET "PS_EXECUTABLE=!TEST_PATH!"
+                    SET "AUTO_NONINTERACTIVE=YES"
+                    FOR /F "tokens=*" %%i IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+                    CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! found at: !TEST_PATH!" "SUCCESS" "LAUNCHER"
+                )
+            )
+        )
+    )
+)
+
+REM Fallback Method 3: Use Windows 'where' command to locate pwsh.exe
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Using 'where' command to locate pwsh.exe..." "DEBUG" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('where pwsh.exe 2^>nul') DO (
+        IF "%PS_EXECUTABLE%"=="" (
+            SET "TEST_PATH=%%i"
+            IF EXIST "!TEST_PATH!" (
+                CALL :LOG_MESSAGE "Testing PowerShell found by 'where': !TEST_PATH!" "DEBUG" "LAUNCHER"
+                FOR /F "tokens=*" %%j IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%j
+                IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                    SET "PS_EXECUTABLE=!TEST_PATH!"
+                    SET "AUTO_NONINTERACTIVE=YES"
+                    FOR /F "tokens=*" %%k IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%k
+                    CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! located via 'where' command" "SUCCESS" "LAUNCHER"
+                )
+            )
+        )
+    )
+)
+
+REM Fallback Method 4: Registry-based PowerShell 7 detection
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Attempting registry-based PowerShell 7 detection..." "DEBUG" "LAUNCHER"
+    
+    REM Check for PowerShell 7 installation via registry
+    REG QUERY "HKLM\SOFTWARE\Microsoft\PowerShell\7" /v "InstallLocation" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        FOR /F "tokens=3*" %%a IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\PowerShell\7" /v "InstallLocation" 2^>nul ^| findstr InstallLocation') DO (
+            SET "REG_PS7_PATH=%%b"
+            IF DEFINED REG_PS7_PATH (
+                SET "TEST_PATH=!REG_PS7_PATH!\pwsh.exe"
+                IF EXIST "!TEST_PATH!" (
+                    CALL :LOG_MESSAGE "Testing PowerShell from registry: !TEST_PATH!" "DEBUG" "LAUNCHER"
+                    "!TEST_PATH!" -Command "exit 0" >nul 2>&1
+                    IF !ERRORLEVEL! EQU 0 (
+                        FOR /F "tokens=*" %%i IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+                        IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                            SET "PS_EXECUTABLE=!TEST_PATH!"
+                            SET "AUTO_NONINTERACTIVE=YES"
+                            FOR /F "tokens=*" %%j IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%j
+                            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! found via registry detection" "SUCCESS" "LAUNCHER"
+                        )
+                    )
+                )
+            )
+        )
+    )
+)
+
+REM Fallback Method 5: Environment PATH analysis for pwsh
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Analyzing PATH environment for PowerShell executables..." "DEBUG" "LAUNCHER"
+    
+    REM Split PATH and check each directory for pwsh.exe
+    FOR %%P IN ("%PATH:;=" "%") DO (
+        IF "%PS_EXECUTABLE%"=="" (
+            SET "TEST_PATH=%%~P\pwsh.exe"
+            REM Remove quotes if present
+            SET "TEST_PATH=!TEST_PATH:"=!"
+            IF EXIST "!TEST_PATH!" (
+                CALL :LOG_MESSAGE "Testing PowerShell in PATH: !TEST_PATH!" "DEBUG" "LAUNCHER"
+                "!TEST_PATH!" -Command "exit 0" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    FOR /F "tokens=*" %%i IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+                    IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                        SET "PS_EXECUTABLE=!TEST_PATH!"
+                        SET "AUTO_NONINTERACTIVE=YES"
+                        FOR /F "tokens=*" %%j IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%j
+                        CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! found in PATH analysis" "SUCCESS" "LAUNCHER"
+                    )
+                )
+            )
+        )
+    )
+)
+
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "PowerShell 7+ (pwsh.exe) not found after exhaustive search, checking Windows PowerShell..." "INFO" "LAUNCHER"
     REM Fallback to Windows PowerShell for system operations only (absolute path, then PATH)
     SET "PS51_ABSOLUTE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
     IF EXIST "%PS51_ABSOLUTE%" (
@@ -588,7 +722,24 @@ IF "%PS_EXECUTABLE%"=="" (
 )
 
 IF "%PS_EXECUTABLE%"=="" (
-    CALL :LOG_MESSAGE "No suitable PowerShell found for system operations" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "CRITICAL: No suitable PowerShell found after exhaustive detection attempts" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Detection methods attempted:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  1. Default installation path: %ProgramFiles%\PowerShell\7\pwsh.exe" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  2. PATH environment variable lookup for pwsh.exe" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  3. Alternative installation paths (x86, LocalAppData, Chocolatey)" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  4. Windows 'where' command search" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  5. Registry-based PowerShell 7 detection" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  6. Manual PATH directory analysis" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7+ is required for this maintenance system." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please install PowerShell 7+ from: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Or install via winget: winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "If PowerShell 7+ is installed, please check:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - Installation completed successfully" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - pwsh.exe is in PATH or default location" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - No execution policy restrictions" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - Antivirus/security software not blocking execution" "ERROR" "LAUNCHER"
     PAUSE
     EXIT /B 1
 )

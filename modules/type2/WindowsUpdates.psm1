@@ -552,7 +552,9 @@ function Install-UpdatesViaNativeAPI {
     Tests if PSWindowsUpdate module is available and functional
 #>
 function Test-PSWindowsUpdateAvailable {
+    [CmdletBinding()]
     [OutputType([bool])]
+    param()
     try {
         $module = Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue
         if (-not $module) {
@@ -572,7 +574,9 @@ function Test-PSWindowsUpdateAvailable {
     Tests if native Windows Update API is available
 #>
 function Test-NativeWindowsUpdateAvailable {
+    [CmdletBinding()]
     [OutputType([bool])]
+    param()
     try {
         $updateSession = New-Object -ComObject Microsoft.Update.Session -ErrorAction SilentlyContinue
         return $null -ne $updateSession
@@ -587,7 +591,9 @@ function Test-NativeWindowsUpdateAvailable {
     Tests if a system reboot is pending
 #>
 function Test-PendingReboot {
+    [CmdletBinding()]
     [OutputType([bool])]
+    param()
     $registryKeys = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
@@ -608,7 +614,9 @@ function Test-PendingReboot {
     Gets Windows Update settings and configuration
 #>
 function Get-WindowsUpdateSetting {
+    [CmdletBinding()]
     [OutputType([hashtable])]
+    param()
     try {
         $auKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update"
 
@@ -648,7 +656,9 @@ function Get-WindowsUpdateSetting {
     Gets basic Windows Update status without advanced features
 #>
 function Get-WindowsUpdateBasicStatus {
+    [CmdletBinding()]
     [OutputType([hashtable])]
+    param()
     return @{
         UpdatesFound = 0
         UpdatesInstalled = 0

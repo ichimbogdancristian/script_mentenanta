@@ -66,22 +66,22 @@ function New-MaintenanceReport {
     
     # Enhanced report data structure with comprehensive analytics
     $reportData = @{
-        GenerationTime = $startTime
+        GenerationTime  = $startTime
         SystemInventory = $SystemInventory
-        TaskResults = $TaskResults
-        Configuration = $Configuration
-        Summary = Get-ExecutionSummary -TaskResults $TaskResults
-        Analytics = @{
-            SystemHealth = Get-SystemHealthAnalytics -SystemInventory $SystemInventory
+        TaskResults     = $TaskResults
+        Configuration   = $Configuration
+        Summary         = Get-ExecutionSummary -TaskResults $TaskResults
+        Analytics       = @{
+            SystemHealth       = Get-SystemHealthAnalytics -SystemInventory $SystemInventory
             PerformanceMetrics = Get-PerformanceAnalytics -TaskResults $TaskResults
-            SecurityInsights = Get-SecurityAnalytics -SystemInventory $SystemInventory
+            SecurityInsights   = Get-SecurityAnalytics -SystemInventory $SystemInventory
             RecommendedActions = Get-RecommendedActions -SystemInventory $SystemInventory -TaskResults $TaskResults
         }
-        Charts = @{
+        Charts          = @{
             TaskDistribution = Get-TaskDistributionData -TaskResults $TaskResults
-            SystemResources = Get-SystemResourceData -SystemInventory $SystemInventory
-            SecurityScore = Get-SecurityScoreData -SystemInventory $SystemInventory
-            TimelineData = Get-ExecutionTimelineData -TaskResults $TaskResults
+            SystemResources  = Get-SystemResourceData -SystemInventory $SystemInventory
+            SecurityScore    = Get-SecurityScoreData -SystemInventory $SystemInventory
+            TimelineData     = Get-ExecutionTimelineData -TaskResults $TaskResults
         }
     }
 
@@ -111,11 +111,11 @@ function New-MaintenanceReport {
         Write-Information "  ✅ Reports generated successfully in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
 
         return @{
-            HtmlReport = $htmlPath
-            TextReport = $textPath
-            JsonExport = $jsonPath
+            HtmlReport     = $htmlPath
+            TextReport     = $textPath
+            JsonExport     = $jsonPath
             GenerationTime = $startTime
-            Duration = $duration
+            Duration       = $duration
         }
     }
     catch {
@@ -733,10 +733,8 @@ function New-HtmlReport {
             return 'poor';
         }
     </script>
-</head>
-<body>
-    <div class="container">
-"@) | Out-Null
+    <style>
+        .health-score {
             font-size: 2.5em;
             font-weight: bold;
             margin-bottom: 10px;
@@ -1095,9 +1093,9 @@ function New-HtmlReport {
 
             foreach ($recommendation in $ReportData.Analytics.RecommendedActions) {
                 $iconMap = @{
-                    'High' = '🔴'
+                    'High'   = '🔴'
                     'Medium' = '🟡'
-                    'Low' = '🟢'
+                    'Low'    = '🟢'
                 }
                 $icon = $iconMap[$recommendation.Priority]
                 
@@ -1268,13 +1266,14 @@ function Get-ExecutionSummary {
     $totalDuration = ($TaskResults | Measure-Object Duration -Sum).Sum
 
     return @{
-        TotalTasks = $TaskResults.Count
+        TotalTasks      = $TaskResults.Count
         SuccessfulTasks = $successful.Count
-        FailedTasks = $failed.Count
-        TotalDuration = $totalDuration
-        SuccessRate = if ($TaskResults.Count -gt 0) {
+        FailedTasks     = $failed.Count
+        TotalDuration   = $totalDuration
+        SuccessRate     = if ($TaskResults.Count -gt 0) {
             [math]::Round(($successful.Count / $TaskResults.Count) * 100, 1)
-        } else { 0 }
+        }
+        else { 0 }
     }
 }
 
@@ -1343,8 +1342,8 @@ function Get-SystemHealthAnalytics {
     $overallScore = if ($maxScore -gt 0) { [math]::Round(($totalScore / $maxScore) * 100, 1) } else { 0 }
     
     return @{
-        OverallScore = $overallScore
-        HealthFactors = $healthFactors
+        OverallScore    = $overallScore
+        HealthFactors   = $healthFactors
         Recommendations = Get-HealthRecommendations -HealthFactors $healthFactors
     }
 }
@@ -1365,8 +1364,8 @@ function Get-PerformanceAnalytics {
     
     $typeAnalysis = $TaskResults | Group-Object Type | ForEach-Object {
         @{
-            Type = $_.Name
-            Count = $_.Count
+            Type        = $_.Name
+            Count       = $_.Count
             SuccessRate = [math]::Round((($_.Group | Where-Object Success).Count / $_.Count) * 100, 1)
             AvgDuration = [math]::Round((($_.Group | Measure-Object Duration -Average).Average), 2)
         }
@@ -1374,9 +1373,9 @@ function Get-PerformanceAnalytics {
     
     return @{
         AverageDuration = [math]::Round($avgDuration, 2)
-        MaxDuration = [math]::Round($maxDuration, 2)
-        MinDuration = [math]::Round($minDuration, 2)
-        TypeAnalysis = $typeAnalysis
+        MaxDuration     = [math]::Round($maxDuration, 2)
+        MinDuration     = [math]::Round($minDuration, 2)
+        TypeAnalysis    = $typeAnalysis
         TotalOperations = $TaskResults.Count
     }
 }
@@ -1416,10 +1415,10 @@ function Get-SecurityAnalytics {
     }
     
     return @{
-        SecurityScore = $securityScore
-        Issues = $issues
+        SecurityScore   = $securityScore
+        Issues          = $issues
         Recommendations = $recommendations
-        Status = if ($securityScore -ge 80) { 'Good' } elseif ($securityScore -ge 60) { 'Fair' } else { 'Poor' }
+        Status          = if ($securityScore -ge 80) { 'Good' } elseif ($securityScore -ge 60) { 'Fair' } else { 'Poor' }
     }
 }
 
@@ -1438,8 +1437,8 @@ function Get-RecommendedActions {
         $recommendations += @{
             Priority = 'High'
             Category = 'Task Failure'
-            Action = "Investigate and resolve: $($task.TaskName)"
-            Details = $task.Error
+            Action   = "Investigate and resolve: $($task.TaskName)"
+            Details  = $task.Error
         }
     }
     
@@ -1450,8 +1449,8 @@ function Get-RecommendedActions {
             $recommendations += @{
                 Priority = 'Medium'
                 Category = 'Hardware'
-                Action = "Consider upgrading system memory"
-                Details = "Current: $([math]::Round($memoryGB, 1))GB, Recommended: 8GB+"
+                Action   = "Consider upgrading system memory"
+                Details  = "Current: $([math]::Round($memoryGB, 1))GB, Recommended: 8GB+"
             }
         }
     }
@@ -1461,8 +1460,8 @@ function Get-RecommendedActions {
         $recommendations += @{
             Priority = 'Medium'
             Category = 'Operating System'
-            Action = "Consider upgrading to Windows 11"
-            Details = "Current build: $($SystemInventory.OperatingSystem.BuildNumber)"
+            Action   = "Consider upgrading to Windows 11"
+            Details  = "Current build: $($SystemInventory.OperatingSystem.BuildNumber)"
         }
     }
     
@@ -1478,32 +1477,32 @@ function Get-TaskDistributionData {
     
     if (-not $TaskResults -or $TaskResults.Count -eq 0) {
         return @{
-            labels = @('No Data')
+            labels   = @('No Data')
             datasets = @(@{
-                data = @(1)
-                backgroundColor = @('#cccccc')
-            })
+                    data            = @(1)
+                    backgroundColor = @('#cccccc')
+                })
         }
     }
     
     $distribution = $TaskResults | Group-Object Type | ForEach-Object {
         @{
-            Type = $_.Name
-            Count = $_.Count
+            Type    = $_.Name
+            Count   = $_.Count
             Success = ($_.Group | Where-Object Success).Count
-            Failed = ($_.Group | Where-Object { -not $_.Success }).Count
+            Failed  = ($_.Group | Where-Object { -not $_.Success }).Count
         }
     }
     
     return @{
-        labels = $distribution.Type
+        labels   = $distribution.Type
         datasets = @(@{
-            label = 'Task Distribution'
-            data = $distribution.Count
-            backgroundColor = @('#0078d4', '#107c10', '#ffb900', '#d13438', '#6b69d6')
-            borderWidth = 2
-            borderColor = '#ffffff'
-        })
+                label           = 'Task Distribution'
+                data            = $distribution.Count
+                backgroundColor = @('#0078d4', '#107c10', '#ffb900', '#d13438', '#6b69d6')
+                borderWidth     = 2
+                borderColor     = '#ffffff'
+            })
     }
 }
 
@@ -1516,11 +1515,11 @@ function Get-SystemResourceData {
     
     if (-not $SystemInventory) {
         return @{
-            labels = @('No Data')
+            labels   = @('No Data')
             datasets = @(@{
-                data = @(0)
-                backgroundColor = @('#cccccc')
-            })
+                    data            = @(0)
+                    backgroundColor = @('#cccccc')
+                })
         }
     }
     
@@ -1553,14 +1552,14 @@ function Get-SystemResourceData {
     }
     
     return @{
-        labels = $resources
+        labels   = $resources
         datasets = @(@{
-            label = 'Resource Utilization %'
-            data = $values
-            backgroundColor = $colors
-            borderColor = $colors
-            borderWidth = 1
-        })
+                label           = 'Resource Utilization %'
+                data            = $values
+                backgroundColor = $colors
+                borderColor     = $colors
+                borderWidth     = 1
+            })
     }
 }
 
@@ -1573,12 +1572,12 @@ function Get-ExecutionTimelineData {
     
     if (-not $TaskResults -or $TaskResults.Count -eq 0) {
         return @{
-            labels = @()
+            labels   = @()
             datasets = @()
         }
     }
     
-    $startTime = (Get-Date).AddMinutes(-($TaskResults.Count * 2))
+    $startTime = (Get-Date).AddMinutes( - ($TaskResults.Count * 2))
     $timelinePoints = @()
     
     for ($i = 0; $i -lt $TaskResults.Count; $i++) {
@@ -1590,13 +1589,13 @@ function Get-ExecutionTimelineData {
     
     return @{
         datasets = @(@{
-            label = 'Task Duration (seconds)'
-            data = $timelinePoints
-            borderColor = '#0078d4'
-            backgroundColor = 'rgba(0, 120, 212, 0.1)'
-            fill = $true
-            tension = 0.4
-        })
+                label           = 'Task Duration (seconds)'
+                data            = $timelinePoints
+                borderColor     = '#0078d4'
+                backgroundColor = 'rgba(0, 120, 212, 0.1)'
+                fill            = $true
+                tension         = 0.4
+            })
     }
 }
 
@@ -1611,17 +1610,17 @@ function Get-SecurityScoreData {
     $scores = @(85, 90, 88, 82, 78, 85) # Sample scores - would be calculated from actual security audit
     
     return @{
-        labels = $categories
+        labels   = $categories
         datasets = @(@{
-            label = 'Security Score'
-            data = $scores
-            borderColor = '#d13438'
-            backgroundColor = 'rgba(209, 52, 56, 0.2)'
-            pointBackgroundColor = '#d13438'
-            pointBorderColor = '#ffffff'
-            pointHoverBackgroundColor = '#ffffff'
-            pointHoverBorderColor = '#d13438'
-        })
+                label                     = 'Security Score'
+                data                      = $scores
+                borderColor               = '#d13438'
+                backgroundColor           = 'rgba(209, 52, 56, 0.2)'
+                pointBackgroundColor      = '#d13438'
+                pointBorderColor          = '#ffffff'
+                pointHoverBackgroundColor = '#ffffff'
+                pointHoverBorderColor     = '#d13438'
+            })
     }
 }
 
@@ -1638,7 +1637,7 @@ function Get-HealthRecommendations {
         if ($factor.Value.Score -lt ($factor.Value.MaxScore * 0.75)) {
             $recommendations += @{
                 Category = $factor.Key
-                Message = "Consider upgrading $($factor.Key.ToLower()) components"
+                Message  = "Consider upgrading $($factor.Key.ToLower()) components"
                 Priority = if ($factor.Value.Score -lt ($factor.Value.MaxScore * 0.5)) { 'High' } else { 'Medium' }
             }
         }

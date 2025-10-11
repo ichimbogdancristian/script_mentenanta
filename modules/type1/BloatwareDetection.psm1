@@ -93,22 +93,35 @@ function Find-InstalledBloatware {
         # Scan AppX packages
         Write-Information "  📱 Scanning AppX packages..." -InformationAction Continue
         $appxBloatware = Get-AppXBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
-        if ($appxBloatware) { $allBloatware.AddRange($appxBloatware) }
+        if ($appxBloatware -and $appxBloatware.Count -gt 0) { 
+            # Ensure we have an array and add each item individually
+            $appxArray = @($appxBloatware)
+            foreach ($item in $appxArray) { $allBloatware.Add($item) }
+        }
 
         # Scan Winget packages
         Write-Information "  📦 Scanning Winget packages..." -InformationAction Continue
         $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
-        if ($wingetBloatware) { $allBloatware.AddRange($wingetBloatware) }
+        if ($wingetBloatware -and $wingetBloatware.Count -gt 0) { 
+            $wingetArray = @($wingetBloatware)
+            foreach ($item in $wingetArray) { $allBloatware.Add($item) }
+        }
 
         # Scan Chocolatey packages
         Write-Information "  🍫 Scanning Chocolatey packages..." -InformationAction Continue
         $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
-        if ($chocoBloatware) { $allBloatware.AddRange($chocoBloatware) }
+        if ($chocoBloatware -and $chocoBloatware.Count -gt 0) { 
+            $chocoArray = @($chocoBloatware)
+            foreach ($item in $chocoArray) { $allBloatware.Add($item) }
+        }
 
         # Scan Registry entries
         Write-Information "  📋 Scanning Registry entries..." -InformationAction Continue
         $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
-        if ($registryBloatware) { $allBloatware.AddRange($registryBloatware) }
+        if ($registryBloatware -and $registryBloatware.Count -gt 0) { 
+            $registryArray = @($registryBloatware)
+            foreach ($item in $registryArray) { $allBloatware.Add($item) }
+        }
 
         # Remove duplicates and sort results
         $uniqueBloatware = $allBloatware |

@@ -68,7 +68,10 @@ function Remove-DetectedBloatware {
         [switch]$Force,
 
         [Parameter()]
-        [string[]]$Categories = @('all')
+        [string[]]$Categories = @('all'),
+
+        [Parameter()]
+        [switch]$UseCache
     )
 
     Write-Information "🗑️  Starting bloatware removal process..." -InformationAction Continue
@@ -76,7 +79,9 @@ function Remove-DetectedBloatware {
 
     if (-not $BloatwareList) {
         Write-Information "  🔍 No bloatware list provided, detecting automatically..." -InformationAction Continue
-        $BloatwareList = Find-InstalledBloatware -Categories $Categories -UseCache
+        $params = @{ Categories = $Categories }
+        if ($UseCache) { $params.UseCache = $true }
+        $BloatwareList = Find-InstalledBloatware @params
     }
 
     if (-not $BloatwareList -or $BloatwareList.Count -eq 0) {
