@@ -52,7 +52,7 @@ function Get-SystemInventory {
         [switch]$IncludeDetailed
     )
 
-    Write-Host "🔍 Starting system inventory collection..." -ForegroundColor Cyan
+    Write-Information "🔍 Starting system inventory collection..." -InformationAction Continue
 
     # Check for cached inventory data if UseCache is enabled
     if ($UseCache) {
@@ -69,7 +69,7 @@ function Get-SystemInventory {
                 $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
                 if ($cacheAge.TotalMinutes -le $CacheTimeout) {
                     try {
-                        Write-Host "  🗂️  Using cached inventory data (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes)" -ForegroundColor Green
+                        Write-Information "  🗂️  Using cached inventory data (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes)" -InformationAction Continue
                         $cachedData = Get-Content -Path $recentInventory.FullName -Raw | ConvertFrom-Json -AsHashtable
                         return $cachedData
                     }
@@ -78,7 +78,7 @@ function Get-SystemInventory {
                     }
                 }
                 else {
-                    Write-Host "  ⏰ Cached inventory data expired (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes > $CacheTimeout minutes)" -ForegroundColor Yellow
+                    Write-Warning "  ⏰ Cached inventory data expired (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes > $CacheTimeout minutes)"
                 }
             }
         }
@@ -89,32 +89,32 @@ function Get-SystemInventory {
 
     try {
         # Basic system information
-        Write-Host "  📊 Collecting basic system information..." -ForegroundColor Gray
+        Write-Information "  📊 Collecting basic system information..." -InformationAction Continue
         $inventoryData.SystemInfo = Get-BasicSystemInfo
 
         # Hardware information
-        Write-Host "  🖥️ Collecting hardware information..." -ForegroundColor Gray
+        Write-Information "  🖥️ Collecting hardware information..." -InformationAction Continue
         $inventoryData.Hardware = Get-HardwareInfo
 
         # Operating system details
-        Write-Host "  💻 Collecting operating system details..." -ForegroundColor Gray
+        Write-Information "  💻 Collecting operating system details..." -InformationAction Continue
         $inventoryData.OperatingSystem = Get-OperatingSystemInfo
 
         # Installed software
-        Write-Host "  📦 Collecting installed software..." -ForegroundColor Gray
+        Write-Information "  📦 Collecting installed software..." -InformationAction Continue
         $inventoryData.InstalledSoftware = Get-InstalledSoftwareInfo
 
         # Running services
-        Write-Host "  🔧 Collecting services information..." -ForegroundColor Gray
+        Write-Information "  🔧 Collecting services information..." -InformationAction Continue
         $inventoryData.Services = Get-ServicesInfo
 
         # Network configuration
-        Write-Host "  🌐 Collecting network configuration..." -ForegroundColor Gray
+        Write-Information "  🌐 Collecting network configuration..." -InformationAction Continue
         $inventoryData.Network = Get-NetworkInfo
 
         if ($IncludeDetailed) {
             # Detailed information (slower to collect)
-            Write-Host "  🔎 Collecting detailed information..." -ForegroundColor Gray
+            Write-Information "  🔎 Collecting detailed information..." -InformationAction Continue
             $inventoryData.DetailedInfo = Get-DetailedSystemInfo
         }
 
@@ -129,7 +129,7 @@ function Get-SystemInventory {
         }
 
         $duration = [math]::Round($inventoryData.Metadata.Duration, 2)
-        Write-Host "  ✅ System inventory completed in $duration seconds" -ForegroundColor Green
+        Write-Information "  ✅ System inventory completed in $duration seconds" -InformationAction Continue
 
         # Auto-save inventory data to temp_files/inventory folder if available
         $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -140,13 +140,13 @@ function Get-SystemInventory {
                 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
                 $inventoryPath = Join-Path $inventoryDir "system-inventory-$timestamp"
 
-                Write-Host "  💾 Saving inventory data to: $inventoryPath.json" -ForegroundColor Gray
+                Write-Information "  💾 Saving inventory data to: $inventoryPath.json" -InformationAction Continue
                 Export-SystemInventory -InventoryData $inventoryData -OutputPath $inventoryPath -Format JSON
 
                 # Also save installed software as a separate list for easier comparison
                 $installedAppsPath = Join-Path $inventoryDir "installed-software-$timestamp.json"
                 $inventoryData.InstalledSoftware | ConvertTo-Json -Depth 5 | Out-File -FilePath $installedAppsPath -Encoding UTF8
-                Write-Host "  📦 Installed software list saved to: $installedAppsPath" -ForegroundColor Gray
+                Write-Information "  📦 Installed software list saved to: $installedAppsPath" -InformationAction Continue
             }
             catch {
                 Write-Warning "Failed to save inventory data: $_"

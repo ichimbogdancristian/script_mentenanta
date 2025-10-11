@@ -489,7 +489,7 @@ Write-Information "Installing $($chocoApps.Count) apps via Chocolatey..." -Infor
 
 .EXAMPLE
     if (Test-AppInstallationStatus -App $chromeApp -InstalledApps $apps -InstalledPrograms $programs) {
-        Write-Host "Chrome is already installed"
+        Write-Information "Chrome is already installed" -InformationAction Continue
     }
 #>
 function Test-AppInstallationStatus {
@@ -852,7 +852,7 @@ function Install-AppsViaChocolatey {
 
 .EXAMPLE
     if (Test-PackageManagerAvailable -Manager 'Winget') {
-        Write-Host "Winget is available for use"
+        Write-Information "Winget is available for use" -InformationAction Continue
     }
 
 .EXAMPLE
@@ -993,7 +993,7 @@ function Merge-InstallationResult {
 
 .EXAMPLE
     $summary = Get-InstallationStatistic -Results $results
-    Write-Host "Success rate: $($summary.SuccessRate)%"
+    Write-Information "Success rate: $($summary.SuccessRate)%" -InformationAction Continue
 #>
 function Get-InstallationStatistic {
     [CmdletBinding()]

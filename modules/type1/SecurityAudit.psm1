@@ -74,7 +74,7 @@ function Start-SecurityAudit {
         [switch]$GenerateReport
     )
 
-    Write-Host "🔒 Starting comprehensive security audit..." -ForegroundColor Cyan
+    Write-Information "🔒 Starting comprehensive security audit..." -InformationAction Continue
     $startTime = Get-Date
 
     # Initialize audit results
@@ -90,14 +90,14 @@ function Start-SecurityAudit {
 
     try {
         # Windows Defender Status
-        Write-Host "  🛡️  Checking Windows Defender status..." -ForegroundColor Gray
+        Write-Information "  🛡️  Checking Windows Defender status..." -InformationAction Continue
         $defenderResults = Get-WindowsDefenderStatus -IncludeScan:$IncludeDefenderScan
         $auditResults.Categories['WindowsDefender'] = $defenderResults
         Update-SecurityScore -Results $auditResults -Category 'WindowsDefender' -Score $defenderResults.Score -MaxScore 25
 
         # Firewall Configuration (default: enabled)
         if ($CheckFirewall -or (-not $PSBoundParameters.ContainsKey('CheckFirewall'))) {
-            Write-Host "  🔥 Checking Windows Firewall..." -ForegroundColor Gray
+            Write-Information "  🔥 Checking Windows Firewall..." -InformationAction Continue
             $firewallResults = Get-FirewallStatus
             $auditResults.Categories['Firewall'] = $firewallResults
             Update-SecurityScore -Results $auditResults -Category 'Firewall' -Score $firewallResults.Score -MaxScore 20
@@ -105,7 +105,7 @@ function Start-SecurityAudit {
 
         # User Account Control (default: enabled)
         if ($CheckUAC -or (-not $PSBoundParameters.ContainsKey('CheckUAC'))) {
-            Write-Host "  👤 Checking User Account Control..." -ForegroundColor Gray
+            Write-Information "  👤 Checking User Account Control..." -InformationAction Continue
             $uacResults = Get-UACStatus
             $auditResults.Categories['UAC'] = $uacResults
             Update-SecurityScore -Results $auditResults -Category 'UAC' -Score $uacResults.Score -MaxScore 15
@@ -113,7 +113,7 @@ function Start-SecurityAudit {
 
         # Security Services (default: enabled)
         if ($CheckServices -or (-not $PSBoundParameters.ContainsKey('CheckServices'))) {
-            Write-Host "  ⚙️  Auditing security services..." -ForegroundColor Gray
+            Write-Information "  ⚙️  Auditing security services..." -InformationAction Continue
             $servicesResults = Get-SecurityServicesStatus
             $auditResults.Categories['Services'] = $servicesResults
             Update-SecurityScore -Results $auditResults -Category 'Services' -Score $servicesResults.Score -MaxScore 20
@@ -121,7 +121,7 @@ function Start-SecurityAudit {
 
         # Windows Updates (default: enabled)
         if ($CheckUpdates -or (-not $PSBoundParameters.ContainsKey('CheckUpdates'))) {
-            Write-Host "  📥 Checking security updates..." -ForegroundColor Gray
+            Write-Information "  📥 Checking security updates..." -InformationAction Continue
             $updatesResults = Get-SecurityUpdatesStatus
             $auditResults.Categories['Updates'] = $updatesResults
             Update-SecurityScore -Results $auditResults -Category 'Updates' -Score $updatesResults.Score -MaxScore 20
@@ -153,15 +153,19 @@ function Start-SecurityAudit {
             default { 'Gray' }
         }
 
-        Write-Host "  ✅ Security audit completed in $([math]::Round($duration, 2))s" -ForegroundColor Green
-        Write-Host "    📊 Security Score: $($auditResults.Summary.OverallScore)/$($auditResults.Summary.MaxPossibleScore) ($($auditResults.Summary.PercentageScore)%)" -ForegroundColor Gray
-        Write-Host "    ⚠️  Risk Level: $($auditResults.Summary.RiskLevel)" -ForegroundColor $riskColor
-        Write-Host "    💡 Recommendations: $($auditResults.Summary.RecommendationsCount)" -ForegroundColor Gray
+        Write-Information "  ✅ Security audit completed in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "    📊 Security Score: $($auditResults.Summary.OverallScore)/$($auditResults.Summary.MaxPossibleScore) ($($auditResults.Summary.PercentageScore)%)" -InformationAction Continue
+        if ($auditResults.Summary.RiskLevel -eq "High") {
+            Write-Warning "    ⚠️  Risk Level: $($auditResults.Summary.RiskLevel)"
+        } else {
+            Write-Information "    ⚠️  Risk Level: $($auditResults.Summary.RiskLevel)" -InformationAction Continue
+        }
+        Write-Information "    💡 Recommendations: $($auditResults.Summary.RecommendationsCount)" -InformationAction Continue
 
         # Generate report if requested (default: enabled)
         if ($GenerateReport -or (-not $PSBoundParameters.ContainsKey('GenerateReport'))) {
             $reportPath = New-SecurityReport -AuditResults $auditResults
-            Write-Host "    📄 Security report: $reportPath" -ForegroundColor Blue
+            Write-Information "    📄 Security report: $reportPath" -InformationAction Continue
         }
 
         return $auditResults
@@ -250,7 +254,7 @@ function Get-WindowsDefenderStatus {
 
             # Perform scan if requested
             if ($IncludeScan) {
-                Write-Host "    🔍 Performing quick security scan..." -ForegroundColor Gray
+                Write-Information "    🔍 Performing quick security scan..." -InformationAction Continue
                 try {
                     Start-MpScan -ScanType QuickScan -AsJob | Out-Null
                     Start-Sleep -Seconds 2  # Brief pause to let scan start
