@@ -172,6 +172,16 @@ IF /I "%RESTART_NEEDED%"=="YES" (
 
 REM No pending restart; continue normal execution
 
+REM Check for PowerShell restart flag
+IF EXIST "%WORKING_DIR%restart_flag.tmp" (
+    CALL :LOG_MESSAGE "Detected PowerShell 7 installation restart flag - cleaning up..." "INFO" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('TYPE "%WORKING_DIR%restart_flag.tmp" 2^>nul') DO (
+        CALL :LOG_MESSAGE "Restart context: %%i" "DEBUG" "LAUNCHER"
+    )
+    DEL "%WORKING_DIR%restart_flag.tmp" >nul 2>&1
+    CALL :LOG_MESSAGE "Script restarted after PowerShell 7 installation - continuing with fresh environment" "SUCCESS" "LAUNCHER"
+)
+
 REM Create/Verify monthly maintenance scheduled task before continuing
 SET "TASK_NAME=WindowsMaintenanceAutomation"
 CALL :LOG_MESSAGE "Ensuring monthly maintenance task exists (1st day 01:00)..." "INFO" "LAUNCHER"
@@ -403,8 +413,40 @@ powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPa
 
 REM PowerShell 7 Detection and Installation
 CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
+
+REM Try multiple detection methods before deciding to install
+SET "PS7_FOUND=NO"
+
+REM Method 1: Direct pwsh.exe command
 pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! NEQ 0 (
+IF !ERRORLEVEL! EQU 0 (
+    SET "PS7_FOUND=YES"
+    CALL :LOG_MESSAGE "PowerShell 7 detected via pwsh.exe command" "DEBUG" "LAUNCHER"
+)
+
+REM Method 2: Check default installation path
+IF "%PS7_FOUND%"=="NO" (
+    IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+        "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "PS7_FOUND=YES"
+            CALL :LOG_MESSAGE "PowerShell 7 detected at default installation path" "DEBUG" "LAUNCHER"
+        )
+    )
+)
+
+REM Method 3: Check WindowsApps for App Execution Alias
+IF "%PS7_FOUND%"=="NO" (
+    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" (
+        "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "PS7_FOUND=YES"
+            CALL :LOG_MESSAGE "PowerShell 7 detected via WindowsApps alias" "DEBUG" "LAUNCHER"
+        )
+    )
+)
+
+IF "%PS7_FOUND%"=="NO" (
     CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "INFO" "LAUNCHER"
     
     REM Check if winget is available for PS7 installation
@@ -414,47 +456,17 @@ IF !ERRORLEVEL! NEQ 0 (
         winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
             
-            REM Refresh environment variables to pick up new PATH (preserve critical paths and add fallbacks)
-            CALL :LOG_MESSAGE "Refreshing environment variables..." "INFO" "LAUNCHER"
-            SET "SYSTEM_PATH="
-            SET "USER_PATH="
-            FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul`) DO SET "SYSTEM_PATH=%%B"
-            FOR /F "usebackq tokens=2*" %%A IN (`REG QUERY "HKCU\Environment" /v PATH 2^>nul`) DO SET "USER_PATH=%%B"
-
-            SET "NEW_PATH="
-            IF DEFINED SYSTEM_PATH SET "NEW_PATH=%SYSTEM_PATH%"
-            IF DEFINED USER_PATH SET "NEW_PATH=%NEW_PATH%;%USER_PATH%"
-
-            REM Ensure WindowsApps (App Execution Aliases like winget, pwsh) is present in PATH
-            IF NOT DEFINED USER_PATH (
-                IF EXIST "%LocalAppData%\Microsoft\WindowsApps" SET "NEW_PATH=%NEW_PATH%;%LocalAppData%\Microsoft\WindowsApps"
-            )
-
-            REM If PowerShell 7 default install exists, ensure its folder is included for this session
-            IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" SET "NEW_PATH=%NEW_PATH%;%ProgramFiles%\PowerShell\7"
-
-            REM Only overwrite PATH if we actually built a path
-            IF DEFINED NEW_PATH (
-                SET "PATH=%NEW_PATH%"
-            ) ELSE (
-                CALL :LOG_MESSAGE "PATH refresh skipped (registry values unavailable); continuing with current PATH" "WARN" "LAUNCHER"
-            )
-
-            REM Verify installation worked (prefer absolute path first)
-            SET "PS7_ABSOLUTE="
-            IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" SET "PS7_ABSOLUTE=%ProgramFiles%\PowerShell\7\pwsh.exe"
-            IF DEFINED PS7_ABSOLUTE (
-                CALL :LOG_MESSAGE "PowerShell 7 discovered at: %PS7_ABSOLUTE%" "SUCCESS" "LAUNCHER"
-            ) ELSE (
-                pwsh.exe -Version >nul 2>&1
-                IF !ERRORLEVEL! EQU 0 (
-                    CALL :LOG_MESSAGE "PowerShell 7 is now available after installation" "SUCCESS" "LAUNCHER"
-                ) ELSE (
-                    CALL :LOG_MESSAGE "PowerShell 7 installation completed but pwsh.exe still not found in PATH" "WARN" "LAUNCHER"
-                    CALL :LOG_MESSAGE "You may need to restart your command prompt or add PowerShell to PATH manually" "WARN" "LAUNCHER"
-                )
-            )
+            REM Create restart flag with timestamp to prevent infinite loops
+            ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
+            
+            REM Restart the script with a fresh environment (give Windows a moment to update PATH)
+            TIMEOUT /T 3 /NOBREAK >nul 2>&1
+            START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%""
+            
+            REM Exit current instance after new instance completes
+            EXIT /B !ERRORLEVEL!
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
         )
