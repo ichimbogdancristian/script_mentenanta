@@ -96,7 +96,9 @@ function Find-InstalledBloatware {
         if ($appxBloatware -and $appxBloatware.Count -gt 0) { 
             # Ensure we have an array and add each item individually
             $appxArray = @($appxBloatware)
-            foreach ($item in $appxArray) { $allBloatware.Add($item) }
+            foreach ($item in $appxArray) { 
+                if ($null -ne $item) { $allBloatware.Add($item) }
+            }
         }
 
         # Scan Winget packages
@@ -104,7 +106,9 @@ function Find-InstalledBloatware {
         $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($wingetBloatware -and $wingetBloatware.Count -gt 0) { 
             $wingetArray = @($wingetBloatware)
-            foreach ($item in $wingetArray) { $allBloatware.Add($item) }
+            foreach ($item in $wingetArray) { 
+                if ($null -ne $item) { $allBloatware.Add($item) }
+            }
         }
 
         # Scan Chocolatey packages
@@ -112,7 +116,9 @@ function Find-InstalledBloatware {
         $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($chocoBloatware -and $chocoBloatware.Count -gt 0) { 
             $chocoArray = @($chocoBloatware)
-            foreach ($item in $chocoArray) { $allBloatware.Add($item) }
+            foreach ($item in $chocoArray) { 
+                if ($null -ne $item) { $allBloatware.Add($item) }
+            }
         }
 
         # Scan Registry entries
@@ -120,7 +126,9 @@ function Find-InstalledBloatware {
         $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($registryBloatware -and $registryBloatware.Count -gt 0) { 
             $registryArray = @($registryBloatware)
-            foreach ($item in $registryArray) { $allBloatware.Add($item) }
+            foreach ($item in $registryArray) { 
+                if ($null -ne $item) { $allBloatware.Add($item) }
+            }
         }
 
         # Remove duplicates and sort results

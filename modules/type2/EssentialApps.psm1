@@ -342,11 +342,11 @@ function Save-AppDiffList {
         $manualApps = $MissingApps | Where-Object { -not $_.Winget -and -not $_.Chocolatey }
 
         $wingetPkgArr = @()
-        foreach ($a in $wingetApps) { $wingetPkgArr += @{ Name = $a.Name; Id = $a.Winget } }
+        if ($wingetApps) { foreach ($a in $wingetApps) { if ($a) { $wingetPkgArr += @{ Name = $a.Name; Id = $a.Winget } } } }
         $chocoPkgArr = @()
-        foreach ($a in $chocoApps) { $chocoPkgArr += @{ Name = $a.Name; Id = $a.Chocolatey } }
+        if ($chocoApps) { foreach ($a in $chocoApps) { if ($a) { $chocoPkgArr += @{ Name = $a.Name; Id = $a.Chocolatey } } } }
         $manualPkgArr = @()
-        foreach ($a in $manualApps) { $manualPkgArr += @{ Name = $a.Name; Description = $a.Description } }
+        if ($manualApps) { foreach ($a in $manualApps) { if ($a) { $manualPkgArr += @{ Name = $a.Name; Description = $a.Description } } } }
 
         # Recommendations
         $recs = @()

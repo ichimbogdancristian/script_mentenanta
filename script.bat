@@ -937,7 +937,7 @@ FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]:
 SET "RESTORE_DESC=MaintenanceRP-!RESTORE_GUID!"
 
 REM Try creating via Checkpoint-Computer, fallback to CIM if needed
-%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; Write-Host 'RESTORE_CREATED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; $result = Invoke-CimMethod -InputObject $sr -MethodName CreateRestorePoint -Arguments @{ Description='!RESTORE_DESC!'; RestorePointType=10; EventType=100 }; if ($result.ReturnValue -eq 0) { Write-Host 'RESTORE_CREATED' } else { Write-Host ('RESTORE_FAILED_CODE ' + $result.ReturnValue); exit 1 } } catch { Write-Host 'RESTORE_FAILED'; Write-Error $_; exit 1 } }"
+%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; Write-Host 'RESTORE_CREATED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; if ($sr) { $result = Invoke-CimMethod -InputObject $sr -MethodName CreateRestorePoint -Arguments @{ Description='!RESTORE_DESC!'; RestorePointType=10; EventType=100 }; if ($result.ReturnValue -eq 0) { Write-Host 'RESTORE_CREATED' } else { Write-Host ('RESTORE_FAILED_CODE ' + $result.ReturnValue); exit 1 } } else { Write-Host 'SR_CIM_NULL'; exit 2 } } catch { Write-Host 'RESTORE_FAILED'; Write-Error $_; exit 1 } }"
 
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "System restore point created: !RESTORE_DESC!" "SUCCESS" "LAUNCHER"

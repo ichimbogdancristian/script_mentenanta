@@ -80,7 +80,7 @@ using namespace System.Collections.Generic
     2. Native Windows Update API (fallback)
     3. Basic Windows Update service status check
 #>
-function Install-WindowsUpdate {
+function Install-WindowsUpdates {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     [OutputType([hashtable])]
     param(

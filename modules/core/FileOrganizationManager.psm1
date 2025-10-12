@@ -143,7 +143,8 @@ function Get-OrganizedFilePath {
     )
 
     if (-not $script:FileOrgContext.SessionDir) {
-        throw "File organization not initialized. Call Initialize-FileOrganization first."
+        Write-Error "File organization not initialized. Call Initialize-FileOrganization first." -ErrorAction Continue
+        return $null
     }
 
     # Build base path
