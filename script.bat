@@ -455,37 +455,16 @@ IF "%PS7_FOUND%"=="NO" (
     REM 1) Try installing via winget (with explicit ID, source repair, and retries)
     winget --version >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Winget detected. Attempting install via winget (attempt 1)..." "INFO" "LAUNCHER"
-        ECHO. > "%WINGET_LOG%" 2>nul
-        winget install --id Microsoft.PowerShell -e --source winget --scope machine --silent --accept-package-agreements --accept-source-agreements >> "%WINGET_LOG%" 2>&1
-        SET "WG_EXIT=!ERRORLEVEL!"
-        IF !WG_EXIT! NEQ 0 (
-            CALL :LOG_MESSAGE "Winget install attempt 1 failed (code !WG_EXIT!). Resetting sources and retrying..." "WARN" "LAUNCHER"
-            winget source reset --force >> "%WINGET_LOG%" 2>&1
-            winget source update >> "%WINGET_LOG%" 2>&1
-            winget install --id Microsoft.PowerShell -e --source winget --scope machine --silent --accept-package-agreements --accept-source-agreements >> "%WINGET_LOG%" 2>&1
-            SET "WG_EXIT=!ERRORLEVEL!"
-        )
-        IF !WG_EXIT! EQU 0 (
+        CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
+        winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
+        IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             SET "INSTALL_STATUS=SUCCESS"
         ) ELSE (
-            CALL :LOG_MESSAGE "Winget failed to install PowerShell 7 (code !WG_EXIT!). See %WINGET_LOG% for details." "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
         )
     ) ELSE (
         CALL :LOG_MESSAGE "Winget not available for PowerShell 7 installation" "WARN" "LAUNCHER"
-        IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
-            CALL :LOG_MESSAGE "Attempting winget via WindowsApps alias path..." "INFO" "LAUNCHER"
-            ECHO. > "%WINGET_LOG%" 2>nul
-            "%LocalAppData%\Microsoft\WindowsApps\winget.exe" install --id Microsoft.PowerShell -e --source winget --scope machine --silent --accept-package-agreements --accept-source-agreements >> "%WINGET_LOG%" 2>&1
-            SET "WG_EXIT=!ERRORLEVEL!"
-            IF !WG_EXIT! EQU 0 (
-                CALL :LOG_MESSAGE "PowerShell 7 installed successfully via WindowsApps winget" "SUCCESS" "LAUNCHER"
-                SET "INSTALL_STATUS=SUCCESS"
-            ) ELSE (
-                CALL :LOG_MESSAGE "WindowsApps winget attempt failed (code !WG_EXIT!)." "WARN" "LAUNCHER"
-            )
-        )
     )
 
     REM 2) Fallback to Chocolatey if winget path failed
