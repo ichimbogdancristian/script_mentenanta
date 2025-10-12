@@ -239,7 +239,76 @@ IF %PS_VERSION% LSS 5 (
 CALL :LOG_MESSAGE "System requirements verified" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
-REM Project Structure Discovery and Validation
+REM Repository Download and Extraction (Moved before structure discovery)
+REM -----------------------------------------------------------------------------
+:DOWNLOAD_REPOSITORY
+CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
+
+REM Clean up existing files
+IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
+IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
+
+REM Download repository
+CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
+powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
+
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 3
+)
+
+IF NOT EXIST "%ZIP_FILE%" (
+    CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 3
+)
+
+CALL :LOG_MESSAGE "Repository downloaded successfully" "SUCCESS" "LAUNCHER"
+
+REM Extract repository
+CALL :LOG_MESSAGE "Extracting repository..." "INFO" "LAUNCHER"
+powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
+
+IF !ERRORLEVEL! NEQ 0 (
+    CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 3
+)
+
+REM Verify extraction
+SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
+IF EXIST "%EXTRACTED_PATH%" (
+    CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
+    
+    REM Update working directory to extracted folder for proper module loading
+    SET "WORKING_DIR=%EXTRACTED_PATH%\"
+    SET "WORKING_DIRECTORY=%WORKING_DIR%"
+    CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
+    
+    REM Set orchestrator path within the extracted folder
+    IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
+        SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1"
+        CALL :LOG_MESSAGE "Using extracted orchestrator" "INFO" "LAUNCHER"
+    ) ELSE IF EXIST "%EXTRACTED_PATH%\script.ps1" (
+        SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\script.ps1"
+        CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
+        PAUSE
+        EXIT /B 3
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 3
+)
+
+REM Clean up
+DEL /Q "%ZIP_FILE%" >nul 2>&1
+
+REM -----------------------------------------------------------------------------
+REM Project Structure Discovery and Validation (Moved after extraction)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Discovering project structure..." "INFO" "LAUNCHER"
 
@@ -325,81 +394,12 @@ IF EXIST "%WORKING_DIR%modules" (
 CALL :LOG_MESSAGE "Project structure verification: %COMPONENTS_FOUND%/3 major components found" "INFO" "LAUNCHER"
 
 IF "%STRUCTURE_VALID%"=="NO" (
-    CALL :LOG_MESSAGE "Project structure incomplete. Attempting repository download..." "INFO" "LAUNCHER"
-    GOTO :DOWNLOAD_REPOSITORY
+    CALL :LOG_MESSAGE "Project structure incomplete but repository already downloaded. Check extraction." "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 4
 ) ELSE (
     CALL :LOG_MESSAGE "Project structure validated" "SUCCESS" "LAUNCHER"
-    GOTO :DEPENDENCY_MANAGEMENT
 )
-
-REM -----------------------------------------------------------------------------
-REM Repository Download and Extraction
-REM -----------------------------------------------------------------------------
-:DOWNLOAD_REPOSITORY
-CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
-
-REM Clean up existing files
-IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
-
-REM Download repository
-CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
-
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
-    PAUSE
-    EXIT /B 3
-)
-
-IF NOT EXIST "%ZIP_FILE%" (
-    CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    PAUSE
-    EXIT /B 3
-)
-
-CALL :LOG_MESSAGE "Repository downloaded successfully" "SUCCESS" "LAUNCHER"
-
-REM Extract repository
-CALL :LOG_MESSAGE "Extracting repository..." "INFO" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
-
-IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
-    PAUSE
-    EXIT /B 3
-)
-
-REM Verify extraction
-SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
-IF EXIST "%EXTRACTED_PATH%" (
-    CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
-    
-    REM Update working directory to extracted folder for proper module loading
-    SET "WORKING_DIR=%EXTRACTED_PATH%\"
-    SET "WORKING_DIRECTORY=%WORKING_DIR%"
-    CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
-    
-    REM Set orchestrator path within the extracted folder
-    IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
-        SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1"
-        CALL :LOG_MESSAGE "Using extracted orchestrator" "INFO" "LAUNCHER"
-    ) ELSE IF EXIST "%EXTRACTED_PATH%\script.ps1" (
-        SET "ORCHESTRATOR_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        PAUSE
-        EXIT /B 3
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
-    PAUSE
-    EXIT /B 3
-)
-
-REM Clean up
-DEL /Q "%ZIP_FILE%" >nul 2>&1
 
 REM -----------------------------------------------------------------------------
 REM Enhanced Dependency Management
@@ -407,55 +407,10 @@ REM ----------------------------------------------------------------------------
 :DEPENDENCY_MANAGEMENT
 CALL :LOG_MESSAGE "Starting dependency management..." "INFO" "LAUNCHER"
 
-REM Windows Defender Exclusions (Enhanced)
-CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
-
-REM PowerShell 7 Detection and Installation
-CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
-
-REM Try multiple detection methods before deciding to install
-SET "PS7_FOUND=NO"
-
-REM Method 1: Direct pwsh.exe command
-pwsh.exe -Version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "PS7_FOUND=YES"
-    CALL :LOG_MESSAGE "PowerShell 7 detected via pwsh.exe command" "DEBUG" "LAUNCHER"
-)
-
-REM Method 2: Check default installation path
-IF "%PS7_FOUND%"=="NO" (
-    IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
-        "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            SET "PS7_FOUND=YES"
-            CALL :LOG_MESSAGE "PowerShell 7 detected at default installation path" "DEBUG" "LAUNCHER"
-        )
-    )
-)
-
-REM Method 3: Check WindowsApps for App Execution Alias
-IF "%PS7_FOUND%"=="NO" (
-    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" (
-        "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" -Version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            SET "PS7_FOUND=YES"
-            CALL :LOG_MESSAGE "PowerShell 7 detected via WindowsApps alias" "DEBUG" "LAUNCHER"
-        )
-    )
-)
-
-IF "%PS7_FOUND%"=="NO" (
-    CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "INFO" "LAUNCHER"
-
-    SET "INSTALL_STATUS=FAILED"
-    SET "WINGET_LOG=%WORKING_DIR%winget-pwsh-install.log"
-
-    REM -----------------------------------------------------------------------------
-    REM Winget Installation and Verification Section
-    REM -----------------------------------------------------------------------------
-    CALL :LOG_MESSAGE "Checking winget availability before PowerShell installation..." "INFO" "LAUNCHER"
+REM -----------------------------------------------------------------------------
+REM Winget Installation and Verification Section (Moved before PowerShell detection)
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
     
     SET "WINGET_AVAILABLE=NO"
     SET "WINGET_EXE="
@@ -546,6 +501,48 @@ IF "%PS7_FOUND%"=="NO" (
         )
     )
 
+REM -----------------------------------------------------------------------------
+REM PowerShell 7 Detection and Installation (Moved after winget setup)
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
+
+REM Try multiple detection methods before deciding to install
+SET "PS7_FOUND=NO"
+
+REM Method 1: Direct pwsh.exe command
+pwsh.exe -Version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "PS7_FOUND=YES"
+    CALL :LOG_MESSAGE "PowerShell 7 detected via pwsh.exe command" "DEBUG" "LAUNCHER"
+)
+
+REM Method 2: Check default installation path
+IF "%PS7_FOUND%"=="NO" (
+    IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+        "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "PS7_FOUND=YES"
+            CALL :LOG_MESSAGE "PowerShell 7 detected at default installation path" "DEBUG" "LAUNCHER"
+        )
+    )
+)
+
+REM Method 3: Check WindowsApps for App Execution Alias
+IF "%PS7_FOUND%"=="NO" (
+    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" (
+        "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "PS7_FOUND=YES"
+            CALL :LOG_MESSAGE "PowerShell 7 detected via WindowsApps alias" "DEBUG" "LAUNCHER"
+        )
+    )
+)
+
+IF "%PS7_FOUND%"=="NO" (
+    CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "INFO" "LAUNCHER"
+    SET "INSTALL_STATUS=FAILED"
+    SET "WINGET_LOG=%WORKING_DIR%winget-pwsh-install.log"
+
     REM 1) Try installing PowerShell via winget (if available)
     IF "%WINGET_AVAILABLE%"=="YES" (
         CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
@@ -634,6 +631,12 @@ IF "%PS7_FOUND%"=="NO" (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
     CALL :LOG_MESSAGE "PowerShell 7 available: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
 )
+
+REM -----------------------------------------------------------------------------
+REM Windows Defender Exclusions (Moved after PowerShell installation)
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
+powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
 REM Package Manager Dependencies
 CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"

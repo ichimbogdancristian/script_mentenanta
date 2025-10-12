@@ -5,6 +5,7 @@ A professional-grade Windows 10/11 maintenance system with enhanced logging infr
 For full details (architecture, modules, usage, testing, contributor guide), see sections below.
 
 ## ✨ Enhanced Features (v2.1)
+
 - **🆕 Session-Based File Organization** - Eliminated file proliferation with structured temp_files directories and automatic cleanup
 - **🆕 Professional Dashboard Reports** - Interactive HTML reports with Chart.js analytics, health scoring, and actionable recommendations
 - **🆕 Centralized Logging System** - Structured logging with performance tracking, session management, and multi-format exports
@@ -14,6 +15,7 @@ For full details (architecture, modules, usage, testing, contributor guide), see
 - **🆕 Export Capabilities** - JSON, CSV, XML data exports for integration and compliance reporting
 
 ## Core Features
+
 - Modular architecture: Type 1 (inventory/reporting) and Type 2 (system modification)
 - Robust launcher: elevation, reboot-resume, monthly task, System Protection + restore point, dependency bootstrap
 - Interactive and unattended modes with countdown menus and safe defaults
@@ -63,6 +65,7 @@ script_mentenanta/
 ```
 
 ## Launcher sequence (pre-orchestrator)
+
 - Check admin; auto-elevate via UAC if needed
 - Remove leftover startup task `WindowsMaintenanceStartup`
 - Detect pending restart; if pending, create `WindowsMaintenanceStartup` (SYSTEM, Highest) and restart; resume and clean up after boot
@@ -74,15 +77,18 @@ script_mentenanta/
 ## Usage
 
 Interactive (default):
+
 - Countdown menus for execution mode and task selection; safe defaults after timeout
 
 Non-interactive and dry-run examples:
+
 ```powershell
 ./MaintenanceOrchestrator.ps1 -NonInteractive
 ./MaintenanceOrchestrator.ps1 -DryRun -TaskNumbers "1,3,5"
 ```
 
 Via launcher:
+
 ```powershell
 ./script.bat
 ./script.bat -NonInteractive
@@ -95,16 +101,19 @@ Via launcher:
 The system now features **enterprise-grade file organization** that eliminates file proliferation and provides clean, structured data storage:
 
 ### Session-Based Organization
+
 - **Unique session directories**: Each maintenance run creates `temp_files/session-YYYYMMDD-HHMMSS/`
 - **No file duplication**: Session-based approach prevents multiple timestamped files
 - **Clean structure**: Organized into `logs/`, `data/`, `reports/`, and `temp/` subdirectories
 
 ### Automatic Cleanup
+
 - **Configurable retention**: Keep sessions for 30 days, logs for 14 days, reports for 90 days
 - **Space management**: Automatic cleanup prevents disk space issues
 - **Policy-driven**: Customizable cleanup rules via `cleanup-policy.json`
 
 ### Benefits Achieved
+
 - ✅ **Eliminated file proliferation** - No more duplicate timestamped files
 - ✅ **Populated logs directory** - Structured logging with module-specific files
 - ✅ **Professional organization** - Clear categorization like enterprise systems
@@ -113,12 +122,14 @@ The system now features **enterprise-grade file organization** that eliminates f
 ## Tasks and modules
 
 Type 1 (read-only):
+
 - SystemInventory: Get-SystemInventory, Export-SystemInventory
 - BloatwareDetection: Find-InstalledBloatware, Get-BloatwareStatistics, Test-BloatwareDetection
 - SecurityAudit: Start-SecurityAudit, Get-WindowsDefenderStatus
 - ReportGeneration: New-MaintenanceReport (🆕 Enhanced with interactive dashboard, Chart.js analytics, health scoring)
 
 Type 2 (system changes):
+
 - BloatwareRemoval: Remove-DetectedBloatware, Test-BloatwareRemoval
 - EssentialApps: Install-EssentialApplications, Get-AppsNotInstalled, Get-InstallationStatistics
 - WindowsUpdates: Install-WindowsUpdates, Get-WindowsUpdateStatus
@@ -126,6 +137,7 @@ Type 2 (system changes):
 - SystemOptimization: Optimize-SystemPerformance, Get-SystemPerformanceMetrics
 
 Conventions for Type 2 modules:
+
 - [CmdletBinding(SupportsShouldProcess=$true)], respect -WhatIf/-Confirm and repo-wide -DryRun
 - Return $true on success, $false on failure
 
@@ -137,6 +149,7 @@ Conventions for Type 2 modules:
 - logging-config.json: 🆕 Enhanced with structured logging, performance tracking, report generation settings, and alert thresholds
 
 Example enhanced logging-config.json snippet:
+
 ```json
 {
   "logging": {
@@ -159,6 +172,7 @@ Example enhanced logging-config.json snippet:
 ```
 
 ## Mandatory TestFolder workflow
+
 Run end-to-end tests in a sibling `TestFolder` to simulate a fresh deployment.
 
 ```powershell
@@ -171,12 +185,14 @@ Set-Location "C:\Users\Bogdan\OneDrive\Desktop\Projects\TestFolder"
 ## 🆕 Enhanced Logging & Reporting (v2.0)
 
 ### New LoggingManager Module
+
 - **Structured logging** with session tracking and operation IDs
 - **Performance tracking** with Start/Complete-PerformanceTracking functions
 - **Multi-destination output** (console, file, structured buffer)
 - **Data export capabilities** (JSON, CSV, XML) for integration
 
 ### Enhanced Dashboard Reports
+
 - **Interactive HTML reports** with Chart.js analytics
 - **Health scoring system** with visual indicators
 - **Real-time charts**: Task distribution, system resources, execution timeline, security radar
@@ -184,6 +200,7 @@ Set-Location "C:\Users\Bogdan\OneDrive\Desktop\Projects\TestFolder"
 - **Responsive design** with modern Microsoft Fluent styling
 
 ### Usage Examples
+
 ```powershell
 # Initialize enhanced logging
 Initialize-LoggingSystem -LoggingConfig $config
@@ -232,11 +249,13 @@ Use this README as the single source of truth. When editing code:
 - Run `Invoke-ScriptAnalyzer -Path . -Recurse` before committing
 
 Required testing workflow (always):
+
 1) Clean TestFolder
 2) Copy latest `script.bat` there
 3) Run from TestFolder and observe bootstrap, tasks, restore point, orchestrator
 
 Implementation checklist:
+
 - Add new tasks in `MaintenanceOrchestrator.ps1` (Name, Description, ModulePath, Function, Type, Category)
 - Export functions in modules and respect return contracts
 - Use JSON config, log clearly, and guard all destructive actions with ShouldProcess
@@ -469,6 +488,7 @@ graph LR
   - SystemOptimization: Optimize-SystemPerformance, Get-SystemPerformanceMetrics
 
 Contracts:
+
 - Type 1: return data objects
 - Type 2: [CmdletBinding(SupportsShouldProcess=$true)], respect -WhatIf/-Confirm and repo-wide -DryRun, return $true/$false
 
@@ -538,6 +558,7 @@ Start-Process -FilePath 'winget.exe' -ArgumentList $args -Wait -NoNewWindow
 **Key Features**: Session-based file organization, enterprise-grade logging, interactive dashboard reports  
 
 ### Recent Enhancements (v2.1)
+
 - **FileOrganizationManager**: Session-based file organization eliminates file proliferation
 - **Structured temp_files**: Professional directory organization with automatic cleanup
 - **Enhanced logging**: Module-specific logs and performance tracking
