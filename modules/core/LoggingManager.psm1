@@ -19,6 +19,16 @@
 using namespace System.Collections.Generic
 using namespace System.IO
 
+# Import FileOrganizationManager if available (may not be loaded yet during initialization)
+$FileOrgPath = Join-Path $PSScriptRoot 'FileOrganizationManager.psm1'
+if (Test-Path $FileOrgPath) {
+    try {
+        Import-Module $FileOrgPath -Force -ErrorAction SilentlyContinue
+    } catch {
+        Write-Verbose "FileOrganizationManager not available during LoggingManager initialization"
+    }
+}
+
 #region Module Variables
 
 # Global logging context for session tracking
@@ -68,23 +78,30 @@ function Initialize-LoggingSystem {
         # Store configuration
         $script:LoggingContext.Config = $LoggingConfig
 
-        # Determine log path
-        if ($BaseLogPath) {
-            $logDir = $BaseLogPath
-        } else {
-            $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-            $logDir = Join-Path $scriptRoot "temp_files\logs"
-        }
+        # Use FileOrganizationManager for log path if available
+        try {
+            $script:LoggingContext.LogPath = Get-OrganizedFilePath -FileType 'Log' -FileName 'session.log'
+            Write-Verbose "Using organized file path: $($script:LoggingContext.LogPath)"
+        } catch {
+            # Fallback to traditional path if FileOrganizationManager not available
+            Write-Verbose "FileOrganizationManager not available, using fallback path"
+            if ($BaseLogPath) {
+                $logDir = $BaseLogPath
+            } else {
+                $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+                $logDir = Join-Path $scriptRoot "temp_files\logs"
+            }
 
-        # Ensure log directory exists
-        if (-not (Test-Path $logDir)) {
-            New-Item -Path $logDir -ItemType Directory -Force | Out-Null
-        }
+            # Ensure log directory exists
+            if (-not (Test-Path $logDir)) {
+                New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+            }
 
-        # Set up log file path with session timestamp
-        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        $logFileName = "maintenance-$timestamp.log"
-        $script:LoggingContext.LogPath = Join-Path $logDir $logFileName
+            # Set up log file path with session timestamp
+            $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+            $logFileName = "maintenance-$timestamp.log"
+            $script:LoggingContext.LogPath = Join-Path $logDir $logFileName
+        }
 
         # Perform log rotation if enabled
         if ($LoggingConfig.logging.logRotation) {
@@ -652,7 +669,7 @@ function New-ModuleLogFile {
         }
     }
 
-    # Create module-specific log file
+    # Create module-specific log file using organized file system
     $moduleLogMap = @{
         'BLOATWARE' = 'bloatware-removal'
         'APPS' = 'essential-apps'
@@ -661,15 +678,21 @@ function New-ModuleLogFile {
         'TELEMETRY' = 'telemetry-disable'
     }
 
-    $logFileName = "$($moduleLogMap[$Component])-$SessionTimestamp.log"
-    $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-    $logDir = Join-Path $scriptRoot "temp_files\logs"
-
-    if (-not (Test-Path $logDir)) {
-        New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    $logFileName = "$($moduleLogMap[$Component]).log"
+    
+    try {
+        $moduleLogPath = Get-OrganizedFilePath -FileType 'Log' -Category 'modules' -FileName $logFileName
+        Write-Verbose "Using organized module log path: $moduleLogPath"
+    } catch {
+        # Fallback to traditional path
+        Write-Verbose "FileOrganizationManager not available, using fallback for module logs"
+        $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+        $logDir = Join-Path $scriptRoot "temp_files\logs"
+        if (-not (Test-Path $logDir)) {
+            New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+        }
+        $moduleLogPath = Join-Path $logDir "$($moduleLogMap[$Component])-$SessionTimestamp.log"
     }
-
-    $moduleLogPath = Join-Path $logDir $logFileName
 
     # Initialize module log with header
     $header = @"

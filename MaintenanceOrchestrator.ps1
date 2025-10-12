@@ -165,6 +165,7 @@ Write-Host "Modules Path: $ModulesPath" -ForegroundColor Gray
 $CoreModules = @(
     'ConfigManager',
     'LoggingManager',
+    'FileOrganizationManager',
     'MenuSystem'
 )
 
@@ -205,6 +206,14 @@ try {
         Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
     } else {
         Write-Host "  ⚠️ Logging system failed to initialize" -ForegroundColor Yellow
+    }
+
+    # Initialize file organization system
+    $fileOrgResult = Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $Global:MaintenanceSessionTimestamp
+    if ($fileOrgResult) {
+        Write-Host "  ✓ File organization system initialized" -ForegroundColor Green
+    } else {
+        Write-Host "  ⚠️ File organization system failed to initialize" -ForegroundColor Yellow
     }
 }
 catch {
@@ -672,9 +681,13 @@ $executionSummary | ConvertTo-Json -Depth 10 | Out-File -FilePath $summaryPath -
 Write-Host ""
 Write-Host "Execution summary saved to: $summaryPath" -ForegroundColor Gray
 
-# Copy final reports to script root directory
+# Copy final reports to parent directory (same level as repo folder)
 Write-Host ""
-Write-Host "📄 Copying final reports to script root directory..." -ForegroundColor Yellow
+Write-Host "📄 Copying final reports to parent directory..." -ForegroundColor Yellow
+
+# Get parent directory of the script root (one level up from repo folder)
+$ParentDir = Split-Path $ScriptRoot -Parent
+Write-Host "  📁 Target directory: $ParentDir" -ForegroundColor Gray
 
 $finalReports = @()
 $reportsToMove = @(
@@ -701,9 +714,15 @@ foreach ($reportInfo in $reportsToMove) {
     
     if ($sourceFile) {
         $fileName = Split-Path $sourceFile -Leaf
-        $destPath = Join-Path $ScriptRoot $fileName
+        $destPath = Join-Path $ParentDir $fileName
         
         try {
+            # Ensure parent directory is accessible
+            if (-not (Test-Path $ParentDir)) {
+                Write-Host "  ⚠️ Parent directory not accessible: $ParentDir" -ForegroundColor Yellow
+                continue
+            }
+            
             Copy-Item -Path $sourceFile -Destination $destPath -Force
             Write-Host "  ✓ Copied $description to: $destPath" -ForegroundColor Green
             $finalReports += $destPath
@@ -716,7 +735,8 @@ foreach ($reportInfo in $reportsToMove) {
 
 if ($finalReports.Count -gt 0) {
     Write-Host ""
-    Write-Host "📋 Final reports available in script directory:" -ForegroundColor Cyan
+    Write-Host "📋 Final reports available in parent directory:" -ForegroundColor Cyan
+    Write-Host "  📁 Location: $ParentDir" -ForegroundColor Gray
     foreach ($report in $finalReports) {
         Write-Host "  • $(Split-Path $report -Leaf)" -ForegroundColor White
     }

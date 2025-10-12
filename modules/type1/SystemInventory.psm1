@@ -17,6 +17,13 @@
 
 using namespace System.Collections.Generic
 
+# Import required modules
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
+if (Test-Path $FileOrgPath) {
+    Import-Module $FileOrgPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -131,31 +138,22 @@ function Get-SystemInventory {
         $duration = [math]::Round($inventoryData.Metadata.Duration, 2)
         Write-Information "  ✅ System inventory completed in $duration seconds" -InformationAction Continue
 
-        # Auto-save inventory data to temp_files/inventory folder if available
-        $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-        $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
-
-        if (Test-Path $inventoryDir) {
-            try {
-                # Use session timestamp if available, otherwise generate new one
-                $timestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) { 
-                    $env:MAINTENANCE_SESSION_TIMESTAMP 
-                } else { 
-                    Get-Date -Format "yyyyMMdd-HHmmss" 
-                }
-                $inventoryPath = Join-Path $inventoryDir "system-inventory-$timestamp"
-
-                Write-Information "  💾 Saving inventory data to: $inventoryPath.json" -InformationAction Continue
-                Export-SystemInventory -InventoryData $inventoryData -OutputPath $inventoryPath -Format JSON
-
-                # Also save installed software as a separate list for easier comparison
-                $installedAppsPath = Join-Path $inventoryDir "installed-software-$timestamp.json"
-                $inventoryData.InstalledSoftware | ConvertTo-Json -Depth 5 | Out-File -FilePath $installedAppsPath -Encoding UTF8
-                Write-Information "  📦 Installed software list saved to: $installedAppsPath" -InformationAction Continue
+        # Auto-save inventory data using organized file system
+        try {
+            # Save main inventory data
+            $inventoryPath = Save-OrganizedFile -Data $inventoryData -FileType 'Data' -Category 'inventory' -FileName 'system-inventory' -Format 'JSON'
+            if ($inventoryPath) {
+                Write-Information "  💾 System inventory saved to: $inventoryPath" -InformationAction Continue
             }
-            catch {
-                Write-Warning "Failed to save inventory data: $_"
+
+            # Also save installed software as a separate list for easier comparison
+            $installedSoftwarePath = Save-OrganizedFile -Data $inventoryData.InstalledSoftware -FileType 'Data' -Category 'inventory' -FileName 'installed-software' -Format 'JSON'
+            if ($installedSoftwarePath) {
+                Write-Information "  📦 Installed software list saved to: $installedSoftwarePath" -InformationAction Continue
             }
+        }
+        catch {
+            Write-Warning "Failed to save inventory data: $_"
         }
 
         return $inventoryData

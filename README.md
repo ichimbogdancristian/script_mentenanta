@@ -1,12 +1,14 @@
-# Windows Maintenance Automation v2.0
+# Windows Maintenance Automation v2.1
 
-A professional-grade Windows 10/11 maintenance system with enhanced logging infrastructure, interactive dashboard reporting, and comprehensive system analytics.
+A professional-grade Windows 10/11 maintenance system with enhanced logging infrastructure, session-based file organization, interactive dashboard reporting, and comprehensive system analytics.
 
 For full details (architecture, modules, usage, testing, contributor guide), see sections below.
 
-## ✨ Enhanced Features (v2.0)
+## ✨ Enhanced Features (v2.1)
+- **🆕 Session-Based File Organization** - Eliminated file proliferation with structured temp_files directories and automatic cleanup
 - **🆕 Professional Dashboard Reports** - Interactive HTML reports with Chart.js analytics, health scoring, and actionable recommendations
 - **🆕 Centralized Logging System** - Structured logging with performance tracking, session management, and multi-format exports
+- **🆕 Enterprise-Grade File Management** - Organized data storage with configurable retention policies and clean directory structures
 - **🆕 System Health Analytics** - Comprehensive scoring with security assessment, resource analysis, and trend visualization
 - **🆕 Performance Monitoring** - Real-time operation tracking, timing analysis, and optimization insights
 - **🆕 Export Capabilities** - JSON, CSV, XML data exports for integration and compliance reporting
@@ -40,12 +42,20 @@ script_mentenanta/
 │       ├── ConfigManager.psm1
 │       ├── MenuSystem.psm1
 │       ├── DependencyManager.psm1
-│       └── LoggingManager.psm1 (🆕 Centralized logging system)
+│       ├── LoggingManager.psm1 (🆕 Centralized logging system)
+│       └── FileOrganizationManager.psm1 (🆕 Session-based file organization)
 ├── config/
 │   ├── bloatware-list.json
 │   ├── essential-apps.json
 │   ├── main-config.json
 │   └── logging-config.json (🆕 Enhanced with performance tracking)
+├── temp_files/ (🆕 Organized session-based storage)
+│   ├── session-YYYYMMDD-HHMMSS/
+│   │   ├── logs/ (structured logging with module-specific files)
+│   │   ├── data/ (categorized data: inventory/, apps/, security/)
+│   │   ├── reports/ (final HTML, JSON, TXT reports)
+│   │   └── temp/ (temporary processing files)
+│   └── cleanup-policy.json (automatic cleanup configuration)
 ├── archive/
 │   └── script-original.ps1 (legacy, reference only)
 ├── Enhanced-MaintenanceOrchestrator-Example.ps1 (🆕 Integration example)
@@ -79,6 +89,26 @@ Via launcher:
 ./script.bat -DryRun
 ./script.bat -TaskNumbers 1,3,5
 ```
+
+## 🆕 File Organization System (v2.1)
+
+The system now features **enterprise-grade file organization** that eliminates file proliferation and provides clean, structured data storage:
+
+### Session-Based Organization
+- **Unique session directories**: Each maintenance run creates `temp_files/session-YYYYMMDD-HHMMSS/`
+- **No file duplication**: Session-based approach prevents multiple timestamped files
+- **Clean structure**: Organized into `logs/`, `data/`, `reports/`, and `temp/` subdirectories
+
+### Automatic Cleanup
+- **Configurable retention**: Keep sessions for 30 days, logs for 14 days, reports for 90 days
+- **Space management**: Automatic cleanup prevents disk space issues
+- **Policy-driven**: Customizable cleanup rules via `cleanup-policy.json`
+
+### Benefits Achieved
+- ✅ **Eliminated file proliferation** - No more duplicate timestamped files
+- ✅ **Populated logs directory** - Structured logging with module-specific files
+- ✅ **Professional organization** - Clear categorization like enterprise systems
+- ✅ **Easy debugging** - Logical separation of logs, data, and reports
 
 ## Tasks and modules
 
@@ -498,3 +528,18 @@ Splatting example:
 $args = @('--silent','--accept-package-agreements','--accept-source-agreements')
 Start-Process -FilePath 'winget.exe' -ArgumentList $args -Wait -NoNewWindow
 ```
+
+---
+
+## 📋 Version Information
+
+**Version**: 2.1 - Enhanced File Organization System  
+**Last Updated**: October 12, 2025  
+**Key Features**: Session-based file organization, enterprise-grade logging, interactive dashboard reports  
+
+### Recent Enhancements (v2.1)
+- **FileOrganizationManager**: Session-based file organization eliminates file proliferation
+- **Structured temp_files**: Professional directory organization with automatic cleanup
+- **Enhanced logging**: Module-specific logs and performance tracking
+- **Testing suite**: Comprehensive validation with Test-ComprehensiveFileOrganization.ps1
+- **Documentation**: Complete guides for file organization and system architecture

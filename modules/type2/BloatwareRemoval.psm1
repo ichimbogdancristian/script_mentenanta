@@ -26,6 +26,11 @@ if (Test-Path $BloatwareDetectionPath) {
     Import-Module $BloatwareDetectionPath -Force
 }
 
+$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
+if (Test-Path $FileOrgPath) {
+    Import-Module $FileOrgPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -87,28 +92,19 @@ function Remove-DetectedBloatware {
     if (-not $BloatwareList -or $BloatwareList.Count -eq 0) {
         Write-Information "  ✅ No bloatware detected for removal" -InformationAction Continue
 
-        # Create empty diff files in temp folder for tracking
-        $tempPath = Join-Path $PSScriptRoot '..\..\temp_files\bloatware'
-        if (-not (Test-Path $tempPath)) {
-            New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
-        }
-
-        # Use session timestamp if available, otherwise generate new one
-        $timestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) { 
-            $env:MAINTENANCE_SESSION_TIMESTAMP 
-        } else { 
-            Get-Date -Format 'yyyyMMdd-HHmmss' 
-        }
-        $emptyDiffPath = Join-Path $tempPath "bloatware-diff-empty-$timestamp.json"
-        @{
+        # Create empty analysis using organized file system
+        $emptyAnalysis = @{
             Timestamp = $startTime
             DetectedBloatware = @()
             Categories = $Categories
             TotalItems = 0
             Status = "No bloatware detected"
-        } | ConvertTo-Json -Depth 3 | Set-Content -Path $emptyDiffPath -Encoding UTF8
+        }
 
-        Write-Information "  📄 Empty diff file saved: $emptyDiffPath" -InformationAction Continue
+        $emptyDiffPath = Save-OrganizedFile -Data $emptyAnalysis -FileType 'Data' -Category 'apps' -FileName 'bloatware-analysis' -Format 'JSON'
+        if ($emptyDiffPath) {
+            Write-Information "  📄 Empty bloatware analysis saved: $emptyDiffPath" -InformationAction Continue
+        }
 
         return @{
             TotalProcessed = 0
@@ -122,11 +118,13 @@ function Remove-DetectedBloatware {
 
     Write-Information "  📋 Found $($BloatwareList.Count) bloatware items for removal" -InformationAction Continue
 
-    # Create diff files in temp folder
-    $tempPath = Join-Path $PSScriptRoot '..\..\temp_files\bloatware'
-    if (-not (Test-Path $tempPath)) {
-        New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
-        Write-Information "  📁 Created bloatware temp directory: $tempPath" -InformationAction Continue
+    # Prepare bloatware analysis data
+    $bloatwareAnalysis = @{
+        Timestamp = $startTime
+        DetectedBloatware = $BloatwareList
+        Categories = $Categories
+        TotalItems = $BloatwareList.Count
+        Status = "Bloatware detected and processed"
     }
 
     # Use session timestamp if available, otherwise generate new one

@@ -1,4 +1,4 @@
-# Windows Maintenance Automation System v2.0 - AI Assistant Instructions
+# Windows Maintenance Automation System v2.1 - AI Assistant Instructions
 
 ## 📋 Table of Contents
 
@@ -18,7 +18,7 @@
 
 This repository contains a **Windows maintenance automation system** built on a modular PowerShell architecture.
 
-### System Components (v2.0 Enhanced)
+### System Components (v2.1 Enhanced)
 
 | Component | Purpose | Key Features |
 | ---------- - | -------- - | -------------- |
@@ -26,8 +26,9 @@ This repository contains a **Windows maintenance automation system** built on a 
 | `MaintenanceOrchestrator.ps1`  | Central Orchestrator | Module loading, configuration, interactive menus, task execution coordination (PowerShell 7+ required) |
 | `modules/type1/`  | Inventory & Reporting | Read-only operations for system analysis, 🆕 **enhanced with dashboard analytics** |
 | `modules/type2/`  | System Modification | Write operations that change system state |
-| `modules/core/`  | Infrastructure | Configuration, menus, dependencies, scheduling, 🆕 **centralized logging system** |
+| `modules/core/`  | Infrastructure | Configuration, menus, dependencies, scheduling, 🆕 **centralized logging & file organization** |
 | `config/*.json`  | Configuration System | JSON-based settings and data, 🆕 **enhanced with performance tracking** |
+| `temp_files/`  | 🆕 **Organized Data Storage** | Session-based file organization with automated cleanup and structured directories |
 
 ### Target Environment
 
@@ -43,6 +44,7 @@ This project underwent a **complete architectural transformation** from a monoli
 - * * Migration complete**: All functionality extracted from the original 11, 353-line `script.ps1`
 - * * Production ready**: New system is the current active implementation
 - 🆕 **v2.0 Enhancement**: Added comprehensive logging infrastructure and interactive dashboard reporting
+- 🆕 **v2.1 Enhancement**: Implemented FileOrganizationManager with session-based file organization, eliminated file proliferation, and added automated cleanup
 
 -- -
 
@@ -118,6 +120,69 @@ New-MaintenanceReport -SystemInventory $inventory -TaskResults $results
 - **Compliance reporting** with multi-format data exports
 - **Actionable insights** with automated recommendation generation
 
+## 🆕 Enhanced File Organization System (v2.1)
+
+### Major v2.1 Enhancements
+
+The system now includes **enterprise-grade file organization and management capabilities**:
+
+#### **FileOrganizationManager Module** (`modules/core/FileOrganizationManager.psm1`)
+- **Session-based organization** with unique session directories for each maintenance run
+- **Structured directory hierarchy**: logs/, data/, reports/, temp/ with logical subcategories
+- **Standardized file operations**: `Get-OrganizedFilePath()`, `Save-OrganizedFile()` for consistent file handling
+- **Automatic cleanup**: Configurable retention policies prevent disk space issues
+- **Multi-format support**: JSON, Text, CSV, XML with proper encoding and formatting
+
+#### **Enhanced temp_files Structure**
+```
+temp_files/
+├── session-YYYYMMDD-HHMMSS/          # Current session directory
+│   ├── logs/                         # All logging files
+│   │   ├── session.log              # Main session log
+│   │   ├── orchestrator.log         # MaintenanceOrchestrator logs
+│   │   └── modules/                 # Module-specific logs
+│   ├── data/                        # Structured data files
+│   │   ├── inventory/               # System inventory data
+│   │   ├── apps/                    # Application-related data
+│   │   └── security/                # Security audit data
+│   ├── reports/                     # Final reports and summaries
+│   └── temp/                        # Temporary processing files
+├── cleanup-policy.json               # Retention settings
+└── (previous sessions per policy)
+```
+
+#### **Key Benefits Achieved**
+- **🔄 Eliminated File Proliferation**: No more multiple timestamped files from different runs
+- **📋 Populated Logs Directory**: LoggingManager now properly creates structured logs
+- **🗂️ Professional Organization**: Clear directory structure like enterprise systems
+- **🧹 Automatic Cleanup**: Old sessions cleaned up automatically per configurable policies
+- **⚡ Better Performance**: Reduced file system clutter improves I/O performance
+- **🔍 Easy Debugging**: Clear separation between logs, data, and reports
+
+#### **Integration with All Modules**
+- **EssentialApps**: Uses organized storage, eliminated redundant .ps1 script generation
+- **BloatwareRemoval**: Organized bloatware analysis with proper categorization
+- **SystemInventory**: Structured inventory data placement in dedicated directories
+- **SecurityAudit**: Organized security audit data and reports
+- **ReportGeneration**: Enhanced to work seamlessly with organized file system
+- **LoggingManager**: Integrated with FileOrganizationManager for structured log placement
+
+#### **Usage Examples**
+```powershell
+# Initialize file organization (done automatically in MaintenanceOrchestrator)
+Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $sessionId
+
+# Save data using organized file system
+$analysisData = @{ /* your data */ }
+$filePath = Save-OrganizedFile -Data $analysisData -FileType 'Data' -Category 'apps' -FileName 'analysis' -Format 'JSON'
+
+# Get organized file path
+$logPath = Get-OrganizedFilePath -FileType 'Log' -Category 'modules' -FileName 'my-module.log'
+
+# Retrieve files from previous sessions
+$oldReports = Get-SessionFiles -MaxAge 7 -FileType 'Report'
+```
+
 -- -
 
 ## 🎯 Architecture & Core Concepts
@@ -183,18 +248,23 @@ When onboarding or making changes, read these files in order:
    - Structured logging with session tracking and performance metrics
    - Multi-destination output and data export capabilities
 
-5. **`modules/type1/ReportGeneration.psm1`** — 🆕 Enhanced dashboard reporting
+5. **`modules/core/FileOrganizationManager.psm1`** — 🆕 File organization system 
+   - `Initialize-FileOrganization`, `Get-OrganizedFilePath`, `Save-OrganizedFile`
+   - Session-based directory management with automatic cleanup
+   - Standardized file operations across all modules
+
+6. **`modules/type1/ReportGeneration.psm1`** — 🆕 Enhanced dashboard reporting
    - `New-MaintenanceReport` with interactive dashboard analytics
    - Chart.js integration for real-time visualizations
    - Health scoring and recommendation engine
 
-6. **`Enhanced-MaintenanceOrchestrator-Example.ps1`** — 🆕 Integration example
+7. **`Enhanced-MaintenanceOrchestrator-Example.ps1`** — 🆕 Integration example
    - Shows how to use the new logging and reporting features
    - Performance tracking throughout task execution
    - Comprehensive analytics integration
 
-7. **`config/logging-config.json`** — 🆕 Enhanced logging configuration
-   - `Initialize-ConfigSystem`, `Get-MainConfiguration`, `Get-LoggingConfiguration`
+8. **`config/logging-config.json`** — 🆕 Enhanced logging configuration
+   - Configuration settings for logging system and file organization
    - JSON loading and validation
    - Configuration schema definitions
 
@@ -302,6 +372,26 @@ Complete-PerformanceTracking -PerformanceContext $perf -Success $true
 
 # Export comprehensive logs and reports
 Export-LogData -OutputPath 'temp_files/logs/session-log' -Format 'All'
+```
+
+#### 🆕 File Organization Integration
+```powershell
+# Initialize file organization (done automatically in MaintenanceOrchestrator)
+Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $sessionId
+
+# Save data using organized file system
+$analysisData = @{ /* your data */ }
+$filePath = Save-OrganizedFile -Data $analysisData -FileType 'Data' -Category 'apps' -FileName 'analysis' -Format 'JSON'
+
+# Get organized file path for any module
+$logPath = Get-OrganizedFilePath -FileType 'Log' -Category 'modules' -FileName 'my-module.log'
+
+# Retrieve files from previous sessions for analysis
+$oldReports = Get-SessionFiles -MaxAge 7 -FileType 'Report'
+$recentLogs = Get-SessionFiles -MaxAge 1 -FileType 'Log' -Category 'modules'
+
+# Work with session-based organization
+# All files are automatically organized into: temp_files/session-YYYYMMDD-HHMMSS/
 ```
 
 #### 🔍 Module Development
@@ -1382,24 +1472,29 @@ If you're unsure about:
 
 ## 📝 Document Maintenance
 
-* * Last Updated**: October 11, 2025  
-**Document Version**: 2.2  
-**Project Version**: Enhanced Logging & Reporting v2.0
+**Last Updated**: October 12, 2025  
+**Document Version**: 2.3  
+**Project Version**: Enhanced File Organization v2.1
 
 ### Changelog
 
-- * * v2.2 (Oct 11, 2025)**: 🆕 **MAJOR ENHANCEMENT** - Added comprehensive logging infrastructure (LoggingManager.psm1), interactive dashboard reporting with Chart.js analytics, health scoring system, performance tracking, and multi-format data exports. Complete system transformation to enterprise-grade capabilities.
-- * * v2.1 (Oct 11, 2025)**: Added comprehensive code quality guidelines, PSScriptAnalyzer violation fixes, standardized templates, testing framework requirements
-- * * v2.0 (Oct 2025)**: Complete restructure with TOC, expanded PowerShell best practices, added comprehensive code examples
-- * * v1.0 (Initial)**: Basic structure with core concepts and workflows
+- **v2.3 (Oct 12, 2025)**: 🆕 **MAJOR ENHANCEMENT** - Added FileOrganizationManager.psm1 with session-based file organization, eliminated file proliferation, implemented automatic cleanup, and created comprehensive testing suite. Complete temp_files restructuring with enterprise-grade organization.
+- **v2.2 (Oct 11, 2025)**: 🆕 **MAJOR ENHANCEMENT** - Added comprehensive logging infrastructure (LoggingManager.psm1), interactive dashboard reporting with Chart.js analytics, health scoring system, performance tracking, and multi-format data exports. Complete system transformation to enterprise-grade capabilities.
+- **v2.1 (Oct 11, 2025)**: Added comprehensive code quality guidelines, PSScriptAnalyzer violation fixes, standardized templates, testing framework requirements
+- **v2.0 (Oct 2025)**: Complete restructure with TOC, expanded PowerShell best practices, added comprehensive code examples
+- **v1.0 (Initial)**: Basic structure with core concepts and workflows
 
-### 🆕 v2.0 Enhancement Summary
+### 🆕 v2.1 Enhancement Summary
 
 **Revolutionary Upgrades Completed:**
-- **LoggingManager Module** - Centralized structured logging with session tracking, performance metrics, and multi-format exports
+- **FileOrganizationManager Module** - Session-based file organization with structured directory hierarchies, automatic cleanup, and standardized file operations
+- **Enhanced LoggingManager Module** - Centralized structured logging with session tracking, performance metrics, and multi-format exports
+- **Eliminated File Proliferation** - No more multiple timestamped files; clean session-based organization prevents file duplication
+- **Professional temp_files Structure** - Enterprise-grade directory organization with logs/, data/, reports/, temp/ categorization
 - **Enhanced ReportGeneration** - Interactive dashboard with Chart.js, health scoring, recommendations, and modern responsive design
-- **Advanced Configuration** - Extended logging-config.json with performance tracking, alert thresholds, and report automation
+- **Comprehensive Testing Suite** - Full integration testing with Test-ComprehensiveFileOrganization.ps1 and documentation
+- **Advanced Configuration** - Extended logging-config.json with file organization settings and cleanup policies
 - **Integration Examples** - Complete Enhanced-MaintenanceOrchestrator-Example.ps1 showing new capabilities
-- **Professional Documentation** - Comprehensive analysis and usage guides
+- **Professional Documentation** - Comprehensive analysis, usage guides, and troubleshooting instructions
 
-This represents the most significant enhancement in the project's history, transforming it from a basic maintenance script into a professional, enterprise-grade system management solution.
+This represents the most significant architectural enhancement in the project's history, transforming it from a basic maintenance script into a professional, enterprise-grade system management solution with clean, organized file management.

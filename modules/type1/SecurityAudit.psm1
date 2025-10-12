@@ -18,6 +18,13 @@
 
 using namespace System.Collections.Generic
 
+# Import required modules
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
+if (Test-Path $FileOrgPath) {
+    Import-Module $FileOrgPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -682,16 +689,11 @@ function Get-IssueRecommendation {
 function New-SecurityReport {
     param($AuditResults)
 
-    # Calculate temp folder path dynamically like other modules
-    $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $reportsDir = Join-Path $scriptRoot 'temp_files\reports'
+    # Save audit results using organized file system  
+    $auditDataPath = Save-OrganizedFile -Data $AuditResults -FileType 'Data' -Category 'security' -FileName 'security-audit' -Format 'JSON'
     
-    # Ensure directory exists
-    if (-not (Test-Path $reportsDir)) {
-        New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
-    }
-    
-    $reportPath = Join-Path $reportsDir "security-audit-$(Get-Date -Format 'yyyy-MM-dd-HHmm').txt"
+    # Generate text report path
+    $reportPath = Get-OrganizedFilePath -FileType 'Report' -FileName 'security-audit.txt'
 
     $report = @"
 WINDOWS SECURITY AUDIT REPORT

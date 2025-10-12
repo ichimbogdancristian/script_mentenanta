@@ -26,6 +26,11 @@ if (Test-Path $SystemInventoryPath) {
     Import-Module $SystemInventoryPath -Force
 }
 
+$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
+if (Test-Path $FileOrgPath) {
+    Import-Module $FileOrgPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -401,68 +406,77 @@ function Save-AppDiffList {
             $diffAnalysis.DetailedAnalysis.RecommendedActions += "All essential applications are installed"
         }
 
-        # Save comprehensive diff analysis
-        $diffPath = Join-Path $tempDir "essential-apps-diff-$timestamp.json"
-        $diffAnalysis | ConvertTo-Json -Depth 10 | Out-File -FilePath $diffPath -Encoding UTF8
-        Write-Information "  📋 App diff analysis saved to: $diffPath" -InformationAction Continue
+        # Save comprehensive diff analysis using organized file system
+        $diffPath = Save-OrganizedFile -Data $diffAnalysis -FileType 'Data' -Category 'apps' -FileName 'essential-apps-analysis' -Format 'JSON'
+        if ($diffPath) {
+            Write-Information "  📋 App diff analysis saved to: $diffPath" -InformationAction Continue
+        }
 
         # Save missing apps list (for easy processing)
         if ($MissingApps.Count -gt 0) {
-            $missingAppsPath = Join-Path $tempDir "missing-apps-$timestamp.json"
-            $MissingApps | ConvertTo-Json -Depth 5 | Out-File -FilePath $missingAppsPath -Encoding UTF8
-            Write-Information "  ❌ Missing apps list saved to: $missingAppsPath" -InformationAction Continue
+            $missingAppsPath = Save-OrganizedFile -Data $MissingApps -FileType 'Data' -Category 'apps' -FileName 'missing-apps' -Format 'JSON'
+            if ($missingAppsPath) {
+                Write-Information "  ❌ Missing apps list saved to: $missingAppsPath" -InformationAction Continue
+            }
 
-            # Also create a simple install script
-            $installScriptPath = Join-Path $tempDir "install-missing-apps-$timestamp.ps1"
-            $installScript = @"
-# Auto-generated script to install missing essential apps
-# Generated on: $((Get-Date).ToString("yyyy-MM-dd HH:mm:ss"))
-
-Write-Information "Installing $($MissingApps.Count) missing essential applications..." -InformationAction Continue
-
-"@
+            # Create comprehensive installation data (no more .ps1 scripts)
+            $installationData = @{
+                Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                TotalMissingApps = $MissingApps.Count
+                InstallationMethods = @{}
 
             if ($wingetApps.Count -gt 0) {
-                $installScript += @"
-
-# Install via Winget
-Write-Information "Installing $($wingetApps.Count) apps via Winget..." -InformationAction Continue
-"@
-                foreach ($app in $wingetApps) {
-                    $installScript += "winget install --id '$($app.Winget)' --silent --accept-package-agreements --accept-source-agreements`n"
+                $installationData.InstallationMethods.Winget = @{
+                    Count = $wingetApps.Count
+                    Apps = $wingetApps | ForEach-Object { 
+                        @{ 
+                            Name = $_.Name
+                            Id = $_.Winget
+                            Command = "winget install --id '$($_.Winget)' --silent --accept-package-agreements --accept-source-agreements"
+                        } 
+                    }
                 }
             }
 
             if ($chocoApps.Count -gt 0) {
-                $installScript += @"
-
-# Install via Chocolatey
-Write-Information "Installing $($chocoApps.Count) apps via Chocolatey..." -InformationAction Continue
-"@
-                foreach ($app in $chocoApps) {
-                    $installScript += "choco install '$($app.Chocolatey)' -y`n"
+                $installationData.InstallationMethods.Chocolatey = @{
+                    Count = $chocoApps.Count
+                    Apps = $chocoApps | ForEach-Object { 
+                        @{ 
+                            Name = $_.Name
+                            Id = $_.Chocolatey
+                            Command = "choco install '$($_.Chocolatey)' -y"
+                        } 
+                    }
                 }
             }
 
             if ($manualApps.Count -gt 0) {
-                $installScript += @"
-
-# Manual installation required for these apps:
-"@
-                foreach ($app in $manualApps) {
-                    $installScript += "# - $($app.Name): $($app.Description)`n"
+                $installationData.InstallationMethods.Manual = @{
+                    Count = $manualApps.Count
+                    Apps = $manualApps | ForEach-Object { 
+                        @{ 
+                            Name = $_.Name
+                            Description = $_.Description
+                            RequiresManualInstallation = $true
+                        } 
+                    }
                 }
             }
 
-            $installScript | Out-File -FilePath $installScriptPath -Encoding UTF8
-            Write-Information "  🔧 Install script created: $installScriptPath" -InformationAction Continue
+            # Save installation data instead of script
+            $installDataPath = Save-OrganizedFile -Data $installationData -FileType 'Data' -Category 'apps' -FileName 'installation-methods' -Format 'JSON'
+            if ($installDataPath) {
+                Write-Information "  🔧 Installation methods data saved to: $installDataPath" -InformationAction Continue
+            }
         }
 
-        # Save installed apps list
+        # Save installed apps list using organized file system
         if ($InstalledApps.Count -gt 0) {
-            $installedAppsPath = Join-Path $tempDir "installed-essential-apps-$timestamp.json"
-            $InstalledApps | ConvertTo-Json -Depth 5 | Out-File -FilePath $installedAppsPath -Encoding UTF8
-            Write-Information "  ✅ Installed essential apps list saved to: $installedAppsPath" -InformationAction Continue
+            $installedAppsPath = Save-OrganizedFile -Data $InstalledApps -FileType 'Data' -Category 'apps' -FileName 'installed-essential-apps' -Format 'JSON'
+            if ($installedAppsPath) {
+                Write-Information "  ✅ Installed essential apps list saved to: $installedAppsPath" -InformationAction Continue
+            }
         }
 
     }
