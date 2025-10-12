@@ -474,6 +474,18 @@ IF "%PS7_FOUND%"=="NO" (
         )
     ) ELSE (
         CALL :LOG_MESSAGE "Winget not available for PowerShell 7 installation" "WARN" "LAUNCHER"
+        IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+            CALL :LOG_MESSAGE "Attempting winget via WindowsApps alias path..." "INFO" "LAUNCHER"
+            ECHO. > "%WINGET_LOG%" 2>nul
+            "%LocalAppData%\Microsoft\WindowsApps\winget.exe" install --id Microsoft.PowerShell -e --source winget --scope machine --silent --accept-package-agreements --accept-source-agreements >> "%WINGET_LOG%" 2>&1
+            SET "WG_EXIT=!ERRORLEVEL!"
+            IF !WG_EXIT! EQU 0 (
+                CALL :LOG_MESSAGE "PowerShell 7 installed successfully via WindowsApps winget" "SUCCESS" "LAUNCHER"
+                SET "INSTALL_STATUS=SUCCESS"
+            ) ELSE (
+                CALL :LOG_MESSAGE "WindowsApps winget attempt failed (code !WG_EXIT!)." "WARN" "LAUNCHER"
+            )
+        )
     )
 
     REM 2) Fallback to Chocolatey if winget path failed
@@ -488,16 +500,21 @@ IF "%PS7_FOUND%"=="NO" (
                 CALL :LOG_MESSAGE "Chocolatey installation failed (continuing to MSI fallback)" "WARN" "LAUNCHER"
             )
         )
-        choco --version >nul 2>&1
+        REM Prefer absolute Chocolatey path to avoid PATH refresh issues
+        SET "CHOCO_EXE=choco"
+        IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
+        "%CHOCO_EXE%" --version >nul 2>&1
         IF !ERRORLEVEL! EQU 0 IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
             CALL :LOG_MESSAGE "Attempting to install PowerShell 7 via Chocolatey..." "INFO" "LAUNCHER"
-            choco install powershell-core -y --no-progress >nul 2>&1
+            "%CHOCO_EXE%" install powershell-core -y --no-progress >nul 2>&1
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "PowerShell 7 installed successfully via Chocolatey" "SUCCESS" "LAUNCHER"
                 SET "INSTALL_STATUS=SUCCESS"
             ) ELSE (
                 CALL :LOG_MESSAGE "Chocolatey failed to install PowerShell 7" "WARN" "LAUNCHER"
             )
+        ) ELSE (
+            CALL :LOG_MESSAGE "Chocolatey not ready in current session (PATH not refreshed or install blocked)." "WARN" "LAUNCHER"
         )
     )
 
