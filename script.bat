@@ -452,11 +452,25 @@ IF "%PS7_FOUND%"=="NO" (
     SET "INSTALL_STATUS=FAILED"
     SET "WINGET_LOG=%WORKING_DIR%winget-pwsh-install.log"
 
-    REM 1) Try installing via winget (with explicit ID, source repair, and retries)
+    REM 1) Try installing via winget (check PATH first, then WindowsApps alias)
+    SET "WINGET_EXE="
     winget --version >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
+        SET "WINGET_EXE=winget"
+        CALL :LOG_MESSAGE "Winget found via PATH" "DEBUG" "LAUNCHER"
+    ) ELSE (
+        IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+            "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
+                CALL :LOG_MESSAGE "Winget found via WindowsApps alias" "DEBUG" "LAUNCHER"
+            )
+        )
+    )
+    
+    IF DEFINED WINGET_EXE (
         CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-        winget install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
+        "%WINGET_EXE%" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             SET "INSTALL_STATUS=SUCCESS"
