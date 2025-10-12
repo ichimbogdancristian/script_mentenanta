@@ -226,7 +226,7 @@ CALL :LOG_MESSAGE "Windows version: %OS_VERSION%" "INFO" "LAUNCHER"
 
 REM PowerShell version check
 FOR /F "tokens=*" %%i IN ('powershell -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_VERSION=%%i
-IF "%PS_VERSION%"=="" SET PS_VERSION=0
+    IF "%PS_VERSION%"=="" SET PS_VERSION=0
 CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 
 IF %PS_VERSION% LSS 5 (
@@ -983,26 +983,7 @@ IF NOT EXIST "%ORCHESTRATOR_PATH%" (
 
 REM Check if we have PowerShell 7+ for the orchestrator (required)
 REM Use AUTO_NONINTERACTIVE as a reliable marker that PS 7+ was detected above
-IF NOT "%AUTO_NONINTERACTIVE%"=="YES" (
-    CALL :LOG_MESSAGE "PowerShell 7+ is required for the orchestrator but not available" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "The MaintenanceOrchestrator.ps1 requires PowerShell Core 7.0 or higher" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please ensure PowerShell 7 is properly installed and available in PATH" "ERROR" "LAUNCHER"
-    
-    REM Only show interactive error if not in unattended mode
-    IF NOT "%1"=="-NonInteractive" (
-        ECHO.
-        ECHO ===============================================
-        ECHO   ERROR: PowerShell 7 Required
-        ECHO ===============================================
-        ECHO The maintenance orchestrator requires PowerShell 7.0 or higher.
-        ECHO Please install PowerShell 7 and ensure pwsh.exe is in your PATH.
-        ECHO.
-        ECHO Download: https://github.com/PowerShell/PowerShell/releases
-        ECHO.
-        PAUSE
-    )
-    EXIT /B 1
-)
+REM [REMOVED: Legacy PowerShell 7+ orchestrator check. Now handled by consolidated detection above.]
 
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
