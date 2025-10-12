@@ -229,6 +229,9 @@ function Get-AppXBloatware {
 
         $found = @()
         foreach ($app in $appXApps) {
+            # Skip null apps to prevent null reference exceptions
+            if ($null -eq $app) { continue }
+            
             foreach ($pattern in $BloatwarePatterns) {
                 $matched = $false
                 $matchType = ""
@@ -322,6 +325,9 @@ function Get-WingetBloatware {
 
         $found = @()
         foreach ($app in $wingetApps) {
+            # Skip null apps to prevent null reference exceptions
+            if ($null -eq $app) { continue }
+            
             foreach ($pattern in $BloatwarePatterns) {
                 $matched = $false
                 $matchType = ""
@@ -415,6 +421,9 @@ function Get-ChocolateyBloatware {
 
         $found = @()
         foreach ($app in $chocoApps) {
+            # Skip null apps to prevent null reference exceptions
+            if ($null -eq $app) { continue }
+            
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
                     $found += [PSCustomObject]@{
@@ -472,6 +481,9 @@ function Get-RegistryBloatware {
 
         $found = @()
         foreach ($app in $registryApps) {
+            # Skip null apps to prevent null reference exceptions
+            if ($null -eq $app) { continue }
+            
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
                     $found += [PSCustomObject]@{
@@ -525,6 +537,12 @@ function Test-BloatwareDetection {
     $requiredProperties = @('Name', 'Source', 'MatchedPattern')
 
     foreach ($item in $DetectedItems) {
+        # Skip null items to prevent null reference exceptions
+        if ($null -eq $item) {
+            $validationResults.InvalidItems++
+            continue
+        }
+        
         $isValid = $true
 
         foreach ($property in $requiredProperties) {

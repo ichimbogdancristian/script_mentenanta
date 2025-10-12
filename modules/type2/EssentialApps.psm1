@@ -238,11 +238,11 @@ function Get-AppsNotInstalled {
 
     # Check for Microsoft Office installation for LibreOffice logic
     $hasMicrosoftOffice = $inventory.InstalledSoftware.Programs | Where-Object {
-        $_.Name -like "*Microsoft Office*" -or
-        $_.DisplayName -like "*Microsoft Office*" -or
-        $_.Publisher -like "*Microsoft*" -and ($_.Name -like "*Office*" -or $_.DisplayName -like "*Office*") -or
-        $_.Name -like "*Microsoft 365*" -or
-        $_.DisplayName -like "*Microsoft 365*"
+        ($_.Name -like "*Microsoft Office*") -or
+        ($_.DisplayName -like "*Microsoft Office*") -or
+        ($_.Publisher -like "*Microsoft*" -and ($_.Name -like "*Office*" -or $_.DisplayName -like "*Office*")) -or
+        ($_.Name -like "*Microsoft 365*") -or
+        ($_.DisplayName -like "*Microsoft 365*")
     }
 
     # Filter out already installed apps
@@ -342,11 +342,31 @@ function Save-AppDiffList {
         $manualApps = $MissingApps | Where-Object { -not $_.Winget -and -not $_.Chocolatey }
 
         $wingetPkgArr = @()
-        if ($wingetApps) { foreach ($a in $wingetApps) { if ($a) { $wingetPkgArr += @{ Name = $a.Name; Id = $a.Winget } } } }
+        if ($wingetApps) { 
+            foreach ($a in $wingetApps) { 
+                if ($null -ne $a) { 
+                    $wingetPkgArr += @{ Name = $a.Name; Id = $a.Winget } 
+                } 
+            } 
+        }
+        
         $chocoPkgArr = @()
-        if ($chocoApps) { foreach ($a in $chocoApps) { if ($a) { $chocoPkgArr += @{ Name = $a.Name; Id = $a.Chocolatey } } } }
+        if ($chocoApps) { 
+            foreach ($a in $chocoApps) { 
+                if ($null -ne $a) { 
+                    $chocoPkgArr += @{ Name = $a.Name; Id = $a.Chocolatey } 
+                } 
+            } 
+        }
+        
         $manualPkgArr = @()
-        if ($manualApps) { foreach ($a in $manualApps) { if ($a) { $manualPkgArr += @{ Name = $a.Name; Description = $a.Description } } } }
+        if ($manualApps) { 
+            foreach ($a in $manualApps) { 
+                if ($null -ne $a) { 
+                    $manualPkgArr += @{ Name = $a.Name; Description = $a.Description } 
+                } 
+            } 
+        }
 
         # Recommendations
         $recs = @()
@@ -498,10 +518,10 @@ function Test-AppInstallationStatus {
         if (-not $variation) { continue }
 
         $matchingPrograms = $InstalledPrograms | Where-Object {
-            ($_.Name -and ($_.Name -like "*$variation*" -or $_.Name -eq $variation)) -or
-            ($_.DisplayName -and ($_.DisplayName -like "*$variation*" -or $_.DisplayName -eq $variation)) -or
-            ($_.Publisher -and $variation -like "*$($_.Publisher)*") -or
-            ($_.Id -and ($_.Id -like "*$variation*" -or $_.Id -eq $variation))
+            ($_.Name -and (($_.Name -like "*$variation*") -or ($_.Name -eq $variation))) -or
+            ($_.DisplayName -and (($_.DisplayName -like "*$variation*") -or ($_.DisplayName -eq $variation))) -or
+            ($_.Publisher -and ($variation -like "*$($_.Publisher)*")) -or
+            ($_.Id -and (($_.Id -like "*$variation*") -or ($_.Id -eq $variation)))
         }
 
         if ($matchingPrograms.Count -gt 0) {
@@ -513,7 +533,7 @@ function Test-AppInstallationStatus {
     # Strategy 5: Publisher-based detection for Microsoft apps
     if ($App.Name -like "*Microsoft*" -or $App.Winget -like "*Microsoft*") {
         $microsoftPrograms = $InstalledPrograms | Where-Object {
-            $_.Publisher -like "*Microsoft*" -and
+            ($_.Publisher -like "*Microsoft*") -and
             ($_.Name -or $_.DisplayName) -and
             (($_.Name -like "*$($App.Name.Replace('Microsoft ', ''))*") -or
             ($_.DisplayName -like "*$($App.Name.Replace('Microsoft ', ''))*"))

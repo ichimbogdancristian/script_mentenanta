@@ -632,12 +632,12 @@ function Get-SecurityRecommendations {
 
         if ($categoryData.Issues -and $categoryData.Issues.Count -gt 0) {
             foreach ($issue in $categoryData.Issues) {
-                $recommendations.Add(([PSCustomObject]@{
-                            Category       = $category
-                            Priority       = Get-IssuePriority -Issue $issue
-                            Issue          = $issue
-                            Recommendation = Get-IssueRecommendation -Issue $issue
-                        }))
+                $recommendations.Add([PSCustomObject]@{
+                        Category       = $category
+                        Priority       = Get-IssuePriority -Issue $issue
+                        Issue          = $issue
+                        Recommendation = Get-IssueRecommendation -Issue $issue
+                    })
             }
         }
     }

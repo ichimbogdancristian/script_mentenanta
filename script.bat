@@ -931,6 +931,20 @@ IF /I "!SR_STATUS!"=="SR_ENABLED" (
     CALL :LOG_MESSAGE "Unable to confirm System Protection enablement (marker: !SR_STATUS!). Proceeding." "WARN" "LAUNCHER"
 )
 
+REM Verify System Protection is enabled before creating restore point
+CALL :LOG_MESSAGE "Verifying System Protection is enabled before creating restore point..." "INFO" "LAUNCHER"
+
+FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { $drive=$env:SystemDrive.TrimEnd('\\'); $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Select-Object -First 1; if ($rp) { Write-Host 'SR_VERIFIED_ENABLED' } else { $reg = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore' -ErrorAction SilentlyContinue; $disabled = $reg -and ($reg.DisableSR -ne 0); if ($disabled) { Write-Host 'SR_DISABLED' } else { Write-Host 'SR_NO_POINTS_YET' } } } catch { Write-Host 'SR_VERIFICATION_FAILED' }"`) DO SET "SR_VERIFY_STATUS=%%i"
+
+IF /I "!SR_VERIFY_STATUS!"=="SR_DISABLED" (
+    CALL :LOG_MESSAGE "System Protection is disabled - cannot create restore point. Skipping." "WARN" "LAUNCHER"
+    GOTO :SKIP_RESTORE_POINT
+) ELSE IF /I "!SR_VERIFY_STATUS!"=="SR_VERIFICATION_FAILED" (
+    CALL :LOG_MESSAGE "Unable to verify System Protection status - attempting restore point creation anyway." "WARN" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "System Protection verified as enabled. Proceeding with restore point creation." "INFO" "LAUNCHER"
+)
+
 CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
 
 FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]::NewGuid().ToString()" 2^>nul`) DO SET "RESTORE_GUID=%%i"
@@ -960,6 +974,8 @@ IF !ERRORLEVEL! EQU 0 (
 ) ELSE (
     CALL :LOG_MESSAGE "Failed to create system restore point (System Protection may be disabled). Continuing." "WARN" "LAUNCHER"
 )
+
+:SKIP_RESTORE_POINT
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Orchestrator Launch
