@@ -53,7 +53,7 @@ using namespace System.Collections.Generic
     $results = Disable-WindowsTelemetry -DisableCortana -DisableLocationTracking -DryRun
 #>
 function Disable-WindowsTelemetry {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param(
         [Parameter()]
@@ -85,16 +85,16 @@ function Disable-WindowsTelemetry {
     # Initialize results tracking
     $results = @{
         TotalOperations = 0
-        Successful = 0
-        Failed = 0
-        Skipped = 0
-        DryRun = $DryRun.IsPresent
-        Details = [List[PSCustomObject]]::new()
-        Categories = @{
-            Registry = @{ Applied = 0; Failed = 0 }
-            Services = @{ Disabled = 0; Failed = 0 }
+        Successful      = 0
+        Failed          = 0
+        Skipped         = 0
+        DryRun          = $DryRun.IsPresent
+        Details         = [List[PSCustomObject]]::new()
+        Categories      = @{
+            Registry      = @{ Applied = 0; Failed = 0 }
+            Services      = @{ Disabled = 0; Failed = 0 }
             Notifications = @{ Disabled = 0; Failed = 0 }
-            Features = @{ Disabled = 0; Failed = 0 }
+            Features      = @{ Disabled = 0; Failed = 0 }
         }
     }
 
@@ -205,13 +205,13 @@ function Test-PrivacySetting {
     Write-Information "🔍 Analyzing current privacy and telemetry settings..." -InformationAction Continue
 
     $analysis = @{
-        TelemetryLevel = Get-TelemetryLevel
-        ServicesRunning = Get-TelemetryServiceStatus
-        NotificationsEnabled = Test-NotificationsEnabled
+        TelemetryLevel          = Get-TelemetryLevel
+        ServicesRunning         = Get-TelemetryServiceStatus
+        NotificationsEnabled    = Test-NotificationsEnabled
         ConsumerFeaturesEnabled = Test-ConsumerFeaturesEnabled
-        CortanaEnabled = Test-CortanaEnabled
+        CortanaEnabled          = Test-CortanaEnabled
         LocationServicesEnabled = Test-LocationServicesEnabled
-        Recommendations = [List[string]]::new()
+        Recommendations         = [List[string]]::new()
     }
 
     # Generate recommendations
@@ -279,7 +279,7 @@ function Test-PrivacySetting {
     - HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent
 #>
 function Set-TelemetryRegistrySetting {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param(
         [Parameter()]
@@ -288,44 +288,44 @@ function Set-TelemetryRegistrySetting {
 
     $results = @{
         Applied = 0
-        Failed = 0
+        Failed  = 0
         Details = [List[PSCustomObject]]::new()
     }
 
     # Core telemetry registry settings
     $telemetrySettings = @{
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' = @{
-            'AllowTelemetry' = 0
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'                = @{
+            'AllowTelemetry'                 = 0
             'DoNotShowFeedbackNotifications' = 1
-            'AllowCommercialDataPipeline' = 0
-            'AllowDeviceNameInTelemetry' = 0
+            'AllowCommercialDataPipeline'    = 0
+            'AllowDeviceNameInTelemetry'     = 0
         }
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' = @{
-            'AllowTelemetry' = 0
+            'AllowTelemetry'      = 0
             'MaxTelemetryAllowed' = 0
         }
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' = @{
-            'ContentDeliveryAllowed' = 0
-            'OemPreInstalledAppsEnabled' = 0
-            'PreInstalledAppsEnabled' = 0
-            'SilentInstalledAppsEnabled' = 0
-            'SubscribedContentEnabled' = 0
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'  = @{
+            'ContentDeliveryAllowed'       = 0
+            'OemPreInstalledAppsEnabled'   = 0
+            'PreInstalledAppsEnabled'      = 0
+            'SilentInstalledAppsEnabled'   = 0
+            'SubscribedContentEnabled'     = 0
             'SystemPaneSuggestionsEnabled' = 0
-            'SoftLandingEnabled' = 0
+            'SoftLandingEnabled'           = 0
         }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'                  = @{
             'DisableWindowsConsumerFeatures' = 1
-            'DisableCloudOptimizedContent' = 1
-            'DisableSoftLanding' = 1
+            'DisableCloudOptimizedContent'   = 1
+            'DisableSoftLanding'             = 1
         }
     }
 
     foreach ($registryPath in $telemetrySettings.Keys) {
         $pathResult = @{
-            Path = $registryPath
+            Path     = $registryPath
             Settings = 0
-            Success = $true
-            Error = $null
+            Success  = $true
+            Error    = $null
         }
 
         try {
@@ -333,7 +333,8 @@ function Set-TelemetryRegistrySetting {
             if (-not (Test-Path $registryPath)) {
                 if ($DryRun) {
                     Write-Information "    [DRY RUN] Would create registry path: $registryPath" -InformationAction Continue
-                } else {
+                }
+                else {
                     if ($PSCmdlet.ShouldProcess($registryPath, 'Create registry path')) {
                         New-Item -Path $registryPath -Force | Out-Null
                     }
@@ -346,12 +347,14 @@ function Set-TelemetryRegistrySetting {
                     if ($DryRun) {
                         Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -InformationAction Continue
                         $pathResult.Settings++
-                    } else {
+                    }
+                    else {
                         # Check if value needs to be changed (idempotent operation)
                         $currentValue = $null
                         try {
                             $currentValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).$($setting.Key)
-                        } catch {
+                        }
+                        catch {
                             $currentValue = $null
                         }
 
@@ -427,7 +430,7 @@ function Set-TelemetryRegistrySetting {
     - dmwappushservice (Device Management Wireless Application Protocol)
 #>
 function Disable-TelemetryService {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     [OutputType([hashtable])]
     param(
         [Parameter()]
@@ -436,8 +439,8 @@ function Disable-TelemetryService {
 
     $results = @{
         Disabled = 0
-        Failed = 0
-        Details = [List[PSCustomObject]]::new()
+        Failed   = 0
+        Details  = [List[PSCustomObject]]::new()
     }
 
     # Telemetry services to disable
@@ -450,10 +453,10 @@ function Disable-TelemetryService {
 
     foreach ($serviceName in $telemetryServices) {
         $serviceResult = @{
-            Name = $serviceName
+            Name    = $serviceName
             Success = $false
-            Action = 'None'
-            Error = $null
+            Action  = 'None'
+            Error   = $null
         }
 
         try {
@@ -474,7 +477,8 @@ function Disable-TelemetryService {
                     $serviceResult.Action = 'Would Disable'
                     $serviceResult.Success = $true
                     Write-Information "    [DRY RUN] Would disable service: $serviceName" -InformationAction Continue
-                } else {
+                }
+                else {
                     if ($PSCmdlet.ShouldProcess($serviceName, 'Stop and disable telemetry service')) {
                         # Stop the service if running
                         if ($service.Status -eq 'Running') {
@@ -546,7 +550,7 @@ function Disable-TelemetryService {
     - Promotional notifications
 #>
 function Disable-WindowsNotification {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param(
         [Parameter()]
@@ -555,8 +559,8 @@ function Disable-WindowsNotification {
 
     $results = @{
         Disabled = 0
-        Failed = 0
-        Details = [List[PSCustomObject]]::new()
+        Failed   = 0
+        Details  = [List[PSCustomObject]]::new()
     }
 
     try {
@@ -565,7 +569,8 @@ function Disable-WindowsNotification {
         if (-not (Test-Path $notificationPath)) {
             if ($DryRun) {
                 Write-Information "    [DRY RUN] Would create notification settings path" -InformationAction Continue
-            } else {
+            }
+            else {
                 if ($PSCmdlet.ShouldProcess($notificationPath, 'Create notification settings registry path')) {
                     New-Item -Path $notificationPath -Force | Out-Null
                 }
@@ -575,15 +580,16 @@ function Disable-WindowsNotification {
         # Global notification settings
         $globalSettings = @{
             'NOC_GLOBAL_SETTING_TOASTS_ENABLED' = 0
-            'NOC_GLOBAL_SETTING_BADGE_ENABLED' = 0
-            'NOC_GLOBAL_SETTING_SOUND_ENABLED' = 0
+            'NOC_GLOBAL_SETTING_BADGE_ENABLED'  = 0
+            'NOC_GLOBAL_SETTING_SOUND_ENABLED'  = 0
         }
 
         foreach ($setting in $globalSettings.GetEnumerator()) {
             try {
                 if ($DryRun) {
                     Write-Information "    [DRY RUN] Would disable global notification: $($setting.Key)" -InformationAction Continue
-                } else {
+                }
+                else {
                     if ($PSCmdlet.ShouldProcess("$notificationPath\$($setting.Key)", "Disable notification setting")) {
                         Set-ItemProperty -Path $notificationPath -Name $setting.Key -Value $setting.Value -Force
                         Write-Information "    🔕 Disabled notification setting: $($setting.Key)" -InformationAction Continue
@@ -600,13 +606,14 @@ function Disable-WindowsNotification {
 
         # Disable per-app notifications
         $appNotifications = Get-ChildItem -Path $notificationPath -ErrorAction SilentlyContinue |
-            Where-Object { $_.PSChildName -notin $globalSettings.Keys }
+        Where-Object { $_.PSChildName -notin $globalSettings.Keys }
 
         foreach ($app in $appNotifications) {
             try {
                 if ($DryRun) {
                     Write-Information "    [DRY RUN] Would disable notifications for: $($app.PSChildName)" -InformationAction Continue
-                } else {
+                }
+                else {
                     Set-ItemProperty -Path $app.PSPath -Name 'Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
                 }
 
@@ -670,7 +677,7 @@ function Disable-WindowsNotification {
     - Windows tips and tricks
 #>
 function Disable-ConsumerFeature {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param(
         [Parameter()]
@@ -679,22 +686,22 @@ function Disable-ConsumerFeature {
 
     $results = @{
         Disabled = 0
-        Failed = 0
-        Details = [List[PSCustomObject]]::new()
+        Failed   = 0
+        Details  = [List[PSCustomObject]]::new()
     }
 
     # Consumer features registry settings
     $consumerSettings = @{
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' = @{
-            'DisableWindowsConsumerFeatures' = 1
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'                 = @{
+            'DisableWindowsConsumerFeatures'     = 1
             'DisableConsumerAccountStateContent' = 1
-            'DisableCloudOptimizedContent' = 1
+            'DisableCloudOptimizedContent'       = 1
         }
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' = @{
             'SystemPaneSuggestionsEnabled' = 0
-            'SilentInstalledAppsEnabled' = 0
-            'PreInstalledAppsEnabled' = 0
-            'OemPreInstalledAppsEnabled' = 0
+            'SilentInstalledAppsEnabled'   = 0
+            'PreInstalledAppsEnabled'      = 0
+            'OemPreInstalledAppsEnabled'   = 0
         }
     }
 
@@ -703,7 +710,8 @@ function Disable-ConsumerFeature {
             if (-not (Test-Path $registryPath)) {
                 if ($DryRun) {
                     Write-Information "    [DRY RUN] Would create consumer features path: $registryPath" -InformationAction Continue
-                } else {
+                }
+                else {
                     if ($PSCmdlet.ShouldProcess($registryPath, 'Create consumer features registry path')) {
                         New-Item -Path $registryPath -Force | Out-Null
                     }
@@ -715,7 +723,8 @@ function Disable-ConsumerFeature {
                 try {
                     if ($DryRun) {
                         Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value)" -InformationAction Continue
-                    } else {
+                    }
+                    else {
                         if ($PSCmdlet.ShouldProcess("$registryPath\$($setting.Key)", "Disable consumer feature setting")) {
                             Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
                         }
@@ -778,7 +787,7 @@ function Disable-ConsumerFeature {
     - Connected search functionality
 #>
 function Disable-CortanaFeature {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param([switch]$DryRun)
 
@@ -786,8 +795,8 @@ function Disable-CortanaFeature {
 
     $cortanaSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' = @{
-            'AllowCortana' = 0
-            'DisableWebSearch' = 1
+            'AllowCortana'          = 0
+            'DisableWebSearch'      = 1
             'ConnectedSearchUseWeb' = 0
         }
     }
@@ -805,7 +814,8 @@ function Disable-CortanaFeature {
             foreach ($setting in $cortanaSettings[$path].GetEnumerator()) {
                 if ($DryRun) {
                     Write-Information "    [DRY RUN] Would disable Cortana setting: $($setting.Key)" -InformationAction Continue
-                } else {
+                }
+                else {
                     if ($PSCmdlet.ShouldProcess("$path\$($setting.Key)", "Disable Cortana feature")) {
                         Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
                     }
@@ -859,7 +869,7 @@ function Disable-CortanaFeature {
     - Location history collection
 #>
 function Disable-LocationService {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param([switch]$DryRun)
 
@@ -867,7 +877,7 @@ function Disable-LocationService {
 
     $locationSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' = @{
-            'DisableLocation' = 1
+            'DisableLocation'          = 1
             'DisableLocationScripting' = 1
         }
     }
@@ -885,7 +895,8 @@ function Disable-LocationService {
             foreach ($setting in $locationSettings[$path].GetEnumerator()) {
                 if ($DryRun) {
                     Write-Information "    [DRY RUN] Would disable location setting: $($setting.Key)" -InformationAction Continue
-                } else {
+                }
+                else {
                     if ($PSCmdlet.ShouldProcess("$path\$($setting.Key)", "Disable location service")) {
                         Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
                     }
@@ -910,7 +921,8 @@ function Get-TelemetryLevel {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' -Name AllowTelemetry -ErrorAction SilentlyContinue).AllowTelemetry
         return [int]($value ?? 3)
-    } catch { return 3 }
+    }
+    catch { return 3 }
 }
 
 function Get-TelemetryServiceStatus {
@@ -922,28 +934,32 @@ function Test-NotificationsEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings' -Name NOC_GLOBAL_SETTING_TOASTS_ENABLED -ErrorAction SilentlyContinue).NOC_GLOBAL_SETTING_TOASTS_ENABLED
         return $value -ne 0
-    } catch { return $true }
+    }
+    catch { return $true }
 }
 
 function Test-ConsumerFeaturesEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableWindowsConsumerFeatures -ErrorAction SilentlyContinue).DisableWindowsConsumerFeatures
         return $value -ne 1
-    } catch { return $true }
+    }
+    catch { return $true }
 }
 
 function Test-CortanaEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name AllowCortana -ErrorAction SilentlyContinue).AllowCortana
         return $value -ne 0
-    } catch { return $true }
+    }
+    catch { return $true }
 }
 
 function Test-LocationServicesEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' -Name DisableLocation -ErrorAction SilentlyContinue).DisableLocation
         return $value -ne 1
-    } catch { return $true }
+    }
+    catch { return $true }
 }
 
 # Helper function to merge operation results

@@ -53,8 +53,8 @@ function Initialize-ConfigSystem {
 
     # Set up configuration paths
     $script:ConfigPaths = @{
-        Root = $ConfigRootPath
-        MainConfig = Join-Path $ConfigRootPath 'main-config.json'
+        Root          = $ConfigRootPath
+        MainConfig    = Join-Path $ConfigRootPath 'main-config.json'
         LoggingConfig = Join-Path $ConfigRootPath 'logging-config.json'
         BloatwareList = Join-Path $ConfigRootPath 'bloatware-list.json'
         EssentialApps = Join-Path $ConfigRootPath 'essential-apps.json'
@@ -188,7 +188,8 @@ function Get-BloatwareConfiguration {
         # Convert to array if it's not already
         if ($bloatwareList -is [Array]) {
             $script:BloatwareLists['all'] = $bloatwareList
-        } else {
+        }
+        else {
             $script:BloatwareLists['all'] = @($bloatwareList)
         }
 
@@ -235,7 +236,8 @@ function Get-EssentialAppsConfiguration {
         # Convert to array if it's not already
         if ($essentialAppsList -is [Array]) {
             $script:EssentialApps['all'] = $essentialAppsList
-        } else {
+        }
+        else {
             $script:EssentialApps['all'] = @($essentialAppsList)
         }
 
@@ -273,7 +275,8 @@ function Get-UnifiedBloatwareList {
 
     if ($bloatwareLists.ContainsKey('all')) {
         return $bloatwareLists['all'] | Sort-Object
-    } else {
+    }
+    else {
         Write-Warning "No bloatware patterns found in configuration"
         return @()
     }
@@ -304,7 +307,8 @@ function Get-UnifiedEssentialAppsList {
 
     if ($appLists.ContainsKey('all')) {
         return $appLists['all']
-    } else {
+    }
+    else {
         Write-Warning "No essential apps found in configuration"
         return @()
     }
@@ -358,50 +362,50 @@ function Save-Configuration {
 #>
 function Get-DefaultConfiguration {
     return [PSCustomObject]@{
-        execution = [PSCustomObject]@{
-            defaultMode = 'unattended'
-            countdownSeconds = 20
-            enableDryRun = $true
+        execution     = [PSCustomObject]@{
+            defaultMode       = 'unattended'
+            countdownSeconds  = 20
+            enableDryRun      = $true
             autoSelectDefault = $true
-            showProgressBars = $true
+            showProgressBars  = $true
         }
-        modules = [PSCustomObject]@{
-            skipBloatwareRemoval = $false
-            skipEssentialApps = $false
-            skipWindowsUpdates = $false
-            skipTelemetryDisable = $false
+        modules       = [PSCustomObject]@{
+            skipBloatwareRemoval   = $false
+            skipEssentialApps      = $false
+            skipWindowsUpdates     = $false
+            skipTelemetryDisable   = $false
             skipSystemOptimization = $false
-            skipSecurityAudit = $false
-            customModulesPath = ''
+            skipSecurityAudit      = $false
+            customModulesPath      = ''
         }
-        bloatware = [PSCustomObject]@{
+        bloatware     = [PSCustomObject]@{
             enableDiffBasedProcessing = $true
-            parallelRemoval = $true
-            createBackups = $true
-            customBloatwareList = @()
+            parallelRemoval           = $true
+            createBackups             = $true
+            customBloatwareList       = @()
         }
         essentialApps = [PSCustomObject]@{
             enableParallelInstallation = $true
-            fallbackToLibreOffice = $true
-            customEssentialApps = @()
-            skipConflictResolution = $false
+            fallbackToLibreOffice      = $true
+            customEssentialApps        = @()
+            skipConflictResolution     = $false
         }
-        system = [PSCustomObject]@{
-            createSystemRestorePoint = $true
-            enableVerboseLogging = $false
-            maxLogSizeMB = 10
+        system        = [PSCustomObject]@{
+            createSystemRestorePoint       = $true
+            enableVerboseLogging           = $false
+            maxLogSizeMB                   = 10
             enablePerformanceOptimizations = $true
         }
-        reporting = [PSCustomObject]@{
-            enableHtmlReport = $true
-            enableDetailedAudit = $true
-            includeSystemInventory = $true
+        reporting     = [PSCustomObject]@{
+            enableHtmlReport              = $true
+            enableDetailedAudit           = $true
+            includeSystemInventory        = $true
             generateBeforeAfterComparison = $true
         }
-        paths = [PSCustomObject]@{
-            tempFolder = 'temp_files'
-            reportsFolder = 'temp_files/reports'
-            logsFolder = 'temp_files/logs'
+        paths         = [PSCustomObject]@{
+            tempFolder      = 'temp_files'
+            reportsFolder   = 'temp_files/reports'
+            logsFolder      = 'temp_files/logs'
             inventoryFolder = 'temp_files/inventory'
         }
     }
@@ -413,36 +417,36 @@ function Get-DefaultConfiguration {
 #>
 function Get-DefaultLoggingConfiguration {
     return @{
-        logging = @{
-            logLevel = 'INFO'
+        logging    = @{
+            logLevel            = 'INFO'
             enableConsoleOutput = $true
-            enableFileOutput = $true
-            enableProgressBars = $true
-            coloredOutput = $true
-            maxLogSizeMB = 10
-            logRotation = $true
-            keepLogFiles = 5
+            enableFileOutput    = $true
+            enableProgressBars  = $true
+            coloredOutput       = $true
+            maxLogSizeMB        = 10
+            logRotation         = $true
+            keepLogFiles        = 5
         }
         formatting = @{
-            dateTimeFormat = 'yyyy-MM-dd HH:mm:ss'
-            messageFormat = '[{timestamp}] [{level}] [{component}] {message}'
+            dateTimeFormat   = 'yyyy-MM-dd HH:mm:ss'
+            messageFormat    = '[{timestamp}] [{level}] [{component}] {message}'
             progressBarStyle = 'detailed'
         }
-        levels = @{
-            DEBUG = @{ enabled = $false; color = 'Gray' }
-            INFO = @{ enabled = $true; color = 'White' }
-            SUCCESS = @{ enabled = $true; color = 'Green' }
-            WARN = @{ enabled = $true; color = 'Yellow' }
-            ERROR = @{ enabled = $true; color = 'Red' }
+        levels     = @{
+            DEBUG    = @{ enabled = $false; color = 'Gray' }
+            INFO     = @{ enabled = $true; color = 'White' }
+            SUCCESS  = @{ enabled = $true; color = 'Green' }
+            WARN     = @{ enabled = $true; color = 'Yellow' }
+            ERROR    = @{ enabled = $true; color = 'Red' }
             CRITICAL = @{ enabled = $true; color = 'Magenta' }
         }
         components = @{
-            BAT = 'Batch Launcher'
+            BAT          = 'Batch Launcher'
             ORCHESTRATOR = 'Main Orchestrator'
-            TYPE1 = 'Inventory/Reporting'
-            TYPE2 = 'System Modification'
-            CONFIG = 'Configuration Manager'
-            MENU = 'Interactive Menu'
+            TYPE1        = 'Inventory/Reporting'
+            TYPE2        = 'System Modification'
+            CONFIG       = 'Configuration Manager'
+            MENU         = 'Interactive Menu'
         }
     }
 }
@@ -476,10 +480,12 @@ function Merge-PSCustomObjects {
         if ($result.PSObject.Properties.Name -contains $property.Name) {
             if ($property.Value -is [PSCustomObject] -and $result.($property.Name) -is [PSCustomObject]) {
                 $result.($property.Name) = Merge-PSCustomObjects -Default $result.($property.Name) -Override $property.Value
-            } else {
+            }
+            else {
                 $result.($property.Name) = $property.Value
             }
-        } else {
+        }
+        else {
             $result | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value
         }
     }
@@ -508,10 +514,12 @@ function Merge-HashTables {
                     $overrideHash[$subProp.Name] = $subProp.Value
                 }
                 $result[$property.Name] = Merge-HashTables -Default $result[$property.Name] -Override $overrideHash
-            } else {
+            }
+            else {
                 $result[$property.Name] = $property.Value
             }
-        } else {
+        }
+        else {
             $result[$property.Name] = $property.Value
         }
     }

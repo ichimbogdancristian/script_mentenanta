@@ -21,15 +21,15 @@ using namespace System.IO
 #region Module Variables
 
 $script:FileOrgContext = @{
-    BaseDir = $null
-    CurrentSession = $null
-    SessionDir = $null
-    CleanupPolicy = $null
+    BaseDir            = $null
+    CurrentSession     = $null
+    SessionDir         = $null
+    CleanupPolicy      = $null
     DirectoryStructure = @{
-        Logs = @('session.log', 'orchestrator.log', 'modules', 'performance')
-        Data = @('inventory', 'apps', 'security')
+        Logs    = @('session.log', 'orchestrator.log', 'modules', 'performance')
+        Data    = @('inventory', 'apps', 'security')
         Reports = @()
-        Temp = @()
+        Temp    = @()
     }
 }
 
@@ -76,8 +76,8 @@ function Initialize-FileOrganization {
             Write-Verbose "Created temp_files base directory: $($script:FileOrgContext.BaseDir)"
         }
 
-    # Create session directory structure
-    New-SessionDirectoryStructure -SessionPath $script:FileOrgContext.SessionDir
+        # Create session directory structure
+        New-SessionDirectoryStructure -SessionPath $script:FileOrgContext.SessionDir
 
         # Load or create cleanup policy
         Initialize-CleanupPolicy
@@ -260,7 +260,8 @@ function Save-OrganizedFile {
                 # Handle both string content and objects
                 if ($Data -is [string]) {
                     $Data | Out-File -FilePath $filePath -Encoding UTF8
-                } else {
+                }
+                else {
                     $Data | Out-String | Out-File -FilePath $filePath -Encoding UTF8
                 }
             }
@@ -323,7 +324,7 @@ function Get-SessionFiles {
     }
 
     $sessionDirs = Get-ChildItem -Path $script:FileOrgContext.BaseDir -Directory | 
-                   Where-Object { $_.Name -match '^session-\d{8}-\d{6}$' }
+    Where-Object { $_.Name -match '^session-\d{8}-\d{6}$' }
 
     $files = @()
     foreach ($sessionDir in $sessionDirs) {
@@ -350,14 +351,14 @@ function Get-SessionFiles {
             $sessionFiles = Get-ChildItem -Path $searchPath -Recurse -File
             $files += $sessionFiles | ForEach-Object {
                 [PSCustomObject]@{
-                    FullName = $_.FullName
-                    Name = $_.Name
-                    Directory = $_.Directory.Name
-                    Session = $sessionDir.Name
+                    FullName      = $_.FullName
+                    Name          = $_.Name
+                    Directory     = $_.Directory.Name
+                    Session       = $sessionDir.Name
                     LastWriteTime = $_.LastWriteTime
-                    Size = $_.Length
-                    Type = $FileType
-                    Category = $Category
+                    Size          = $_.Length
+                    Type          = $FileType
+                    Category      = $Category
                 }
             }
         }
@@ -427,15 +428,15 @@ function Initialize-CleanupPolicy {
 
 function Get-DefaultCleanupPolicy {
     return @{
-        RetentionPeriods = @{
+        RetentionPeriods     = @{
             Sessions = 30        # Keep sessions for 30 days
-            Logs = 14           # Keep detailed logs for 14 days
-            Data = 7            # Keep data files for 7 days
-            Reports = 90        # Keep reports for 90 days
-            Temp = 1            # Keep temp files for 1 day
+            Logs     = 14           # Keep detailed logs for 14 days
+            Data     = 7            # Keep data files for 7 days
+            Reports  = 90        # Keep reports for 90 days
+            Temp     = 1            # Keep temp files for 1 day
         }
-        MaxSessions = 10        # Maximum number of sessions to keep
-        CleanupOnStartup = $true
+        MaxSessions          = 10        # Maximum number of sessions to keep
+        CleanupOnStartup     = $true
         PreserveFinalReports = $true
     }
 }
@@ -451,8 +452,8 @@ function Invoke-SessionCleanup {
     try {
         $policy = $script:FileOrgContext.CleanupPolicy
         $sessionDirs = Get-ChildItem -Path $script:FileOrgContext.BaseDir -Directory | 
-                      Where-Object { $_.Name -match '^session-\d{8}-\d{6}$' } |
-                      Sort-Object Name -Descending
+        Where-Object { $_.Name -match '^session-\d{8}-\d{6}$' } |
+        Sort-Object Name -Descending
 
         $cleanupCount = 0
 

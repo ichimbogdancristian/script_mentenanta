@@ -91,7 +91,7 @@ function Start-SecurityAudit {
         SecurityScore   = 0
         MaxScore        = 0
         Categories      = @{}
-        Recommendations = [List[PSCustomObject]]::new()
+        Recommendations = @()
         Summary         = @{}
     }
 
@@ -153,18 +153,12 @@ function Start-SecurityAudit {
         $duration = ((Get-Date) - $startTime).TotalSeconds
 
         # Display summary
-        $riskColor = switch ($auditResults.Summary.RiskLevel) {
-            'Low' { 'Green' }
-            'Medium' { 'Yellow' }
-            'High' { 'Red' }
-            default { 'Gray' }
-        }
-
         Write-Information "  ✅ Security audit completed in $([math]::Round($duration, 2))s" -InformationAction Continue
         Write-Information "    📊 Security Score: $($auditResults.Summary.OverallScore)/$($auditResults.Summary.MaxPossibleScore) ($($auditResults.Summary.PercentageScore)%)" -InformationAction Continue
         if ($auditResults.Summary.RiskLevel -eq "High") {
             Write-Warning "    ⚠️  Risk Level: $($auditResults.Summary.RiskLevel)"
-        } else {
+        }
+        else {
             Write-Information "    ⚠️  Risk Level: $($auditResults.Summary.RiskLevel)" -InformationAction Continue
         }
         Write-Information "    💡 Recommendations: $($auditResults.Summary.RecommendationsCount)" -InformationAction Continue
@@ -213,9 +207,8 @@ function Get-WindowsDefenderStatus {
         Score                     = 0
         MaxScore                  = 25
         Details                   = @{}
-        Issues                    = [List[string]]::new()
+        Issues                    = (New-Object 'System.Collections.Generic.List[System.String]')
     }
-
     try {
         # Check if Defender module is available
         if (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue) {
@@ -302,7 +295,7 @@ function Get-FirewallStatus {
         Score          = 0
         MaxScore       = 20
         Details        = @{}
-        Issues         = [List[string]]::new()
+        Issues         = (New-Object 'System.Collections.Generic.List[System.String]')
     }
 
     try {
@@ -315,8 +308,8 @@ function Get-FirewallStatus {
 
                 $results.Details[$profileName] = @{
                     Enabled               = $enabled
-                    DefaultInboundAction  = $profile.DefaultInboundAction
-                    DefaultOutboundAction = $profile.DefaultOutboundAction
+                    DefaultInboundAction  = $firewallProfile.DefaultInboundAction
+                    DefaultOutboundAction = $firewallProfile.DefaultOutboundAction
                 }
 
                 # Update status based on profile
@@ -360,14 +353,14 @@ function Get-FirewallStatus {
                     }
 
                     if ($enabled) {
-                        $results.Score += switch ($profile) { 'Domain' { 5 } 'Private' { 8 } 'Public' { 7 } }
+                        $results.Score += switch ($firewallProfile) { 'Domain' { 5 } 'Private' { 8 } 'Public' { 7 } }
                     }
                     else {
-                        $results.Issues.Add("$profile firewall profile is disabled")
+                        $results.Issues.Add("$firewallProfile firewall profile is disabled")
                     }
                 }
                 catch {
-                    $results.Issues.Add("Unable to check $profile firewall status")
+                    $results.Issues.Add("Unable to check $firewallProfile firewall status")
                 }
             }
         }
@@ -397,7 +390,7 @@ function Get-UACStatus {
         Score    = 0
         MaxScore = 15
         Details  = @{}
-        Issues   = [List[string]]::new()
+        Issues   = (New-Object 'System.Collections.Generic.List[System.String]')
     }
 
     try {
@@ -463,7 +456,7 @@ function Get-SecurityServicesStatus {
         Score    = 0
         MaxScore = 20
         Details  = @{}
-        Issues   = [List[string]]::new()
+        Issues   = (New-Object 'System.Collections.Generic.List[System.String]')
     }
 
     # Critical security services
@@ -537,7 +530,7 @@ function Get-SecurityUpdatesStatus {
         LastInstallDate = $null
         PendingReboot   = $false
         Details         = @{}
-        Issues          = [List[string]]::new()
+        Issues          = (New-Object 'System.Collections.Generic.List[System.String]')
     }
 
     try {
@@ -632,7 +625,7 @@ function Get-RiskLevel {
 function Get-SecurityRecommendations {
     param($AuditResults)
 
-    $recommendations = [List[PSCustomObject]]::new()
+    $recommendations = [System.Collections.Generic.List[System.Management.Automation.PSCustomObject]]::new()
 
     foreach ($category in $AuditResults.Categories.Keys) {
         $categoryData = $AuditResults.Categories[$category]
@@ -702,6 +695,7 @@ Generated: $($AuditResults.Timestamp)
 Computer: $($AuditResults.ComputerName)
 Overall Score: $($AuditResults.Summary.OverallScore)/$($AuditResults.Summary.MaxPossibleScore) ($($AuditResults.Summary.PercentageScore)%)
 Risk Level: $($AuditResults.Summary.RiskLevel)
+JSON Data: $auditDataPath
 
 CATEGORY DETAILS:
 "@

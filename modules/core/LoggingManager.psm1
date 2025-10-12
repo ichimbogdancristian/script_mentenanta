@@ -24,7 +24,8 @@ $FileOrgPath = Join-Path $PSScriptRoot 'FileOrganizationManager.psm1'
 if (Test-Path $FileOrgPath) {
     try {
         Import-Module $FileOrgPath -Force -ErrorAction SilentlyContinue
-    } catch {
+    }
+    catch {
         Write-Verbose "FileOrganizationManager not available during LoggingManager initialization"
     }
 }
@@ -33,11 +34,11 @@ if (Test-Path $FileOrgPath) {
 
 # Global logging context for session tracking
 $script:LoggingContext = @{
-    SessionId = [guid]::NewGuid().ToString()
-    StartTime = Get-Date
-    LogPath = $null
-    Config = $null
-    LogBuffer = [List[hashtable]]::new()
+    SessionId          = [guid]::NewGuid().ToString()
+    StartTime          = Get-Date
+    LogPath            = $null
+    Config             = $null
+    LogBuffer          = [List[hashtable]]::new()
     PerformanceMetrics = @{}
 }
 
@@ -82,12 +83,14 @@ function Initialize-LoggingSystem {
         try {
             $script:LoggingContext.LogPath = Get-OrganizedFilePath -FileType 'Log' -FileName 'session.log'
             Write-Verbose "Using organized file path: $($script:LoggingContext.LogPath)"
-        } catch {
+        }
+        catch {
             # Fallback to traditional path if FileOrganizationManager not available
             Write-Verbose "FileOrganizationManager not available, using fallback path"
             if ($BaseLogPath) {
                 $logDir = $BaseLogPath
-            } else {
+            }
+            else {
                 $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
                 $logDir = Join-Path $scriptRoot "temp_files\logs"
             }
@@ -180,14 +183,14 @@ function Write-LogEntry {
 
         $timestamp = Get-Date
         $logEntry = @{
-            Timestamp = $timestamp
-            Level = $Level
-            Component = $Component
-            Message = $Message
-            Data = $Data
+            Timestamp   = $timestamp
+            Level       = $Level
+            Component   = $Component
+            Message     = $Message
+            Data        = $Data
             OperationId = $OperationId
-            SessionId = $script:LoggingContext.SessionId
-            ThreadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
+            SessionId   = $script:LoggingContext.SessionId
+            ThreadId    = [System.Threading.Thread]::CurrentThread.ManagedThreadId
         }
 
         # Add to structured buffer for reporting
@@ -246,10 +249,10 @@ function Start-PerformanceTracking {
     $startTime = Get-Date
 
     $performanceContext = @{
-        OperationId = $operationId
+        OperationId   = $operationId
         OperationName = $OperationName
-        Component = $Component
-        StartTime = $startTime
+        Component     = $Component
+        StartTime     = $startTime
     }
 
     # Store in global tracking
@@ -296,9 +299,9 @@ function Complete-PerformanceTracking {
     $duration = ($endTime - $PerformanceContext.StartTime).TotalSeconds
 
     $performanceData = @{
-        Duration = $duration
-        Success = $Success
-        EndTime = $endTime
+        Duration   = $duration
+        Success    = $Success
+        EndTime    = $endTime
         ResultData = $ResultData
     }
 
@@ -394,12 +397,12 @@ function Get-PerformanceMetrics {
     $completedOperations = $script:LoggingContext.PerformanceMetrics.Values | Where-Object { $_.EndTime }
     
     $summary = @{
-        TotalOperations = $completedOperations.Count
+        TotalOperations      = $completedOperations.Count
         SuccessfulOperations = ($completedOperations | Where-Object { $_.Success }).Count
-        FailedOperations = ($completedOperations | Where-Object { -not $_.Success }).Count
-        TotalDuration = ($completedOperations | Measure-Object Duration -Sum).Sum
-        AverageDuration = ($completedOperations | Measure-Object Duration -Average).Average
-        Operations = $completedOperations
+        FailedOperations     = ($completedOperations | Where-Object { -not $_.Success }).Count
+        TotalDuration        = ($completedOperations | Measure-Object Duration -Sum).Sum
+        AverageDuration      = ($completedOperations | Measure-Object Duration -Average).Average
+        Operations           = $completedOperations
     }
 
     return $summary
@@ -446,12 +449,12 @@ function Export-LogData {
 
     $exportData = @{
         SessionInfo = @{
-            SessionId = $script:LoggingContext.SessionId
-            StartTime = $script:LoggingContext.StartTime
-            EndTime = Get-Date
+            SessionId  = $script:LoggingContext.SessionId
+            StartTime  = $script:LoggingContext.StartTime
+            EndTime    = Get-Date
             LogEntries = $script:LoggingContext.LogBuffer.Count
         }
-        LogEntries = $script:LoggingContext.LogBuffer
+        LogEntries  = $script:LoggingContext.LogBuffer
     }
 
     if ($IncludePerformanceMetrics) {
@@ -502,9 +505,9 @@ function Write-ConsoleLogEntry {
     if (-not $script:LoggingContext.Config.logging.coloredOutput) {
         $formatString = $script:LoggingContext.Config.formatting.messageFormat
         $formattedMessage = $formatString -replace '\{timestamp\}', $LogEntry.Timestamp.ToString($script:LoggingContext.Config.formatting.dateTimeFormat) `
-                                          -replace '\{level\}', $LogEntry.Level `
-                                          -replace '\{component\}', $LogEntry.Component `
-                                          -replace '\{message\}', $LogEntry.Message
+            -replace '\{level\}', $LogEntry.Level `
+            -replace '\{component\}', $LogEntry.Component `
+            -replace '\{message\}', $LogEntry.Message
         Write-Host $formattedMessage
         return
     }
@@ -539,9 +542,9 @@ function Write-FileLogEntry {
     try {
         $formatString = $script:LoggingContext.Config.formatting.messageFormat
         $formattedMessage = $formatString -replace '\{timestamp\}', $LogEntry.Timestamp.ToString($script:LoggingContext.Config.formatting.dateTimeFormat) `
-                                          -replace '\{level\}', $LogEntry.Level `
-                                          -replace '\{component\}', $LogEntry.Component `
-                                          -replace '\{message\}', $LogEntry.Message
+            -replace '\{level\}', $LogEntry.Level `
+            -replace '\{component\}', $LogEntry.Component `
+            -replace '\{message\}', $LogEntry.Message
 
         # Add structured data if present
         if ($LogEntry.Data.Count -gt 0) {
@@ -576,13 +579,13 @@ function Get-LevelIcon {
     param([string]$Level)
     
     switch ($Level) {
-        'DEBUG'    { return '🔍' }
-        'INFO'     { return 'ℹ️' }
-        'SUCCESS'  { return '✅' }
-        'WARN'     { return '⚠️' }
-        'ERROR'    { return '❌' }
+        'DEBUG' { return '🔍' }
+        'INFO' { return 'ℹ️' }
+        'SUCCESS' { return '✅' }
+        'WARN' { return '⚠️' }
+        'ERROR' { return '❌' }
         'CRITICAL' { return '🚨' }
-        default    { return '•' }
+        default { return '•' }
     }
 }
 
@@ -664,18 +667,19 @@ function New-ModuleLogFile {
     if (-not $SessionTimestamp) {
         $SessionTimestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) {
             $env:MAINTENANCE_SESSION_TIMESTAMP
-        } else {
+        }
+        else {
             Get-Date -Format "yyyyMMdd-HHmmss"
         }
     }
 
     # Create module-specific log file using organized file system
     $moduleLogMap = @{
-        'BLOATWARE' = 'bloatware-removal'
-        'APPS' = 'essential-apps'
-        'UPDATES' = 'windows-updates'
+        'BLOATWARE'    = 'bloatware-removal'
+        'APPS'         = 'essential-apps'
+        'UPDATES'      = 'windows-updates'
         'OPTIMIZATION' = 'system-optimization'
-        'TELEMETRY' = 'telemetry-disable'
+        'TELEMETRY'    = 'telemetry-disable'
     }
 
     $logFileName = "$($moduleLogMap[$Component]).log"
@@ -683,7 +687,8 @@ function New-ModuleLogFile {
     try {
         $moduleLogPath = Get-OrganizedFilePath -FileType 'Log' -Category 'modules' -FileName $logFileName
         Write-Verbose "Using organized module log path: $moduleLogPath"
-    } catch {
+    }
+    catch {
         # Fallback to traditional path
         Write-Verbose "FileOrganizationManager not available, using fallback for module logs"
         $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
@@ -709,7 +714,7 @@ Component: $($script:LoggingContext.Config.components.$Component)
 
     Write-LogEntry -Level 'INFO' -Component 'LOGGING' -Message "Created module log file: $logFileName" -Data @{
         Component = $Component
-        LogPath = $moduleLogPath
+        LogPath   = $moduleLogPath
     }
 
     return $moduleLogPath
@@ -785,16 +790,17 @@ function Write-ModuleLogEntry {
     # Write to module-specific log if enabled
     if ($script:LoggingContext.Config.logging.enableModuleSpecificLogs) {
         $moduleLogMap = @{
-            'BLOATWARE' = 'bloatware-removal'
-            'APPS' = 'essential-apps'
-            'UPDATES' = 'windows-updates'
+            'BLOATWARE'    = 'bloatware-removal'
+            'APPS'         = 'essential-apps'
+            'UPDATES'      = 'windows-updates'
             'OPTIMIZATION' = 'system-optimization'
-            'TELEMETRY' = 'telemetry-disable'
+            'TELEMETRY'    = 'telemetry-disable'
         }
 
         $sessionTimestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) {
             $env:MAINTENANCE_SESSION_TIMESTAMP
-        } else {
+        }
+        else {
             Get-Date -Format "yyyyMMdd-HHmmss"
         }
 

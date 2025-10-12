@@ -117,18 +117,20 @@ $UseInventoryCache = $false
 
 # Check if recent inventory data exists and is within cache timeout
 $recentInventory = Get-ChildItem -Path $InventoryDir -Filter "system-inventory-*.json" -ErrorAction SilentlyContinue |
-                  Sort-Object LastWriteTime -Descending |
-                  Select-Object -First 1
+Sort-Object LastWriteTime -Descending |
+Select-Object -First 1
 
 if ($recentInventory) {
     $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
     if ($cacheAge.TotalMinutes -le $CacheTimeoutMinutes) {
         $UseInventoryCache = $true
         Write-Host "  🗂️  Recent inventory data found (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes) - caching enabled" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "  🔄 Inventory data is $([math]::Round($cacheAge.TotalMinutes, 1)) minutes old - will refresh" -ForegroundColor Yellow
     }
-} else {
+}
+else {
     Write-Host "  📋 No cached inventory data found - will collect fresh data" -ForegroundColor Cyan
 }
 
@@ -136,7 +138,8 @@ if ($recentInventory) {
 if (-not $LogFilePath) {
     $LogFilePath = if ($env:SCRIPT_LOG_FILE) {
         $env:SCRIPT_LOG_FILE
-    } else {
+    }
+    else {
         Join-Path $ScriptRoot 'maintenance.log'
     }
 }
@@ -180,7 +183,8 @@ foreach ($moduleName in $CoreModules) {
             Write-Error "Failed to load module $moduleName`: $_"
             exit 1
         }
-    } else {
+    }
+    else {
         Write-Error "Module not found: $modulePath"
         exit 1
     }
@@ -204,7 +208,8 @@ try {
     $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir
     if ($loggingInitResult) {
         Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "  ⚠️ Logging system failed to initialize" -ForegroundColor Yellow
     }
 
@@ -212,7 +217,8 @@ try {
     $fileOrgResult = Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $Global:MaintenanceSessionTimestamp
     if ($fileOrgResult) {
         Write-Host "  ✓ File organization system initialized" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "  ⚠️ File organization system failed to initialize" -ForegroundColor Yellow
     }
 }
@@ -290,10 +296,10 @@ function Invoke-TaskWithParameters {
             # Use session timestamp for consistent naming
             $reportPath = Join-Path $TempRoot "reports\maintenance-report-$Global:MaintenanceSessionTimestamp"
             $params = @{
-                OutputPath = $reportPath
+                OutputPath      = $reportPath
                 SystemInventory = $null  # Will be populated by the function if needed
-                TaskResults = $TaskResults
-                Configuration = $MainConfig
+                TaskResults     = $TaskResults
+                Configuration   = $MainConfig
             }
             return & $FunctionName @params
         }
@@ -341,76 +347,76 @@ Write-Host "`nRegistering maintenance tasks..." -ForegroundColor Yellow
 # Define available maintenance tasks
 $MaintenanceTasks = @(
     @{
-        Name = 'SystemInventory'
+        Name        = 'SystemInventory'
         Description = 'Collect comprehensive system information and generate inventory reports'
-        ModulePath = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
-        Function = 'Get-SystemInventory'
-        Type = 'Type1'
-        Category = 'Inventory'
+        ModulePath  = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
+        Function    = 'Get-SystemInventory'
+        Type        = 'Type1'
+        Category    = 'Inventory'
     },
     @{
-        Name = 'BloatwareDetection'
+        Name        = 'BloatwareDetection'
         Description = 'Scan for bloatware applications and system components'
-        ModulePath = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
-        Function = 'Find-InstalledBloatware'
-        Type = 'Type1'
-        Category = 'Detection'
+        ModulePath  = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
+        Function    = 'Find-InstalledBloatware'
+        Type        = 'Type1'
+        Category    = 'Detection'
     },
     @{
-        Name = 'BloatwareRemoval'
+        Name        = 'BloatwareRemoval'
         Description = 'Remove detected bloatware applications using multiple methods'
-        ModulePath = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
-        Function = 'Remove-DetectedBloatware'
-        Type = 'Type2'
-        Category = 'Cleanup'
+        ModulePath  = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
+        Function    = 'Remove-DetectedBloatware'
+        Type        = 'Type2'
+        Category    = 'Cleanup'
     },
     @{
-        Name = 'EssentialApps'
+        Name        = 'EssentialApps'
         Description = 'Install essential applications from curated lists'
-        ModulePath = Join-Path $ModulesPath 'type2\EssentialApps.psm1'
-        Function = 'Install-EssentialApplication'
-        Type = 'Type2'
-        Category = 'Installation'
+        ModulePath  = Join-Path $ModulesPath 'type2\EssentialApps.psm1'
+        Function    = 'Install-EssentialApplication'
+        Type        = 'Type2'
+        Category    = 'Installation'
     },
     @{
-        Name = 'WindowsUpdates'
+        Name        = 'WindowsUpdates'
         Description = 'Check for and install Windows updates'
-        ModulePath = Join-Path $ModulesPath 'type2\WindowsUpdates.psm1'
-        Function = 'Install-WindowsUpdates'
-        Type = 'Type2'
-        Category = 'Updates'
+        ModulePath  = Join-Path $ModulesPath 'type2\WindowsUpdates.psm1'
+        Function    = 'Install-WindowsUpdates'
+        Type        = 'Type2'
+        Category    = 'Updates'
     },
     @{
-        Name = 'TelemetryDisable'
+        Name        = 'TelemetryDisable'
         Description = 'Disable Windows telemetry and privacy-invasive features'
-        ModulePath = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
-        Function = 'Disable-WindowsTelemetry'
-        Type = 'Type2'
-        Category = 'Privacy'
+        ModulePath  = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
+        Function    = 'Disable-WindowsTelemetry'
+        Type        = 'Type2'
+        Category    = 'Privacy'
     },
     @{
-        Name = 'SecurityAudit'
+        Name        = 'SecurityAudit'
         Description = 'Perform security audit and apply hardening recommendations'
-        ModulePath = Join-Path $ModulesPath 'type1\SecurityAudit.psm1'
-        Function = 'Start-SecurityAudit'
-        Type = 'Type1'
-        Category = 'Security'
+        ModulePath  = Join-Path $ModulesPath 'type1\SecurityAudit.psm1'
+        Function    = 'Start-SecurityAudit'
+        Type        = 'Type1'
+        Category    = 'Security'
     },
     @{
-        Name = 'SystemOptimization'
+        Name        = 'SystemOptimization'
         Description = 'Apply performance optimizations and cleanup temporary files'
-        ModulePath = Join-Path $ModulesPath 'type2\SystemOptimization.psm1'
-        Function = 'Optimize-SystemPerformance'
-        Type = 'Type2'
-        Category = 'Optimization'
+        ModulePath  = Join-Path $ModulesPath 'type2\SystemOptimization.psm1'
+        Function    = 'Optimize-SystemPerformance'
+        Type        = 'Type2'
+        Category    = 'Optimization'
     },
     @{
-        Name = 'ReportGeneration'
+        Name        = 'ReportGeneration'
         Description = 'Generate comprehensive HTML and text reports of all operations'
-        ModulePath = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
-        Function = 'New-MaintenanceReport'
-        Type = 'Type1'
-        Category = 'Reporting'
+        ModulePath  = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
+        Function    = 'New-MaintenanceReport'
+        Type        = 'Type1'
+        Category    = 'Reporting'
     }
 )
 
@@ -421,10 +427,12 @@ foreach ($task in $MaintenanceTasks) {
     if ($MainConfig.modules.PSObject.Properties.Name -contains $skipProperty) {
         if (-not $MainConfig.modules.$skipProperty) {
             $AvailableTasks += $task
-        } else {
+        }
+        else {
             Write-Host "  ⊘ Skipped: $($task.Name) (disabled in configuration)" -ForegroundColor DarkGray
         }
-    } else {
+    }
+    else {
         $AvailableTasks += $task
     }
 }
@@ -436,8 +444,8 @@ Write-Host "  ✓ Registered $($AvailableTasks.Count) available tasks" -Foregrou
 #region Execution Mode Selection
 
 $ExecutionParams = @{
-    Mode = 'Execute'
-    DryRun = $false
+    Mode          = 'Execute'
+    DryRun        = $false
     SelectedTasks = $AvailableTasks
 }
 
@@ -456,7 +464,8 @@ if (-not $NonInteractive) {
         $taskSelection = Show-TaskSelectionMenu -IsDryRun $ExecutionParams.DryRun -AvailableTasks $AvailableTasks
         $ExecutionParams.SelectedTasks = $taskSelection.Tasks
     }
-} else {
+}
+else {
     Write-Host "`nNon-interactive mode enabled" -ForegroundColor Yellow
     if ($DryRun) {
         $ExecutionParams.DryRun = $true
@@ -473,7 +482,8 @@ if ($TaskNumbers) {
         foreach ($taskNum in $taskNumbersArray) {
             if ($taskNum -ge 1 -and $taskNum -le $AvailableTasks.Count) {
                 $selectedTasks += $AvailableTasks[$taskNum - 1]
-            } else {
+            }
+            else {
                 Write-Warning "Invalid task number: $taskNum (valid range: 1-$($AvailableTasks.Count))"
             }
         }
@@ -499,10 +509,10 @@ Write-Host "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($Available
 
 # Log execution start
 Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting maintenance execution" -Data @{
-    ExecutionMode = $executionMode
+    ExecutionMode      = $executionMode
     SelectedTasksCount = $ExecutionParams.SelectedTasks.Count
-    TotalTasksCount = $AvailableTasks.Count
-    DryRun = $ExecutionParams.DryRun
+    TotalTasksCount    = $AvailableTasks.Count
+    DryRun             = $ExecutionParams.DryRun
 }
 
 if ($ExecutionParams.SelectedTasks.Count -eq 0) {
@@ -544,33 +554,34 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
 
     $taskStartTime = Get-Date
     $taskResult = @{
-        TaskName = $task.Name
+        TaskName    = $task.Name
         Description = $task.Description
-        Type = $task.Type
-        Category = $task.Category
-        StartTime = $taskStartTime
-        Success = $false
-        DryRun = $ExecutionParams.DryRun
-        Output = ''
-        Error = $null
-        Duration = $null
+        Type        = $task.Type
+        Category    = $task.Category
+        StartTime   = $taskStartTime
+        Success     = $false
+        DryRun      = $ExecutionParams.DryRun
+        Output      = ''
+        Error       = $null
+        Duration    = $null
     }
 
     try {
         # Log task start
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting task: $($task.Name)" -Data @{
-            TaskType = $task.Type
+            TaskType     = $task.Type
             TaskCategory = $task.Category
-            ModulePath = $task.ModulePath
-            Function = $task.Function
-            DryRun = $ExecutionParams.DryRun
+            ModulePath   = $task.ModulePath
+            Function     = $task.Function
+            DryRun       = $ExecutionParams.DryRun
         }
 
         # Check if module exists and load it
         if (Test-Path $task.ModulePath) {
             Import-Module $task.ModulePath -Force -ErrorAction Stop
             Write-Host "  ✓ Module loaded: $($task.ModulePath | Split-Path -Leaf)" -ForegroundColor Green
-        } else {
+        }
+        else {
             throw "Module not found: $($task.ModulePath)"
         }
 
@@ -579,7 +590,8 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
             Write-Host "  ▶ Simulating: $($task.Function)" -ForegroundColor Blue
             # In dry-run mode, we could call with -WhatIf parameter if supported
             $result = "DRY-RUN: Task would be executed"
-        } else {
+        }
+        else {
             Write-Host "  ▶ Executing: $($task.Function)" -ForegroundColor Green
             $result = Invoke-TaskWithParameters -TaskName $task.Name -FunctionName $task.Function -DryRun:$ExecutionParams.DryRun
         }
@@ -590,7 +602,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
 
         # Log task success
         Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
-            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+            Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
             OutputType = $result.GetType().Name
         }
 
@@ -602,8 +614,8 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
 
         # Log task failure
         Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data @{
-            Error = $_.Exception.Message
-            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+            Error      = $_.Exception.Message
+            Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
             StackTrace = $_.ScriptStackTrace
         }
     }
@@ -662,17 +674,17 @@ foreach ($result in $TaskResults) {
 
 # Save execution results
 $executionSummary = @{
-    ExecutionMode = $executionMode
-    SessionStartTime = $SessionStartTime
+    ExecutionMode          = $executionMode
+    SessionStartTime       = $SessionStartTime
     TaskExecutionStartTime = $StartTime
-    EndTime = Get-Date
-    TotalDuration = $totalDuration
-    SessionDuration = ((Get-Date) - $SessionStartTime).TotalSeconds
-    TasksExecuted = $TaskResults.Count
-    SuccessfulTasks = $successfulTasks
-    FailedTasks = $failedTasks
-    TaskResults = $TaskResults
-    Configuration = $MainConfig
+    EndTime                = Get-Date
+    TotalDuration          = $totalDuration
+    SessionDuration        = ((Get-Date) - $SessionStartTime).TotalSeconds
+    TasksExecuted          = $TaskResults.Count
+    SuccessfulTasks        = $successfulTasks
+    FailedTasks            = $failedTasks
+    TaskResults            = $TaskResults
+    Configuration          = $MainConfig
 }
 
 $summaryPath = Join-Path $ReportsDir "execution-summary-$Global:MaintenanceSessionTimestamp.json"
@@ -746,7 +758,8 @@ if ($failedTasks -gt 0) {
     Write-Host ""
     Write-Host "⚠️  Some tasks failed. Check the logs for detailed error information." -ForegroundColor Yellow
     exit 1
-} else {
+}
+else {
     Write-Host ""
     Write-Host "🎉 All tasks completed successfully!" -ForegroundColor Green
     exit 0

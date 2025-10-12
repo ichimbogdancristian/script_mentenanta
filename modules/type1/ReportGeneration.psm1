@@ -117,12 +117,12 @@ function New-MaintenanceReport {
         Write-Information "  ✅ Reports generated successfully in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
 
         return @{
-            HtmlReport      = $htmlPath
-            TextReport      = $textPath
-            JsonExport      = $jsonPath
+            HtmlReport       = $htmlPath
+            TextReport       = $textPath
+            JsonExport       = $jsonPath
             ExecutionSummary = $summaryPath
-            GenerationTime  = $startTime
-            Duration        = $duration
+            GenerationTime   = $startTime
+            Duration         = $duration
         }
     }
     catch {
@@ -1026,11 +1026,11 @@ function New-HtmlReportContent {
             
             # Map module names to friendly titles and icons
             $moduleInfo = @{
-                'BloatwareRemoval' = @{ Title = 'Bloatware Removal'; Icon = '🗑️'; Color = '#e74c3c' }
-                'EssentialApps' = @{ Title = 'Essential Applications'; Icon = '📦'; Color = '#3498db' }
-                'TelemetryDisable' = @{ Title = 'Privacy & Telemetry'; Icon = '🔒'; Color = '#9b59b6' }
+                'BloatwareRemoval'   = @{ Title = 'Bloatware Removal'; Icon = '🗑️'; Color = '#e74c3c' }
+                'EssentialApps'      = @{ Title = 'Essential Applications'; Icon = '📦'; Color = '#3498db' }
+                'TelemetryDisable'   = @{ Title = 'Privacy & Telemetry'; Icon = '🔒'; Color = '#9b59b6' }
                 'SystemOptimization' = @{ Title = 'System Optimization'; Icon = '⚡'; Color = '#f39c12' }
-                'WindowsUpdates' = @{ Title = 'Windows Updates'; Icon = '🔄'; Color = '#27ae60' }
+                'WindowsUpdates'     = @{ Title = 'Windows Updates'; Icon = '🔄'; Color = '#27ae60' }
             }
 
             $info = $moduleInfo[$moduleName]
@@ -1040,7 +1040,8 @@ function New-HtmlReportContent {
 
             $statusBadge = if ($moduleTask.Success) { 
                 '<span class="status-badge success">✓ Completed</span>' 
-            } else { 
+            }
+            else { 
                 '<span class="status-badge error">✗ Failed</span>' 
             }
 

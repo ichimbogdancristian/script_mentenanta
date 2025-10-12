@@ -953,6 +953,14 @@ Use this checklist before committing PowerShell code:
 - [ ] **OutputType**: All functions have proper `[OutputType()]` attributes
 - [ ] **No trailing whitespace**: Lines are clean and properly formatted
 
+### 🔔 Mandatory Assistant Actions
+
+- Regularly monitor and act on VS Code diagnostics (Problems panel) during editing. Treat parser errors and warnings as blockers to resolve immediately.
+- When you encounter unused variables:
+    - First, try to understand the original intent and restore the functionality that depended on them.
+    - If the variable is truly redundant, remove it cleanly along with any dead code paths tied to it.
+- When VS Code diagnostics surface errors or warnings, immediately add a concise "Notes to self — Diagnostics" entry in this document capturing: the rule/code or message, root cause, a prevention rule, and a quick fix example. Keep this list current to prevent repeats.
+
 ### 🏗️ **Standardized Patterns & Templates**
 
 #### **Standard Function Template**
@@ -1459,6 +1467,32 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 | **View task registry** | `Get-Content .\MaintenanceOrchestrator.ps1 \| Select-String '\$Tasks'` |
 | **Test in isolation** | Copy script.bat to TestFolder and run |
 
+## Notes to self — Diagnostics
+
+Maintain a running list of recurring VS Code diagnostics and analyzer findings. For each item, capture:
+
+- Rule/Message: Identifier or message text
+- Root cause: Why it happens in this repo
+- Prevention: Guardrail to avoid reintroducing
+- Quick fix: Minimal corrective example
+
+Seed entries
+
+1) Rule/Message: PSAvoidUsingWriteHost
+- Root cause: Legacy modules use Write-Host for status output
+- Prevention: Use Write-Information/Write-Warning/Write-Error and return values instead of host output
+- Quick fix: Replace Write-Host "✓ Success" with Write-Information "✓ Success" -InformationAction Continue
+
+2) Rule/Message: PSAvoidDefaultValueSwitchParameter
+- Root cause: Some switch parameters default to $true
+- Prevention: Do not assign default values to [switch] parameters; use explicit boolean if needed
+- Quick fix: Change [switch]$EnableFeature = $true to [switch]$EnableFeature
+
+3) Rule/Message: PSUseShouldProcessForStateChangingFunctions
+- Root cause: Missing SupportsShouldProcess on functions that modify system state
+- Prevention: Decorate with [CmdletBinding(SupportsShouldProcess = $true)] and gate actions with $PSCmdlet.ShouldProcess()
+- Quick fix: Add attribute and wrap Set-ItemProperty calls in ShouldProcess check
+
 ### When to Ask for Clarification
 
 If you're unsure about:
@@ -1473,11 +1507,12 @@ If you're unsure about:
 ## 📝 Document Maintenance
 
 **Last Updated**: October 12, 2025  
-**Document Version**: 2.3  
+**Document Version**: 2.3.1  
 **Project Version**: Enhanced File Organization v2.1
 
 ### Changelog
 
+- **v2.3.1 (Oct 12, 2025)**: Policy update — added mandatory requirement to record diagnostics "Notes to self" and introduced the dedicated section with seed entries.
 - **v2.3 (Oct 12, 2025)**: 🆕 **MAJOR ENHANCEMENT** - Added FileOrganizationManager.psm1 with session-based file organization, eliminated file proliferation, implemented automatic cleanup, and created comprehensive testing suite. Complete temp_files restructuring with enterprise-grade organization.
 - **v2.2 (Oct 11, 2025)**: 🆕 **MAJOR ENHANCEMENT** - Added comprehensive logging infrastructure (LoggingManager.psm1), interactive dashboard reporting with Chart.js analytics, health scoring system, performance tracking, and multi-format data exports. Complete system transformation to enterprise-grade capabilities.
 - **v2.1 (Oct 11, 2025)**: Added comprehensive code quality guidelines, PSScriptAnalyzer violation fixes, standardized templates, testing framework requirements

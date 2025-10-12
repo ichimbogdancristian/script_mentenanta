@@ -125,9 +125,9 @@ function Find-InstalledBloatware {
 
         # Remove duplicates and sort results
         $uniqueBloatware = $allBloatware |
-            Sort-Object Name, Source |
-            Group-Object Name |
-            ForEach-Object { $_.Group | Select-Object -First 1 }
+        Sort-Object Name, Source |
+        Group-Object Name |
+        ForEach-Object { $_.Group | Select-Object -First 1 }
 
         $duration = ((Get-Date) - $startTime).TotalSeconds
         $sourceStats = $allBloatware | Group-Object Source | ForEach-Object { "$($_.Name): $($_.Count)" }
@@ -165,9 +165,9 @@ function Get-BloatwareStatistic {
 
     if ($BloatwareList.Count -eq 0) {
         return @{
-            TotalItems = 0
-            BySource = @{}
-            ByCategory = @{}
+            TotalItems        = 0
+            BySource          = @{}
+            ByCategory        = @{}
             TotalSizeEstimate = "Unknown"
         }
     }
@@ -181,11 +181,11 @@ function Get-BloatwareStatistic {
     } | ForEach-Object { $_ }
 
     return @{
-        TotalItems = $BloatwareList.Count
-        BySource = $bySource
-        ByCategory = $byCategory
+        TotalItems        = $BloatwareList.Count
+        BySource          = $bySource
+        ByCategory        = $byCategory
         TotalSizeEstimate = "Calculation not available"
-        MostCommonSource = ($BloatwareList | Group-Object Source | Sort-Object Count -Descending | Select-Object -First 1).Name
+        MostCommonSource  = ($BloatwareList | Group-Object Source | Sort-Object Count -Descending | Select-Object -First 1).Name
         MostCommonPattern = ($BloatwareList | Group-Object MatchedPattern | Sort-Object Count -Descending | Select-Object -First 1).Name
     }
 }
@@ -467,15 +467,15 @@ function Get-RegistryBloatware {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
                     $found += [PSCustomObject]@{
-                        Name           = $app.Name
-                        DisplayName    = $app.DisplayName
-                        Version        = $app.Version
-                        Publisher      = $app.Publisher
-                        InstallDate    = $app.InstallDate
-                        Source         = 'Registry'
-                        MatchedPattern = $pattern
-                        Context        = $Context
-                        RemovalMethod  = 'Registry-based uninstall'
+                        Name            = $app.Name
+                        DisplayName     = $app.DisplayName
+                        Version         = $app.Version
+                        Publisher       = $app.Publisher
+                        InstallDate     = $app.InstallDate
+                        Source          = 'Registry'
+                        MatchedPattern  = $pattern
+                        Context         = $Context
+                        RemovalMethod   = 'Registry-based uninstall'
                         UninstallString = $app.UninstallString
                     }
                     break  # Only match first pattern to avoid duplicates
@@ -507,11 +507,11 @@ function Test-BloatwareDetection {
     )
 
     $validationResults = @{
-        TotalItems = $DetectedItems.Count
-        ValidItems = 0
-        InvalidItems = 0
+        TotalItems        = $DetectedItems.Count
+        ValidItems        = 0
+        InvalidItems      = 0
         MissingProperties = @()
-        Sources = @()
+        Sources           = @()
     }
 
     $requiredProperties = @('Name', 'Source', 'MatchedPattern')
@@ -528,7 +528,8 @@ function Test-BloatwareDetection {
 
         if ($isValid) {
             $validationResults.ValidItems++
-        } else {
+        }
+        else {
             $validationResults.InvalidItems++
         }
 

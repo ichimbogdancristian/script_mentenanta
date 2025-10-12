@@ -48,7 +48,7 @@ using namespace System.Collections.Generic
     $result = Install-AllDependencies -SkipChocolatey -Force
 #>
 function Install-AllDependencies {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     param(
         [Parameter()]
         [switch]$Force,
@@ -66,17 +66,17 @@ function Install-AllDependencies {
     # Initialize results tracking
     $results = @{
         TotalDependencies = 0
-        Successful = 0
-        Failed = 0
-        Skipped = 0
-        Details = [List[PSCustomObject]]::new()
-        Dependencies = @{
-            PowerShell7 = @{ Status = 'Unknown'; Version = $null; Error = $null }
-            WinGet = @{ Status = 'Unknown'; Version = $null; Error = $null }
-            NuGet = @{ Status = 'Unknown'; Version = $null; Error = $null }
-            PowerShellGet = @{ Status = 'Unknown'; Version = $null; Error = $null }
+        Successful        = 0
+        Failed            = 0
+        Skipped           = 0
+        Details           = [List[PSCustomObject]]::new()
+        Dependencies      = @{
+            PowerShell7     = @{ Status = 'Unknown'; Version = $null; Error = $null }
+            WinGet          = @{ Status = 'Unknown'; Version = $null; Error = $null }
+            NuGet           = @{ Status = 'Unknown'; Version = $null; Error = $null }
+            PowerShellGet   = @{ Status = 'Unknown'; Version = $null; Error = $null }
             PSWindowsUpdate = @{ Status = 'Unknown'; Version = $null; Error = $null }
-            Chocolatey = @{ Status = 'Unknown'; Version = $null; Error = $null }
+            Chocolatey      = @{ Status = 'Unknown'; Version = $null; Error = $null }
         }
     }
 
@@ -106,7 +106,8 @@ function Install-AllDependencies {
         if ($wingetResult.Status -eq 'Installed') {
             Write-Host "    ✅ winget is ready: v$($wingetResult.Version)" -ForegroundColor Green
             $results.Successful++
-        } else {
+        }
+        else {
             Write-Host "    ❌ winget installation failed: $($wingetResult.Error)" -ForegroundColor Red
             $results.Failed++
         }
@@ -120,7 +121,8 @@ function Install-AllDependencies {
         if ($nugetResult.Status -eq 'Installed') {
             Write-Host "    ✅ NuGet provider is ready: v$($nugetResult.Version)" -ForegroundColor Green
             $results.Successful++
-        } else {
+        }
+        else {
             Write-Host "    ❌ NuGet provider installation failed: $($nugetResult.Error)" -ForegroundColor Red
             $results.Failed++
         }
@@ -134,7 +136,8 @@ function Install-AllDependencies {
         if ($psgetResult.Status -eq 'Installed') {
             Write-Host "    ✅ PowerShellGet is ready: v$($psgetResult.Version)" -ForegroundColor Green
             $results.Successful++
-        } else {
+        }
+        else {
             Write-Host "    ❌ PowerShellGet update failed: $($psgetResult.Error)" -ForegroundColor Red
             $results.Failed++
         }
@@ -149,11 +152,13 @@ function Install-AllDependencies {
             if ($pswuResult.Status -eq 'Installed') {
                 Write-Host "    ✅ PSWindowsUpdate is ready: v$($pswuResult.Version)" -ForegroundColor Green
                 $results.Successful++
-            } else {
+            }
+            else {
                 Write-Host "    ❌ PSWindowsUpdate installation failed: $($pswuResult.Error)" -ForegroundColor Red
                 $results.Failed++
             }
-        } else {
+        }
+        else {
             Write-Host "  ⏭️  Skipping PSWindowsUpdate module installation" -ForegroundColor Yellow
             $results.Dependencies.PSWindowsUpdate.Status = 'Skipped'
             $results.Skipped++
@@ -169,11 +174,13 @@ function Install-AllDependencies {
             if ($chocoResult.Status -eq 'Installed') {
                 Write-Host "    ✅ Chocolatey is ready: v$($chocoResult.Version)" -ForegroundColor Green
                 $results.Successful++
-            } else {
+            }
+            else {
                 Write-Host "    ❌ Chocolatey installation failed: $($chocoResult.Error)" -ForegroundColor Red
                 $results.Failed++
             }
-        } else {
+        }
+        else {
             Write-Host "  ⏭️  Skipping Chocolatey installation" -ForegroundColor Yellow
             $results.Dependencies.Chocolatey.Status = 'Skipped'
             $results.Skipped++
@@ -215,20 +222,20 @@ function Get-DependencyStatus {
     Write-Host "📋 Checking dependency status..." -ForegroundColor Cyan
 
     $status = @{
-        Timestamp = Get-Date
+        Timestamp    = Get-Date
         Dependencies = @{
-            PowerShell7 = Test-PowerShell7Installation
-            WinGet = Test-WinGetInstallation
-            NuGet = Test-NuGetProvider
-            PowerShellGet = Test-PowerShellGetModule
+            PowerShell7     = Test-PowerShell7Installation
+            WinGet          = Test-WinGetInstallation
+            NuGet           = Test-NuGetProvider
+            PowerShellGet   = Test-PowerShellGetModule
             PSWindowsUpdate = Test-PSWindowsUpdateModule
-            Chocolatey = Test-ChocolateyInstallation
+            Chocolatey      = Test-ChocolateyInstallation
         }
-        Summary = @{
+        Summary      = @{
             TotalChecked = 6
-            Available = 0
-            Missing = 0
-            Errors = 0
+            Available    = 0
+            Missing      = 0
+            Errors       = 0
         }
     }
 
@@ -275,9 +282,9 @@ function Test-PowerShell7Installation {
 
         if ($currentVersion.Major -ge 7) {
             return @{
-                Status = 'Installed'
+                Status  = 'Installed'
                 Version = $currentVersion.ToString()
-                Error = $null
+                Error   = $null
             }
         }
 
@@ -287,24 +294,24 @@ function Test-PowerShell7Installation {
             $versionOutput = & pwsh --version 2>$null
             if ($versionOutput -match 'PowerShell\s+([\d\.]+)') {
                 return @{
-                    Status = 'Installed'
+                    Status  = 'Installed'
                     Version = $matches[1]
-                    Error = $null
+                    Error   = $null
                 }
             }
         }
 
         return @{
-            Status = 'Missing'
+            Status  = 'Missing'
             Version = $null
-            Error = "PowerShell 7+ not found. Current version: $currentVersion"
+            Error   = "PowerShell 7+ not found. Current version: $currentVersion"
         }
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -354,17 +361,17 @@ function Install-WinGetPackageManager {
         }
         catch {
             return @{
-                Status = 'Error'
+                Status  = 'Error'
                 Version = $null
-                Error = "Installation failed: $($_.Exception.Message)"
+                Error   = "Installation failed: $($_.Exception.Message)"
             }
         }
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -376,24 +383,24 @@ function Test-WinGetInstallation {
             $versionOutput = & winget --version 2>$null
             if ($versionOutput -match 'v([\d\.]+)') {
                 return @{
-                    Status = 'Installed'
+                    Status  = 'Installed'
                     Version = $matches[1]
-                    Error = $null
+                    Error   = $null
                 }
             }
         }
 
         return @{
-            Status = 'Missing'
+            Status  = 'Missing'
             Version = $null
-            Error = "winget command not found"
+            Error   = "winget command not found"
         }
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -435,9 +442,9 @@ function Install-NuGetProvider {
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -447,23 +454,23 @@ function Test-NuGetProvider {
         $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         if ($nugetProvider) {
             return @{
-                Status = 'Installed'
+                Status  = 'Installed'
                 Version = $nugetProvider.Version.ToString()
-                Error = $null
+                Error   = $null
             }
         }
 
         return @{
-            Status = 'Missing'
+            Status  = 'Missing'
             Version = $null
-            Error = "NuGet provider not found"
+            Error   = "NuGet provider not found"
         }
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -502,9 +509,9 @@ function Install-PowerShellGetModule {
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -514,23 +521,23 @@ function Test-PowerShellGetModule {
         $psgetModule = Get-Module -Name PowerShellGet -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
         if ($psgetModule) {
             return @{
-                Status = 'Installed'
+                Status  = 'Installed'
                 Version = $psgetModule.Version.ToString()
-                Error = $null
+                Error   = $null
             }
         }
 
         return @{
-            Status = 'Missing'
+            Status  = 'Missing'
             Version = $null
-            Error = "PowerShellGet module not found"
+            Error   = "PowerShellGet module not found"
         }
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -568,9 +575,9 @@ function Install-PSWindowsUpdateModule {
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -580,23 +587,23 @@ function Test-PSWindowsUpdateModule {
         $pswuModule = Get-Module -Name PSWindowsUpdate -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
         if ($pswuModule) {
             return @{
-                Status = 'Installed'
+                Status  = 'Installed'
                 Version = $pswuModule.Version.ToString()
-                Error = $null
+                Error   = $null
             }
         }
 
         return @{
-            Status = 'Missing'
+            Status  = 'Missing'
             Version = $null
-            Error = "PSWindowsUpdate module not found"
+            Error   = "PSWindowsUpdate module not found"
         }
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -640,9 +647,9 @@ function Install-ChocolateyPackageManager {
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
@@ -654,24 +661,24 @@ function Test-ChocolateyInstallation {
             $versionOutput = & choco --version 2>$null
             if ($versionOutput -match '([\d\.]+)') {
                 return @{
-                    Status = 'Installed'
+                    Status  = 'Installed'
                     Version = $matches[1]
-                    Error = $null
+                    Error   = $null
                 }
             }
         }
 
         return @{
-            Status = 'Missing'
+            Status  = 'Missing'
             Version = $null
-            Error = "Chocolatey command not found"
+            Error   = "Chocolatey command not found"
         }
     }
     catch {
         return @{
-            Status = 'Error'
+            Status  = 'Error'
             Version = $null
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }

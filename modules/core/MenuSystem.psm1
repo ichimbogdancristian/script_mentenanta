@@ -19,9 +19,9 @@ using namespace System.Collections.Generic
 
 # Module variables
 $script:MenuConfig = @{
-    CountdownSeconds = 20
-    DefaultMode = 'unattended'
-    EnableDryRun = $true
+    CountdownSeconds  = 20
+    DefaultMode       = 'unattended'
+    EnableDryRun      = $true
     AutoSelectDefault = $true
 }
 
@@ -164,8 +164,8 @@ function Show-TaskSelectionMenu {
             Write-Host "✓ Selected: Execute All Tasks ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
             return @{
                 SelectionType = 'All'
-                TaskNumbers = @(1..$AvailableTasks.Count)
-                Tasks = $AvailableTasks
+                TaskNumbers   = @(1..$AvailableTasks.Count)
+                Tasks         = $AvailableTasks
             }
         }
         2 {
@@ -177,8 +177,8 @@ function Show-TaskSelectionMenu {
             Write-Host "✓ Default: Execute All Tasks ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
             return @{
                 SelectionType = 'All'
-                TaskNumbers = @(1..$AvailableTasks.Count)
-                Tasks = $AvailableTasks
+                TaskNumbers   = @(1..$AvailableTasks.Count)
+                Tasks         = $AvailableTasks
             }
         }
     }
@@ -228,11 +228,13 @@ function Get-TaskNumberSelection {
                 $taskNum = [int]$num
                 if ($taskNum -ge 1 -and $taskNum -le $maxTaskNumber) {
                     $taskNumbers += $taskNum
-                } else {
+                }
+                else {
                     $invalidNumbers += $num
                     $validInput = $false
                 }
-            } else {
+            }
+            else {
                 $invalidNumbers += $num
                 $validInput = $false
             }
@@ -264,8 +266,8 @@ function Get-TaskNumberSelection {
 
     return @{
         SelectionType = 'Specific'
-        TaskNumbers = $taskNumbers
-        Tasks = $selectedTasks
+        TaskNumbers   = $taskNumbers
+        Tasks         = $selectedTasks
     }
 }
 

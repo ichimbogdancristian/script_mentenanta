@@ -64,7 +64,7 @@ if (Test-Path $FileOrgPath) {
     $results = Install-EssentialApplications -CustomApps @('VSCode', 'Git') -DryRun
 #>
 function Install-EssentialApplication {
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param(
         [Parameter()]
@@ -94,10 +94,10 @@ function Install-EssentialApplication {
     if ($CustomApps.Count -gt 0) {
         $customAppObjects = $CustomApps | ForEach-Object {
             @{
-                Name = $_
-                Category = 'Custom'
-                Winget = $_
-                Chocolatey = $_
+                Name        = $_
+                Category    = 'Custom'
+                Winget      = $_
+                Chocolatey  = $_
                 Description = "Custom app: $_"
             }
         }
@@ -109,8 +109,8 @@ function Install-EssentialApplication {
         return @{
             TotalApps = 0
             Installed = 0
-            Skipped = 0
-            Failed = 0
+            Skipped   = 0
+            Failed    = 0
         }
     }
 
@@ -123,17 +123,18 @@ function Install-EssentialApplication {
     # Filter out duplicates by default (skip duplicates unless explicitly disabled)
     $appsToInstall = if ($PSBoundParameters.ContainsKey('SkipDuplicates') -and -not $SkipDuplicates) {
         $essentialApps
-    } else {
+    }
+    else {
         Get-AppsNotInstalled -AppList $essentialApps
     }
 
     if ($appsToInstall.Count -eq 0) {
         Write-Information "  ✅ All essential apps are already installed" -InformationAction Continue
         return @{
-            TotalApps = $essentialApps.Count
-            Installed = 0
-            Skipped = $essentialApps.Count
-            Failed = 0
+            TotalApps        = $essentialApps.Count
+            Installed        = 0
+            Skipped          = $essentialApps.Count
+            Failed           = 0
             AlreadyInstalled = $true
         }
     }
@@ -142,12 +143,12 @@ function Install-EssentialApplication {
 
     # Initialize results tracking
     $results = @{
-        TotalApps = $essentialApps.Count
-        Installed = 0
-        Skipped = $essentialApps.Count - $appsToInstall.Count
-        Failed = 0
-        Details = [List[PSCustomObject]]::new()
-        ByCategory = @{}
+        TotalApps        = $essentialApps.Count
+        Installed        = 0
+        Skipped          = $essentialApps.Count - $appsToInstall.Count
+        Failed           = 0
+        Details          = [List[PSCustomObject]]::new()
+        ByCategory       = @{}
         ByPackageManager = @{}
     }
 
@@ -174,12 +175,12 @@ function Install-EssentialApplication {
         foreach ($app in $manualApps) {
             Write-Information "    📌 Manual installation needed: $($app.Name) - $($app.Description)" -InformationAction Continue
             $results.Details.Add([PSCustomObject]@{
-                Name = $app.Name
-                Category = $app.Category
-                Status = 'Manual Required'
-                PackageManager = 'None'
-                Error = 'No supported package manager available'
-            })
+                    Name           = $app.Name
+                    Category       = $app.Category
+                    Status         = 'Manual Required'
+                    PackageManager = 'None'
+                    Error          = 'No supported package manager available'
+                })
         }
         $results.Failed += $manualApps.Count
     }
@@ -261,7 +262,8 @@ function Get-AppsNotInstalled {
 
         if (-not $isInstalled) {
             $notInstalled += $app
-        } else {
+        }
+        else {
             $alreadyInstalled += $app
         }
     }
@@ -318,170 +320,81 @@ function Save-AppDiffList {
     )
 
     try {
-        # Get temp_files directory
         $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $tempDir = Join-Path $scriptRoot 'temp_files'
+        if (-not (Test-Path $tempDir)) { Write-Verbose "temp_files directory not found: $tempDir"; return }
 
-        if (-not (Test-Path $tempDir)) {
-            Write-Verbose "temp_files directory not found: $tempDir"
-            return
+        # Categorization
+        $categoryGroups = $EssentialApps | Group-Object { if ([string]::IsNullOrWhiteSpace($_.Category)) { 'Uncategorized' } else { $_.Category } }
+        $byCategory = @{}
+        foreach ($g in $categoryGroups) {
+            $name = $g.Name
+            $appsInCat = $g.Group
+            $installedInCat = $InstalledApps | Where-Object { if ([string]::IsNullOrWhiteSpace($_.Category)) { 'Uncategorized' } else { $_.Category } -eq $name }
+            $missingInCat = $MissingApps | Where-Object { if ([string]::IsNullOrWhiteSpace($_.Category)) { 'Uncategorized' } else { $_.Category } -eq $name }
+            $rate = if ($appsInCat.Count -gt 0) { [math]::Round(($installedInCat.Count / $appsInCat.Count) * 100, 2) } else { 0 }
+            $byCategory[$name] = @{ Total = $appsInCat.Count; Installed = $installedInCat.Count; Missing = $missingInCat.Count; InstallationRate = $rate; MissingAppNames = ($missingInCat | ForEach-Object { $_.Name }) }
         }
 
-        # Use session timestamp if available, otherwise generate new one
-        $timestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) { 
-            $env:MAINTENANCE_SESSION_TIMESTAMP 
-        } else { 
-            Get-Date -Format "yyyyMMdd-HHmmss" 
-        }
-
-        # Create diff analysis object
-        $diffAnalysis = @{
-            Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-            Summary = @{
-                TotalEssentialApps = $EssentialApps.Count
-                AlreadyInstalled = $InstalledApps.Count
-                MissingApps = $MissingApps.Count
-                InstallationRate = [math]::Round(($InstalledApps.Count / $EssentialApps.Count) * 100, 2)
-            }
-            EssentialApps = $EssentialApps
-            AlreadyInstalled = $InstalledApps
-            MissingApps = $MissingApps
-            DetailedAnalysis = @{
-                ByCategory = @{}
-                ByPackageManager = @{}
-                RecommendedActions = @()
-            }
-        }
-
-        # Analyze by category
-        $categories = $EssentialApps | Group-Object { $_.Category -replace '^$', 'Uncategorized' }
-        foreach ($category in $categories) {
-            $categoryName = $category.Name
-            $categoryApps = $category.Group
-            $categoryInstalled = $InstalledApps | Where-Object { ($_.Category -replace '^$', 'Uncategorized') -eq $categoryName }
-            $categoryMissing = $MissingApps | Where-Object { ($_.Category -replace '^$', 'Uncategorized') -eq $categoryName }
-
-            $diffAnalysis.DetailedAnalysis.ByCategory[$categoryName] = @{
-                Total = $categoryApps.Count
-                Installed = $categoryInstalled.Count
-                Missing = $categoryMissing.Count
-                InstallationRate = if ($categoryApps.Count -gt 0) { [math]::Round(($categoryInstalled.Count / $categoryApps.Count) * 100, 2) } else { 0 }
-                MissingAppNames = $categoryMissing | ForEach-Object { $_.Name }
-            }
-        }
-
-        # Analyze by package manager preference
+        # Package manager buckets
         $wingetApps = $MissingApps | Where-Object { $_.Winget }
         $chocoApps = $MissingApps | Where-Object { -not $_.Winget -and $_.Chocolatey }
         $manualApps = $MissingApps | Where-Object { -not $_.Winget -and -not $_.Chocolatey }
 
-        $diffAnalysis.DetailedAnalysis.ByPackageManager = @{
-            Winget = @{
-                Count = $wingetApps.Count
-                Apps = $wingetApps | ForEach-Object { @{ Name = $_.Name; Id = $_.Winget } }
-            }
-            Chocolatey = @{
-                Count = $chocoApps.Count
-                Apps = $chocoApps | ForEach-Object { @{ Name = $_.Name; Id = $_.Chocolatey } }
-            }
-            Manual = @{
-                Count = $manualApps.Count
-                Apps = $manualApps | ForEach-Object { @{ Name = $_.Name; Description = $_.Description } }
-            }
-        }
+        $wingetPkgArr = @()
+        foreach ($a in $wingetApps) { $wingetPkgArr += @{ Name = $a.Name; Id = $a.Winget } }
+        $chocoPkgArr = @()
+        foreach ($a in $chocoApps) { $chocoPkgArr += @{ Name = $a.Name; Id = $a.Chocolatey } }
+        $manualPkgArr = @()
+        foreach ($a in $manualApps) { $manualPkgArr += @{ Name = $a.Name; Description = $a.Description } }
 
-        # Generate recommendations
+        # Recommendations
+        $recs = @()
         if ($MissingApps.Count -gt 0) {
-            $diffAnalysis.DetailedAnalysis.RecommendedActions += "Install $($MissingApps.Count) missing essential applications"
-            if ($wingetApps.Count -gt 0) {
-                $diffAnalysis.DetailedAnalysis.RecommendedActions += "Use Winget to install $($wingetApps.Count) apps: $($wingetApps.Name -join ', ')"
-            }
-            if ($chocoApps.Count -gt 0) {
-                $diffAnalysis.DetailedAnalysis.RecommendedActions += "Use Chocolatey to install $($chocoApps.Count) apps: $($chocoApps.Name -join ', ')"
-            }
-            if ($manualApps.Count -gt 0) {
-                $diffAnalysis.DetailedAnalysis.RecommendedActions += "Manually install $($manualApps.Count) apps: $($manualApps.Name -join ', ')"
-            }
-        } else {
-            $diffAnalysis.DetailedAnalysis.RecommendedActions += "All essential applications are installed"
+            $recs += "Install $($MissingApps.Count) missing essential applications"
+            if ($wingetApps.Count -gt 0) { $recs += "Use Winget to install $($wingetApps.Count) apps: $($wingetApps.Name -join ', ')" }
+            if ($chocoApps.Count -gt 0) { $recs += "Use Chocolatey to install $($chocoApps.Count) apps: $($chocoApps.Name -join ', ')" }
+            if ($manualApps.Count -gt 0) { $recs += "Manually install $($manualApps.Count) apps: $($manualApps.Name -join ', ')" }
+        }
+        else {
+            $recs += "All essential applications are installed"
         }
 
-        # Save comprehensive diff analysis using organized file system
+        # Build analysis object
+        $diffAnalysis = [ordered]@{}
+        $diffAnalysis.Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        $diffAnalysis.Summary = @{ TotalEssentialApps = $EssentialApps.Count; AlreadyInstalled = $InstalledApps.Count; MissingApps = $MissingApps.Count; InstallationRate = if ($EssentialApps.Count -gt 0) { [math]::Round(($InstalledApps.Count / $EssentialApps.Count) * 100, 2) } else { 0 } }
+        $diffAnalysis.EssentialApps = $EssentialApps
+        $diffAnalysis.AlreadyInstalled = $InstalledApps
+        $diffAnalysis.MissingApps = $MissingApps
+        $diffAnalysis.DetailedAnalysis = @{ ByCategory = $byCategory; ByPackageManager = @{ Winget = @{ Count = $wingetPkgArr.Count; Apps = $wingetPkgArr }; Chocolatey = @{ Count = $chocoPkgArr.Count; Apps = $chocoPkgArr }; Manual = @{ Count = $manualPkgArr.Count; Apps = $manualPkgArr } }; RecommendedActions = $recs }
+
+        # Save outputs
         $diffPath = Save-OrganizedFile -Data $diffAnalysis -FileType 'Data' -Category 'apps' -FileName 'essential-apps-analysis' -Format 'JSON'
-        if ($diffPath) {
-            Write-Information "  📋 App diff analysis saved to: $diffPath" -InformationAction Continue
-        }
+        if ($diffPath) { Write-Information "  📋 App diff analysis saved to: $diffPath" -InformationAction Continue }
 
-        # Save missing apps list (for easy processing)
+        $missingAppsPath = $null
+        $installDataPath = $null
         if ($MissingApps.Count -gt 0) {
             $missingAppsPath = Save-OrganizedFile -Data $MissingApps -FileType 'Data' -Category 'apps' -FileName 'missing-apps' -Format 'JSON'
-            if ($missingAppsPath) {
-                Write-Information "  ❌ Missing apps list saved to: $missingAppsPath" -InformationAction Continue
-            }
+            if ($missingAppsPath) { Write-Information "  ❌ Missing apps list saved to: $missingAppsPath" -InformationAction Continue }
 
-            # Create comprehensive installation data (no more .ps1 scripts)
-            $installationData = @{
-                Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-                TotalMissingApps = $MissingApps.Count
-                InstallationMethods = @{}
-
-            if ($wingetApps.Count -gt 0) {
-                $installationData.InstallationMethods.Winget = @{
-                    Count = $wingetApps.Count
-                    Apps = $wingetApps | ForEach-Object { 
-                        @{ 
-                            Name = $_.Name
-                            Id = $_.Winget
-                            Command = "winget install --id '$($_.Winget)' --silent --accept-package-agreements --accept-source-agreements"
-                        } 
-                    }
-                }
-            }
-
-            if ($chocoApps.Count -gt 0) {
-                $installationData.InstallationMethods.Chocolatey = @{
-                    Count = $chocoApps.Count
-                    Apps = $chocoApps | ForEach-Object { 
-                        @{ 
-                            Name = $_.Name
-                            Id = $_.Chocolatey
-                            Command = "choco install '$($_.Chocolatey)' -y"
-                        } 
-                    }
-                }
-            }
-
-            if ($manualApps.Count -gt 0) {
-                $installationData.InstallationMethods.Manual = @{
-                    Count = $manualApps.Count
-                    Apps = $manualApps | ForEach-Object { 
-                        @{ 
-                            Name = $_.Name
-                            Description = $_.Description
-                            RequiresManualInstallation = $true
-                        } 
-                    }
-                }
-            }
-
-            # Save installation data instead of script
+            $installationData = @{ Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"); TotalMissingApps = $MissingApps.Count; InstallationMethods = @{ Winget = @{ Count = $wingetApps.Count; Apps = $wingetPkgArr }; Chocolatey = @{ Count = $chocoApps.Count; Apps = $chocoPkgArr }; Manual = @{ Count = $manualApps.Count; Apps = $manualPkgArr } } }
             $installDataPath = Save-OrganizedFile -Data $installationData -FileType 'Data' -Category 'apps' -FileName 'installation-methods' -Format 'JSON'
-            if ($installDataPath) {
-                Write-Information "  🔧 Installation methods data saved to: $installDataPath" -InformationAction Continue
-            }
+            if ($installDataPath) { Write-Information "  🔧 Installation methods data saved to: $installDataPath" -InformationAction Continue }
         }
 
-        # Save installed apps list using organized file system
+        $installedAppsPath = $null
         if ($InstalledApps.Count -gt 0) {
             $installedAppsPath = Save-OrganizedFile -Data $InstalledApps -FileType 'Data' -Category 'apps' -FileName 'installed-essential-apps' -Format 'JSON'
-            if ($installedAppsPath) {
-                Write-Information "  ✅ Installed essential apps list saved to: $installedAppsPath" -InformationAction Continue
-            }
+            if ($installedAppsPath) { Write-Information "  ✅ Installed essential apps list saved to: $installedAppsPath" -InformationAction Continue }
         }
 
+        return @{ DiffPath = $diffPath; MissingAppsPath = $missingAppsPath; InstallDataPath = $installDataPath; InstalledAppsPath = $installedAppsPath }
     }
     catch {
         Write-Warning "Failed to save app diff lists: $_"
+        return $null
     }
 }
 
@@ -552,20 +465,20 @@ function Test-AppInstallationStatus {
 
     # Common app name variations and aliases
     $appVariations = @{
-        'visual studio code' = @('code', 'vscode', 'vs code')
-        'git for windows' = @('git', 'git for windows')
-        'powershell 7' = @('powershell', 'powershell core', 'pwsh')
-        'windows terminal' = @('terminal', 'windows terminal', 'wt')
+        'visual studio code'       = @('code', 'vscode', 'vs code')
+        'git for windows'          = @('git', 'git for windows')
+        'powershell 7'             = @('powershell', 'powershell core', 'pwsh')
+        'windows terminal'         = @('terminal', 'windows terminal', 'wt')
         'java runtime environment' = @('java', 'jre', 'java runtime', 'oracle java')
-        'python 3' = @('python', 'python3', 'python 3')
-        'node.js' = @('node', 'nodejs', 'node.js')
-        'vlc media player' = @('vlc', 'vlc player', 'vlc media player')
-        '7-zip' = @('7zip', '7-zip')
-        'libreoffice' = @('libreoffice', 'libre office')
-        'microsoft teams' = @('teams', 'microsoft teams')
-        'google chrome' = @('chrome', 'google chrome')
-        'mozilla firefox' = @('firefox', 'mozilla firefox')
-        'gimp' = @('gimp', 'gnu image manipulation program')
+        'python 3'                 = @('python', 'python3', 'python 3')
+        'node.js'                  = @('node', 'nodejs', 'node.js')
+        'vlc media player'         = @('vlc', 'vlc player', 'vlc media player')
+        '7-zip'                    = @('7zip', '7-zip')
+        'libreoffice'              = @('libreoffice', 'libre office')
+        'microsoft teams'          = @('teams', 'microsoft teams')
+        'google chrome'            = @('chrome', 'google chrome')
+        'mozilla firefox'          = @('firefox', 'mozilla firefox')
+        'gimp'                     = @('gimp', 'gnu image manipulation program')
     }
 
     # Check if this app has known variations
@@ -603,7 +516,7 @@ function Test-AppInstallationStatus {
             $_.Publisher -like "*Microsoft*" -and
             ($_.Name -or $_.DisplayName) -and
             (($_.Name -like "*$($App.Name.Replace('Microsoft ', ''))*") -or
-             ($_.DisplayName -like "*$($App.Name.Replace('Microsoft ', ''))*"))
+            ($_.DisplayName -like "*$($App.Name.Replace('Microsoft ', ''))*"))
         }
 
         if ($microsoftPrograms.Count -gt 0) {
@@ -676,8 +589,8 @@ function Install-AppsViaWinget {
 
     $results = @{
         Installed = 0
-        Failed = 0
-        Details = [List[PSCustomObject]]::new()
+        Failed    = 0
+        Details   = [List[PSCustomObject]]::new()
     }
 
     if (-not (Test-PackageManagerAvailable -Manager 'Winget')) {
@@ -695,19 +608,20 @@ function Install-AppsViaWinget {
             $isDryRun = $using:DryRun
 
             $result = @{
-                Name = $app.Name
-                Category = $app.Category
-                PackageId = $app.Winget
-                Status = 'Unknown'
+                Name           = $app.Name
+                Category       = $app.Category
+                PackageId      = $app.Winget
+                Status         = 'Unknown'
                 PackageManager = 'Winget'
-                Error = $null
+                Error          = $null
             }
 
             try {
                 if ($isDryRun) {
                     Write-Information "    [DRY RUN] Would install: $($app.Name) ($($app.Winget))" -InformationAction Continue
                     $result.Status = 'Simulated'
-                } else {
+                }
+                else {
                     Write-Information "    📦 Installing: $($app.Name)..." -InformationAction Continue
 
                     $wingetArgs = @(
@@ -723,7 +637,8 @@ function Install-AppsViaWinget {
                     if ($process.ExitCode -eq 0) {
                         $result.Status = 'Installed'
                         Write-Information "      ✅ Successfully installed: $($app.Name)" -InformationAction Continue
-                    } else {
+                    }
+                    else {
                         throw "Winget installation failed with exit code $($process.ExitCode)"
                     }
                 }
@@ -739,7 +654,8 @@ function Install-AppsViaWinget {
             $results.Details.Add($_)
             if ($_.Status -eq 'Installed' -or $_.Status -eq 'Simulated') {
                 $results.Installed++
-            } else {
+            }
+            else {
                 $results.Failed++
             }
         }
@@ -794,8 +710,8 @@ function Install-AppsViaChocolatey {
 
     $results = @{
         Installed = 0
-        Failed = 0
-        Details = [List[PSCustomObject]]::new()
+        Failed    = 0
+        Details   = [List[PSCustomObject]]::new()
     }
 
     if (-not (Test-PackageManagerAvailable -Manager 'Chocolatey')) {
@@ -806,19 +722,20 @@ function Install-AppsViaChocolatey {
 
     foreach ($app in $Apps) {
         $result = @{
-            Name = $app.Name
-            Category = $app.Category
-            PackageId = $app.Chocolatey
-            Status = 'Unknown'
+            Name           = $app.Name
+            Category       = $app.Category
+            PackageId      = $app.Chocolatey
+            Status         = 'Unknown'
             PackageManager = 'Chocolatey'
-            Error = $null
+            Error          = $null
         }
 
         try {
             if ($DryRun) {
                 Write-Information "    [DRY RUN] Would install: $($app.Name) ($($app.Chocolatey))" -InformationAction Continue
                 $result.Status = 'Simulated'
-            } else {
+            }
+            else {
                 Write-Information "    🍫 Installing: $($app.Name)..." -InformationAction Continue
 
                 $chocoArgs = @(
@@ -833,7 +750,8 @@ function Install-AppsViaChocolatey {
                 if ($process.ExitCode -eq 0) {
                     $result.Status = 'Installed'
                     Write-Information "      ✅ Successfully installed: $($app.Name)" -InformationAction Continue
-                } else {
+                }
+                else {
                     throw "Chocolatey installation failed with exit code $($process.ExitCode)"
                 }
             }
@@ -988,7 +906,8 @@ function Merge-InstallationResult {
 
         if ($detail.Status -eq 'Installed' -or $detail.Status -eq 'Simulated') {
             $Results.ByCategory[$detail.Category].Installed++
-        } else {
+        }
+        else {
             $Results.ByCategory[$detail.Category].Failed++
         }
     }
@@ -1020,10 +939,11 @@ function Get-InstallationStatistic {
     param([hashtable]$Results)
 
     return @{
-        TotalProcessed = $Results.TotalApps
-        SuccessRate = if ($Results.TotalApps -gt 0) {
+        TotalProcessed         = $Results.TotalApps
+        SuccessRate            = if ($Results.TotalApps -gt 0) {
             [math]::Round(($Results.Installed / $Results.TotalApps) * 100, 1)
-        } else { 0 }
+        }
+        else { 0 }
         MostUsedPackageManager = ($Results.ByPackageManager.GetEnumerator() |
             Sort-Object { $_.Value.Installed } -Descending |
             Select-Object -First 1).Key

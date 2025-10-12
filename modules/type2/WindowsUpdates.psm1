@@ -81,7 +81,7 @@ using namespace System.Collections.Generic
     3. Basic Windows Update service status check
 #>
 function Install-WindowsUpdate {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     [OutputType([hashtable])]
     param(
         [Parameter()]
@@ -103,14 +103,14 @@ function Install-WindowsUpdate {
 
     # Initialize results tracking
     $results = @{
-        UpdatesFound = 0
+        UpdatesFound     = 0
         UpdatesInstalled = 0
-        UpdatesFailed = 0
-        TotalSizeMB = 0
-        RebootRequired = $false
-        Details = [List[PSCustomObject]]::new()
-        Method = 'Unknown'
-        DryRun = $DryRun.IsPresent
+        UpdatesFailed    = 0
+        TotalSizeMB      = 0
+        RebootRequired   = $false
+        Details          = [List[PSCustomObject]]::new()
+        Method           = 'Unknown'
+        DryRun           = $DryRun.IsPresent
     }
 
     try {
@@ -194,11 +194,11 @@ function Get-WindowsUpdateStatus {
     Write-Information "📊 Checking Windows Update status..." -InformationAction Continue
 
     $status = @{
-        UpdatesAvailable = 0
-        PendingReboot = $false
-        RebootReason = @()
-        LastUpdateCheck = $null
-        LastInstallDate = $null
+        UpdatesAvailable  = 0
+        PendingReboot     = $false
+        RebootReason      = @()
+        LastUpdateCheck   = $null
+        LastInstallDate   = $null
         AutoUpdateEnabled = $false
     }
 
@@ -267,7 +267,7 @@ function Get-WindowsUpdateStatus {
     Version: 1.0.0
 #>
 function Install-UpdatesViaPSWindowsUpdate {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     [OutputType([hashtable])]
     param(
         [switch]$ExcludePreviews,
@@ -277,14 +277,14 @@ function Install-UpdatesViaPSWindowsUpdate {
     )
 
     $results = @{
-        UpdatesFound = 0
+        UpdatesFound     = 0
         UpdatesInstalled = 0
-        UpdatesFailed = 0
-        TotalSizeMB = 0
-        RebootRequired = $false
-        Details = [List[PSCustomObject]]::new()
-        Method = 'PSWindowsUpdate'
-        DryRun = $DryRun.IsPresent
+        UpdatesFailed    = 0
+        TotalSizeMB      = 0
+        RebootRequired   = $false
+        Details          = [List[PSCustomObject]]::new()
+        Method           = 'PSWindowsUpdate'
+        DryRun           = $DryRun.IsPresent
     }
 
     try {
@@ -303,7 +303,7 @@ function Install-UpdatesViaPSWindowsUpdate {
 
         $scanParams = @{
             MicrosoftUpdate = $true
-            ErrorAction = 'SilentlyContinue'
+            ErrorAction     = 'SilentlyContinue'
         }
 
         $availableUpdates = Get-WindowsUpdate @scanParams
@@ -373,11 +373,11 @@ function Install-UpdatesViaPSWindowsUpdate {
 
             foreach ($update in $filteredUpdates) {
                 $results.Details.Add([PSCustomObject]@{
-                    Title = $update.Title
-                    SizeMB = [math]::Round($update.Size / 1MB, 2)
-                    Category = $update.Categories -join ', '
-                    Status = 'Simulated'
-                })
+                        Title    = $update.Title
+                        SizeMB   = [math]::Round($update.Size / 1MB, 2)
+                        Category = $update.Categories -join ', '
+                        Status   = 'Simulated'
+                    })
             }
 
             $results.UpdatesInstalled = $results.UpdatesFound
@@ -390,13 +390,13 @@ function Install-UpdatesViaPSWindowsUpdate {
 
             $installParams = @{
                 MicrosoftUpdate = $true
-                AcceptAll = $true
-                AutoReboot = -not $SuppressReboot
-                Confirm = $false
-                IgnoreReboot = $SuppressReboot
-                Silent = $true
-                ForceInstall = $true
-                ErrorAction = 'SilentlyContinue'
+                AcceptAll       = $true
+                AutoReboot      = -not $SuppressReboot
+                Confirm         = $false
+                IgnoreReboot    = $SuppressReboot
+                Silent          = $true
+                ForceInstall    = $true
+                ErrorAction     = 'SilentlyContinue'
             }
 
             try {
@@ -406,16 +406,17 @@ function Install-UpdatesViaPSWindowsUpdate {
                     $status = if ($result.Result -eq 'Installed') { 'Installed' } else { 'Failed' }
 
                     $results.Details.Add([PSCustomObject]@{
-                        Title = $result.Title
-                        SizeMB = [math]::Round($result.Size / 1MB, 2)
-                        Category = $result.Categories -join ', '
-                        Status = $status
-                        Result = $result.Result
-                    })
+                            Title    = $result.Title
+                            SizeMB   = [math]::Round($result.Size / 1MB, 2)
+                            Category = $result.Categories -join ', '
+                            Status   = $status
+                            Result   = $result.Result
+                        })
 
                     if ($status -eq 'Installed') {
                         $results.UpdatesInstalled++
-                    } else {
+                    }
+                    else {
                         $results.UpdatesFailed++
                     }
                 }
@@ -459,14 +460,14 @@ function Install-UpdatesViaNativeAPI {
     )
 
     $results = @{
-        UpdatesFound = 0
+        UpdatesFound     = 0
         UpdatesInstalled = 0
-        UpdatesFailed = 0
-        TotalSizeMB = 0
-        RebootRequired = $false
-        Details = [List[PSCustomObject]]::new()
-        Method = 'Native API'
-        DryRun = $DryRun.IsPresent
+        UpdatesFailed    = 0
+        TotalSizeMB      = 0
+        RebootRequired   = $false
+        Details          = [List[PSCustomObject]]::new()
+        Method           = 'Native API'
+        DryRun           = $DryRun.IsPresent
     }
 
     try {
@@ -497,11 +498,11 @@ function Install-UpdatesViaNativeAPI {
 
             foreach ($update in $availableUpdates) {
                 $results.Details.Add([PSCustomObject]@{
-                    Title = $update.Title
-                    SizeMB = [math]::Round($update.MaxDownloadSize / 1MB, 2)
-                    Category = 'Windows Update'
-                    Status = 'Available'
-                })
+                        Title    = $update.Title
+                        SizeMB   = [math]::Round($update.MaxDownloadSize / 1MB, 2)
+                        Category = 'Windows Update'
+                        Status   = 'Available'
+                    })
             }
 
             return $results
@@ -520,7 +521,8 @@ function Install-UpdatesViaNativeAPI {
         $downloader.Updates = $updatesToInstall
         $downloadResult = $downloader.Download()
 
-        if ($downloadResult.ResultCode -eq 2) {  # SuccessfullyDownloaded
+        if ($downloadResult.ResultCode -eq 2) {
+            # SuccessfullyDownloaded
             # Install updates
             $installer = $updateSession.CreateUpdateInstaller()
             $installer.Updates = $updatesToInstall
@@ -622,7 +624,7 @@ function Get-WindowsUpdateSetting {
 
         $settings = @{
             AutoUpdateEnabled = $false
-            LastUpdateCheck = $null
+            LastUpdateCheck   = $null
         }
 
         if (Test-Path $auKey) {
@@ -634,8 +636,8 @@ function Get-WindowsUpdateSetting {
         try {
             $wuService = New-Object -ComObject Microsoft.Update.ServiceManager
             $settings.LastUpdateCheck = $wuService.Services |
-                Where-Object { $_.Name -eq "Microsoft Update" } |
-                Select-Object -ExpandProperty LastUpdateTime -ErrorAction SilentlyContinue
+            Where-Object { $_.Name -eq "Microsoft Update" } |
+            Select-Object -ExpandProperty LastUpdateTime -ErrorAction SilentlyContinue
         }
         catch {
             Write-Verbose "Failed to get last update check time: $_"
@@ -646,7 +648,7 @@ function Get-WindowsUpdateSetting {
     catch {
         return @{
             AutoUpdateEnabled = $false
-            LastUpdateCheck = $null
+            LastUpdateCheck   = $null
         }
     }
 }
@@ -660,15 +662,15 @@ function Get-WindowsUpdateBasicStatus {
     [OutputType([hashtable])]
     param()
     return @{
-        UpdatesFound = 0
+        UpdatesFound     = 0
         UpdatesInstalled = 0
-        UpdatesFailed = 0
-        TotalSizeMB = 0
-        RebootRequired = Test-PendingReboot
-        Details = @()
-        Method = 'Basic Status'
-        DryRun = $false
-        Message = "Limited Windows Update capability - PSWindowsUpdate module recommended"
+        UpdatesFailed    = 0
+        TotalSizeMB      = 0
+        RebootRequired   = Test-PendingReboot
+        Details          = @()
+        Method           = 'Basic Status'
+        DryRun           = $false
+        Message          = "Limited Windows Update capability - PSWindowsUpdate module recommended"
     }
 }
 
