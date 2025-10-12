@@ -452,23 +452,102 @@ IF "%PS7_FOUND%"=="NO" (
     SET "INSTALL_STATUS=FAILED"
     SET "WINGET_LOG=%WORKING_DIR%winget-pwsh-install.log"
 
-    REM 1) Try installing via winget (check PATH first, then WindowsApps alias)
+    REM -----------------------------------------------------------------------------
+    REM Winget Installation and Verification Section
+    REM -----------------------------------------------------------------------------
+    CALL :LOG_MESSAGE "Checking winget availability before PowerShell installation..." "INFO" "LAUNCHER"
+    
+    SET "WINGET_AVAILABLE=NO"
     SET "WINGET_EXE="
+    
+    REM Initial winget check (PATH and WindowsApps)
     winget --version >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         SET "WINGET_EXE=winget"
+        SET "WINGET_AVAILABLE=YES"
         CALL :LOG_MESSAGE "Winget found via PATH" "DEBUG" "LAUNCHER"
     ) ELSE (
         IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
             "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
             IF !ERRORLEVEL! EQU 0 (
                 SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
+                SET "WINGET_AVAILABLE=YES"
                 CALL :LOG_MESSAGE "Winget found via WindowsApps alias" "DEBUG" "LAUNCHER"
             )
         )
     )
     
-    IF DEFINED WINGET_EXE (
+    REM Install winget if not available
+    IF "%WINGET_AVAILABLE%"=="NO" (
+        CALL :LOG_MESSAGE "Winget not found. Attempting to install winget..." "INFO" "LAUNCHER"
+        
+        REM Method 1: Try installing App Installer via PowerShell (if allowed)
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) { $appInstaller = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction SilentlyContinue; if (-not $appInstaller) { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop; Write-Host 'APPINSTALLER_REGISTERED' } else { Write-Host 'APPINSTALLER_EXISTS' } } else { Write-Host 'APPX_NOT_SUPPORTED' } } catch { Write-Host 'APPINSTALLER_FAILED'; exit 1 }" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "App Installer registration attempted" "INFO" "LAUNCHER"
+            TIMEOUT /T 5 >nul 2>&1
+        ) ELSE (
+            CALL :LOG_MESSAGE "App Installer registration failed" "WARN" "LAUNCHER"
+        )
+        
+        REM Method 2: Try Chocolatey to install winget
+        choco --version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Attempting winget installation via Chocolatey..." "INFO" "LAUNCHER"
+            choco install winget-cli -y --no-progress >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_MESSAGE "Winget installed via Chocolatey" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "Chocolatey winget installation failed" "WARN" "LAUNCHER"
+            )
+        )
+        
+        REM Method 3: Download and install App Installer MSIX manually
+        IF "%WINGET_AVAILABLE%"=="NO" (
+            CALL :LOG_MESSAGE "Attempting manual App Installer download..." "INFO" "LAUNCHER"
+            DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $url='https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing; Write-Host 'MSIX_DOWNLOADED' } catch { Write-Host 'MSIX_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_MESSAGE "App Installer MSIX downloaded. Installing..." "INFO" "LAUNCHER"
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WORKING_DIR%AppInstaller.msixbundle' -ErrorAction Stop; Write-Host 'MSIX_INSTALLED' } catch { Write-Host 'MSIX_INSTALL_FAILED'; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    CALL :LOG_MESSAGE "App Installer MSIX installed successfully" "SUCCESS" "LAUNCHER"
+                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                ) ELSE (
+                    CALL :LOG_MESSAGE "App Installer MSIX installation failed" "WARN" "LAUNCHER"
+                )
+            ) ELSE (
+                CALL :LOG_MESSAGE "Failed to download App Installer MSIX" "WARN" "LAUNCHER"
+            )
+        )
+        
+        REM Re-check winget availability after installation attempts
+        CALL :LOG_MESSAGE "Re-checking winget availability after installation attempts..." "INFO" "LAUNCHER"
+        TIMEOUT /T 3 >nul 2>&1
+        
+        winget --version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "WINGET_EXE=winget"
+            SET "WINGET_AVAILABLE=YES"
+            CALL :LOG_MESSAGE "Winget now available via PATH" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+                "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
+                    SET "WINGET_AVAILABLE=YES"
+                    CALL :LOG_MESSAGE "Winget now available via WindowsApps alias" "SUCCESS" "LAUNCHER"
+                )
+            )
+        )
+        
+        IF "%WINGET_AVAILABLE%"=="NO" (
+            CALL :LOG_MESSAGE "All winget installation methods failed" "WARN" "LAUNCHER"
+        )
+    )
+
+    REM 1) Try installing PowerShell via winget (if available)
+    IF "%WINGET_AVAILABLE%"=="YES" (
         CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
         "%WINGET_EXE%" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
         IF !ERRORLEVEL! EQU 0 (
