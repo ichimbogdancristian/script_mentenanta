@@ -76,8 +76,8 @@ function Initialize-FileOrganization {
             Write-Verbose "Created temp_files base directory: $($script:FileOrgContext.BaseDir)"
         }
 
-        # Create session directory structure
-        Create-SessionDirectoryStructure -SessionPath $script:FileOrgContext.SessionDir
+    # Create session directory structure
+    New-SessionDirectoryStructure -SessionPath $script:FileOrgContext.SessionDir
 
         # Load or create cleanup policy
         Initialize-CleanupPolicy
@@ -370,7 +370,7 @@ function Get-SessionFiles {
 
 #region Private Functions
 
-function Create-SessionDirectoryStructure {
+function New-SessionDirectoryStructure {
     [CmdletBinding()]
     param([string]$SessionPath)
 

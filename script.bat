@@ -463,7 +463,7 @@ IF "%PS7_FOUND%"=="NO" (
             
             REM Restart the script with a fresh environment (give Windows a moment to update PATH)
             TIMEOUT /T 3 /NOBREAK >nul 2>&1
-            START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%""
+            START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
             
             REM Exit current instance after new instance completes
             EXIT /B !ERRORLEVEL!
@@ -823,7 +823,8 @@ IF NOT EXIST "%ORCHESTRATOR_PATH%" (
 )
 
 REM Check if we have PowerShell 7+ for the orchestrator (required)
-IF NOT "%PS_EXECUTABLE%"=="pwsh.exe" (
+REM Use AUTO_NONINTERACTIVE as a reliable marker that PS 7+ was detected above
+IF NOT "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "PowerShell 7+ is required for the orchestrator but not available" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "The MaintenanceOrchestrator.ps1 requires PowerShell Core 7.0 or higher" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please ensure PowerShell 7 is properly installed and available in PATH" "ERROR" "LAUNCHER"
