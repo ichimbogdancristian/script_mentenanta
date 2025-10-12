@@ -322,7 +322,12 @@ function Save-AppDiffList {
             return
         }
 
-        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        # Use session timestamp if available, otherwise generate new one
+        $timestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) { 
+            $env:MAINTENANCE_SESSION_TIMESTAMP 
+        } else { 
+            Get-Date -Format "yyyyMMdd-HHmmss" 
+        }
 
         # Create diff analysis object
         $diffAnalysis = @{

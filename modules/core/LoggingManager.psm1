@@ -611,6 +611,190 @@ function Update-PerformanceMetrics {
 #endregion
 
 # Export module functions
+<#
+.SYNOPSIS
+    Creates a module-specific log file for Type 2 modules
+
+.DESCRIPTION
+    Sets up individual log files for Type 2 modules to track their specific operations
+    like installs, uninstalls, deletions, and configuration changes.
+
+.PARAMETER Component
+    The module component name (BLOATWARE, APPS, UPDATES, OPTIMIZATION, TELEMETRY)
+
+.PARAMETER SessionTimestamp
+    The session timestamp to use for consistent naming
+
+.EXAMPLE
+    New-ModuleLogFile -Component 'BLOATWARE' -SessionTimestamp '20241012-110054'
+#>
+function New-ModuleLogFile {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('BLOATWARE', 'APPS', 'UPDATES', 'OPTIMIZATION', 'TELEMETRY')]
+        [string]$Component,
+
+        [Parameter()]
+        [string]$SessionTimestamp
+    )
+
+    if (-not $script:LoggingContext.Config.logging.enableModuleSpecificLogs) {
+        Write-Verbose "Module-specific logging is disabled"
+        return $null
+    }
+
+    if (-not $SessionTimestamp) {
+        $SessionTimestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) {
+            $env:MAINTENANCE_SESSION_TIMESTAMP
+        } else {
+            Get-Date -Format "yyyyMMdd-HHmmss"
+        }
+    }
+
+    # Create module-specific log file
+    $moduleLogMap = @{
+        'BLOATWARE' = 'bloatware-removal'
+        'APPS' = 'essential-apps'
+        'UPDATES' = 'windows-updates'
+        'OPTIMIZATION' = 'system-optimization'
+        'TELEMETRY' = 'telemetry-disable'
+    }
+
+    $logFileName = "$($moduleLogMap[$Component])-$SessionTimestamp.log"
+    $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+    $logDir = Join-Path $scriptRoot "temp_files\logs"
+
+    if (-not (Test-Path $logDir)) {
+        New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    }
+
+    $moduleLogPath = Join-Path $logDir $logFileName
+
+    # Initialize module log with header
+    $header = @"
+Windows Maintenance Automation - $Component Module Log
+Session ID: $($script:LoggingContext.SessionId)
+Session Start: $($script:LoggingContext.StartTime.ToString("yyyy-MM-dd HH:mm:ss"))
+Module: $Component
+Component: $($script:LoggingContext.Config.components.$Component)
+===============================================
+
+"@
+
+    $header | Out-File -FilePath $moduleLogPath -Encoding UTF8
+
+    Write-LogEntry -Level 'INFO' -Component 'LOGGING' -Message "Created module log file: $logFileName" -Data @{
+        Component = $Component
+        LogPath = $moduleLogPath
+    }
+
+    return $moduleLogPath
+}
+
+<#
+.SYNOPSIS
+    Writes an entry specifically to a module log file
+
+.DESCRIPTION
+    Writes structured log entries to both the main log and a module-specific log file.
+
+.PARAMETER Component
+    The module component name
+
+.PARAMETER Level
+    Log level
+
+.PARAMETER Message
+    Log message
+
+.PARAMETER Operation
+    Specific operation being performed (Install, Uninstall, Delete, Configure, etc.)
+
+.PARAMETER Target
+    Target of the operation (app name, service name, registry key, etc.)
+
+.PARAMETER Success
+    Whether the operation succeeded
+
+.PARAMETER Details
+    Additional operation details
+
+.EXAMPLE
+    Write-ModuleLogEntry -Component 'BLOATWARE' -Level 'INFO' -Message 'Removing bloatware app' -Operation 'Uninstall' -Target 'Microsoft.BingWeather' -Success $true
+#>
+function Write-ModuleLogEntry {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('BLOATWARE', 'APPS', 'UPDATES', 'OPTIMIZATION', 'TELEMETRY')]
+        [string]$Component,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('DEBUG', 'INFO', 'SUCCESS', 'WARN', 'ERROR', 'CRITICAL')]
+        [string]$Level,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [Parameter()]
+        [string]$Operation,
+
+        [Parameter()]
+        [string]$Target,
+
+        [Parameter()]
+        [bool]$Success,
+
+        [Parameter()]
+        [hashtable]$Details = @{}
+    )
+
+    # Build structured data
+    $logData = $Details.Clone()
+    if ($Operation) { $logData.Operation = $Operation }
+    if ($Target) { $logData.Target = $Target }
+    if ($PSBoundParameters.ContainsKey('Success')) { $logData.Success = $Success }
+
+    # Write to main log
+    Write-LogEntry -Level $Level -Component $Component -Message $Message -Data $logData
+
+    # Write to module-specific log if enabled
+    if ($script:LoggingContext.Config.logging.enableModuleSpecificLogs) {
+        $moduleLogMap = @{
+            'BLOATWARE' = 'bloatware-removal'
+            'APPS' = 'essential-apps'
+            'UPDATES' = 'windows-updates'
+            'OPTIMIZATION' = 'system-optimization'
+            'TELEMETRY' = 'telemetry-disable'
+        }
+
+        $sessionTimestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) {
+            $env:MAINTENANCE_SESSION_TIMESTAMP
+        } else {
+            Get-Date -Format "yyyyMMdd-HHmmss"
+        }
+
+        $logFileName = "$($moduleLogMap[$Component])-$sessionTimestamp.log"
+        $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+        $moduleLogPath = Join-Path $scriptRoot "temp_files\logs\$logFileName"
+
+        if (Test-Path $moduleLogPath) {
+            $timestamp = Get-Date -Format $script:LoggingContext.Config.formatting.dateTimeFormat
+            $formattedEntry = "[$timestamp] [$Level] $Message"
+            
+            if ($Operation) { $formattedEntry += " | Operation: $Operation" }
+            if ($Target) { $formattedEntry += " | Target: $Target" }
+            if ($PSBoundParameters.ContainsKey('Success')) { $formattedEntry += " | Success: $Success" }
+            if ($Details.Count -gt 0) { $formattedEntry += " | Details: $($Details | ConvertTo-Json -Compress)" }
+
+            Add-Content -Path $moduleLogPath -Value $formattedEntry -Encoding UTF8
+        }
+    }
+}
+
+#endregion
+
 Export-ModuleMember -Function @(
     'Initialize-LoggingSystem',
     'Write-LogEntry',
@@ -618,5 +802,7 @@ Export-ModuleMember -Function @(
     'Complete-PerformanceTracking',
     'Get-LogData',
     'Get-PerformanceMetrics',
-    'Export-LogData'
+    'Export-LogData',
+    'New-ModuleLogFile',
+    'Write-ModuleLogEntry'
 )

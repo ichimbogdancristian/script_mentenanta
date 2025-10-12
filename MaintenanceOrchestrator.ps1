@@ -83,6 +83,18 @@ if (-not (Test-Path $ConfigPath)) {
 
 Write-Host "Configuration Path: $ConfigPath" -ForegroundColor Gray
 
+# Initialize session management
+$Global:MaintenanceSessionId = [guid]::NewGuid().ToString()
+$Global:MaintenanceSessionTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$Global:MaintenanceSessionStartTime = Get-Date
+
+Write-Host "Session ID: $Global:MaintenanceSessionId" -ForegroundColor Gray
+Write-Host "Session Timestamp: $Global:MaintenanceSessionTimestamp" -ForegroundColor Gray
+
+# Set session environment variables for modules to access
+$env:MAINTENANCE_SESSION_ID = $Global:MaintenanceSessionId
+$env:MAINTENANCE_SESSION_TIMESTAMP = $Global:MaintenanceSessionTimestamp
+
 # Set up temp directories (always relative to script location, not working directory)
 $TempRoot = Join-Path $ScriptRoot 'temp_files'
 $ReportsDir = Join-Path $TempRoot 'reports'
@@ -152,6 +164,7 @@ Write-Host "Modules Path: $ModulesPath" -ForegroundColor Gray
 
 $CoreModules = @(
     'ConfigManager',
+    'LoggingManager',
     'MenuSystem'
 )
 
@@ -181,10 +194,18 @@ Write-Host "`nInitializing configuration..." -ForegroundColor Yellow
 try {
     Initialize-ConfigSystem -ConfigRootPath $ConfigPath
     $MainConfig = Get-MainConfiguration
-    $null = Get-LoggingConfiguration  # Load logging config but don't store unused variable
+    $LoggingConfig = Get-LoggingConfiguration
 
     Write-Host "  ✓ Main configuration loaded" -ForegroundColor Green
     Write-Host "  ✓ Logging configuration loaded" -ForegroundColor Green
+
+    # Initialize logging system
+    $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir
+    if ($loggingInitResult) {
+        Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
+    } else {
+        Write-Host "  ⚠️ Logging system failed to initialize" -ForegroundColor Yellow
+    }
 }
 catch {
     Write-Error "Failed to initialize configuration: $_"
@@ -209,6 +230,41 @@ catch {
 
 #endregion
 
+#region Session Management Functions
+
+<#
+.SYNOPSIS
+    Gets a standardized filename using the current session timestamp
+.DESCRIPTION
+    Provides a consistent file naming pattern across all modules for the current maintenance session
+.PARAMETER BaseName
+    The base name for the file (without timestamp or extension)
+.PARAMETER Extension
+    The file extension (optional)
+.EXAMPLE
+    Get-SessionFileName -BaseName "maintenance-report" -Extension "html"
+    Returns: maintenance-report-20241012-110054.html
+#>
+function Get-SessionFileName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BaseName,
+        [Parameter()]
+        [string]$Extension
+    )
+    
+    $fileName = "$BaseName-$Global:MaintenanceSessionTimestamp"
+    if ($Extension) {
+        $fileName += ".$Extension"
+    }
+    return $fileName
+}
+
+# Export session functions globally so modules can access them
+$Global:GetSessionFileName = ${function:Get-SessionFileName}
+
+#endregion
+
 #region Helper Functions
 
 function Invoke-TaskWithParameters {
@@ -221,7 +277,9 @@ function Invoke-TaskWithParameters {
     # Prepare task-specific parameters
     switch ($TaskName) {
         'ReportGeneration' {
-            $reportPath = Join-Path $TempRoot "reports\maintenance-report-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+            # Pass path without extension - ReportGeneration module will add .html, .txt, .json
+            # Use session timestamp for consistent naming
+            $reportPath = Join-Path $TempRoot "reports\maintenance-report-$Global:MaintenanceSessionTimestamp"
             $params = @{
                 OutputPath = $reportPath
                 SystemInventory = $null  # Will be populated by the function if needed
@@ -430,6 +488,14 @@ $executionMode = if ($ExecutionParams.DryRun) { "DRY-RUN" } else { "LIVE" }
 Write-Host "Execution Mode: $executionMode" -ForegroundColor $(if ($ExecutionParams.DryRun) { 'Blue' } else { 'Green' })
 Write-Host "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -ForegroundColor Cyan
 
+# Log execution start
+Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting maintenance execution" -Data @{
+    ExecutionMode = $executionMode
+    SelectedTasksCount = $ExecutionParams.SelectedTasks.Count
+    TotalTasksCount = $AvailableTasks.Count
+    DryRun = $ExecutionParams.DryRun
+}
+
 if ($ExecutionParams.SelectedTasks.Count -eq 0) {
     Write-Warning "No tasks selected for execution"
     exit 0
@@ -482,6 +548,15 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     }
 
     try {
+        # Log task start
+        Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting task: $($task.Name)" -Data @{
+            TaskType = $task.Type
+            TaskCategory = $task.Category
+            ModulePath = $task.ModulePath
+            Function = $task.Function
+            DryRun = $ExecutionParams.DryRun
+        }
+
         # Check if module exists and load it
         if (Test-Path $task.ModulePath) {
             Import-Module $task.ModulePath -Force -ErrorAction Stop
@@ -504,11 +579,24 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         $taskResult.Output = $result
         Write-Host "  ✓ Completed successfully" -ForegroundColor Green
 
+        # Log task success
+        Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
+            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+            OutputType = $result.GetType().Name
+        }
+
     }
     catch {
         $taskResult.Success = $false
         $taskResult.Error = $_.Exception.Message
         Write-Host "  ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
+
+        # Log task failure
+        Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data @{
+            Error = $_.Exception.Message
+            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+            StackTrace = $_.ScriptStackTrace
+        }
     }
     finally {
         $taskResult.Duration = ((Get-Date) - $taskStartTime).TotalSeconds
@@ -534,8 +622,10 @@ $failedTasks = ($TaskResults | Where-Object { -not $_.Success }).Count
 Write-Host ""
 Write-Host "Execution Mode: " -NoNewline -ForegroundColor Gray
 Write-Host $executionMode -ForegroundColor $(if ($ExecutionParams.DryRun) { 'Blue' } else { 'Green' })
-Write-Host "Total Duration: " -NoNewline -ForegroundColor Gray
+Write-Host "Task Duration: " -NoNewline -ForegroundColor Gray
 Write-Host "$([math]::Round($totalDuration, 2)) seconds" -ForegroundColor White
+Write-Host "Total Session: " -NoNewline -ForegroundColor Gray
+Write-Host "$([math]::Round(((Get-Date) - $SessionStartTime).TotalSeconds, 2)) seconds" -ForegroundColor White
 Write-Host "Tasks Executed: " -NoNewline -ForegroundColor Gray
 Write-Host "$($TaskResults.Count)" -ForegroundColor White
 Write-Host "Successful: " -NoNewline -ForegroundColor Gray
@@ -564,9 +654,11 @@ foreach ($result in $TaskResults) {
 # Save execution results
 $executionSummary = @{
     ExecutionMode = $executionMode
-    StartTime = $StartTime
+    SessionStartTime = $SessionStartTime
+    TaskExecutionStartTime = $StartTime
     EndTime = Get-Date
     TotalDuration = $totalDuration
+    SessionDuration = ((Get-Date) - $SessionStartTime).TotalSeconds
     TasksExecuted = $TaskResults.Count
     SuccessfulTasks = $successfulTasks
     FailedTasks = $failedTasks
@@ -574,11 +666,61 @@ $executionSummary = @{
     Configuration = $MainConfig
 }
 
-$summaryPath = Join-Path $ReportsDir "execution-summary-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+$summaryPath = Join-Path $ReportsDir "execution-summary-$Global:MaintenanceSessionTimestamp.json"
 $executionSummary | ConvertTo-Json -Depth 10 | Out-File -FilePath $summaryPath -Encoding UTF8
 
 Write-Host ""
 Write-Host "Execution summary saved to: $summaryPath" -ForegroundColor Gray
+
+# Copy final reports to script root directory
+Write-Host ""
+Write-Host "📄 Copying final reports to script root directory..." -ForegroundColor Yellow
+
+$finalReports = @()
+$reportsToMove = @(
+    @{ Pattern = "maintenance-report-$Global:MaintenanceSessionTimestamp.html"; Description = "HTML maintenance report" }
+    @{ Pattern = "maintenance-report-$Global:MaintenanceSessionTimestamp.txt"; Description = "Text maintenance report" }
+    @{ Pattern = "maintenance-log-$Global:MaintenanceSessionTimestamp.log"; Description = "Maintenance log file" }
+)
+
+foreach ($reportInfo in $reportsToMove) {
+    $sourcePattern = $reportInfo.Pattern
+    $description = $reportInfo.Description
+    
+    # Look for the file in temp directories
+    $sourceFile = $null
+    $searchPaths = @($ReportsDir, $LogsDir, $TempRoot)
+    
+    foreach ($searchPath in $searchPaths) {
+        $potentialPath = Join-Path $searchPath $sourcePattern
+        if (Test-Path $potentialPath) {
+            $sourceFile = $potentialPath
+            break
+        }
+    }
+    
+    if ($sourceFile) {
+        $fileName = Split-Path $sourceFile -Leaf
+        $destPath = Join-Path $ScriptRoot $fileName
+        
+        try {
+            Copy-Item -Path $sourceFile -Destination $destPath -Force
+            Write-Host "  ✓ Copied $description to: $destPath" -ForegroundColor Green
+            $finalReports += $destPath
+        }
+        catch {
+            Write-Host "  ⚠️ Failed to copy $description`: $_" -ForegroundColor Yellow
+        }
+    }
+}
+
+if ($finalReports.Count -gt 0) {
+    Write-Host ""
+    Write-Host "📋 Final reports available in script directory:" -ForegroundColor Cyan
+    foreach ($report in $finalReports) {
+        Write-Host "  • $(Split-Path $report -Leaf)" -ForegroundColor White
+    }
+}
 
 if ($failedTasks -gt 0) {
     Write-Host ""

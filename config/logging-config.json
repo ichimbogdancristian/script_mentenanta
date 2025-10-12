@@ -11,7 +11,9 @@
     "enablePerformanceTracking": true,
     "enableStructuredLogging": true,
     "logBufferSize": 1000,
-    "flushInterval": 30
+    "flushInterval": 30,
+    "enableModuleSpecificLogs": true,
+    "moduleLogComponents": ["BLOATWARE", "APPS", "UPDATES", "OPTIMIZATION", "TELEMETRY"]
   },
   "formatting": {
     "dateTimeFormat": "yyyy-MM-dd HH:mm:ss.fff",

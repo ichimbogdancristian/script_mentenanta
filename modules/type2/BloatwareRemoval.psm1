@@ -93,7 +93,12 @@ function Remove-DetectedBloatware {
             New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
         }
 
-        $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        # Use session timestamp if available, otherwise generate new one
+        $timestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) { 
+            $env:MAINTENANCE_SESSION_TIMESTAMP 
+        } else { 
+            Get-Date -Format 'yyyyMMdd-HHmmss' 
+        }
         $emptyDiffPath = Join-Path $tempPath "bloatware-diff-empty-$timestamp.json"
         @{
             Timestamp = $startTime
@@ -124,7 +129,12 @@ function Remove-DetectedBloatware {
         Write-Information "  📁 Created bloatware temp directory: $tempPath" -InformationAction Continue
     }
 
-    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    # Use session timestamp if available, otherwise generate new one
+    $timestamp = if ($env:MAINTENANCE_SESSION_TIMESTAMP) { 
+        $env:MAINTENANCE_SESSION_TIMESTAMP 
+    } else { 
+        Get-Date -Format 'yyyyMMdd-HHmmss' 
+    }
     $diffFilePath = Join-Path $tempPath "bloatware-diff-$timestamp.json"
 
     # Create comprehensive diff data

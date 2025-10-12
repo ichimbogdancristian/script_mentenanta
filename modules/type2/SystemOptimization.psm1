@@ -251,7 +251,8 @@ function Clear-TemporaryFile {
         @{ Path = "$env:TEMP\*"; Name = "User Temp Files"; Recurse = $true }
         @{ Path = "$env:LOCALAPPDATA\Temp\*"; Name = "Local App Temp Files"; Recurse = $true }
         @{ Path = "C:\Windows\Temp\*"; Name = "Windows Temp Files"; Recurse = $true }
-        @{ Path = "C:\Windows\Prefetch\*"; Name = "Prefetch Files"; Recurse = $false }
+        @{ Path = "C:\Windows\Prefetch\ReadyBoot"; Name = "ReadyBoot Cache"; Recurse = $true }
+        @{ Path = "C:\Windows\Prefetch\*.pf"; Name = "Prefetch Files"; Recurse = $false }
         @{ Path = "$env:LOCALAPPDATA\Microsoft\Windows\INetCache\*"; Name = "Internet Cache"; Recurse = $true }
         @{ Path = "C:\Windows\SoftwareDistribution\Download\*"; Name = "Windows Update Cache"; Recurse = $true }
     )
@@ -288,11 +289,7 @@ function Clear-TemporaryFile {
             else {
                 # Perform actual cleanup
                 if (Test-Path (Split-Path $target.Path -Parent)) {
-                    # Always use -Recurse for ReadyBoot to avoid confirmation prompt
-                    if ($target.Name -eq 'ReadyBoot' -or $target.Path -like '*ReadyBoot*') {
-                        Remove-Item -Path $target.Path -Recurse -Force -ErrorAction SilentlyContinue
-                    }
-                    elseif ($target.Recurse) {
+                    if ($target.Recurse) {
                         Remove-Item -Path $target.Path -Recurse -Force -ErrorAction SilentlyContinue
                     }
                     else {

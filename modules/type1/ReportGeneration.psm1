@@ -578,11 +578,141 @@ function New-HtmlReport {
             100% { transform: rotate(360deg); }
         }
 
+        /* Module Activities Styles */
+        .module-activities {
+            display: grid;
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .module-activity {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .module-activity:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+
+        .module-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .module-icon {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .module-header h3 {
+            margin: 0;
+            flex: 1;
+            color: var(--text-color);
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .status-badge.error {
+            background: var(--error-color);
+            color: white;
+        }
+
+        .dry-run-badge {
+            background: var(--warning-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .module-details {
+            margin-bottom: 20px;
+        }
+
+        .module-details p {
+            margin: 8px 0;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .module-details strong {
+            color: var(--text-color);
+            font-weight: 600;
+        }
+
+        .error-details {
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid rgba(231, 76, 60, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+            color: var(--error-color);
+        }
+
+        .module-actions {
+            border-top: 1px solid var(--border-color);
+            padding-top: 15px;
+        }
+
+        .module-actions h4 {
+            margin: 0 0 10px 0;
+            color: var(--text-color);
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .actions-placeholder {
+            background: rgba(149, 165, 166, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px dashed var(--border-color);
+        }
+
+        .actions-placeholder p {
+            margin: 5px 0;
+            color: var(--text-secondary);
+            font-style: italic;
+            font-size: 13px;
+        }
+
         /* Print Styles */
         @media print {
             .section-content { display: block !important; }
             .dashboard-card { break-inside: avoid; }
             .chart-card { break-inside: avoid; }
+            .module-activity { break-inside: avoid; }
         }
     </style>
     
@@ -865,6 +995,79 @@ function New-HtmlReport {
 
         $html.AppendLine(@"
                 </ul>
+            </div>
+        </div>
+"@) | Out-Null
+    }
+
+    # Type 2 Module Activities Section
+    $type2Results = $ReportData.TaskResults | Where-Object { $_.Type -eq 'Type2' }
+    if ($type2Results.Count -gt 0) {
+        $html.AppendLine(@"
+        <div class="section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>🔧 System Modification Activities</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content">
+                <div class="module-activities">
+"@) | Out-Null
+
+        # Group Type 2 results by module
+        $moduleGroups = $type2Results | Group-Object { $_.TaskName }
+
+        foreach ($group in $moduleGroups) {
+            $moduleName = $group.Name
+            $moduleTask = $group.Group[0]  # Get the task details
+            
+            # Map module names to friendly titles and icons
+            $moduleInfo = @{
+                'BloatwareRemoval' = @{ Title = 'Bloatware Removal'; Icon = '🗑️'; Color = '#e74c3c' }
+                'EssentialApps' = @{ Title = 'Essential Applications'; Icon = '📦'; Color = '#3498db' }
+                'TelemetryDisable' = @{ Title = 'Privacy & Telemetry'; Icon = '🔒'; Color = '#9b59b6' }
+                'SystemOptimization' = @{ Title = 'System Optimization'; Icon = '⚡'; Color = '#f39c12' }
+                'WindowsUpdates' = @{ Title = 'Windows Updates'; Icon = '🔄'; Color = '#27ae60' }
+            }
+
+            $info = $moduleInfo[$moduleName]
+            if (-not $info) {
+                $info = @{ Title = $moduleName; Icon = '🔧'; Color = '#95a5a6' }
+            }
+
+            $statusBadge = if ($moduleTask.Success) { 
+                '<span class="status-badge success">✓ Completed</span>' 
+            } else { 
+                '<span class="status-badge error">✗ Failed</span>' 
+            }
+
+            $html.AppendLine(@"
+                    <div class="module-activity" style="border-left: 4px solid $($info.Color);">
+                        <div class="module-header">
+                            <span class="module-icon">$($info.Icon)</span>
+                            <h3>$($info.Title)</h3>
+                            $statusBadge
+                        </div>
+                        <div class="module-details">
+                            <p><strong>Description:</strong> $($moduleTask.Description)</p>
+                            <p><strong>Duration:</strong> $([math]::Round($moduleTask.Duration, 2)) seconds</p>
+                            $(if ($moduleTask.DryRun) { '<p><strong>Mode:</strong> <span class="dry-run-badge">DRY RUN</span></p>' })
+                            $(if (-not $moduleTask.Success -and $moduleTask.Error) { 
+                                "<div class='error-details'><strong>Error:</strong> $($moduleTask.Error)</div>" 
+                            })
+                        </div>
+                        <div class="module-actions">
+                            <h4>Actions Performed:</h4>
+                            <div class="actions-placeholder">
+                                <p><em>Detailed action logs will be displayed here in future versions.</em></p>
+                                <p>Check the individual module log files for specific install/uninstall/delete operations.</p>
+                            </div>
+                        </div>
+                    </div>
+"@) | Out-Null
+        }
+
+        $html.AppendLine(@"
+                </div>
             </div>
         </div>
 "@) | Out-Null
