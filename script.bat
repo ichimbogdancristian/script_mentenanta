@@ -707,6 +707,7 @@ SET "AUTO_NONINTERACTIVE=NO"
 
 REM Check PowerShell 7+ first (primary installation path)
 SET "PS7_ABSOLUTE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+CALL :LOG_MESSAGE "Checking for PowerShell 7+ at: %PS7_ABSOLUTE%" "DEBUG" "LAUNCHER"
 IF EXIST "%PS7_ABSOLUTE%" (
     CALL :LOG_MESSAGE "PowerShell 7 found at default installation path: %PS7_ABSOLUTE%" "DEBUG" "LAUNCHER"
     
@@ -714,6 +715,7 @@ IF EXIST "%PS7_ABSOLUTE%" (
     "%PS7_ABSOLUTE%" -Command "exit 0" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        CALL :LOG_MESSAGE "PowerShell version test result: !PS_MAJOR_VERSION!" "DEBUG" "LAUNCHER"
         IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
             SET "PS_EXECUTABLE=%PS7_ABSOLUTE%"
             SET "AUTO_NONINTERACTIVE=YES"
@@ -866,30 +868,21 @@ IF "%PS_EXECUTABLE%"=="" (
     )
 )
 
+REM CRITICAL: MaintenanceOrchestrator.ps1 requires PowerShell 7+ due to #Requires directive
+REM Do NOT fall back to Windows PowerShell 5.1 for orchestrator execution
 IF "%PS_EXECUTABLE%"=="" (
-    CALL :LOG_MESSAGE "PowerShell 7+ (pwsh.exe) not found after exhaustive search, checking Windows PowerShell..." "INFO" "LAUNCHER"
-    REM Fallback to Windows PowerShell for system operations only (absolute path, then PATH)
-    SET "PS51_ABSOLUTE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
-    IF EXIST "%PS51_ABSOLUTE%" (
-        FOR /F "tokens=*" %%i IN ('"%PS51_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
-        IF !PS_MAJOR_VERSION! GEQ 5 (
-            SET "PS_EXECUTABLE=%PS51_ABSOLUTE%"
-            CALL :LOG_MESSAGE "Windows PowerShell !PS_MAJOR_VERSION! will be used for system operations only (absolute path)" "INFO" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Windows PowerShell version !PS_MAJOR_VERSION! too old at absolute path" "WARN" "LAUNCHER"
-        )
-    ) ELSE (
-        powershell.exe -Command "$PSVersionTable.PSVersion.Major" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            FOR /F "tokens=*" %%i IN ('powershell.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
-            IF !PS_MAJOR_VERSION! GEQ 5 (
-                SET "PS_EXECUTABLE=powershell.exe"
-                CALL :LOG_MESSAGE "Windows PowerShell !PS_MAJOR_VERSION! will be used for system operations only" "INFO" "LAUNCHER"
-            ) ELSE (
-                CALL :LOG_MESSAGE "Windows PowerShell version !PS_MAJOR_VERSION! too old" "WARN" "LAUNCHER"
-            )
-        )
-    )
+    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ (pwsh.exe) not found - MaintenanceOrchestrator.ps1 requires PowerShell 7.0+" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Windows PowerShell 5.1 cannot run MaintenanceOrchestrator.ps1 due to #Requires directive" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7+ installation is REQUIRED for this maintenance system." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please install PowerShell 7+ using one of these methods:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  1. winget: winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  2. Manual: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  3. Chocolatey: choco install powershell-core" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "After installation, restart this script to continue." "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 1
 )
 
 IF "%PS_EXECUTABLE%"=="" (
@@ -982,6 +975,10 @@ REM PowerShell Orchestrator Launch
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Preparing to launch PowerShell orchestrator..." "INFO" "LAUNCHER"
 
+REM Debug: Show what PowerShell executable was detected
+CALL :LOG_MESSAGE "Detected PowerShell executable: %PS_EXECUTABLE%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "AUTO_NONINTERACTIVE flag: %AUTO_NONINTERACTIVE%" "DEBUG" "LAUNCHER"
+
 IF "%ORCHESTRATOR_PATH%"=="" (
     CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
     PAUSE
@@ -1022,9 +1019,24 @@ REM First run the orchestrator to initialize
 CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%ORCHESTRATOR_PATH%\"" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "LAUNCHER"
 
-CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%"
-SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
+REM Critical: Use PowerShell 7+ (pwsh.exe) for MaintenanceOrchestrator.ps1 due to #Requires directive
+REM Only proceed if PowerShell 7+ was detected (AUTO_NONINTERACTIVE=YES indicates PS7+ found)
+IF "%AUTO_NONINTERACTIVE%"=="YES" (
+    CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator (required by #Requires directive)" "DEBUG" "LAUNCHER"
+    CD /D "%WORKING_DIR%"
+    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%"
+    SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
+) ELSE (
+    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not detected - cannot run MaintenanceOrchestrator.ps1" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "MaintenanceOrchestrator.ps1 contains '#Requires -PSEdition Core -Version 7.0'" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "This prevents execution on Windows PowerShell 5.1" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please install PowerShell 7+ and restart this script:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 1
+)
 
 CALL :LOG_MESSAGE "PowerShell orchestrator initialization completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
 
@@ -1032,13 +1044,13 @@ REM Check if running in non-interactive mode from command line OR auto-enabling 
 IF "%1"=="-NonInteractive" (
     CALL :LOG_MESSAGE "Non-interactive mode - executing all tasks unattended" "INFO" "LAUNCHER"
     CD /D "%WORKING_DIR%"
-    %PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
+    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
     SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
     GOTO :FINAL_CLEANUP
 ) ELSE IF "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "PowerShell 7+ detected - enabling automatic unattended execution" "INFO" "LAUNCHER"
     CD /D "%WORKING_DIR%"
-    %PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
+    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
     SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
     GOTO :FINAL_CLEANUP
 )
@@ -1112,28 +1124,28 @@ GOTO :EXECUTE_INSERTED_DRYRUN
 :EXECUTE_ALL
 CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_INSERTED
 CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_ALL_DRYRUN
 CALL :LOG_MESSAGE "Executing all tasks in dry-run unattended..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_INSERTED_DRYRUN
 CALL :LOG_MESSAGE "Executing selected tasks in dry-run: %TASKNUMS%..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun -TaskNumbers "%TASKNUMS%"
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 

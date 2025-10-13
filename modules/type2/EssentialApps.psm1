@@ -21,6 +21,20 @@ using namespace System.Collections.Concurrent
 
 # Import required modules
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
+
+# Import ConfigManager (required for Get-UnifiedEssentialAppsList)
+# Check if ConfigManager functions are already available first
+if (-not (Get-Command 'Get-UnifiedEssentialAppsList' -ErrorAction SilentlyContinue)) {
+    $ConfigManagerPath = Join-Path $ModuleRoot 'core\ConfigManager.psm1'
+    if (Test-Path $ConfigManagerPath) {
+        Import-Module $ConfigManagerPath -Force -Global
+        Write-Verbose "Imported ConfigManager module for EssentialApps"
+    }
+    else {
+        Write-Error "ConfigManager module not found at: $ConfigManagerPath"
+    }
+}
+
 $SystemInventoryPath = Join-Path $ModuleRoot 'type1\SystemInventory.psm1'
 if (Test-Path $SystemInventoryPath) {
     Import-Module $SystemInventoryPath -Force
