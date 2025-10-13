@@ -1,4 +1,7 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for bloatware list configuration)
+#   - LoggingManager.psm1 (for structured logging)
 
 <#
 .SYNOPSIS
@@ -28,6 +31,11 @@ if (Test-Path $SystemInventoryPath) {
 $ConfigManagerPath = Join-Path $ModuleRoot 'core\ConfigManager.psm1'
 if (Test-Path $ConfigManagerPath) {
     Import-Module $ConfigManagerPath -Force
+}
+
+$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
+if (Test-Path $LoggingPath) {
+    Import-Module $LoggingPath -Force
 }
 
 #region Public Functions
@@ -70,6 +78,19 @@ function Find-InstalledBloatware {
 
     Write-Information "🔍 Scanning for installed bloatware..." -InformationAction Continue
     $startTime = Get-Date
+    
+    # Start performance tracking and centralized logging
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'BloatwareDetection' -Component 'BLOATWARE-DETECTION'
+        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting comprehensive bloatware detection' -Data @{
+            Categories = $Categories -join ', '
+            UseCache = $UseCache
+            Context = $Context
+        }
+    } catch {
+        # LoggingManager not available, continue
+    }
 
     try {
         # Get bloatware patterns from configuration
@@ -89,9 +110,13 @@ function Find-InstalledBloatware {
 
         Write-Information "  📋 Loaded $($bloatwareList.Count) bloatware patterns from $($Categories.Count) categories" -InformationAction Continue
 
-        # Initialize results collection
-        $allBloatware = [List[PSCustomObject]]::new()
-
+        # Initialize results collection with explicit capacity for better memory management
+        $allBloatware = [List[PSCustomObject]]::new(200)  # Pre-allocate capacity to reduce reallocations
+        
+        # Variables for cleanup tracking
+        $systemInventory = $null
+        $installedPrograms = $null
+        
         # Get system inventory once to avoid repeated calls
         Write-Information "  📊 Collecting system inventory..." -InformationAction Continue
         $systemInventory = Get-SystemInventory -UseCache:$UseCache
@@ -164,17 +189,82 @@ function Find-InstalledBloatware {
             @("No sources")
         }
 
-        Write-Information "  ✅ Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -InformationAction Continue
-        Write-Information "  📊 Sources: $($sourceStats -join ', ')" -InformationAction Continue
+            Write-Information "  ✅ Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -InformationAction Continue
+            Write-Information "  📊 Sources: $($sourceStats -join ', ')" -InformationAction Continue
 
-        # Always return an array, even if empty
-        return [Array]$uniqueBloatware
-    }
-    catch {
-        Write-Error "Failed to detect bloatware: $_"
-        Write-Warning "Returning empty array due to error"
-        return @()
-    }
+            # Create final result array to return
+            $resultArray = [Array]$uniqueBloatware
+            
+            # Explicit memory cleanup before return
+            Write-Verbose "Performing memory cleanup for bloatware detection"
+            $allBloatware.Clear()
+            $allBloatware = $null
+            
+            # Clear large variables
+            $installedPrograms = $null
+            $systemInventory = $null
+            
+            # Force garbage collection if collection was large
+            if ($resultArray.Count -gt 50) {
+                Write-Verbose "Large result set detected, triggering garbage collection"
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+            }
+            
+            # Complete performance tracking and log success
+            try {
+                if ($perfContext) {
+                    Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true
+                }
+                
+                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection completed successfully' -Data @{
+                    BloatwareItemsFound = $resultArray.Count
+                    ExecutionTime = [math]::Round($duration, 2)
+                    Sources = $sourceStats -join ', '
+                    Categories = $Categories -join ', '
+                }
+            } catch {
+                # LoggingManager not available, continue
+            }
+            
+            return $resultArray
+        }
+        catch {
+            # Complete performance tracking with failure
+            try {
+                if ($perfContext) {
+                    Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
+                }
+                
+                Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection failed' -Data @{
+                    Error = $_.Exception.Message
+                    ExecutionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
+                    Categories = $Categories -join ', '
+                }
+            } catch {
+                # LoggingManager not available, continue
+            }
+            
+            Write-Error "Failed to detect bloatware: $_"
+            Write-Warning "Returning empty array due to error"
+            
+            # Cleanup on error
+            if ($null -ne $allBloatware) {
+                $allBloatware.Clear()
+                $allBloatware = $null
+            }
+            $installedPrograms = $null
+            $systemInventory = $null
+            
+            return @()
+        }
+        finally {
+            # Final cleanup in case variables weren't cleared
+            if ($null -ne $allBloatware) {
+                $allBloatware.Clear()
+            }
+            Write-Verbose "Memory cleanup completed for bloatware detection"
+        }
 }
 
 <#

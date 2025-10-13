@@ -1,4 +1,8 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for bloatware list configuration)
+#   - LoggingManager.psm1 (for structured logging)
+#   - BloatwareDetection.psm1 (for detection before removal)
 
 <#
 .SYNOPSIS
@@ -31,6 +35,16 @@ if (Test-Path $FileOrgPath) {
     Import-Module $FileOrgPath -Force
 }
 
+$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
+if (Test-Path $LoggingPath) {
+    Import-Module $LoggingPath -Force
+}
+
+$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+if (Test-Path $DependencyManagerPath) {
+    Import-Module $DependencyManagerPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -61,7 +75,7 @@ if (Test-Path $FileOrgPath) {
 #>
 function Remove-DetectedBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]
+    [OutputType([bool])]
     param(
         [Parameter()]
         [Array]$BloatwareList,
@@ -73,6 +87,7 @@ function Remove-DetectedBloatware {
         [switch]$Force,
 
         [Parameter()]
+        [ValidateNotNullOrEmpty()]
         [string[]]$Categories = @('all'),
 
         [Parameter()]
@@ -81,6 +96,29 @@ function Remove-DetectedBloatware {
 
     Write-Information "🗑️  Starting bloatware removal process..." -InformationAction Continue
     $startTime = Get-Date
+    
+    # Check for administrator privileges before proceeding
+    try {
+        Assert-AdminPrivileges -Operation "Bloatware removal"
+    } catch {
+        Write-Error "Administrator privileges are required for bloatware removal operations: $_"
+        return $false
+    }
+    
+    # Start performance tracking and centralized logging
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'BloatwareRemoval' -Component 'BLOATWARE-REMOVAL'
+        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware removal process' -Data @{
+            Categories = $Categories -join ', '
+            DryRun = $DryRun
+            Force = $Force
+            UseCache = $UseCache
+            ProvidedBloatwareCount = if ($BloatwareList) { $BloatwareList.Count } else { 0 }
+        }
+    } catch {
+        # LoggingManager not available, continue
+    }
 
     if (-not $BloatwareList) {
         Write-Information "  🔍 No bloatware list provided, detecting automatically..." -InformationAction Continue
@@ -118,7 +156,11 @@ function Remove-DetectedBloatware {
 
     Write-Information "  📋 Found $($BloatwareList.Count) bloatware items for removal" -InformationAction Continue
 
-    # Prepare bloatware analysis data
+    try {
+        $ErrorActionPreference = 'Stop' 
+        Write-Verbose "Starting bloatware removal process"
+
+        # Prepare bloatware analysis data
     $bloatwareAnalysis = @{
         Timestamp         = $startTime
         DetectedBloatware = $BloatwareList
@@ -238,11 +280,63 @@ ITEMS BY SOURCE:
     Write-Information "    📊 Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
     Write-Information "    📄 Files created: JSON diff, TXT summary" -InformationAction Continue
 
-    if ($results.Failed -gt 0) {
+    $success = $results.Failed -eq 0 && $results.Successful -gt 0
+    if (-not $success) {
         Write-Information "    ❌ Some items could not be removed. Check logs for details." -InformationAction Continue
     }
 
-    return $results
+        # Complete performance tracking and log success
+        try {
+            if ($perfContext) {
+                Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success
+            }
+            
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Bloatware removal completed' -Data @{
+                Success = $success
+                TotalProcessed = $results.TotalProcessed
+                Successful = $results.Successful
+                Failed = $results.Failed
+                ExecutionTime = [math]::Round($duration, 2)
+                Categories = $Categories -join ', '
+            }
+        } catch {
+            # LoggingManager not available, continue
+        }
+        
+        # Log detailed results for audit trails
+        Write-Verbose "Bloatware removal operation details: $(ConvertTo-Json $results -Depth 3)"
+        Write-Verbose "Bloatware removal completed successfully"
+        
+        return $success
+    }
+    catch {
+        # Complete performance tracking with failure
+        try {
+            if ($perfContext) {
+                Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
+            }
+            
+            Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-REMOVAL' -Message 'Bloatware removal failed' -Data @{
+                Error = $_.Exception.Message
+                ExecutionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
+                Categories = $Categories -join ', '
+            }
+        } catch {
+            # LoggingManager not available, continue
+        }
+        
+        $errorMessage = "❌ Bloatware removal failed: $($_.Exception.Message)"
+        Write-Error $errorMessage
+        Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Type 2 module returns boolean for failure
+        return $false
+    }
+    finally {
+        $ErrorActionPreference = 'Continue'
+        $duration = ((Get-Date) - $startTime).TotalSeconds
+        Write-Verbose "Bloatware removal operation completed in $([math]::Round($duration, 2)) seconds"
+    }
 }
 
 <#

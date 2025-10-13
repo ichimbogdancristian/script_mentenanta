@@ -44,10 +44,16 @@ using namespace System.Collections.Generic
 #>
 
 param(
+    [ValidateScript({[string]::IsNullOrEmpty($_) -or (Test-Path (Split-Path $_ -Parent))})]
     [string]$LogFilePath,
+    
+    [ValidateScript({[string]::IsNullOrEmpty($_) -or (Test-Path $_ -PathType Container)})]
     [string]$ConfigPath,
+    
     [switch]$NonInteractive,
     [switch]$DryRun,
+    
+    [ValidatePattern('^(\d+)(,\d+)*$|^$')]
     [string]$TaskNumbers
 )
 
@@ -174,18 +180,47 @@ $CoreModules = @(
 
 foreach ($moduleName in $CoreModules) {
     $modulePath = Join-Path $CoreModulesPath "$moduleName.psm1"
-    if (Test-Path $modulePath) {
-        try {
-            Import-Module $modulePath -Force -ErrorAction Stop
-            Write-Host "  ✓ Loaded: $moduleName" -ForegroundColor Green
+    try {
+        if (-not (Test-Path $modulePath)) {
+            throw "Module file not found: $modulePath"
         }
-        catch {
-            Write-Error "Failed to load module $moduleName`: $_"
-            exit 1
+
+        # Validate module before import
+        if (-not (Test-ModuleManifest $modulePath -ErrorAction SilentlyContinue)) {
+            Write-Warning "Module manifest validation failed for $moduleName, attempting import anyway"
+        }
+
+        Import-Module $modulePath -Force -ErrorAction Stop
+        Write-Host "  ✓ Loaded: $moduleName" -ForegroundColor Green
+        
+        # Verify module loaded successfully
+        $loadedModule = Get-Module -Name $moduleName -ErrorAction SilentlyContinue
+        if (-not $loadedModule) {
+            throw "Module $moduleName failed to load properly - not found in loaded modules"
         }
     }
-    else {
-        Write-Error "Module not found: $modulePath"
+    catch [System.UnauthorizedAccessException] {
+        Write-Error "Access denied loading module $moduleName. Ensure you have administrator privileges and the file is not blocked."
+        Write-Host "  ℹ️ Try running: Unblock-File '$modulePath'" -ForegroundColor Cyan
+        exit 1
+    }
+    catch [System.Security.SecurityException] {
+        Write-Error "Security error loading module $moduleName. Check execution policy and file permissions."
+        Write-Host "  ℹ️ Current execution policy: $(Get-ExecutionPolicy)" -ForegroundColor Cyan
+        exit 1
+    }
+    catch [System.IO.FileNotFoundException] {
+        Write-Error "Module file not found: $modulePath"
+        Write-Host "  ℹ️ Ensure all module files are present in the modules/core directory" -ForegroundColor Cyan
+        exit 1
+    }
+    catch {
+        Write-Error "Failed to load core module $moduleName`: $_"
+        Write-Host "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Cyan
+        Write-Host "  ℹ️ Error Details: $($_.Exception.Message)" -ForegroundColor Cyan
+        if ($_.ScriptStackTrace) {
+            Write-Host "  ℹ️ Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Gray
+        }
         exit 1
     }
 }
@@ -197,49 +232,173 @@ foreach ($moduleName in $CoreModules) {
 Write-Host "`nInitializing configuration..." -ForegroundColor Yellow
 
 try {
-    Initialize-ConfigSystem -ConfigRootPath $ConfigPath
-    $MainConfig = Get-MainConfiguration
-    $LoggingConfig = Get-LoggingConfiguration
-
-    Write-Host "  ✓ Main configuration loaded" -ForegroundColor Green
-    Write-Host "  ✓ Logging configuration loaded" -ForegroundColor Green
+    # Validate configuration directory structure
+    $requiredConfigFiles = @('main-config.json', 'logging-config.json')
+    foreach ($configFile in $requiredConfigFiles) {
+        $configFilePath = Join-Path $ConfigPath $configFile
+        if (-not (Test-Path $configFilePath)) {
+            throw "Required configuration file not found: $configFilePath"
+        }
+        
+        # Validate JSON syntax
+        try {
+            $null = Get-Content $configFilePath | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "Invalid JSON syntax in configuration file $configFile`: $($_.Exception.Message)"
+        }
+    }
+    
+    # Initialize configuration system with error handling
+    try {
+        Initialize-ConfigSystem -ConfigRootPath $ConfigPath -ErrorAction Stop
+        Write-Host "  ✓ Configuration system initialized" -ForegroundColor Green
+    }
+    catch {
+        throw "Failed to initialize configuration system: $($_.Exception.Message)"
+    }
+    
+    # Load configurations with validation
+    try {
+        $MainConfig = Get-MainConfiguration -ErrorAction Stop
+        if (-not $MainConfig) {
+            throw "Main configuration is null or empty"
+        }
+        Write-Host "  ✓ Main configuration loaded" -ForegroundColor Green
+    }
+    catch {
+        throw "Failed to load main configuration: $($_.Exception.Message)"
+    }
+    
+    try {
+        $LoggingConfig = Get-LoggingConfiguration -ErrorAction Stop
+        if (-not $LoggingConfig) {
+            throw "Logging configuration is null or empty"
+        }
+        Write-Host "  ✓ Logging configuration loaded" -ForegroundColor Green
+    }
+    catch {
+        throw "Failed to load logging configuration: $($_.Exception.Message)"
+    }
 
     # Initialize file organization system first (required by logging system)
-    $fileOrgResult = Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $Global:MaintenanceSessionTimestamp
-    if ($fileOrgResult) {
-        Write-Host "  ✓ File organization system initialized" -ForegroundColor Green
+    try {
+        $fileOrgResult = Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $Global:MaintenanceSessionTimestamp -ErrorAction Stop
+        if ($fileOrgResult) {
+            Write-Host "  ✓ File organization system initialized" -ForegroundColor Green
+        }
+        else {
+            throw "File organization initialization returned false"
+        }
     }
-    else {
-        Write-Host "  ⚠️ File organization system failed to initialize" -ForegroundColor Yellow
+    catch {
+        Write-Host "  ⚠️ File organization system failed to initialize: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "  ℹ️ Continuing with basic file operations - some features may be limited" -ForegroundColor Gray
+        # Don't exit here as this is not critical for basic operation
     }
 
     # Initialize logging system (depends on file organization)
-    $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir
-    if ($loggingInitResult) {
-        Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
+    try {
+        $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir -ErrorAction Stop
+        if ($loggingInitResult) {
+            Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
+        }
+        else {
+            throw "Logging system initialization returned false"
+        }
     }
-    else {
-        Write-Host "  ⚠️ File organization system failed to initialize" -ForegroundColor Yellow
+    catch {
+        Write-Host "  ⚠️ Logging system failed to initialize: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "  ℹ️ Continuing without enhanced logging - basic console output only" -ForegroundColor Gray
+        # Create a fallback logging function for basic operations
+        function Write-LogEntry {
+            param($Level, $Component, $Message, $Data)
+            Write-Host "[$Level] [$Component] $Message" -ForegroundColor Gray
+        }
     }
 }
+catch [System.IO.DirectoryNotFoundException] {
+    Write-Error "Configuration directory not found: $ConfigPath"
+    Write-Host "  ℹ️ Ensure the 'config' directory exists and contains required configuration files" -ForegroundColor Cyan
+    exit 1
+}
+catch [System.IO.FileNotFoundException] {
+    Write-Error "Required configuration file not found: $($_.Exception.Message)"
+    Write-Host "  ℹ️ Ensure all required configuration files are present in: $ConfigPath" -ForegroundColor Cyan
+    exit 1
+}
+catch [System.Management.Automation.RuntimeException] {
+    Write-Error "Configuration system error: $($_.Exception.Message)"
+    Write-Host "  ℹ️ Check configuration file syntax and module dependencies" -ForegroundColor Cyan
+    exit 1
+}
 catch {
-    Write-Error "Failed to initialize configuration: $_"
+    Write-Error "Failed to initialize configuration: $($_.Exception.Message)"
+    Write-Host "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Cyan
+    Write-Host "  ℹ️ This may indicate missing dependencies or corrupted configuration files" -ForegroundColor Cyan
     exit 1
 }
 
-# Load app configurations
+# Load app configurations with comprehensive error handling
 try {
-    $BloatwareLists = Get-BloatwareConfiguration
-    $EssentialApps = Get-EssentialAppsConfiguration
+    Write-Host "`nLoading application configurations..." -ForegroundColor Yellow
+    
+    try {
+        $BloatwareLists = Get-BloatwareConfiguration -ErrorAction Stop
+        if (-not $BloatwareLists) {
+            Write-Warning "Bloatware configuration is empty or null - bloatware removal tasks may be limited"
+        } else {
+            Write-Host "  ✓ Bloatware configuration loaded" -ForegroundColor Green
+        }
+    }
+    catch {
+        Write-Host "  ⚠️ Failed to load bloatware configuration: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "  ℹ️ Bloatware removal tasks will be skipped" -ForegroundColor Gray
+        $BloatwareLists = @()
+    }
+    
+    try {
+        $EssentialApps = Get-EssentialAppsConfiguration -ErrorAction Stop
+        if (-not $EssentialApps) {
+            Write-Warning "Essential apps configuration is empty or null - app installation tasks may be limited"
+        } else {
+            Write-Host "  ✓ Essential apps configuration loaded" -ForegroundColor Green
+        }
+    }
+    catch {
+        Write-Host "  ⚠️ Failed to load essential apps configuration: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "  ℹ️ Essential app installation tasks will be skipped" -ForegroundColor Gray
+        $EssentialApps = @()
+    }
 
-    $totalBloatware = if ($BloatwareLists.ContainsKey('all')) { $BloatwareLists['all'].Count } else { 0 }
-    $totalEssentialApps = if ($EssentialApps.ContainsKey('all')) { $EssentialApps['all'].Count } else { 0 }
+    # Calculate configuration statistics with error handling
+    try {
+        $totalBloatware = if ($BloatwareLists -and $BloatwareLists.ContainsKey('all')) { $BloatwareLists['all'].Count } else { 0 }
+        $totalEssentialApps = if ($EssentialApps -and $EssentialApps.ContainsKey('all')) { $EssentialApps['all'].Count } else { 0 }
 
-    Write-Host "  ✓ Bloatware list: $totalBloatware total entries" -ForegroundColor Green
-    Write-Host "  ✓ Essential apps: $totalEssentialApps total entries" -ForegroundColor Green
+        Write-Host "  ✓ Bloatware list: $totalBloatware total entries" -ForegroundColor Green
+        Write-Host "  ✓ Essential apps: $totalEssentialApps total entries" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "  ⚠️ Error calculating configuration statistics: $($_.Exception.Message)" -ForegroundColor Yellow
+        $totalBloatware = 0
+        $totalEssentialApps = 0
+    }
+}
+catch [System.IO.FileNotFoundException] {
+    Write-Error "App configuration file not found: $($_.Exception.Message)"
+    Write-Host "  ℹ️ Ensure bloatware-list.json and essential-apps.json exist in: $ConfigPath" -ForegroundColor Cyan
+    exit 1
+}
+catch [System.ArgumentException] {
+    Write-Error "Invalid app configuration format: $($_.Exception.Message)"
+    Write-Host "  ℹ️ Check JSON syntax and structure in app configuration files" -ForegroundColor Cyan
+    exit 1
 }
 catch {
-    Write-Error "Failed to load app configurations: $_"
+    Write-Error "Failed to load app configurations: $($_.Exception.Message)"
+    Write-Host "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Cyan
+    Write-Host "  ℹ️ Check app configuration files in: $ConfigPath" -ForegroundColor Cyan
     exit 1
 }
 
@@ -567,6 +726,14 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     }
 
     try {
+        # Validate task properties
+        if ([string]::IsNullOrEmpty($task.ModulePath)) {
+            throw "Task configuration error: ModulePath is null or empty"
+        }
+        if ([string]::IsNullOrEmpty($task.Function)) {
+            throw "Task configuration error: Function name is null or empty"
+        }
+
         # Log task start
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting task: $($task.Name)" -Data @{
             TaskType     = $task.Type
@@ -576,47 +743,153 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
             DryRun       = $ExecutionParams.DryRun
         }
 
-        # Check if module exists and load it
-        if (Test-Path $task.ModulePath) {
-            Import-Module $task.ModulePath -Force -ErrorAction Stop
-            Write-Host "  ✓ Module loaded: $($task.ModulePath | Split-Path -Leaf)" -ForegroundColor Green
-        }
-        else {
-            throw "Module not found: $($task.ModulePath)"
+        # Check if module exists and load it with comprehensive error handling
+        if (-not (Test-Path $task.ModulePath)) {
+            throw "Module file not found: $($task.ModulePath)"
         }
 
-        # Execute the task function with appropriate parameters
-        if ($ExecutionParams.DryRun) {
-            Write-Host "  ▶ Simulating: $($task.Function)" -ForegroundColor Blue
-            # In dry-run mode, we could call with -WhatIf parameter if supported
-            $result = "DRY-RUN: Task would be executed"
+        try {
+            # Validate module syntax before import
+            $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Path $task.ModulePath -Raw), [ref]$null)
+            
+            Import-Module $task.ModulePath -Force -ErrorAction Stop
+            Write-Host "  ✓ Module loaded: $($task.ModulePath | Split-Path -Leaf)" -ForegroundColor Green
+            
+            # Verify the target function exists in the loaded module
+            $moduleName = [System.IO.Path]::GetFileNameWithoutExtension($task.ModulePath)
+            $loadedModule = Get-Module -Name $moduleName -ErrorAction SilentlyContinue
+            if (-not $loadedModule) {
+                throw "Module $moduleName failed to load properly"
+            }
+            
+            $availableFunctions = $loadedModule.ExportedFunctions.Keys
+            if ($task.Function -notin $availableFunctions) {
+                throw "Function '$($task.Function)' not found in module. Available functions: $($availableFunctions -join ', ')"
+            }
         }
-        else {
-            Write-Host "  ▶ Executing: $($task.Function)" -ForegroundColor Green
-            $result = Invoke-TaskWithParameters -TaskName $task.Name -FunctionName $task.Function -DryRun:$ExecutionParams.DryRun
+        catch [System.UnauthorizedAccessException] {
+            throw "Access denied loading module: $($task.ModulePath). Check file permissions and ensure administrator privileges."
+        }
+        catch [System.Management.Automation.ParseException] {
+            throw "Module syntax error in $($task.ModulePath): $($_.Exception.Message)"
+        }
+        catch {
+            throw "Failed to load module $($task.ModulePath): $($_.Exception.Message)"
+        }
+
+        # Execute the task function with comprehensive error handling
+        $result = $null
+        try {
+            if ($ExecutionParams.DryRun) {
+                Write-Host "  ▶ Simulating: $($task.Function)" -ForegroundColor Blue
+                # Try to call with -WhatIf if the function supports it
+                $functionDef = Get-Command $task.Function -ErrorAction SilentlyContinue
+                if ($functionDef -and $functionDef.Parameters.ContainsKey('WhatIf')) {
+                    $result = & $task.Function -WhatIf
+                } else {
+                    $result = "DRY-RUN: Task would be executed (function does not support -WhatIf)"
+                }
+            }
+            else {
+                Write-Host "  ▶ Executing: $($task.Function)" -ForegroundColor Green
+                $result = Invoke-TaskWithParameters -TaskName $task.Name -FunctionName $task.Function -DryRun:$ExecutionParams.DryRun
+            }
+        }
+        catch [System.Management.Automation.CommandNotFoundException] {
+            throw "Function '$($task.Function)' not found or not accessible"
+        }
+        catch [System.Management.Automation.ParameterBindingException] {
+            throw "Parameter binding error for function '$($task.Function)': $($_.Exception.Message)"
+        }
+        catch [System.Security.SecurityException] {
+            throw "Security error executing function '$($task.Function)': $($_.Exception.Message). Check execution policy and permissions."
+        }
+        catch [System.UnauthorizedAccessException] {
+            throw "Access denied executing function '$($task.Function)': $($_.Exception.Message). Ensure administrator privileges."
+        }
+        catch {
+            # Capture detailed error information for debugging
+            $errorDetails = @{
+                Message = $_.Exception.Message
+                Type = $_.Exception.GetType().Name
+                StackTrace = $_.ScriptStackTrace
+                Function = $task.Function
+                Line = $_.InvocationInfo.ScriptLineNumber
+            }
+            throw "Task execution failed: $($_.Exception.Message)"
         }
 
         $taskResult.Success = $true
         $taskResult.Output = $result
         Write-Host "  ✓ Completed successfully" -ForegroundColor Green
 
-        # Log task success
+        # Log task success with detailed metrics
         Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
             Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
             OutputType = if ($null -ne $result) { $result.GetType().Name } else { 'null' }
+            ResultSize = if ($null -ne $result -and $result -is [string]) { $result.Length } elseif ($null -ne $result -and $result -is [array]) { $result.Count } else { 0 }
         }
 
+    }
+    catch [System.OperationCanceledException] {
+        $taskResult.Success = $false
+        $taskResult.Error = "Task was cancelled by user or system"
+        Write-Host "  ⏸️ Cancelled: Task was cancelled" -ForegroundColor Yellow
+        
+        Write-LogEntry -Level 'WARNING' -Component 'ORCHESTRATOR' -Message "Task cancelled: $($task.Name)" -Data @{
+            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+        }
+    }
+    catch [System.TimeoutException] {
+        $taskResult.Success = $false
+        $taskResult.Error = "Task timed out: $($_.Exception.Message)"
+        Write-Host "  ⏱️ Timeout: $($_.Exception.Message)" -ForegroundColor Yellow
+        
+        Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task timeout: $($task.Name)" -Data @{
+            Error = $_.Exception.Message
+            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+        }
+    }
+    catch [System.OutOfMemoryException] {
+        $taskResult.Success = $false
+        $taskResult.Error = "Out of memory error during task execution"
+        Write-Host "  💾 Memory Error: Insufficient memory to complete task" -ForegroundColor Red
+        
+        Write-LogEntry -Level 'CRITICAL' -Component 'ORCHESTRATOR' -Message "Out of memory error: $($task.Name)" -Data @{
+            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+            MemoryUsage = [System.GC]::GetTotalMemory($false)
+        }
+        
+        # Force garbage collection
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
     }
     catch {
         $taskResult.Success = $false
         $taskResult.Error = $_.Exception.Message
         Write-Host "  ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
-
-        # Log task failure
-        Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data @{
-            Error      = $_.Exception.Message
-            Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
+        
+        # Enhanced error logging with full context
+        $errorContext = @{
+            Error = $_.Exception.Message
+            ErrorType = $_.Exception.GetType().Name
+            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
             StackTrace = $_.ScriptStackTrace
+            TaskFunction = $task.Function
+            ModulePath = $task.ModulePath
+            ScriptLine = $_.InvocationInfo.ScriptLineNumber
+            Command = $_.InvocationInfo.MyCommand.Name
+        }
+        
+        Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data $errorContext
+        
+        # Additional troubleshooting information
+        Write-Host "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Gray
+        if ($_.InvocationInfo.ScriptLineNumber) {
+            Write-Host "  ℹ️ Error at line: $($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor Gray
+        }
+        if ($_.ScriptStackTrace) {
+            Write-Verbose "Full stack trace: $($_.ScriptStackTrace)"
         }
     }
     finally {

@@ -1,4 +1,7 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for configuration access)
+#   - LoggingManager.psm1 (for structured logging)
 
 <#
 .SYNOPSIS
@@ -190,6 +193,30 @@ function Start-SecurityAudit {
 
 .EXAMPLE
     $defenderStatus = Get-WindowsDefenderStatus -IncludeScan
+#>
+<#
+.SYNOPSIS
+    Retrieves comprehensive Windows Defender security status and configuration
+
+.DESCRIPTION
+    Analyzes Windows Defender status including real-time protection, definition updates,
+    scan history, and threat detection. Calculates security score based on configuration
+    and provides detailed assessment of protection status.
+
+.PARAMETER IncludeScan
+    Include detailed scan history and threat detection information in the analysis
+
+.OUTPUTS
+    [hashtable] Defender status including Enabled, RealTimeProtectionEnabled, 
+    DefinitionsUpToDate, LastScanDate, ThreatsDetected, Score, and detailed Issues
+
+.EXAMPLE
+    $defenderStatus = Get-WindowsDefenderStatus -IncludeScan
+    Write-Host "Defender Score: $($defenderStatus.Score)/$($defenderStatus.MaxScore)"
+    
+.NOTES
+    Part of the SecurityAudit module for comprehensive system security assessment.
+    Requires Windows Defender PowerShell module for full functionality.
 #>
 function Get-WindowsDefenderStatus {
     [CmdletBinding()]

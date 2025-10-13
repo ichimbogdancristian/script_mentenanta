@@ -197,6 +197,28 @@ function Show-TaskSelectionMenu {
 .EXAMPLE
     $selection = Get-TaskNumberSelection -AvailableTasks $tasks
 #>
+<#
+.SYNOPSIS
+    Prompts user to select specific maintenance tasks by number
+
+.DESCRIPTION
+    Interactive function that prompts the user to enter task numbers for selective
+    execution. Validates input, handles comma-separated lists, and provides feedback
+    for invalid selections. Continues prompting until valid task numbers are provided.
+
+.PARAMETER AvailableTasks
+    Array of available maintenance tasks to choose from
+
+.OUTPUTS
+    [int[]] Array of selected task numbers (1-based indexing)
+
+.EXAMPLE
+    $selectedTasks = Get-TaskNumberSelection -AvailableTasks $tasks
+    
+.NOTES
+    Part of the MenuSystem module for interactive user input handling.
+    Supports comma-separated input and provides validation feedback.
+#>
 function Get-TaskNumberSelection {
     [CmdletBinding()]
     param(

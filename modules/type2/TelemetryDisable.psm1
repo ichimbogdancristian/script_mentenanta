@@ -1,4 +1,8 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for configuration access)
+#   - LoggingManager.psm1 (for structured logging)
+#   - DependencyManager.psm1 (for privilege validation)
 
 <#
 .SYNOPSIS
@@ -17,6 +21,13 @@
 #>
 
 using namespace System.Collections.Generic
+
+# Import required modules
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+if (Test-Path $DependencyManagerPath) {
+    Import-Module $DependencyManagerPath -Force
+}
 
 #region Public Functions
 
@@ -54,7 +65,7 @@ using namespace System.Collections.Generic
 #>
 function Disable-WindowsTelemetry {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]
+    [OutputType([bool])]
     param(
         [Parameter()]
         [switch]$DisableServices,
@@ -77,6 +88,14 @@ function Disable-WindowsTelemetry {
 
     Write-Information "🔒 Starting Windows telemetry and privacy hardening..." -InformationAction Continue
     $startTime = Get-Date
+    
+    # Check for administrator privileges before proceeding
+    try {
+        Assert-AdminPrivileges -Operation "Windows telemetry and privacy configuration"
+    } catch {
+        Write-Error "Administrator privileges are required for telemetry disabling operations: $_"
+        return $false
+    }
 
     if ($DryRun) {
         Write-Information "  🧪 DRY RUN MODE - No changes will be applied" -InformationAction Continue
@@ -129,7 +148,7 @@ function Disable-WindowsTelemetry {
         if ($DisableCortana) {
             Write-Information "  🎤 Disabling Cortana..." -InformationAction Continue
             $cortanaResults = Disable-CortanaFeature -DryRun:$DryRun
-            Merge-Results -Results $results -NewResults $cortanaResults -Category 'Features'
+            Merge-Result -Results $results -NewResults $cortanaResults -Category 'Features'
         }
 
         # Disable location tracking if requested
@@ -146,15 +165,28 @@ function Disable-WindowsTelemetry {
         Write-Information "  $statusIcon Privacy hardening completed in $([math]::Round($duration, 2))s" -InformationAction Continue
         Write-Information "    📊 Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
 
-        if ($results.Failed -gt 0) {
+        $success = $results.Failed -eq 0
+        if (-not $success) {
             Write-Warning "    ❌ Some operations failed. Check logs for details."
         }
 
-        return $results
+        # Log detailed results for audit trails
+        Write-Verbose "Telemetry disable operation details: $(ConvertTo-Json $results -Depth 3)"
+        Write-Verbose "Privacy hardening completed successfully"
+        
+        return $success
     }
     catch {
-        Write-Error "Privacy hardening failed: $_"
-        throw
+        $errorMessage = "❌ Privacy hardening failed: $($_.Exception.Message)"
+        Write-Error $errorMessage
+        Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Type 2 module returns boolean for failure
+        return $false
+    }
+    finally {
+        $duration = ((Get-Date) - $startTime).TotalSeconds
+        Write-Verbose "Privacy hardening operation completed in $([math]::Round($duration, 2)) seconds"
     }
 }
 

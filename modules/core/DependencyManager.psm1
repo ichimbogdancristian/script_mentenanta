@@ -291,12 +291,19 @@ function Test-PowerShell7Installation {
         # Check if PowerShell 7 is available in PATH
         $pwshPath = Get-Command 'pwsh' -ErrorAction SilentlyContinue
         if ($pwshPath) {
-            $versionOutput = & pwsh --version 2>$null
-            if ($versionOutput -match 'PowerShell\s+([\d\.]+)') {
+            $versionOutput = & pwsh --version 2>&1
+            if ($LASTEXITCODE -eq 0 -and $versionOutput -match 'PowerShell\s+([\d\.]+)') {
                 return @{
                     Status  = 'Installed'
                     Version = $matches[1]
                     Error   = $null
+                }
+            }
+            elseif ($LASTEXITCODE -ne 0) {
+                return @{
+                    Status  = 'Error'
+                    Version = $null
+                    Error   = "pwsh command failed with exit code: $LASTEXITCODE"
                 }
             }
         }
@@ -380,12 +387,19 @@ function Test-WinGetInstallation {
     try {
         $wingetPath = Get-Command 'winget' -ErrorAction SilentlyContinue
         if ($wingetPath) {
-            $versionOutput = & winget --version 2>$null
-            if ($versionOutput -match 'v([\d\.]+)') {
+            $versionOutput = & winget --version 2>&1
+            if ($LASTEXITCODE -eq 0 -and $versionOutput -match 'v([\d\.]+)') {
                 return @{
                     Status  = 'Installed'
                     Version = $matches[1]
                     Error   = $null
+                }
+            }
+            elseif ($LASTEXITCODE -ne 0) {
+                return @{
+                    Status  = 'Error'
+                    Version = $null
+                    Error   = "winget command failed with exit code: $LASTEXITCODE"
                 }
             }
         }
@@ -658,12 +672,19 @@ function Test-ChocolateyInstallation {
     try {
         $chocoPath = Get-Command 'choco' -ErrorAction SilentlyContinue
         if ($chocoPath) {
-            $versionOutput = & choco --version 2>$null
-            if ($versionOutput -match '([\d\.]+)') {
+            $versionOutput = & choco --version 2>&1
+            if ($LASTEXITCODE -eq 0 -and $versionOutput -match '([\d\.]+)') {
                 return @{
                     Status  = 'Installed'
                     Version = $matches[1]
                     Error   = $null
+                }
+            }
+            elseif ($LASTEXITCODE -ne 0) {
+                return @{
+                    Status  = 'Error'
+                    Version = $null
+                    Error   = "choco command failed with exit code: $LASTEXITCODE"
                 }
             }
         }
@@ -685,8 +706,84 @@ function Test-ChocolateyInstallation {
 
 #endregion
 
+#region Administrative Privilege Functions
+
+<#
+.SYNOPSIS
+    Tests if the current PowerShell session has administrator privileges
+
+.DESCRIPTION
+    Checks if the current user is running with administrative privileges by
+    testing membership in the Administrators group.
+
+.EXAMPLE
+    if (Test-AdminPrivileges) {
+        Write-Host "Administrator privileges confirmed"
+    }
+
+.OUTPUTS
+    [bool] True if running as administrator, False otherwise
+#>
+function Test-AdminPrivileges {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+    
+    try {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [Security.Principal.WindowsPrincipal]$identity
+        $adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
+        
+        $isAdmin = $principal.IsInRole($adminRole)
+        
+        Write-Verbose "Administrator privilege check: $isAdmin"
+        return $isAdmin
+    }
+    catch {
+        Write-Warning "Failed to check administrator privileges: $_"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Asserts that administrator privileges are available and throws if not
+
+.DESCRIPTION
+    Checks for administrator privileges and throws a terminating error if not found.
+    This function should be called at the start of operations that require elevated access.
+
+.PARAMETER Operation
+    Name of the operation requiring administrator privileges (for error messages)
+
+.EXAMPLE
+    Assert-AdminPrivileges -Operation "Registry modification"
+
+.OUTPUTS
+    None (throws on failure)
+#>
+function Assert-AdminPrivileges {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Operation = "This operation"
+    )
+    
+    if (-not (Test-AdminPrivileges)) {
+        $errorMessage = "$Operation requires administrator privileges. Please run PowerShell as Administrator."
+        Write-Error $errorMessage -Category PermissionDenied -ErrorAction Stop
+    }
+    
+    Write-Verbose "✓ Administrator privileges confirmed for: $Operation"
+}
+
+#endregion
+
 # Export module functions
 Export-ModuleMember -Function @(
     'Install-AllDependencies',
-    'Get-DependencyStatus'
+    'Get-DependencyStatus',
+    'Test-AdminPrivileges',
+    'Assert-AdminPrivileges'
 )

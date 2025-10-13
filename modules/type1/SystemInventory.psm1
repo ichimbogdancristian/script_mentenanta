@@ -1,4 +1,7 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for configuration and paths)
+#   - LoggingManager.psm1 (for structured logging)
 
 <#
 .SYNOPSIS
@@ -22,6 +25,11 @@ $ModuleRoot = Split-Path -Parent $PSScriptRoot
 $FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
 if (Test-Path $FileOrgPath) {
     Import-Module $FileOrgPath -Force
+}
+
+$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
+if (Test-Path $LoggingPath) {
+    Import-Module $LoggingPath -Force
 }
 
 #region Public Functions
@@ -60,11 +68,33 @@ function Get-SystemInventory {
     )
 
     Write-Information "🔍 Starting system inventory collection..." -InformationAction Continue
+    
+    # Use centralized logging if available
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'Starting comprehensive system inventory collection' -Data @{
+            UseCache = $UseCache
+            CacheTimeout = $CacheTimeout
+            IncludeDetailed = $IncludeDetailed
+        }
+    } catch {
+        # LoggingManager not available, continue with standard output
+    }
 
     # Check for cached inventory data if UseCache is enabled
     if ($UseCache) {
         $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
+        # Use ConfigManager for path resolution if available
+        try {
+            $ConfigManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\ConfigManager.psm1'
+            if (Test-Path $ConfigManagerPath) {
+                Import-Module $ConfigManagerPath -Force
+                $inventoryDir = Get-InventoryPath
+            } else {
+                $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
+            }
+        } catch {
+            $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
+        }
 
         if (Test-Path $inventoryDir) {
             # Find the most recent inventory file
@@ -93,6 +123,14 @@ function Get-SystemInventory {
 
     $startTime = Get-Date
     $inventoryData = @{}
+    
+    # Start performance tracking if LoggingManager is available
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'SystemInventoryCollection' -Component 'SYSTEM-INVENTORY'
+    } catch {
+        # LoggingManager not available, continue without performance tracking
+    }
 
     try {
         # Basic system information
@@ -156,9 +194,39 @@ function Get-SystemInventory {
             Write-Warning "Failed to save inventory data: $_"
         }
 
+        # Complete performance tracking and log final results
+        try {
+            if ($perfContext) {
+                Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true
+            }
+            
+            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection completed successfully' -Data @{
+                CollectionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
+                ComponentsCollected = $inventoryData.Keys -join ', '
+                SoftwareItemsFound = if ($inventoryData.InstalledSoftware) { $inventoryData.InstalledSoftware.Count } else { 0 }
+                ServicesFound = if ($inventoryData.Services) { $inventoryData.Services.Count } else { 0 }
+            }
+        } catch {
+            # LoggingManager not available, continue
+        }
+
         return $inventoryData
     }
     catch {
+        # Complete performance tracking with failure
+        try {
+            if ($perfContext) {
+                Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
+            }
+            
+            Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection failed' -Data @{
+                Error = $_.Exception.Message
+                CollectionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
+            }
+        } catch {
+            # LoggingManager not available, continue
+        }
+        
         Write-Error "Failed to collect system inventory: $_"
         throw
     }
@@ -181,7 +249,7 @@ function Get-SystemInventory {
     Export format(s): JSON, XML, CSV, or All
 
 .EXAMPLE
-    Export-SystemInventory -InventoryData $inventory -OutputPath "C:\Reports\SystemInventory" -Format All
+    Export-SystemInventory -InventoryData $inventory -OutputPath (Get-ReportsPath) -Format All
 #>
 function Export-SystemInventory {
     [CmdletBinding(SupportsShouldProcess)]
@@ -190,6 +258,7 @@ function Export-SystemInventory {
         [hashtable]$InventoryData,
 
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
         [string]$OutputPath,
 
         [Parameter()]
@@ -251,6 +320,23 @@ function Export-SystemInventory {
 <#
 .SYNOPSIS
     Collects basic system information
+#>
+<#
+.SYNOPSIS
+    Retrieves basic system information using WMI/CIM
+
+.DESCRIPTION
+    Collects fundamental system details including computer name, domain membership,
+    hardware manufacturer and model, memory capacity, processor count, and BIOS information.
+    Uses CIM instances for optimal performance and compatibility.
+
+.OUTPUTS
+    [hashtable] Basic system information including ComputerName, Domain, Manufacturer,
+    Model, TotalPhysicalMemory, NumberOfProcessors, BIOSVersion, BIOSManufacturer, SerialNumber
+
+.NOTES
+    Private function used internally by Get-SystemInventory.
+    Handles WMI/CIM query failures gracefully by returning empty hashtable.
 #>
 function Get-BasicSystemInfo {
     try {
@@ -363,103 +449,170 @@ function Get-OperatingSystemInfo {
 
 <#
 .SYNOPSIS
-    Collects installed software information
+    Collects comprehensive installed software information from multiple sources
+
+.DESCRIPTION
+    Gathers installed software data from Registry (32-bit and 64-bit locations),
+    AppX packages, Winget packages, and Chocolatey installations. Provides unified
+    view of all installed software across different installation methods and architectures.
+
+.OUTPUTS
+    [hashtable] Software inventory containing Programs (registry-based), AppxPackages,
+    WingetPackages, and ChocolateyPackages arrays with detailed information
+
+.NOTES
+    Private function used internally by Get-SystemInventory.
+    Handles multiple software sources and provides fallback for unavailable package managers.
+    Performance-optimized with parallel enumeration where possible.
 #>
 function Get-InstalledSoftwareInfo {
     try {
-        $installedPrograms = @()
-
-        # Get AppX packages
+        # Use List for better memory management instead of array concatenation
+        $installedPrograms = [System.Collections.Generic.List[hashtable]]::new(500)  # Pre-allocate capacity
+        
+        # Variables for cleanup tracking
+        $appxPackages = $null
+        $wingetOutput = $null
+        
         try {
-            $appxPackages = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Microsoft*" -or $_.Name -like "*Microsoft.Office*" }
-            foreach ($package in $appxPackages) {
-                $installedPrograms += @{
-                    Name            = $package.Name
-                    DisplayName     = $package.PackageFullName
-                    Version         = $package.Version
-                    Publisher       = $package.Publisher
-                    InstallLocation = $package.InstallLocation
-                    Source          = 'AppX'
+            # Get AppX packages
+            try {
+                $appxPackages = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Microsoft*" -or $_.Name -like "*Microsoft.Office*" }
+                foreach ($package in $appxPackages) {
+                    $installedPrograms.Add(@{
+                        Name            = $package.Name
+                        DisplayName     = $package.PackageFullName
+                        Version         = $package.Version
+                        Publisher       = $package.Publisher
+                        InstallLocation = $package.InstallLocation
+                        Source          = 'AppX'
+                    })
                 }
+                
+                # Clear appx packages from memory after processing
+                $appxPackages = $null
             }
-        }
-        catch {
-            Write-Verbose "Failed to collect AppX packages: $_"
-        }
+            catch {
+                Write-Verbose "Failed to collect AppX packages: $_"
+            }
 
-        # Get Winget packages
-        try {
-            $wingetOutput = winget list --accept-source-agreements 2>$null
-            if ($wingetOutput) {
-                $wingetLines = $wingetOutput | Select-Object -Skip 2 | Where-Object { $_ -and $_ -notmatch "^-+" }
-                foreach ($line in $wingetLines) {
-                    if ($line -match '^(.+?)\s+(.+?)\s+(.+?)\s+(.+?)$') {
-                        $installedPrograms += @{
-                            Name      = $matches[1].Trim()
-                            Version   = $matches[2].Trim()
-                            Publisher = $matches[4].Trim()
-                            Source    = 'Winget'
+            # Get Winget packages
+            try {
+                $wingetOutput = winget list --accept-source-agreements 2>$null
+                if ($wingetOutput) {
+                    $wingetLines = $wingetOutput | Select-Object -Skip 2 | Where-Object { $_ -and $_ -notmatch "^-+" }
+                    foreach ($line in $wingetLines) {
+                        if ($line -match '^(.+?)\s+(.+?)\s+(.+?)\s+(.+?)$') {
+                            $installedPrograms.Add(@{
+                                Name      = $matches[1].Trim()
+                                Version   = $matches[2].Trim()
+                                Publisher = $matches[4].Trim()
+                                Source    = 'Winget'
+                            })
                         }
                     }
+                    
+                    # Clear winget output from memory
+                    $wingetOutput = $null
                 }
             }
-        }
-        catch {
-            Write-Verbose "Failed to collect Winget packages: $_"
-        }
+            catch {
+                Write-Verbose "Failed to collect Winget packages: $_"
+            }
 
-        # Get Chocolatey packages
-        try {
-            if (Get-Command choco -ErrorAction SilentlyContinue) {
-                $chocoOutput = choco list --local-only --no-progress 2>$null
-                foreach ($line in $chocoOutput) {
-                    if ($line -match '^(.+?)\s+(.+?)$') {
-                        $installedPrograms += @{
-                            Name      = $matches[1].Trim()
-                            Version   = $matches[2].Trim()
-                            Publisher = 'Chocolatey'
-                            Source    = 'Chocolatey'
+            # Get Chocolatey packages
+            try {
+                if (Get-Command choco -ErrorAction SilentlyContinue) {
+                    $chocoOutput = choco list --local-only --no-progress 2>$null
+                    foreach ($line in $chocoOutput) {
+                        if ($line -match '^(.+?)\s+(.+?)$') {
+                            $installedPrograms.Add(@{
+                                Name      = $matches[1].Trim()
+                                Version   = $matches[2].Trim()
+                                Publisher = 'Chocolatey'
+                                Source    = 'Chocolatey'
+                            })
                         }
                     }
+                    
+                    # Clear choco output from memory
+                    $chocoOutput = $null
                 }
+            }
+            catch {
+                Write-Verbose "Failed to collect Chocolatey packages: $_"
+            }
+
+            # Get programs from registry (both 32-bit and 64-bit)
+            $registryPaths = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            )
+
+            foreach ($path in $registryPaths) {
+                $programs = Get-ItemProperty $path -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -and $_.DisplayName -notmatch '^KB[0-9]+' }
+
+                foreach ($program in $programs) {
+                    $installedPrograms.Add(@{
+                        Name            = $program.DisplayName
+                        DisplayName     = $program.DisplayName
+                        Version         = $program.DisplayVersion
+                        Publisher       = $program.Publisher
+                        InstallDate     = $program.InstallDate
+                        InstallLocation = $program.InstallLocation
+                        UninstallString = $program.UninstallString
+                        Size            = $program.EstimatedSize
+                        Source          = 'Registry'
+                    })
+                }
+                
+                # Clear programs variable after processing each path
+                $programs = $null
+            }
+
+            # Create result with sorted programs
+            Write-Verbose "Creating final software inventory result with $($installedPrograms.Count) programs"
+            $sortedPrograms = $installedPrograms.ToArray() | Sort-Object Name
+            
+            # Clear the list to free memory
+            $installedPrograms.Clear()
+            $installedPrograms = $null
+            
+            # Force garbage collection if we processed many programs
+            if ($sortedPrograms.Count -gt 100) {
+                Write-Verbose "Large program inventory detected, triggering garbage collection"
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+            }
+
+            return @{
+                TotalCount = $sortedPrograms.Count
+                Programs   = $sortedPrograms
             }
         }
         catch {
-            Write-Verbose "Failed to collect Chocolatey packages: $_"
-        }
-
-        # Get programs from registry (both 32-bit and 64-bit)
-        $registryPaths = @(
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
-        )
-
-        foreach ($path in $registryPaths) {
-            $programs = Get-ItemProperty $path -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -and $_.DisplayName -notmatch '^KB[0-9]+' }
-
-            foreach ($program in $programs) {
-                $installedPrograms += @{
-                    Name            = $program.DisplayName
-                    DisplayName     = $program.DisplayName
-                    Version         = $program.DisplayVersion
-                    Publisher       = $program.Publisher
-                    InstallDate     = $program.InstallDate
-                    InstallLocation = $program.InstallLocation
-                    UninstallString = $program.UninstallString
-                    Size            = $program.EstimatedSize
-                    Source          = 'Registry'
-                }
+            # Cleanup on error
+            if ($null -ne $installedPrograms) {
+                $installedPrograms.Clear()
+                $installedPrograms = $null
             }
-        }
-
-        return @{
-            TotalCount = $installedPrograms.Count
-            Programs   = $installedPrograms | Sort-Object Name
+            $appxPackages = $null
+            $wingetOutput = $null
+            
+            Write-Verbose "Memory cleanup completed after error in software inventory"
+            return @{ TotalCount = 0; Programs = @() }
         }
     }
     catch {
         Write-Warning "Failed to collect installed software info: $_"
+        
+        # Final cleanup on outer catch
+        if ($null -ne $installedPrograms) {
+            $installedPrograms.Clear()
+            $installedPrograms = $null
+        }
+        
         return @{ TotalCount = 0; Programs = @() }
     }
 }

@@ -1,4 +1,6 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for configuration access)
 
 <#
 .SYNOPSIS
@@ -18,22 +20,78 @@
 using namespace System.Collections.Generic
 using namespace System.IO
 
+# Import required modules for file locking
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
+if (Test-Path $LoggingManagerPath) {
+    Import-Module $LoggingManagerPath -Force
+}
+
 #region Module Variables
 
-# Use global context to share state across all modules
-if (-not $Global:FileOrgContext) {
-    $Global:FileOrgContext = @{
-        BaseDir            = $null
-        CurrentSession     = $null
-        SessionDir         = $null
-        CleanupPolicy      = $null
-        DirectoryStructure = @{
-            Logs    = @('session.log', 'orchestrator.log', 'modules', 'performance')
-            Data    = @('inventory', 'apps', 'security')
-            Reports = @()
-            Temp    = @()
-        }
+# Initialize script-scoped context to reduce global state reliance
+$script:FileOrgContext = @{
+    BaseDir            = $null
+    CurrentSession     = $null
+    SessionDir         = $null
+    CleanupPolicy      = $null
+    DirectoryStructure = @{
+        Logs    = @('session.log', 'orchestrator.log', 'modules', 'performance')
+        Data    = @('inventory', 'apps', 'security')
+        Reports = @()
+        Temp    = @()
     }
+}
+
+# Maintain backwards compatibility with global context
+if (-not $Global:FileOrgContext) {
+    $Global:FileOrgContext = $script:FileOrgContext
+}
+
+#endregion
+
+#region Private Helper Functions
+
+<#
+.SYNOPSIS
+    Validates and gets the current file organization context
+#>
+function Get-FileOrgContext {
+    [CmdletBinding()]
+    param()
+    
+    # Use script context primarily, fallback to global if needed
+    $context = if ($script:FileOrgContext.BaseDir) { 
+        $script:FileOrgContext 
+    } 
+    elseif ($Global:FileOrgContext -and $Global:FileOrgContext.BaseDir) { 
+        $Global:FileOrgContext 
+    } 
+    else { 
+        $null 
+    }
+    
+    if (-not $context -or -not $context.SessionDir) {
+        Write-Error "File organization not initialized. Call Initialize-FileOrganization first." -ErrorAction Stop
+    }
+    
+    return $context
+}
+
+<#
+.SYNOPSIS
+    Updates the file organization context safely
+#>
+function Set-FileOrgContext {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Context
+    )
+    
+    # Update both script and global contexts for compatibility
+    $script:FileOrgContext = $Context.Clone()
+    $Global:FileOrgContext = $Context.Clone()
 }
 
 #endregion
@@ -61,26 +119,42 @@ function Initialize-FileOrganization {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [ValidateScript({Test-Path $_ -PathType Container})]
         [string]$BaseDir,
 
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [ValidatePattern('^\d{8}-\d{6}$')]
         [string]$SessionId
     )
 
     try {
-        # Set up base context
-        $Global:FileOrgContext.BaseDir = Join-Path $BaseDir 'temp_files'
-        $Global:FileOrgContext.CurrentSession = $SessionId
-        $Global:FileOrgContext.SessionDir = Join-Path $Global:FileOrgContext.BaseDir "session-$SessionId"
+        # Create new context instead of directly modifying global state
+        $newContext = @{
+            BaseDir            = Join-Path $BaseDir 'temp_files'
+            CurrentSession     = $SessionId
+            SessionDir         = Join-Path (Join-Path $BaseDir 'temp_files') "session-$SessionId"
+            CleanupPolicy      = $null
+            DirectoryStructure = @{
+                Logs    = @('session.log', 'orchestrator.log', 'modules', 'performance')
+                Data    = @('inventory', 'apps', 'security')
+                Reports = @()
+                Temp    = @()
+            }
+        }
 
         # Ensure base directory exists
-        if (-not (Test-Path $Global:FileOrgContext.BaseDir)) {
-            New-Item -Path $Global:FileOrgContext.BaseDir -ItemType Directory -Force | Out-Null
-            Write-Verbose "Created temp_files base directory: $($Global:FileOrgContext.BaseDir)"
+        if (-not (Test-Path $newContext.BaseDir)) {
+            New-Item -Path $newContext.BaseDir -ItemType Directory -Force | Out-Null
+            Write-Verbose "Created temp_files base directory: $($newContext.BaseDir)"
         }
 
         # Create session directory structure
-        New-SessionDirectoryStructure -SessionPath $Global:FileOrgContext.SessionDir
+        New-SessionDirectoryStructure -SessionPath $newContext.SessionDir
+
+        # Set the context using our helper function
+        Set-FileOrgContext -Context $newContext
 
         # Load or create cleanup policy
         Initialize-CleanupPolicy
@@ -90,7 +164,7 @@ function Initialize-FileOrganization {
 
         Write-Information "📁 File organization initialized for session: $SessionId" -InformationAction Continue
         # Return the context for validation
-        Write-Verbose "Session directory: $($Global:FileOrgContext.SessionDir)"
+        Write-Verbose "Session directory: $($newContext.SessionDir)"
 
         return $true
     }
@@ -140,23 +214,26 @@ function Get-OrganizedFilePath {
         [string]$Category,
 
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
         [string]$FileName,
 
         [Parameter()]
         [switch]$IncludeTimestamp
     )
 
-    if (-not $Global:FileOrgContext.SessionDir) {
+    # Get current context using helper function
+    $context = Get-FileOrgContext
+    if (-not $context.SessionDir) {
         Write-Error "File organization not initialized. Call Initialize-FileOrganization first." -ErrorAction Continue
         return $null
     }
 
     # Build base path
     $basePath = switch ($FileType.ToLower()) {
-        'log' { Join-Path $Global:FileOrgContext.SessionDir 'logs' }
-        'data' { Join-Path $Global:FileOrgContext.SessionDir 'data' }
-        'report' { Join-Path $Global:FileOrgContext.SessionDir 'reports' }
-        'temp' { Join-Path $Global:FileOrgContext.SessionDir 'temp' }
+        'log' { Join-Path $context.SessionDir 'logs' }
+        'data' { Join-Path $context.SessionDir 'data' }
+        'report' { Join-Path $context.SessionDir 'reports' }
+        'temp' { Join-Path $context.SessionDir 'temp' }
     }
 
     # Add category if specified
@@ -172,13 +249,13 @@ function Get-OrganizedFilePath {
 
     # Process filename
     $processedFileName = $FileName
-    if ($IncludeTimestamp -and $Global:FileOrgContext.CurrentSession) {
+    if ($IncludeTimestamp -and $context.CurrentSession) {
         $nameWithoutExt = [Path]::GetFileNameWithoutExtension($FileName)
         $extension = [Path]::GetExtension($FileName)
         
         # Add timestamp if not already present
         if ($nameWithoutExt -notmatch '\d{8}-\d{6}$') {
-            $processedFileName = "$nameWithoutExt-$($Global:FileOrgContext.CurrentSession)$extension"
+            $processedFileName = "$nameWithoutExt-$($context.CurrentSession)$extension"
         }
     }
 
@@ -256,10 +333,21 @@ function Save-OrganizedFile {
             $filePath = [Path]::ChangeExtension($filePath, $extension)
         }
 
-        # Save data in specified format
+        # Save data in specified format with file locking
         switch ($Format) {
             'JSON' { 
-                $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8
+                try {
+                    $result = Invoke-WithFileLock -FilePath $filePath -TimeoutSeconds 10 -ScriptBlock {
+                        $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8
+                    }
+                    if ($null -eq $result) {
+                        Write-Warning "File lock failed for JSON write, using direct write: $filePath"
+                        $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8
+                    }
+                } catch {
+                    Write-Warning "Failed to use file locking for JSON write: $_"
+                    $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8
+                }
             }
             'Text' { 
                 # Handle both string content and objects
@@ -323,18 +411,20 @@ function Get-SessionFiles {
         [string]$Category
     )
 
-    if (-not $Global:FileOrgContext.BaseDir -or -not (Test-Path $Global:FileOrgContext.BaseDir)) {
+    # Get current context using helper function
+    $context = Get-FileOrgContext
+    if (-not $context.BaseDir -or -not (Test-Path $context.BaseDir)) {
         Write-Warning "temp_files directory not found or not initialized"
         return @()
     }
 
-    $sessionDirs = Get-ChildItem -Path $Global:FileOrgContext.BaseDir -Directory | 
+    $sessionDirs = Get-ChildItem -Path $context.BaseDir -Directory | 
     Where-Object { $_.Name -match '^session-\d{8}-\d{6}$' }
 
     $files = @()
     foreach ($sessionDir in $sessionDirs) {
         # Skip current session
-        if ($sessionDir.Name -eq "session-$($Global:FileOrgContext.CurrentSession)") {
+        if ($sessionDir.Name -eq "session-$($context.CurrentSession)") {
             continue
         }
 
@@ -412,21 +502,37 @@ function Initialize-CleanupPolicy {
     [CmdletBinding()]
     param()
 
-    $policyPath = Join-Path $Global:FileOrgContext.BaseDir 'cleanup-policy.json'
+    # Get current context using helper function
+    $context = Get-FileOrgContext
+    $policyPath = Join-Path $context.BaseDir 'cleanup-policy.json'
     
     if (Test-Path $policyPath) {
         try {
-            $Global:FileOrgContext.CleanupPolicy = Get-Content $policyPath | ConvertFrom-Json
+            $context.CleanupPolicy = Get-Content $policyPath | ConvertFrom-Json
+            Set-FileOrgContext -Context $context
             Write-Verbose "Loaded cleanup policy from: $policyPath"
         }
         catch {
             Write-Warning "Failed to load cleanup policy, using defaults"
-            $Global:FileOrgContext.CleanupPolicy = Get-DefaultCleanupPolicy
+            $context.CleanupPolicy = Get-DefaultCleanupPolicy
+            Set-FileOrgContext -Context $context
         }
     }
     else {
-        $Global:FileOrgContext.CleanupPolicy = Get-DefaultCleanupPolicy
-        $Global:FileOrgContext.CleanupPolicy | ConvertTo-Json -Depth 5 | Out-File -FilePath $policyPath -Encoding UTF8
+        $context.CleanupPolicy = Get-DefaultCleanupPolicy
+        Set-FileOrgContext -Context $context
+        try {
+            $result = Invoke-WithFileLock -FilePath $policyPath -TimeoutSeconds 10 -ScriptBlock {
+                $context.CleanupPolicy | ConvertTo-Json -Depth 5 | Out-File -FilePath $policyPath -Encoding UTF8
+            }
+            if ($null -eq $result) {
+                Write-Warning "File lock failed for cleanup policy write, using direct write: $policyPath"
+                $context.CleanupPolicy | ConvertTo-Json -Depth 5 | Out-File -FilePath $policyPath -Encoding UTF8
+            }
+        } catch {
+            Write-Warning "Failed to use file locking for cleanup policy write: $_"
+            $context.CleanupPolicy | ConvertTo-Json -Depth 5 | Out-File -FilePath $policyPath -Encoding UTF8
+        }
         Write-Verbose "Created default cleanup policy: $policyPath"
     }
 }
@@ -450,13 +556,15 @@ function Invoke-SessionCleanup {
     [CmdletBinding()]
     param()
 
-    if (-not $Global:FileOrgContext.CleanupPolicy.CleanupOnStartup) {
+    # Get current context using helper function
+    $context = Get-FileOrgContext
+    if (-not $context.CleanupPolicy.CleanupOnStartup) {
         return
     }
 
     try {
-        $policy = $Global:FileOrgContext.CleanupPolicy
-        $sessionDirs = Get-ChildItem -Path $Global:FileOrgContext.BaseDir -Directory | 
+        $policy = $context.CleanupPolicy
+        $sessionDirs = Get-ChildItem -Path $context.BaseDir -Directory | 
         Where-Object { $_.Name -match '^session-\d{8}-\d{6}$' } |
         Sort-Object Name -Descending
 
@@ -482,7 +590,7 @@ function Invoke-SessionCleanup {
                     $reports = Get-ChildItem -Path $reportsDir -Filter "*maintenance-report*"
                     foreach ($report in $reports) {
                         $archiveName = "$($session.Name)-$($report.Name)"
-                        $archivePath = Join-Path $Global:FileOrgContext.BaseDir $archiveName
+                        $archivePath = Join-Path $context.BaseDir $archiveName
                         Copy-Item -Path $report.FullName -Destination $archivePath -Force -ErrorAction SilentlyContinue
                     }
                 }

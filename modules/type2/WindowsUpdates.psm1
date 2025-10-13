@@ -1,4 +1,8 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for configuration access)
+#   - LoggingManager.psm1 (for structured logging)
+#   - DependencyManager.psm1 (for PSWindowsUpdate module)
 
 <#
 .SYNOPSIS
@@ -17,6 +21,13 @@
 #>
 
 using namespace System.Collections.Generic
+
+# Import required modules
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+if (Test-Path $DependencyManagerPath) {
+    Import-Module $DependencyManagerPath -Force
+}
 
 #region Public Functions
 
@@ -82,7 +93,7 @@ using namespace System.Collections.Generic
 #>
 function Install-WindowsUpdates {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]
+    [OutputType([bool])]
     param(
         [Parameter()]
         [switch]$ExcludePreviews,
@@ -100,6 +111,14 @@ function Install-WindowsUpdates {
 
     Write-Information "🔄 Starting Windows Updates check and installation..." -InformationAction Continue
     $startTime = Get-Date
+    
+    # Check for administrator privileges before proceeding
+    try {
+        Assert-AdminPrivileges -Operation "Windows Updates installation"
+    } catch {
+        Write-Error "Administrator privileges are required for Windows Updates operations: $_"
+        return $false
+    }
 
     # Initialize results tracking
     $results = @{
@@ -149,12 +168,24 @@ function Install-WindowsUpdates {
             }
         }
 
-        return $results
+        $success = $results.UpdatesFailed -eq 0 && ($results.UpdatesInstalled -gt 0 || $results.UpdatesFound -eq 0)
+        # Log detailed results for audit trails
+        Write-Verbose "Windows Updates operation details: $(ConvertTo-Json $results -Depth 3)"
+        Write-Verbose "Windows Updates operation completed successfully"
+        
+        return $success
     }
     catch {
-        Write-Error "Windows Updates operation failed: $_"
-        $results.UpdatesFailed = $results.UpdatesFound
-        return $results
+        $errorMessage = "❌ Windows Updates operation failed: $($_.Exception.Message)"
+        Write-Error $errorMessage
+        Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Type 2 module returns boolean for failure
+        return $false
+    }
+    finally {
+        $duration = ((Get-Date) - $startTime).TotalSeconds
+        Write-Verbose "Windows Updates operation completed in $([math]::Round($duration, 2)) seconds"
     }
 }
 

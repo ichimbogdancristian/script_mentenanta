@@ -1,4 +1,8 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for essential apps configuration)
+#   - LoggingManager.psm1 (for structured logging)
+#   - DependencyManager.psm1 (for package management)
 
 <#
 .SYNOPSIS
@@ -45,6 +49,11 @@ if (Test-Path $FileOrgPath) {
     Import-Module $FileOrgPath -Force
 }
 
+$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+if (Test-Path $DependencyManagerPath) {
+    Import-Module $DependencyManagerPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -72,19 +81,21 @@ if (Test-Path $FileOrgPath) {
     Number of parallel installations to run (default: 3)
 
 .EXAMPLE
-    $results = Install-EssentialApplications -Categories @('Browsers', 'Productivity')
+    $results = Install-EssentialApplication -Categories @('Browsers', 'Productivity')
 
 .EXAMPLE
-    $results = Install-EssentialApplications -CustomApps @('VSCode', 'Git') -DryRun
+    $results = Install-EssentialApplication -CustomApps @('VSCode', 'Git') -DryRun
 #>
 function Install-EssentialApplication {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]
+    [OutputType([bool])]
     param(
         [Parameter()]
+        [ValidateNotNullOrEmpty()]
         [string[]]$Categories = @('all'),
 
         [Parameter()]
+        [AllowEmptyCollection()]
         [string[]]$CustomApps = @(),
 
         [Parameter()]
@@ -100,8 +111,20 @@ function Install-EssentialApplication {
 
     Write-Information "📦 Starting essential applications installation..." -InformationAction Continue
     $startTime = Get-Date
+    
+    # Check for administrator privileges before proceeding
+    try {
+        Assert-AdminPrivileges -Operation "Essential applications installation"
+    } catch {
+        Write-Error "Administrator privileges are required for application installation: $_"
+        return $false
+    }
 
-    # Get essential apps from configuration
+    try {
+        $ErrorActionPreference = 'Stop'
+        Write-Verbose "Starting essential applications installation process"
+
+        # Get essential apps from configuration
     $essentialApps = Get-UnifiedEssentialAppsList -IncludeCategories $Categories
 
     # Add custom apps if specified
@@ -206,7 +229,26 @@ function Install-EssentialApplication {
     Write-Information "  $statusIcon Essential apps installation completed in $([math]::Round($duration, 2))s" -InformationAction Continue
     Write-Information "    📊 Total: $($results.TotalApps), Installed: $($results.Installed), Skipped: $($results.Skipped), Failed: $($results.Failed)" -InformationAction Continue
 
-    return $results
+        $success = $results.Failed -eq 0 && $results.Installed -gt 0
+        # Log detailed results for audit trails
+        Write-Verbose "Essential apps installation details: $(ConvertTo-Json $results -Depth 3)"
+        Write-Verbose "Essential applications installation completed successfully"
+        
+        return $success
+    }
+    catch {
+        $errorMessage = "❌ Essential applications installation failed: $($_.Exception.Message)"
+        Write-Error $errorMessage
+        Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Type 2 module returns boolean for failure
+        return $false
+    }
+    finally {
+        $ErrorActionPreference = 'Continue'
+        $duration = ((Get-Date) - $startTime).TotalSeconds
+        Write-Verbose "Essential applications installation completed in $([math]::Round($duration, 2)) seconds"
+    }
 }
 
 <#
@@ -335,7 +377,18 @@ function Save-AppDiffList {
 
     try {
         $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-        $tempDir = Join-Path $scriptRoot 'temp_files'
+        # Use ConfigManager for path resolution if available
+        try {
+            $ConfigManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\ConfigManager.psm1'
+            if (Test-Path $ConfigManagerPath) {
+                Import-Module $ConfigManagerPath -Force
+                $tempDir = Get-TempFilesPath
+            } else {
+                $tempDir = Join-Path $scriptRoot 'temp_files'
+            }
+        } catch {
+            $tempDir = Join-Path $scriptRoot 'temp_files'
+        }
         if (-not (Test-Path $tempDir)) { Write-Verbose "temp_files directory not found: $tempDir"; return }
 
         # Categorization

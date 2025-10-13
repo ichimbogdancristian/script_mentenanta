@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+# Module Dependencies: ConfigManager.psm1 (for path resolution)
 
 <#
 .SYNOPSIS
@@ -92,7 +93,14 @@ function Initialize-LoggingSystem {
             }
             else {
                 $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-                $logDir = Join-Path $scriptRoot "temp_files\logs"
+                # Import ConfigManager for path resolution
+                $ConfigManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\ConfigManager.psm1'
+                if (Test-Path $ConfigManagerPath) {
+                    Import-Module $ConfigManagerPath -Force -Global
+                    $logDir = Get-LogsPath
+                } else {
+                    $logDir = Join-Path $scriptRoot "temp_files\logs"
+                }
             }
 
             # Ensure log directory exists
@@ -556,14 +564,23 @@ function Write-FileLogEntry {
             $formattedMessage += " | OpId: $($LogEntry.OperationId)"
         }
 
-        # Thread-safe file writing
-        $mutex = [System.Threading.Mutex]::new($false, "LoggingManager_FileWrite")
-        try {
-            $mutex.WaitOne() | Out-Null
+        # Thread-safe file writing using enhanced file locking
+        $result = Invoke-WithFileLock -FilePath $script:LoggingContext.LogPath -TimeoutSeconds 10 -ScriptBlock {
             Add-Content -Path $script:LoggingContext.LogPath -Value $formattedMessage -Encoding UTF8
         }
-        finally {
-            $mutex.ReleaseMutex()
+        
+        if ($null -eq $result) {
+            Write-Verbose "Failed to acquire file lock for log writing, attempting fallback"
+            # Fallback to original mutex approach
+            $mutex = [System.Threading.Mutex]::new($false, "LoggingManager_FileWrite")
+            try {
+                $mutex.WaitOne(5000) | Out-Null  # 5 second timeout
+                Add-Content -Path $script:LoggingContext.LogPath -Value $formattedMessage -Encoding UTF8
+            }
+            finally {
+                $mutex.ReleaseMutex()
+                $mutex.Dispose()
+            }
         }
     }
     catch {
@@ -692,7 +709,12 @@ function New-ModuleLogFile {
         # Fallback to traditional path
         Write-Verbose "FileOrganizationManager not available, using fallback for module logs"
         $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        $logDir = Join-Path $scriptRoot "temp_files\logs"
+        # Use ConfigManager for path resolution if available
+        try {
+            $logDir = Get-LogsPath
+        } catch {
+            $logDir = Join-Path $scriptRoot "temp_files\logs"
+        }
         if (-not (Test-Path $logDir)) {
             New-Item -Path $logDir -ItemType Directory -Force | Out-Null
         }
@@ -817,7 +839,241 @@ function Write-ModuleLogEntry {
             if ($PSBoundParameters.ContainsKey('Success')) { $formattedEntry += " | Success: $Success" }
             if ($Details.Count -gt 0) { $formattedEntry += " | Details: $($Details | ConvertTo-Json -Compress)" }
 
-            Add-Content -Path $moduleLogPath -Value $formattedEntry -Encoding UTF8
+            # Use file locking for safe concurrent access
+            $result = Invoke-WithFileLock -FilePath $moduleLogPath -TimeoutSeconds 5 -ScriptBlock {
+                Add-Content -Path $moduleLogPath -Value $formattedEntry -Encoding UTF8
+            }
+            
+            if ($null -eq $result) {
+                Write-Verbose "File lock failed for module log, using direct write: $moduleLogPath"
+                Add-Content -Path $moduleLogPath -Value $formattedEntry -Encoding UTF8
+            }
+        }
+    }
+}
+
+#endregion
+
+#region File Locking Functions
+
+<#
+.SYNOPSIS
+    Acquires a file lock for safe concurrent access
+
+.DESCRIPTION
+    Creates a mutex-based file lock to prevent concurrent access to critical files
+    like logs and configuration files. Uses a combination of file locks and mutexes.
+
+.PARAMETER FilePath
+    The path to the file to lock
+
+.PARAMETER TimeoutSeconds
+    Maximum time to wait for the lock (default: 30 seconds)
+
+.EXAMPLE
+    $lockHandle = Get-FileLock -FilePath "C:\temp\logfile.txt"
+    if ($lockHandle) {
+        # Perform file operations
+        Release-FileLock -LockHandle $lockHandle
+    }
+
+.OUTPUTS
+    [hashtable] Lock handle containing mutex and file stream, or $null if failed
+#>
+function Get-FileLock {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$FilePath,
+
+        [Parameter()]
+        [ValidateRange(1, 300)]
+        [int]$TimeoutSeconds = 30
+    )
+
+    try {
+        Write-Verbose "Attempting to acquire file lock for: $FilePath"
+        
+        # Create a unique mutex name based on the file path
+        $mutexName = "Global\FileAccess_" + ($FilePath -replace '[\\/:*?"<>|]', '_')
+        $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+        
+        # Try to acquire the mutex
+        if ($mutex.WaitOne([TimeSpan]::FromSeconds($TimeoutSeconds))) {
+            Write-Verbose "✓ Mutex acquired for: $FilePath"
+            
+            # Ensure parent directory exists
+            $parentDir = Split-Path -Parent $FilePath
+            if ($parentDir -and -not (Test-Path $parentDir)) {
+                New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Create or open the file with exclusive access
+            try {
+                $fileStream = [System.IO.FileStream]::new(
+                    $FilePath,
+                    [System.IO.FileMode]::OpenOrCreate,
+                    [System.IO.FileAccess]::ReadWrite,
+                    [System.IO.FileShare]::None
+                )
+                
+                Write-Verbose "✓ File lock acquired for: $FilePath"
+                
+                return @{
+                    Mutex = $mutex
+                    FileStream = $fileStream
+                    FilePath = $FilePath
+                    AcquiredAt = Get-Date
+                }
+            }
+            catch {
+                Write-Warning "Failed to acquire file stream lock for $FilePath : $_"
+                $mutex.ReleaseMutex()
+                $mutex.Dispose()
+                return $null
+            }
+        }
+        else {
+            Write-Warning "Failed to acquire mutex for $FilePath within $TimeoutSeconds seconds"
+            $mutex.Dispose()
+            return $null
+        }
+    }
+    catch {
+        Write-Warning "Failed to create file lock for $FilePath : $_"
+        return $null
+    }
+}
+
+<#
+.SYNOPSIS
+    Releases a previously acquired file lock
+
+.DESCRIPTION
+    Properly releases both the file stream and mutex components of a file lock.
+
+.PARAMETER LockHandle
+    The lock handle returned from Get-FileLock
+
+.EXAMPLE
+    Release-FileLock -LockHandle $lockHandle
+#>
+function Release-FileLock {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        [hashtable]$LockHandle
+    )
+
+    if ($null -eq $LockHandle) {
+        Write-Verbose "Lock handle is null, nothing to release"
+        return
+    }
+
+    try {
+        Write-Verbose "Releasing file lock for: $($LockHandle.FilePath)"
+        
+        # Close file stream first
+        if ($LockHandle.FileStream) {
+            try {
+                $LockHandle.FileStream.Close()
+                $LockHandle.FileStream.Dispose()
+                Write-Verbose "✓ File stream released for: $($LockHandle.FilePath)"
+            }
+            catch {
+                Write-Warning "Failed to close file stream: $_"
+            }
+        }
+        
+        # Release mutex
+        if ($LockHandle.Mutex) {
+            try {
+                $LockHandle.Mutex.ReleaseMutex()
+                $LockHandle.Mutex.Dispose()
+                Write-Verbose "✓ Mutex released for: $($LockHandle.FilePath)"
+            }
+            catch {
+                Write-Warning "Failed to release mutex: $_"
+            }
+        }
+        
+        # Calculate lock duration for diagnostics
+        if ($LockHandle.AcquiredAt) {
+            $duration = (Get-Date) - $LockHandle.AcquiredAt
+            Write-Verbose "Lock held for: $([math]::Round($duration.TotalSeconds, 2)) seconds"
+        }
+    }
+    catch {
+        Write-Warning "Error releasing file lock: $_"
+    }
+}
+
+<#
+.SYNOPSIS
+    Executes a script block with file locking
+
+.DESCRIPTION
+    Safely executes a script block while holding a file lock, ensuring proper cleanup.
+
+.PARAMETER FilePath
+    The path to the file to lock
+
+.PARAMETER ScriptBlock
+    The script block to execute while holding the lock
+
+.PARAMETER TimeoutSeconds
+    Maximum time to wait for the lock (default: 30 seconds)
+
+.EXAMPLE
+    Invoke-WithFileLock -FilePath "C:\temp\config.json" -ScriptBlock {
+        $content = Get-Content $FilePath | ConvertFrom-Json
+        $content.LastModified = Get-Date
+        $content | ConvertTo-Json | Set-Content $FilePath
+    }
+
+.OUTPUTS
+    The result of the script block execution, or $null if lock acquisition failed
+#>
+function Invoke-WithFileLock {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$ScriptBlock,
+
+        [Parameter()]
+        [ValidateRange(1, 300)]
+        [int]$TimeoutSeconds = 30
+    )
+
+    $lockHandle = $null
+    try {
+        Write-Verbose "Executing with file lock for: $FilePath"
+        
+        $lockHandle = Get-FileLock -FilePath $FilePath -TimeoutSeconds $TimeoutSeconds
+        if ($null -eq $lockHandle) {
+            Write-Warning "Failed to acquire file lock for: $FilePath"
+            return $null
+        }
+        
+        # Execute the script block
+        $result = & $ScriptBlock
+        Write-Verbose "✓ Script block executed successfully with file lock"
+        return $result
+    }
+    catch {
+        Write-Error "Error executing script block with file lock: $_"
+        return $null
+    }
+    finally {
+        if ($lockHandle) {
+            Release-FileLock -LockHandle $lockHandle
         }
     }
 }
@@ -833,5 +1089,8 @@ Export-ModuleMember -Function @(
     'Get-PerformanceMetrics',
     'Export-LogData',
     'New-ModuleLogFile',
-    'Write-ModuleLogEntry'
+    'Write-ModuleLogEntry',
+    'Get-FileLock',
+    'Release-FileLock',
+    'Invoke-WithFileLock'
 )

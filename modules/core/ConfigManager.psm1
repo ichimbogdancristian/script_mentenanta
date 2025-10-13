@@ -42,6 +42,8 @@ function Initialize-ConfigSystem {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [ValidateScript({Test-Path $_ -PathType Container})]
         [string]$ConfigRootPath
     )
 
@@ -84,6 +86,7 @@ function Initialize-ConfigSystem {
 #>
 function Get-MainConfiguration {
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param()
 
     if ($null -ne $script:LoadedConfig) {
@@ -103,10 +106,35 @@ function Get-MainConfiguration {
         $configJson = Get-Content $configPath -Raw -ErrorAction Stop
         $config = $configJson | ConvertFrom-Json -ErrorAction Stop
 
+        # Convert to hashtable for validation
+        $configHash = @{}
+        foreach ($property in $config.PSObject.Properties) {
+            if ($property.Value -is [PSCustomObject]) {
+                $configHash[$property.Name] = @{}
+                foreach ($subProperty in $property.Value.PSObject.Properties) {
+                    $configHash[$property.Name][$subProperty.Name] = $subProperty.Value
+                }
+            } else {
+                $configHash[$property.Name] = $property.Value
+            }
+        }
+
+        # Validate configuration schema
+        Write-Verbose "Validating main configuration schema"
+        $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'MainConfig'
+        
+        if (-not $validationResult.IsValid) {
+            Write-Warning "Main configuration validation failed with $($validationResult.Issues.Count) issues:"
+            foreach ($issue in $validationResult.Issues) {
+                Write-Warning "  - $issue"
+            }
+            Write-Warning "Proceeding with default configuration values for invalid properties"
+        }
+
         # Merge with defaults to ensure all required properties exist
         $script:LoadedConfig = Merge-ConfigurationWithDefaults -Config $config
 
-        Write-Verbose "Main configuration loaded successfully"
+        Write-Verbose "Main configuration loaded and validated successfully"
         return $script:LoadedConfig
     }
     catch {
@@ -129,6 +157,7 @@ function Get-MainConfiguration {
 #>
 function Get-LoggingConfiguration {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     $configPath = $script:ConfigPaths.LoggingConfig
@@ -142,6 +171,38 @@ function Get-LoggingConfiguration {
         Write-Verbose "Loading logging configuration from: $configPath"
         $configJson = Get-Content $configPath -Raw -ErrorAction Stop
         $config = $configJson | ConvertFrom-Json -ErrorAction Stop
+
+        # Convert to hashtable for validation
+        $configHash = @{}
+        foreach ($property in $config.PSObject.Properties) {
+            if ($property.Value -is [PSCustomObject]) {
+                $configHash[$property.Name] = @{}
+                foreach ($subProperty in $property.Value.PSObject.Properties) {
+                    if ($subProperty.Value -is [PSCustomObject]) {
+                        $configHash[$property.Name][$subProperty.Name] = @{}
+                        foreach ($subSubProperty in $subProperty.Value.PSObject.Properties) {
+                            $configHash[$property.Name][$subProperty.Name][$subSubProperty.Name] = $subSubProperty.Value
+                        }
+                    } else {
+                        $configHash[$property.Name][$subProperty.Name] = $subProperty.Value
+                    }
+                }
+            } else {
+                $configHash[$property.Name] = $property.Value
+            }
+        }
+
+        # Validate configuration schema
+        Write-Verbose "Validating logging configuration schema"
+        $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'LoggingConfig'
+        
+        if (-not $validationResult.IsValid) {
+            Write-Warning "Logging configuration validation failed with $($validationResult.Issues.Count) issues:"
+            foreach ($issue in $validationResult.Issues) {
+                Write-Warning "  - $issue"
+            }
+            Write-Warning "Proceeding with default values for invalid properties"
+        }
 
         # Merge with defaults
         $defaultConfig = Get-DefaultLoggingConfiguration
@@ -166,6 +227,7 @@ function Get-LoggingConfiguration {
 #>
 function Get-BloatwareConfiguration {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     if ($script:BloatwareLists.Count -gt 0) {
@@ -214,6 +276,7 @@ function Get-BloatwareConfiguration {
 #>
 function Get-EssentialAppsConfiguration {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     if ($script:EssentialApps.Count -gt 0) {
@@ -266,6 +329,7 @@ function Get-EssentialAppsConfiguration {
 #>
 function Get-UnifiedBloatwareList {
     [CmdletBinding()]
+    [OutputType([array])]
     param(
         [Parameter()]
         [string[]]$IncludeCategories = @()
@@ -298,6 +362,7 @@ function Get-UnifiedBloatwareList {
 #>
 function Get-UnifiedEssentialAppsList {
     [CmdletBinding()]
+    [OutputType([array])]
     param(
         [Parameter()]
         [string[]]$IncludeCategories = @()
@@ -329,6 +394,7 @@ function Get-UnifiedEssentialAppsList {
 #>
 function Save-Configuration {
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([void])]
     param(
         [Parameter(Mandatory)]
         [PSCustomObject]$Configuration
@@ -529,6 +595,671 @@ function Merge-HashTables {
 
 #endregion
 
+#region Path Resolution Functions
+
+<#
+.SYNOPSIS
+    Gets the configured path for temporary files
+
+.DESCRIPTION
+    Returns the configured temporary files directory path from configuration,
+    with fallback to default 'temp_files' if not configured.
+
+.OUTPUTS
+    [string] Absolute path to temporary files directory
+
+.EXAMPLE
+    $tempPath = Get-TempFilesPath
+#>
+function Get-TempFilesPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    
+    try {
+        $config = Get-MainConfiguration
+        $tempFolder = $config.paths.tempFolder
+        
+        if ([string]::IsNullOrWhiteSpace($tempFolder)) {
+            $tempFolder = 'temp_files'
+        }
+        
+        # Convert to absolute path if relative
+        if (-not [System.IO.Path]::IsPathRooted($tempFolder)) {
+            $scriptRoot = $script:ConfigPaths.Root
+            $tempFolder = Join-Path $scriptRoot $tempFolder
+        }
+        
+        return $tempFolder
+    }
+    catch {
+        Write-Verbose "Failed to get temp files path from config, using default: $_"
+        return Join-Path $script:ConfigPaths.Root 'temp_files'
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets the configured path for reports
+
+.DESCRIPTION
+    Returns the configured reports directory path from configuration,
+    with fallback if not configured.
+
+.OUTPUTS
+    [string] Absolute path to reports directory
+
+.EXAMPLE
+    $reportsPath = Get-ReportsPath
+#>
+function Get-ReportsPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    
+    try {
+        $config = Get-MainConfiguration
+        $reportsFolder = $config.paths.reportsFolder
+        
+        if ([string]::IsNullOrWhiteSpace($reportsFolder)) {
+            $reportsFolder = 'temp_files/reports'
+        }
+        
+        # Convert to absolute path if relative
+        if (-not [System.IO.Path]::IsPathRooted($reportsFolder)) {
+            $scriptRoot = $script:ConfigPaths.Root
+            $reportsFolder = Join-Path $scriptRoot $reportsFolder
+        }
+        
+        return $reportsFolder
+    }
+    catch {
+        Write-Verbose "Failed to get reports path from config, using default: $_"
+        return Join-Path $script:ConfigPaths.Root 'temp_files/reports'
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets the configured path for logs
+
+.DESCRIPTION
+    Returns the configured logs directory path from configuration,
+    with fallback if not configured.
+
+.OUTPUTS
+    [string] Absolute path to logs directory
+
+.EXAMPLE
+    $logsPath = Get-LogsPath
+#>
+function Get-LogsPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    
+    try {
+        $config = Get-MainConfiguration
+        $logsFolder = $config.paths.logsFolder
+        
+        if ([string]::IsNullOrWhiteSpace($logsFolder)) {
+            $logsFolder = 'temp_files/logs'
+        }
+        
+        # Convert to absolute path if relative
+        if (-not [System.IO.Path]::IsPathRooted($logsFolder)) {
+            $scriptRoot = $script:ConfigPaths.Root
+            $logsFolder = Join-Path $scriptRoot $logsFolder
+        }
+        
+        return $logsFolder
+    }
+    catch {
+        Write-Verbose "Failed to get logs path from config, using default: $_"
+        return Join-Path $script:ConfigPaths.Root 'temp_files/logs'
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets the configured path for inventory files
+
+.DESCRIPTION
+    Returns the configured inventory directory path from configuration,
+    with fallback if not configured.
+
+.OUTPUTS
+    [string] Absolute path to inventory directory
+
+.EXAMPLE
+    $inventoryPath = Get-InventoryPath
+#>
+function Get-InventoryPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    
+    try {
+        $config = Get-MainConfiguration
+        $inventoryFolder = $config.paths.inventoryFolder
+        
+        if ([string]::IsNullOrWhiteSpace($inventoryFolder)) {
+            $inventoryFolder = 'temp_files/inventory'
+        }
+        
+        # Convert to absolute path if relative
+        if (-not [System.IO.Path]::IsPathRooted($inventoryFolder)) {
+            $scriptRoot = $script:ConfigPaths.Root
+            $inventoryFolder = Join-Path $scriptRoot $inventoryFolder
+        }
+        
+        return $inventoryFolder
+    }
+    catch {
+        Write-Verbose "Failed to get inventory path from config, using default: $_"
+        return Join-Path $script:ConfigPaths.Root 'temp_files/inventory'
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets the script root directory path
+
+.DESCRIPTION
+    Returns the root directory of the maintenance script system.
+
+.OUTPUTS
+    [string] Absolute path to script root directory
+
+.EXAMPLE
+    $scriptRoot = Get-ScriptRootPath
+#>
+function Get-ScriptRootPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    
+    return $script:ConfigPaths.Root
+}
+
+#endregion
+
+#region JSON Schema Validation
+
+<#
+.SYNOPSIS
+    Validates JSON configuration against defined schema
+
+.DESCRIPTION
+    Performs comprehensive schema validation for configuration files to catch
+    malformed JSON, missing required properties, invalid data types, and 
+    constraint violations early in the configuration loading process.
+
+.PARAMETER ConfigData
+    The configuration hashtable to validate
+
+.PARAMETER SchemaType
+    Type of schema to validate against (MainConfig, LoggingConfig, BloatwareConfig, EssentialAppsConfig)
+
+.OUTPUTS
+    [hashtable] Validation result containing IsValid boolean and Issues array
+
+.EXAMPLE
+    $result = Test-ConfigurationSchema -ConfigData $config -SchemaType 'MainConfig'
+    if (-not $result.IsValid) { Write-Warning "Configuration issues: $($result.Issues -join ', ')" }
+#>
+function Test-ConfigurationSchema {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ConfigData,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet('MainConfig', 'LoggingConfig', 'BloatwareConfig', 'EssentialAppsConfig')]
+        [string]$SchemaType
+    )
+    
+    $validationResult = @{
+        IsValid = $true
+        Issues = [System.Collections.Generic.List[string]]::new()
+    }
+    
+    try {
+        switch ($SchemaType) {
+            'MainConfig' {
+                $validationResult = Test-MainConfigSchema -ConfigData $ConfigData
+            }
+            'LoggingConfig' {
+                $validationResult = Test-LoggingConfigSchema -ConfigData $ConfigData
+            }
+            'BloatwareConfig' {
+                $validationResult = Test-BloatwareConfigSchema -ConfigData $ConfigData
+            }
+            'EssentialAppsConfig' {
+                $validationResult = Test-EssentialAppsConfigSchema -ConfigData $ConfigData
+            }
+        }
+        
+        Write-Verbose "Schema validation for $SchemaType completed: $($validationResult.IsValid)"
+        if ($validationResult.Issues.Count -gt 0) {
+            Write-Verbose "Validation issues found: $($validationResult.Issues.Count)"
+        }
+        
+        return $validationResult
+    }
+    catch {
+        Write-Error "Schema validation failed: $_"
+        return @{
+            IsValid = $false
+            Issues = @("Schema validation error: $($_.Exception.Message)")
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Validates main configuration schema
+
+.DESCRIPTION
+    Validates the main-config.json file structure, required properties,
+    and data type constraints for execution, modules, bloatware, 
+    essentialApps, system, reporting, and paths sections.
+
+.PARAMETER ConfigData
+    Main configuration hashtable to validate
+
+.OUTPUTS
+    [hashtable] Validation result with IsValid boolean and Issues array
+#>
+function Test-MainConfigSchema {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ConfigData
+    )
+    
+    $issues = [System.Collections.Generic.List[string]]::new()
+    
+    # Required top-level sections
+    $requiredSections = @('execution', 'modules', 'bloatware', 'essentialApps', 'system', 'reporting', 'paths')
+    foreach ($section in $requiredSections) {
+        if (-not $ConfigData.ContainsKey($section)) {
+            $issues.Add("Missing required section: $section")
+        }
+    }
+    
+    # Validate execution section
+    if ($ConfigData.ContainsKey('execution')) {
+        $execution = $ConfigData.execution
+        Test-ConfigProperty -Object $execution -PropertyName 'defaultMode' -ExpectedType 'String' -ValidValues @('interactive', 'unattended') -Issues $issues
+        Test-ConfigProperty -Object $execution -PropertyName 'countdownSeconds' -ExpectedType 'Int32' -MinValue 5 -MaxValue 300 -Issues $issues
+        Test-ConfigProperty -Object $execution -PropertyName 'enableDryRun' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $execution -PropertyName 'autoSelectDefault' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $execution -PropertyName 'showProgressBars' -ExpectedType 'Boolean' -Issues $issues
+    }
+    
+    # Validate modules section
+    if ($ConfigData.ContainsKey('modules')) {
+        $modules = $ConfigData.modules
+        $moduleProperties = @('skipBloatwareRemoval', 'skipEssentialApps', 'skipWindowsUpdates', 'skipTelemetryDisable', 'skipSystemOptimization', 'skipSecurityAudit')
+        foreach ($prop in $moduleProperties) {
+            Test-ConfigProperty -Object $modules -PropertyName $prop -ExpectedType 'Boolean' -Issues $issues
+        }
+        Test-ConfigProperty -Object $modules -PropertyName 'customModulesPath' -ExpectedType 'String' -AllowEmpty -Issues $issues
+    }
+    
+    # Validate system section
+    if ($ConfigData.ContainsKey('system')) {
+        $system = $ConfigData.system
+        Test-ConfigProperty -Object $system -PropertyName 'createSystemRestorePoint' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $system -PropertyName 'enableVerboseLogging' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $system -PropertyName 'maxLogSizeMB' -ExpectedType 'Int32' -MinValue 1 -MaxValue 100 -Issues $issues
+        Test-ConfigProperty -Object $system -PropertyName 'enablePerformanceOptimizations' -ExpectedType 'Boolean' -Issues $issues
+    }
+    
+    # Validate paths section
+    if ($ConfigData.ContainsKey('paths')) {
+        $paths = $ConfigData.paths
+        $pathProperties = @('tempFolder', 'reportsFolder', 'logsFolder', 'inventoryFolder')
+        foreach ($prop in $pathProperties) {
+            Test-ConfigProperty -Object $paths -PropertyName $prop -ExpectedType 'String' -Issues $issues
+        }
+    }
+    
+    return @{
+        IsValid = $issues.Count -eq 0
+        Issues = $issues.ToArray()
+    }
+}
+
+<#
+.SYNOPSIS
+    Validates logging configuration schema
+
+.DESCRIPTION
+    Validates the logging-config.json file structure including logging levels,
+    formatting options, component definitions, and performance tracking settings.
+
+.PARAMETER ConfigData
+    Logging configuration hashtable to validate
+
+.OUTPUTS
+    [hashtable] Validation result with IsValid boolean and Issues array
+#>
+function Test-LoggingConfigSchema {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ConfigData
+    )
+    
+    $issues = [System.Collections.Generic.List[string]]::new()
+    
+    # Required top-level sections
+    $requiredSections = @('logging', 'formatting', 'levels', 'components')
+    foreach ($section in $requiredSections) {
+        if (-not $ConfigData.ContainsKey($section)) {
+            $issues.Add("Missing required section: $section")
+        }
+    }
+    
+    # Validate logging section
+    if ($ConfigData.ContainsKey('logging')) {
+        $logging = $ConfigData.logging
+        Test-ConfigProperty -Object $logging -PropertyName 'logLevel' -ExpectedType 'String' -ValidValues @('DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL') -Issues $issues
+        Test-ConfigProperty -Object $logging -PropertyName 'enableConsoleOutput' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $logging -PropertyName 'enableFileOutput' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $logging -PropertyName 'maxLogSizeMB' -ExpectedType 'Int32' -MinValue 1 -MaxValue 1000 -Issues $issues
+        Test-ConfigProperty -Object $logging -PropertyName 'logBufferSize' -ExpectedType 'Int32' -MinValue 100 -MaxValue 10000 -Issues $issues
+    }
+    
+    # Validate levels section
+    if ($ConfigData.ContainsKey('levels')) {
+        $levels = $ConfigData.levels
+        $requiredLevels = @('DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL')
+        foreach ($level in $requiredLevels) {
+            if (-not $levels.ContainsKey($level)) {
+                $issues.Add("Missing required log level configuration: $level")
+            } else {
+                $levelConfig = $levels[$level]
+                Test-ConfigProperty -Object $levelConfig -PropertyName 'enabled' -ExpectedType 'Boolean' -Issues $issues
+                Test-ConfigProperty -Object $levelConfig -PropertyName 'color' -ExpectedType 'String' -Issues $issues
+                Test-ConfigProperty -Object $levelConfig -PropertyName 'fileOutput' -ExpectedType 'Boolean' -Issues $issues
+                Test-ConfigProperty -Object $levelConfig -PropertyName 'consoleOutput' -ExpectedType 'Boolean' -Issues $issues
+            }
+        }
+    }
+    
+    # Validate performance section if present
+    if ($ConfigData.ContainsKey('performance')) {
+        $performance = $ConfigData.performance
+        Test-ConfigProperty -Object $performance -PropertyName 'slowOperationThreshold' -ExpectedType 'Double' -MinValue 1.0 -MaxValue 300.0 -Issues $issues
+    }
+    
+    return @{
+        IsValid = $issues.Count -eq 0
+        Issues = $issues.ToArray()
+    }
+}
+
+<#
+.SYNOPSIS
+    Validates bloatware configuration schema
+
+.DESCRIPTION
+    Validates bloatware-list.json structure including categories, apps, patterns,
+    and metadata for comprehensive bloatware detection configuration.
+
+.PARAMETER ConfigData
+    Bloatware configuration hashtable to validate
+
+.OUTPUTS
+    [hashtable] Validation result with IsValid boolean and Issues array
+#>
+function Test-BloatwareConfigSchema {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ConfigData
+    )
+    
+    $issues = [System.Collections.Generic.List[string]]::new()
+    
+    # Validate each category has required structure
+    foreach ($categoryKey in $ConfigData.Keys) {
+        $category = $ConfigData[$categoryKey]
+        
+        if ($category -isnot [hashtable] -and $category -isnot [PSCustomObject]) {
+            $issues.Add("Category '$categoryKey' must be an object")
+            continue
+        }
+        
+        # Check for apps array
+        if (-not $category.ContainsKey('apps')) {
+            $issues.Add("Category '$categoryKey' missing required 'apps' property")
+        } elseif ($category.apps -isnot [array]) {
+            $issues.Add("Category '$categoryKey' 'apps' property must be an array")
+        } else {
+            # Validate each app in the category
+            foreach ($app in $category.apps) {
+                if ($app -isnot [hashtable] -and $app -isnot [PSCustomObject]) {
+                    $issues.Add("App entry in category '$categoryKey' must be an object")
+                    continue
+                }
+                
+                # Required app properties
+                Test-ConfigProperty -Object $app -PropertyName 'name' -ExpectedType 'String' -Issues $issues
+                Test-ConfigProperty -Object $app -PropertyName 'description' -ExpectedType 'String' -AllowEmpty -Issues $issues
+            }
+        }
+    }
+    
+    return @{
+        IsValid = $issues.Count -eq 0
+        Issues = $issues.ToArray()
+    }
+}
+
+<#
+.SYNOPSIS
+    Validates essential apps configuration schema
+
+.DESCRIPTION
+    Validates essential-apps.json structure including categories, apps, 
+    installation methods, and metadata for application installation configuration.
+
+.PARAMETER ConfigData
+    Essential apps configuration hashtable to validate
+
+.OUTPUTS
+    [hashtable] Validation result with IsValid boolean and Issues array
+#>
+function Test-EssentialAppsConfigSchema {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ConfigData
+    )
+    
+    $issues = [System.Collections.Generic.List[string]]::new()
+    
+    # Validate each category structure
+    foreach ($categoryKey in $ConfigData.Keys) {
+        $category = $ConfigData[$categoryKey]
+        
+        if ($category -isnot [hashtable] -and $category -isnot [PSCustomObject]) {
+            $issues.Add("Category '$categoryKey' must be an object")
+            continue
+        }
+        
+        # Check for apps array
+        if (-not $category.ContainsKey('apps')) {
+            $issues.Add("Category '$categoryKey' missing required 'apps' property")
+        } elseif ($category.apps -isnot [array]) {
+            $issues.Add("Category '$categoryKey' 'apps' property must be an array")
+        } else {
+            # Validate each app
+            foreach ($app in $category.apps) {
+                if ($app -isnot [hashtable] -and $app -isnot [PSCustomObject]) {
+                    $issues.Add("App entry in category '$categoryKey' must be an object")
+                    continue
+                }
+                
+                # Required app properties
+                Test-ConfigProperty -Object $app -PropertyName 'name' -ExpectedType 'String' -Issues $issues
+                Test-ConfigProperty -Object $app -PropertyName 'description' -ExpectedType 'String' -AllowEmpty -Issues $issues
+                
+                # At least one installation method should be present
+                $installMethods = @('winget', 'chocolatey', 'manual')
+                $hasInstallMethod = $false
+                foreach ($method in $installMethods) {
+                    if ($app.ContainsKey($method) -and -not [string]::IsNullOrWhiteSpace($app[$method])) {
+                        $hasInstallMethod = $true
+                        break
+                    }
+                }
+                
+                if (-not $hasInstallMethod) {
+                    $issues.Add("App '$($app.name)' in category '$categoryKey' must have at least one installation method (winget, chocolatey, or manual)")
+                }
+            }
+        }
+    }
+    
+    return @{
+        IsValid = $issues.Count -eq 0
+        Issues = $issues.ToArray()
+    }
+}
+
+<#
+.SYNOPSIS
+    Helper function to validate configuration properties
+
+.DESCRIPTION
+    Validates individual configuration properties against expected types,
+    value constraints, and other validation rules.
+
+.PARAMETER Object
+    The object containing the property to validate
+
+.PARAMETER PropertyName
+    Name of the property to validate
+
+.PARAMETER ExpectedType
+    Expected .NET type name (String, Int32, Boolean, etc.)
+
+.PARAMETER ValidValues
+    Array of valid values for the property (optional)
+
+.PARAMETER MinValue
+    Minimum value for numeric types (optional)
+
+.PARAMETER MaxValue
+    Maximum value for numeric types (optional)
+
+.PARAMETER AllowEmpty
+    Allow empty string values (optional, default: false)
+
+.PARAMETER Issues
+    List object to add validation issues to
+
+.NOTES
+    Internal helper function for schema validation.
+#>
+function Test-ConfigProperty {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        $Object,
+        
+        [Parameter(Mandatory)]
+        [string]$PropertyName,
+        
+        [Parameter(Mandatory)]
+        [string]$ExpectedType,
+        
+        [Parameter()]
+        [array]$ValidValues,
+        
+        [Parameter()]
+        [double]$MinValue,
+        
+        [Parameter()]
+        [double]$MaxValue,
+        
+        [Parameter()]
+        [switch]$AllowEmpty,
+        
+        [Parameter(Mandatory)]
+        [System.Collections.Generic.List[string]]$Issues
+    )
+    
+    if (-not $Object.ContainsKey($PropertyName)) {
+        $Issues.Add("Missing required property: $PropertyName")
+        return
+    }
+    
+    $value = $Object[$PropertyName]
+    
+    # Type validation
+    if ($null -eq $value) {
+        $Issues.Add("Property '$PropertyName' cannot be null")
+        return
+    }
+    
+    $actualType = $value.GetType().Name
+    if ($actualType -ne $ExpectedType) {
+        # Handle some common type compatibility cases
+        $compatible = $false
+        if ($ExpectedType -eq 'Int32' -and $actualType -eq 'Int64') {
+            $compatible = $true
+        } elseif ($ExpectedType -eq 'Double' -and ($actualType -eq 'Int32' -or $actualType -eq 'Int64')) {
+            $compatible = $true
+        }
+        
+        if (-not $compatible) {
+            $Issues.Add("Property '$PropertyName' expected type $ExpectedType but found $actualType")
+            return
+        }
+    }
+    
+    # String-specific validation
+    if ($ExpectedType -eq 'String') {
+        if (-not $AllowEmpty -and [string]::IsNullOrWhiteSpace($value)) {
+            $Issues.Add("Property '$PropertyName' cannot be empty")
+            return
+        }
+    }
+    
+    # Valid values validation
+    if ($ValidValues -and $ValidValues.Count -gt 0) {
+        if ($value -notin $ValidValues) {
+            $Issues.Add("Property '$PropertyName' value '$value' not in valid values: $($ValidValues -join ', ')")
+        }
+    }
+    
+    # Numeric range validation
+    if ($ExpectedType -in @('Int32', 'Int64', 'Double', 'Single') -and ($PSBoundParameters.ContainsKey('MinValue') -or $PSBoundParameters.ContainsKey('MaxValue'))) {
+        $numValue = [double]$value
+        
+        if ($PSBoundParameters.ContainsKey('MinValue') -and $numValue -lt $MinValue) {
+            $Issues.Add("Property '$PropertyName' value $numValue is below minimum $MinValue")
+        }
+        
+        if ($PSBoundParameters.ContainsKey('MaxValue') -and $numValue -gt $MaxValue) {
+            $Issues.Add("Property '$PropertyName' value $numValue is above maximum $MaxValue")
+        }
+    }
+}
+
+#endregion
+
 # Export module functions
 Export-ModuleMember -Function @(
     'Initialize-ConfigSystem',
@@ -538,5 +1269,11 @@ Export-ModuleMember -Function @(
     'Get-EssentialAppsConfiguration',
     'Get-UnifiedBloatwareList',
     'Get-UnifiedEssentialAppsList',
-    'Save-Configuration'
+    'Save-Configuration',
+    'Test-ConfigurationSchema',
+    'Get-TempFilesPath',
+    'Get-ReportsPath',
+    'Get-LogsPath',
+    'Get-InventoryPath',
+    'Get-ScriptRootPath'
 )

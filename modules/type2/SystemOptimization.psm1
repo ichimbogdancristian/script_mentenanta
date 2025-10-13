@@ -1,4 +1,7 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for configuration access)
+#   - LoggingManager.psm1 (for structured logging)
 
 <#
 .SYNOPSIS
@@ -17,6 +20,13 @@
 #>
 
 using namespace System.Collections.Generic
+
+# Import required modules
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+if (Test-Path $DependencyManagerPath) {
+    Import-Module $DependencyManagerPath -Force
+}
 
 #region Public Functions
 
@@ -57,7 +67,7 @@ using namespace System.Collections.Generic
 #>
 function Optimize-SystemPerformance {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]
+    [OutputType([bool])]
     param(
         [Parameter()]
         [switch]$CleanupTemp,
@@ -83,6 +93,14 @@ function Optimize-SystemPerformance {
 
     Write-Information "⚡ Starting comprehensive system optimization..." -InformationAction Continue
     $startTime = Get-Date
+    
+    # Check for administrator privileges before proceeding
+    try {
+        Assert-AdminPrivileges -Operation "System performance optimization"
+    } catch {
+        Write-Error "Administrator privileges are required for system optimization operations: $_"
+        return $false
+    }
 
     if ($DryRun) {
         Write-Information "  🧪 DRY RUN MODE - No changes will be applied" -InformationAction Continue
@@ -161,15 +179,28 @@ function Optimize-SystemPerformance {
             Write-Information "    💾 Disk space freed: ${spaceFreedMB} MB" -InformationAction Continue
         }
 
-        if ($results.Failed -gt 0) {
+        $success = $results.Failed -eq 0 && $results.Successful -gt 0
+        if (-not $success) {
             Write-Information "    ❌ Some optimizations failed. Check logs for details." -InformationAction Continue
         }
 
-        return $results
+        # Log detailed results for audit trails
+        Write-Verbose "System optimization operation details: $(ConvertTo-Json $results -Depth 3)"
+        Write-Verbose "System optimization completed successfully"
+        
+        return $success
     }
     catch {
-        Write-Error "System optimization failed: $_"
-        throw
+        $errorMessage = "❌ System optimization failed: $($_.Exception.Message)"
+        Write-Error $errorMessage
+        Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Type 2 module returns boolean for failure
+        return $false
+    }
+    finally {
+        $duration = ((Get-Date) - $startTime).TotalSeconds
+        Write-Verbose "System optimization operation completed in $([math]::Round($duration, 2)) seconds"
     }
 }
 

@@ -1,4 +1,8 @@
 #Requires -Version 7.0
+# Module Dependencies:
+#   - ConfigManager.psm1 (for configuration and paths)
+#   - LoggingManager.psm1 (for structured logging)
+#   - FileOrganizationManager.psm1 (for organized file storage)
 
 <#
 .SYNOPSIS
@@ -49,7 +53,7 @@ if (Test-Path $FileOrgPath) {
     Base path for generated reports (without extension)
 
 .EXAMPLE
-    New-MaintenanceReport -SystemInventory $inventory -TaskResults $results -OutputPath "C:\Reports\maintenance"
+    New-MaintenanceReport -SystemInventory $inventory -TaskResults $results -OutputPath (Get-ReportsPath)
 #>
 function New-MaintenanceReport {
     [CmdletBinding()]
@@ -93,6 +97,9 @@ function New-MaintenanceReport {
     }
 
     try {
+        $ErrorActionPreference = 'Stop'
+        Write-Verbose "Starting report generation process"
+        
         # Generate reports using organized file system
         $reportBaseName = Split-Path $OutputPath -Leaf
 
@@ -115,6 +122,7 @@ function New-MaintenanceReport {
 
         $duration = ((Get-Date) - $startTime).TotalSeconds
         Write-Information "  ✅ Reports generated successfully in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
+        Write-Verbose "Report generation completed successfully"
 
         return @{
             HtmlReport       = $htmlPath
@@ -126,8 +134,16 @@ function New-MaintenanceReport {
         }
     }
     catch {
-        Write-Error "Failed to generate maintenance report: $_"
-        throw
+        $errorMessage = "❌ Failed to generate maintenance report: $($_.Exception.Message)" 
+        Write-Error $errorMessage
+        Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Return null object to indicate failure for Type 1 module
+        return $null
+    }
+    finally {
+        $ErrorActionPreference = 'Continue'
+        Write-Verbose "Completed report generation operation"
     }
 }
 
@@ -137,7 +153,32 @@ function New-MaintenanceReport {
 
 <#
 .SYNOPSIS
-    Creates HTML report content
+    Creates interactive HTML dashboard report with charts and analytics
+
+.DESCRIPTION
+    Generates a modern, responsive HTML dashboard report featuring interactive charts,
+    collapsible sections, health scoring, and comprehensive system analytics.
+    Includes Chart.js integration for data visualization and Microsoft Fluent UI styling.
+
+.PARAMETER ReportData
+    Hashtable containing all report data including system inventory, task results,
+    analytics, and chart data for visualization
+
+.OUTPUTS
+    [string] Complete HTML document with embedded CSS, JavaScript, and data visualizations
+
+.EXAMPLE
+    $htmlReport = New-HtmlReportContent -ReportData $reportData
+    Set-Content -Path "maintenance-report.html" -Value $htmlReport
+    
+.NOTES
+    Creates enterprise-grade dashboard reports with:
+    - Interactive charts using Chart.js
+    - Responsive design with mobile support
+    - Collapsible sections for organized content
+    - Health scoring with visual indicators
+    - Performance timeline visualization
+    - Security audit radar charts
 #>
 function New-HtmlReportContent {
     [CmdletBinding()]
@@ -1219,7 +1260,26 @@ function New-HtmlReportContent {
 
 <#
 .SYNOPSIS
-    Creates a detailed text report
+    Creates a detailed text report of system maintenance operations
+
+.DESCRIPTION
+    Generates a comprehensive text-based report containing execution summaries,
+    system health analytics, performance metrics, and recommended actions.
+    The report is formatted for readability and can be saved to file or printed.
+
+.PARAMETER ReportData
+    Hashtable containing all report data including system inventory, task results,
+    execution summary, and analytics data
+
+.OUTPUTS
+    [string] Formatted text report content
+
+.EXAMPLE
+    $textReport = New-TextReportContent -ReportData $reportData
+    
+.NOTES
+    Part of the ReportGeneration module for creating human-readable maintenance reports.
+    Designed to complement the HTML dashboard report with a text-based alternative.
 #>
 function New-TextReportContent {
     [CmdletBinding()]
@@ -1316,7 +1376,27 @@ function New-TextReportContent {
 
 <#
 .SYNOPSIS
-    Generates execution summary statistics
+    Generates comprehensive execution summary statistics from task results
+
+.DESCRIPTION
+    Analyzes an array of task execution results to calculate success rates,
+    failure counts, total execution time, and other performance metrics.
+    Used internally by the reporting system to generate summary analytics.
+
+.PARAMETER TaskResults
+    Array of task result objects containing Success, Duration, and other execution data
+
+.OUTPUTS
+    [hashtable] Statistics including TotalTasks, SuccessfulTasks, FailedTasks, 
+    TotalDuration, SuccessRate, and AverageDuration
+
+.EXAMPLE
+    $summary = Get-ExecutionSummary -TaskResults $taskResults
+    Write-Host "Success Rate: $($summary.SuccessRate)%"
+    
+.NOTES
+    Internal helper function for ReportGeneration module.
+    Calculates performance metrics used in dashboard and text reports.
 #>
 function Get-ExecutionSummary {
     param([Array]$TaskResults)
@@ -1343,7 +1423,28 @@ function Get-ExecutionSummary {
 
 <#
 .SYNOPSIS
-    Generates system health analytics
+    Generates comprehensive system health analytics and scoring
+
+.DESCRIPTION
+    Analyzes system inventory data to calculate health scores, identify issues,
+    and generate performance metrics. Evaluates hardware utilization, service status,
+    installed software, and system resource usage to provide overall health assessment.
+
+.PARAMETER SystemInventory
+    Hashtable containing complete system inventory data including hardware,
+    operating system, services, and installed software information
+
+.OUTPUTS
+    [hashtable] Health analytics including OverallHealthScore, CriticalIssues, 
+    SystemResourceUtilization, ServiceHealth, and performance metrics
+
+.EXAMPLE
+    $healthAnalytics = Get-SystemHealthAnalytics -SystemInventory $inventory
+    Write-Host "System Health Score: $($healthAnalytics.OverallHealthScore)/100"
+    
+.NOTES
+    Internal analytics function that powers the dashboard health scoring system.
+    Used to generate visual indicators and recommendations in maintenance reports.
 #>
 function Get-SystemHealthAnalytics {
     param([hashtable]$SystemInventory)
