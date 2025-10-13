@@ -43,7 +43,7 @@ function Initialize-ConfigSystem {
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
-        [ValidateScript({Test-Path $_ -PathType Container})]
+        [ValidateScript({ Test-Path $_ -PathType Container })]
         [string]$ConfigRootPath
     )
 
@@ -114,21 +114,28 @@ function Get-MainConfiguration {
                 foreach ($subProperty in $property.Value.PSObject.Properties) {
                     $configHash[$property.Name][$subProperty.Name] = $subProperty.Value
                 }
-            } else {
+            }
+            else {
                 $configHash[$property.Name] = $property.Value
             }
         }
 
         # Validate configuration schema
         Write-Verbose "Validating main configuration schema"
-        $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'MainConfig'
-        
-        if (-not $validationResult.IsValid) {
-            Write-Warning "Main configuration validation failed with $($validationResult.Issues.Count) issues:"
-            foreach ($issue in $validationResult.Issues) {
-                Write-Warning "  - $issue"
+        try {
+            $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'MainConfig'
+            
+            if (-not $validationResult.IsValid) {
+                Write-Warning "Main configuration validation failed with $($validationResult.Issues.Count) issues:"
+                foreach ($issue in $validationResult.Issues) {
+                    Write-Warning "  - $issue"
+                }
+                Write-Warning "Proceeding with default configuration values for invalid properties"
             }
-            Write-Warning "Proceeding with default configuration values for invalid properties"
+        }
+        catch {
+            Write-Warning "Configuration validation encountered an error: $_"
+            Write-Warning "Skipping validation and proceeding with loaded configuration"
         }
 
         # Merge with defaults to ensure all required properties exist
@@ -183,25 +190,33 @@ function Get-LoggingConfiguration {
                         foreach ($subSubProperty in $subProperty.Value.PSObject.Properties) {
                             $configHash[$property.Name][$subProperty.Name][$subSubProperty.Name] = $subSubProperty.Value
                         }
-                    } else {
+                    }
+                    else {
                         $configHash[$property.Name][$subProperty.Name] = $subProperty.Value
                     }
                 }
-            } else {
+            }
+            else {
                 $configHash[$property.Name] = $property.Value
             }
         }
 
         # Validate configuration schema
         Write-Verbose "Validating logging configuration schema"
-        $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'LoggingConfig'
-        
-        if (-not $validationResult.IsValid) {
-            Write-Warning "Logging configuration validation failed with $($validationResult.Issues.Count) issues:"
-            foreach ($issue in $validationResult.Issues) {
-                Write-Warning "  - $issue"
+        try {
+            $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'LoggingConfig'
+            
+            if (-not $validationResult.IsValid) {
+                Write-Warning "Logging configuration validation failed with $($validationResult.Issues.Count) issues:"
+                foreach ($issue in $validationResult.Issues) {
+                    Write-Warning "  - $issue"
+                }
+                Write-Warning "Proceeding with default values for invalid properties"
             }
-            Write-Warning "Proceeding with default values for invalid properties"
+        }
+        catch {
+            Write-Warning "Logging configuration validation encountered an error: $_"
+            Write-Warning "Skipping validation and proceeding with loaded configuration"
         }
 
         # Merge with defaults
@@ -822,16 +837,38 @@ function Test-ConfigurationSchema {
     
     $validationResult = @{
         IsValid = $true
-        Issues = [System.Collections.Generic.List[string]]::new()
+        Issues  = [System.Collections.Generic.List[string]]::new()
     }
     
     try {
         switch ($SchemaType) {
             'MainConfig' {
-                $validationResult = Test-MainConfigSchema -ConfigData $ConfigData
+                try {
+                    $validationResult = Test-MainConfigSchema -ConfigData $ConfigData
+                }
+                catch {
+                    Write-Warning "MainConfig schema validation failed: $_"
+                    $errorIssues = [System.Collections.Generic.List[string]]::new()
+                    $errorIssues.Add("MainConfig validation error: $($_.Exception.Message)")
+                    $validationResult = @{
+                        IsValid = $false
+                        Issues  = $errorIssues
+                    }
+                }
             }
             'LoggingConfig' {
-                $validationResult = Test-LoggingConfigSchema -ConfigData $ConfigData
+                try {
+                    $validationResult = Test-LoggingConfigSchema -ConfigData $ConfigData
+                }
+                catch {
+                    Write-Warning "LoggingConfig schema validation failed: $_"
+                    $errorIssues = [System.Collections.Generic.List[string]]::new()
+                    $errorIssues.Add("LoggingConfig validation error: $($_.Exception.Message)")
+                    $validationResult = @{
+                        IsValid = $false
+                        Issues  = $errorIssues
+                    }
+                }
             }
             'BloatwareConfig' {
                 $validationResult = Test-BloatwareConfigSchema -ConfigData $ConfigData
@@ -850,9 +887,11 @@ function Test-ConfigurationSchema {
     }
     catch {
         Write-Error "Schema validation failed: $_"
+        $errorIssues = [System.Collections.Generic.List[string]]::new()
+        $errorIssues.Add("Schema validation error: $($_.Exception.Message)")
         return @{
             IsValid = $false
-            Issues = @("Schema validation error: $($_.Exception.Message)")
+            Issues  = $errorIssues
         }
     }
 }
@@ -910,6 +949,24 @@ function Test-MainConfigSchema {
         Test-ConfigProperty -Object $modules -PropertyName 'customModulesPath' -ExpectedType 'String' -AllowEmpty -Issues $issues
     }
     
+    # Validate bloatware section
+    if ($ConfigData.ContainsKey('bloatware')) {
+        $bloatware = $ConfigData.bloatware
+        Test-ConfigProperty -Object $bloatware -PropertyName 'enableDiffBasedProcessing' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $bloatware -PropertyName 'parallelRemoval' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $bloatware -PropertyName 'createBackups' -ExpectedType 'Boolean' -Issues $issues
+        # customBloatwareList can be an empty array, so skip validation
+    }
+    
+    # Validate essentialApps section
+    if ($ConfigData.ContainsKey('essentialApps')) {
+        $essentialApps = $ConfigData.essentialApps
+        Test-ConfigProperty -Object $essentialApps -PropertyName 'enableParallelInstallation' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $essentialApps -PropertyName 'fallbackToLibreOffice' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $essentialApps -PropertyName 'skipConflictResolution' -ExpectedType 'Boolean' -Issues $issues
+        # customEssentialApps can be an empty array, so skip validation
+    }
+    
     # Validate system section
     if ($ConfigData.ContainsKey('system')) {
         $system = $ConfigData.system
@@ -917,6 +974,15 @@ function Test-MainConfigSchema {
         Test-ConfigProperty -Object $system -PropertyName 'enableVerboseLogging' -ExpectedType 'Boolean' -Issues $issues
         Test-ConfigProperty -Object $system -PropertyName 'maxLogSizeMB' -ExpectedType 'Int32' -MinValue 1 -MaxValue 100 -Issues $issues
         Test-ConfigProperty -Object $system -PropertyName 'enablePerformanceOptimizations' -ExpectedType 'Boolean' -Issues $issues
+    }
+    
+    # Validate reporting section
+    if ($ConfigData.ContainsKey('reporting')) {
+        $reporting = $ConfigData.reporting
+        Test-ConfigProperty -Object $reporting -PropertyName 'enableHtmlReport' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $reporting -PropertyName 'enableDetailedAudit' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $reporting -PropertyName 'includeSystemInventory' -ExpectedType 'Boolean' -Issues $issues
+        Test-ConfigProperty -Object $reporting -PropertyName 'generateBeforeAfterComparison' -ExpectedType 'Boolean' -Issues $issues
     }
     
     # Validate paths section
@@ -930,7 +996,7 @@ function Test-MainConfigSchema {
     
     return @{
         IsValid = $issues.Count -eq 0
-        Issues = $issues.ToArray()
+        Issues  = $issues.ToArray()
     }
 }
 
@@ -983,7 +1049,8 @@ function Test-LoggingConfigSchema {
         foreach ($level in $requiredLevels) {
             if (-not $levels.ContainsKey($level)) {
                 $issues.Add("Missing required log level configuration: $level")
-            } else {
+            }
+            else {
                 $levelConfig = $levels[$level]
                 Test-ConfigProperty -Object $levelConfig -PropertyName 'enabled' -ExpectedType 'Boolean' -Issues $issues
                 Test-ConfigProperty -Object $levelConfig -PropertyName 'color' -ExpectedType 'String' -Issues $issues
@@ -1001,7 +1068,7 @@ function Test-LoggingConfigSchema {
     
     return @{
         IsValid = $issues.Count -eq 0
-        Issues = $issues.ToArray()
+        Issues  = $issues.ToArray()
     }
 }
 
@@ -1041,9 +1108,11 @@ function Test-BloatwareConfigSchema {
         # Check for apps array
         if (-not $category.ContainsKey('apps')) {
             $issues.Add("Category '$categoryKey' missing required 'apps' property")
-        } elseif ($category.apps -isnot [array]) {
+        }
+        elseif ($category.apps -isnot [array]) {
             $issues.Add("Category '$categoryKey' 'apps' property must be an array")
-        } else {
+        }
+        else {
             # Validate each app in the category
             foreach ($app in $category.apps) {
                 if ($app -isnot [hashtable] -and $app -isnot [PSCustomObject]) {
@@ -1060,7 +1129,7 @@ function Test-BloatwareConfigSchema {
     
     return @{
         IsValid = $issues.Count -eq 0
-        Issues = $issues.ToArray()
+        Issues  = $issues.ToArray()
     }
 }
 
@@ -1100,9 +1169,11 @@ function Test-EssentialAppsConfigSchema {
         # Check for apps array
         if (-not $category.ContainsKey('apps')) {
             $issues.Add("Category '$categoryKey' missing required 'apps' property")
-        } elseif ($category.apps -isnot [array]) {
+        }
+        elseif ($category.apps -isnot [array]) {
             $issues.Add("Category '$categoryKey' 'apps' property must be an array")
-        } else {
+        }
+        else {
             # Validate each app
             foreach ($app in $category.apps) {
                 if ($app -isnot [hashtable] -and $app -isnot [PSCustomObject]) {
@@ -1133,7 +1204,7 @@ function Test-EssentialAppsConfigSchema {
     
     return @{
         IsValid = $issues.Count -eq 0
-        Issues = $issues.ToArray()
+        Issues  = $issues.ToArray()
     }
 }
 
@@ -1219,7 +1290,8 @@ function Test-ConfigProperty {
         $compatible = $false
         if ($ExpectedType -eq 'Int32' -and $actualType -eq 'Int64') {
             $compatible = $true
-        } elseif ($ExpectedType -eq 'Double' -and ($actualType -eq 'Int32' -or $actualType -eq 'Int64')) {
+        }
+        elseif ($ExpectedType -eq 'Double' -and ($actualType -eq 'Int32' -or $actualType -eq 'Int64')) {
             $compatible = $true
         }
         

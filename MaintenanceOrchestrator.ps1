@@ -44,10 +44,10 @@ using namespace System.Collections.Generic
 #>
 
 param(
-    [ValidateScript({[string]::IsNullOrEmpty($_) -or (Test-Path (Split-Path $_ -Parent))})]
+    [ValidateScript({ [string]::IsNullOrEmpty($_) -or (Test-Path (Split-Path $_ -Parent)) })]
     [string]$LogFilePath,
     
-    [ValidateScript({[string]::IsNullOrEmpty($_) -or (Test-Path $_ -PathType Container)})]
+    [ValidateScript({ [string]::IsNullOrEmpty($_) -or (Test-Path $_ -PathType Container) })]
     [string]$ConfigPath,
     
     [switch]$NonInteractive,
@@ -185,11 +185,7 @@ foreach ($moduleName in $CoreModules) {
             throw "Module file not found: $modulePath"
         }
 
-        # Validate module before import
-        if (-not (Test-ModuleManifest $modulePath -ErrorAction SilentlyContinue)) {
-            Write-Warning "Module manifest validation failed for $moduleName, attempting import anyway"
-        }
-
+        # Import PowerShell script module directly (no manifest validation needed for .psm1 files)
         Import-Module $modulePath -Force -ErrorAction Stop
         Write-Host "  ✓ Loaded: $moduleName" -ForegroundColor Green
         
@@ -347,7 +343,8 @@ try {
         $BloatwareLists = Get-BloatwareConfiguration -ErrorAction Stop
         if (-not $BloatwareLists) {
             Write-Warning "Bloatware configuration is empty or null - bloatware removal tasks may be limited"
-        } else {
+        }
+        else {
             Write-Host "  ✓ Bloatware configuration loaded" -ForegroundColor Green
         }
     }
@@ -361,7 +358,8 @@ try {
         $EssentialApps = Get-EssentialAppsConfiguration -ErrorAction Stop
         if (-not $EssentialApps) {
             Write-Warning "Essential apps configuration is empty or null - app installation tasks may be limited"
-        } else {
+        }
+        else {
             Write-Host "  ✓ Essential apps configuration loaded" -ForegroundColor Green
         }
     }
@@ -786,7 +784,8 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
                 $functionDef = Get-Command $task.Function -ErrorAction SilentlyContinue
                 if ($functionDef -and $functionDef.Parameters.ContainsKey('WhatIf')) {
                     $result = & $task.Function -WhatIf
-                } else {
+                }
+                else {
                     $result = "DRY-RUN: Task would be executed (function does not support -WhatIf)"
                 }
             }
@@ -810,11 +809,11 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         catch {
             # Capture detailed error information for debugging
             $errorDetails = @{
-                Message = $_.Exception.Message
-                Type = $_.Exception.GetType().Name
+                Message    = $_.Exception.Message
+                Type       = $_.Exception.GetType().Name
                 StackTrace = $_.ScriptStackTrace
-                Function = $task.Function
-                Line = $_.InvocationInfo.ScriptLineNumber
+                Function   = $task.Function
+                Line       = $_.InvocationInfo.ScriptLineNumber
             }
             throw "Task execution failed: $($_.Exception.Message)"
         }
@@ -846,7 +845,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         Write-Host "  ⏱️ Timeout: $($_.Exception.Message)" -ForegroundColor Yellow
         
         Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task timeout: $($task.Name)" -Data @{
-            Error = $_.Exception.Message
+            Error    = $_.Exception.Message
             Duration = ((Get-Date) - $taskStartTime).TotalSeconds
         }
     }
@@ -856,7 +855,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         Write-Host "  💾 Memory Error: Insufficient memory to complete task" -ForegroundColor Red
         
         Write-LogEntry -Level 'CRITICAL' -Component 'ORCHESTRATOR' -Message "Out of memory error: $($task.Name)" -Data @{
-            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+            Duration    = ((Get-Date) - $taskStartTime).TotalSeconds
             MemoryUsage = [System.GC]::GetTotalMemory($false)
         }
         
@@ -871,14 +870,14 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         
         # Enhanced error logging with full context
         $errorContext = @{
-            Error = $_.Exception.Message
-            ErrorType = $_.Exception.GetType().Name
-            Duration = ((Get-Date) - $taskStartTime).TotalSeconds
-            StackTrace = $_.ScriptStackTrace
+            Error        = $_.Exception.Message
+            ErrorType    = $_.Exception.GetType().Name
+            Duration     = ((Get-Date) - $taskStartTime).TotalSeconds
+            StackTrace   = $_.ScriptStackTrace
             TaskFunction = $task.Function
-            ModulePath = $task.ModulePath
-            ScriptLine = $_.InvocationInfo.ScriptLineNumber
-            Command = $_.InvocationInfo.MyCommand.Name
+            ModulePath   = $task.ModulePath
+            ScriptLine   = $_.InvocationInfo.ScriptLineNumber
+            Command      = $_.InvocationInfo.MyCommand.Name
         }
         
         Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data $errorContext

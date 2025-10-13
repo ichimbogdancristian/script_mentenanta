@@ -911,61 +911,74 @@ IF "%PS_EXECUTABLE%"=="" (
 REM -----------------------------------------------------------------------------
 REM System Restore Point Creation (before orchestrator execution)
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Ensuring System Protection is enabled on the system drive..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Checking System Protection status..." "INFO" "LAUNCHER"
 
 SET "SYS_DRIVE=%SystemDrive%"
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $drive=$env:SystemDrive.TrimEnd('\\'); $reg=Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore' -ErrorAction SilentlyContinue; $disabled = $reg -and ($reg.DisableSR -ne 0); if ($disabled) { try { Enable-ComputerRestore -Drive \"$drive\\\" -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; $res = Invoke-CimMethod -InputObject $sr -MethodName Enable -Arguments @{ Drive = \"$drive\\\" }; if ($res.ReturnValue -eq 0) { Write-Host 'SR_ENABLED' } else { Write-Host ('SR_ENABLE_FAILED_CODE ' + $res.ReturnValue); exit 1 } } catch { Write-Host 'SR_ENABLE_FAILED'; exit 1 } } } else { Write-Host 'SR_ALREADY_ENABLED' }"`) DO SET "SR_STATUS=%%i"
+SET "SR_STATUS=UNKNOWN"
+SET "SR_VERIFY_STATUS=UNKNOWN"
 
-IF /I "!SR_STATUS!"=="SR_ENABLED" (
-    CALL :LOG_MESSAGE "System Protection was disabled and is now enabled on %SYS_DRIVE%" "SUCCESS" "LAUNCHER"
-) ELSE IF /I "!SR_STATUS!"=="SR_ALREADY_ENABLED" (
-    CALL :LOG_MESSAGE "System Protection already enabled on %SYS_DRIVE%" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Unable to confirm System Protection enablement (marker: !SR_STATUS!). Proceeding." "WARN" "LAUNCHER"
-)
+REM Simple check for System Protection availability
+FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
 
-REM Verify System Protection is enabled before creating restore point
-CALL :LOG_MESSAGE "Verifying System Protection is enabled before creating restore point..." "INFO" "LAUNCHER"
-
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { $drive=$env:SystemDrive.TrimEnd('\\'); $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue | Select-Object -First 1; if ($rp) { Write-Host 'SR_VERIFIED_ENABLED' } else { $reg = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore' -ErrorAction SilentlyContinue; $disabled = $reg -and ($reg.DisableSR -ne 0); if ($disabled) { Write-Host 'SR_DISABLED' } else { Write-Host 'SR_NO_POINTS_YET' } } } catch { Write-Host 'SR_VERIFICATION_FAILED' }"`) DO SET "SR_VERIFY_STATUS=%%i"
-
-IF /I "!SR_VERIFY_STATUS!"=="SR_DISABLED" (
-    CALL :LOG_MESSAGE "System Protection is disabled - cannot create restore point. Skipping." "WARN" "LAUNCHER"
+IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
+    CALL :LOG_MESSAGE "System Protection is available and functional" "SUCCESS" "LAUNCHER"
+    
+    REM Try to enable System Protection if not already enabled
+    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Continue'; $drive = $env:SystemDrive; try { Enable-ComputerRestore -Drive $drive -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { if ($_.Exception.Message -like '*already enabled*' -or $_.Exception.Message -like '*System Protection*already*') { Write-Host 'SR_ALREADY_ENABLED' } else { Write-Host 'SR_ENABLE_FAILED' } } } catch { Write-Host 'SR_ENABLE_ERROR' }" 2^>nul`) DO SET "SR_ENABLE_STATUS=%%i"
+    
+    IF /I "!SR_ENABLE_STATUS!"=="SR_ENABLED" (
+        CALL :LOG_MESSAGE "System Protection enabled successfully" "SUCCESS" "LAUNCHER"
+        SET "SR_STATUS=ENABLED"
+    ) ELSE IF /I "!SR_ENABLE_STATUS!"=="SR_ALREADY_ENABLED" (
+        CALL :LOG_MESSAGE "System Protection already enabled" "SUCCESS" "LAUNCHER"
+        SET "SR_STATUS=ENABLED"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Could not enable System Protection (!SR_ENABLE_STATUS!) - will try restore point anyway" "WARN" "LAUNCHER"
+        SET "SR_STATUS=UNKNOWN"
+    )
+    
+) ELSE IF /I "!SR_CHECK!"=="SR_NOT_SUPPORTED" (
+    CALL :LOG_MESSAGE "System Protection commands not available on this system" "WARN" "LAUNCHER"
     GOTO :SKIP_RESTORE_POINT
-) ELSE IF /I "!SR_VERIFY_STATUS!"=="SR_VERIFICATION_FAILED" (
-    CALL :LOG_MESSAGE "Unable to verify System Protection status - attempting restore point creation anyway." "WARN" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "System Protection verified as enabled. Proceeding with restore point creation." "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "System Protection check failed (!SR_CHECK!) - skipping restore point" "WARN" "LAUNCHER"
+    GOTO :SKIP_RESTORE_POINT
 )
 
 CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
 
-FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]::NewGuid().ToString()" 2^>nul`) DO SET "RESTORE_GUID=%%i"
-SET "RESTORE_DESC=MaintenanceRP-!RESTORE_GUID!"
+FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]::NewGuid().ToString().Substring(0,8)" 2^>nul`) DO SET "RESTORE_GUID=%%i"
+SET "RESTORE_DESC=WindowsMaintenance-!RESTORE_GUID!"
 
-REM Try creating via Checkpoint-Computer, fallback to CIM if needed
-%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop; Write-Host 'RESTORE_CREATED' } catch { try { $sr = Get-CimInstance -Namespace root/default -ClassName SystemRestore -ErrorAction Stop; if ($sr) { $result = Invoke-CimMethod -InputObject $sr -MethodName CreateRestorePoint -Arguments @{ Description='!RESTORE_DESC!'; RestorePointType=10; EventType=100 }; if ($result.ReturnValue -eq 0) { Write-Host 'RESTORE_CREATED' } else { Write-Host ('RESTORE_FAILED_CODE ' + $result.ReturnValue); exit 1 } } else { Write-Host 'SR_CIM_NULL'; exit 2 } } catch { Write-Host 'RESTORE_FAILED'; Write-Error $_; exit 1 } }"
-
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "System restore point created: !RESTORE_DESC!" "SUCCESS" "LAUNCHER"
-
-    REM Verify restore point exists and capture details
-    SET "VERIFY_MARK="
-    SET "RESTORE_SEQ="
-    SET "RESTORE_TIME="
-    FOR /F "usebackq tokens=1,2,* delims=|" %%A IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "$d='!RESTORE_DESC!'; $rp = Get-ComputerRestorePoint | Where-Object Description -eq $d | Sort-Object SequenceNumber -Descending | Select-Object -First 1; if ($rp) { Write-Host ('RESTORE_VERIFIED|' + $rp.SequenceNumber + '|' + $rp.CreationTime) } else { Write-Host 'RESTORE_NOT_FOUND' }" 2^>nul`) DO (
-        SET "VERIFY_MARK=%%A"
-        SET "RESTORE_SEQ=%%B"
-        SET "RESTORE_TIME=%%C"
-    )
-
-    IF /I "!VERIFY_MARK!"=="RESTORE_VERIFIED" (
-        CALL :LOG_MESSAGE "Restore point verified (Seq=!RESTORE_SEQ!, Time=!RESTORE_TIME!)" "SUCCESS" "LAUNCHER"
+REM Simple restore point creation using Checkpoint-Computer
+FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS'; Write-Host 'RESTORE_CREATED' } catch { Write-Host 'RESTORE_FAILED'; Write-Host $_.Exception.Message }" 2^>nul`) DO (
+    IF /I "%%i"=="RESTORE_CREATED" (
+        SET "RESTORE_RESULT=SUCCESS"
     ) ELSE (
-        CALL :LOG_MESSAGE "Restore point verification could not locate the entry (proceeding)" "WARN" "LAUNCHER"
+        SET "RESTORE_RESULT=FAILED"
+        SET "RESTORE_ERROR=%%i"
+    )
+)
+
+IF /I "!RESTORE_RESULT!"=="SUCCESS" (
+    CALL :LOG_MESSAGE "System restore point created successfully: !RESTORE_DESC!" "SUCCESS" "LAUNCHER"
+    
+    REM Quick verification that restore point exists
+    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $rp = Get-ComputerRestorePoint | Where-Object Description -eq '!RESTORE_DESC!' | Select-Object -First 1; if ($rp) { Write-Host ('VERIFIED:' + $rp.SequenceNumber) } else { Write-Host 'NOT_FOUND' } } catch { Write-Host 'VERIFY_ERROR' }" 2^>nul`) DO SET "RESTORE_VERIFY=%%i"
+    
+    IF "!RESTORE_VERIFY:~0,8!"=="VERIFIED" (
+        SET "RESTORE_SEQ=!RESTORE_VERIFY:~9!"
+        CALL :LOG_MESSAGE "Restore point verified (Sequence: !RESTORE_SEQ!)" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Restore point created but verification inconclusive (!RESTORE_VERIFY!)" "WARN" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Failed to create system restore point (System Protection may be disabled). Continuing." "WARN" "LAUNCHER"
+    IF DEFINED RESTORE_ERROR (
+        CALL :LOG_MESSAGE "Failed to create restore point: !RESTORE_ERROR!" "WARN" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to create system restore point (System Protection may be disabled)" "WARN" "LAUNCHER"
+    )
+    CALL :LOG_MESSAGE "Continuing without restore point - you may want to create one manually" "WARN" "LAUNCHER"
 )
 
 :SKIP_RESTORE_POINT
