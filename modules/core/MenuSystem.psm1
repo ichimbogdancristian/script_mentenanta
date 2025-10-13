@@ -60,13 +60,13 @@ function Show-MainMenu {
     Write-Host "    WINDOWS MAINTENANCE AUTOMATION - EXECUTION MODE SELECTION    " -ForegroundColor White -BackgroundColor DarkBlue
     Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Please select execution mode:" -ForegroundColor Yellow
+    Write-Host "🔧 Please select execution mode:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  [1] Execute Maintenance (Unattended Mode) " -ForegroundColor Green -NoNewline
+    Write-Host "  [1] Execute Script Normally (Unattended) " -ForegroundColor Green -NoNewline
     Write-Host "[DEFAULT]" -ForegroundColor Cyan
-    Write-Host "      → Performs actual system changes" -ForegroundColor Gray
+    Write-Host "      → Performs actual system changes unattended" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  [2] Execute with Dry-Run Mode" -ForegroundColor Blue
+    Write-Host "  [2] Execute in Dry-Run Mode" -ForegroundColor Blue
     Write-Host "      → Simulates changes without modifying the system" -ForegroundColor Gray
     Write-Host ""
     Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
@@ -76,15 +76,15 @@ function Show-MainMenu {
     Write-Host ""
     switch ($selection) {
         1 {
-            Write-Host "✓ Selected: Execute Maintenance (Unattended Mode)" -ForegroundColor Green
+            Write-Host "✓ Selected: Execute Script Normally (Unattended)" -ForegroundColor Green
             return @{ Mode = 'Execute'; DryRun = $false }
         }
         2 {
-            Write-Host "✓ Selected: Execute with Dry-Run Mode" -ForegroundColor Blue
+            Write-Host "✓ Selected: Execute in Dry-Run Mode" -ForegroundColor Blue
             return @{ Mode = 'Execute'; DryRun = $true }
         }
         default {
-            Write-Host "✓ Default: Execute Maintenance (Unattended Mode)" -ForegroundColor Green
+            Write-Host "✓ Default: Execute Script Normally (Unattended)" -ForegroundColor Green
             return @{ Mode = 'Execute'; DryRun = $false }
         }
     }
@@ -131,14 +131,14 @@ function Show-TaskSelectionMenu {
     Write-Host "    TASK SELECTION - $modeText MODE" -ForegroundColor White -BackgroundColor DarkBlue
     Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Please select tasks to execute:" -ForegroundColor Yellow
+    Write-Host "📋 Please select tasks to execute:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  [1] Execute All Tasks " -ForegroundColor $modeColor -NoNewline
+    Write-Host "  [1] Execute All Tasks Unattended " -ForegroundColor $modeColor -NoNewline
     Write-Host "[DEFAULT]" -ForegroundColor Cyan
-    Write-Host "      → Runs all $($AvailableTasks.Count) available maintenance tasks" -ForegroundColor Gray
+    Write-Host "      → Runs all $($AvailableTasks.Count) available maintenance tasks automatically" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  [2] Execute Specific Task Numbers" -ForegroundColor $modeColor
-    Write-Host "      → Choose specific tasks by number (comma-separated)" -ForegroundColor Gray
+    Write-Host "  [2] Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
+    Write-Host "      → Choose specific tasks by number (comma-separated input)" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Available Tasks:" -ForegroundColor Yellow
     Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
@@ -161,7 +161,7 @@ function Show-TaskSelectionMenu {
     Write-Host ""
     switch ($selection) {
         1 {
-            Write-Host "✓ Selected: Execute All Tasks ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
+            Write-Host "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
             return @{
                 SelectionType = 'All'
                 TaskNumbers   = @(1..$AvailableTasks.Count)
@@ -169,12 +169,12 @@ function Show-TaskSelectionMenu {
             }
         }
         2 {
-            Write-Host "✓ Selected: Execute Specific Task Numbers" -ForegroundColor $modeColor
+            Write-Host "✓ Selected: Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
             $selectedTasks = Get-TaskNumberSelection -AvailableTasks $AvailableTasks
             return $selectedTasks
         }
         default {
-            Write-Host "✓ Default: Execute All Tasks ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
+            Write-Host "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
             return @{
                 SelectionType = 'All'
                 TaskNumbers   = @(1..$AvailableTasks.Count)
@@ -208,11 +208,11 @@ function Get-TaskNumberSelection {
 
     do {
         Write-Host ""
-        Write-Host "Enter task numbers (comma-separated, e.g., 1,3,5,7): " -ForegroundColor Yellow -NoNewline
+        Write-Host "📝 Enter task numbers (comma-separated, e.g., 1,3,5,7): " -ForegroundColor Yellow -NoNewline
         $userInput = Read-Host
 
         if ([string]::IsNullOrWhiteSpace($userInput)) {
-            Write-Host "No input provided. Please enter task numbers or press Ctrl+C to cancel." -ForegroundColor Red
+            Write-Host "❌ No input provided. Please enter task numbers or press Ctrl+C to cancel." -ForegroundColor Red
             continue
         }
 
