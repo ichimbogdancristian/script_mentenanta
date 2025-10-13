@@ -204,19 +204,19 @@ try {
     Write-Host "  ✓ Main configuration loaded" -ForegroundColor Green
     Write-Host "  ✓ Logging configuration loaded" -ForegroundColor Green
 
-    # Initialize logging system
-    $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir
-    if ($loggingInitResult) {
-        Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
-    }
-    else {
-        Write-Host "  ⚠️ Logging system failed to initialize" -ForegroundColor Yellow
-    }
-
-    # Initialize file organization system
+    # Initialize file organization system first (required by logging system)
     $fileOrgResult = Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $Global:MaintenanceSessionTimestamp
     if ($fileOrgResult) {
         Write-Host "  ✓ File organization system initialized" -ForegroundColor Green
+    }
+    else {
+        Write-Host "  ⚠️ File organization system failed to initialize" -ForegroundColor Yellow
+    }
+
+    # Initialize logging system (depends on file organization)
+    $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir
+    if ($loggingInitResult) {
+        Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
     }
     else {
         Write-Host "  ⚠️ File organization system failed to initialize" -ForegroundColor Yellow
@@ -603,7 +603,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         # Log task success
         Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
             Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
-            OutputType = $result.GetType().Name
+            OutputType = if ($null -ne $result) { $result.GetType().Name } else { 'null' }
         }
 
     }

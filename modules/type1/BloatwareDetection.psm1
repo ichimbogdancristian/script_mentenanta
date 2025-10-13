@@ -25,6 +25,11 @@ if (Test-Path $SystemInventoryPath) {
     Import-Module $SystemInventoryPath -Force
 }
 
+$ConfigManagerPath = Join-Path $ModuleRoot 'core\ConfigManager.psm1'
+if (Test-Path $ConfigManagerPath) {
+    Import-Module $ConfigManagerPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -68,8 +73,16 @@ function Find-InstalledBloatware {
 
     try {
         # Get bloatware patterns from configuration
-        $bloatwareList = Get-UnifiedBloatwareList -IncludeCategories $Categories
-        if (-not $bloatwareList -or $bloatwareList.Count -eq 0) {
+        $bloatwareList = $null
+        try {
+            $bloatwareList = Get-UnifiedBloatwareList -IncludeCategories $Categories
+        }
+        catch {
+            Write-Warning "Failed to get bloatware configuration: $_"
+            return @()
+        }
+        
+        if ($null -eq $bloatwareList -or $bloatwareList.Count -eq 0) {
             Write-Warning "No bloatware patterns found in configuration"
             return @()
         }
@@ -83,12 +96,16 @@ function Find-InstalledBloatware {
         Write-Information "  📊 Collecting system inventory..." -InformationAction Continue
         $systemInventory = Get-SystemInventory -UseCache:$UseCache
 
-        if (-not $systemInventory.InstalledSoftware -or -not $systemInventory.InstalledSoftware.Programs) {
+        if ($null -eq $systemInventory -or $null -eq $systemInventory.InstalledSoftware -or $null -eq $systemInventory.InstalledSoftware.Programs) {
             Write-Warning "No installed software inventory found"
             return @()
         }
 
         $installedPrograms = $systemInventory.InstalledSoftware.Programs
+        if ($null -eq $installedPrograms) {
+            Write-Warning "Installed programs data is null"
+            return @()
+        }
 
         # Scan AppX packages
         Write-Information "  📱 Scanning AppX packages..." -InformationAction Continue
@@ -131,23 +148,32 @@ function Find-InstalledBloatware {
             }
         }
 
-        # Remove duplicates and sort results
-        $uniqueBloatware = $allBloatware |
-        Sort-Object Name, Source |
-        Group-Object Name |
-        ForEach-Object { $_.Group | Select-Object -First 1 }
+        # Remove duplicates and sort results - ensure we always return an array
+        $uniqueBloatware = @()
+        if ($allBloatware.Count -gt 0) {
+            $uniqueBloatware = @($allBloatware |
+                Sort-Object Name, Source |
+                Group-Object Name |
+                ForEach-Object { $_.Group | Select-Object -First 1 })
+        }
 
         $duration = ((Get-Date) - $startTime).TotalSeconds
-        $sourceStats = $allBloatware | Group-Object Source | ForEach-Object { "$($_.Name): $($_.Count)" }
+        $sourceStats = if ($allBloatware.Count -gt 0) {
+            $allBloatware | Group-Object Source | ForEach-Object { "$($_.Name): $($_.Count)" }
+        } else {
+            @("No sources")
+        }
 
         Write-Information "  ✅ Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -InformationAction Continue
         Write-Information "  📊 Sources: $($sourceStats -join ', ')" -InformationAction Continue
 
-        return $uniqueBloatware
+        # Always return an array, even if empty
+        return [Array]$uniqueBloatware
     }
     catch {
         Write-Error "Failed to detect bloatware: $_"
-        throw
+        Write-Warning "Returning empty array due to error"
+        return @()
     }
 }
 
@@ -164,14 +190,14 @@ function Find-InstalledBloatware {
 .EXAMPLE
     $stats = Get-BloatwareStatistics -BloatwareList $detectedBloatware
 #>
-function Get-BloatwareStatistic {
+function Get-BloatwareStatistics {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [Array]$BloatwareList
     )
 
-    if ($BloatwareList.Count -eq 0) {
+    if ($null -eq $BloatwareList -or $BloatwareList.Count -eq 0) {
         return @{
             TotalItems        = 0
             BySource          = @{}
@@ -180,21 +206,38 @@ function Get-BloatwareStatistic {
         }
     }
 
-    $bySource = $BloatwareList | Group-Object Source | ForEach-Object {
-        @{ $_.Name = $_.Count }
-    } | ForEach-Object { $_ }
-
-    $byCategory = $BloatwareList | Group-Object MatchedPattern | ForEach-Object {
-        @{ $_.Name = $_.Count }
-    } | ForEach-Object { $_ }
+    $bySource = @{}
+    $byCategory = @{}
+    
+    try {
+        $sourceGroups = $BloatwareList | Where-Object { $null -ne $_ } | Group-Object Source
+        foreach ($group in $sourceGroups) {
+            if ($null -ne $group -and $null -ne $group.Name) {
+                $bySource[$group.Name] = $group.Count
+            }
+        }
+        
+        $categoryGroups = $BloatwareList | Where-Object { $null -ne $_ } | Group-Object MatchedPattern
+        foreach ($group in $categoryGroups) {
+            if ($null -ne $group -and $null -ne $group.Name) {
+                $byCategory[$group.Name] = $group.Count
+            }
+        }
+        
+        $mostCommonSource = ($BloatwareList | Where-Object { $null -ne $_ } | Group-Object Source | Sort-Object Count -Descending | Select-Object -First 1)?.Name
+        $mostCommonPattern = ($BloatwareList | Where-Object { $null -ne $_ } | Group-Object MatchedPattern | Sort-Object Count -Descending | Select-Object -First 1)?.Name
+    }
+    catch {
+        Write-Warning "Error calculating bloatware statistics: $_"
+    }
 
     return @{
         TotalItems        = $BloatwareList.Count
         BySource          = $bySource
         ByCategory        = $byCategory
         TotalSizeEstimate = "Calculation not available"
-        MostCommonSource  = ($BloatwareList | Group-Object Source | Sort-Object Count -Descending | Select-Object -First 1).Name
-        MostCommonPattern = ($BloatwareList | Group-Object MatchedPattern | Sort-Object Count -Descending | Select-Object -First 1).Name
+        MostCommonSource  = $mostCommonSource
+        MostCommonPattern = $mostCommonPattern
     }
 }
 

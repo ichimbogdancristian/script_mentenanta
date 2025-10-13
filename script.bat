@@ -342,10 +342,10 @@ IF EXIST "%WORKING_DIR%config" (
         CALL :LOG_MESSAGE "  ✗ main-config.json missing" "WARN" "LAUNCHER"
     )
     
-    IF EXIST "%WORKING_DIR%config\bloatware-lists" (
-        CALL :LOG_MESSAGE "  ✓ bloatware-lists directory present" "SUCCESS" "LAUNCHER"
+    IF EXIST "%WORKING_DIR%config\bloatware-list.json" (
+        CALL :LOG_MESSAGE "  ✓ bloatware-list.json present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ bloatware-lists directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✗ bloatware-list.json missing" "WARN" "LAUNCHER"
     )
 ) ELSE (
     CALL :LOG_MESSAGE "✗ Configuration directory not found" "WARN" "LAUNCHER"

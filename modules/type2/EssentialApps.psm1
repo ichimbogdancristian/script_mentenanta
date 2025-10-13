@@ -330,8 +330,14 @@ function Save-AppDiffList {
         foreach ($g in $categoryGroups) {
             $name = $g.Name
             $appsInCat = $g.Group
-            $installedInCat = $InstalledApps | Where-Object { if ([string]::IsNullOrWhiteSpace($_.Category)) { 'Uncategorized' } else { $_.Category } -eq $name }
-            $missingInCat = $MissingApps | Where-Object { if ([string]::IsNullOrWhiteSpace($_.Category)) { 'Uncategorized' } else { $_.Category } -eq $name }
+            $installedInCat = $InstalledApps | Where-Object { 
+                $cat = if ([string]::IsNullOrWhiteSpace($_.Category)) { 'Uncategorized' } else { $_.Category }
+                $cat -eq $name
+            }
+            $missingInCat = $MissingApps | Where-Object { 
+                $cat = if ([string]::IsNullOrWhiteSpace($_.Category)) { 'Uncategorized' } else { $_.Category }
+                $cat -eq $name
+            }
             $rate = if ($appsInCat.Count -gt 0) { [math]::Round(($installedInCat.Count / $appsInCat.Count) * 100, 2) } else { 0 }
             $byCategory[$name] = @{ Total = $appsInCat.Count; Installed = $installedInCat.Count; Missing = $missingInCat.Count; InstallationRate = $rate; MissingAppNames = ($missingInCat | ForEach-Object { $_.Name }) }
         }

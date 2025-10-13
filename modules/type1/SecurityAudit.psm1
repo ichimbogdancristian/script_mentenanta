@@ -625,14 +625,14 @@ function Get-RiskLevel {
 function Get-SecurityRecommendations {
     param($AuditResults)
 
-    $recommendations = [System.Collections.Generic.List[System.Management.Automation.PSCustomObject]]::new()
+    $recommendations = New-Object System.Collections.ArrayList
 
     foreach ($category in $AuditResults.Categories.Keys) {
         $categoryData = $AuditResults.Categories[$category]
 
         if ($categoryData.Issues -and $categoryData.Issues.Count -gt 0) {
             foreach ($issue in $categoryData.Issues) {
-                $recommendations.Add([PSCustomObject]@{
+                $null = $recommendations.Add([PSCustomObject]@{
                         Category       = $category
                         Priority       = Get-IssuePriority -Issue $issue
                         Issue          = $issue
