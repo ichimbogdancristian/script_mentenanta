@@ -868,13 +868,11 @@ IF "%PS_EXECUTABLE%"=="" (
     )
 )
 
-REM CRITICAL: MaintenanceOrchestrator.ps1 requires PowerShell 7+ due to #Requires directive
-REM Do NOT fall back to Windows PowerShell 5.1 for orchestrator execution
+REM CRITICAL: The orchestrator requires PowerShell 7+ (pwsh.exe). Do NOT fall back to Windows PowerShell 5.1.
 IF "%PS_EXECUTABLE%"=="" (
-    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ (pwsh.exe) not found - MaintenanceOrchestrator.ps1 requires PowerShell 7.0+" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Windows PowerShell 5.1 cannot run MaintenanceOrchestrator.ps1 due to #Requires directive" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ (pwsh.exe) not found - a compatible pwsh.exe is required for the orchestrator" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Windows PowerShell 5.1 cannot be used for full orchestrator execution" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "PowerShell 7+ installation is REQUIRED for this maintenance system." "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install PowerShell 7+ using one of these methods:" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  1. winget: winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  2. Manual: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
@@ -1040,9 +1038,9 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%"
     SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
 ) ELSE (
-    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not detected - cannot run MaintenanceOrchestrator.ps1" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "MaintenanceOrchestrator.ps1 contains '#Requires -PSEdition Core -Version 7.0'" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "This prevents execution on Windows PowerShell 5.1" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not detected - cannot run orchestrator" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "The launcher requires a compatible pwsh.exe (PowerShell 7+) to execute the orchestrator" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Windows PowerShell 5.1 is not suitable for full orchestrator execution" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install PowerShell 7+ and restart this script:" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"

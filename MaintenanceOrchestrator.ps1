@@ -1,5 +1,5 @@
-#Requires -PSEdition Core -Version 7.0
-
+# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
+# The launcher ensures a compatible pwsh.exe is available before invoking this orchestrator.
 using namespace System.Collections.Generic
 
 <#
