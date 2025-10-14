@@ -84,7 +84,7 @@ function New-MaintenanceReport {
     # Start performance tracking for report generation
     $perfContext = $null
     try {
-        $perfContext = Start-PerformanceTracking -OperationName 'MaintenanceReportGeneration'
+        $perfContext = Start-PerformanceTracking -OperationName 'MaintenanceReportGeneration' -Component 'REPORT-GENERATION'
         Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'Starting comprehensive maintenance report generation' -Data @{ 
             OutputPath = $OutputPath
             HasSystemInventory = ($null -ne $SystemInventory)
@@ -130,7 +130,7 @@ function New-MaintenanceReport {
         # Generate HTML report
         Write-Information "  📄 Creating HTML report..." -InformationAction Continue
         $htmlContent = New-HtmlReportContent -ReportData $reportData
-        $htmlPath = Save-OrganizedFile -Data $htmlContent -FileType 'Report' -FileName "$reportBaseName.html" -Format 'Text'
+        $htmlPath = Save-OrganizedFile -Data $htmlContent -FileType 'Report' -FileName "$reportBaseName" -Format 'HTML'
 
         # Generate text report
         Write-Information "  📝 Creating text report..." -InformationAction Continue

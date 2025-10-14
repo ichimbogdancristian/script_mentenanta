@@ -186,7 +186,7 @@ foreach ($moduleName in $CoreModules) {
         }
 
         # Import PowerShell script module directly (no manifest validation needed for .psm1 files)
-        Import-Module $modulePath -Force -ErrorAction Stop
+        Import-Module $modulePath -Force -Global -ErrorAction Stop
         Write-Information "  ✓ Loaded: $moduleName" -InformationAction Continue
         
         # Verify module loaded successfully
@@ -620,14 +620,19 @@ if (-not $NonInteractive) {
     # Configure menu system
     Set-MenuConfiguration -CountdownSeconds $MainConfig.execution.countdownSeconds
 
-    # Show main menu
-    $mainSelection = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds
-    $ExecutionParams.DryRun = $mainSelection.DryRun
-
-    # Show task selection menu if not overridden by parameter
+    # Show enhanced main menu with integrated task selection
+    $menuResult = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds -AvailableTasks $AvailableTasks
+    
+    # Apply menu selections
+    $ExecutionParams.DryRun = $menuResult.DryRun
     if (-not $TaskNumbers) {
-        $taskSelection = Show-TaskSelectionMenu -IsDryRun $ExecutionParams.DryRun -AvailableTasks $AvailableTasks
-        $ExecutionParams.SelectedTasks = $taskSelection.Tasks
+        # Use tasks selected from the integrated menu system
+        $ExecutionParams.SelectedTasks = @()
+        foreach ($taskIndex in $menuResult.SelectedTasks) {
+            if ($taskIndex -ge 1 -and $taskIndex -le $AvailableTasks.Count) {
+                $ExecutionParams.SelectedTasks += $AvailableTasks[$taskIndex - 1]
+            }
+        }
     }
 }
 else {
@@ -823,6 +828,13 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
                 Function   = $task.Function
                 Line       = $_.InvocationInfo.ScriptLineNumber
             }
+            
+            # Log detailed error information for debugging
+            Write-Information "[ERROR] [ORCHESTRATOR] Task failed: $($task.Name)" -InformationAction Continue
+            Write-Information "  Error Type: $($errorDetails.Type)" -InformationAction Continue
+            Write-Information "  Message: $($errorDetails.Message)" -InformationAction Continue
+            Write-Information "  Function: $($errorDetails.Function) at line $($errorDetails.Line)" -InformationAction Continue
+            
             throw "Task execution failed: $($_.Exception.Message)"
         }
 
@@ -937,10 +949,11 @@ foreach ($result in $TaskResults) {
     $statusColor = if ($result.Success) { 'Green' } else { 'Red' }
     $durationText = "$([math]::Round($result.Duration, 2))s"
 
-    Write-Information "  $status $($result.TaskName) ($durationText)" -InformationAction Continue
+    # Use colored output for better visual feedback
+    Write-Host "  $status $($result.TaskName) ($durationText)" -ForegroundColor $statusColor
 
     if (-not $result.Success -and $result.Error) {
-        Write-Information "    Error: $($result.Error)" -InformationAction Continue
+        Write-Host "    Error: $($result.Error)" -ForegroundColor Red
     }
 }
 

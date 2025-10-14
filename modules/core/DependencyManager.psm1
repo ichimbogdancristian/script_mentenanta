@@ -73,7 +73,7 @@ function Install-AllDependency {
     # Start performance tracking for dependency installation
     $perfContext = $null
     try {
-        $perfContext = Start-PerformanceTracking -OperationName 'AllDependencyInstallation'
+        $perfContext = Start-PerformanceTracking -OperationName 'AllDependencyInstallation' -Component 'DEPENDENCY-MANAGER'
         Write-LogEntry -Level 'INFO' -Component 'DEPENDENCY-MANAGER' -Message 'Starting comprehensive dependency installation' -Data @{ Force = $Force.IsPresent; SkipChocolatey = $SkipChocolatey.IsPresent; SkipPSWindowsUpdate = $SkipPSWindowsUpdate.IsPresent }
     } catch {
         # LoggingManager not available, continue with standard logging

@@ -306,7 +306,7 @@ function Save-OrganizedFile {
         [string]$FileName,
 
         [Parameter()]
-        [ValidateSet('JSON', 'Text', 'CSV', 'XML')]
+        [ValidateSet('JSON', 'Text', 'CSV', 'XML', 'HTML')]
         [string]$Format = 'JSON',
 
         [Parameter()]
@@ -323,6 +323,7 @@ function Save-OrganizedFile {
             'Text' { '.txt' }
             'CSV' { '.csv' }
             'XML' { '.xml' }
+            'HTML' { '.html' }
         }
 
         if (-not $filePath.EndsWith($extension)) {
@@ -331,6 +332,10 @@ function Save-OrganizedFile {
 
         # Save data in specified format
         switch ($Format) {
+            'HTML' {
+                # HTML content should be saved as-is
+                Set-Content -Path $filePath -Value $Data -Encoding UTF8
+            }
             'JSON' { 
                 try {
                     $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8 -Force

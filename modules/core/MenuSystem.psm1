@@ -59,16 +59,19 @@ function Show-MainMenu {
     [CmdletBinding()]
     param(
         [Parameter()]
-        [int]$CountdownSeconds = $script:MenuConfig.CountdownSeconds,
+        [int]$CountdownSeconds = 20,
 
         [Parameter()]
-        [int]$DefaultOption = 1
+        [int]$DefaultOption = 1,
+
+        [Parameter()]
+        [array]$AvailableTasks = @()
     )
     
     # Start performance tracking for menu display
     $perfContext = $null
     try {
-        $perfContext = Start-PerformanceTracking -OperationName 'MainMenuDisplay'
+        $perfContext = Start-PerformanceTracking -OperationName 'MainMenuDisplay' -Component 'MENU-SYSTEM'
         Write-LogEntry -Level 'INFO' -Component 'MENU-SYSTEM' -Message 'Displaying main menu' -Data @{ CountdownSeconds = $CountdownSeconds; DefaultOption = $DefaultOption }
     } catch {
         # LoggingManager not available, continue with standard logging
@@ -93,19 +96,41 @@ function Show-MainMenu {
 
     Write-Information "" -InformationAction Continue
     
-    # Determine result based on selection
-    $result = switch ($selection) {
+    # Initialize result structure
+    $result = @{
+        Mode = 'Execute'
+        DryRun = $false
+        SelectedTasks = @()
+        UserInteracted = $false
+    }
+    
+    # Handle main menu selection and show submenus
+    switch ($selection) {
         1 {
-            Write-Information "✓ Selected: Execute Script Normally (Unattended)" -InformationAction Continue
-            @{ Mode = 'Execute'; DryRun = $false }
+            Write-Host "✓ Selected: Execute Script Normally (Unattended)" -ForegroundColor Green
+            $result.DryRun = $false
+            $result.UserInteracted = $true
+            
+            # Show submenu for normal execution
+            $subResult = Show-ExecutionSubmenu -CountdownSeconds $CountdownSeconds -ExecutionMode 'Normal' -AvailableTasks $AvailableTasks
+            $result.SelectedTasks = $subResult.SelectedTasks
         }
         2 {
-            Write-Information "✓ Selected: Execute in Dry-Run Mode" -InformationAction Continue
-            @{ Mode = 'Execute'; DryRun = $true }
+            Write-Host "✓ Selected: Execute in Dry-Run Mode" -ForegroundColor Green
+            $result.DryRun = $true
+            $result.UserInteracted = $true
+            
+            # Show submenu for dry-run execution
+            $subResult = Show-ExecutionSubmenu -CountdownSeconds $CountdownSeconds -ExecutionMode 'DryRun' -AvailableTasks $AvailableTasks
+            $result.SelectedTasks = $subResult.SelectedTasks
         }
         default {
-            Write-Information "✓ Default: Execute Script Normally (Unattended)" -InformationAction Continue
-            @{ Mode = 'Execute'; DryRun = $false }
+            Write-Host "✓ Default: Execute Script Normally (Unattended)" -ForegroundColor Green
+            $result.DryRun = $false
+            $result.UserInteracted = $false
+            
+            # Auto-select all tasks for default behavior
+            $result.SelectedTasks = 1..$AvailableTasks.Count
         }
     }
     
@@ -115,13 +140,191 @@ function Show-MainMenu {
             SelectedOption = $selection
             Mode = $result.Mode
             DryRun = $result.DryRun
+            TaskCount = $result.SelectedTasks.Count
             CountdownUsed = $true
         }
-        Write-LogEntry -Level 'SUCCESS' -Component 'MENU-SYSTEM' -Message 'Main menu selection completed' -Data @{ SelectedOption = $selection; Mode = $result.Mode; DryRun = $result.DryRun }
+        Write-LogEntry -Level 'SUCCESS' -Component 'MENU-SYSTEM' -Message 'Main menu selection completed' -Data @{ SelectedOption = $selection; Mode = $result.Mode; DryRun = $result.DryRun; TaskCount = $result.SelectedTasks.Count }
     } catch {
         # LoggingManager not available, continue with standard logging
     }
     
+    return $result
+}
+
+<#
+.SYNOPSIS
+    Shows the execution submenu for task selection
+
+.DESCRIPTION
+    Displays options for executing all tasks or selecting specific task numbers.
+    This is called after the main execution mode is selected.
+
+.PARAMETER CountdownSeconds
+    Number of seconds for countdown timer
+
+.PARAMETER ExecutionMode
+    The execution mode (Normal or DryRun)
+
+.PARAMETER AvailableTasks
+    Array of available tasks
+
+.EXAMPLE
+    Show-ExecutionSubmenu -CountdownSeconds 20 -ExecutionMode 'Normal' -AvailableTasks $tasks
+#>
+function Show-ExecutionSubmenu {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [int]$CountdownSeconds,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Normal', 'DryRun')]
+        [string]$ExecutionMode,
+
+        [Parameter()]
+        [array]$AvailableTasks = @()
+    )
+
+    try {
+        Write-Verbose "Displaying execution submenu for $ExecutionMode mode"
+        
+        $modeText = if ($ExecutionMode -eq 'DryRun') { 'DRY-RUN' } else { 'LIVE' }
+        $modeColor = if ($ExecutionMode -eq 'DryRun') { 'Cyan' } else { 'Green' }
+
+        Write-Host "`n" -NoNewline
+        Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+        Write-Host "    TASK SELECTION - $($modeText.ToUpper()) EXECUTION MODE" -BackgroundColor DarkBlue
+        Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+        Write-Information "📋 Please select tasks to execute:" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+        Write-Information "  [1] Execute All Tasks Unattended [DEFAULT]" -InformationAction Continue
+        Write-Information "      → Runs all $($AvailableTasks.Count) available maintenance tasks automatically" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+        Write-Host "  [2] Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
+        Write-Host "      → Choose specific tasks by number (comma-separated input)" -ForegroundColor $modeColor
+        Write-Information "" -InformationAction Continue
+
+        if ($AvailableTasks.Count -gt 0) {
+            Write-Information "Available Tasks:" -InformationAction Continue
+            Write-Information "───────────────────────────────────────────────────────────────" -InformationAction Continue
+            for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
+                $task = $AvailableTasks[$i]
+                Write-Information "  [$($i + 1)] $($task.Name) - $($task.Description)" -InformationAction Continue
+            }
+            Write-Information "───────────────────────────────────────────────────────────────" -InformationAction Continue
+            Write-Information "" -InformationAction Continue
+        }
+
+        $selection = Start-CountdownSelection -CountdownSeconds $CountdownSeconds -DefaultOption 1 -OptionsCount 2
+
+        $result = @{
+            SelectedTasks = @()
+            TaskSelectionMode = 'All'
+        }
+
+        switch ($selection) {
+            1 {
+                Write-Host "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
+                $result.SelectedTasks = 1..$AvailableTasks.Count
+                $result.TaskSelectionMode = 'All'
+            }
+            2 {
+                Write-Host "✓ Selected: Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
+                # Prompt for specific task numbers
+                $result = Get-SpecificTaskNumbers -AvailableTasks $AvailableTasks -ModeColor $modeColor
+            }
+            default {
+                Write-Host "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
+                $result.SelectedTasks = 1..$AvailableTasks.Count
+                $result.TaskSelectionMode = 'All'
+            }
+        }
+
+        return $result
+
+    } catch {
+        Write-Error "Failed to display execution submenu: $_"
+        # Return default: all tasks
+        return @{
+            SelectedTasks = 1..$AvailableTasks.Count
+            TaskSelectionMode = 'All'
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Prompts user for specific task numbers
+
+.DESCRIPTION
+    Allows user to input specific task numbers to execute
+
+.PARAMETER AvailableTasks
+    Array of available tasks
+
+.PARAMETER ModeColor
+    Color for output text
+#>
+function Get-SpecificTaskNumbers {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [array]$AvailableTasks = @(),
+
+        [Parameter()]
+        [string]$ModeColor = 'Green'
+    )
+
+    $result = @{
+        SelectedTasks = @()
+        TaskSelectionMode = 'Specific'
+    }
+
+    try {
+        Write-Information "" -InformationAction Continue
+        Write-Host "Enter task numbers to execute (comma-separated, e.g., 1,3,5): " -NoNewline -ForegroundColor $ModeColor
+        
+        $input = Read-Host
+        
+        if ([string]::IsNullOrWhiteSpace($input)) {
+            Write-Host "No input provided. Selecting all tasks." -ForegroundColor Yellow
+            $result.SelectedTasks = 1..$AvailableTasks.Count
+            $result.TaskSelectionMode = 'All'
+        } else {
+            # Parse comma-separated numbers
+            $taskNumbers = @()
+            $inputParts = $input -split ',' | ForEach-Object { $_.Trim() }
+            
+            foreach ($part in $inputParts) {
+                try {
+                    $number = [int]$part
+                    if ($number -ge 1 -and $number -le $AvailableTasks.Count) {
+                        $taskNumbers += $number
+                    } else {
+                        Write-Warning "Task number $number is out of range (1-$($AvailableTasks.Count)). Skipping."
+                    }
+                } catch {
+                    Write-Warning "Invalid task number '$part'. Skipping."
+                }
+            }
+            
+            if ($taskNumbers.Count -gt 0) {
+                $result.SelectedTasks = $taskNumbers | Sort-Object -Unique
+                Write-Host "✓ Selected tasks: $($result.SelectedTasks -join ', ')" -ForegroundColor $ModeColor
+            } else {
+                Write-Host "No valid task numbers provided. Selecting all tasks." -ForegroundColor Yellow
+                $result.SelectedTasks = 1..$AvailableTasks.Count
+                $result.TaskSelectionMode = 'All'
+            }
+        }
+    } catch {
+        Write-Error "Error processing task selection: $_"
+        # Fallback to all tasks
+        $result.SelectedTasks = 1..$AvailableTasks.Count
+        $result.TaskSelectionMode = 'All'
+    }
+
     return $result
 }
 
@@ -161,7 +364,7 @@ function Show-TaskSelectionMenu {
     # Start performance tracking for task selection menu
     $perfContext = $null
     try {
-        $perfContext = Start-PerformanceTracking -OperationName 'TaskSelectionMenuDisplay'
+        $perfContext = Start-PerformanceTracking -OperationName 'TaskSelectionMenuDisplay' -Component 'MENU-SYSTEM'
         Write-LogEntry -Level 'INFO' -Component 'MENU-SYSTEM' -Message 'Displaying task selection menu' -Data @{ IsDryRun = $IsDryRun; AvailableTasksCount = $AvailableTasks.Count; CountdownSeconds = $CountdownSeconds; DefaultOption = $DefaultOption }
     } catch {
         # LoggingManager not available, continue with standard logging
@@ -192,7 +395,7 @@ function Show-TaskSelectionMenu {
         $taskName = if ($task.Name) { $task.Name } else { "Task $taskNum" }
         $taskDesc = if ($task.Description) { " - $($task.Description)" } else { "" }
 
-        Write-Information "  [$taskNum] $taskName" -InformationAction Continue
+        Write-Information "  [$taskNum] $taskName$taskDesc" -InformationAction Continue
     }
 
     Write-Information "───────────────────────────────────────────────────────────────" -InformationAction Continue
@@ -203,24 +406,56 @@ function Show-TaskSelectionMenu {
     switch ($selection) {
         1 {
             Write-Host "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
-            return @{
+            $result = @{
                 SelectionType = 'All'
                 TaskNumbers   = @(1..$AvailableTasks.Count)
                 Tasks         = $AvailableTasks
             }
+            
+            # Complete performance tracking if available
+            try {
+                if ($perfContext) {
+                    Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $result
+                }
+            } catch {
+                # LoggingManager not available, continue
+            }
+            
+            return $result
         }
         2 {
             Write-Host "✓ Selected: Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
             $selectedTasks = Get-TaskNumberSelection -AvailableTasks $AvailableTasks
+            
+            # Complete performance tracking if available
+            try {
+                if ($perfContext) {
+                    Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $selectedTasks
+                }
+            } catch {
+                # LoggingManager not available, continue
+            }
+            
             return $selectedTasks
         }
         default {
             Write-Host "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
-            return @{
+            $result = @{
                 SelectionType = 'All'
                 TaskNumbers   = @(1..$AvailableTasks.Count)
                 Tasks         = $AvailableTasks
             }
+            
+            # Complete performance tracking if available
+            try {
+                if ($perfContext) {
+                    Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $result
+                }
+            } catch {
+                # LoggingManager not available, continue
+            }
+            
+            return $result
         }
     }
 }
@@ -368,7 +603,6 @@ function Start-CountdownSelection {
     )
 
     Write-Information "" -InformationAction Continue
-    Write-Host "Countdown: " -NoNewline
 
     for ($i = $CountdownSeconds; $i -gt 0; $i--) {
         # Check for user input
@@ -380,25 +614,25 @@ function Start-CountdownSelection {
             if ($key.KeyChar -match '^\d$') {
                 $selection = [int]$key.KeyChar.ToString()
                 if ($selection -ge 1 -and $selection -le $OptionsCount) {
-                    Write-Information "" -InformationAction Continue
+                    Write-Host ""  # Clear the countdown line
                     return $selection
                 }
             }
 
             # Handle Enter key (select default)
             if ($key.Key -eq [ConsoleKey]::Enter) {
-                Write-Information "" -InformationAction Continue
+                Write-Host ""  # Clear the countdown line
                 return $DefaultOption
             }
         }
 
-        # Display countdown
-        Write-Information "`rCountdown: $i seconds (Press 1-$OptionsCount to select, Enter for default)" -InformationAction Continue
+        # Display countdown on the same line using carriage return
+        Write-Host "`rCountdown: $i seconds (Press 1-$OptionsCount to select, Enter for default)" -NoNewline -ForegroundColor Yellow
 
         Start-Sleep -Seconds 1
     }
 
-    Write-Information "" -InformationAction Continue
+    Write-Host ""  # Move to next line after countdown completes
     Write-Information "⏱️ Time expired! Selecting default option [$DefaultOption]" -InformationAction Continue
     return $DefaultOption
 }
@@ -555,6 +789,8 @@ function Get-MenuConfiguration {
 # Export module functions
 Export-ModuleMember -Function @(
     'Show-MainMenu',
+    'Show-ExecutionSubmenu',
+    'Get-SpecificTaskNumbers',
     'Show-TaskSelectionMenu',
     'Get-TaskNumberSelection',
     'Start-CountdownSelection',

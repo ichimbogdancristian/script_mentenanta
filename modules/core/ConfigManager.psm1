@@ -60,7 +60,7 @@ function Initialize-ConfigSystem {
     # Start performance tracking for configuration initialization
     $perfContext = $null
     try {
-        $perfContext = Start-PerformanceTracking -OperationName 'ConfigSystemInitialization'
+        $perfContext = Start-PerformanceTracking -OperationName 'ConfigSystemInitialization' -Component 'CONFIG-MANAGER'
         Write-LogEntry -Level 'INFO' -Component 'CONFIG-MANAGER' -Message 'Starting configuration system initialization' -Data @{ ConfigRootPath = $ConfigRootPath }
     } catch {
         # LoggingManager not available, continue with standard logging
@@ -127,7 +127,7 @@ function Get-MainConfiguration {
     # Start performance tracking for configuration loading
     $perfContext = $null
     try {
-        $perfContext = Start-PerformanceTracking -OperationName 'MainConfigurationLoad'
+        $perfContext = Start-PerformanceTracking -OperationName 'MainConfigurationLoad' -Component 'CONFIG-MANAGER'
         Write-LogEntry -Level 'INFO' -Component 'CONFIG-MANAGER' -Message 'Loading main configuration'
     } catch {
         # LoggingManager not available, continue with standard logging
