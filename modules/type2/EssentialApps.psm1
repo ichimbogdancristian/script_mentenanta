@@ -181,7 +181,7 @@ function Install-EssentialApplication {
         $essentialApps
     }
     else {
-        Get-AppsNotInstalled -AppList $essentialApps
+        Get-AppNotInstalled -AppList $essentialApps
     }
 
     if ($appsToInstall.Count -eq 0) {
@@ -216,13 +216,13 @@ function Install-EssentialApplication {
     # Install apps using preferred package managers
     if ($wingetApps.Count -gt 0) {
         Write-Information "  🔹 Installing $($wingetApps.Count) apps via Winget..." -InformationAction Continue
-        $wingetResults = Install-AppsViaWinget -Apps $wingetApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
+        $wingetResults = Install-AppViaWinget -Apps $wingetApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
         Merge-InstallationResult -Results $results -NewResults $wingetResults -PackageManager 'Winget'
     }
 
     if ($chocoApps.Count -gt 0) {
         Write-Information "  🍫 Installing $($chocoApps.Count) apps via Chocolatey..." -InformationAction Continue
-        $chocoResults = Install-AppsViaChocolatey -Apps $chocoApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
+        $chocoResults = Install-AppViaChocolatey -Apps $chocoApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
         Merge-InstallationResult -Results $results -NewResults $chocoResults -PackageManager 'Chocolatey'
     }
 
@@ -309,9 +309,9 @@ function Install-EssentialApplication {
     Array of essential apps to check
 
 .EXAMPLE
-    $missingApps = Get-AppsNotInstalled -AppList $essentialApps
+    $missingApps = Get-AppNotInstalled -AppList $essentialApps
 #>
-function Get-AppsNotInstalled {
+function Get-AppNotInstalled {
     [CmdletBinding()]
     [OutputType([array])]
     param(
@@ -425,7 +425,7 @@ function Save-AppDiffList {
             $ConfigManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\ConfigManager.psm1'
             if (Test-Path $ConfigManagerPath) {
                 Import-Module $ConfigManagerPath -Force
-                $tempDir = Get-TempFilesPath
+                $tempDir = Get-TempDirectoryPath
             } else {
                 $tempDir = Join-Path $scriptRoot 'temp_files'
             }
@@ -702,14 +702,14 @@ function Test-AppInstallationStatus {
     Number of parallel installations to run simultaneously (default: 3)
 
 .EXAMPLE
-    $result = Install-AppsViaWinget -Apps $appList
+    $result = Install-AppViaWinget -Apps $appList
     Installs all apps in the list using Winget with default parallel count
 
 .EXAMPLE
-    $result = Install-AppsViaWinget -Apps $appList -DryRun -ParallelCount 5
+    $result = Install-AppViaWinget -Apps $appList -DryRun -ParallelCount 5
     Tests installation of apps with higher parallelism without making changes
 #>
-function Install-AppsViaWinget {
+function Install-AppViaWinget {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param(
@@ -830,14 +830,14 @@ function Install-AppsViaWinget {
     Number of parallel installations to run simultaneously (default: 2, lower than Winget for stability)
 
 .EXAMPLE
-    $result = Install-AppsViaChocolatey -Apps $appList
+    $result = Install-AppViaChocolatey -Apps $appList
     Installs all apps in the list using Chocolatey with default parallel count
 
 .EXAMPLE
-    $result = Install-AppsViaChocolatey -Apps $appList -DryRun
+    $result = Install-AppViaChocolatey -Apps $appList -DryRun
     Tests installation of apps without making actual changes
 #>
-function Install-AppsViaChocolatey {
+function Install-AppViaChocolatey {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param(
@@ -1105,6 +1105,6 @@ function Get-InstallationStatistic {
 # Export module functions
 Export-ModuleMember -Function @(
     'Install-EssentialApplication',
-    'Get-AppsNotInstalled',
+    'Get-AppNotInstalled',
     'Get-InstallationStatistic'
 )

@@ -275,7 +275,7 @@ function Get-SystemPerformanceMetric {
         Timestamp       = Get-Date
         DiskUsage       = Get-DiskUsageMetric
         StartupPrograms = Get-StartupProgramCount
-        TemporaryFiles  = Get-TemporaryFilesSize
+        TemporaryFiles  = Get-TemporaryFileSize
         RegistrySize    = Get-RegistrySize
         ServicesRunning = (Get-Service | Where-Object Status -eq 'Running').Count
         ProcessCount    = (Get-Process).Count
@@ -899,7 +899,7 @@ function Get-StartupProgramCount {
     }
 }
 
-function Get-TemporaryFilesSize {
+function Get-TemporaryFileSize {
     [CmdletBinding()]
     [OutputType([long])]
     param()

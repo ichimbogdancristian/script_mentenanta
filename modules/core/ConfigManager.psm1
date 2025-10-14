@@ -683,9 +683,9 @@ function Merge-HashTable {
     [string] Absolute path to temporary files directory
 
 .EXAMPLE
-    $tempPath = Get-TempFilesPath
+    $tempPath = Get-TempDirectoryPath
 #>
-function Get-TempFilesPath {
+function Get-TempDirectoryPath {
     [CmdletBinding()]
     [OutputType([string])]
     param()
@@ -1402,7 +1402,7 @@ Export-ModuleMember -Function @(
     'Get-UnifiedEssentialAppsList',
     'Save-Configuration',
     'Test-ConfigurationSchema',
-    'Get-TempFilesPath',
+    'Get-TempDirectoryPath',
     'Get-ReportsPath',
     'Get-LogsPath',
     'Get-InventoryPath',
