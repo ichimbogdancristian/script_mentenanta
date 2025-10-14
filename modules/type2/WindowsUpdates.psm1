@@ -29,6 +29,11 @@ if (Test-Path $DependencyManagerPath) {
     Import-Module $DependencyManagerPath -Force
 }
 
+$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
+if (Test-Path $LoggingManagerPath) {
+    Import-Module $LoggingManagerPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -112,6 +117,19 @@ function Install-WindowsUpdate {
     Write-Information "🔄 Starting Windows Updates check and installation..." -InformationAction Continue
     $startTime = Get-Date
     
+    # Initialize structured logging and performance tracking
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows Updates installation' -Data @{
+            ExcludePreviews = $ExcludePreviews.IsPresent
+            MaxDownloadSizeMB = $MaxDownloadSizeMB
+            DryRun = $DryRun.IsPresent
+            SuppressReboot = $SuppressReboot.IsPresent
+        }
+        $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdatesInstallation' -Component 'WINDOWS-UPDATES'
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
+    
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "Windows Updates installation"
@@ -136,11 +154,13 @@ function Install-WindowsUpdate {
         # Try PSWindowsUpdate module first
         if (Test-PSWindowsUpdateAvailable) {
             Write-Information "  📦 Using PSWindowsUpdate module..." -InformationAction Continue
+            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using PSWindowsUpdate module for update installation' } catch {}
             $results = Install-UpdatesViaPSWindowsUpdate @PSBoundParameters
         }
         # Fallback to native Windows Update API
         elseif (Test-NativeWindowsUpdateAvailable) {
             Write-Information "  🪟 Using native Windows Update API..." -InformationAction Continue
+            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using native Windows Update API for update installation' } catch {}
             $results = Install-UpdatesViaNativeAPI @PSBoundParameters
         }
         # Final fallback to basic checks
@@ -154,9 +174,11 @@ function Install-WindowsUpdate {
         # Summary output
         if ($results.UpdatesFound -eq 0) {
             Write-Information "  ✅ No updates available - system is up to date" -InformationAction Continue
+            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No updates available - system is up to date' } catch {}
         }
         elseif ($DryRun) {
             Write-Information "  📋 Found $($results.UpdatesFound) available updates ($($results.TotalSizeMB) MB total)" -InformationAction Continue
+            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Dry-run completed - updates would be installed' -Data @{ UpdatesFound = $results.UpdatesFound; TotalSizeMB = $results.TotalSizeMB } } catch {}
         }
         else {
             $statusIcon = if ($results.UpdatesFailed -eq 0) { "✅" } else { "⚠️" }
@@ -169,6 +191,22 @@ function Install-WindowsUpdate {
         }
 
         $success = $results.UpdatesFailed -eq 0 && ($results.UpdatesInstalled -gt 0 || $results.UpdatesFound -eq 0)
+        
+        # Complete performance tracking and structured logging
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
+                UpdatesFound = $results.UpdatesFound
+                UpdatesInstalled = $results.UpdatesInstalled
+                UpdatesFailed = $results.UpdatesFailed
+                TotalSizeMB = $results.TotalSizeMB
+                RebootRequired = $results.RebootRequired
+                Method = $results.Method
+            }
+            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation completed' -Data $results
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+        
         # Log detailed results for audit trails
         Write-Verbose "Windows Updates operation details: $(ConvertTo-Json $results -Depth 3)"
         Write-Verbose "Windows Updates operation completed successfully"
@@ -179,6 +217,14 @@ function Install-WindowsUpdate {
         $errorMessage = "❌ Windows Updates operation failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Complete performance tracking for failed operation
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
+            Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
         
         # Type 2 module returns boolean for failure
         return $false
@@ -223,6 +269,14 @@ function Get-WindowsUpdateStatus {
     param()
 
     Write-Information "📊 Checking Windows Update status..." -InformationAction Continue
+    
+    # Start structured logging for status check
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows Update status check'
+        $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdateStatusCheck' -Component 'WINDOWS-UPDATES'
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
 
     $status = @{
         UpdatesAvailable  = 0
@@ -254,11 +308,28 @@ function Get-WindowsUpdateStatus {
         Write-Information "  📋 Status: $($status.UpdatesAvailable) updates available" -InformationAction Continue
         Write-Information "  🔄 Pending reboot: $($status.PendingReboot)" -InformationAction Continue
         Write-Information "  ⚙️ Auto-update: $($status.AutoUpdateEnabled)" -InformationAction Continue
+        
+        # Complete structured logging
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $status
+            Write-LogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message 'Windows Update status check completed' -Data $status
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
 
         return $status
     }
     catch {
         Write-Warning "Failed to get complete Windows Update status: $_"
+        
+        # Complete performance tracking for failed operation
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
+            Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message 'Windows Update status check failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+        
         return $status
     }
 }
