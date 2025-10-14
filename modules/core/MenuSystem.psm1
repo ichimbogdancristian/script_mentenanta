@@ -17,6 +17,16 @@
 
 using namespace System.Collections.Generic
 
+# Import LoggingManager for structured logging (with graceful fallback)
+try {
+    $loggingManagerPath = Join-Path $PSScriptRoot 'LoggingManager.psm1'
+    if (Test-Path $loggingManagerPath) {
+        Import-Module $loggingManagerPath -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    # LoggingManager not available, continue without structured logging
+}
+
 # Module variables
 $script:MenuConfig = @{
     CountdownSeconds  = 20
@@ -54,6 +64,15 @@ function Show-MainMenu {
         [Parameter()]
         [int]$DefaultOption = 1
     )
+    
+    # Start performance tracking for menu display
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'MainMenuDisplay'
+        Write-LogEntry -Level 'INFO' -Component 'MENU-SYSTEM' -Message 'Displaying main menu' -Data @{ CountdownSeconds = $CountdownSeconds; DefaultOption = $DefaultOption }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
 
     Write-Information "`n" -InformationAction Continue -NoNewline
     Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
@@ -73,20 +92,37 @@ function Show-MainMenu {
     $selection = Start-CountdownSelection -CountdownSeconds $CountdownSeconds -DefaultOption $DefaultOption -OptionsCount 2
 
     Write-Information "" -InformationAction Continue
-    switch ($selection) {
+    
+    # Determine result based on selection
+    $result = switch ($selection) {
         1 {
             Write-Information "✓ Selected: Execute Script Normally (Unattended)" -InformationAction Continue
-            return @{ Mode = 'Execute'; DryRun = $false }
+            @{ Mode = 'Execute'; DryRun = $false }
         }
         2 {
             Write-Information "✓ Selected: Execute in Dry-Run Mode" -InformationAction Continue
-            return @{ Mode = 'Execute'; DryRun = $true }
+            @{ Mode = 'Execute'; DryRun = $true }
         }
         default {
             Write-Information "✓ Default: Execute Script Normally (Unattended)" -InformationAction Continue
-            return @{ Mode = 'Execute'; DryRun = $false }
+            @{ Mode = 'Execute'; DryRun = $false }
         }
     }
+    
+    # Complete performance tracking and structured logging
+    try {
+        Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
+            SelectedOption = $selection
+            Mode = $result.Mode
+            DryRun = $result.DryRun
+            CountdownUsed = $true
+        }
+        Write-LogEntry -Level 'SUCCESS' -Component 'MENU-SYSTEM' -Message 'Main menu selection completed' -Data @{ SelectedOption = $selection; Mode = $result.Mode; DryRun = $result.DryRun }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
+    
+    return $result
 }
 
 <#
@@ -121,6 +157,15 @@ function Show-TaskSelectionMenu {
         [Parameter()]
         [int]$DefaultOption = 1
     )
+    
+    # Start performance tracking for task selection menu
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'TaskSelectionMenuDisplay'
+        Write-LogEntry -Level 'INFO' -Component 'MENU-SYSTEM' -Message 'Displaying task selection menu' -Data @{ IsDryRun = $IsDryRun; AvailableTasksCount = $AvailableTasks.Count; CountdownSeconds = $CountdownSeconds; DefaultOption = $DefaultOption }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
 
     $modeText = if ($IsDryRun) { "DRY-RUN" } else { "EXECUTION" }
     $modeColor = if ($IsDryRun) { "Blue" } else { "Green" }
