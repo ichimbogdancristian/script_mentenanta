@@ -1,10 +1,12 @@
-# Windows Maintenance Automation v2.1
+# Windows Maintenance Automation v2.1.1
 
 A professional-grade Windows 10/11 maintenance system with enhanced logging infrastructure, session-based file organization, interactive dashboard reporting, and comprehensive system analytics.
 
+**🎉 Latest Update (v2.1.1 - October 2025)**: Major stability improvements - resolved critical module loading issues, eliminated circular dependencies, fixed configuration validation errors, and improved file operation reliability.
+
 For full details (architecture, modules, usage, testing, contributor guide), see sections below.
 
-## ✨ Enhanced Features (v2.1)
+## ✨ Enhanced Features (v2.1.1)
 
 - **🆕 Session-Based File Organization** - Eliminated file proliferation with structured temp_files directories and automatic cleanup
 - **🆕 Professional Dashboard Reports** - Interactive HTML reports with Chart.js analytics, health scoring, and actionable recommendations
@@ -13,6 +15,7 @@ For full details (architecture, modules, usage, testing, contributor guide), see
 - **🆕 System Health Analytics** - Comprehensive scoring with security assessment, resource analysis, and trend visualization
 - **🆕 Performance Monitoring** - Real-time operation tracking, timing analysis, and optimization insights
 - **🆕 Export Capabilities** - JSON, CSV, XML data exports for integration and compliance reporting
+- **🔧 Stability Improvements** - Fixed module loading order, removed circular dependencies, improved error handling
 
 ## Core Features
 
@@ -553,14 +556,29 @@ Start-Process -FilePath 'winget.exe' -ArgumentList $args -Wait -NoNewWindow
 
 ## 📋 Version Information
 
-**Version**: 2.1 - Enhanced File Organization System  
-**Last Updated**: October 12, 2025  
+**Version**: 2.1.1 - Stability & Reliability Improvements  
+**Last Updated**: October 13, 2025  
 **Key Features**: Session-based file organization, enterprise-grade logging, interactive dashboard reports  
 
-### Recent Enhancements (v2.1)
+### 🔧 Critical Fixes (v2.1.1 - October 13, 2025)
+
+- **✅ Module Loading Issues Resolved**: Fixed circular dependencies between FileOrganizationManager and LoggingManager
+- **✅ Configuration Validation Fixed**: Resolved "Cannot bind argument to parameter 'Issues'" errors  
+- **✅ File Lock Conflicts Eliminated**: Replaced problematic file locking with reliable file operations
+- **✅ PowerShell Best Practices**: Updated function names to use approved verbs (Release-FileLock → Unlock-FileLock)
+- **✅ System Stability**: MaintenanceOrchestrator now runs successfully with proper error handling
+- **✅ Testing Validated**: System passes TestFolder validation workflow
+
+### Enhanced Features (v2.1)
 
 - **FileOrganizationManager**: Session-based file organization eliminates file proliferation
 - **Structured temp_files**: Professional directory organization with automatic cleanup
 - **Enhanced logging**: Module-specific logs and performance tracking
 - **Testing suite**: Comprehensive validation with Test-ComprehensiveFileOrganization.ps1
 - **Documentation**: Complete guides for file organization and system architecture
+
+### 📊 Code Quality Status
+
+- **PSScriptAnalyzer Analysis**: 125+ violations identified across modules
+- **Priority Fixes Needed**: Write-Host usage (67 violations), missing BOM encoding (15+ modules), singular noun violations (19+ functions)
+- **Current State**: System functionally operational, code quality improvements in progress

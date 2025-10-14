@@ -103,14 +103,14 @@ function Start-SecurityAudit {
         Write-Information "  🛡️  Checking Windows Defender status..." -InformationAction Continue
         $defenderResults = Get-WindowsDefenderStatus -IncludeScan:$IncludeDefenderScan
         $auditResults.Categories['WindowsDefender'] = $defenderResults
-        Update-SecurityScore -Results $auditResults -Category 'WindowsDefender' -Score $defenderResults.Score -MaxScore 25
+        Update-SecurityScore -Results $auditResults -Score $defenderResults.Score -MaxScore 25
 
         # Firewall Configuration (default: enabled)
         if ($CheckFirewall -or (-not $PSBoundParameters.ContainsKey('CheckFirewall'))) {
             Write-Information "  🔥 Checking Windows Firewall..." -InformationAction Continue
             $firewallResults = Get-FirewallStatus
             $auditResults.Categories['Firewall'] = $firewallResults
-            Update-SecurityScore -Results $auditResults -Category 'Firewall' -Score $firewallResults.Score -MaxScore 20
+            Update-SecurityScore -Results $auditResults -Score $firewallResults.Score -MaxScore 20
         }
 
         # User Account Control (default: enabled)
@@ -118,7 +118,7 @@ function Start-SecurityAudit {
             Write-Information "  👤 Checking User Account Control..." -InformationAction Continue
             $uacResults = Get-UACStatus
             $auditResults.Categories['UAC'] = $uacResults
-            Update-SecurityScore -Results $auditResults -Category 'UAC' -Score $uacResults.Score -MaxScore 15
+            Update-SecurityScore -Results $auditResults -Score $uacResults.Score -MaxScore 15
         }
 
         # Security Services (default: enabled)
@@ -126,7 +126,7 @@ function Start-SecurityAudit {
             Write-Information "  ⚙️  Auditing security services..." -InformationAction Continue
             $servicesResults = Get-SecurityServicesStatus
             $auditResults.Categories['Services'] = $servicesResults
-            Update-SecurityScore -Results $auditResults -Category 'Services' -Score $servicesResults.Score -MaxScore 20
+            Update-SecurityScore -Results $auditResults -Score $servicesResults.Score -MaxScore 20
         }
 
         # Windows Updates (default: enabled)
@@ -134,11 +134,11 @@ function Start-SecurityAudit {
             Write-Information "  📥 Checking security updates..." -InformationAction Continue
             $updatesResults = Get-SecurityUpdatesStatus
             $auditResults.Categories['Updates'] = $updatesResults
-            Update-SecurityScore -Results $auditResults -Category 'Updates' -Score $updatesResults.Score -MaxScore 20
+            Update-SecurityScore -Results $auditResults -Score $updatesResults.Score -MaxScore 20
         }
 
         # Generate security recommendations
-        $auditResults.Recommendations = Get-SecurityRecommendations -AuditResults $auditResults
+        $auditResults.Recommendations = Get-SecurityRecommendation -AuditResults $auditResults
 
         # Calculate final security score percentage
         $auditResults.Summary = @{
@@ -627,7 +627,7 @@ function Get-SecurityUpdatesStatus {
     Updates security score for a category
 #>
 function Update-SecurityScore {
-    param($Results, $Category, $Score, $MaxScore)
+    param($Results, $Score, $MaxScore)
 
     $Results.SecurityScore += $Score
     $Results.MaxScore += $MaxScore
@@ -649,7 +649,7 @@ function Get-RiskLevel {
 .SYNOPSIS
     Generates security recommendations based on audit results
 #>
-function Get-SecurityRecommendations {
+function Get-SecurityRecommendation {
     param($AuditResults)
 
     $recommendations = New-Object System.Collections.ArrayList
@@ -758,3 +758,4 @@ Export-ModuleMember -Function @(
     'Start-SecurityAudit',
     'Get-WindowsDefenderStatus'
 )
+

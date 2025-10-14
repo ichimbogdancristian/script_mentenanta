@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for essential apps configuration)
 #   - LoggingManager.psm1 (for structured logging)
@@ -114,7 +114,7 @@ function Install-EssentialApplication {
     
     # Check for administrator privileges before proceeding
     try {
-        Assert-AdminPrivileges -Operation "Essential applications installation"
+        Assert-AdminPrivilege -Operation "Essential applications installation"
     } catch {
         Write-Error "Administrator privileges are required for application installation: $_"
         return $false
@@ -369,10 +369,7 @@ function Save-AppDiffList {
         [Array]$InstalledApps,
 
         [Parameter(Mandatory)]
-        [Array]$MissingApps,
-
-        [Parameter(Mandatory)]
-        [PSCustomObject]$InstalledSoftware
+        [Array]$MissingApps
     )
 
     try {
@@ -795,10 +792,7 @@ function Install-AppsViaChocolatey {
         [Array]$Apps,
 
         [Parameter()]
-        [switch]$DryRun,
-
-        [Parameter()]
-        [int]$ParallelCount = 2  # Chocolatey is less stable with high parallelism
+        [switch]$DryRun
     )
 
     $results = @{

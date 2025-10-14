@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -55,36 +55,36 @@ function Show-MainMenu {
         [int]$DefaultOption = 1
     )
 
-    Write-Host "`n" -NoNewline
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "    WINDOWS MAINTENANCE AUTOMATION - EXECUTION MODE SELECTION    " -ForegroundColor White -BackgroundColor DarkBlue
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "🔧 Please select execution mode:" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "  [1] Execute Script Normally (Unattended) " -ForegroundColor Green -NoNewline
-    Write-Host "[DEFAULT]" -ForegroundColor Cyan
-    Write-Host "      → Performs actual system changes unattended" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "  [2] Execute in Dry-Run Mode" -ForegroundColor Blue
-    Write-Host "      → Simulates changes without modifying the system" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
+    Write-Information "`n" -InformationAction Continue -NoNewline
+    Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "    WINDOWS MAINTENANCE AUTOMATION - EXECUTION MODE SELECTION    " -InformationAction Continue -BackgroundColor DarkBlue
+    Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "🔧 Please select execution mode:" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "  [1] Execute Script Normally (Unattended) " -InformationAction Continue -NoNewline
+    Write-Information "[DEFAULT]" -InformationAction Continue
+    Write-Information "      → Performs actual system changes unattended" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "  [2] Execute in Dry-Run Mode" -InformationAction Continue
+    Write-Information "      → Simulates changes without modifying the system" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "───────────────────────────────────────────────────────────────" -InformationAction Continue
 
     $selection = Start-CountdownSelection -CountdownSeconds $CountdownSeconds -DefaultOption $DefaultOption -OptionsCount 2
 
-    Write-Host ""
+    Write-Information "" -InformationAction Continue
     switch ($selection) {
         1 {
-            Write-Host "✓ Selected: Execute Script Normally (Unattended)" -ForegroundColor Green
+            Write-Information "✓ Selected: Execute Script Normally (Unattended)" -InformationAction Continue
             return @{ Mode = 'Execute'; DryRun = $false }
         }
         2 {
-            Write-Host "✓ Selected: Execute in Dry-Run Mode" -ForegroundColor Blue
+            Write-Information "✓ Selected: Execute in Dry-Run Mode" -InformationAction Continue
             return @{ Mode = 'Execute'; DryRun = $true }
         }
         default {
-            Write-Host "✓ Default: Execute Script Normally (Unattended)" -ForegroundColor Green
+            Write-Information "✓ Default: Execute Script Normally (Unattended)" -InformationAction Continue
             return @{ Mode = 'Execute'; DryRun = $false }
         }
     }
@@ -126,22 +126,22 @@ function Show-TaskSelectionMenu {
     $modeText = if ($IsDryRun) { "DRY-RUN" } else { "EXECUTION" }
     $modeColor = if ($IsDryRun) { "Blue" } else { "Green" }
 
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "    TASK SELECTION - $modeText MODE" -ForegroundColor White -BackgroundColor DarkBlue
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "📋 Please select tasks to execute:" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "  [1] Execute All Tasks Unattended " -ForegroundColor $modeColor -NoNewline
-    Write-Host "[DEFAULT]" -ForegroundColor Cyan
-    Write-Host "      → Runs all $($AvailableTasks.Count) available maintenance tasks automatically" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "  [2] Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
-    Write-Host "      → Choose specific tasks by number (comma-separated input)" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "Available Tasks:" -ForegroundColor Yellow
-    Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
+    Write-Information "" -InformationAction Continue
+    Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "    TASK SELECTION - $modeText MODE" -InformationAction Continue -BackgroundColor DarkBlue
+    Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "📋 Please select tasks to execute:" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "  [1] Execute All Tasks Unattended " -InformationAction Continue -ForegroundColor $modeColor -NoNewline
+    Write-Information "[DEFAULT]" -InformationAction Continue
+    Write-Information "      → Runs all $($AvailableTasks.Count) available maintenance tasks automatically" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "  [2] Execute Only Inserted Task Numbers" -InformationAction Continue -ForegroundColor $modeColor
+    Write-Information "      → Choose specific tasks by number (comma-separated input)" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "Available Tasks:" -InformationAction Continue
+    Write-Information "───────────────────────────────────────────────────────────────" -InformationAction Continue
 
     for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
         $taskNum = $i + 1
@@ -149,19 +149,19 @@ function Show-TaskSelectionMenu {
         $taskName = if ($task.Name) { $task.Name } else { "Task $taskNum" }
         $taskDesc = if ($task.Description) { " - $($task.Description)" } else { "" }
 
-        Write-Host "  [$taskNum] " -ForegroundColor White -NoNewline
-        Write-Host "$taskName" -ForegroundColor Cyan -NoNewline
-        Write-Host "$taskDesc" -ForegroundColor Gray
+        Write-Information "  [$taskNum] " -InformationAction Continue -NoNewline
+        Write-Information "$taskName" -InformationAction Continue -NoNewline
+        Write-Information "$taskDesc" -InformationAction Continue
     }
 
-    Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
+    Write-Information "───────────────────────────────────────────────────────────────" -InformationAction Continue
 
     $selection = Start-CountdownSelection -CountdownSeconds $CountdownSeconds -DefaultOption $DefaultOption -OptionsCount 2
 
-    Write-Host ""
+    Write-Information "" -InformationAction Continue
     switch ($selection) {
         1 {
-            Write-Host "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
+            Write-Information "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -InformationAction Continue -ForegroundColor $modeColor
             return @{
                 SelectionType = 'All'
                 TaskNumbers   = @(1..$AvailableTasks.Count)
@@ -169,12 +169,12 @@ function Show-TaskSelectionMenu {
             }
         }
         2 {
-            Write-Host "✓ Selected: Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
+            Write-Information "✓ Selected: Execute Only Inserted Task Numbers" -InformationAction Continue -ForegroundColor $modeColor
             $selectedTasks = Get-TaskNumberSelection -AvailableTasks $AvailableTasks
             return $selectedTasks
         }
         default {
-            Write-Host "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
+            Write-Information "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -InformationAction Continue -ForegroundColor $modeColor
             return @{
                 SelectionType = 'All'
                 TaskNumbers   = @(1..$AvailableTasks.Count)
@@ -229,12 +229,12 @@ function Get-TaskNumberSelection {
     $maxTaskNumber = $AvailableTasks.Count
 
     do {
-        Write-Host ""
-        Write-Host "📝 Enter task numbers (comma-separated, e.g., 1,3,5,7): " -ForegroundColor Yellow -NoNewline
+        Write-Information "" -InformationAction Continue
+        Write-Information "📝 Enter task numbers (comma-separated, e.g., 1,3,5,7): " -InformationAction Continue -NoNewline
         $userInput = Read-Host
 
         if ([string]::IsNullOrWhiteSpace($userInput)) {
-            Write-Host "❌ No input provided. Please enter task numbers or press Ctrl+C to cancel." -ForegroundColor Red
+            Write-Information "❌ No input provided. Please enter task numbers or press Ctrl+C to cancel." -InformationAction Continue
             continue
         }
 
@@ -263,7 +263,7 @@ function Get-TaskNumberSelection {
         }
 
         if (-not $validInput) {
-            Write-Host "Invalid task numbers: $($invalidNumbers -join ', '). Please use numbers between 1 and $maxTaskNumber." -ForegroundColor Red
+            Write-Information "Invalid task numbers: $($invalidNumbers -join ', '). Please use numbers between 1 and $maxTaskNumber." -InformationAction Continue
         }
 
     } while (-not $validInput)
@@ -277,13 +277,13 @@ function Get-TaskNumberSelection {
         $selectedTasks += $AvailableTasks[$taskNum - 1]
     }
 
-    Write-Host ""
-    Write-Host "✓ Selected Tasks: " -ForegroundColor Green -NoNewline
-    Write-Host "($($taskNumbers -join ', '))" -ForegroundColor Cyan
+    Write-Information "" -InformationAction Continue
+    Write-Information "✓ Selected Tasks: " -InformationAction Continue -NoNewline
+    Write-Information "($($taskNumbers -join ', '))" -InformationAction Continue
     foreach ($taskNum in $taskNumbers) {
         $task = $AvailableTasks[$taskNum - 1]
         $taskName = if ($task.Name) { $task.Name } else { "Task $taskNum" }
-        Write-Host "  [$taskNum] $taskName" -ForegroundColor White
+        Write-Information "  [$taskNum] $taskName" -InformationAction Continue
     }
 
     return @{
@@ -326,8 +326,8 @@ function Start-CountdownSelection {
         [int]$OptionsCount
     )
 
-    Write-Host ""
-    Write-Host "Countdown: " -ForegroundColor Yellow -NoNewline
+    Write-Information "" -InformationAction Continue
+    Write-Information "Countdown: " -InformationAction Continue -NoNewline
 
     for ($i = $CountdownSeconds; $i -gt 0; $i--) {
         # Check for user input
@@ -339,29 +339,29 @@ function Start-CountdownSelection {
             if ($key.KeyChar -match '^\d$') {
                 $selection = [int]$key.KeyChar.ToString()
                 if ($selection -ge 1 -and $selection -le $OptionsCount) {
-                    Write-Host ""
+                    Write-Information "" -InformationAction Continue
                     return $selection
                 }
             }
 
             # Handle Enter key (select default)
             if ($key.Key -eq [ConsoleKey]::Enter) {
-                Write-Host ""
+                Write-Information "" -InformationAction Continue
                 return $DefaultOption
             }
         }
 
         # Display countdown
-        Write-Host "`r" -NoNewline
-        Write-Host "Countdown: " -ForegroundColor Yellow -NoNewline
-        Write-Host "$i seconds " -ForegroundColor Red -NoNewline
-        Write-Host "(Press 1-$OptionsCount to select, Enter for default)" -ForegroundColor Gray -NoNewline
+        Write-Information "`r" -InformationAction Continue -NoNewline
+        Write-Information "Countdown: " -InformationAction Continue -NoNewline
+        Write-Information "$i seconds " -InformationAction Continue -NoNewline
+        Write-Information "(Press 1-$OptionsCount to select, Enter for default)" -InformationAction Continue -NoNewline
 
         Start-Sleep -Seconds 1
     }
 
-    Write-Host ""
-    Write-Host "⏱️ Time expired! Selecting default option [$DefaultOption]" -ForegroundColor Yellow
+    Write-Information "" -InformationAction Continue
+    Write-Information "⏱️ Time expired! Selecting default option [$DefaultOption]" -InformationAction Continue
     return $DefaultOption
 }
 
@@ -397,13 +397,13 @@ function Show-ConfirmationDialog {
         [char]$DefaultChoice = 'Y'
     )
 
-    Write-Host ""
-    Write-Host "⚠️  " -ForegroundColor Yellow -NoNewline
-    Write-Host $Message -ForegroundColor White
-    Write-Host ""
+    Write-Information "" -InformationAction Continue
+    Write-Information "⚠️  " -InformationAction Continue -NoNewline
+    Write-Information $Message -InformationAction Continue
+    Write-Information "" -InformationAction Continue
 
     $defaultText = if ($DefaultChoice -eq 'Y') { "Yes" } else { "No" }
-    Write-Host "Countdown: " -ForegroundColor Yellow -NoNewline
+    Write-Information "Countdown: " -InformationAction Continue -NoNewline
 
     for ($i = $CountdownSeconds; $i -gt 0; $i--) {
         if ([Console]::KeyAvailable) {
@@ -411,34 +411,34 @@ function Show-ConfirmationDialog {
 
             switch ($key.KeyChar.ToString().ToUpper()) {
                 'Y' {
-                    Write-Host ""
-                    Write-Host "✓ Confirmed: Yes" -ForegroundColor Green
+                    Write-Information "" -InformationAction Continue
+                    Write-Information "✓ Confirmed: Yes" -InformationAction Continue
                     return $true
                 }
                 'N' {
-                    Write-Host ""
-                    Write-Host "✗ Confirmed: No" -ForegroundColor Red
+                    Write-Information "" -InformationAction Continue
+                    Write-Information "✗ Confirmed: No" -InformationAction Continue
                     return $false
                 }
             }
 
             if ($key.Key -eq [ConsoleKey]::Enter) {
-                Write-Host ""
-                Write-Host "✓ Default: $defaultText" -ForegroundColor Yellow
+                Write-Information "" -InformationAction Continue
+                Write-Information "✓ Default: $defaultText" -InformationAction Continue
                 return ($DefaultChoice -eq 'Y')
             }
         }
 
-        Write-Host "`r" -NoNewline
-        Write-Host "Countdown: " -ForegroundColor Yellow -NoNewline
-        Write-Host "$i seconds " -ForegroundColor Red -NoNewline
-        Write-Host "(Y/N, Enter for default [$DefaultChoice])" -ForegroundColor Gray -NoNewline
+        Write-Information "`r" -InformationAction Continue -NoNewline
+        Write-Information "Countdown: " -InformationAction Continue -NoNewline
+        Write-Information "$i seconds " -InformationAction Continue -NoNewline
+        Write-Information "(Y/N, Enter for default [$DefaultChoice])" -InformationAction Continue -NoNewline
 
         Start-Sleep -Seconds 1
     }
 
-    Write-Host ""
-    Write-Host "⏱️ Time expired! Default: $defaultText" -ForegroundColor Yellow
+    Write-Information "" -InformationAction Continue
+    Write-Information "⏱️ Time expired! Default: $defaultText" -InformationAction Continue
     return ($DefaultChoice -eq 'Y')
 }
 
@@ -527,3 +527,5 @@ Export-ModuleMember -Function @(
     'Set-MenuConfiguration',
     'Get-MenuConfiguration'
 )
+
+

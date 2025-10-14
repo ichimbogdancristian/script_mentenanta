@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -42,12 +42,12 @@ using namespace System.Collections.Generic
     Skip PSWindowsUpdate module installation
 
 .EXAMPLE
-    $result = Install-AllDependencies
+    $result = Install-AllDependency
 
 .EXAMPLE
-    $result = Install-AllDependencies -SkipChocolatey -Force
+    $result = Install-AllDependency -SkipChocolatey -Force
 #>
-function Install-AllDependencies {
+function Install-AllDependency {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     param(
         [Parameter()]
@@ -60,7 +60,7 @@ function Install-AllDependencies {
         [switch]$SkipPSWindowsUpdate
     )
 
-    Write-Host "🔧 Installing and configuring package manager dependencies..." -ForegroundColor Cyan
+    Write-Information "🔧 Installing and configuring package manager dependencies..." -InformationAction Continue
     $startTime = Get-Date
 
     # Initialize results tracking
@@ -82,106 +82,106 @@ function Install-AllDependencies {
 
     try {
         # 1. PowerShell 7+ Check
-        Write-Host "  🐚 Checking PowerShell 7..." -ForegroundColor Gray
+        Write-Information "  🐚 Checking PowerShell 7..." -InformationAction Continue
         $results.TotalDependencies++
         $psResult = Test-PowerShell7Installation
         $results.Dependencies.PowerShell7 = $psResult
 
         if ($psResult.Status -eq 'Installed') {
-            Write-Host "    ✅ PowerShell 7 is available: v$($psResult.Version)" -ForegroundColor Green
+            Write-Information "    ✅ PowerShell 7 is available: v$($psResult.Version)" -InformationAction Continue
             $results.Successful++
         }
         elseif ($psResult.Status -eq 'Missing') {
-            Write-Host "    ❌ PowerShell 7 not found - current session is $($PSVersionTable.PSVersion)" -ForegroundColor Yellow
-            Write-Host "    💡 Install PowerShell 7 from: https://github.com/PowerShell/PowerShell/releases" -ForegroundColor Blue
+            Write-Information "    ❌ PowerShell 7 not found - current session is $($PSVersionTable.PSVersion)" -InformationAction Continue
+            Write-Information "    💡 Install PowerShell 7 from: https://github.com/PowerShell/PowerShell/releases" -InformationAction Continue
             $results.Failed++
         }
 
         # 2. WinGet Installation
-        Write-Host "  📦 Installing winget..." -ForegroundColor Gray
+        Write-Information "  📦 Installing winget..." -InformationAction Continue
         $results.TotalDependencies++
         $wingetResult = Install-WinGetPackageManager -Force:$Force
         $results.Dependencies.WinGet = $wingetResult
 
         if ($wingetResult.Status -eq 'Installed') {
-            Write-Host "    ✅ winget is ready: v$($wingetResult.Version)" -ForegroundColor Green
+            Write-Information "    ✅ winget is ready: v$($wingetResult.Version)" -InformationAction Continue
             $results.Successful++
         }
         else {
-            Write-Host "    ❌ winget installation failed: $($wingetResult.Error)" -ForegroundColor Red
+            Write-Information "    ❌ winget installation failed: $($wingetResult.Error)" -InformationAction Continue
             $results.Failed++
         }
 
         # 3. NuGet Provider
-        Write-Host "  📚 Configuring NuGet provider..." -ForegroundColor Gray
+        Write-Information "  📚 Configuring NuGet provider..." -InformationAction Continue
         $results.TotalDependencies++
         $nugetResult = Install-NuGetProvider -Force:$Force
         $results.Dependencies.NuGet = $nugetResult
 
         if ($nugetResult.Status -eq 'Installed') {
-            Write-Host "    ✅ NuGet provider is ready: v$($nugetResult.Version)" -ForegroundColor Green
+            Write-Information "    ✅ NuGet provider is ready: v$($nugetResult.Version)" -InformationAction Continue
             $results.Successful++
         }
         else {
-            Write-Host "    ❌ NuGet provider installation failed: $($nugetResult.Error)" -ForegroundColor Red
+            Write-Information "    ❌ NuGet provider installation failed: $($nugetResult.Error)" -InformationAction Continue
             $results.Failed++
         }
 
         # 4. PowerShellGet Module
-        Write-Host "  🔄 Updating PowerShellGet..." -ForegroundColor Gray
+        Write-Information "  🔄 Updating PowerShellGet..." -InformationAction Continue
         $results.TotalDependencies++
         $psgetResult = Install-PowerShellGetModule -Force:$Force
         $results.Dependencies.PowerShellGet = $psgetResult
 
         if ($psgetResult.Status -eq 'Installed') {
-            Write-Host "    ✅ PowerShellGet is ready: v$($psgetResult.Version)" -ForegroundColor Green
+            Write-Information "    ✅ PowerShellGet is ready: v$($psgetResult.Version)" -InformationAction Continue
             $results.Successful++
         }
         else {
-            Write-Host "    ❌ PowerShellGet update failed: $($psgetResult.Error)" -ForegroundColor Red
+            Write-Information "    ❌ PowerShellGet update failed: $($psgetResult.Error)" -InformationAction Continue
             $results.Failed++
         }
 
         # 5. PSWindowsUpdate Module
         if (-not $SkipPSWindowsUpdate) {
-            Write-Host "  🔄 Installing PSWindowsUpdate module..." -ForegroundColor Gray
+            Write-Information "  🔄 Installing PSWindowsUpdate module..." -InformationAction Continue
             $results.TotalDependencies++
             $pswuResult = Install-PSWindowsUpdateModule -Force:$Force
             $results.Dependencies.PSWindowsUpdate = $pswuResult
 
             if ($pswuResult.Status -eq 'Installed') {
-                Write-Host "    ✅ PSWindowsUpdate is ready: v$($pswuResult.Version)" -ForegroundColor Green
+                Write-Information "    ✅ PSWindowsUpdate is ready: v$($pswuResult.Version)" -InformationAction Continue
                 $results.Successful++
             }
             else {
-                Write-Host "    ❌ PSWindowsUpdate installation failed: $($pswuResult.Error)" -ForegroundColor Red
+                Write-Information "    ❌ PSWindowsUpdate installation failed: $($pswuResult.Error)" -InformationAction Continue
                 $results.Failed++
             }
         }
         else {
-            Write-Host "  ⏭️  Skipping PSWindowsUpdate module installation" -ForegroundColor Yellow
+            Write-Information "  ⏭️  Skipping PSWindowsUpdate module installation" -InformationAction Continue
             $results.Dependencies.PSWindowsUpdate.Status = 'Skipped'
             $results.Skipped++
         }
 
         # 6. Chocolatey
         if (-not $SkipChocolatey) {
-            Write-Host "  🍫 Installing Chocolatey..." -ForegroundColor Gray
+            Write-Information "  🍫 Installing Chocolatey..." -InformationAction Continue
             $results.TotalDependencies++
             $chocoResult = Install-ChocolateyPackageManager -Force:$Force
             $results.Dependencies.Chocolatey = $chocoResult
 
             if ($chocoResult.Status -eq 'Installed') {
-                Write-Host "    ✅ Chocolatey is ready: v$($chocoResult.Version)" -ForegroundColor Green
+                Write-Information "    ✅ Chocolatey is ready: v$($chocoResult.Version)" -InformationAction Continue
                 $results.Successful++
             }
             else {
-                Write-Host "    ❌ Chocolatey installation failed: $($chocoResult.Error)" -ForegroundColor Red
+                Write-Information "    ❌ Chocolatey installation failed: $($chocoResult.Error)" -InformationAction Continue
                 $results.Failed++
             }
         }
         else {
-            Write-Host "  ⏭️  Skipping Chocolatey installation" -ForegroundColor Yellow
+            Write-Information "  ⏭️  Skipping Chocolatey installation" -InformationAction Continue
             $results.Dependencies.Chocolatey.Status = 'Skipped'
             $results.Skipped++
         }
@@ -190,11 +190,11 @@ function Install-AllDependencies {
 
         # Summary
         $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
-        Write-Host "  $statusIcon Dependency installation completed in $([math]::Round($duration, 2))s" -ForegroundColor Green
-        Write-Host "    📊 Total: $($results.TotalDependencies), Success: $($results.Successful), Failed: $($results.Failed), Skipped: $($results.Skipped)" -ForegroundColor Gray
+        Write-Information "  $statusIcon Dependency installation completed in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "    📊 Total: $($results.TotalDependencies), Success: $($results.Successful), Failed: $($results.Failed), Skipped: $($results.Skipped)" -InformationAction Continue
 
         if ($results.Failed -gt 0) {
-            Write-Host "    ⚠️  Some dependencies failed to install. Check individual results." -ForegroundColor Yellow
+            Write-Information "    ⚠️  Some dependencies failed to install. Check individual results." -InformationAction Continue
         }
 
         return $results
@@ -219,7 +219,7 @@ function Get-DependencyStatus {
     [CmdletBinding()]
     param()
 
-    Write-Host "📋 Checking dependency status..." -ForegroundColor Cyan
+    Write-Information "📋 Checking dependency status..." -InformationAction Continue
 
     $status = @{
         Timestamp    = Get-Date
@@ -259,14 +259,14 @@ function Get-DependencyStatus {
         }
 
         $versionInfo = if ($dep.Version) { " (v$($dep.Version))" } else { "" }
-        Write-Host "  $icon $depName`: $($dep.Status)$versionInfo" -ForegroundColor Gray
+        Write-Information "  $icon $depName`: $($dep.Status)$versionInfo" -InformationAction Continue
 
         if ($dep.Error) {
-            Write-Host "      Error: $($dep.Error)" -ForegroundColor Red
+            Write-Information "      Error: $($dep.Error)" -InformationAction Continue
         }
     }
 
-    Write-Host "  📊 Summary: $($status.Summary.Available) available, $($status.Summary.Missing) missing, $($status.Summary.Errors) errors" -ForegroundColor Gray
+    Write-Information "  📊 Summary: $($status.Summary.Available) available, $($status.Summary.Missing) missing, $($status.Summary.Errors) errors" -InformationAction Continue
 
     return $status
 }
@@ -340,7 +340,7 @@ function Install-WinGetPackageManager {
             }
         }
 
-        Write-Host "    🔄 Installing winget package manager..." -ForegroundColor Blue
+        Write-Information "    🔄 Installing winget package manager..." -InformationAction Continue
 
         # Try to install via Microsoft Store or GitHub
         try {
@@ -348,7 +348,7 @@ function Install-WinGetPackageManager {
             $appxPackages = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
 
             if (-not $appxPackages) {
-                Write-Host "      📥 Installing App Installer from Microsoft Store..." -ForegroundColor Gray
+                Write-Information "      📥 Installing App Installer from Microsoft Store..." -InformationAction Continue
 
                 # Download and install the latest release
                 $downloadUrl = "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
@@ -435,7 +435,7 @@ function Install-NuGetProvider {
             }
         }
 
-        Write-Host "    🔄 Installing NuGet provider..." -ForegroundColor Blue
+        Write-Information "    🔄 Installing NuGet provider..." -InformationAction Continue
 
         # Install NuGet provider with prompts suppressed
         $originalProgressPreference = $ProgressPreference
@@ -505,7 +505,7 @@ function Install-PowerShellGetModule {
             }
         }
 
-        Write-Host "    🔄 Updating PowerShellGet module..." -ForegroundColor Blue
+        Write-Information "    🔄 Updating PowerShellGet module..." -InformationAction Continue
 
         $originalProgressPreference = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
@@ -572,7 +572,7 @@ function Install-PSWindowsUpdateModule {
             }
         }
 
-        Write-Host "    🔄 Installing PSWindowsUpdate module..." -ForegroundColor Blue
+        Write-Information "    🔄 Installing PSWindowsUpdate module..." -InformationAction Continue
 
         $originalProgressPreference = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
@@ -638,22 +638,35 @@ function Install-ChocolateyPackageManager {
             }
         }
 
-        Write-Host "    🔄 Installing Chocolatey package manager..." -ForegroundColor Blue
+        Write-Information "    🔄 Installing Chocolatey package manager..." -InformationAction Continue
 
         # Set execution policy temporarily
         $originalPolicy = Get-ExecutionPolicy
         Set-ExecutionPolicy Bypass -Scope Process -Force
 
         try {
-            # Download and execute chocolatey installation script
+            # Download chocolatey installation script to a temporary file
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            $tempFile = [System.IO.Path]::GetTempFileName() + '.ps1'
+            
+            try {
+                (New-Object System.Net.WebClient).DownloadFile('https://community.chocolatey.org/install.ps1', $tempFile)
+                
+                # Execute the script using the call operator
+                & $tempFile
+                
+                # Refresh environment variables
+                $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
 
-            # Refresh environment variables
-            $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
-
-            # Verify installation
-            return Test-ChocolateyInstallation
+                # Verify installation
+                return Test-ChocolateyInstallation
+            }
+            finally {
+                # Clean up temporary file
+                if (Test-Path $tempFile) {
+                    Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+                }
+            }
         }
         finally {
             Set-ExecutionPolicy $originalPolicy -Scope Process -Force
@@ -717,14 +730,14 @@ function Test-ChocolateyInstallation {
     testing membership in the Administrators group.
 
 .EXAMPLE
-    if (Test-AdminPrivileges) {
+    if (Test-AdminPrivilege) {
         Write-Host "Administrator privileges confirmed"
     }
 
 .OUTPUTS
     [bool] True if running as administrator, False otherwise
 #>
-function Test-AdminPrivileges {
+function Test-AdminPrivilege {
     [CmdletBinding()]
     [OutputType([bool])]
     param()
@@ -757,12 +770,12 @@ function Test-AdminPrivileges {
     Name of the operation requiring administrator privileges (for error messages)
 
 .EXAMPLE
-    Assert-AdminPrivileges -Operation "Registry modification"
+    Assert-AdminPrivilege -Operation "Registry modification"
 
 .OUTPUTS
     None (throws on failure)
 #>
-function Assert-AdminPrivileges {
+function Assert-AdminPrivilege {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
@@ -770,7 +783,7 @@ function Assert-AdminPrivileges {
         [string]$Operation = "This operation"
     )
     
-    if (-not (Test-AdminPrivileges)) {
+    if (-not (Test-AdminPrivilege)) {
         $errorMessage = "$Operation requires administrator privileges. Please run PowerShell as Administrator."
         Write-Error $errorMessage -Category PermissionDenied -ErrorAction Stop
     }
@@ -782,8 +795,9 @@ function Assert-AdminPrivileges {
 
 # Export module functions
 Export-ModuleMember -Function @(
-    'Install-AllDependencies',
+    'Install-AllDependency',
     'Get-DependencyStatus',
-    'Test-AdminPrivileges',
-    'Assert-AdminPrivileges'
+    'Test-AdminPrivilege',
+    'Assert-AdminPrivilege'
 )
+

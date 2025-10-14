@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for configuration access)
 
@@ -12,20 +12,16 @@
 
 .NOTES
     Module Type: Core (Infrastructure)
-    Dependencies: ConfigManager, LoggingManager
+    Dependencies: ConfigManager (LoggingManager excluded to avoid circular dependency)
     Author: Windows Maintenance Automation Project
-    Version: 2.0.0
+    Version: 2.1.0
 #>
 
 using namespace System.Collections.Generic
 using namespace System.IO
 
-# Import required modules for file locking
-$ModuleRoot = Split-Path -Parent $PSScriptRoot
-$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingManagerPath) {
-    Import-Module $LoggingManagerPath -Force
-}
+# Note: Avoiding circular dependency with LoggingManager
+# FileOrganizationManager provides core file operations without advanced locking
 
 #region Module Variables
 
@@ -120,7 +116,7 @@ function Initialize-FileOrganization {
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
-        [ValidateScript({Test-Path $_ -PathType Container})]
+        [ValidateScript({ Test-Path $_ -PathType Container })]
         [string]$BaseDir,
 
         [Parameter(Mandatory)]
@@ -333,20 +329,15 @@ function Save-OrganizedFile {
             $filePath = [Path]::ChangeExtension($filePath, $extension)
         }
 
-        # Save data in specified format with file locking
+        # Save data in specified format
         switch ($Format) {
             'JSON' { 
                 try {
-                    $result = Invoke-WithFileLock -FilePath $filePath -TimeoutSeconds 10 -ScriptBlock {
-                        $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8
-                    }
-                    if ($null -eq $result) {
-                        Write-Warning "File lock failed for JSON write, using direct write: $filePath"
-                        $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8
-                    }
-                } catch {
-                    Write-Warning "Failed to use file locking for JSON write: $_"
-                    $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8
+                    $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8 -Force
+                }
+                catch {
+                    Write-Warning "Failed to write JSON file: $_"
+                    return $null
                 }
             }
             'Text' { 
@@ -393,10 +384,10 @@ function Save-OrganizedFile {
     Filter by category
 
 .EXAMPLE
-    $oldFiles = Get-SessionFiles -MaxAge 7 -FileType 'Data'
+    $oldFiles = Get-SessionFile -MaxAge 7 -FileType 'Data'
     Gets data files older than 7 days
 #>
-function Get-SessionFiles {
+function Get-SessionFile {
     [CmdletBinding()]
     [OutputType([array])]
     param(
@@ -522,16 +513,11 @@ function Initialize-CleanupPolicy {
         $context.CleanupPolicy = Get-DefaultCleanupPolicy
         Set-FileOrgContext -Context $context
         try {
-            $result = Invoke-WithFileLock -FilePath $policyPath -TimeoutSeconds 10 -ScriptBlock {
-                $context.CleanupPolicy | ConvertTo-Json -Depth 5 | Out-File -FilePath $policyPath -Encoding UTF8
-            }
-            if ($null -eq $result) {
-                Write-Warning "File lock failed for cleanup policy write, using direct write: $policyPath"
-                $context.CleanupPolicy | ConvertTo-Json -Depth 5 | Out-File -FilePath $policyPath -Encoding UTF8
-            }
-        } catch {
-            Write-Warning "Failed to use file locking for cleanup policy write: $_"
-            $context.CleanupPolicy | ConvertTo-Json -Depth 5 | Out-File -FilePath $policyPath -Encoding UTF8
+            # Simple file write without locking to avoid circular dependency
+            $context.CleanupPolicy | ConvertTo-Json -Depth 5 | Out-File -FilePath $policyPath -Encoding UTF8 -Force
+        }
+        catch {
+            Write-Warning "Failed to write cleanup policy: $_"
         }
         Write-Verbose "Created default cleanup policy: $policyPath"
     }
@@ -617,7 +603,7 @@ Export-ModuleMember -Function @(
     'Initialize-FileOrganization',
     'Get-OrganizedFilePath',
     'Save-OrganizedFile',
-    'Get-SessionFiles'
+    'Get-SessionFile'
 )
 
 #endregion

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for bloatware list configuration)
 #   - LoggingManager.psm1 (for structured logging)
@@ -278,9 +278,9 @@ function Find-InstalledBloatware {
     Array of detected bloatware items
 
 .EXAMPLE
-    $stats = Get-BloatwareStatistics -BloatwareList $detectedBloatware
+    $stats = Get-BloatwareStatistic -BloatwareList $detectedBloatware
 #>
-function Get-BloatwareStatistics {
+function Get-BloatwareStatistic {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -705,6 +705,6 @@ function Test-BloatwareDetection {
 # Export module functions
 Export-ModuleMember -Function @(
     'Find-InstalledBloatware',
-    'Get-BloatwareStatistics',
+    'Get-BloatwareStatistic',
     'Test-BloatwareDetection'
 )

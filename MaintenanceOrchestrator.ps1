@@ -539,7 +539,7 @@ $MaintenanceTasks = @(
         Name        = 'WindowsUpdates'
         Description = 'Check for and install Windows updates'
         ModulePath  = Join-Path $ModulesPath 'type2\WindowsUpdates.psm1'
-        Function    = 'Install-WindowsUpdates'
+        Function    = 'Install-WindowsUpdate'
         Type        = 'Type2'
         Category    = 'Updates'
     },

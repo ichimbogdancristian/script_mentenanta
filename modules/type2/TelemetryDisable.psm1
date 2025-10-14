@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for configuration access)
 #   - LoggingManager.psm1 (for structured logging)
@@ -91,7 +91,7 @@ function Disable-WindowsTelemetry {
     
     # Check for administrator privileges before proceeding
     try {
-        Assert-AdminPrivileges -Operation "Windows telemetry and privacy configuration"
+        Assert-AdminPrivilege -Operation "Windows telemetry and privacy configuration"
     } catch {
         Write-Error "Administrator privileges are required for telemetry disabling operations: $_"
         return $false

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies: ConfigManager.psm1 (for path resolution)
 
 <#
@@ -98,7 +98,8 @@ function Initialize-LoggingSystem {
                 if (Test-Path $ConfigManagerPath) {
                     Import-Module $ConfigManagerPath -Force -Global
                     $logDir = Get-LogsPath
-                } else {
+                }
+                else {
                     $logDir = Join-Path $scriptRoot "temp_files\logs"
                 }
             }
@@ -216,13 +217,13 @@ function Write-LogEntry {
 
         # Performance tracking for critical operations
         if ($Level -in @('ERROR', 'CRITICAL')) {
-            Update-PerformanceMetrics -LogEntry $logEntry
+            Register-PerformanceMetric
         }
     }
     catch {
-        # Fallback to basic Write-Host if logging system fails
-        Write-Host "[$Level] [$Component] $Message" -ForegroundColor Red
-        Write-Host "LOGGING ERROR: $_" -ForegroundColor Red
+        # Fallback to basic console output if logging system fails
+        Write-Warning "[$Level] [$Component] $Message"
+        Write-Error "LOGGING ERROR: $_"
     }
 }
 
@@ -244,7 +245,7 @@ function Write-LogEntry {
     $perf = Start-PerformanceTracking -OperationName 'BloatwareRemoval' -Component 'TYPE2'
 #>
 function Start-PerformanceTracking {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$OperationName,
@@ -396,9 +397,9 @@ function Get-LogData {
     Provides operation timing, success rates, and detailed metrics.
 
 .EXAMPLE
-    $metrics = Get-PerformanceMetrics
+    $metrics = Get-PerformanceMetric
 #>
-function Get-PerformanceMetrics {
+function Get-PerformanceMetric {
     [CmdletBinding()]
     param()
 
@@ -466,7 +467,7 @@ function Export-LogData {
     }
 
     if ($IncludePerformanceMetrics) {
-        $exportData.PerformanceMetrics = Get-PerformanceMetrics
+        $exportData.PerformanceMetrics = Get-PerformanceMetric
     }
 
     $exports = @()
@@ -516,26 +517,29 @@ function Write-ConsoleLogEntry {
             -replace '\{level\}', $LogEntry.Level `
             -replace '\{component\}', $LogEntry.Component `
             -replace '\{message\}', $LogEntry.Message
-        Write-Host $formattedMessage
+        Write-Information $formattedMessage -InformationAction Continue
         return
     }
-
-    # Colored output
-    $levelConfig = $script:LoggingContext.Config.levels.($LogEntry.Level)
-    $color = if ($levelConfig -and $levelConfig.color) { $levelConfig.color } else { 'White' }
 
     $timestamp = $LogEntry.Timestamp.ToString($script:LoggingContext.Config.formatting.dateTimeFormat)
     $levelIcon = Get-LevelIcon -Level $LogEntry.Level
     
-    Write-Host "[$timestamp] " -NoNewline -ForegroundColor Gray
-    Write-Host "$levelIcon " -NoNewline -ForegroundColor $color
-    Write-Host "[$($LogEntry.Component)] " -NoNewline -ForegroundColor Cyan
-    Write-Host $LogEntry.Message -ForegroundColor $color
+    # Build formatted message for Information stream
+    $formattedOutput = "[$timestamp] $levelIcon [$($LogEntry.Component)] $($LogEntry.Message)"
+    
+    # Choose appropriate output stream based on level
+    switch ($LogEntry.Level) {
+        'ERROR' { Write-Error $formattedOutput }
+        'WARN' { Write-Warning $formattedOutput }
+        'INFO' { Write-Information $formattedOutput -InformationAction Continue }
+        'DEBUG' { Write-Verbose $formattedOutput }
+        default { Write-Information $formattedOutput -InformationAction Continue }
+    }
 
     # Additional data on separate line if present
     if ($LogEntry.Data.Count -gt 0) {
         $dataString = ($LogEntry.Data.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', '
-        Write-Host "    Data: $dataString" -ForegroundColor DarkGray
+        Write-Verbose "    Data: $dataString"
     }
 }
 
@@ -637,9 +641,9 @@ function Invoke-LogRotation {
 .SYNOPSIS
     Updates performance metrics tracking
 #>
-function Update-PerformanceMetrics {
+function Register-PerformanceMetric {
     [CmdletBinding()]
-    param([hashtable]$LogEntry)
+    param()
 
     # Track error patterns and performance issues
     # This could be expanded for more sophisticated monitoring
@@ -666,7 +670,7 @@ function Update-PerformanceMetrics {
     New-ModuleLogFile -Component 'BLOATWARE' -SessionTimestamp '20241012-110054'
 #>
 function New-ModuleLogFile {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('BLOATWARE', 'APPS', 'UPDATES', 'OPTIMIZATION', 'TELEMETRY')]
@@ -712,7 +716,8 @@ function New-ModuleLogFile {
         # Use ConfigManager for path resolution if available
         try {
             $logDir = Get-LogsPath
-        } catch {
+        }
+        catch {
             $logDir = Join-Path $scriptRoot "temp_files\logs"
         }
         if (-not (Test-Path $logDir)) {
@@ -874,7 +879,7 @@ function Write-ModuleLogEntry {
     $lockHandle = Get-FileLock -FilePath "C:\temp\logfile.txt"
     if ($lockHandle) {
         # Perform file operations
-        Release-FileLock -LockHandle $lockHandle
+        Unlock-FileLock -LockHandle $lockHandle
     }
 
 .OUTPUTS
@@ -922,9 +927,9 @@ function Get-FileLock {
                 Write-Verbose "✓ File lock acquired for: $FilePath"
                 
                 return @{
-                    Mutex = $mutex
+                    Mutex      = $mutex
                     FileStream = $fileStream
-                    FilePath = $FilePath
+                    FilePath   = $FilePath
                     AcquiredAt = Get-Date
                 }
             }
@@ -958,9 +963,9 @@ function Get-FileLock {
     The lock handle returned from Get-FileLock
 
 .EXAMPLE
-    Release-FileLock -LockHandle $lockHandle
+    Unlock-FileLock -LockHandle $lockHandle
 #>
-function Release-FileLock {
+function Unlock-FileLock {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -1073,7 +1078,7 @@ function Invoke-WithFileLock {
     }
     finally {
         if ($lockHandle) {
-            Release-FileLock -LockHandle $lockHandle
+            Unlock-FileLock -LockHandle $lockHandle
         }
     }
 }
@@ -1086,11 +1091,11 @@ Export-ModuleMember -Function @(
     'Start-PerformanceTracking',
     'Complete-PerformanceTracking',
     'Get-LogData',
-    'Get-PerformanceMetrics',
+    'Get-PerformanceMetric',
     'Export-LogData',
     'New-ModuleLogFile',
     'Write-ModuleLogEntry',
     'Get-FileLock',
-    'Release-FileLock',
+    'Unlock-FileLock',
     'Invoke-WithFileLock'
 )

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for configuration and paths)
 #   - LoggingManager.psm1 (for structured logging)
@@ -83,10 +83,10 @@ function New-MaintenanceReport {
         Configuration   = $Configuration
         Summary         = Get-ExecutionSummary -TaskResults $TaskResults
         Analytics       = @{
-            SystemHealth       = Get-SystemHealthAnalytics -SystemInventory $SystemInventory
-            PerformanceMetrics = Get-PerformanceAnalytics -TaskResults $TaskResults
-            SecurityInsights   = Get-SecurityAnalytics -SystemInventory $SystemInventory
-            RecommendedActions = Get-RecommendedActions -SystemInventory $SystemInventory -TaskResults $TaskResults
+            SystemHealth       = Get-SystemHealthAnalytic -SystemInventory $SystemInventory
+            PerformanceMetrics = Get-PerformanceAnalytic -TaskResults $TaskResults
+            SecurityInsights   = Get-SecurityAnalytic -SystemInventory $SystemInventory
+            RecommendedActions = Get-RecommendedAction -SystemInventory $SystemInventory -TaskResults $TaskResults
         }
         Charts          = @{
             TaskDistribution = Get-TaskDistributionData -TaskResults $TaskResults
@@ -1439,14 +1439,14 @@ function Get-ExecutionSummary {
     SystemResourceUtilization, ServiceHealth, and performance metrics
 
 .EXAMPLE
-    $healthAnalytics = Get-SystemHealthAnalytics -SystemInventory $inventory
+    $healthAnalytics = Get-SystemHealthAnalytic -SystemInventory $inventory
     Write-Host "System Health Score: $($healthAnalytics.OverallHealthScore)/100"
     
 .NOTES
     Internal analytics function that powers the dashboard health scoring system.
     Used to generate visual indicators and recommendations in maintenance reports.
 #>
-function Get-SystemHealthAnalytics {
+function Get-SystemHealthAnalytic {
     param([hashtable]$SystemInventory)
     
     if (-not $SystemInventory) { return @{} }
@@ -1505,7 +1505,7 @@ function Get-SystemHealthAnalytics {
     return @{
         OverallScore    = $overallScore
         HealthFactors   = $healthFactors
-        Recommendations = Get-HealthRecommendations -HealthFactors $healthFactors
+        Recommendations = Get-HealthRecommendation -HealthFactors $healthFactors
     }
 }
 
@@ -1513,7 +1513,7 @@ function Get-SystemHealthAnalytics {
 .SYNOPSIS
     Generates performance analytics from task results
 #>
-function Get-PerformanceAnalytics {
+function Get-PerformanceAnalytic {
     param([Array]$TaskResults)
     
     if (-not $TaskResults -or $TaskResults.Count -eq 0) { return @{} }
@@ -1545,7 +1545,7 @@ function Get-PerformanceAnalytics {
 .SYNOPSIS
     Generates security analytics
 #>
-function Get-SecurityAnalytics {
+function Get-SecurityAnalytic {
     param([hashtable]$SystemInventory)
     
     if (-not $SystemInventory) { return @{} }
@@ -1587,7 +1587,7 @@ function Get-SecurityAnalytics {
 .SYNOPSIS
     Generates recommended actions based on system analysis
 #>
-function Get-RecommendedActions {
+function Get-RecommendedAction {
     param([hashtable]$SystemInventory, [Array]$TaskResults)
     
     $recommendations = @()
@@ -1765,7 +1765,7 @@ function Get-ExecutionTimelineData {
     Generates security score radar chart data
 #>
 function Get-SecurityScoreData {
-    param([hashtable]$SystemInventory)
+    param()
     
     $categories = @('Firewall', 'Updates', 'Antivirus', 'Services', 'Access Control', 'Network')
     $scores = @(85, 90, 88, 82, 78, 85) # Sample scores - would be calculated from actual security audit
@@ -1789,7 +1789,7 @@ function Get-SecurityScoreData {
 .SYNOPSIS
     Generates health recommendations
 #>
-function Get-HealthRecommendations {
+function Get-HealthRecommendation {
     param([hashtable]$HealthFactors)
     
     $recommendations = @()
@@ -1813,3 +1813,4 @@ function Get-HealthRecommendations {
 Export-ModuleMember -Function @(
     'New-MaintenanceReport'
 )
+

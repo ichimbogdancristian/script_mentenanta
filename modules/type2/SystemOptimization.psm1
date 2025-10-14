@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for configuration access)
 #   - LoggingManager.psm1 (for structured logging)
@@ -96,7 +96,7 @@ function Optimize-SystemPerformance {
     
     # Check for administrator privileges before proceeding
     try {
-        Assert-AdminPrivileges -Operation "System performance optimization"
+        Assert-AdminPrivilege -Operation "System performance optimization"
     } catch {
         Write-Error "Administrator privileges are required for system optimization operations: $_"
         return $false

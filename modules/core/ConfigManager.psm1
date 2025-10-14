@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -125,7 +125,7 @@ function Get-MainConfiguration {
         try {
             $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'MainConfig'
             
-            if (-not $validationResult.IsValid) {
+            if (-not $validationResult.IsValid -and $validationResult.Issues -and $validationResult.Issues.Count -gt 0) {
                 Write-Warning "Main configuration validation failed with $($validationResult.Issues.Count) issues:"
                 foreach ($issue in $validationResult.Issues) {
                     Write-Warning "  - $issue"
@@ -139,7 +139,7 @@ function Get-MainConfiguration {
         }
 
         # Merge with defaults to ensure all required properties exist
-        $script:LoadedConfig = Merge-ConfigurationWithDefaults -Config $config
+        $script:LoadedConfig = Merge-ConfigurationWithDefault -Config $config
 
         Write-Verbose "Main configuration loaded and validated successfully"
         return $script:LoadedConfig
@@ -206,7 +206,7 @@ function Get-LoggingConfiguration {
         try {
             $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'LoggingConfig'
             
-            if (-not $validationResult.IsValid) {
+            if (-not $validationResult.IsValid -and $validationResult.Issues -and $validationResult.Issues.Count -gt 0) {
                 Write-Warning "Logging configuration validation failed with $($validationResult.Issues.Count) issues:"
                 foreach ($issue in $validationResult.Issues) {
                     Write-Warning "  - $issue"
@@ -221,7 +221,7 @@ function Get-LoggingConfiguration {
 
         # Merge with defaults
         $defaultConfig = Get-DefaultLoggingConfiguration
-        return Merge-HashTables -Default $defaultConfig -Override $config
+        return Merge-HashTable -Default $defaultConfig -Override $config
     }
     catch {
         Write-Error "Failed to load logging configuration from $configPath`: $_"
@@ -345,10 +345,7 @@ function Get-EssentialAppsConfiguration {
 function Get-UnifiedBloatwareList {
     [CmdletBinding()]
     [OutputType([array])]
-    param(
-        [Parameter()]
-        [string[]]$IncludeCategories = @()
-    )
+    param()
 
     $bloatwareLists = Get-BloatwareConfiguration
 
@@ -378,10 +375,7 @@ function Get-UnifiedBloatwareList {
 function Get-UnifiedEssentialAppsList {
     [CmdletBinding()]
     [OutputType([array])]
-    param(
-        [Parameter()]
-        [string[]]$IncludeCategories = @()
-    )
+    param()
 
     $appLists = Get-EssentialAppsConfiguration
 
@@ -536,20 +530,20 @@ function Get-DefaultLoggingConfiguration {
 .SYNOPSIS
     Merges configuration with defaults
 #>
-function Merge-ConfigurationWithDefaults {
+function Merge-ConfigurationWithDefault {
     param(
         [PSCustomObject]$Config
     )
 
     $defaults = Get-DefaultConfiguration
-    return Merge-PSCustomObjects -Default $defaults -Override $Config
+    return Merge-PSCustomObject -Default $defaults -Override $Config
 }
 
 <#
 .SYNOPSIS
     Merges two PSCustomObject instances
 #>
-function Merge-PSCustomObjects {
+function Merge-PSCustomObject {
     param(
         [PSCustomObject]$Default,
         [PSCustomObject]$Override
@@ -560,7 +554,7 @@ function Merge-PSCustomObjects {
     foreach ($property in $Override.PSObject.Properties) {
         if ($result.PSObject.Properties.Name -contains $property.Name) {
             if ($property.Value -is [PSCustomObject] -and $result.($property.Name) -is [PSCustomObject]) {
-                $result.($property.Name) = Merge-PSCustomObjects -Default $result.($property.Name) -Override $property.Value
+                $result.($property.Name) = Merge-PSCustomObject -Default $result.($property.Name) -Override $property.Value
             }
             else {
                 $result.($property.Name) = $property.Value
@@ -578,7 +572,7 @@ function Merge-PSCustomObjects {
 .SYNOPSIS
     Merges hash tables
 #>
-function Merge-HashTables {
+function Merge-HashTable {
     param(
         [hashtable]$Default,
         [PSCustomObject]$Override
@@ -594,7 +588,7 @@ function Merge-HashTables {
                 foreach ($subProp in $property.Value.PSObject.Properties) {
                     $overrideHash[$subProp.Name] = $subProp.Value
                 }
-                $result[$property.Name] = Merge-HashTables -Default $result[$property.Name] -Override $overrideHash
+                $result[$property.Name] = Merge-HashTable -Default $result[$property.Name] -Override $overrideHash
             }
             else {
                 $result[$property.Name] = $property.Value

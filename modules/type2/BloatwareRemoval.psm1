@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for bloatware list configuration)
 #   - LoggingManager.psm1 (for structured logging)
@@ -99,7 +99,7 @@ function Remove-DetectedBloatware {
     
     # Check for administrator privileges before proceeding
     try {
-        Assert-AdminPrivileges -Operation "Bloatware removal"
+        Assert-AdminPrivilege -Operation "Bloatware removal"
     } catch {
         Write-Error "Administrator privileges are required for bloatware removal operations: $_"
         return $false

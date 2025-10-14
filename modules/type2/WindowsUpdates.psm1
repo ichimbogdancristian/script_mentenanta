@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for configuration access)
 #   - LoggingManager.psm1 (for structured logging)
@@ -91,7 +91,7 @@ if (Test-Path $DependencyManagerPath) {
     2. Native Windows Update API (fallback)
     3. Basic Windows Update service status check
 #>
-function Install-WindowsUpdates {
+function Install-WindowsUpdate {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     [OutputType([bool])]
     param(
@@ -114,7 +114,7 @@ function Install-WindowsUpdates {
     
     # Check for administrator privileges before proceeding
     try {
-        Assert-AdminPrivileges -Operation "Windows Updates installation"
+        Assert-AdminPrivilege -Operation "Windows Updates installation"
     } catch {
         Write-Error "Administrator privileges are required for Windows Updates operations: $_"
         return $false
@@ -482,12 +482,7 @@ function Install-UpdatesViaNativeAPI {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param(
-        [switch]$IncludeOptional,
-        [switch]$IncludeDrivers,
-        [switch]$ExcludePreviews,
-        [int]$MaxDownloadSizeMB = 2048,
-        [switch]$DryRun,
-        [switch]$SuppressReboot
+        [switch]$DryRun
     )
 
     $results = @{
@@ -709,6 +704,6 @@ function Get-WindowsUpdateBasicStatus {
 
 # Export module functions
 Export-ModuleMember -Function @(
-    'Install-WindowsUpdates',
+    'Install-WindowsUpdate',
     'Get-WindowsUpdateStatus'
 )
