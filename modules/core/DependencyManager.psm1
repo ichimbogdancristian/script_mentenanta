@@ -17,6 +17,16 @@
 
 using namespace System.Collections.Generic
 
+# Import LoggingManager for structured logging (with graceful fallback)
+try {
+    $loggingManagerPath = Join-Path $PSScriptRoot 'LoggingManager.psm1'
+    if (Test-Path $loggingManagerPath) {
+        Import-Module $loggingManagerPath -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    # LoggingManager not available, continue without structured logging
+}
+
 #region Public Functions
 
 <#
@@ -59,6 +69,15 @@ function Install-AllDependency {
         [Parameter()]
         [switch]$SkipPSWindowsUpdate
     )
+    
+    # Start performance tracking for dependency installation
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'AllDependencyInstallation'
+        Write-LogEntry -Level 'INFO' -Component 'DEPENDENCY-MANAGER' -Message 'Starting comprehensive dependency installation' -Data @{ Force = $Force.IsPresent; SkipChocolatey = $SkipChocolatey.IsPresent; SkipPSWindowsUpdate = $SkipPSWindowsUpdate.IsPresent }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
 
     Write-Information "🔧 Installing and configuring package manager dependencies..." -InformationAction Continue
     $startTime = Get-Date
@@ -188,6 +207,22 @@ function Install-AllDependency {
 
         $duration = ((Get-Date) - $startTime).TotalSeconds
 
+        # Complete performance tracking and structured logging
+        $success = ($results.Failed -eq 0)
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
+                TotalDependencies = $results.TotalDependencies
+                Successful = $results.Successful
+                Failed = $results.Failed
+                Skipped = $results.Skipped
+                Duration = $duration
+                Dependencies = $results.Dependencies.Keys -join ', '
+            }
+            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'DEPENDENCY-MANAGER' -Message 'Dependency installation operation completed' -Data $results
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+
         # Summary
         $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
         Write-Information "  $statusIcon Dependency installation completed in $([math]::Round($duration, 2))s" -InformationAction Continue
@@ -201,6 +236,15 @@ function Install-AllDependency {
     }
     catch {
         Write-Error "Dependency installation failed: $_"
+        
+        # Complete performance tracking for failed operation
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
+            Write-LogEntry -Level 'ERROR' -Component 'DEPENDENCY-MANAGER' -Message 'Dependency installation operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+        
         throw
     }
 }
