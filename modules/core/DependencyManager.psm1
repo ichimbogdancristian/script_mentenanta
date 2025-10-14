@@ -444,7 +444,7 @@ function Test-PowerShell7Installation {
 .EXAMPLE
     $pwshPath = Get-PowerShell7Path
     if ($pwshPath) {
-        & $pwshPath -Command "Write-Host 'Using PowerShell 7'"
+        & $pwshPath -Command "Write-Information 'Using PowerShell 7' -InformationAction Continue"
     }
 
 .OUTPUTS
@@ -911,7 +911,7 @@ function Test-ChocolateyInstallation {
 
 .EXAMPLE
     if (Test-AdminPrivilege) {
-        Write-Host "Administrator privileges confirmed"
+        Write-Information "Administrator privileges confirmed" -InformationAction Continue
     }
 
 .OUTPUTS

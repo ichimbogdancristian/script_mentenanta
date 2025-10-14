@@ -212,7 +212,7 @@ function Start-SecurityAudit {
 
 .EXAMPLE
     $defenderStatus = Get-WindowsDefenderStatus -IncludeScan
-    Write-Host "Defender Score: $($defenderStatus.Score)/$($defenderStatus.MaxScore)"
+    Write-Information "Defender Score: $($defenderStatus.Score)/$($defenderStatus.MaxScore)" -InformationAction Continue
     
 .NOTES
     Part of the SecurityAudit module for comprehensive system security assessment.
