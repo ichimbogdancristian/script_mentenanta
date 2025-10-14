@@ -1392,7 +1392,7 @@ function New-TextReportContent {
 
 .EXAMPLE
     $summary = Get-ExecutionSummary -TaskResults $taskResults
-    Write-Host "Success Rate: $($summary.SuccessRate)%"
+    Write-Information "Success Rate: $($summary.SuccessRate)%" -InformationAction Continue
     
 .NOTES
     Internal helper function for ReportGeneration module.
@@ -1440,7 +1440,7 @@ function Get-ExecutionSummary {
 
 .EXAMPLE
     $healthAnalytics = Get-SystemHealthAnalytic -SystemInventory $inventory
-    Write-Host "System Health Score: $($healthAnalytics.OverallHealthScore)/100"
+    Write-Information "System Health Score: $($healthAnalytics.OverallHealthScore)/100" -InformationAction Continue
     
 .NOTES
     Internal analytics function that powers the dashboard health scoring system.

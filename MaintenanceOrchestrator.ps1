@@ -305,43 +305,43 @@ try {
         }
     }
     catch {
-        Write-Host "  ⚠️ Logging system failed to initialize: $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host "  ℹ️ Continuing without enhanced logging - basic console output only" -ForegroundColor Gray
+        Write-Information "  ⚠️ Logging system failed to initialize: $($_.Exception.Message)" -InformationAction Continue
+        Write-Information "  ℹ️ Continuing without enhanced logging - basic console output only" -InformationAction Continue
     }
     
     # Ensure Write-LogEntry is always available (fallback if LoggingManager failed)
     if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
         function Write-LogEntry {
             param($Level, $Component, $Message, $Data)
-            Write-Host "[$Level] [$Component] $Message" -ForegroundColor Gray
+            Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
         }
     }
 }
 catch [System.IO.DirectoryNotFoundException] {
     Write-Error "Configuration directory not found: $ConfigPath"
-    Write-Host "  ℹ️ Ensure the 'config' directory exists and contains required configuration files" -ForegroundColor Cyan
+    Write-Information "  ℹ️ Ensure the 'config' directory exists and contains required configuration files" -InformationAction Continue
     exit 1
 }
 catch [System.IO.FileNotFoundException] {
     Write-Error "Required configuration file not found: $($_.Exception.Message)"
-    Write-Host "  ℹ️ Ensure all required configuration files are present in: $ConfigPath" -ForegroundColor Cyan
+    Write-Information "  ℹ️ Ensure all required configuration files are present in: $ConfigPath" -InformationAction Continue
     exit 1
 }
 catch [System.Management.Automation.RuntimeException] {
     Write-Error "Configuration system error: $($_.Exception.Message)"
-    Write-Host "  ℹ️ Check configuration file syntax and module dependencies" -ForegroundColor Cyan
+    Write-Information "  ℹ️ Check configuration file syntax and module dependencies" -InformationAction Continue
     exit 1
 }
 catch {
     Write-Error "Failed to initialize configuration: $($_.Exception.Message)"
-    Write-Host "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Cyan
-    Write-Host "  ℹ️ This may indicate missing dependencies or corrupted configuration files" -ForegroundColor Cyan
+    Write-Information "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
+    Write-Information "  ℹ️ This may indicate missing dependencies or corrupted configuration files" -InformationAction Continue
     exit 1
 }
 
 # Load app configurations with comprehensive error handling
 try {
-    Write-Host "`nLoading application configurations..." -ForegroundColor Yellow
+    Write-Information "`nLoading application configurations..." -InformationAction Continue
     
     try {
         $BloatwareLists = Get-BloatwareConfiguration -ErrorAction Stop
@@ -349,12 +349,12 @@ try {
             Write-Warning "Bloatware configuration is empty or null - bloatware removal tasks may be limited"
         }
         else {
-            Write-Host "  ✓ Bloatware configuration loaded" -ForegroundColor Green
+            Write-Information "  ✓ Bloatware configuration loaded" -InformationAction Continue
         }
     }
     catch {
-        Write-Host "  ⚠️ Failed to load bloatware configuration: $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host "  ℹ️ Bloatware removal tasks will be skipped" -ForegroundColor Gray
+        Write-Information "  ⚠️ Failed to load bloatware configuration: $($_.Exception.Message)" -InformationAction Continue
+        Write-Information "  ℹ️ Bloatware removal tasks will be skipped" -InformationAction Continue
         $BloatwareLists = @()
     }
     
@@ -364,12 +364,12 @@ try {
             Write-Warning "Essential apps configuration is empty or null - app installation tasks may be limited"
         }
         else {
-            Write-Host "  ✓ Essential apps configuration loaded" -ForegroundColor Green
+            Write-Information "  ✓ Essential apps configuration loaded" -InformationAction Continue
         }
     }
     catch {
-        Write-Host "  ⚠️ Failed to load essential apps configuration: $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host "  ℹ️ Essential app installation tasks will be skipped" -ForegroundColor Gray
+        Write-Information "  ⚠️ Failed to load essential apps configuration: $($_.Exception.Message)" -InformationAction Continue
+        Write-Information "  ℹ️ Essential app installation tasks will be skipped" -InformationAction Continue
         $EssentialApps = @()
     }
 
@@ -378,29 +378,29 @@ try {
         $totalBloatware = if ($BloatwareLists -and $BloatwareLists.ContainsKey('all')) { $BloatwareLists['all'].Count } else { 0 }
         $totalEssentialApps = if ($EssentialApps -and $EssentialApps.ContainsKey('all')) { $EssentialApps['all'].Count } else { 0 }
 
-        Write-Host "  ✓ Bloatware list: $totalBloatware total entries" -ForegroundColor Green
-        Write-Host "  ✓ Essential apps: $totalEssentialApps total entries" -ForegroundColor Green
+        Write-Information "  ✓ Bloatware list: $totalBloatware total entries" -InformationAction Continue
+        Write-Information "  ✓ Essential apps: $totalEssentialApps total entries" -InformationAction Continue
     }
     catch {
-        Write-Host "  ⚠️ Error calculating configuration statistics: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Information "  ⚠️ Error calculating configuration statistics: $($_.Exception.Message)" -InformationAction Continue
         $totalBloatware = 0
         $totalEssentialApps = 0
     }
 }
 catch [System.IO.FileNotFoundException] {
     Write-Error "App configuration file not found: $($_.Exception.Message)"
-    Write-Host "  ℹ️ Ensure bloatware-list.json and essential-apps.json exist in: $ConfigPath" -ForegroundColor Cyan
+    Write-Information "  ℹ️ Ensure bloatware-list.json and essential-apps.json exist in: $ConfigPath" -InformationAction Continue
     exit 1
 }
 catch [System.ArgumentException] {
     Write-Error "Invalid app configuration format: $($_.Exception.Message)"
-    Write-Host "  ℹ️ Check JSON syntax and structure in app configuration files" -ForegroundColor Cyan
+    Write-Information "  ℹ️ Check JSON syntax and structure in app configuration files" -InformationAction Continue
     exit 1
 }
 catch {
     Write-Error "Failed to load app configurations: $($_.Exception.Message)"
-    Write-Host "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Cyan
-    Write-Host "  ℹ️ Check app configuration files in: $ConfigPath" -ForegroundColor Cyan
+    Write-Information "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
+    Write-Information "  ℹ️ Check app configuration files in: $ConfigPath" -InformationAction Continue
     exit 1
 }
 
@@ -503,7 +503,7 @@ function Invoke-TaskWithParameters {
 
 #region Task Definitions
 
-Write-Host "`nRegistering maintenance tasks..." -ForegroundColor Yellow
+Write-Information "`nRegistering maintenance tasks..." -InformationAction Continue
 
 # Define available maintenance tasks
 $MaintenanceTasks = @(
@@ -590,7 +590,7 @@ foreach ($task in $MaintenanceTasks) {
             $AvailableTasks += $task
         }
         else {
-            Write-Host "  ⊘ Skipped: $($task.Name) (disabled in configuration)" -ForegroundColor DarkGray
+            Write-Information "  ⊝ Skipped: $($task.Name) (disabled in configuration)" -InformationAction Continue
         }
     }
     else {
@@ -598,7 +598,7 @@ foreach ($task in $MaintenanceTasks) {
     }
 }
 
-Write-Host "  ✓ Registered $($AvailableTasks.Count) available tasks" -ForegroundColor Green
+Write-Information "  ✓ Registered $($AvailableTasks.Count) available tasks" -InformationAction Continue
 
 #endregion
 
@@ -611,7 +611,7 @@ $ExecutionParams = @{
 }
 
 if (-not $NonInteractive) {
-    Write-Host "`nStarting interactive mode..." -ForegroundColor Yellow
+    Write-Information "`nStarting interactive mode..." -InformationAction Continue
 
     # Configure menu system
     Set-MenuConfiguration -CountdownSeconds $MainConfig.execution.countdownSeconds
@@ -627,10 +627,10 @@ if (-not $NonInteractive) {
     }
 }
 else {
-    Write-Host "`nNon-interactive mode enabled" -ForegroundColor Yellow
+    Write-Information "`nNon-interactive mode enabled" -InformationAction Continue
     if ($DryRun) {
         $ExecutionParams.DryRun = $true
-        Write-Host "  ✓ Dry-run mode enabled" -ForegroundColor Blue
+        Write-Information "  ✓ Dry-run mode enabled" -InformationAction Continue
     }
 }
 
@@ -650,7 +650,7 @@ if ($TaskNumbers) {
         }
 
         $ExecutionParams.SelectedTasks = $selectedTasks
-        Write-Host "  ✓ Task selection: $($taskNumbersArray -join ', ')" -ForegroundColor Green
+        Write-Information "  ✓ Task selection: $($taskNumbersArray -join ', ')" -InformationAction Continue
     }
     catch {
         Write-Error "Invalid TaskNumbers parameter format: $TaskNumbers"
@@ -662,11 +662,11 @@ if ($TaskNumbers) {
 
 #region Task Execution
 
-Write-Host "`nStarting maintenance execution..." -ForegroundColor Yellow
+Write-Information "`nStarting maintenance execution..." -InformationAction Continue
 
 $executionMode = if ($ExecutionParams.DryRun) { "DRY-RUN" } else { "LIVE" }
-Write-Host "Execution Mode: $executionMode" -ForegroundColor $(if ($ExecutionParams.DryRun) { 'Blue' } else { 'Green' })
-Write-Host "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -ForegroundColor Cyan
+Write-Information "Execution Mode: $executionMode" -InformationAction Continue
+Write-Information "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
 
 # Log execution start
 Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting maintenance execution" -Data @{
@@ -687,7 +687,7 @@ if ($type2Tasks.Count -gt 0 -and -not $ExecutionParams.DryRun -and -not $NonInte
     $confirmMessage = "About to execute $($type2Tasks.Count) system modification task(s). Continue?"
     $confirmed = Show-ConfirmationDialog -Message $confirmMessage -CountdownSeconds 10
     if (-not $confirmed) {
-        Write-Host "Operation cancelled by user" -ForegroundColor Yellow
+        Write-Information "Operation cancelled by user" -InformationAction Continue
         exit 0
     }
 }
@@ -696,21 +696,21 @@ if ($type2Tasks.Count -gt 0 -and -not $ExecutionParams.DryRun -and -not $NonInte
 $TaskResults = @()
 $StartTime = Get-Date
 
-Write-Host "`nExecuting tasks..." -ForegroundColor Yellow
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Information "`nExecuting tasks..." -InformationAction Continue
+Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
 
 for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     $task = $ExecutionParams.SelectedTasks[$i]
     $taskNumber = $i + 1
     $totalTasks = $ExecutionParams.SelectedTasks.Count
 
-    Write-Host ""
-    Write-Host "[$taskNumber/$totalTasks] $($task.Name)" -ForegroundColor White -BackgroundColor DarkBlue
-    Write-Host "Description: $($task.Description)" -ForegroundColor Gray
-    Write-Host "Type: $($task.Type) | Category: $($task.Category)" -ForegroundColor Gray
+    Write-Information "" -InformationAction Continue
+    Write-Information "[$taskNumber/$totalTasks] $($task.Name)" -InformationAction Continue
+    Write-Information "Description: $($task.Description)" -InformationAction Continue
+    Write-Information "Type: $($task.Type) | Category: $($task.Category)" -InformationAction Continue
 
     if ($ExecutionParams.DryRun) {
-        Write-Host "Mode: DRY-RUN (simulation)" -ForegroundColor Blue
+        Write-Information "Mode: DRY-RUN (simulation)" -InformationAction Continue
     }
 
     $taskStartTime = Get-Date
@@ -755,7 +755,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
             $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Path $task.ModulePath -Raw), [ref]$null)
             
             Import-Module $task.ModulePath -Force -ErrorAction Stop
-            Write-Host "  ✓ Module loaded: $($task.ModulePath | Split-Path -Leaf)" -ForegroundColor Green
+            Write-Information "  ✓ Module loaded: $($task.ModulePath | Split-Path -Leaf)" -InformationAction Continue
             
             # Verify the target function exists in the loaded module
             $moduleName = [System.IO.Path]::GetFileNameWithoutExtension($task.ModulePath)
@@ -783,7 +783,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         $result = $null
         try {
             if ($ExecutionParams.DryRun) {
-                Write-Host "  ▶ Simulating: $($task.Function)" -ForegroundColor Blue
+                Write-Information "  ▶ Simulating: $($task.Function)" -InformationAction Continue
                 # Try to call with -WhatIf if the function supports it
                 $functionDef = Get-Command $task.Function -ErrorAction SilentlyContinue
                 if ($functionDef -and $functionDef.Parameters.ContainsKey('WhatIf')) {
@@ -794,7 +794,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
                 }
             }
             else {
-                Write-Host "  ▶ Executing: $($task.Function)" -ForegroundColor Green
+                Write-Information "  ▶ Executing: $($task.Function)" -InformationAction Continue
                 $result = Invoke-TaskWithParameters -TaskName $task.Name -FunctionName $task.Function -DryRun:$ExecutionParams.DryRun
             }
         }
@@ -824,7 +824,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
 
         $taskResult.Success = $true
         $taskResult.Output = $result
-        Write-Host "  ✓ Completed successfully" -ForegroundColor Green
+        Write-Information "  ✓ Completed successfully" -InformationAction Continue
 
         # Log task success with detailed metrics
         Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
@@ -837,7 +837,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     catch [System.OperationCanceledException] {
         $taskResult.Success = $false
         $taskResult.Error = "Task was cancelled by user or system"
-        Write-Host "  ⏸️ Cancelled: Task was cancelled" -ForegroundColor Yellow
+        Write-Information "  ⏸️ Cancelled: Task was cancelled" -InformationAction Continue
         
         Write-LogEntry -Level 'WARNING' -Component 'ORCHESTRATOR' -Message "Task cancelled: $($task.Name)" -Data @{
             Duration = ((Get-Date) - $taskStartTime).TotalSeconds
@@ -846,7 +846,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     catch [System.TimeoutException] {
         $taskResult.Success = $false
         $taskResult.Error = "Task timed out: $($_.Exception.Message)"
-        Write-Host "  ⏱️ Timeout: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Information "  ⏱️ Timeout: $($_.Exception.Message)" -InformationAction Continue
         
         Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task timeout: $($task.Name)" -Data @{
             Error    = $_.Exception.Message
@@ -856,7 +856,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     catch [System.OutOfMemoryException] {
         $taskResult.Success = $false
         $taskResult.Error = "Out of memory error during task execution"
-        Write-Host "  💾 Memory Error: Insufficient memory to complete task" -ForegroundColor Red
+        Write-Information "  💾 Memory Error: Insufficient memory to complete task" -InformationAction Continue
         
         Write-LogEntry -Level 'CRITICAL' -Component 'ORCHESTRATOR' -Message "Out of memory error: $($task.Name)" -Data @{
             Duration    = ((Get-Date) - $taskStartTime).TotalSeconds
@@ -870,7 +870,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     catch {
         $taskResult.Success = $false
         $taskResult.Error = $_.Exception.Message
-        Write-Host "  ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Information "  ✗ Failed: $($_.Exception.Message)" -InformationAction Continue
         
         # Enhanced error logging with full context
         $errorContext = @{
@@ -887,9 +887,9 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data $errorContext
         
         # Additional troubleshooting information
-        Write-Host "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Gray
+        Write-Information "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
         if ($_.InvocationInfo.ScriptLineNumber) {
-            Write-Host "  ℹ️ Error at line: $($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor Gray
+            Write-Information "  ℹ️ Error at line: $($_.InvocationInfo.ScriptLineNumber)" -InformationAction Continue
         }
         if ($_.ScriptStackTrace) {
             Write-Verbose "Full stack trace: $($_.ScriptStackTrace)"
@@ -899,7 +899,7 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         $taskResult.Duration = ((Get-Date) - $taskStartTime).TotalSeconds
         $TaskResults += $taskResult
 
-        Write-Host "  Duration: $([math]::Round($taskResult.Duration, 2)) seconds" -ForegroundColor Gray
+        Write-Information "  Duration: $([math]::Round($taskResult.Duration, 2)) seconds" -InformationAction Continue
     }
 }
 
@@ -907,44 +907,36 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
 
 #region Execution Summary
 
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "    EXECUTION SUMMARY" -ForegroundColor White -BackgroundColor DarkBlue
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Information "" -InformationAction Continue
+Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+Write-Information "    EXECUTION SUMMARY" -InformationAction Continue
+Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
 
 $totalDuration = ((Get-Date) - $StartTime).TotalSeconds
 $successfulTasks = ($TaskResults | Where-Object { $_.Success }).Count
 $failedTasks = ($TaskResults | Where-Object { -not $_.Success }).Count
 
-Write-Host ""
-Write-Host "Execution Mode: " -NoNewline -ForegroundColor Gray
-Write-Host $executionMode -ForegroundColor $(if ($ExecutionParams.DryRun) { 'Blue' } else { 'Green' })
-Write-Host "Task Duration: " -NoNewline -ForegroundColor Gray
-Write-Host "$([math]::Round($totalDuration, 2)) seconds" -ForegroundColor White
-Write-Host "Total Session: " -NoNewline -ForegroundColor Gray
-Write-Host "$([math]::Round(((Get-Date) - $SessionStartTime).TotalSeconds, 2)) seconds" -ForegroundColor White
-Write-Host "Tasks Executed: " -NoNewline -ForegroundColor Gray
-Write-Host "$($TaskResults.Count)" -ForegroundColor White
-Write-Host "Successful: " -NoNewline -ForegroundColor Gray
-Write-Host "$successfulTasks" -ForegroundColor Green
-Write-Host "Failed: " -NoNewline -ForegroundColor Gray
-Write-Host "$failedTasks" -ForegroundColor $(if ($failedTasks -gt 0) { 'Red' } else { 'Green' })
+Write-Information "" -InformationAction Continue
+Write-Information "Execution Mode: $executionMode" -InformationAction Continue
+Write-Information "Task Duration: $([math]::Round($totalDuration, 2)) seconds" -InformationAction Continue
+Write-Information "Total Session: $([math]::Round(((Get-Date) - $SessionStartTime).TotalSeconds, 2)) seconds" -InformationAction Continue
+Write-Information "Tasks Executed: $($TaskResults.Count)" -InformationAction Continue
+Write-Information "Successful: $successfulTasks" -InformationAction Continue
+Write-Information "Failed: $failedTasks" -InformationAction Continue
 
-Write-Host ""
-Write-Host "Task Results:" -ForegroundColor Yellow
-Write-Host "─────────────────────────────────────────────────────────────" -ForegroundColor DarkCyan
+Write-Information "" -InformationAction Continue
+Write-Information "Task Results:" -InformationAction Continue
+Write-Information "─────────────────────────────────────────────────────────────" -InformationAction Continue
 
 foreach ($result in $TaskResults) {
     $status = if ($result.Success) { '✓' } else { '✗' }
     $statusColor = if ($result.Success) { 'Green' } else { 'Red' }
     $durationText = "$([math]::Round($result.Duration, 2))s"
 
-    Write-Host "  $status " -NoNewline -ForegroundColor $statusColor
-    Write-Host "$($result.TaskName)" -NoNewline -ForegroundColor White
-    Write-Host " ($durationText)" -ForegroundColor Gray
+    Write-Information "  $status $($result.TaskName) ($durationText)" -InformationAction Continue
 
     if (-not $result.Success -and $result.Error) {
-        Write-Host "    Error: $($result.Error)" -ForegroundColor Red
+        Write-Information "    Error: $($result.Error)" -InformationAction Continue
     }
 }
 
@@ -966,16 +958,16 @@ $executionSummary = @{
 $summaryPath = Join-Path $ReportsDir "execution-summary-$Global:MaintenanceSessionTimestamp.json"
 $executionSummary | ConvertTo-Json -Depth 10 | Out-File -FilePath $summaryPath -Encoding UTF8
 
-Write-Host ""
-Write-Host "Execution summary saved to: $summaryPath" -ForegroundColor Gray
+Write-Information "" -InformationAction Continue
+Write-Information "Execution summary saved to: $summaryPath" -InformationAction Continue
 
 # Copy final reports to parent directory (same level as repo folder)
-Write-Host ""
-Write-Host "📄 Copying final reports to parent directory..." -ForegroundColor Yellow
+Write-Information "" -InformationAction Continue
+Write-Information "📄 Copying final reports to parent directory..." -InformationAction Continue
 
 # Get parent directory of the script root (one level up from repo folder)
 $ParentDir = Split-Path $ScriptRoot -Parent
-Write-Host "  📁 Target directory: $ParentDir" -ForegroundColor Gray
+Write-Information "  📁 Target directory: $ParentDir" -InformationAction Continue
 
 $finalReports = @()
 $reportsToMove = @(
@@ -1007,37 +999,37 @@ foreach ($reportInfo in $reportsToMove) {
         try {
             # Ensure parent directory is accessible
             if (-not (Test-Path $ParentDir)) {
-                Write-Host "  ⚠️ Parent directory not accessible: $ParentDir" -ForegroundColor Yellow
+                Write-Information "  ⚠️ Parent directory not accessible: $ParentDir" -InformationAction Continue
                 continue
             }
             
             Copy-Item -Path $sourceFile -Destination $destPath -Force
-            Write-Host "  ✓ Copied $description to: $destPath" -ForegroundColor Green
+            Write-Information "  ✓ Copied $description to: $destPath" -InformationAction Continue
             $finalReports += $destPath
         }
         catch {
-            Write-Host "  ⚠️ Failed to copy $description`: $_" -ForegroundColor Yellow
+            Write-Information "  ⚠️ Failed to copy $description`: $_" -InformationAction Continue
         }
     }
 }
 
 if ($finalReports.Count -gt 0) {
-    Write-Host ""
-    Write-Host "📋 Final reports available in parent directory:" -ForegroundColor Cyan
-    Write-Host "  📁 Location: $ParentDir" -ForegroundColor Gray
+    Write-Information "" -InformationAction Continue
+    Write-Information "📋 Final reports available in parent directory:" -InformationAction Continue
+    Write-Information "  📁 Location: $ParentDir" -InformationAction Continue
     foreach ($report in $finalReports) {
-        Write-Host "  • $(Split-Path $report -Leaf)" -ForegroundColor White
+        Write-Information "  • $(Split-Path $report -Leaf)" -InformationAction Continue
     }
 }
 
 if ($failedTasks -gt 0) {
-    Write-Host ""
-    Write-Host "⚠️  Some tasks failed. Check the logs for detailed error information." -ForegroundColor Yellow
+    Write-Information "" -InformationAction Continue
+    Write-Information "⚠️  Some tasks failed. Check the logs for detailed error information." -InformationAction Continue
     exit 1
 }
 else {
-    Write-Host ""
-    Write-Host "🎉 All tasks completed successfully!" -ForegroundColor Green
+    Write-Information "" -InformationAction Continue
+    Write-Information "🎉 All tasks completed successfully!" -InformationAction Continue
     exit 0
 }
 
