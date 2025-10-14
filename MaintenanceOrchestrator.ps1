@@ -67,9 +67,9 @@ if (-not $ScriptRoot) {
 
 $WorkingDirectory = if ($env:WORKING_DIRECTORY) { $env:WORKING_DIRECTORY } else { $ScriptRoot }
 
-Write-Host "Windows Maintenance Automation - Central Orchestrator v2.0.0" -ForegroundColor Cyan
-Write-Host "Working Directory: $WorkingDirectory" -ForegroundColor Gray
-Write-Host "Script Root: $ScriptRoot" -ForegroundColor Gray
+Write-Information "Windows Maintenance Automation - Central Orchestrator v2.0.0" -InformationAction Continue
+Write-Information "Working Directory: $WorkingDirectory" -InformationAction Continue
+Write-Information "Script Root: $ScriptRoot" -InformationAction Continue
 
 # Detect configuration path (always relative to script location)
 if (-not $ConfigPath) {
@@ -87,15 +87,15 @@ if (-not (Test-Path $ConfigPath)) {
     throw "Configuration directory not found. Expected at: $ConfigPath or $(Join-Path $WorkingDirectory 'config')"
 }
 
-Write-Host "Configuration Path: $ConfigPath" -ForegroundColor Gray
+Write-Information "Configuration Path: $ConfigPath" -InformationAction Continue
 
 # Initialize session management
 $Global:MaintenanceSessionId = [guid]::NewGuid().ToString()
 $Global:MaintenanceSessionTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $Global:MaintenanceSessionStartTime = Get-Date
 
-Write-Host "Session ID: $Global:MaintenanceSessionId" -ForegroundColor Gray
-Write-Host "Session Timestamp: $Global:MaintenanceSessionTimestamp" -ForegroundColor Gray
+Write-Information "Session ID: $Global:MaintenanceSessionId" -InformationAction Continue
+Write-Information "Session Timestamp: $Global:MaintenanceSessionTimestamp" -InformationAction Continue
 
 # Set session environment variables for modules to access
 $env:MAINTENANCE_SESSION_ID = $Global:MaintenanceSessionId
@@ -110,11 +110,11 @@ $InventoryDir = Join-Path $TempRoot 'inventory'
 @($TempRoot, $ReportsDir, $LogsDir, $InventoryDir) | ForEach-Object {
     if (-not (Test-Path $_)) {
         New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        Write-Host "Created directory: $_" -ForegroundColor Green
+        Write-Information "Created directory: $_" -InformationAction Continue
     }
 }
 
-Write-Host "Temp Root Directory: $TempRoot" -ForegroundColor Gray
+Write-Information "Temp Root Directory: $TempRoot" -InformationAction Continue
 
 # Initialize Session-based Cache Management
 $SessionStartTime = Get-Date
@@ -130,14 +130,14 @@ if ($recentInventory) {
     $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
     if ($cacheAge.TotalMinutes -le $CacheTimeoutMinutes) {
         $UseInventoryCache = $true
-        Write-Host "  🗂️  Recent inventory data found (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes) - caching enabled" -ForegroundColor Green
+        Write-Information "  🗂️  Recent inventory data found (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes) - caching enabled" -InformationAction Continue
     }
     else {
-        Write-Host "  🔄 Inventory data is $([math]::Round($cacheAge.TotalMinutes, 1)) minutes old - will refresh" -ForegroundColor Yellow
+        Write-Information "  🔄 Inventory data is $([math]::Round($cacheAge.TotalMinutes, 1)) minutes old - will refresh" -InformationAction Continue
     }
 }
 else {
-    Write-Host "  📋 No cached inventory data found - will collect fresh data" -ForegroundColor Cyan
+    Write-Information "  📋 No cached inventory data found - will collect fresh data" -InformationAction Continue
 }
 
 # Set up log file
@@ -150,13 +150,13 @@ if (-not $LogFilePath) {
     }
 }
 
-Write-Host "Log File: $LogFilePath" -ForegroundColor Gray
+Write-Information "Log File: $LogFilePath" -InformationAction Continue
 
 #endregion
 
 #region Module Loading
 
-Write-Host "`nLoading modules..." -ForegroundColor Yellow
+Write-Information "`nLoading modules..." -InformationAction Continue
 
 # Import core modules (always relative to script location)
 $ModulesPath = Join-Path $ScriptRoot 'modules'
@@ -169,7 +169,7 @@ if (-not (Test-Path $ModulesPath)) {
 }
 $CoreModulesPath = Join-Path $ModulesPath 'core'
 
-Write-Host "Modules Path: $ModulesPath" -ForegroundColor Gray
+Write-Information "Modules Path: $ModulesPath" -InformationAction Continue
 
 $CoreModules = @(
     'ConfigManager',
@@ -187,7 +187,7 @@ foreach ($moduleName in $CoreModules) {
 
         # Import PowerShell script module directly (no manifest validation needed for .psm1 files)
         Import-Module $modulePath -Force -ErrorAction Stop
-        Write-Host "  ✓ Loaded: $moduleName" -ForegroundColor Green
+        Write-Information "  ✓ Loaded: $moduleName" -InformationAction Continue
         
         # Verify module loaded successfully
         $loadedModule = Get-Module -Name $moduleName -ErrorAction SilentlyContinue
@@ -197,25 +197,25 @@ foreach ($moduleName in $CoreModules) {
     }
     catch [System.UnauthorizedAccessException] {
         Write-Error "Access denied loading module $moduleName. Ensure you have administrator privileges and the file is not blocked."
-        Write-Host "  ℹ️ Try running: Unblock-File '$modulePath'" -ForegroundColor Cyan
+        Write-Information "  ℹ️ Try running: Unblock-File '$modulePath'" -InformationAction Continue
         exit 1
     }
     catch [System.Security.SecurityException] {
         Write-Error "Security error loading module $moduleName. Check execution policy and file permissions."
-        Write-Host "  ℹ️ Current execution policy: $(Get-ExecutionPolicy)" -ForegroundColor Cyan
+        Write-Information "  ℹ️ Current execution policy: $(Get-ExecutionPolicy)" -InformationAction Continue
         exit 1
     }
     catch [System.IO.FileNotFoundException] {
         Write-Error "Module file not found: $modulePath"
-        Write-Host "  ℹ️ Ensure all module files are present in the modules/core directory" -ForegroundColor Cyan
+        Write-Information "  ℹ️ Ensure all module files are present in the modules/core directory" -InformationAction Continue
         exit 1
     }
     catch {
         Write-Error "Failed to load core module $moduleName`: $_"
-        Write-Host "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -ForegroundColor Cyan
-        Write-Host "  ℹ️ Error Details: $($_.Exception.Message)" -ForegroundColor Cyan
+        Write-Information "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
+        Write-Information "  ℹ️ Error Details: $($_.Exception.Message)" -InformationAction Continue
         if ($_.ScriptStackTrace) {
-            Write-Host "  ℹ️ Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Gray
+            Write-Information "  ℹ️ Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
         }
         exit 1
     }
@@ -225,7 +225,7 @@ foreach ($moduleName in $CoreModules) {
 
 #region Configuration Loading
 
-Write-Host "`nInitializing configuration..." -ForegroundColor Yellow
+Write-Information "`nInitializing configuration..." -InformationAction Continue
 
 try {
     # Validate configuration directory structure
@@ -248,7 +248,7 @@ try {
     # Initialize configuration system with error handling
     try {
         Initialize-ConfigSystem -ConfigRootPath $ConfigPath -ErrorAction Stop
-        Write-Host "  ✓ Configuration system initialized" -ForegroundColor Green
+        Write-Information "  ✓ Configuration system initialized" -InformationAction Continue
     }
     catch {
         throw "Failed to initialize configuration system: $($_.Exception.Message)"
@@ -260,7 +260,7 @@ try {
         if (-not $MainConfig) {
             throw "Main configuration is null or empty"
         }
-        Write-Host "  ✓ Main configuration loaded" -ForegroundColor Green
+        Write-Information "  ✓ Main configuration loaded" -InformationAction Continue
     }
     catch {
         throw "Failed to load main configuration: $($_.Exception.Message)"
@@ -271,7 +271,7 @@ try {
         if (-not $LoggingConfig) {
             throw "Logging configuration is null or empty"
         }
-        Write-Host "  ✓ Logging configuration loaded" -ForegroundColor Green
+        Write-Information "  ✓ Logging configuration loaded" -InformationAction Continue
     }
     catch {
         throw "Failed to load logging configuration: $($_.Exception.Message)"
@@ -281,15 +281,15 @@ try {
     try {
         $fileOrgResult = Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $Global:MaintenanceSessionTimestamp -ErrorAction Stop
         if ($fileOrgResult) {
-            Write-Host "  ✓ File organization system initialized" -ForegroundColor Green
+            Write-Information "  ✓ File organization system initialized" -InformationAction Continue
         }
         else {
             throw "File organization initialization returned false"
         }
     }
     catch {
-        Write-Host "  ⚠️ File organization system failed to initialize: $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host "  ℹ️ Continuing with basic file operations - some features may be limited" -ForegroundColor Gray
+        Write-Information "  ⚠️ File organization system failed to initialize: $($_.Exception.Message)" -InformationAction Continue
+        Write-Information "  ℹ️ Continuing with basic file operations - some features may be limited" -InformationAction Continue
         # Don't exit here as this is not critical for basic operation
     }
 
@@ -297,7 +297,7 @@ try {
     try {
         $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir -ErrorAction Stop
         if ($loggingInitResult) {
-            Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
+            Write-Information "  ✓ Logging system initialized" -InformationAction Continue
             # LoggingManager functions are now available
         }
         else {
