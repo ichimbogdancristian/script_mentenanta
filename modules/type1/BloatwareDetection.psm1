@@ -189,45 +189,45 @@ function Find-InstalledBloatware {
             @("No sources")
         }
 
-            Write-Information "  ✅ Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -InformationAction Continue
-            Write-Information "  📊 Sources: $($sourceStats -join ', ')" -InformationAction Continue
+        Write-Information "  ✅ Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "  📊 Sources: $($sourceStats -join ', ')" -InformationAction Continue
 
-            # Create final result array to return
-            $resultArray = [Array]$uniqueBloatware
-            
-            # Explicit memory cleanup before return
-            Write-Verbose "Performing memory cleanup for bloatware detection"
-            $allBloatware.Clear()
-            $allBloatware = $null
-            
-            # Clear large variables
-            $installedPrograms = $null
-            $systemInventory = $null
-            
-            # Force garbage collection if collection was large
-            if ($resultArray.Count -gt 50) {
-                Write-Verbose "Large result set detected, triggering garbage collection"
-                [System.GC]::Collect()
-                [System.GC]::WaitForPendingFinalizers()
+        # Create final result array to return
+        $resultArray = [Array]$uniqueBloatware
+        
+        # Explicit memory cleanup before return
+        Write-Verbose "Performing memory cleanup for bloatware detection"
+        $allBloatware.Clear()
+        $allBloatware = $null
+        
+        # Clear large variables
+        $installedPrograms = $null
+        $systemInventory = $null
+        
+        # Force garbage collection if collection was large
+        if ($resultArray.Count -gt 50) {
+            Write-Verbose "Large result set detected, triggering garbage collection"
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+        }
+        
+        # Complete performance tracking and log success
+        try {
+            if ($perfContext) {
+                Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true
             }
             
-            # Complete performance tracking and log success
-            try {
-                if ($perfContext) {
-                    Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true
-                }
-                
-                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection completed successfully' -Data @{
-                    BloatwareItemsFound = $resultArray.Count
-                    ExecutionTime = [math]::Round($duration, 2)
-                    Sources = $sourceStats -join ', '
-                    Categories = $Categories -join ', '
-                }
-            } catch {
-                # LoggingManager not available, continue
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection completed successfully' -Data @{
+                BloatwareItemsFound = $resultArray.Count
+                ExecutionTime = [math]::Round($duration, 2)
+                Sources = $sourceStats -join ', '
+                Categories = $Categories -join ', '
             }
-            
-            return $resultArray
+        } catch {
+            # LoggingManager not available, continue
+        }
+        
+        return $resultArray
         }
         catch {
             # Complete performance tracking with failure

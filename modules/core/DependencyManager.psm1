@@ -276,50 +276,230 @@ function Get-DependencyStatus {
 #region PowerShell 7 Management
 
 function Test-PowerShell7Installation {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+    
     try {
-        # Check current PowerShell version
+        Write-Verbose "Starting comprehensive PowerShell 7 detection..."
+        
+        # Check current PowerShell version first
         $currentVersion = $PSVersionTable.PSVersion
+        Write-Verbose "Current PowerShell version: $currentVersion"
 
         if ($currentVersion.Major -ge 7) {
+            Write-Verbose "Already running PowerShell 7+"
             return @{
                 Status  = 'Installed'
                 Version = $currentVersion.ToString()
+                Path    = (Get-Process -Id $PID).Path
+                Source  = 'Current Session'
                 Error   = $null
             }
         }
 
-        # Check if PowerShell 7 is available in PATH
-        $pwshPath = Get-Command 'pwsh' -ErrorAction SilentlyContinue
-        if ($pwshPath) {
-            $versionOutput = & pwsh --version 2>&1
-            if ($LASTEXITCODE -eq 0 -and $versionOutput -match 'PowerShell\s+([\d\.]+)') {
-                return @{
-                    Status  = 'Installed'
-                    Version = $matches[1]
-                    Error   = $null
+        # Define comprehensive search paths for PowerShell 7
+        $searchPaths = @(
+            # Standard MSI installation paths
+            "$env:ProgramFiles\PowerShell\7\pwsh.exe",
+            "${env:ProgramFiles(x86)}\PowerShell\7\pwsh.exe",
+            
+            # Microsoft Store installation paths
+            "$env:LocalAppData\Microsoft\WindowsApps\pwsh.exe",
+            "$env:LocalAppData\Microsoft\WindowsApps\Microsoft.PowerShell_8wekyb3d8bbwe\pwsh.exe",
+            
+            # Portable/User installations
+            "$env:LocalAppData\PowerShell\pwsh.exe",
+            "$env:AppData\PowerShell\pwsh.exe",
+            
+            # Alternative installation locations
+            "$env:ProgramFiles\PowerShell\pwsh.exe",
+            "${env:ProgramFiles(x86)}\PowerShell\pwsh.exe"
+        )
+
+        # Method 1: Check PATH first (most reliable)
+        Write-Verbose "Checking PATH for pwsh command..."
+        $pwshCommand = Get-Command 'pwsh' -ErrorAction SilentlyContinue
+        if ($pwshCommand) {
+            Write-Verbose "Found pwsh in PATH: $($pwshCommand.Source)"
+            try {
+                $versionOutput = & pwsh --version 2>&1
+                if ($LASTEXITCODE -eq 0 -and $versionOutput -match 'PowerShell\s+([\d\.]+)') {
+                    $version = $matches[1]
+                    Write-Verbose "Successfully got version from PATH: $version"
+                    
+                    # Verify it's actually PowerShell 7+
+                    if ([version]$version -ge [version]"7.0") {
+                        return @{
+                            Status  = 'Installed'
+                            Version = $version
+                            Path    = $pwshCommand.Source
+                            Source  = 'PATH'
+                            Error   = $null
+                        }
+                    }
                 }
             }
-            elseif ($LASTEXITCODE -ne 0) {
-                return @{
-                    Status  = 'Error'
-                    Version = $null
-                    Error   = "pwsh command failed with exit code: $LASTEXITCODE"
+            catch {
+                Write-Verbose "Error testing pwsh from PATH: $_"
+            }
+        }
+
+        # Method 2: Check specific installation paths
+        Write-Verbose "Checking specific installation paths..."
+        foreach ($path in $searchPaths) {
+            if (Test-Path $path -PathType Leaf) {
+                Write-Verbose "Found pwsh.exe at: $path"
+                try {
+                    $versionOutput = & $path --version 2>&1
+                    if ($LASTEXITCODE -eq 0 -and $versionOutput -match 'PowerShell\s+([\d\.]+)') {
+                        $version = $matches[1]
+                        Write-Verbose "Successfully got version from path: $version"
+                        
+                        # Verify it's actually PowerShell 7+
+                        if ([version]$version -ge [version]"7.0") {
+                            $source = if ($path -like "*WindowsApps*") { "Microsoft Store" } 
+                                     elseif ($path -like "*Program Files*") { "MSI Installer" }
+                                     else { "Custom Installation" }
+                                     
+                            return @{
+                                Status  = 'Installed'
+                                Version = $version
+                                Path    = $path
+                                Source  = $source
+                                Error   = $null
+                            }
+                        }
+                    }
+                }
+                catch {
+                    Write-Verbose "Error testing pwsh at $path : $_"
                 }
             }
         }
 
+        # Method 3: Registry check for installed programs (fallback)
+        Write-Verbose "Checking registry for PowerShell installations..."
+        try {
+            $registryPaths = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            )
+            
+            foreach ($regPath in $registryPaths) {
+                $programs = Get-ItemProperty $regPath -ErrorAction SilentlyContinue |
+                    Where-Object { $_.DisplayName -like "*PowerShell*7*" -or $_.DisplayName -like "*PowerShell Core*" }
+                
+                if ($programs) {
+                    Write-Verbose "Found PowerShell 7 in registry: $($programs[0].DisplayName)"
+                    # Try to extract version from display name or version field
+                    $regVersion = $programs[0].DisplayVersion
+                    if ($regVersion -and [version]$regVersion -ge [version]"7.0") {
+                        return @{
+                            Status  = 'Installed'
+                            Version = $regVersion
+                            Path    = $programs[0].InstallLocation
+                            Source  = 'Registry Detection'
+                            Error   = $null
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Registry check failed: $_"
+        }
+
+        # If we get here, PowerShell 7 was not found
+        Write-Verbose "PowerShell 7 not found through any detection method"
         return @{
             Status  = 'Missing'
             Version = $null
-            Error   = "PowerShell 7+ not found. Current version: $currentVersion"
+            Path    = $null
+            Source  = $null
+            Error   = "PowerShell 7+ not found. Current version: $currentVersion. Searched paths: $($searchPaths -join ', ')"
         }
     }
     catch {
+        Write-Verbose "Exception in Test-PowerShell7Installation: $_"
         return @{
             Status  = 'Error'
             Version = $null
+            Path    = $null
+            Source  = $null
             Error   = $_.Exception.Message
         }
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets the full path to the PowerShell 7 executable
+
+.DESCRIPTION
+    Attempts to locate the PowerShell 7 executable using the same comprehensive
+    detection logic as Test-PowerShell7Installation.
+
+.EXAMPLE
+    $pwshPath = Get-PowerShell7Path
+    if ($pwshPath) {
+        & $pwshPath -Command "Write-Host 'Using PowerShell 7'"
+    }
+
+.OUTPUTS
+    [string] Path to pwsh.exe, or $null if not found
+#>
+function Get-PowerShell7Path {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    
+    $psTest = Test-PowerShell7Installation
+    
+    if ($psTest.Status -eq 'Installed' -and $psTest.Path) {
+        return $psTest.Path
+    }
+    
+    return $null
+}
+
+<#
+.SYNOPSIS
+    Asserts that the current session has administrator privileges
+
+.DESCRIPTION
+    Checks if the current PowerShell session is running with administrator privileges.
+    Throws an exception if not running as administrator.
+
+.PARAMETER Operation
+    Description of the operation requiring admin privileges (for error messages)
+
+.EXAMPLE
+    Assert-AdminPrivileges -Operation "Registry modification"
+
+.OUTPUTS
+    None (throws exception if not admin)
+#>
+function Assert-AdminPrivileges {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$Operation = "This operation"
+    )
+    
+    try {
+        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        
+        if (-not $isAdmin) {
+            throw "$Operation requires administrator privileges. Please run PowerShell as Administrator."
+        }
+        
+        Write-Verbose "Administrator privileges confirmed for: $Operation"
+    }
+    catch {
+        throw "Failed to verify administrator privileges: $_"
     }
 }
 
@@ -795,9 +975,9 @@ function Assert-AdminPrivilege {
 
 # Export module functions
 Export-ModuleMember -Function @(
-    'Install-AllDependency',
+    'Install-AllDependencies',
     'Get-DependencyStatus',
-    'Test-AdminPrivilege',
-    'Assert-AdminPrivilege'
+    'Get-PowerShell7Path',
+    'Assert-AdminPrivileges'
 )
 
