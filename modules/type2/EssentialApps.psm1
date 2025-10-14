@@ -710,7 +710,7 @@ function Test-AppInstallationStatus {
     Tests installation of apps with higher parallelism without making changes
 #>
 function Install-AppViaWinget {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
@@ -838,7 +838,7 @@ function Install-AppViaWinget {
     Tests installation of apps without making actual changes
 #>
 function Install-AppViaChocolatey {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]

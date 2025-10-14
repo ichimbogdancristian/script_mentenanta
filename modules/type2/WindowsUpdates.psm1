@@ -550,7 +550,7 @@ function Install-UpdatesViaPSWindowsUpdate {
     Installs updates using native Windows Update API
 #>
 function Install-UpdatesViaNativeAPI {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     [OutputType([hashtable])]
     param(
         [switch]$DryRun
