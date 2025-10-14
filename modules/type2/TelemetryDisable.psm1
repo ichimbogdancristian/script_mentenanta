@@ -29,6 +29,11 @@ if (Test-Path $DependencyManagerPath) {
     Import-Module $DependencyManagerPath -Force
 }
 
+$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
+if (Test-Path $LoggingManagerPath) {
+    Import-Module $LoggingManagerPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -88,6 +93,21 @@ function Disable-WindowsTelemetry {
 
     Write-Information "🔒 Starting Windows telemetry and privacy hardening..." -InformationAction Continue
     $startTime = Get-Date
+    
+    # Initialize structured logging and performance tracking
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting Windows telemetry and privacy hardening' -Data @{
+            DisableServices = $DisableServices.IsPresent
+            DisableNotifications = $DisableNotifications.IsPresent
+            DisableConsumerFeatures = $DisableConsumerFeatures.IsPresent
+            DisableCortana = $DisableCortana.IsPresent
+            DisableLocationTracking = $DisableLocationTracking.IsPresent
+            DryRun = $DryRun.IsPresent
+        }
+        $perfContext = Start-PerformanceTracking -OperationName 'TelemetryPrivacyHardening' -Component 'TELEMETRY-DISABLE'
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
     
     # Check for administrator privileges before proceeding
     try {
@@ -170,6 +190,24 @@ function Disable-WindowsTelemetry {
             Write-Warning "    ❌ Some operations failed. Check logs for details."
         }
 
+        # Complete performance tracking and structured logging
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
+                TotalOperations = $results.TotalOperations
+                Successful = $results.Successful
+                Failed = $results.Failed
+                Skipped = $results.Skipped
+                Duration = $duration
+                RegistryOperations = $results.Categories.Registry
+                ServicesOperations = $results.Categories.Services
+                NotificationOperations = $results.Categories.Notifications
+                FeatureOperations = $results.Categories.Features
+            }
+            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation completed' -Data $results
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+        
         # Log detailed results for audit trails
         Write-Verbose "Telemetry disable operation details: $(ConvertTo-Json $results -Depth 3)"
         Write-Verbose "Privacy hardening completed successfully"
@@ -180,6 +218,14 @@ function Disable-WindowsTelemetry {
         $errorMessage = "❌ Privacy hardening failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Complete performance tracking for failed operation
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
+            Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
         
         # Type 2 module returns boolean for failure
         return $false
@@ -318,6 +364,13 @@ function Set-TelemetryRegistrySetting {
         [switch]$DryRun
     )
 
+    # Start structured logging for registry settings operation
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry registry settings configuration' -Data @{ DryRun = $DryRun.IsPresent }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
+    
     $results = @{
         Applied = 0
         Failed  = 0
