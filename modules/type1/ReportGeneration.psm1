@@ -30,6 +30,16 @@ if (Test-Path $FileOrgPath) {
     Import-Module $FileOrgPath -Force
 }
 
+# Import LoggingManager for structured logging (with graceful fallback)
+$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
+if (Test-Path $LoggingPath) {
+    try {
+        Import-Module $LoggingPath -Force -ErrorAction SilentlyContinue
+    } catch {
+        # LoggingManager not available, continue without structured logging
+    }
+}
+
 #region Public Functions
 
 <#
@@ -70,6 +80,20 @@ function New-MaintenanceReport {
         [Parameter(Mandatory)]
         [string]$OutputPath
     )
+    
+    # Start performance tracking for report generation
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'MaintenanceReportGeneration'
+        Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'Starting comprehensive maintenance report generation' -Data @{ 
+            OutputPath = $OutputPath
+            HasSystemInventory = ($null -ne $SystemInventory)
+            TaskResultsCount = $TaskResults.Count
+            HasConfiguration = ($null -ne $Configuration)
+        }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
 
     Write-Information "📋 Generating comprehensive maintenance report..." -InformationAction Continue
 
@@ -121,10 +145,9 @@ function New-MaintenanceReport {
         $summaryPath = Save-OrganizedFile -Data $reportData.Summary -FileType 'Report' -FileName 'execution-summary.json' -Format 'JSON'
 
         $duration = ((Get-Date) - $startTime).TotalSeconds
-        Write-Information "  ✅ Reports generated successfully in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
-        Write-Verbose "Report generation completed successfully"
-
-        return @{
+        
+        # Complete performance tracking and structured logging for success
+        $result = @{
             HtmlReport       = $htmlPath
             TextReport       = $textPath
             JsonExport       = $jsonPath
@@ -132,11 +155,39 @@ function New-MaintenanceReport {
             GenerationTime   = $startTime
             Duration         = $duration
         }
+        
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
+                HtmlReportPath = $htmlPath
+                TextReportPath = $textPath
+                JsonExportPath = $jsonPath
+                SummaryPath = $summaryPath
+                Duration = $duration
+                TaskResultsProcessed = $TaskResults.Count
+                ChartsGenerated = $reportData.Charts.Keys.Count
+            }
+            Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATION' -Message 'Maintenance report generation completed successfully' -Data $result
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+        
+        Write-Information "  ✅ Reports generated successfully in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
+        Write-Verbose "Report generation completed successfully"
+
+        return $result
     }
     catch {
         $errorMessage = "❌ Failed to generate maintenance report: $($_.Exception.Message)" 
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
+        
+        # Complete performance tracking for failed operation
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
+            Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATION' -Message 'Maintenance report generation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name; OutputPath = $OutputPath }
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
         
         # Return null object to indicate failure for Type 1 module
         return $null
