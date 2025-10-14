@@ -17,6 +17,16 @@
 
 using namespace System.Collections.Generic
 
+# Import LoggingManager for structured logging (with graceful fallback)
+try {
+    $loggingManagerPath = Join-Path $PSScriptRoot 'LoggingManager.psm1'
+    if (Test-Path $loggingManagerPath) {
+        Import-Module $loggingManagerPath -Force -ErrorAction SilentlyContinue
+    }
+} catch {
+    # LoggingManager not available, continue without structured logging
+}
+
 # Module variables
 $script:LoadedConfig = $null
 $script:ConfigPaths = @{}
@@ -47,6 +57,15 @@ function Initialize-ConfigSystem {
         [string]$ConfigRootPath
     )
 
+    # Start performance tracking for configuration initialization
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'ConfigSystemInitialization'
+        Write-LogEntry -Level 'INFO' -Component 'CONFIG-MANAGER' -Message 'Starting configuration system initialization' -Data @{ ConfigRootPath = $ConfigRootPath }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
+
     Write-Verbose "Initializing configuration system with root path: $ConfigRootPath"
 
     if (-not (Test-Path $ConfigRootPath)) {
@@ -71,6 +90,18 @@ function Initialize-ConfigSystem {
         }
     }
 
+    # Complete performance tracking and structured logging
+    try {
+        Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
+            ConfigRootPath = $ConfigRootPath
+            ValidatedPaths = $requiredPaths.Count
+            ConfigPaths = $script:ConfigPaths.Keys -join ', '
+        }
+        Write-LogEntry -Level 'SUCCESS' -Component 'CONFIG-MANAGER' -Message 'Configuration system initialization completed successfully' -Data @{ ConfigRootPath = $ConfigRootPath; ValidatedPaths = $requiredPaths.Count }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
+
     Write-Verbose "Configuration system initialized successfully"
 }
 
@@ -91,6 +122,15 @@ function Get-MainConfiguration {
 
     if ($null -ne $script:LoadedConfig) {
         return $script:LoadedConfig
+    }
+
+    # Start performance tracking for configuration loading
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'MainConfigurationLoad'
+        Write-LogEntry -Level 'INFO' -Component 'CONFIG-MANAGER' -Message 'Loading main configuration'
+    } catch {
+        # LoggingManager not available, continue with standard logging
     }
 
     $configPath = $script:ConfigPaths.MainConfig
@@ -141,12 +181,37 @@ function Get-MainConfiguration {
         # Merge with defaults to ensure all required properties exist
         $script:LoadedConfig = Merge-ConfigurationWithDefault -Config $config
 
+        # Complete performance tracking for successful load
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
+                ConfigPath = $configPath
+                ConfigLoaded = $true
+                ValidationStatus = if ($validationResult.IsValid) { 'Valid' } else { 'DefaultsApplied' }
+            }
+            Write-LogEntry -Level 'SUCCESS' -Component 'CONFIG-MANAGER' -Message 'Main configuration loaded and validated successfully' -Data @{ ConfigPath = $configPath }
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+
         Write-Verbose "Main configuration loaded and validated successfully"
         return $script:LoadedConfig
     }
     catch {
         Write-Error "Failed to load configuration from $configPath`: $_"
         Write-Warning "Using default configuration"
+        
+        # Complete performance tracking for failed load
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{
+                ConfigPath = $configPath
+                Error = $_.Exception.Message
+                FallbackUsed = $true
+            }
+            Write-LogEntry -Level 'WARN' -Component 'CONFIG-MANAGER' -Message 'Main configuration load failed, using defaults' -Data @{ ConfigPath = $configPath; Error = $_.Exception.Message }
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+        
         $script:LoadedConfig = Get-DefaultConfiguration
         return $script:LoadedConfig
     }
