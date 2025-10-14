@@ -28,6 +28,11 @@ if (Test-Path $FileOrgPath) {
     Import-Module $FileOrgPath -Force
 }
 
+$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
+if (Test-Path $LoggingManagerPath) {
+    Import-Module $LoggingManagerPath -Force
+}
+
 #region Public Functions
 
 <#
@@ -86,6 +91,21 @@ function Start-SecurityAudit {
 
     Write-Information "🔒 Starting comprehensive security audit..." -InformationAction Continue
     $startTime = Get-Date
+    
+    # Initialize structured logging and performance tracking
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'SECURITY-AUDIT' -Message 'Starting comprehensive security audit' -Data @{
+            IncludeDefenderScan = $IncludeDefenderScan.IsPresent
+            CheckFirewall = $CheckFirewall.IsPresent
+            CheckUAC = $CheckUAC.IsPresent
+            CheckServices = $CheckServices.IsPresent
+            CheckUpdates = $CheckUpdates.IsPresent
+            GenerateReport = $GenerateReport.IsPresent
+        }
+        $perfContext = Start-PerformanceTracking -OperationName 'SecurityAudit' -Component 'SECURITY-AUDIT'
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
 
     # Initialize audit results
     $auditResults = @{
@@ -171,11 +191,35 @@ function Start-SecurityAudit {
             $reportPath = New-SecurityReport -AuditResults $auditResults
             Write-Information "    📄 Security report: $reportPath" -InformationAction Continue
         }
+        
+        # Complete performance tracking and structured logging
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
+                SecurityScore = $auditResults.SecurityScore
+                MaxScore = $auditResults.MaxScore
+                PercentageScore = if ($auditResults.MaxScore -gt 0) { [math]::Round(($auditResults.SecurityScore / $auditResults.MaxScore) * 100, 1) } else { 0 }
+                CategoriesAudited = $auditResults.Categories.Keys.Count
+                RecommendationsCount = $auditResults.Recommendations.Count
+                RiskLevel = $auditResults.Summary.RiskLevel
+            }
+            Write-LogEntry -Level 'SUCCESS' -Component 'SECURITY-AUDIT' -Message 'Security audit completed successfully' -Data $auditResults.Summary
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
 
         return $auditResults
     }
     catch {
         Write-Error "Security audit failed: $_"
+        
+        # Complete performance tracking for failed operation
+        try {
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
+            Write-LogEntry -Level 'ERROR' -Component 'SECURITY-AUDIT' -Message 'Security audit failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
+        } catch {
+            # LoggingManager not available, continue with standard logging
+        }
+        
         throw
     }
 }
@@ -225,6 +269,13 @@ function Get-WindowsDefenderStatus {
         [switch]$IncludeScan
     )
 
+    # Start structured logging for Windows Defender status check
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'SECURITY-AUDIT' -Message 'Checking Windows Defender status' -Data @{ IncludeScan = $IncludeScan.IsPresent }
+    } catch {
+        # LoggingManager not available, continue with standard logging
+    }
+    
     $results = @{
         Enabled                   = $false
         RealTimeProtectionEnabled = $false
