@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 REM ============================================================================
 REM  Windows Maintenance Automation Launcher v2.0 (Enhanced Self-Discovery)
 REM  Purpose: Universal launcher for modular Windows maintenance system

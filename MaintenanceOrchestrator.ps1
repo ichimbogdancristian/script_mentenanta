@@ -311,10 +311,14 @@ try {
     
     # Ensure Write-LogEntry is always available (fallback if LoggingManager failed)
     if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
-        function Write-LogEntry {
+        function global:Write-LogEntry {
             param($Level, $Component, $Message, $Data)
             Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
         }
+        Write-Information "  ⚠️ Using fallback Write-LogEntry function" -InformationAction Continue
+    }
+    else {
+        Write-Information "  ✓ Write-LogEntry function available from LoggingManager" -InformationAction Continue
     }
 }
 catch [System.IO.DirectoryNotFoundException] {

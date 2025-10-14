@@ -74,9 +74,9 @@ function Show-MainMenu {
         # LoggingManager not available, continue with standard logging
     }
 
-    Write-Information "`n" -InformationAction Continue -NoNewline
+    Write-Host "`n" -NoNewline
     Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
-    Write-Information "    WINDOWS MAINTENANCE AUTOMATION - EXECUTION MODE SELECTION    " -InformationAction Continue -BackgroundColor DarkBlue
+    Write-Host "    WINDOWS MAINTENANCE AUTOMATION - EXECUTION MODE SELECTION    " -BackgroundColor DarkBlue
     Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
     Write-Information "" -InformationAction Continue
     Write-Information "🔧 Please select execution mode:" -InformationAction Continue
@@ -180,7 +180,7 @@ function Show-TaskSelectionMenu {
     Write-Information "  [1] Execute All Tasks Unattended [DEFAULT]" -InformationAction Continue
     Write-Information "      → Runs all $($AvailableTasks.Count) available maintenance tasks automatically" -InformationAction Continue
     Write-Information "" -InformationAction Continue
-    Write-Information "  [2] Execute Only Inserted Task Numbers" -InformationAction Continue -ForegroundColor $modeColor
+    Write-Host "  [2] Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
     Write-Information "      → Choose specific tasks by number (comma-separated input)" -InformationAction Continue
     Write-Information "" -InformationAction Continue
     Write-Information "Available Tasks:" -InformationAction Continue
@@ -202,7 +202,7 @@ function Show-TaskSelectionMenu {
     Write-Information "" -InformationAction Continue
     switch ($selection) {
         1 {
-            Write-Information "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -InformationAction Continue -ForegroundColor $modeColor
+            Write-Host "✓ Selected: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
             return @{
                 SelectionType = 'All'
                 TaskNumbers   = @(1..$AvailableTasks.Count)
@@ -210,12 +210,12 @@ function Show-TaskSelectionMenu {
             }
         }
         2 {
-            Write-Information "✓ Selected: Execute Only Inserted Task Numbers" -InformationAction Continue -ForegroundColor $modeColor
+            Write-Host "✓ Selected: Execute Only Inserted Task Numbers" -ForegroundColor $modeColor
             $selectedTasks = Get-TaskNumberSelection -AvailableTasks $AvailableTasks
             return $selectedTasks
         }
         default {
-            Write-Information "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -InformationAction Continue -ForegroundColor $modeColor
+            Write-Host "✓ Default: Execute All Tasks Unattended ($($AvailableTasks.Count) tasks)" -ForegroundColor $modeColor
             return @{
                 SelectionType = 'All'
                 TaskNumbers   = @(1..$AvailableTasks.Count)
@@ -368,7 +368,7 @@ function Start-CountdownSelection {
     )
 
     Write-Information "" -InformationAction Continue
-    Write-Information "Countdown: " -InformationAction Continue -NoNewline
+    Write-Host "Countdown: " -NoNewline
 
     for ($i = $CountdownSeconds; $i -gt 0; $i--) {
         # Check for user input

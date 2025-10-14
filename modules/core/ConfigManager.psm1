@@ -165,10 +165,14 @@ function Get-MainConfiguration {
         try {
             $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'MainConfig'
             
-            if (-not $validationResult.IsValid -and $validationResult.Issues -and $validationResult.Issues.Count -gt 0) {
-                Write-Warning "Main configuration validation failed with $($validationResult.Issues.Count) issues:"
-                foreach ($issue in $validationResult.Issues) {
-                    Write-Warning "  - $issue"
+            if (-not $validationResult.IsValid) {
+                if ($validationResult.Issues -and $validationResult.Issues.Count -gt 0) {
+                    Write-Warning "Main configuration validation failed with $($validationResult.Issues.Count) issues:"
+                    foreach ($issue in $validationResult.Issues) {
+                        Write-Warning "  - $issue"
+                    }
+                } else {
+                    Write-Warning "Main configuration validation failed (no specific issues available)"
                 }
                 Write-Warning "Proceeding with default configuration values for invalid properties"
             }
@@ -271,10 +275,14 @@ function Get-LoggingConfiguration {
         try {
             $validationResult = Test-ConfigurationSchema -ConfigData $configHash -SchemaType 'LoggingConfig'
             
-            if (-not $validationResult.IsValid -and $validationResult.Issues -and $validationResult.Issues.Count -gt 0) {
-                Write-Warning "Logging configuration validation failed with $($validationResult.Issues.Count) issues:"
-                foreach ($issue in $validationResult.Issues) {
-                    Write-Warning "  - $issue"
+            if (-not $validationResult.IsValid) {
+                if ($validationResult.Issues -and $validationResult.Issues.Count -gt 0) {
+                    Write-Warning "Logging configuration validation failed with $($validationResult.Issues.Count) issues:"
+                    foreach ($issue in $validationResult.Issues) {
+                        Write-Warning "  - $issue"
+                    }
+                } else {
+                    Write-Warning "Logging configuration validation failed (no specific issues available)"
                 }
                 Write-Warning "Proceeding with default values for invalid properties"
             }
@@ -904,6 +912,12 @@ function Test-ConfigurationSchema {
             'MainConfig' {
                 try {
                     $validationResult = Test-MainConfigSchema -ConfigData $ConfigData
+                    if (-not $validationResult -or -not $validationResult.Issues) {
+                        $validationResult = @{
+                            IsValid = $true
+                            Issues  = [System.Collections.Generic.List[string]]::new()
+                        }
+                    }
                 }
                 catch {
                     Write-Warning "MainConfig schema validation failed: $_"
@@ -918,6 +932,12 @@ function Test-ConfigurationSchema {
             'LoggingConfig' {
                 try {
                     $validationResult = Test-LoggingConfigSchema -ConfigData $ConfigData
+                    if (-not $validationResult -or -not $validationResult.Issues) {
+                        $validationResult = @{
+                            IsValid = $true
+                            Issues  = [System.Collections.Generic.List[string]]::new()
+                        }
+                    }
                 }
                 catch {
                     Write-Warning "LoggingConfig schema validation failed: $_"
