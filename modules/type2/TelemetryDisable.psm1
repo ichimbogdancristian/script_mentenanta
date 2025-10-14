@@ -288,7 +288,7 @@ function Test-PrivacySetting {
         NotificationsEnabled    = Test-NotificationsEnabled
         ConsumerFeaturesEnabled = Test-ConsumerFeaturesEnabled
         CortanaEnabled          = Test-CortanaEnabled
-        LocationServicesEnabled = Test-LocationServicesEnabled
+        LocationServicesEnabled = Test-LocationServiceEnabled
         Recommendations         = [List[string]]::new()
     }
 
@@ -1039,7 +1039,7 @@ function Test-CortanaEnabled {
     catch { return $true }
 }
 
-function Test-LocationServicesEnabled {
+function Test-LocationServiceEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' -Name DisableLocation -ErrorAction SilentlyContinue).DisableLocation
         return $value -ne 1

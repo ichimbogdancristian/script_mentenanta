@@ -144,7 +144,7 @@ function Start-SecurityAudit {
         # Security Services (default: enabled)
         if ($CheckServices -or (-not $PSBoundParameters.ContainsKey('CheckServices'))) {
             Write-Information "  ⚙️  Auditing security services..." -InformationAction Continue
-            $servicesResults = Get-SecurityServicesStatus
+            $servicesResults = Get-SecurityServiceStatus
             $auditResults.Categories['Services'] = $servicesResults
             Update-SecurityScore -Results $auditResults -Score $servicesResults.Score -MaxScore 20
         }
@@ -152,7 +152,7 @@ function Start-SecurityAudit {
         # Windows Updates (default: enabled)
         if ($CheckUpdates -or (-not $PSBoundParameters.ContainsKey('CheckUpdates'))) {
             Write-Information "  📥 Checking security updates..." -InformationAction Continue
-            $updatesResults = Get-SecurityUpdatesStatus
+            $updatesResults = Get-SecurityUpdateStatus
             $auditResults.Categories['Updates'] = $updatesResults
             Update-SecurityScore -Results $auditResults -Score $updatesResults.Score -MaxScore 20
         }
@@ -526,7 +526,7 @@ function Get-UACStatus {
 .SYNOPSIS
     Gets security-related Windows services status
 #>
-function Get-SecurityServicesStatus {
+function Get-SecurityServiceStatus {
     [CmdletBinding()]
     param()
 
@@ -598,7 +598,7 @@ function Get-SecurityServicesStatus {
 .SYNOPSIS
     Gets security updates status
 #>
-function Get-SecurityUpdatesStatus {
+function Get-SecurityUpdateStatus {
     [CmdletBinding()]
     param()
 

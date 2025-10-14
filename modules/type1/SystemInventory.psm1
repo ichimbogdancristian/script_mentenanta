@@ -151,7 +151,7 @@ function Get-SystemInventory {
 
         # Running services
         Write-Information "  🔧 Collecting services information..." -InformationAction Continue
-        $inventoryData.Services = Get-ServicesInfo
+        $inventoryData.Services = Get-ServiceInfo
 
         # Network configuration
         Write-Information "  🌐 Collecting network configuration..." -InformationAction Continue
@@ -621,7 +621,7 @@ function Get-InstalledSoftwareInfo {
 .SYNOPSIS
     Collects services information
 #>
-function Get-ServicesInfo {
+function Get-ServiceInfo {
     try {
         # Use WMI/CIM first as it has better permission handling than Get-Service
         try {
@@ -751,7 +751,7 @@ function Get-NetworkInfo {
 function Get-DetailedSystemInfo {
     try {
         return @{
-            InstalledUpdates = Get-InstalledUpdatesInfo
+            InstalledUpdates = Get-InstalledUpdateInfo
             StartupPrograms  = Get-StartupProgramsInfo
             ScheduledTasks   = Get-ScheduledTasksInfo
             EventLogSummary  = Get-EventLogSummary
@@ -767,7 +767,7 @@ function Get-DetailedSystemInfo {
 .SYNOPSIS
     Gets installed Windows updates information
 #>
-function Get-InstalledUpdatesInfo {
+function Get-InstalledUpdateInfo {
     try {
         $updates = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop |
         Sort-Object InstalledOn -Descending |
