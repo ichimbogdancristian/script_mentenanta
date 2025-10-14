@@ -568,22 +568,23 @@ function Write-FileLogEntry {
             $formattedMessage += " | OpId: $($LogEntry.OperationId)"
         }
 
-        # Thread-safe file writing using enhanced file locking
-        $result = Invoke-WithFileLock -FilePath $script:LoggingContext.LogPath -TimeoutSeconds 10 -ScriptBlock {
-            Add-Content -Path $script:LoggingContext.LogPath -Value $formattedMessage -Encoding UTF8
-        }
+        # Simple retry-based file writing to avoid locking conflicts
+        $retryCount = 0
+        $maxRetries = 5
+        $success = $false
         
-        if ($null -eq $result) {
-            Write-Verbose "Failed to acquire file lock for log writing, attempting fallback"
-            # Fallback to original mutex approach
-            $mutex = [System.Threading.Mutex]::new($false, "LoggingManager_FileWrite")
+        while (-not $success -and $retryCount -lt $maxRetries) {
             try {
-                $mutex.WaitOne(5000) | Out-Null  # 5 second timeout
-                Add-Content -Path $script:LoggingContext.LogPath -Value $formattedMessage -Encoding UTF8
+                Add-Content -Path $script:LoggingContext.LogPath -Value $formattedMessage -Encoding UTF8 -ErrorAction Stop
+                $success = $true
             }
-            finally {
-                $mutex.ReleaseMutex()
-                $mutex.Dispose()
+            catch [System.IO.IOException] {
+                $retryCount++
+                if ($retryCount -lt $maxRetries) {
+                    Start-Sleep -Milliseconds (50 * $retryCount)  # Progressive delay
+                } else {
+                    Write-Verbose "Failed to write to log after $maxRetries attempts: $_"
+                }
             }
         }
     }
@@ -844,14 +845,24 @@ function Write-ModuleLogEntry {
             if ($PSBoundParameters.ContainsKey('Success')) { $formattedEntry += " | Success: $Success" }
             if ($Details.Count -gt 0) { $formattedEntry += " | Details: $($Details | ConvertTo-Json -Compress)" }
 
-            # Use file locking for safe concurrent access
-            $result = Invoke-WithFileLock -FilePath $moduleLogPath -TimeoutSeconds 5 -ScriptBlock {
-                Add-Content -Path $moduleLogPath -Value $formattedEntry -Encoding UTF8
-            }
+            # Simple retry-based file writing for module logs
+            $retryCount = 0
+            $maxRetries = 3
+            $success = $false
             
-            if ($null -eq $result) {
-                Write-Verbose "File lock failed for module log, using direct write: $moduleLogPath"
-                Add-Content -Path $moduleLogPath -Value $formattedEntry -Encoding UTF8
+            while (-not $success -and $retryCount -lt $maxRetries) {
+                try {
+                    Add-Content -Path $moduleLogPath -Value $formattedEntry -Encoding UTF8 -ErrorAction Stop
+                    $success = $true
+                }
+                catch [System.IO.IOException] {
+                    $retryCount++
+                    if ($retryCount -lt $maxRetries) {
+                        Start-Sleep -Milliseconds (25 * $retryCount)
+                    } else {
+                        Write-Verbose "Failed to write to module log after $maxRetries attempts: $_"
+                    }
+                }
             }
         }
     }

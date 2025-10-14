@@ -873,7 +873,7 @@ function Test-ConfigurationSchema {
         }
         
         Write-Verbose "Schema validation for $SchemaType completed: $($validationResult.IsValid)"
-        if ($validationResult.Issues.Count -gt 0) {
+        if ($validationResult.Issues -and $validationResult.Issues.Count -gt 0) {
             Write-Verbose "Validation issues found: $($validationResult.Issues.Count)"
         }
         

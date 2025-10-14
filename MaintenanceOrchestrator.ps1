@@ -298,6 +298,7 @@ try {
         $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir -ErrorAction Stop
         if ($loggingInitResult) {
             Write-Host "  ✓ Logging system initialized" -ForegroundColor Green
+            # LoggingManager functions are now available
         }
         else {
             throw "Logging system initialization returned false"
@@ -306,7 +307,10 @@ try {
     catch {
         Write-Host "  ⚠️ Logging system failed to initialize: $($_.Exception.Message)" -ForegroundColor Yellow
         Write-Host "  ℹ️ Continuing without enhanced logging - basic console output only" -ForegroundColor Gray
-        # Create a fallback logging function for basic operations
+    }
+    
+    # Ensure Write-LogEntry is always available (fallback if LoggingManager failed)
+    if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
         function Write-LogEntry {
             param($Level, $Component, $Message, $Data)
             Write-Host "[$Level] [$Component] $Message" -ForegroundColor Gray

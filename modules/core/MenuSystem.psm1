@@ -62,7 +62,7 @@ function Show-MainMenu {
     Write-Information "" -InformationAction Continue
     Write-Information "🔧 Please select execution mode:" -InformationAction Continue
     Write-Information "" -InformationAction Continue
-    Write-Information "  [1] Execute Script Normally (Unattended) " -InformationAction Continue -NoNewline
+    Write-Host "  [1] Execute Script Normally (Unattended) " -NoNewline
     Write-Information "[DEFAULT]" -InformationAction Continue
     Write-Information "      → Performs actual system changes unattended" -InformationAction Continue
     Write-Information "" -InformationAction Continue
@@ -128,12 +128,12 @@ function Show-TaskSelectionMenu {
 
     Write-Information "" -InformationAction Continue
     Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
-    Write-Information "    TASK SELECTION - $modeText MODE" -InformationAction Continue -BackgroundColor DarkBlue
+    Write-Host "    TASK SELECTION - $modeText MODE" -BackgroundColor DarkBlue -ForegroundColor White
     Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
     Write-Information "" -InformationAction Continue
     Write-Information "📋 Please select tasks to execute:" -InformationAction Continue
     Write-Information "" -InformationAction Continue
-    Write-Information "  [1] Execute All Tasks Unattended " -InformationAction Continue -ForegroundColor $modeColor -NoNewline
+    Write-Host "  [1] Execute All Tasks Unattended " -ForegroundColor $modeColor -NoNewline
     Write-Information "[DEFAULT]" -InformationAction Continue
     Write-Information "      → Runs all $($AvailableTasks.Count) available maintenance tasks automatically" -InformationAction Continue
     Write-Information "" -InformationAction Continue
@@ -149,8 +149,8 @@ function Show-TaskSelectionMenu {
         $taskName = if ($task.Name) { $task.Name } else { "Task $taskNum" }
         $taskDesc = if ($task.Description) { " - $($task.Description)" } else { "" }
 
-        Write-Information "  [$taskNum] " -InformationAction Continue -NoNewline
-        Write-Information "$taskName" -InformationAction Continue -NoNewline
+        Write-Host "  [$taskNum] " -NoNewline
+        Write-Host "$taskName" -NoNewline
         Write-Information "$taskDesc" -InformationAction Continue
     }
 
@@ -230,7 +230,7 @@ function Get-TaskNumberSelection {
 
     do {
         Write-Information "" -InformationAction Continue
-        Write-Information "📝 Enter task numbers (comma-separated, e.g., 1,3,5,7): " -InformationAction Continue -NoNewline
+        Write-Host "📝 Enter task numbers (comma-separated, e.g., 1,3,5,7): " -NoNewline
         $userInput = Read-Host
 
         if ([string]::IsNullOrWhiteSpace($userInput)) {
@@ -278,7 +278,7 @@ function Get-TaskNumberSelection {
     }
 
     Write-Information "" -InformationAction Continue
-    Write-Information "✓ Selected Tasks: " -InformationAction Continue -NoNewline
+    Write-Host "✓ Selected Tasks: " -NoNewline
     Write-Information "($($taskNumbers -join ', '))" -InformationAction Continue
     foreach ($taskNum in $taskNumbers) {
         $task = $AvailableTasks[$taskNum - 1]
@@ -352,10 +352,10 @@ function Start-CountdownSelection {
         }
 
         # Display countdown
-        Write-Information "`r" -InformationAction Continue -NoNewline
-        Write-Information "Countdown: " -InformationAction Continue -NoNewline
-        Write-Information "$i seconds " -InformationAction Continue -NoNewline
-        Write-Information "(Press 1-$OptionsCount to select, Enter for default)" -InformationAction Continue -NoNewline
+        Write-Host "`r" -NoNewline
+        Write-Host "Countdown: " -NoNewline
+        Write-Host "$i seconds " -NoNewline
+        Write-Host "(Press 1-$OptionsCount to select, Enter for default)" -NoNewline
 
         Start-Sleep -Seconds 1
     }
@@ -398,12 +398,12 @@ function Show-ConfirmationDialog {
     )
 
     Write-Information "" -InformationAction Continue
-    Write-Information "⚠️  " -InformationAction Continue -NoNewline
+    Write-Host "⚠️  " -NoNewline
     Write-Information $Message -InformationAction Continue
     Write-Information "" -InformationAction Continue
 
     $defaultText = if ($DefaultChoice -eq 'Y') { "Yes" } else { "No" }
-    Write-Information "Countdown: " -InformationAction Continue -NoNewline
+    Write-Host "Countdown: " -NoNewline
 
     for ($i = $CountdownSeconds; $i -gt 0; $i--) {
         if ([Console]::KeyAvailable) {
@@ -429,10 +429,10 @@ function Show-ConfirmationDialog {
             }
         }
 
-        Write-Information "`r" -InformationAction Continue -NoNewline
-        Write-Information "Countdown: " -InformationAction Continue -NoNewline
-        Write-Information "$i seconds " -InformationAction Continue -NoNewline
-        Write-Information "(Y/N, Enter for default [$DefaultChoice])" -InformationAction Continue -NoNewline
+        Write-Host "`r" -NoNewline
+        Write-Host "Countdown: " -NoNewline
+        Write-Host "$i seconds " -NoNewline
+        Write-Host "(Y/N, Enter for default [$DefaultChoice])" -NoNewline
 
         Start-Sleep -Seconds 1
     }
