@@ -103,51 +103,67 @@ function Invoke-BloatwareRemoval {
     }
     
     try {
-        # Step 1: ALWAYS detect first (Type 1) - MANDATORY
+        # STEP 1: Always run Type1 detection first and save to temp_files/data/
         Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection'
-        $detectionResults = Find-InstalledBloatware
+        $detectionResults = Get-BloatwareAnalysis -Config $Config
         
-        if (-not $detectionResults -or $detectionResults.Count -eq 0) {
-            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items detected'
-            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
-            return @{ 
-                Success        = $true
-                ItemsDetected  = 0
-                ItemsProcessed = 0
-                DryRun         = $DryRun.IsPresent
-                Message        = 'No bloatware items found'
+        # STEP 2: Compare detection with config to create diff list
+        $configDataPath = Join-Path $Global:ProjectPaths.Config "bloatware-list.json"
+        $configData = Get-Content $configDataPath | ConvertFrom-Json
+        
+        # Create diff: Only items from config that are actually found on system
+        $diffList = $detectionResults | Where-Object {
+            $item = $_
+            $configData.bloatware | Where-Object { 
+                $_.name -eq $item.Name -or 
+                $_.packageName -eq $item.PackageName -or
+                $_.path -contains $item.InstallPath
             }
         }
         
-        # Step 2: Validate and log findings
-        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Detected $($detectionResults.Count) bloatware items"
+        $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\bloatware-diff.json"
+        $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath
         
-        # Step 3: Take action (Type 2) based on DryRun mode
+        # STEP 3: Process ONLY items in diff list and log to dedicated directory
+        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal"
+        New-Item -Path $executionLogDir -ItemType Directory -Force
+        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        
+        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath
+        
+        if (-not $diffList -or $diffList.Count -eq 0) {
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items to remove after config comparison' -LogPath $executionLogPath
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            return @{ 
+                Success          = $true
+                ItemsDetected    = $detectionResults.Count
+                ItemsProcessed   = 0
+                DiffPath         = $diffPath
+                ExecutionLogPath = $executionLogPath
+                Message          = 'No bloatware items matched config for removal'
+            }
+        }
+        
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'DRY RUN: Simulating bloatware removal actions'
-            $results = Test-BloatwareRemoval -BloatwareList $detectionResults
-            $processedCount = $detectionResults.Count
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "DRY-RUN: Would process $($diffList.Count) bloatware items" -LogPath $executionLogPath
+            $processedCount = 0
         }
         else {
-            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Executing bloatware removal actions'
-            $results = Remove-DetectedBloatware -BloatwareList $detectionResults
+            # Process only items found in diff comparison
+            $results = Remove-DetectedBloatware -BloatwareList $diffList -LogPath $executionLogPath
             $processedCount = if ($results.ProcessedItems) { $results.ProcessedItems.Count } else { 0 }
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processed $processedCount bloatware items" -LogPath $executionLogPath
         }
-        
-        # Step 4: Return standardized results for ReportGeneration
-        $returnData = @{
-            Success        = $true
-            ItemsDetected  = $detectionResults.Count
-            ItemsProcessed = $processedCount
-            DryRun         = $DryRun.IsPresent
-            Results        = $results
-            DetectionData  = $detectionResults
-        }
-        
-        Write-LogEntry -Level 'SUCCESS' -Component 'BLOATWARE-REMOVAL' -Message "Bloatware removal completed. Processed: $processedCount/$($detectionResults.Count)"
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
-        return $returnData
+        
+        return @{
+            Success          = $true
+            ItemsDetected    = $detectionResults.Count
+            ItemsProcessed   = $processedCount
+            DiffPath         = $diffPath
+            ExecutionLogPath = $executionLogPath
+        }
         
     }
     catch {
@@ -214,7 +230,10 @@ function Remove-DetectedBloatware {
         [string[]]$Categories = @('all'),
 
         [Parameter()]
-        [switch]$UseCache
+        [switch]$UseCache,
+        
+        [Parameter()]
+        [string]$LogPath  # v3.0 specific log file path
     )
 
     Write-Information "🗑️  Starting bloatware removal process..." -InformationAction Continue

@@ -35,16 +35,52 @@ $CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
-else {
-    # Fallback functions if CoreInfrastructure not available
+
+# Fallback functions if CoreInfrastructure functions not available in this scope
+if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     function Write-LogEntry {
         param($Level, $Component, $Message, $Data)
         Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
     }
+}
+
+if (-not (Get-Command 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
+    function Get-SessionPath {
+        param($Category, $SubCategory, $FileName)
+        
+        # Try to construct proper path using environment variables set by orchestrator
+        $tempRoot = if ($env:MAINTENANCE_TEMP_ROOT) { $env:MAINTENANCE_TEMP_ROOT } else { Join-Path $env:TEMP 'maintenance' }
+        
+        if ($Category -and (Test-Path $tempRoot)) {
+            $categoryPath = Join-Path $tempRoot $Category
+            if (-not (Test-Path $categoryPath)) {
+                try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
+            }
+            
+            if ($SubCategory) {
+                $categoryPath = Join-Path $categoryPath $SubCategory
+                if (-not (Test-Path $categoryPath)) {
+                    try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
+                }
+            }
+            
+            return Join-Path $categoryPath $FileName
+        }
+        else {
+            Write-Warning "Session path unavailable - using current directory fallback"
+            return $FileName
+        }
+    }
+}
+
+if (-not (Get-Command 'Get-BloatwareConfiguration' -ErrorAction SilentlyContinue)) {
     function Get-BloatwareConfiguration {
         Write-Warning "CoreInfrastructure not available - using fallback configuration"
         return @{}
     }
+}
+
+if (-not (Get-Command 'Get-BloatwareList' -ErrorAction SilentlyContinue)) {
     function Get-BloatwareList {
         param($Category)
         Write-Warning "CoreInfrastructure not available - using fallback bloatware list"
@@ -720,9 +756,74 @@ function Test-BloatwareDetection {
 
 #endregion
 
+    }
+}
+
+<#
+.SYNOPSIS
+    v3.0 Wrapper function for Type2 modules to get bloatware analysis and save to temp_files/data
+
+.DESCRIPTION
+    Standardized analysis function that Type2 modules call to get bloatware detection results.
+    Automatically saves results to temp_files/data/bloatware-results.json using global paths.
+
+.PARAMETER Config
+    Configuration hashtable from orchestrator
+
+.EXAMPLE
+    $results = Get-BloatwareAnalysis -Config $Config
+#>
+function Get-BloatwareAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config
+    )
+    
+    Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting bloatware analysis for Type2 module'
+    
+    try {
+        # Perform the bloatware detection
+        $detectionResults = Find-InstalledBloatware -Categories @('all')
+        
+        # Ensure Global:ProjectPaths is available
+        if (-not $Global:ProjectPaths) {
+            Write-Warning "Global:ProjectPaths not available, attempting to initialize"
+            if (Get-Command 'Initialize-GlobalPathDiscovery' -ErrorAction SilentlyContinue) {
+                Initialize-GlobalPathDiscovery
+            }
+        }
+        
+        # Save results to temp_files/data/ using global paths
+        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+            $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\bloatware-results.json"
+            
+            # Ensure directory exists
+            $dataDir = Split-Path -Parent $dataPath
+            if (-not (Test-Path $dataDir)) {
+                New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Save results as JSON
+            $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $dataPath -Encoding UTF8
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message "Saved $($detectionResults.Count) detection results to $dataPath"
+        }
+        else {
+            Write-Warning "Global project paths not available - results not saved to file"
+        }
+        
+        return $detectionResults
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-DETECTION' -Message "Bloatware analysis failed: $($_.Exception.Message)"
+        return @()
+    }
+}
+
 # Export module functions
 Export-ModuleMember -Function @(
     'Find-InstalledBloatware',
     'Get-BloatwareStatistic',
-    'Test-BloatwareDetection'
+    'Test-BloatwareDetection',
+    'Get-BloatwareAnalysis'  # v3.0 wrapper for Type2 modules
 )

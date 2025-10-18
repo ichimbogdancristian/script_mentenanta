@@ -71,6 +71,21 @@ Write-Information "Windows Maintenance Automation - Central Orchestrator v2.0.0"
 Write-Information "Working Directory: $WorkingDirectory" -InformationAction Continue
 Write-Information "Script Root: $ScriptRoot" -InformationAction Continue
 
+# 🎯 Initialize Global Path Discovery System
+Write-Information "`n🔍 Initializing global path discovery..." -InformationAction Continue
+$env:MAINTENANCE_PROJECT_ROOT = $ScriptRoot
+$env:MAINTENANCE_CONFIG_ROOT = Join-Path $ScriptRoot 'config'
+$env:MAINTENANCE_MODULES_ROOT = Join-Path $ScriptRoot 'modules'
+$env:MAINTENANCE_TEMP_ROOT = Join-Path $ScriptRoot 'temp_files'
+$env:MAINTENANCE_REPORTS_ROOT = $ScriptRoot
+
+Write-Information "  ✅ Global environment variables set:" -InformationAction Continue
+Write-Information "     🎯 PROJECT_ROOT: $env:MAINTENANCE_PROJECT_ROOT" -InformationAction Continue
+Write-Information "     ⚙️  CONFIG_ROOT: $env:MAINTENANCE_CONFIG_ROOT" -InformationAction Continue
+Write-Information "     🧩 MODULES_ROOT: $env:MAINTENANCE_MODULES_ROOT" -InformationAction Continue
+Write-Information "     📂 TEMP_ROOT: $env:MAINTENANCE_TEMP_ROOT" -InformationAction Continue
+Write-Information "     📊 REPORTS_ROOT: $env:MAINTENANCE_REPORTS_ROOT" -InformationAction Continue
+
 # Detect configuration path (always relative to script location)
 if (-not $ConfigPath) {
     $ConfigPath = Join-Path $ScriptRoot 'config'
@@ -100,9 +115,10 @@ Write-Information "Session Timestamp: $Global:MaintenanceSessionTimestamp" -Info
 # Set session environment variables for modules to access
 $env:MAINTENANCE_SESSION_ID = $Global:MaintenanceSessionId
 $env:MAINTENANCE_SESSION_TIMESTAMP = $Global:MaintenanceSessionTimestamp
+# Note: MAINTENANCE_TEMP_ROOT already set above in global path discovery
 
-# Set up temp directories (always relative to script location, not working directory)
-$TempRoot = Join-Path $ScriptRoot 'temp_files'
+# Set up temp directories (using global environment variables)
+$TempRoot = $env:MAINTENANCE_TEMP_ROOT
 $ReportsDir = Join-Path $TempRoot 'reports'
 $LogsDir = Join-Path $TempRoot 'logs'
 $InventoryDir = Join-Path $TempRoot 'inventory'
@@ -948,9 +964,10 @@ try {
         Write-Warning "  ⚠️ SystemAnalysis module not available for inventory collection"
     }
 
-    # Generate reports using the ReportGeneration module
+    # Generate reports using the ReportGeneration module (v3.0: Portable report in parent directory)
     if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
-        $reportBasePath = Get-SessionPath -Category 'reports' -FileName 'maintenance-report'
+        # v3.0: Generate report in parent directory for portable operation
+        $reportBasePath = Join-Path $Global:ProjectPaths.ParentDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
         
         $reportResult = New-MaintenanceReport -SystemInventory $systemInventory -TaskResults $TaskResults -Configuration $MainConfig -OutputPath $reportBasePath
         

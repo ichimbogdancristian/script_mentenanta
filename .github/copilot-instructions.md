@@ -78,35 +78,138 @@ foreach ($moduleName in $Type2Modules) {
 }
 ```
 
-### Session-Based File Organization
-All temporary data uses **organized directories** under `temp_files/`:
-- `logs/` - Individual module log files and performance tracking
-  - `logs/bloatware-removal/` - BloatwareRemoval Type2 execution logs
-  - `logs/bloatware-detection-audit/` - BloatwareDetectionAudit Type1 analysis logs
-  - `logs/essential-apps/` - EssentialApps Type2 execution logs
-  - `logs/essential-apps-audit/` - EssentialAppsAudit Type1 analysis logs
-  - `logs/[module-name]/` - Each module has dedicated log directory
-- `data/` - Categorized inventory and audit files (by module/function)
-  - `data/bloatware-results.json` - Detection results for ReportGeneration
-  - `data/system-optimization-results.json` - Optimization analysis results
-  - `data/[module-name]-results.json` - Module-specific audit data
-- `temp/` - Other generated files and processing data
-- `reports/` - Final outputs (HTML, JSON, TXT)
+### **🌐 Global Path Discovery System (v3.0 Critical)**
+The system implements **robust portable path discovery** for universal deployment:
 
-**Key Pattern**: Always use `Get-SessionPath` with module-specific paths that work from any launch directory:
+**Project Root Detection**:
 ```powershell
-# Type1 modules: Generate audit logs in dedicated directories
-$auditLogPath = Get-SessionPath -Category 'logs' -SubCategory 'bloatware-detection-audit' -FileName 'detection-analysis.log'
-$auditDataPath = Get-SessionPath -Category 'data' -FileName 'bloatware-results.json'
-
-# Type2 modules: Generate execution logs in dedicated directories  
-$executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'bloatware-removal' -FileName 'removal-execution.log'
-
-# ReportGeneration: Knows exactly where to find all module data
-$reportDataSources = @{
-    'BloatwareResults' = Get-SessionPath -Category 'data' -FileName 'bloatware-results.json'
-    'BloatwareLogs' = Get-SessionPath -Category 'logs' -SubCategory 'bloatware-removal' -FileName 'removal-execution.log'
+# CoreInfrastructure.psm1 - Global path discovery
+function Get-ProjectRoot {
+    # Auto-detect project root regardless of execution context
+    $candidatePaths = @(
+        $PSScriptRoot,                                    # Direct script execution
+        (Split-Path -Parent $PSScriptRoot),              # Module execution
+        $MyInvocation.PSScriptRoot,                      # Alternative context
+        (Get-Location).Path                               # Current directory fallback
+    )
+    
+    foreach ($path in $candidatePaths) {
+        if (Test-Path (Join-Path $path 'MaintenanceOrchestrator.ps1')) {
+            return $path
+        }
+    }
+    throw "Cannot locate project root directory"
 }
+
+# Initialize global paths available to all modules
+$Global:ProjectPaths = @{
+    'Root' = Get-ProjectRoot
+    'Config' = Join-Path $Global:ProjectPaths.Root 'config'
+    'Modules' = Join-Path $Global:ProjectPaths.Root 'modules'
+    'TempFiles' = Join-Path $Global:ProjectPaths.Root 'temp_files'
+    'ParentDir' = Split-Path -Parent $Global:ProjectPaths.Root  # Report destination
+}
+```
+
+### **📁 Session-Based File Organization (v3.0 Corrected)**
+All temporary data uses **organized directories** under `temp_files/` with proper path management:
+
+**Directory Structure**:
+- `temp_files/data/` - **Type1 module detection results** (JSON structured data)
+  - `bloatware-results.json` - BloatwareDetectionAudit findings
+  - `essential-apps-results.json` - EssentialAppsAudit findings
+  - `system-optimization-results.json` - SystemOptimizationAudit findings
+  - `telemetry-results.json` - TelemetryAudit findings
+  - `windows-updates-results.json` - WindowsUpdatesAudit findings
+- `temp_files/logs/` - **Type2 module execution logs** (dedicated subdirectories)
+  - `logs/bloatware-removal/execution.log` - BloatwareRemoval execution tracking
+  - `logs/essential-apps/execution.log` - EssentialApps execution tracking
+  - `logs/system-optimization/execution.log` - SystemOptimization execution tracking
+  - `logs/telemetry-disable/execution.log` - TelemetryDisable execution tracking
+  - `logs/windows-updates/execution.log` - WindowsUpdates execution tracking
+- `temp_files/temp/` - **Processing diffs and intermediate data**
+  - `bloatware-diff.json` - Config items found on system (ready for removal)
+  - `essential-apps-diff.json` - Missing apps from config (ready for installation)
+  - `system-optimization-diff.json` - Optimization opportunities (ready for execution)
+  - `telemetry-diff.json` - Active telemetry items (ready for disable)
+  - `windows-updates-diff.json` - Available updates (ready for installation)
+- `temp_files/reports/` - **Temporary report data** (consolidated before moving to parent)
+
+**Critical Data Flow Pattern (v3.0 Corrected with Global Paths)**:
+```powershell
+# Type1 modules: Save detection results to temp_files/data/
+$auditDataPath = Join-Path $Global:ProjectPaths.TempFiles "data\bloatware-results.json"
+$detectionResults | ConvertTo-Json -Depth 10 | Set-Content $auditDataPath
+
+# Type2 modules: Read Type1 data, compare with config, create diff, process, log execution
+$detectionDataPath = Join-Path $Global:ProjectPaths.TempFiles "data\bloatware-results.json"
+$configDataPath = Join-Path $Global:ProjectPaths.Config "bloatware-list.json"
+
+$detectionData = Get-Content $detectionDataPath | ConvertFrom-Json
+$configData = Get-Content $configDataPath | ConvertFrom-Json
+
+# Create diff: Only items from config that are actually found on system
+$diffList = Compare-DetectedVsConfig -Detected $detectionData -Config $configData
+$diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\bloatware-diff.json"
+$diffList | ConvertTo-Json | Set-Content $diffPath
+
+# Process ONLY items in diff list and log execution to Type2-specific directory
+$executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal"
+New-Item -Path $executionLogDir -ItemType Directory -Force
+$executionLogPath = Join-Path $executionLogDir "execution.log"
+Write-LogEntry -Level 'INFO' -Message "Processing $($diffList.Count) items" -LogPath $executionLogPath
+
+# ReportGeneration: Collect all data for single comprehensive report in parent directory
+$reportDestination = $Global:ProjectPaths.ParentDir  # Documents/Desktop/USB root
+$reportPath = Join-Path $reportDestination "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+```
+
+### **📊 Portable Report Generation Logic (v3.0)**
+The system generates **one comprehensive HTML report** in the **parent directory** of script location:
+
+**Universal Report Placement**:
+- **Script extracted to Documents\script_mentenanta**: Report → Documents\MaintenanceReport_*.html
+- **Script extracted to Desktop\script_mentenanta**: Report → Desktop\MaintenanceReport_*.html  
+- **Script on USB\script_mentenanta**: Report → USB_Root\MaintenanceReport_*.html
+- **Filename format**: `MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html` (single report only)
+
+**ReportGeneration Data Collection (v3.0)**:
+```powershell
+# Collect Type1 detection results from temp_files/data/
+$detectionSources = @{
+    'BloatwareResults' = Join-Path $Global:ProjectPaths.TempFiles "data\bloatware-results.json"
+    'EssentialAppsResults' = Join-Path $Global:ProjectPaths.TempFiles "data\essential-apps-results.json"
+    'SystemOptResults' = Join-Path $Global:ProjectPaths.TempFiles "data\system-optimization-results.json"
+    'TelemetryResults' = Join-Path $Global:ProjectPaths.TempFiles "data\telemetry-results.json"
+    'UpdatesResults' = Join-Path $Global:ProjectPaths.TempFiles "data\windows-updates-results.json"
+}
+
+# Collect Type2 execution logs from temp_files/logs/
+$executionSources = @{
+    'BloatwareExecution' = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal\execution.log"
+    'EssentialAppsExecution' = Join-Path $Global:ProjectPaths.TempFiles "logs\essential-apps\execution.log"
+    'SystemOptExecution' = Join-Path $Global:ProjectPaths.TempFiles "logs\system-optimization\execution.log"
+    'TelemetryExecution' = Join-Path $Global:ProjectPaths.TempFiles "logs\telemetry-disable\execution.log"
+    'UpdatesExecution' = Join-Path $Global:ProjectPaths.TempFiles "logs\windows-updates\execution.log"
+}
+
+# Collect processing diffs from temp_files/temp/
+$processingDiffs = @{
+    'BloatwareDiff' = Join-Path $Global:ProjectPaths.TempFiles "temp\bloatware-diff.json"
+    'EssentialAppsDiff' = Join-Path $Global:ProjectPaths.TempFiles "temp\essential-apps-diff.json"
+    'SystemOptDiff' = Join-Path $Global:ProjectPaths.TempFiles "temp\system-optimization-diff.json"
+    'TelemetryDiff' = Join-Path $Global:ProjectPaths.TempFiles "temp\telemetry-diff.json"
+    'UpdatesDiff' = Join-Path $Global:ProjectPaths.TempFiles "temp\windows-updates-diff.json"
+}
+
+# Generate single comprehensive report in parent directory
+$reportPath = Join-Path $Global:ProjectPaths.ParentDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+New-MaintenanceReport -DetectionData $detectionSources -ExecutionLogs $executionSources -ProcessingDiffs $processingDiffs -OutputPath $reportPath
+```
+
+# Generate report in parent directory (portable logic)
+$reportDestination = Split-Path -Parent $PSScriptRoot
+$reportPath = Join-Path $reportDestination "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
 ```
 
 ### Configuration Management
@@ -131,7 +234,7 @@ $bloatwareList = Get-BloatwareList -Category 'OEM'
 3. **Type 2 self-contained**: Type 2 module must internally import and use its Type 1 module
 4. **Required Type 2 structure**:
    ```powershell
-   #Requires -Version 7.0
+   # Requires -Version 7.0
    # Self-contained Type 2 module with internal Type 1 dependency
 
    # Import corresponding Type 1 module (required)
@@ -234,18 +337,17 @@ The system uses a **two-level countdown menu** that always provides defaults:
 - Result: Normal execution of all maintenance tasks
 - User can interrupt countdown by pressing number keys
 
-### **Type2 Module Self-Contained Pattern**
+### **Type2 Module Self-Contained Pattern (v3.0 Corrected)**
 Every Type2 module MUST follow this exact pattern for v3.0 compatibility:
 
 ```powershell
-#Requires -Version 7.0
 # Self-contained Type 2 module with internal Type 1 dependency
 
 # 1. Import corresponding Type 1 module (MANDATORY)
 $Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\[ModuleName]Audit.psm1'
 Import-Module $Type1ModulePath -Force
 
-# 2. Import core infrastructure (MANDATORY)  
+# 2. Import core infrastructure with global paths (MANDATORY)  
 $CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
 Import-Module $CoreInfraPath -Force
 
@@ -260,23 +362,41 @@ function Invoke-[ModuleName] {
         [switch]$DryRun
     )
     
-    # STEP 1: Always run Type1 detection first
+    # STEP 1: Always run Type1 detection first and save to temp_files/data/
     $detectionResults = Get-[ModuleName]Analysis -Config $Config
+    $detectionDataPath = Join-Path $Global:ProjectPaths.TempFiles "data\[module-name]-results.json"
+    $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $detectionDataPath
     
-    # STEP 2: Validate findings and log  
-    Write-LogEntry -Level 'INFO' -Component '[MODULE-NAME]' -Message "Detected $($detectionResults.Count) items for processing"
+    # STEP 2: Compare detection with config to create diff list
+    $configDataPath = Join-Path $Global:ProjectPaths.Config "[config-file].json"
+    $configData = Get-Content $configDataPath | ConvertFrom-Json
+    $diffList = Compare-DetectedVsConfig -Detected $detectionResults -Config $configData
+    $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\[module-name]-diff.json"
+    $diffList | ConvertTo-Json | Set-Content $diffPath
     
-    # STEP 3: Execute Type2 actions (unless dry-run)
+    # STEP 3: Process ONLY items in diff list and log to dedicated directory
+    $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\[module-name]"
+    New-Item -Path $executionLogDir -ItemType Directory -Force
+    $executionLogPath = Join-Path $executionLogDir "execution.log"
+    
+    Write-LogEntry -Level 'INFO' -Component '[MODULE-NAME]' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath
+    
     if (-not $DryRun) {
-        foreach ($item in $detectionResults) {
-            # Process each detected item
-            Invoke-[ModuleName]Action -Item $item -Config $Config
+        foreach ($item in $diffList) {
+            # Process only items found in diff comparison
+            Invoke-[ModuleName]Action -Item $item -Config $Config -LogPath $executionLogPath
         }
     } else {
-        Write-LogEntry -Level 'INFO' -Component '[MODULE-NAME]' -Message "DRY-RUN: Would process $($detectionResults.Count) items"
+        Write-LogEntry -Level 'INFO' -Component '[MODULE-NAME]' -Message "DRY-RUN: Would process $($diffList.Count) items" -LogPath $executionLogPath
     }
     
-    return $detectionResults
+    return @{
+        'Success' = $true
+        'ItemsDetected' = $detectionResults.Count
+        'ItemsProcessed' = $diffList.Count
+        'DiffPath' = $diffPath
+        'ExecutionLogPath' = $executionLogPath
+    }
 }
 ```
 
@@ -289,12 +409,27 @@ The orchestrator executes Type2 modules in this specific order:
 4. **TelemetryDisable** (Privacy configuration)
 5. **WindowsUpdates** (System updates last)
 
-### **Session Data Organization Patterns**
-All modules use structured session paths via `Get-SessionPath`:
+### **Session Data Organization Patterns (v3.0 Global Paths)**
+All modules use global path variables for consistent file organization:
 
 ```powershell
-# Type1 modules store detection results
-$auditDataPath = Get-SessionPath -Category 'data' -FileName '[module-name]-results.json'
+# Type1 modules store detection results in temp_files/data/
+$auditDataPath = Join-Path $Global:ProjectPaths.TempFiles "data\[module-name]-results.json"
+$auditData | ConvertTo-Json -Depth 10 | Set-Content $auditDataPath
+
+# Type2 modules create diff lists in temp_files/temp/
+$diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\[module-name]-diff.json"
+$diffList | ConvertTo-Json | Set-Content $diffPath
+
+# Type2 modules store execution logs in temp_files/logs/[module-name]/
+$executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\[module-name]"
+New-Item -Path $executionLogDir -ItemType Directory -Force
+$executionLogPath = Join-Path $executionLogDir "execution.log"
+Write-LogEntry -Level 'INFO' -Message "Processing complete" -LogPath $executionLogPath
+
+# ReportGeneration consolidates all data for single report in parent directory
+$reportPath = Join-Path $Global:ProjectPaths.ParentDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+```
 $auditData | ConvertTo-Json -Depth 10 | Set-Content $auditDataPath
 
 # Type2 modules store execution logs

@@ -74,8 +74,22 @@ function Invoke-TelemetryDisable {
         }
         else {
             Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable'
-            $results = Disable-WindowsTelemetry -TelemetryItems $analysisResults.ActiveItems
-            $processedCount = if ($results.DisabledCount) { $results.DisabledCount } else { 0 }
+            # Process telemetry items based on detected types
+            $processedCount = 0
+            if ($analysisResults.ActiveTelemetryItems) {
+                foreach ($item in $analysisResults.ActiveTelemetryItems) {
+                    switch ($item.Type) {
+                        'Service' { $result = Disable-WindowsTelemetry -DisableServices }
+                        'Notification' { $result = Disable-WindowsTelemetry -DisableNotifications }
+                        'ConsumerFeature' { $result = Disable-WindowsTelemetry -DisableConsumerFeatures }
+                        'Cortana' { $result = Disable-WindowsTelemetry -DisableCortana }
+                        'LocationTracking' { $result = Disable-WindowsTelemetry -DisableLocationTracking }
+                        default { Write-LogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" }
+                    }
+                    if ($result) { $processedCount++ }
+                }
+            }
+            $results = @{ ProcessedCount = $processedCount; DisabledCount = $processedCount }
         }
         
         $returnData = @{ Success = $true; ItemsDetected = $telemetryCount; ItemsProcessed = $processedCount; DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults }

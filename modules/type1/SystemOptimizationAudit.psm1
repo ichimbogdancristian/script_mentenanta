@@ -29,16 +29,41 @@ $CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
-else {
-    # Fallback functions if CoreInfrastructure not available
+
+# Fallback functions if CoreInfrastructure functions not available in this scope
+if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     function Write-LogEntry {
         param($Level, $Component, $Message, $Data)
         Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
     }
+}
+
+if (-not (Get-Command 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
     function Get-SessionPath {
         param($Category, $SubCategory, $FileName)
-        Write-Warning "CoreInfrastructure not available - using fallback path"
-        return $FileName
+        
+        # Try to construct proper path using environment variables set by orchestrator
+        $tempRoot = if ($env:MAINTENANCE_TEMP_ROOT) { $env:MAINTENANCE_TEMP_ROOT } else { Join-Path $env:TEMP 'maintenance' }
+        
+        if ($Category -and (Test-Path $tempRoot)) {
+            $categoryPath = Join-Path $tempRoot $Category
+            if (-not (Test-Path $categoryPath)) {
+                try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
+            }
+            
+            if ($SubCategory) {
+                $categoryPath = Join-Path $categoryPath $SubCategory
+                if (-not (Test-Path $categoryPath)) {
+                    try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
+                }
+            }
+            
+            return Join-Path $categoryPath $FileName
+        }
+        else {
+            Write-Warning "Session path unavailable - using current directory fallback"
+            return $FileName
+        }
     }
 }
 
@@ -182,9 +207,21 @@ function Get-SystemOptimizationAudit {
 
         Write-Information "✓ System optimization audit completed. Score: $($auditResults.OptimizationScore.Overall)/100" -InformationAction Continue
 
-        # Save results to session data
+        # Save results to session data using v3.0 global paths
         try {
-            $outputPath = Get-SessionPath -Category 'data' -FileName 'system-optimization-audit.json'
+            # Use global paths if available, fallback to session path
+            if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+                $outputPath = Join-Path $Global:ProjectPaths.TempFiles "data\system-optimization-results.json"
+                # Ensure directory exists
+                $dataDir = Split-Path -Parent $outputPath
+                if (-not (Test-Path $dataDir)) {
+                    New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
+                }
+            }
+            else {
+                $outputPath = Get-SessionPath -Category 'data' -FileName 'system-optimization-results.json'
+            }
+            
             $auditResults | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to: $outputPath" -InformationAction Continue
         }
@@ -629,7 +666,47 @@ function New-OptimizationRecommendations {
     return $recommendations
 }
 
+<#
+.SYNOPSIS
+    v3.0 Wrapper function for Type2 modules to get system optimization analysis
+
+.DESCRIPTION
+    Standardized analysis function that Type2 modules call to get system optimization audit results.
+    Automatically saves results to temp_files/data/system-optimization-results.json.
+
+.PARAMETER Config
+    Configuration hashtable from orchestrator
+
+.EXAMPLE
+    $results = Get-SystemOptimizationAnalysis -Config $Config
+#>
+function Get-SystemOptimizationAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config
+    )
+    
+    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message 'Starting system optimization analysis for Type2 module'
+    
+    try {
+        # Call the main audit function
+        $auditResults = Get-SystemOptimizationAudit
+        
+        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message "System optimization analysis completed: Score $($auditResults.OptimizationScore.Overall)/100"
+        
+        return $auditResults
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPT-AUDIT' -Message "System optimization analysis failed: $($_.Exception.Message)"
+        return @()
+    }
+}
+
 #endregion
 
 # Export public functions
-Export-ModuleMember -Function 'Get-SystemOptimizationAudit'
+Export-ModuleMember -Function @(
+    'Get-SystemOptimizationAudit',
+    'Get-SystemOptimizationAnalysis'  # v3.0 wrapper for Type2 modules
+)

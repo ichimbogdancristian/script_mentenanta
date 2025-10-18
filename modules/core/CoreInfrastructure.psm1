@@ -19,6 +19,171 @@
 using namespace System.Collections.Generic
 using namespace System.IO
 
+#region Global Path Discovery System
+
+# Global project path discovery - makes entire project aware of its structure
+$script:MaintenanceProjectPaths = @{
+    # Auto-detect project root based on multiple sources
+    ProjectRoot = $null
+    ScriptRoot  = $null
+    ConfigRoot  = $null
+    ModulesRoot = $null
+    TempRoot    = $null
+    ReportsRoot = $null
+    Initialized = $false
+}
+
+function Initialize-GlobalPathDiscovery {
+    [CmdletBinding()]
+    param(
+        [string]$HintPath,  # Optional hint from calling script
+        [switch]$Force
+    )
+    
+    if ($script:MaintenanceProjectPaths.Initialized -and -not $Force) {
+        return $true
+    }
+    
+    Write-Information "🔍 Initializing global path discovery system..." -InformationAction Continue
+    
+    # Method 1: Use environment variables set by orchestrator
+    if ($env:MAINTENANCE_PROJECT_ROOT) {
+        $script:MaintenanceProjectPaths.ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
+        Write-Information "  📍 Found project root from environment: $($script:MaintenanceProjectPaths.ProjectRoot)" -InformationAction Continue
+    }
+    
+    # Method 2: Use hint path from caller
+    elseif ($HintPath -and (Test-Path $HintPath)) {
+        $script:MaintenanceProjectPaths.ProjectRoot = $HintPath
+        Write-Information "  📍 Using hint path as project root: $HintPath" -InformationAction Continue
+    }
+    
+    # Method 3: Auto-detect from calling script location
+    elseif ($PSScriptRoot) {
+        # Look for project structure indicators
+        $testPath = $PSScriptRoot
+        while ($testPath -and $testPath -ne (Split-Path $testPath -Parent)) {
+            if ((Test-Path (Join-Path $testPath 'config')) -and 
+                (Test-Path (Join-Path $testPath 'modules')) -and 
+                (Test-Path (Join-Path $testPath 'MaintenanceOrchestrator.ps1'))) {
+                $script:MaintenanceProjectPaths.ProjectRoot = $testPath
+                Write-Information "  📍 Auto-detected project root: $testPath" -InformationAction Continue
+                break
+            }
+            $testPath = Split-Path $testPath -Parent
+        }
+    }
+    
+    # Method 4: Use current working directory if it looks like project root
+    if (-not $script:MaintenanceProjectPaths.ProjectRoot) {
+        $currentDir = Get-Location | Select-Object -ExpandProperty Path
+        if ((Test-Path (Join-Path $currentDir 'config')) -and 
+            (Test-Path (Join-Path $currentDir 'modules'))) {
+            $script:MaintenanceProjectPaths.ProjectRoot = $currentDir
+            Write-Information "  📍 Using current directory as project root: $currentDir" -InformationAction Continue
+        }
+    }
+    
+    # Validate we found a project root
+    if (-not $script:MaintenanceProjectPaths.ProjectRoot) {
+        throw "Unable to auto-detect project root. Please ensure you're running from the maintenance project directory."
+    }
+    
+    # Set up all standard paths based on project root
+    $projectRoot = $script:MaintenanceProjectPaths.ProjectRoot
+    $script:MaintenanceProjectPaths.ScriptRoot = $projectRoot
+    $script:MaintenanceProjectPaths.ConfigRoot = Join-Path $projectRoot 'config'
+    $script:MaintenanceProjectPaths.ModulesRoot = Join-Path $projectRoot 'modules'
+    $script:MaintenanceProjectPaths.TempRoot = Join-Path $projectRoot 'temp_files'
+    $script:MaintenanceProjectPaths.ReportsRoot = $projectRoot  # Reports go to project root for portability
+    
+    # Set global environment variables for all modules to access
+    $env:MAINTENANCE_PROJECT_ROOT = $script:MaintenanceProjectPaths.ProjectRoot
+    $env:MAINTENANCE_CONFIG_ROOT = $script:MaintenanceProjectPaths.ConfigRoot
+    $env:MAINTENANCE_MODULES_ROOT = $script:MaintenanceProjectPaths.ModulesRoot
+    $env:MAINTENANCE_TEMP_ROOT = $script:MaintenanceProjectPaths.TempRoot
+    $env:MAINTENANCE_REPORTS_ROOT = $script:MaintenanceProjectPaths.ReportsRoot
+    
+    # Set Global:ProjectPaths for direct access in v3.0 modules
+    $Global:ProjectPaths = @{
+        'Root' = $script:MaintenanceProjectPaths.ProjectRoot
+        'Config' = $script:MaintenanceProjectPaths.ConfigRoot
+        'Modules' = $script:MaintenanceProjectPaths.ModulesRoot
+        'TempFiles' = $script:MaintenanceProjectPaths.TempRoot
+        'ParentDir' = Split-Path -Parent $script:MaintenanceProjectPaths.ProjectRoot  # Report destination
+    }
+    
+    # Create necessary directories with v3.0 structure
+    $requiredDirectories = @(
+        $script:MaintenanceProjectPaths.TempRoot,
+        (Join-Path $script:MaintenanceProjectPaths.TempRoot 'data'),
+        (Join-Path $script:MaintenanceProjectPaths.TempRoot 'logs'),
+        (Join-Path $script:MaintenanceProjectPaths.TempRoot 'temp'),
+        (Join-Path $script:MaintenanceProjectPaths.TempRoot 'reports')
+    )
+    
+    foreach ($directory in $requiredDirectories) {
+        if (-not (Test-Path $directory)) {
+            try {
+                New-Item -Path $directory -ItemType Directory -Force | Out-Null
+                Write-Information "  📁 Created directory: $directory" -InformationAction Continue
+            }
+            catch {
+                Write-Warning "Failed to create directory $directory`: $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    $script:MaintenanceProjectPaths.Initialized = $true
+    
+    Write-Information "  ✅ Global path discovery completed:" -InformationAction Continue
+    Write-Information "     🎯 Project Root: $($script:MaintenanceProjectPaths.ProjectRoot)" -InformationAction Continue
+    Write-Information "     ⚙️  Config Root: $($script:MaintenanceProjectPaths.ConfigRoot)" -InformationAction Continue
+    Write-Information "     🧩 Modules Root: $($script:MaintenanceProjectPaths.ModulesRoot)" -InformationAction Continue
+    Write-Information "     📂 Temp Root: $($script:MaintenanceProjectPaths.TempRoot)" -InformationAction Continue
+    Write-Information "     📊 Reports Root: $($script:MaintenanceProjectPaths.ReportsRoot)" -InformationAction Continue
+    
+    return $true
+}
+
+function Get-MaintenanceProjectPath {
+    [CmdletBinding()]
+    param(
+        [ValidateSet('ProjectRoot', 'ScriptRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot', 'ReportsRoot')]
+        [string]$PathType = 'ProjectRoot'
+    )
+    
+    if (-not $script:MaintenanceProjectPaths.Initialized) {
+        Initialize-GlobalPathDiscovery
+    }
+    
+    return $script:MaintenanceProjectPaths[$PathType]
+}
+
+function Get-MaintenanceModulePath {
+    [CmdletBinding()]
+    param(
+        [ValidateSet('core', 'type1', 'type2')]
+        [string]$ModuleType,
+        
+        [string]$ModuleName
+    )
+    
+    $modulesRoot = Get-MaintenanceProjectPath -PathType 'ModulesRoot'
+    
+    if ($ModuleType) {
+        $typePath = Join-Path $modulesRoot $ModuleType
+        if ($ModuleName) {
+            return Join-Path $typePath "$ModuleName.psm1"
+        }
+        return $typePath
+    }
+    
+    return $modulesRoot
+}
+
+#endregion
+
 #region Module Variables
 
 # Configuration Management Variables
@@ -289,7 +454,10 @@ function Write-LogEntry {
         [string]$Message,
 
         [Parameter()]
-        [hashtable]$Data = @{}
+        [hashtable]$Data = @{},
+        
+        [Parameter()]
+        [string]$LogPath  # Optional specific log file path for Type2 modules
     )
 
     try {
@@ -320,9 +488,29 @@ function Write-LogEntry {
             'FATAL' { Write-Error $formattedMessage }
         }
 
-        # Write to log file if available
-        if ($script:LoggingContext.LogPath) {
-            $formattedMessage | Out-File -FilePath $script:LoggingContext.LogPath -Append -Encoding UTF8
+        # Write to specific log file if provided (for Type2 modules)
+        if ($LogPath) {
+            try {
+                # Ensure the directory exists
+                $logDir = Split-Path -Parent $LogPath
+                if (-not (Test-Path $logDir)) {
+                    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+                }
+                $formattedMessage | Out-File -FilePath $LogPath -Append -Encoding UTF8
+            }
+            catch {
+                Write-Warning "Failed to write to specific log path $LogPath`: $($_.Exception.Message)"
+            }
+        }
+        
+        # Write to main log file if available
+        elseif ($script:LoggingContext.LogPath) {
+            try {
+                $formattedMessage | Out-File -FilePath $script:LoggingContext.LogPath -Append -Encoding UTF8
+            }
+            catch {
+                Write-Warning "Failed to write to main log file: $($_.Exception.Message)"
+            }
         }
 
     }
@@ -430,7 +618,7 @@ function Initialize-FileOrganization {
     try {
         $script:FileOrgContext.BaseDir = $BaseDirectory
         
-        # Create directory structure
+        # Create main directory structure
         $directories = @('logs', 'data', 'temp', 'reports')
         foreach ($dir in $directories) {
             $fullPath = Join-Path $BaseDirectory $dir
@@ -440,17 +628,29 @@ function Initialize-FileOrganization {
             }
         }
 
+        # Create log subdirectories for Type2 modules
+        $logSubdirectories = @('bloatware-removal', 'essential-apps', 'system-optimization', 'telemetry-disable', 'windows-updates')
+        $logsPath = Join-Path $BaseDirectory 'logs'
+        foreach ($subdir in $logSubdirectories) {
+            $fullPath = Join-Path $logsPath $subdir
+            if (-not (Test-Path $fullPath)) {
+                New-Item -Path $fullPath -ItemType Directory -Force | Out-Null
+                Write-Verbose "Created log subdirectory: $fullPath"
+            }
+        }
+
         Write-Verbose "File organization initialized with base directory: $BaseDirectory"
+        return $true
     }
     catch {
         Write-Error "Failed to initialize file organization: $($_.Exception.Message)"
-        throw
+        return $false
     }
 }
 
 <#
 .SYNOPSIS
-    Gets a session-specific file path
+    Gets a session-specific file path using global path discovery
 #>
 function Get-SessionPath {
     [CmdletBinding()]
@@ -467,21 +667,76 @@ function Get-SessionPath {
         [string]$FileName
     )
 
-    if (-not $script:FileOrgContext.BaseDir) {
-        throw "File organization not initialized. Call Initialize-FileOrganization first."
-    }
-
-    $categoryPath = Join-Path $script:FileOrgContext.BaseDir $Category
-    
-    if ($SubCategory) {
-        $categoryPath = Join-Path $categoryPath $SubCategory
-        # Ensure subcategory directory exists
-        if (-not (Test-Path $categoryPath)) {
-            New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null
+    # Use global path discovery system as primary method
+    if (-not $script:MaintenanceProjectPaths.Initialized) {
+        try {
+            Initialize-GlobalPathDiscovery
+        }
+        catch {
+            Write-Warning "Global path discovery failed: $($_.Exception.Message)"
         }
     }
     
-    return Join-Path $categoryPath $FileName
+    # Primary: Use global path discovery
+    if ($script:MaintenanceProjectPaths.Initialized) {
+        $tempRoot = $script:MaintenanceProjectPaths.TempRoot
+        $categoryPath = Join-Path $tempRoot $Category
+        
+        if ($SubCategory) {
+            $categoryPath = Join-Path $categoryPath $SubCategory
+            # Ensure subcategory directory exists
+            if (-not (Test-Path $categoryPath)) {
+                try {
+                    New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null
+                }
+                catch {
+                    Write-Warning "Failed to create subcategory directory: $categoryPath"
+                }
+            }
+        }
+        
+        return Join-Path $categoryPath $FileName
+    }
+    
+    # Fallback 1: Use legacy file organization if available
+    if ($script:FileOrgContext.BaseDir) {
+        $categoryPath = Join-Path $script:FileOrgContext.BaseDir $Category
+        
+        if ($SubCategory) {
+            $categoryPath = Join-Path $categoryPath $SubCategory
+            if (-not (Test-Path $categoryPath)) {
+                try {
+                    New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null
+                }
+                catch {
+                    Write-Warning "Failed to create subcategory directory: $categoryPath"
+                }
+            }
+        }
+        
+        return Join-Path $categoryPath $FileName
+    }
+    
+    # Fallback 2: Use environment variables
+    if ($env:MAINTENANCE_TEMP_ROOT) {
+        $categoryPath = Join-Path $env:MAINTENANCE_TEMP_ROOT $Category
+        
+        if ($SubCategory) {
+            $categoryPath = Join-Path $categoryPath $SubCategory
+            if (-not (Test-Path $categoryPath)) {
+                try {
+                    New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null
+                }
+                catch {}
+            }
+        }
+        
+        return Join-Path $categoryPath $FileName
+    }
+    
+    # Final fallback: Current directory (not ideal but works)
+    Write-Warning "All path discovery methods failed - using current directory fallback"
+    return $FileName
 }
 
 <#

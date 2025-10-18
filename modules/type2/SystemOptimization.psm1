@@ -97,8 +97,23 @@ function Invoke-SystemOptimization {
         }
         else {
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing system optimization'
-            $results = Optimize-SystemPerformance -OptimizationPlan $analysisResults
-            $processedCount = if ($results.AppliedOptimizations) { $results.AppliedOptimizations.Count } else { 0 }
+            # Process optimization opportunities based on detected types
+            $processedCount = 0
+            if ($analysisResults.OptimizationOpportunities) {
+                foreach ($opportunity in $analysisResults.OptimizationOpportunities) {
+                    switch ($opportunity.Type) {
+                        'TempCleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
+                        'StartupOptimization' { $result = Optimize-SystemPerformance -OptimizeStartup }
+                        'UIOptimization' { $result = Optimize-SystemPerformance -OptimizeUI }
+                        'RegistryOptimization' { $result = Optimize-SystemPerformance -OptimizeRegistry }
+                        'DiskOptimization' { $result = Optimize-SystemPerformance -OptimizeDisk }
+                        'NetworkOptimization' { $result = Optimize-SystemPerformance -OptimizeNetwork }
+                        default { Write-LogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization type: $($opportunity.Type)" }
+                    }
+                    if ($result) { $processedCount++ }
+                }
+            }
+            $results = @{ ProcessedCount = $processedCount; AppliedOptimizations = $processedCount }
         }
         
         $returnData = @{

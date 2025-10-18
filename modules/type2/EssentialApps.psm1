@@ -39,11 +39,54 @@ $CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastr
 if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
-else {
-    # Fallback logging function if CoreInfrastructure fails
+
+# Add fallback functions if CoreInfrastructure functions not available in this scope
+if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     function Write-LogEntry {
-        param($Level, $Component, $Message, $Data)
-        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
+        param($Level, $Component, $Message, $Data, $LogPath)
+        $logMessage = "[$Level] [$Component] $Message"
+        Write-Information $logMessage -InformationAction Continue
+        
+        # If LogPath is specified, try to append to file
+        if ($LogPath) {
+            try {
+                $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+                "[$timestamp] $logMessage" | Add-Content -Path $LogPath -ErrorAction SilentlyContinue
+            }
+            catch {
+                # Ignore file write errors in fallback mode
+            }
+        }
+    }
+}
+
+# Robust Get-SessionPath fallback without recursion
+if (-not (Get-Command 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
+    function Get-SessionPath {
+        param($Category, $SubCategory, $FileName)
+        
+        # Construct path using environment variables set by orchestrator
+        $tempRoot = if ($env:MAINTENANCE_TEMP_ROOT) { $env:MAINTENANCE_TEMP_ROOT } else { Join-Path $env:TEMP 'maintenance' }
+        
+        if ($Category -and $tempRoot) {
+            $categoryPath = Join-Path $tempRoot $Category
+            if (-not (Test-Path $categoryPath)) {
+                try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
+            }
+            
+            if ($SubCategory) {
+                $categoryPath = Join-Path $categoryPath $SubCategory
+                if (-not (Test-Path $categoryPath)) {
+                    try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
+                }
+            }
+            
+            return Join-Path $categoryPath $FileName
+        }
+        else {
+            Write-Warning "Session path unavailable - using current directory fallback"
+            return $FileName
+        }
     }
 }
 
@@ -103,73 +146,96 @@ function Invoke-EssentialApps {
     }
     
     try {
-        # Step 1: ALWAYS detect first (Type 1) - MANDATORY
+        # STEP 1: Always run Type1 detection first and save to temp_files/data/
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis'
-        $analysisResults = Get-EssentialAppsAudit
+        $detectionResults = Get-EssentialAppsAnalysis -Config $Config
         
-        if (-not $analysisResults -or (-not $analysisResults.MissingApps) -or $analysisResults.MissingApps.Count -eq 0) {
-            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'No missing essential apps detected'
+        # STEP 2: Compare detection with config to create diff list
+        $configDataPath = Join-Path $Global:ProjectPaths.Config "essential-apps.json"
+        if (-not (Test-Path $configDataPath)) {
+            Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Config file not found: $configDataPath"
+            return @{ Success = $false; ItemsDetected = 0; ItemsProcessed = 0; Message = 'Config file not found' }
+        }
+        
+        $configData = Get-Content $configDataPath | ConvertFrom-Json
+        
+        # Create diff: Missing apps that need to be installed
+        $diffList = if ($detectionResults.MissingApps) { $detectionResults.MissingApps } else { @() }
+        $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\essential-apps-diff.json"
+        $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath
+        
+        # STEP 3: Process ONLY items in diff list and log to dedicated directory
+        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\essential-apps"
+        New-Item -Path $executionLogDir -ItemType Directory -Force
+        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        
+        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Processing $($diffList.Count) missing apps from diff" -LogPath $executionLogPath
+        
+        if (-not $diffList -or $diffList.Count -eq 0) {
+            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'No missing essential apps found' -LogPath $executionLogPath
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
             return @{ 
-                Success        = $true
-                ItemsDetected  = 0
-                ItemsProcessed = 0
-                DryRun         = $DryRun.IsPresent
-                Message        = 'All essential apps are already installed'
+                Success          = $true
+                ItemsDetected    = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
+                ItemsProcessed   = 0
+                DiffPath         = $diffPath
+                ExecutionLogPath = $executionLogPath
+                Message          = 'All essential apps are already installed'
             }
         }
         
-        # Step 2: Validate and log findings
-        $missingCount = $analysisResults.MissingApps.Count
-        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Detected $missingCount missing essential apps"
-        
-        # Step 3: Take action (Type 2) based on DryRun mode
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'DRY RUN: Simulating essential apps installation'
-            $results = @{
-                ProcessedCount     = $missingCount
-                SuccessfulInstalls = 0
-                FailedInstalls     = 0
-                Simulated          = $true
-                Details            = $analysisResults.MissingApps
-            }
-            $processedCount = $missingCount
+            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "DRY-RUN: Would install $($diffList.Count) missing apps" -LogPath $executionLogPath
+            $processedCount = 0
         }
         else {
-            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Executing essential apps installation'
-            $results = Install-EssentialApplications -AppsList $analysisResults.MissingApps
-            $processedCount = if ($results.SuccessfulInstalls) { $results.SuccessfulInstalls } else { 0 }
+            # Process only missing apps found in diff comparison
+            $installResults = @{ InstalledApps = @(); FailedApps = @() }
+            
+            foreach ($app in $diffList) {
+                try {
+                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath
+                    $result = Install-EssentialApplication -AppDefinition $app
+                    if ($result.Success) {
+                        $installResults.InstalledApps += $app
+                        Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Successfully installed: $($app.Name)" -LogPath $executionLogPath
+                    }
+                    else {
+                        $installResults.FailedApps += $app
+                        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Failed to install: $($app.Name)" -LogPath $executionLogPath
+                    }
+                }
+                catch {
+                    $installResults.FailedApps += $app
+                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Error installing $($app.Name): $($_.Exception.Message)" -LogPath $executionLogPath
+                }
+            }
+            
+            $processedCount = $installResults.InstalledApps.Count
+            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installed $processedCount essential apps" -LogPath $executionLogPath
         }
-        
-        # Step 4: Return standardized results for ReportGeneration
-        $returnData = @{
-            Success        = $true
-            ItemsDetected  = $missingCount
-            ItemsProcessed = $processedCount
-            DryRun         = $DryRun.IsPresent
-            Results        = $results
-            DetectionData  = $analysisResults
-        }
-        
-        Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Essential apps installation completed. Processed: $processedCount/$missingCount"
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
-        return $returnData
         
+        return @{
+            Success          = $true
+            ItemsDetected    = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
+            ItemsProcessed   = $processedCount
+            DiffPath         = $diffPath
+            ExecutionLogPath = $executionLogPath
+        }
     }
     catch {
         $errorMsg = "Failed to execute essential apps installation: $($_.Exception.Message)"
-        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg -Data @{ Error = $_.Exception }
+        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
         return @{
             Success        = $false
-            Error          = $errorMsg
-            ErrorType      = $_.Exception.GetType().Name
-            ItemsDetected  = if ($analysisResults -and $analysisResults.MissingApps) { $analysisResults.MissingApps.Count } else { 0 }
+            ItemsDetected  = 0
             ItemsProcessed = 0
-            DryRun         = $DryRun.IsPresent
+            ErrorMessage   = $errorMsg
         }
     }
 }

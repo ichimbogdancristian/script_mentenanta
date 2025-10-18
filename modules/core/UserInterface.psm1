@@ -98,7 +98,23 @@ function Show-MainMenu {
     if ($AvailableTasks.Count -gt 0) {
         Write-Host "Available maintenance tasks:" -ForegroundColor Gray
         for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
-            Write-Host "    [$($i+1)] $($AvailableTasks[$i])" -ForegroundColor DarkGray
+            $task = $AvailableTasks[$i]
+            if ($task -is [hashtable] -and $task.ContainsKey('Name') -and $task.ContainsKey('Description')) {
+                $taskName = $task.Name
+                $taskDesc = $task.Description
+                Write-Host "    [$($i+1)] $taskName" -ForegroundColor DarkGray
+                Write-Host "        $taskDesc" -ForegroundColor DarkGray
+            }
+            elseif ($task -is [hashtable] -and $task.ContainsKey('Name')) {
+                Write-Host "    [$($i+1)] $($task.Name)" -ForegroundColor DarkGray
+            }
+            elseif ($task -is [hashtable]) {
+                # If it's a hashtable but doesn't have expected properties, show as string
+                Write-Host "    [$($i+1)] Maintenance Task $($i+1)" -ForegroundColor DarkGray
+            }
+            else {
+                Write-Host "    [$($i+1)] $($task)" -ForegroundColor DarkGray
+            }
         }
         Write-Host ""
     }
@@ -135,7 +151,15 @@ function Show-MainMenu {
         Write-Host ""
 
         for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
-            Write-Host "  [$($i+1)] $($AvailableTasks[$i])" -ForegroundColor Green
+            if ($AvailableTasks[$i] -is [hashtable]) {
+                $taskName = $AvailableTasks[$i].Name
+                $taskDesc = $AvailableTasks[$i].Description
+                Write-Host "  [$($i+1)] $taskName" -ForegroundColor Green
+                Write-Host "      $taskDesc" -ForegroundColor DarkGray
+            }
+            else {
+                Write-Host "  [$($i+1)] $($AvailableTasks[$i])" -ForegroundColor Green
+            }
         }
         Write-Host ""
 
