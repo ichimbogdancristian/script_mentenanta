@@ -20,16 +20,21 @@ This is a **enterprise-grade PowerShell-based Windows maintenance system** with 
 - ✅ `WindowsUpdatesAudit` ↔ `WindowsUpdates`
 
 **Core infrastructure modules:**
-- `SystemInventory`, `SecurityAudit`, `ReportGeneration` (shared services)
+- `CoreInfrastructure` - Configuration, logging, and file organization (consolidated)
+- `SystemAnalysis` - System inventory and security audit (consolidated)  
+- `UserInterface` - Interactive menus and user input (consolidated)
+- `DependencyManager` - External package management (kept separate)
+- `ReportGeneration` - Dashboard and report generation (separate)
 
 ### Module Loading Order (Critical)
 Always maintain this exact loading sequence in `MaintenanceOrchestrator.ps1`:
-1. **Core modules**: `ConfigManager` → `LoggingManager` → `FileOrganizationManager` → `MenuSystem` → `SystemInventory` → `SecurityAudit` → `ReportGeneration`
+1. **Core modules**: `CoreInfrastructure` → `SystemAnalysis` → `UserInterface` → `DependencyManager` → `ReportGeneration`
 2. **Type 1 modules**: Detection/audit modules (safe operations, paired with Type 2)
 3. **Type 2 modules**: Action/modification modules (system-changing operations)
 
 ```powershell
-# Example: Core module loading pattern with error handling
+# Example: Simplified core module loading pattern
+$CoreModules = @('CoreInfrastructure', 'SystemAnalysis', 'UserInterface', 'DependencyManager', 'ReportGeneration')
 foreach ($moduleName in $CoreModules) {
     $modulePath = Join-Path $CoreModulesPath "$moduleName.psm1"
     Import-Module $modulePath -Force -Global -ErrorAction Stop
@@ -148,9 +153,11 @@ try {
 ## Key Files to Reference
 
 - **`MaintenanceOrchestrator.ps1`** - Central coordination, parameter handling, session management
-- **`modules/core/ConfigManager.psm1`** - Configuration patterns, JSON validation, path resolution  
-- **`modules/core/LoggingManager.psm1`** - Structured logging, performance tracking, session context
-- **`modules/core/FileOrganizationManager.psm1`** - Session-based file operations, cleanup policies
+- **`modules/core/CoreInfrastructure.psm1`** - Configuration, logging, and file organization (consolidated)
+- **`modules/core/SystemAnalysis.psm1`** - System inventory and security audit (consolidated)
+- **`modules/core/UserInterface.psm1`** - Interactive menus and user input (consolidated)
+- **`modules/core/DependencyManager.psm1`** - External package management
+- **`modules/core/ReportGeneration.psm1`** - Dashboard and report generation
 - **`config/main-config.json`** - Default settings, module toggles, execution modes
 - **`script.bat`** - Bootstrap sequence, environment setup, scheduled task management
 
@@ -164,3 +171,16 @@ try {
 - **Component-based logging** - Each module uses distinct component names for log tracking
 
 This architecture enables **safe automation** with comprehensive rollback capabilities and detailed audit trails for enterprise Windows maintenance scenarios.
+
+## 🎯 **Simplified Core Structure (v2.0)**
+
+The core modules have been consolidated from 8 to 5 modules for better maintainability:
+
+```
+/core/
+├── CoreInfrastructure.psm1  # Config + Logging + File Organization
+├── SystemAnalysis.psm1      # System Inventory + Security Audit  
+├── UserInterface.psm1       # Interactive Menus and User Input
+├── DependencyManager.psm1   # External Package Management
+└── ReportGeneration.psm1    # Dashboard and Report Generation
+```

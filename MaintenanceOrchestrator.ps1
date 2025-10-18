@@ -172,10 +172,11 @@ $CoreModulesPath = Join-Path $ModulesPath 'core'
 Write-Information "Modules Path: $ModulesPath" -InformationAction Continue
 
 $CoreModules = @(
-    'ConfigManager',
-    'LoggingManager',
-    'FileOrganizationManager',
-    'MenuSystem'
+    'CoreInfrastructure',
+    'SystemAnalysis', 
+    'UserInterface',
+    'DependencyManager',
+    'ReportGeneration'
 )
 
 foreach ($moduleName in $CoreModules) {
@@ -247,6 +248,14 @@ try {
     
     # Initialize configuration system with error handling
     try {
+        Write-Information "  Checking for Initialize-ConfigSystem function..." -InformationAction Continue
+        $configFunction = Get-Command Initialize-ConfigSystem -ErrorAction SilentlyContinue
+        if (-not $configFunction) {
+            Write-Information "  Available functions:" -InformationAction Continue
+            Get-Command -Module CoreInfrastructure | ForEach-Object { Write-Information "    $($_.Name)" -InformationAction Continue }
+            throw "Initialize-ConfigSystem function not found"
+        }
+        Write-Information "  Found Initialize-ConfigSystem, calling with path: $ConfigPath" -InformationAction Continue
         Initialize-ConfigSystem -ConfigRootPath $ConfigPath -ErrorAction Stop
         Write-Information "  ✓ Configuration system initialized" -InformationAction Continue
     }
@@ -256,7 +265,7 @@ try {
     
     # Load configurations with validation
     try {
-        $MainConfig = Get-MainConfiguration -ErrorAction Stop
+        $MainConfig = Get-MainConfig -ErrorAction Stop
         if (-not $MainConfig) {
             throw "Main configuration is null or empty"
         }
@@ -514,7 +523,7 @@ $MaintenanceTasks = @(
     @{
         Name        = 'SystemInventory'
         Description = 'Collect comprehensive system information and generate inventory reports'
-        ModulePath  = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
+        ModulePath  = Join-Path $ModulesPath 'core\SystemAnalysis.psm1'
         Function    = 'Get-SystemInventory'
         Type        = 'Type1'
         Category    = 'Inventory'
@@ -562,8 +571,8 @@ $MaintenanceTasks = @(
     @{
         Name        = 'SecurityAudit'
         Description = 'Perform security audit and apply hardening recommendations'
-        ModulePath  = Join-Path $ModulesPath 'type1\SecurityAudit.psm1'
-        Function    = 'Start-SecurityAudit'
+        ModulePath  = Join-Path $ModulesPath 'core\SystemAnalysis.psm1'
+        Function    = 'Get-SecurityAudit'
         Type        = 'Type1'
         Category    = 'Security'
     },
