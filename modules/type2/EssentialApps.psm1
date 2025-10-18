@@ -160,9 +160,14 @@ function Invoke-EssentialApps {
             foreach ($app in $diffList) {
                 try {
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath
-                    # Convert PSCustomObject to hashtable for Install-SingleApplication
-                    $appHashtable = @{}
-                    $app.PSObject.Properties | ForEach-Object { $appHashtable[$_.Name] = $_.Value }
+                    
+                    # Transform app data for Install-SingleApplication
+                    $appHashtable = @{
+                        Name   = $app.Name
+                        Source = $app.RecommendedMethod
+                        Id     = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId }
+                    }
+                    
                     $result = Install-SingleApplication -AppData $appHashtable -ExecutionLogPath $executionLogPath
                     if ($result.Success) {
                         $installResults.InstalledApps += $app
@@ -1277,6 +1282,19 @@ function Install-SingleApplication {
     $appName = $AppData.Name
     $appId = $AppData.Id
     $source = $AppData.Source
+    
+    # Validate required fields
+    if (-not $source -or [string]::IsNullOrWhiteSpace($source)) {
+        $errorMsg = "Installation source not specified for $appName"
+        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg -LogPath $ExecutionLogPath
+        return @{ Success = $false; Method = 'Unknown'; AppName = $appName; ErrorMessage = $errorMsg }
+    }
+    
+    if (-not $appId -or [string]::IsNullOrWhiteSpace($appId)) {
+        $errorMsg = "Application ID not specified for $appName"
+        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg -LogPath $ExecutionLogPath
+        return @{ Success = $false; Method = $source; AppName = $appName; ErrorMessage = $errorMsg }
+    }
     
     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Starting installation: $appName via $source" -LogPath $ExecutionLogPath
     

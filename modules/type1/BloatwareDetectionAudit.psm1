@@ -23,9 +23,9 @@ using namespace System.Collections.Concurrent
 
 # Import required modules
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
-$SystemInventoryPath = Join-Path $ModuleRoot 'type1\SystemInventory.psm1'
-if (Test-Path $SystemInventoryPath) {
-    Import-Module $SystemInventoryPath -Force
+$SystemAnalysisPath = Join-Path $ModuleRoot 'core\SystemAnalysis.psm1'
+if (Test-Path $SystemAnalysisPath) {
+    Import-Module $SystemAnalysisPath -Force
 }
 
 # v3.0 Type 1 module - imported by Type 2 modules

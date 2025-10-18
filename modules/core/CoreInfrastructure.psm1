@@ -40,110 +40,136 @@ function Initialize-GlobalPathDiscovery {
         [switch]$Force
     )
     
+    # Thread-safe initialization check with lock
     if ($script:MaintenanceProjectPaths.Initialized -and -not $Force) {
         return $true
     }
     
-    Write-Information "🔍 Initializing global path discovery system..." -InformationAction Continue
-    
-    # Method 1: Use environment variables set by orchestrator
-    if ($env:MAINTENANCE_PROJECT_ROOT) {
-        $script:MaintenanceProjectPaths.ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
-        Write-Information "  📍 Found project root from environment: $($script:MaintenanceProjectPaths.ProjectRoot)" -InformationAction Continue
+    # Use a simple lock to prevent multiple initializations
+    $lockKey = 'GlobalPathsInitLock'
+    if ($Global:MaintenanceInitLocks -and $Global:MaintenanceInitLocks.ContainsKey($lockKey)) {
+        # Another thread is initializing, wait briefly and return
+        Start-Sleep -Milliseconds 100
+        return $script:MaintenanceProjectPaths.Initialized
     }
     
-    # Method 2: Use hint path from caller
-    elseif ($HintPath -and (Test-Path $HintPath)) {
-        $script:MaintenanceProjectPaths.ProjectRoot = $HintPath
-        Write-Information "  📍 Using hint path as project root: $HintPath" -InformationAction Continue
-    }
+    # Set lock
+    if (-not $Global:MaintenanceInitLocks) { $Global:MaintenanceInitLocks = @{} }
+    $Global:MaintenanceInitLocks[$lockKey] = $true
     
-    # Method 3: Auto-detect from calling script location
-    elseif ($PSScriptRoot) {
-        # Look for project structure indicators
-        $testPath = $PSScriptRoot
-        while ($testPath -and $testPath -ne (Split-Path $testPath -Parent)) {
-            if ((Test-Path (Join-Path $testPath 'config')) -and 
-                (Test-Path (Join-Path $testPath 'modules')) -and 
-                (Test-Path (Join-Path $testPath 'MaintenanceOrchestrator.ps1'))) {
-                $script:MaintenanceProjectPaths.ProjectRoot = $testPath
-                Write-Information "  📍 Auto-detected project root: $testPath" -InformationAction Continue
-                break
-            }
-            $testPath = Split-Path $testPath -Parent
+    try {
+        # Double-check pattern - another thread might have completed initialization
+        if ($script:MaintenanceProjectPaths.Initialized -and -not $Force) {
+            return $true
         }
-    }
+        
+        Write-Information "🔍 Initializing global path discovery system..." -InformationAction Continue
     
-    # Method 4: Use current working directory if it looks like project root
-    if (-not $script:MaintenanceProjectPaths.ProjectRoot) {
-        $currentDir = Get-Location | Select-Object -ExpandProperty Path
-        if ((Test-Path (Join-Path $currentDir 'config')) -and 
-            (Test-Path (Join-Path $currentDir 'modules'))) {
-            $script:MaintenanceProjectPaths.ProjectRoot = $currentDir
-            Write-Information "  📍 Using current directory as project root: $currentDir" -InformationAction Continue
+        # Method 1: Use environment variables set by orchestrator
+        if ($env:MAINTENANCE_PROJECT_ROOT) {
+            $script:MaintenanceProjectPaths.ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
+            Write-Information "  📍 Found project root from environment: $($script:MaintenanceProjectPaths.ProjectRoot)" -InformationAction Continue
         }
-    }
     
-    # Validate we found a project root
-    if (-not $script:MaintenanceProjectPaths.ProjectRoot) {
-        throw "Unable to auto-detect project root. Please ensure you're running from the maintenance project directory."
-    }
+        # Method 2: Use hint path from caller
+        elseif ($HintPath -and (Test-Path $HintPath)) {
+            $script:MaintenanceProjectPaths.ProjectRoot = $HintPath
+            Write-Information "  📍 Using hint path as project root: $HintPath" -InformationAction Continue
+        }
     
-    # Set up all standard paths based on project root
-    $projectRoot = $script:MaintenanceProjectPaths.ProjectRoot
-    $script:MaintenanceProjectPaths.ScriptRoot = $projectRoot
-    $script:MaintenanceProjectPaths.ConfigRoot = Join-Path $projectRoot 'config'
-    $script:MaintenanceProjectPaths.ModulesRoot = Join-Path $projectRoot 'modules'
-    $script:MaintenanceProjectPaths.TempRoot = Join-Path $projectRoot 'temp_files'
-    $script:MaintenanceProjectPaths.ReportsRoot = $projectRoot  # Reports go to project root for portability
-    
-    # Set global environment variables for all modules to access
-    $env:MAINTENANCE_PROJECT_ROOT = $script:MaintenanceProjectPaths.ProjectRoot
-    $env:MAINTENANCE_CONFIG_ROOT = $script:MaintenanceProjectPaths.ConfigRoot
-    $env:MAINTENANCE_MODULES_ROOT = $script:MaintenanceProjectPaths.ModulesRoot
-    $env:MAINTENANCE_TEMP_ROOT = $script:MaintenanceProjectPaths.TempRoot
-    $env:MAINTENANCE_REPORTS_ROOT = $script:MaintenanceProjectPaths.ReportsRoot
-    
-    # Set Global:ProjectPaths as the primary path access method
-    $Global:ProjectPaths = @{
-        'Root'      = $script:MaintenanceProjectPaths.ProjectRoot
-        'Config'    = $script:MaintenanceProjectPaths.ConfigRoot
-        'Modules'   = $script:MaintenanceProjectPaths.ModulesRoot
-        'TempFiles' = $script:MaintenanceProjectPaths.TempRoot
-        'ParentDir' = Split-Path -Parent $script:MaintenanceProjectPaths.ProjectRoot  # Report destination
-    }
-    
-    # Create necessary directories with v3.0 structure
-    $requiredDirectories = @(
-        $Global:ProjectPaths.TempFiles,
-        (Join-Path $Global:ProjectPaths.TempFiles 'data'),
-        (Join-Path $Global:ProjectPaths.TempFiles 'logs'),
-        (Join-Path $Global:ProjectPaths.TempFiles 'temp'),
-        (Join-Path $Global:ProjectPaths.TempFiles 'reports')
-    )
-    
-    foreach ($directory in $requiredDirectories) {
-        if (-not (Test-Path $directory)) {
-            try {
-                New-Item -Path $directory -ItemType Directory -Force | Out-Null
-                Write-Information "  📁 Created directory: $directory" -InformationAction Continue
-            }
-            catch {
-                Write-Warning "Failed to create directory $directory`: $($_.Exception.Message)"
+        # Method 3: Auto-detect from calling script location
+        elseif ($PSScriptRoot) {
+            # Look for project structure indicators
+            $testPath = $PSScriptRoot
+            while ($testPath -and $testPath -ne (Split-Path $testPath -Parent)) {
+                if ((Test-Path (Join-Path $testPath 'config')) -and 
+                    (Test-Path (Join-Path $testPath 'modules')) -and 
+                    (Test-Path (Join-Path $testPath 'MaintenanceOrchestrator.ps1'))) {
+                    $script:MaintenanceProjectPaths.ProjectRoot = $testPath
+                    Write-Information "  📍 Auto-detected project root: $testPath" -InformationAction Continue
+                    break
+                }
+                $testPath = Split-Path $testPath -Parent
             }
         }
+    
+        # Method 4: Use current working directory if it looks like project root
+        if (-not $script:MaintenanceProjectPaths.ProjectRoot) {
+            $currentDir = Get-Location | Select-Object -ExpandProperty Path
+            if ((Test-Path (Join-Path $currentDir 'config')) -and 
+                (Test-Path (Join-Path $currentDir 'modules'))) {
+                $script:MaintenanceProjectPaths.ProjectRoot = $currentDir
+                Write-Information "  📍 Using current directory as project root: $currentDir" -InformationAction Continue
+            }
+        }
+    
+        # Validate we found a project root
+        if (-not $script:MaintenanceProjectPaths.ProjectRoot) {
+            throw "Unable to auto-detect project root. Please ensure you're running from the maintenance project directory."
+        }
+    
+        # Set up all standard paths based on project root
+        $projectRoot = $script:MaintenanceProjectPaths.ProjectRoot
+        $script:MaintenanceProjectPaths.ScriptRoot = $projectRoot
+        $script:MaintenanceProjectPaths.ConfigRoot = Join-Path $projectRoot 'config'
+        $script:MaintenanceProjectPaths.ModulesRoot = Join-Path $projectRoot 'modules'
+        $script:MaintenanceProjectPaths.TempRoot = Join-Path $projectRoot 'temp_files'
+        $script:MaintenanceProjectPaths.ReportsRoot = $projectRoot  # Reports go to project root for portability
+    
+        # Set global environment variables for all modules to access
+        $env:MAINTENANCE_PROJECT_ROOT = $script:MaintenanceProjectPaths.ProjectRoot
+        $env:MAINTENANCE_CONFIG_ROOT = $script:MaintenanceProjectPaths.ConfigRoot
+        $env:MAINTENANCE_MODULES_ROOT = $script:MaintenanceProjectPaths.ModulesRoot
+        $env:MAINTENANCE_TEMP_ROOT = $script:MaintenanceProjectPaths.TempRoot
+        $env:MAINTENANCE_REPORTS_ROOT = $script:MaintenanceProjectPaths.ReportsRoot
+    
+        # Set Global:ProjectPaths as the primary path access method
+        $Global:ProjectPaths = @{
+            'Root'      = $script:MaintenanceProjectPaths.ProjectRoot
+            'Config'    = $script:MaintenanceProjectPaths.ConfigRoot
+            'Modules'   = $script:MaintenanceProjectPaths.ModulesRoot
+            'TempFiles' = $script:MaintenanceProjectPaths.TempRoot
+            'ParentDir' = Split-Path -Parent $script:MaintenanceProjectPaths.ProjectRoot  # Report destination
+        }
+    
+        # Create necessary directories with v3.0 structure
+        $requiredDirectories = @(
+            $Global:ProjectPaths.TempFiles,
+            (Join-Path $Global:ProjectPaths.TempFiles 'data'),
+            (Join-Path $Global:ProjectPaths.TempFiles 'logs'),
+            (Join-Path $Global:ProjectPaths.TempFiles 'temp'),
+            (Join-Path $Global:ProjectPaths.TempFiles 'reports')
+        )
+    
+        foreach ($directory in $requiredDirectories) {
+            if (-not (Test-Path $directory)) {
+                try {
+                    New-Item -Path $directory -ItemType Directory -Force | Out-Null
+                    Write-Information "  📁 Created directory: $directory" -InformationAction Continue
+                }
+                catch {
+                    Write-Warning "Failed to create directory $directory`: $($_.Exception.Message)"
+                }
+            }
+        }
+    
+        $script:MaintenanceProjectPaths.Initialized = $true
+    
+        Write-Information "  ✅ Global path discovery completed:" -InformationAction Continue
+        Write-Information "     🎯 Project Root: $($Global:ProjectPaths.Root)" -InformationAction Continue
+        Write-Information "     ⚙️  Config Root: $($Global:ProjectPaths.Config)" -InformationAction Continue
+        Write-Information "     🧩 Modules Root: $($Global:ProjectPaths.Modules)" -InformationAction Continue
+        Write-Information "     📂 Temp Root: $($Global:ProjectPaths.TempFiles)" -InformationAction Continue
+        Write-Information "     📊 Reports Root: $($Global:ProjectPaths.ParentDir)" -InformationAction Continue
+    
+        return $true
     }
-    
-    $script:MaintenanceProjectPaths.Initialized = $true
-    
-    Write-Information "  ✅ Global path discovery completed:" -InformationAction Continue
-    Write-Information "     🎯 Project Root: $($Global:ProjectPaths.Root)" -InformationAction Continue
-    Write-Information "     ⚙️  Config Root: $($Global:ProjectPaths.Config)" -InformationAction Continue
-    Write-Information "     🧩 Modules Root: $($Global:ProjectPaths.Modules)" -InformationAction Continue
-    Write-Information "     📂 Temp Root: $($Global:ProjectPaths.TempFiles)" -InformationAction Continue
-    Write-Information "     📊 Reports Root: $($Global:ProjectPaths.ParentDir)" -InformationAction Continue
-    
-    return $true
+    finally {
+        # Release lock
+        if ($Global:MaintenanceInitLocks -and $Global:MaintenanceInitLocks.ContainsKey($lockKey)) {
+            $Global:MaintenanceInitLocks.Remove($lockKey)
+        }
+    }
 }
 
 function Get-MaintenanceProjectPath {

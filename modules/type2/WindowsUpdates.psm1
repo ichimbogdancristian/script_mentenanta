@@ -248,7 +248,15 @@ function Install-WindowsUpdate {
         if (Test-PSWindowsUpdateAvailable) {
             Write-Information "  📦 Using PSWindowsUpdate module..." -InformationAction Continue
             try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using PSWindowsUpdate module for update installation' } catch {}
-            $results = Install-UpdatesViaPSWindowsUpdate @PSBoundParameters
+            
+            # Create parameters for PSWindowsUpdate (remove ExecutionLogPath since it doesn't support it)
+            $psWindowsUpdateParams = @{}
+            foreach ($key in $PSBoundParameters.Keys) {
+                if ($key -ne 'ExecutionLogPath') {
+                    $psWindowsUpdateParams[$key] = $PSBoundParameters[$key]
+                }
+            }
+            $results = Install-UpdatesViaPSWindowsUpdate @psWindowsUpdateParams
         }
         # Fallback to native Windows Update API
         elseif (Test-NativeWindowsUpdateAvailable) {

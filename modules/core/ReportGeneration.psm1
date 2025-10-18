@@ -63,7 +63,7 @@ function Get-ReportGenerationConfig {
             $parts = $field.Split('.')
             $current = $config
             foreach ($part in $parts) {
-                if (-not $current.ContainsKey($part)) {
+                if (-not $current -or -not $current.ContainsKey($part)) {
                     throw "Required configuration field missing: $field"
                 }
                 $current = $current[$part]
@@ -1720,10 +1720,12 @@ function New-HtmlReportContent {
         $moduleModifications = @{}
         foreach ($modification in $systemModifications) {
             $moduleName = $modification.Component
-            if (-not $moduleModifications.ContainsKey($moduleName)) {
+            if ($moduleName -and -not $moduleModifications.ContainsKey($moduleName)) {
                 $moduleModifications[$moduleName] = @()
             }
-            $moduleModifications[$moduleName] += $modification
+            if ($moduleName) {
+                $moduleModifications[$moduleName] += $modification
+            }
         }
 
         # If no modifications found in logs, fall back to existing Type2 results
@@ -2181,8 +2183,21 @@ function New-EnhancedModuleSections {
 
     foreach ($moduleKey in $moduleConfig.Keys) {
         $config = $moduleConfig[$moduleKey]
-        $type2Data = if ($ModuleData.Type2Results.ContainsKey($moduleKey)) { $ModuleData.Type2Results[$moduleKey] } else { $null }
-        $type1Data = if ($ModuleData.Type1Results.ContainsKey($config.Audit)) { $ModuleData.Type1Results[$config.Audit] } else { $null }
+        
+        # Add null checks for hashtables and keys
+        $type2Data = if ($ModuleData.Type2Results -and $moduleKey -and $ModuleData.Type2Results.ContainsKey($moduleKey)) { 
+            $ModuleData.Type2Results[$moduleKey] 
+        }
+        else { 
+            $null 
+        }
+        
+        $type1Data = if ($ModuleData.Type1Results -and $config.Audit -and $ModuleData.Type1Results.ContainsKey($config.Audit)) { 
+            $ModuleData.Type1Results[$config.Audit] 
+        }
+        else { 
+            $null 
+        }
         
         # Determine status
         $status = if ($type2Data -and $type2Data.Success) { 'success' } 
@@ -2275,7 +2290,7 @@ function New-EnhancedModuleSections {
         }
         
         # Type2 (Execution) Details with comprehensive log data
-        if ($type2Data -or ($ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleKey))) {
+        if ($type2Data -or ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleKey))) {
             $html.AppendLine(@"
                     <div class="detail-card">
                         <h4>⚙️ Execution Results</h4>
@@ -2283,7 +2298,7 @@ function New-EnhancedModuleSections {
 "@) | Out-Null
 
             # Get system modifications for this specific module from comprehensive log data
-            if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleKey)) {
+            if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleKey)) {
                 $systemMods = Get-SystemModificationActivities -ComprehensiveLogCollection $ComprehensiveLogCollection
                 $moduleModifications = $systemMods | Where-Object { $_.Component -eq $moduleKey } | Select-Object -First 5
                 
@@ -3642,7 +3657,7 @@ function Get-ComprehensiveDashboardMetrics {
     $securityScore = 50 # Base score
     
     foreach ($secModule in $securityModules) {
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($secModule)) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($secModule)) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$secModule]
             if ($logContent -and $logContent -match 'successfully.*disabled|privacy.*enhanced|telemetry.*blocked') {
                 $securityScore += 25
@@ -3835,7 +3850,7 @@ function Get-SystemHealthAnalysis {
     # Analyze Type1 audit data for baseline health
     if ($ComprehensiveLogCollection.Type1AuditData) {
         # Bloatware analysis
-        if ($ComprehensiveLogCollection.Type1AuditData.ContainsKey('bloatware-results')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type1AuditData -and $ComprehensiveLogCollection.Type1AuditData.ContainsKey('bloatware-results')) {
             $bloatwareData = $ComprehensiveLogCollection.Type1AuditData['bloatware-results']
             if ($bloatwareData -and $bloatwareData.DetectedBloatware) {
                 $healthAnalysis.BloatwareHealth.ItemsRemaining = $bloatwareData.DetectedBloatware.Count
@@ -3843,7 +3858,7 @@ function Get-SystemHealthAnalysis {
         }
         
         # Essential apps analysis
-        if ($ComprehensiveLogCollection.Type1AuditData.ContainsKey('essential-apps-results')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type1AuditData -and $ComprehensiveLogCollection.Type1AuditData.ContainsKey('essential-apps-results')) {
             $appsData = $ComprehensiveLogCollection.Type1AuditData['essential-apps-results']
             if ($appsData -and $appsData.MissingApps) {
                 $healthAnalysis.ApplicationHealth.MissingApps = $appsData.MissingApps.Count
@@ -3854,7 +3869,7 @@ function Get-SystemHealthAnalysis {
     # Analyze Type2 execution results
     if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
         # Bloatware removal analysis
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('bloatware-removal')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('bloatware-removal')) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['bloatware-removal']
             $removedCount = 0
             if ($logContent) {
@@ -3865,7 +3880,7 @@ function Get-SystemHealthAnalysis {
         }
         
         # Security/Telemetry analysis
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('telemetry-disable')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('telemetry-disable')) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['telemetry-disable']
             if ($logContent -and $logContent -match 'successfully.*disabled|privacy.*enhanced') {
                 $healthAnalysis.SecurityHealth.TelemetryDisabled = $true
@@ -3875,7 +3890,7 @@ function Get-SystemHealthAnalysis {
         }
         
         # System optimization analysis
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('system-optimization')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('system-optimization')) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['system-optimization']
             $optimizationsCount = 0
             if ($logContent) {
@@ -3886,7 +3901,7 @@ function Get-SystemHealthAnalysis {
         }
         
         # Essential apps analysis
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('essential-apps')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('essential-apps')) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['essential-apps']
             $installedCount = 0
             if ($logContent) {
@@ -3897,7 +3912,7 @@ function Get-SystemHealthAnalysis {
         }
         
         # Windows updates analysis
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('windows-updates')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('windows-updates')) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['windows-updates']
             $updatesCount = 0
             if ($logContent) {
@@ -4048,7 +4063,7 @@ function Get-ComprehensiveChartData {
         $moduleOrder = @('BloatwareRemoval', 'EssentialApps', 'SystemOptimization', 'TelemetryDisable', 'WindowsUpdates')
         
         foreach ($moduleName in $moduleOrder) {
-            if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleName)) {
+            if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleName)) {
                 $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
                 
                 # Extract duration
@@ -4075,17 +4090,17 @@ function Get-ComprehensiveChartData {
         }
         
         # Adjust scores based on module execution success
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('TelemetryDisable')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('TelemetryDisable')) {
             $telemetryLog = $ComprehensiveLogCollection.Type2ExecutionLogs['TelemetryDisable']
             if ($telemetryLog -match '\[SUCCESS\]') { $securityScores['Privacy Protection'] = 95; $securityScores['Telemetry Disabled'] = 98 }
         }
         
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('SystemOptimization')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('SystemOptimization')) {
             $optimizationLog = $ComprehensiveLogCollection.Type2ExecutionLogs['SystemOptimization']
             if ($optimizationLog -match '\[SUCCESS\]') { $securityScores['System Optimization'] = 90 }
         }
         
-        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('WindowsUpdates')) {
+        if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('WindowsUpdates')) {
             $updatesLog = $ComprehensiveLogCollection.Type2ExecutionLogs['WindowsUpdates']
             if ($updatesLog -match '\[SUCCESS\]') { $securityScores['Update Security'] = 95 }
         }

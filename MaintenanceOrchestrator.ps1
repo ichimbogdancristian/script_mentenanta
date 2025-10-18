@@ -274,6 +274,25 @@ foreach ($moduleName in $Type2Modules) {
     catch {
         Write-Warning "Failed to load Type2 module $moduleName`: $($_.Exception.Message)"
         Write-Information "  ℹ️ This module will be skipped during execution" -InformationAction Continue
+        
+        # Additional diagnostic information
+        if ($_.Exception.InnerException) {
+            Write-Information "  🔍 Inner exception: $($_.Exception.InnerException.Message)" -InformationAction Continue
+        }
+        if ($_.ScriptStackTrace) {
+            Write-Information "  📍 Stack trace: $($_.ScriptStackTrace -split "`n" | Select-Object -First 2 -Join '; ')" -InformationAction Continue
+        }
+        
+        # Check common issues
+        if ($_.Exception.Message -like "*access*denied*" -or $_.Exception.Message -like "*unauthorized*") {
+            Write-Information "  💡 Suggestion: Run as Administrator or unblock files with Unblock-File '$modulePath'" -InformationAction Continue
+        }
+        elseif ($_.Exception.Message -like "*execution*policy*") {
+            Write-Information "  💡 Suggestion: Check PowerShell execution policy with Get-ExecutionPolicy" -InformationAction Continue
+        }
+        elseif ($_.Exception.Message -like "*dependency*" -or $_.Exception.Message -like "*import*") {
+            Write-Information "  💡 Suggestion: Check module dependencies and verify all required modules are available" -InformationAction Continue
+        }
     }
 }
 
@@ -948,12 +967,23 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
                 $result = & $task.Function -Config $MainConfig
             }
             
-            # Validate standardized return structure
-            if ($result -and $result -is [hashtable] -and $result.ContainsKey('Success')) {
+            # Validate standardized return structure (support both hashtable and PSCustomObject)
+            $hasValidStructure = $false
+            if ($result) {
+                if ($result -is [hashtable] -and $result.ContainsKey('Success')) {
+                    $hasValidStructure = $true
+                }
+                elseif ($result -is [PSCustomObject] -and (Get-Member -InputObject $result -Name 'Success' -ErrorAction SilentlyContinue)) {
+                    $hasValidStructure = $true
+                }
+            }
+            
+            if ($hasValidStructure) {
                 Write-Information "  ✓ v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
             }
             else {
-                Write-Warning "  ⚠️ Non-standard result format from $($task.Function) - may not be v3.0 compliant"
+                $resultType = if ($result) { $result.GetType().Name } else { 'null' }
+                Write-Warning "  ⚠️ Non-standard result format from $($task.Function) - Result type: $resultType, may not be v3.0 compliant"
             }
         }
         catch {

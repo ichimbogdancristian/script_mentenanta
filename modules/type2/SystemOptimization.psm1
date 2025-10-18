@@ -109,43 +109,50 @@ function Invoke-SystemOptimization {
             # Process optimization opportunities based on detected types
             $processedCount = 0
             if ($analysisResults.OptimizationOpportunities) {
+                # Group opportunities by optimization function to prevent duplicates
+                $optimizationGroups = @{
+                    'Startup'  = @('DisableStartupApp', 'OptimizeService')
+                    'UI'       = @('OptimizeVisualEffects', 'OptimizeAnimations', 'OptimizeTaskbar')
+                    'Registry' = @('CleanUserAssist', 'EnablePrefetch')
+                    'Cleanup'  = @('DiskCleanup', 'CleanTempFiles')
+                    'Disk'     = @('DefragmentDisk')
+                    'Network'  = @('EnableRSS', 'OptimizeDNS')
+                }
+                
+                # Track which optimization groups need to be executed
+                $executeGroups = @{}
                 foreach ($opportunity in $analysisResults.OptimizationOpportunities) {
-                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing optimization: $($opportunity.Type)" -LogPath $executionLogPath
+                    foreach ($groupName in $optimizationGroups.Keys) {
+                        if ($optimizationGroups[$groupName] -contains $opportunity.Type) {
+                            $executeGroups[$groupName] = $true
+                            break
+                        }
+                    }
+                }
+                
+                # Execute each optimization group once
+                foreach ($groupName in $executeGroups.Keys) {
+                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing optimization group: $groupName" -LogPath $executionLogPath
                     try {
-                        switch ($opportunity.Type) {
-                            # Startup and Services
-                            'DisableStartupApp' { $result = Optimize-SystemPerformance -OptimizeStartup }
-                            'OptimizeService' { $result = Optimize-SystemPerformance -OptimizeStartup }
-                            
-                            # UI and Visual Effects
-                            'OptimizeVisualEffects' { $result = Optimize-SystemPerformance -OptimizeUI }
-                            'OptimizeAnimations' { $result = Optimize-SystemPerformance -OptimizeUI }
-                            'OptimizeTaskbar' { $result = Optimize-SystemPerformance -OptimizeUI }
-                            
-                            # Registry and Performance
-                            'CleanUserAssist' { $result = Optimize-SystemPerformance -OptimizeRegistry }
-                            'EnablePrefetch' { $result = Optimize-SystemPerformance -OptimizeRegistry }
-                            
-                            # Disk Operations
-                            'DiskCleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
-                            'CleanTempFiles' { $result = Optimize-SystemPerformance -CleanupTemp }
-                            'DefragmentDisk' { $result = Optimize-SystemPerformance -OptimizeDisk }
-                            
-                            # Network
-                            'EnableRSS' { $result = Optimize-SystemPerformance -OptimizeNetwork }
-                            'OptimizeDNS' { $result = Optimize-SystemPerformance -OptimizeNetwork }
-                            
+                        $result = $false
+                        switch ($groupName) {
+                            'Startup' { $result = Optimize-SystemPerformance -OptimizeStartup }
+                            'UI' { $result = Optimize-SystemPerformance -OptimizeUI }
+                            'Registry' { $result = Optimize-SystemPerformance -OptimizeRegistry }
+                            'Cleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
+                            'Disk' { $result = Optimize-SystemPerformance -OptimizeDisk }
+                            'Network' { $result = Optimize-SystemPerformance -OptimizeNetwork }
                             default { 
-                                Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization type: $($opportunity.Type)" -LogPath $executionLogPath
+                                Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization group: $groupName" -LogPath $executionLogPath
                                 $result = $false 
                             }
                         }
                         if ($result) { 
                             $processedCount++
-                            Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied: $($opportunity.Type)" -LogPath $executionLogPath
+                            Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied optimization group: $groupName" -LogPath $executionLogPath
                         }
                         else {
-                            Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to apply: $($opportunity.Type)" -LogPath $executionLogPath
+                            Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to apply optimization group: $groupName" -LogPath $executionLogPath
                         }
                     }
                     catch {
