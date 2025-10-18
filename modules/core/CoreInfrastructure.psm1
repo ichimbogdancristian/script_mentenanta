@@ -104,22 +104,22 @@ function Initialize-GlobalPathDiscovery {
     $env:MAINTENANCE_TEMP_ROOT = $script:MaintenanceProjectPaths.TempRoot
     $env:MAINTENANCE_REPORTS_ROOT = $script:MaintenanceProjectPaths.ReportsRoot
     
-    # Set Global:ProjectPaths for direct access in v3.0 modules
+    # Set Global:ProjectPaths as the primary path access method
     $Global:ProjectPaths = @{
-        'Root' = $script:MaintenanceProjectPaths.ProjectRoot
-        'Config' = $script:MaintenanceProjectPaths.ConfigRoot
-        'Modules' = $script:MaintenanceProjectPaths.ModulesRoot
+        'Root'      = $script:MaintenanceProjectPaths.ProjectRoot
+        'Config'    = $script:MaintenanceProjectPaths.ConfigRoot
+        'Modules'   = $script:MaintenanceProjectPaths.ModulesRoot
         'TempFiles' = $script:MaintenanceProjectPaths.TempRoot
         'ParentDir' = Split-Path -Parent $script:MaintenanceProjectPaths.ProjectRoot  # Report destination
     }
     
     # Create necessary directories with v3.0 structure
     $requiredDirectories = @(
-        $script:MaintenanceProjectPaths.TempRoot,
-        (Join-Path $script:MaintenanceProjectPaths.TempRoot 'data'),
-        (Join-Path $script:MaintenanceProjectPaths.TempRoot 'logs'),
-        (Join-Path $script:MaintenanceProjectPaths.TempRoot 'temp'),
-        (Join-Path $script:MaintenanceProjectPaths.TempRoot 'reports')
+        $Global:ProjectPaths.TempFiles,
+        (Join-Path $Global:ProjectPaths.TempFiles 'data'),
+        (Join-Path $Global:ProjectPaths.TempFiles 'logs'),
+        (Join-Path $Global:ProjectPaths.TempFiles 'temp'),
+        (Join-Path $Global:ProjectPaths.TempFiles 'reports')
     )
     
     foreach ($directory in $requiredDirectories) {
@@ -137,11 +137,11 @@ function Initialize-GlobalPathDiscovery {
     $script:MaintenanceProjectPaths.Initialized = $true
     
     Write-Information "  ✅ Global path discovery completed:" -InformationAction Continue
-    Write-Information "     🎯 Project Root: $($script:MaintenanceProjectPaths.ProjectRoot)" -InformationAction Continue
-    Write-Information "     ⚙️  Config Root: $($script:MaintenanceProjectPaths.ConfigRoot)" -InformationAction Continue
-    Write-Information "     🧩 Modules Root: $($script:MaintenanceProjectPaths.ModulesRoot)" -InformationAction Continue
-    Write-Information "     📂 Temp Root: $($script:MaintenanceProjectPaths.TempRoot)" -InformationAction Continue
-    Write-Information "     📊 Reports Root: $($script:MaintenanceProjectPaths.ReportsRoot)" -InformationAction Continue
+    Write-Information "     🎯 Project Root: $($Global:ProjectPaths.Root)" -InformationAction Continue
+    Write-Information "     ⚙️  Config Root: $($Global:ProjectPaths.Config)" -InformationAction Continue
+    Write-Information "     🧩 Modules Root: $($Global:ProjectPaths.Modules)" -InformationAction Continue
+    Write-Information "     📂 Temp Root: $($Global:ProjectPaths.TempFiles)" -InformationAction Continue
+    Write-Information "     📊 Reports Root: $($Global:ProjectPaths.ParentDir)" -InformationAction Continue
     
     return $true
 }
@@ -149,15 +149,15 @@ function Initialize-GlobalPathDiscovery {
 function Get-MaintenanceProjectPath {
     [CmdletBinding()]
     param(
-        [ValidateSet('ProjectRoot', 'ScriptRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot', 'ReportsRoot')]
-        [string]$PathType = 'ProjectRoot'
+        [ValidateSet('Root', 'Config', 'Modules', 'TempFiles', 'ParentDir')]
+        [string]$PathType = 'Root'
     )
     
-    if (-not $script:MaintenanceProjectPaths.Initialized) {
+    if (-not $Global:ProjectPaths -or -not $script:MaintenanceProjectPaths.Initialized) {
         Initialize-GlobalPathDiscovery
     }
     
-    return $script:MaintenanceProjectPaths[$PathType]
+    return $Global:ProjectPaths[$PathType]
 }
 
 function Get-MaintenanceModulePath {
@@ -169,7 +169,7 @@ function Get-MaintenanceModulePath {
         [string]$ModuleName
     )
     
-    $modulesRoot = Get-MaintenanceProjectPath -PathType 'ModulesRoot'
+    $modulesRoot = $Global:ProjectPaths.Modules
     
     if ($ModuleType) {
         $typePath = Join-Path $modulesRoot $ModuleType
@@ -180,6 +180,7 @@ function Get-MaintenanceModulePath {
     }
     
     return $modulesRoot
+}
 }
 
 #endregion

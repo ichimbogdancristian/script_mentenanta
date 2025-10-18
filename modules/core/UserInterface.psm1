@@ -24,14 +24,6 @@ if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
 
-# Module variables
-$script:MenuConfig = @{
-    CountdownSeconds  = 20
-    DefaultMode       = 'unattended'
-    EnableDryRun      = $true
-    AutoSelectDefault = $true
-}
-
 #region Public Functions
 
 <#

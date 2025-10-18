@@ -137,6 +137,61 @@ function Get-DefaultReportConfig {
 .EXAMPLE
     New-MaintenanceReport -SystemInventory $inventory -TaskResults $results -OutputPath (Get-ReportsPath)
 #>
+
+<#
+.SYNOPSIS
+    Loads HTML templates from external files
+
+.DESCRIPTION
+    Loads and caches HTML templates from the templates directory for report generation
+#>
+function Get-HtmlTemplates {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        $configPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'config'
+        
+        if (-not (Test-Path $configPath)) {
+            Write-Information "Config directory not found, using embedded templates" -InformationAction Continue
+            return $null
+        }
+        
+        $templates = @{}
+        
+        # Load main template
+        $mainTemplatePath = Join-Path $configPath 'report-template.html'
+        if (Test-Path $mainTemplatePath) {
+            $templates.Main = Get-Content $mainTemplatePath -Raw
+        }
+        
+        # Load task card template  
+        $taskCardPath = Join-Path $configPath 'task-card-template.html'
+        if (Test-Path $taskCardPath) {
+            $templates.TaskCard = Get-Content $taskCardPath -Raw
+        }
+        
+        # Load CSS
+        $cssPath = Join-Path $configPath 'report-styles.css'
+        if (Test-Path $cssPath) {
+            $templates.CSS = Get-Content $cssPath -Raw
+        }
+        
+        # Load report configuration
+        $reportConfigPath = Join-Path $configPath 'report-templates-config.json'
+        if (Test-Path $reportConfigPath) {
+            $templates.Config = Get-Content $reportConfigPath -Raw | ConvertFrom-Json
+        }
+        
+        Write-Information "Loaded external templates from $configPath" -InformationAction Continue
+        return $templates
+    }
+    catch {
+        Write-Warning "Failed to load templates: $_"
+        return $null
+    }
+}
+
 function New-MaintenanceReport {
     [CmdletBinding()]
     param(
@@ -2660,6 +2715,7 @@ Export-ModuleMember -Function @(
     'Convert-ModuleDataToTaskResults',
     'New-EnhancedModuleSections',
     'Get-ReportGenerationConfig',
-    'Get-DefaultReportConfig'
+    'Get-DefaultReportConfig',
+    'Get-HtmlTemplates'
 )
 

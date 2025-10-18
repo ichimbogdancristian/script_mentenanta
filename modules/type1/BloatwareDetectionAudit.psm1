@@ -36,56 +36,11 @@ if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
 
-# Fallback functions if CoreInfrastructure functions not available in this scope
-if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
-    function Write-LogEntry {
-        param($Level, $Component, $Message, $Data)
-        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
-    }
-}
-
-if (-not (Get-Command 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
-    function Get-SessionPath {
-        param($Category, $SubCategory, $FileName)
-        
-        # Try to construct proper path using environment variables set by orchestrator
-        $tempRoot = if ($env:MAINTENANCE_TEMP_ROOT) { $env:MAINTENANCE_TEMP_ROOT } else { Join-Path $env:TEMP 'maintenance' }
-        
-        if ($Category -and (Test-Path $tempRoot)) {
-            $categoryPath = Join-Path $tempRoot $Category
-            if (-not (Test-Path $categoryPath)) {
-                try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
-            }
-            
-            if ($SubCategory) {
-                $categoryPath = Join-Path $categoryPath $SubCategory
-                if (-not (Test-Path $categoryPath)) {
-                    try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
-                }
-            }
-            
-            return Join-Path $categoryPath $FileName
-        }
-        else {
-            Write-Warning "Session path unavailable - using current directory fallback"
-            return $FileName
-        }
-    }
-}
-
-if (-not (Get-Command 'Get-BloatwareConfiguration' -ErrorAction SilentlyContinue)) {
-    function Get-BloatwareConfiguration {
-        Write-Warning "CoreInfrastructure not available - using fallback configuration"
-        return @{}
-    }
-}
-
-if (-not (Get-Command 'Get-BloatwareList' -ErrorAction SilentlyContinue)) {
-    function Get-BloatwareList {
-        param($Category)
-        Write-Warning "CoreInfrastructure not available - using fallback bloatware list"
-        return @()
-    }
+# Import shared utilities for fallback functions
+$CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'
+if (Test-Path $CommonUtilitiesPath) {
+    Import-Module $CommonUtilitiesPath -Force
+    Initialize-FallbackFunctions
 }
 
 #region Public Functions
@@ -755,9 +710,6 @@ function Test-BloatwareDetection {
 }
 
 #endregion
-
-    }
-}
 
 <#
 .SYNOPSIS

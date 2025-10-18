@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Windows Maintenance Report</title>
+    <link rel="stylesheet" href="report-styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header Section -->
+        <div class="header">
+            <h1>🛠️ {{REPORT_TITLE}}</h1>
+            <div class="subtitle">{{REPORT_SUBTITLE}}</div>
+            <div class="meta">
+                <div><strong>Generated:</strong> {{GENERATION_TIME}}</div>
+                <div><strong>Computer:</strong> {{COMPUTER_NAME}}</div>
+                <div><strong>User:</strong> {{USER_NAME}}</div>
+                <div><strong>OS:</strong> {{OS_VERSION}}</div>
+                <div><strong>Execution Mode:</strong> {{EXECUTION_MODE}}</div>
+            </div>
+        </div>
+
+        <!-- Executive Summary -->
+        <div class="card">
+            <div class="card-header">
+                <h2>📋 Executive Summary</h2>
+                <span class="status {{OVERALL_STATUS_CLASS}}">{{OVERALL_STATUS}}</span>
+            </div>
+            <div class="card-body">
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <h4>📊 Overall Results</h4>
+                        <div class="metric">
+                            <span class="metric-label">Tasks Completed:</span>
+                            <span class="metric-value">{{TASKS_COMPLETED}}/{{TOTAL_TASKS}}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Success Rate:</span>
+                            <span class="metric-value success">{{SUCCESS_RATE}}%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Total Duration:</span>
+                            <span class="metric-value">{{TOTAL_DURATION}}</span>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <h4>🗑️ Bloatware Removed</h4>
+                        <div class="metric">
+                            <span class="metric-label">Items Detected:</span>
+                            <span class="metric-value">{{BLOATWARE_DETECTED}}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Items Removed:</span>
+                            <span class="metric-value warning">{{BLOATWARE_REMOVED}}</span>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <h4>📦 Essential Apps</h4>
+                        <div class="metric">
+                            <span class="metric-label">Missing Apps:</span>
+                            <span class="metric-value">{{ESSENTIAL_MISSING}}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Apps Installed:</span>
+                            <span class="metric-value success">{{ESSENTIAL_INSTALLED}}</span>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <h4>⚡ System Optimization</h4>
+                        <div class="metric">
+                            <span class="metric-label">Optimizations Applied:</span>
+                            <span class="metric-value success">{{OPTIMIZATIONS_APPLIED}}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Registry Changes:</span>
+                            <span class="metric-value">{{REGISTRY_CHANGES}}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Module Reports -->
+        {{MODULE_REPORTS}}
+
+        <!-- System Information -->
+        <div class="card">
+            <div class="card-header">
+                <h2>💻 System Information</h2>
+            </div>
+            <div class="card-body">
+                <div class="system-info-grid">
+                    <div>
+                        <h4>Hardware</h4>
+                        <table class="info-table">
+                            <tr><td>Processor:</td><td>{{PROCESSOR_NAME}}</td></tr>
+                            <tr><td>Memory:</td><td>{{TOTAL_MEMORY}} GB</td></tr>
+                            <tr><td>Storage:</td><td>{{STORAGE_INFO}}</td></tr>
+                        </table>
+                    </div>
+                    <div>
+                        <h4>Operating System</h4>
+                        <table class="info-table">
+                            <tr><td>OS Version:</td><td>{{OS_VERSION_DETAILED}}</td></tr>
+                            <tr><td>Build Number:</td><td>{{BUILD_NUMBER}}</td></tr>
+                            <tr><td>Last Boot:</td><td>{{LAST_BOOT_TIME}}</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,30 +1,29 @@
 #Requires -Version 7.0
-# Module Dependencies:
-#   - LoggingManager.psm1 (for structured logging)
-#   - DependencyManager.psm1 (for PSWindowsUpdate module)
 
 <#
 .SYNOPSIS
-    Windows Updates Audit Module - Type 1 (Inventory/Reporting)
+    Windows Updates Audit Module - Type 1 (Detection/Analysis)
 
 .DESCRIPTION
     Audits Windows Update status, pending updates, update history, and system update configuration.
     Provides comprehensive analysis of update health and security posture.
+    Part of the v3.0 architecture where Type1 modules provide detection/analysis capabilities.
 
 .NOTES
-    Module Type: Type 1 (Inventory/Reporting)  
-    Dependencies: PSWindowsUpdate module (optional), WU API access
+    Module Type: Type 1 (Detection/Analysis)
+    Dependencies: CoreInfrastructure.psm1, CommonUtilities.psm1, DependencyManager.psm1
+    Architecture: v3.0 - Self-contained with fallback capabilities
     Author: Windows Maintenance Automation Project
-    Version: 1.0.0
+    Version: 3.0.0
 #>
 
 using namespace System.Collections.Generic
 
-# Import required modules
-$ModuleRoot = Split-Path -Parent $PSScriptRoot
 # v3.0 Type 1 module - imported by Type 2 modules
-# Import CoreInfrastructure for configuration and logging
+# Standardized path construction for Type1 modules
 $ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+
+# Import CoreInfrastructure for configuration and logging
 $CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
@@ -36,41 +35,11 @@ if (Test-Path $DependencyManagerPath) {
     Import-Module $DependencyManagerPath -Force
 }
 
-# Fallback functions if CoreInfrastructure functions not available in this scope
-if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
-    function Write-LogEntry {
-        param($Level, $Component, $Message, $Data)
-        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
-    }
-}
-
-if (-not (Get-Command 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
-    function Get-SessionPath {
-        param($Category, $SubCategory, $FileName)
-        
-        # Try to construct proper path using environment variables set by orchestrator
-        $tempRoot = if ($env:MAINTENANCE_TEMP_ROOT) { $env:MAINTENANCE_TEMP_ROOT } else { Join-Path $env:TEMP 'maintenance' }
-        
-        if ($Category -and (Test-Path $tempRoot)) {
-            $categoryPath = Join-Path $tempRoot $Category
-            if (-not (Test-Path $categoryPath)) {
-                try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
-            }
-            
-            if ($SubCategory) {
-                $categoryPath = Join-Path $categoryPath $SubCategory
-                if (-not (Test-Path $categoryPath)) {
-                    try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
-                }
-            }
-            
-            return Join-Path $categoryPath $FileName
-        }
-        else {
-            Write-Warning "Session path unavailable - using current directory fallback"
-            return $FileName
-        }
-    }
+# Import shared utilities for fallback functions
+$CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'
+if (Test-Path $CommonUtilitiesPath) {
+    Import-Module $CommonUtilitiesPath -Force
+    Initialize-FallbackFunctions
 }
 
 #region Public Functions

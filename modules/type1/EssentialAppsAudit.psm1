@@ -30,61 +30,27 @@ if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
 
-# Fallback functions if CoreInfrastructure functions not available in this scope
-if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
-    function Write-LogEntry {
-        param($Level, $Component, $Message, $Data)
-        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
-    }
+# Import shared utilities for fallback functions
+$CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'
+if (Test-Path $CommonUtilitiesPath) {
+    Import-Module $CommonUtilitiesPath -Force
+    Initialize-FallbackFunctions
 }
 
-if (-not (Get-Command 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
-    function Get-SessionPath {
-        param($Category, $SubCategory, $FileName)
-        
-        # Try to construct proper path using environment variables set by orchestrator
-        $tempRoot = if ($env:MAINTENANCE_TEMP_ROOT) { $env:MAINTENANCE_TEMP_ROOT } else { Join-Path $env:TEMP 'maintenance' }
-        
-        if ($Category -and (Test-Path $tempRoot)) {
-            $categoryPath = Join-Path $tempRoot $Category
-            if (-not (Test-Path $categoryPath)) {
-                try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
-            }
-            
-            if ($SubCategory) {
-                $categoryPath = Join-Path $categoryPath $SubCategory
-                if (-not (Test-Path $categoryPath)) {
-                    try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
-                }
-            }
-            
-            return Join-Path $categoryPath $FileName
-        }
-        else {
-            Write-Warning "Session path unavailable - using current directory fallback"
-            return $FileName
-        }
-    }
-}
-
-if (-not (Get-Command 'Get-EssentialAppsConfiguration' -ErrorAction SilentlyContinue)) {
-    function Get-EssentialAppsConfiguration {
-        Write-Warning "CoreInfrastructure not available - using fallback configuration"
-        return @{}
-    }
-}
-
+# Provide enhanced fallback for essential apps to prevent divide by zero error
 if (-not (Get-Command 'Get-UnifiedEssentialAppsList' -ErrorAction SilentlyContinue)) {
     function Get-UnifiedEssentialAppsList {
-        Write-Warning "CoreInfrastructure not available - using fallback essential apps list"
+        Write-Warning "CoreInfrastructure not available - using enhanced fallback essential apps list"
         
-        # Fallback essential apps list to prevent divide by zero error
+        # Enhanced fallback essential apps list to prevent divide by zero error
         return @(
             @{ name = "Microsoft Visual Studio Code"; category = "Editor"; description = "Code editor"; winget = "Microsoft.VisualStudioCode" },
             @{ name = "Google Chrome"; category = "Browsers"; description = "Web browser"; winget = "Google.Chrome" },
             @{ name = "Mozilla Firefox"; category = "Browsers"; description = "Web browser"; winget = "Mozilla.Firefox" },
             @{ name = "7-Zip"; category = "System"; description = "File archiver"; winget = "7zip.7zip" },
-            @{ name = "VLC Media Player"; category = "Media"; description = "Media player"; winget = "VideoLAN.VLC" }
+            @{ name = "VLC Media Player"; category = "Media"; description = "Media player"; winget = "VideoLAN.VLC" },
+            @{ name = "Git"; category = "Development"; description = "Version control"; winget = "Git.Git" },
+            @{ name = "Notepad++"; category = "Editor"; description = "Text editor"; winget = "Notepad++.Notepad++" }
         )
     }
 }

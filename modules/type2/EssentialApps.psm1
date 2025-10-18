@@ -40,54 +40,11 @@ if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
 
-# Add fallback functions if CoreInfrastructure functions not available in this scope
-if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
-    function Write-LogEntry {
-        param($Level, $Component, $Message, $Data, $LogPath)
-        $logMessage = "[$Level] [$Component] $Message"
-        Write-Information $logMessage -InformationAction Continue
-        
-        # If LogPath is specified, try to append to file
-        if ($LogPath) {
-            try {
-                $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
-                "[$timestamp] $logMessage" | Add-Content -Path $LogPath -ErrorAction SilentlyContinue
-            }
-            catch {
-                # Ignore file write errors in fallback mode
-            }
-        }
-    }
-}
-
-# Robust Get-SessionPath fallback without recursion
-if (-not (Get-Command 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
-    function Get-SessionPath {
-        param($Category, $SubCategory, $FileName)
-        
-        # Construct path using environment variables set by orchestrator
-        $tempRoot = if ($env:MAINTENANCE_TEMP_ROOT) { $env:MAINTENANCE_TEMP_ROOT } else { Join-Path $env:TEMP 'maintenance' }
-        
-        if ($Category -and $tempRoot) {
-            $categoryPath = Join-Path $tempRoot $Category
-            if (-not (Test-Path $categoryPath)) {
-                try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
-            }
-            
-            if ($SubCategory) {
-                $categoryPath = Join-Path $categoryPath $SubCategory
-                if (-not (Test-Path $categoryPath)) {
-                    try { New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null } catch {}
-                }
-            }
-            
-            return Join-Path $categoryPath $FileName
-        }
-        else {
-            Write-Warning "Session path unavailable - using current directory fallback"
-            return $FileName
-        }
-    }
+# Import shared utilities for fallback functions
+$CommonUtilitiesPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CommonUtilities.psm1'
+if (Test-Path $CommonUtilitiesPath) {
+    Import-Module $CommonUtilitiesPath -Force
+    Initialize-FallbackFunctions
 }
 
 # Step 3: Import additional dependencies
@@ -1295,11 +1252,9 @@ function Get-InstallationStatistic {
 
 # Export module functions
 Export-ModuleMember -Function @(
-    # v3.0 Standardized execution function (Primary)
-    'Invoke-EssentialApps',
+    # v3.0 Standardized execution function (Primary interface)
+    'Invoke-EssentialApps'
     
-    # Legacy functions (Preserved for internal use)
-    'Install-EssentialApplication',
-    'Get-AppNotInstalled',
-    'Get-InstallationStatistic'
+    # Note: Legacy functions (Install-EssentialApplication, Get-AppNotInstalled, Get-InstallationStatistic) 
+    # are used internally but not exported to maintain clean module interface
 )

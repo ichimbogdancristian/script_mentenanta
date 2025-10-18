@@ -47,11 +47,8 @@ else {
     }
 }
 
-# Step 3: Import additional dependencies
-$DependencyManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\DependencyManager.psm1'
-if (Test-Path $DependencyManagerPath) {
-    Import-Module $DependencyManagerPath -Force
-}
+# Note: DependencyManager import removed as functions are not used
+# BloatwareRemoval calls winget.exe and choco.exe directly
 
 # Validate Type1 module loaded correctly
 if (-not (Get-Command -Name 'Find-InstalledBloatware' -ErrorAction SilentlyContinue)) {
@@ -948,10 +945,9 @@ function Test-ItemRemovable {
 
 # Export module functions
 Export-ModuleMember -Function @(
-    # v3.0 Standardized execution function (Primary)
-    'Invoke-BloatwareRemoval',
+    # v3.0 Standardized execution function (Primary interface)
+    'Invoke-BloatwareRemoval'
     
-    # Legacy functions (Preserved for internal use)
-    'Remove-DetectedBloatware',
-    'Test-BloatwareRemoval'
+    # Note: Legacy functions (Remove-DetectedBloatware, Test-BloatwareRemoval) 
+    # are used internally but not exported to maintain clean module interface
 )
