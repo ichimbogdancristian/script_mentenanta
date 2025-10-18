@@ -207,9 +207,6 @@ function New-MaintenanceReport {
         $ErrorActionPreference = 'Stop'
         Write-Verbose "Starting report generation process"
         
-        # Generate reports using organized file system
-        $reportBaseName = Split-Path $OutputPath -Leaf
-
         # Generate HTML report
         Write-Information "  📄 Creating HTML report..." -InformationAction Continue
         $htmlContent = New-HtmlReportContent -ReportData $reportData
@@ -365,7 +362,6 @@ function New-HtmlReportContent {
     $title = $config.branding.title
     $subtitle = $config.branding.subtitle
     $colors = $config.theme.colors
-    $layout = $config.layout
 
     # Enhanced HTML header with modern dashboard styling and JavaScript
     $html.AppendLine(@"
@@ -2217,10 +2213,10 @@ function Convert-ModuleDataToTaskResults {
             
             # Extract timing and success information if available
             if ($executionData -is [hashtable] -or $executionData -is [PSCustomObject]) {
-                if ($executionData.Success -ne $null) { $taskResult.Success = $executionData.Success }
-                if ($executionData.StartTime -ne $null) { $taskResult.StartTime = $executionData.StartTime }
-                if ($executionData.EndTime -ne $null) { $taskResult.EndTime = $executionData.EndTime }
-                if ($executionData.Duration -ne $null) { $taskResult.Duration = $executionData.Duration }
+                if ($null -ne $executionData.Success) { $taskResult.Success = $executionData.Success }
+                if ($null -ne $executionData.StartTime) { $taskResult.StartTime = $executionData.StartTime }
+                if ($null -ne $executionData.EndTime) { $taskResult.EndTime = $executionData.EndTime }
+                if ($null -ne $executionData.Duration) { $taskResult.Duration = $executionData.Duration }
             }
             
             $taskResults += $taskResult
@@ -2238,6 +2234,14 @@ function Convert-ModuleDataToTaskResults {
                 Duration  = $null
                 Details   = $auditData
                 Component = $module.ToUpper().Replace('AUDIT', '-AUDIT')
+            }
+            
+            # Extract timing and success information if available
+            if ($auditData -is [hashtable] -or $auditData -is [PSCustomObject]) {
+                if ($null -ne $auditData.Success) { $taskResult.Success = $auditData.Success }
+                if ($null -ne $auditData.StartTime) { $taskResult.StartTime = $auditData.StartTime }
+                if ($null -ne $auditData.EndTime) { $taskResult.EndTime = $auditData.EndTime }
+                if ($null -ne $auditData.Duration) { $taskResult.Duration = $auditData.Duration }
             }
             
             $taskResults += $taskResult
