@@ -269,6 +269,143 @@ function Invoke-BloatwareRemoval {
 }
 ```
 
+### **🛠️ Type2 Execution Modes & Operating System Modifications**
+
+Type2 modules operate in two distinct modes that determine whether **actual OS modifications** occur:
+
+#### **🧪 DryRun Mode (Simulation Only)**
+```powershell
+# When DryRun flag is enabled:
+if ($DryRun) {
+    Write-LogEntry "DRY-RUN: Would remove king.com.CandyCrushSaga"
+    $processedCount = 0  # Simulated count
+    # ⚠️ NO ACTUAL CHANGES MADE TO OPERATING SYSTEM
+}
+```
+
+**DryRun Mode Characteristics:**
+- 🔍 **Full Detection**: Type1 modules scan and detect normally
+- 📊 **Analysis Creation**: Diff lists are generated normally  
+- 📝 **Simulation Logging**: Actions are logged as "would be performed"
+- ❌ **No OS Changes**: Zero modifications to Windows system
+- ✅ **Safe Testing**: Perfect for testing configurations
+
+#### **🚀 Live Execution Mode (Real OS Modifications)**
+```powershell
+# When DryRun is NOT enabled:
+if (-not $DryRun) {
+    # ⚠️ REAL OPERATING SYSTEM MODIFICATIONS OCCUR
+    $result = Remove-DetectedBloatware -BloatwareList $diffList
+}
+```
+
+**Live Mode - ACTUAL Operating System Changes:**
+
+**🗑️ BloatwareRemoval Module:**
+- **AppX Package Removal**: `Remove-AppxPackage` - Permanently deletes UWP/Modern apps
+- **Provisioned Package Removal**: `Remove-AppxProvisionedPackage` - Prevents app reinstallation
+- **Winget Uninstallation**: `winget uninstall --id <package>` - Removes programs via Package Manager
+- **Chocolatey Uninstallation**: `choco uninstall <package>` - Removes programs via Chocolatey
+- **Registry-Based Removal**: Executes native uninstallers via registry uninstall strings
+- **File System Impact**: Deletes application files, folders, and user data
+- **Registry Modifications**: Removes uninstall keys, file associations, and app registrations
+
+**📦 EssentialApps Module:**
+- **Winget Installation**: `winget install --id <package>` - Installs missing applications
+- **Chocolatey Installation**: `choco install <package>` - Installs via Chocolatey repository
+- **File System Impact**: Downloads and installs executable files and dependencies
+- **Registry Modifications**: Registers new applications and file associations
+- **Start Menu Updates**: Adds new applications to Windows Start Menu
+
+**⚡ SystemOptimization Module:**
+- **Registry Modifications**: Direct registry key/value creation and modification
+- **Service Configuration**: `Set-Service` - Changes Windows service startup types and states
+- **Scheduled Task Management**: Creates, modifies, or disables scheduled tasks
+- **Power Settings**: Modifies Windows power plans and energy settings
+- **Visual Effects**: Changes Windows visual effects and performance settings
+- **Network Configuration**: Optimizes network adapter settings and protocols
+
+**🔒 TelemetryDisable Module:**
+- **Service Disabling**: `Set-Service -StartupType Disabled` - Disables telemetry services
+- **Scheduled Task Disabling**: `Disable-ScheduledTask` - Stops data collection tasks
+- **Registry Privacy Settings**: Sets privacy-related registry values
+- **Group Policy Modifications**: Applies local group policy settings
+- **Windows Features**: Disables optional Windows features related to data collection
+- **Firewall Rules**: Creates outbound firewall rules to block telemetry endpoints
+
+**🔄 WindowsUpdates Module:**
+- **Update Installation**: `Install-WindowsUpdate` - Downloads and installs system updates
+- **Update Service Configuration**: Configures Windows Update service settings
+- **Reboot Scheduling**: May schedule system restarts for update completion
+- **System File Modifications**: Updates system files, drivers, and components
+- **Security Patches**: Applies critical security updates and hotfixes
+
+#### **🛡️ Safety Mechanisms for OS Modifications**
+
+**Pre-Execution Validation:**
+- **Administrator Privilege Check**: All destructive operations require admin rights
+- **Diff-Based Execution**: Only processes items matching BOTH detection AND configuration
+- **System Restore Point**: Created before any modifications (via script.bat)
+- **Configuration Validation**: Ensures valid config files before proceeding
+
+**During Execution Protection:**
+- **Error Isolation**: Each item processed individually with error handling
+- **Transaction Logging**: Every action logged with timestamps and results
+- **Rollback Data**: Removal details saved for potential restoration
+- **Progress Tracking**: Real-time status updates for monitoring
+
+**Post-Execution Audit:**
+- **Comprehensive Logging**: All actions logged to temp_files/logs/
+- **Before/After Comparison**: Detailed reports showing exact changes made
+- **Execution Summary**: Success/failure counts for each module
+- **Error Documentation**: Failed operations documented with error messages
+
+#### **🔍 Data Types Processed by Type2 Modules**
+
+**Detection Data Structure (from Type1):**
+```json
+{
+  "Name": "king.com.CandyCrushSaga",
+  "Source": "AppX",
+  "DisplayName": "Candy Crush Saga", 
+  "Publisher": "King",
+  "Version": "1.2.3.4",
+  "InstallPath": "C:\\Program Files\\WindowsApps\\...",
+  "Size": "125MB",
+  "MatchedPattern": "king.com.CandyCrush*",
+  "Category": "Gaming"
+}
+```
+
+**Diff Analysis (Configuration Match):**
+```json
+{
+  "ItemsToProcess": [
+    {
+      "DetectedItem": { /* detection data */ },
+      "ConfigPattern": "king.com.CandyCrush*",
+      "Action": "Remove",
+      "Method": "AppX-Package-Removal",
+      "EstimatedImpact": "125MB freed"
+    }
+  ]
+}
+```
+
+**Execution Result (Standardized Return):**
+```json
+{
+  "Success": true,
+  "ItemsDetected": 15,
+  "ItemsProcessed": 3,
+  "DiffPath": "temp_files/temp/bloatware-diff.json",
+  "ExecutionLogPath": "temp_files/logs/bloatware-removal/execution.log",
+  "Duration": 45.23
+}
+```
+
+**⚠️ IMPORTANT**: When NOT in DryRun mode, Type2 modules **PERMANENTLY MODIFY THE WINDOWS OPERATING SYSTEM**. This includes software removal, installation, registry changes, service modifications, and system configuration updates. These changes are real and affect the running Windows environment.
+
 ### **🎛️ Function Purpose & Execution Sequence**
 
 **Core Infrastructure Functions (CoreInfrastructure.psm1):**

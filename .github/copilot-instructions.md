@@ -192,6 +192,158 @@ function Invoke-[ModuleName] {
 }
 ```
 
+### **🛠️ Type2 Execution Modes & Operating System Modifications (v3.0)**
+
+**CRITICAL UNDERSTANDING**: Type2 modules operate in two distinct modes that determine whether **REAL OPERATING SYSTEM MODIFICATIONS** occur:
+
+#### **🧪 DryRun Mode (Simulation Only)**
+```powershell
+# When $DryRun switch is enabled:
+if ($DryRun) {
+    Write-LogEntry -Level 'INFO' -Message "DRY-RUN: Would remove $($item.Name)" -LogPath $executionLogPath
+    # ⚠️ NO ACTUAL CHANGES MADE TO OPERATING SYSTEM
+    # ✅ All logging occurs normally for simulation analysis
+    # 📊 Return counts reflect what WOULD be processed
+}
+```
+
+**DryRun Characteristics:**
+- **Full Detection**: Type1 modules scan and detect normally
+- **Complete Analysis**: Diff lists generated with all processing logic
+- **Simulation Logging**: All actions logged with "DRY-RUN: Would..." prefixes  
+- **Zero OS Impact**: Absolutely no modifications to Windows system
+- **Perfect Testing**: Validates configurations without system changes
+
+#### **🚀 Live Execution Mode (REAL OS MODIFICATIONS)**
+```powershell
+# When $DryRun is NOT enabled - PERMANENT SYSTEM CHANGES OCCUR:
+if (-not $DryRun) {
+    foreach ($item in $diffList) {
+        # ⚠️ ACTUAL OPERATING SYSTEM MODIFICATIONS HAPPEN HERE
+        $result = Invoke-[ModuleName]Action -Item $item -LogPath $executionLogPath
+        Write-LogEntry -Level 'INFO' -Message "SUCCESS: Processed $($item.Name)" -LogPath $executionLogPath
+    }
+}
+```
+
+**Live Mode - ACTUAL Operating System Changes Per Module:**
+
+**🗑️ BloatwareRemoval Module - Real OS Impact:**
+```powershell
+# PERMANENT REMOVAL OPERATIONS:
+Remove-AppxPackage -Package $item.PackageFullName  # Deletes UWP apps completely
+Remove-AppxProvisionedPackage -PackageName $item.PackageName  # Prevents reinstall
+& winget uninstall --id $item.Id --silent  # Removes via Package Manager
+& choco uninstall $item.Name --force  # Chocolatey package removal
+Start-Process -FilePath $item.UninstallString -Wait  # Registry-based uninstaller execution
+```
+**Actual Windows Changes:**
+- **File System**: Application files, folders, and user data permanently deleted
+- **Registry**: Uninstall keys, file associations, and app registrations removed
+- **Start Menu**: Application shortcuts and tiles removed  
+- **AppX Database**: Package entries completely purged from system
+- **Disk Space**: Immediate freeing of storage space used by applications
+
+**📦 EssentialApps Module - Real OS Impact:**
+```powershell
+# PERMANENT INSTALLATION OPERATIONS:
+& winget install --id $item.Id --silent --accept-package-agreements  # Installs applications
+& choco install $item.Name --force  # Chocolatey installation
+Invoke-WebRequest -Uri $item.DownloadUrl -OutFile $installerPath; Start-Process $installerPath  # Direct downloads
+```
+**Actual Windows Changes:**
+- **File System**: New application files installed to Program Files or AppData
+- **Registry**: Application registrations, file associations, and uninstall entries created
+- **Start Menu**: New application shortcuts and Start Menu entries added
+- **Services**: Application-related Windows services may be installed and started
+- **System PATH**: Environment variables potentially modified for command-line tools
+
+**⚡ SystemOptimization Module - Real OS Impact:**
+```powershell
+# PERMANENT SYSTEM CONFIGURATION CHANGES:
+Set-ItemProperty -Path $regPath -Name $valueName -Value $newValue  # Direct registry modifications
+Set-Service -Name $serviceName -StartupType Disabled  # Windows service configuration changes
+Disable-ScheduledTask -TaskName $taskName  # Scheduled task modifications
+powercfg /setactive $powerSchemeGuid  # Power plan changes
+```
+**Actual Windows Changes:**
+- **Registry**: Direct modification of system configuration keys and values
+- **Services**: Windows service startup types and running states permanently changed
+- **Scheduled Tasks**: System maintenance and background tasks disabled or modified
+- **Power Management**: Power schemes and energy settings reconfigured
+- **Visual Effects**: Windows animation and visual effect settings changed
+- **Network Configuration**: Network adapter settings and protocol optimizations applied
+
+**🔒 TelemetryDisable Module - Real OS Impact:**
+```powershell
+# PERMANENT PRIVACY CONFIGURATION CHANGES:
+Set-Service -Name $telemetryService -StartupType Disabled -Status Stopped  # Service disabling
+Disable-ScheduledTask -TaskName $dataCollectionTask  # Background data collection stopped
+Set-ItemProperty -Path $privacyRegPath -Name $setting -Value 0  # Privacy registry settings
+New-NetFirewallRule -DisplayName "Block $endpoint" -Direction Outbound -Action Block  # Firewall rules
+```
+**Actual Windows Changes:**
+- **Services**: Telemetry and data collection services permanently disabled
+- **Scheduled Tasks**: Microsoft data collection tasks stopped and disabled  
+- **Registry**: Privacy-related system settings permanently modified
+- **Firewall**: Outbound rules created to block telemetry endpoints
+- **Group Policy**: Local policy settings applied for privacy configuration
+- **Windows Features**: Optional features related to data collection disabled
+
+**🔄 WindowsUpdates Module - Real OS Impact:**
+```powershell
+# PERMANENT SYSTEM UPDATES AND MODIFICATIONS:
+Install-WindowsUpdate -AcceptAll -AutoReboot  # System update installation
+Install-Module PSWindowsUpdate; Get-WindowsUpdate | Install-WindowsUpdate  # Update processing
+```
+**Actual Windows Changes:**
+- **System Files**: Core Windows files, drivers, and components permanently updated
+- **Security Patches**: Critical security vulnerabilities patched at system level
+- **Feature Updates**: New Windows features and functionality installed
+- **Driver Updates**: Hardware drivers updated for improved compatibility and performance
+- **Registry**: System registry updated with new configuration and version information
+- **Reboot Requirements**: System may require restart to complete update installation
+
+#### **🛡️ Safety Mechanisms & Data Processing**
+
+**Pre-Execution Validation:**
+```powershell
+# Mandatory safety checks before ANY OS modifications:
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "Administrator privileges required for system modifications"
+}
+
+# Diff-based execution ensures only config-matched items are processed:
+$diffList = $detectionResults | Where-Object { 
+    $configData.BloatwareList -contains $_.Name -or 
+    $configData.BloatwareList | Where-Object { $_.Name -like $_ }
+}
+```
+
+**Data Types Processed:**
+```powershell
+# Type1 Detection Data Structure (from temp_files/data/):
+@{
+    Name = "king.com.CandyCrushSaga"
+    Source = "AppX" 
+    DisplayName = "Candy Crush Saga"
+    Publisher = "King"
+    Version = "1.2.3.4"
+    InstallPath = "C:\Program Files\WindowsApps\..."
+    Size = "125MB"
+    MatchedPattern = "king.com.CandyCrush*"
+    Category = "Gaming"
+}
+
+# Type2 Execution Result (temp_files/logs/[module]/execution.log):
+"2024-01-15 14:30:22 [INFO] Starting BloatwareRemoval processing"
+"2024-01-15 14:30:23 [INFO] SUCCESS: Removed king.com.CandyCrushSaga (125MB freed)"
+"2024-01-15 14:30:24 [ERROR] FAILED: Could not remove Microsoft.Office.Desktop (Access denied)"
+"2024-01-15 14:30:25 [INFO] Processing complete: 15 detected, 12 successfully processed, 3 failed"
+```
+
+**⚠️ CRITICAL WARNING**: When executed without the `-DryRun` flag, Type2 modules perform **IRREVERSIBLE CHANGES** to the Windows operating system. This includes permanent software removal, system configuration changes, registry modifications, service alterations, and Windows Update installations. These modifications directly impact the running Windows environment and may require system restarts to complete.
+
 ### **🗂️ Session-Based File Organization**
 
 **Critical Data Flow** (temp_files/ structure):
