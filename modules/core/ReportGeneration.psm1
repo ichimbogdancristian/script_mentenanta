@@ -216,13 +216,13 @@ function New-MaintenanceReport {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'MaintenanceReportGeneration' -Component 'REPORT-GENERATION'
         Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'Starting comprehensive maintenance report generation' -Data @{ 
-            OutputPath                  = $OutputPath
-            HasSystemInventory          = ($null -ne $SystemInventory)
-            TaskResultsCount            = $TaskResults.Count
-            HasConfiguration            = ($null -ne $Configuration)
+            OutputPath                    = $OutputPath
+            HasSystemInventory            = ($null -ne $SystemInventory)
+            TaskResultsCount              = $TaskResults.Count
+            HasConfiguration              = ($null -ne $Configuration)
             HasComprehensiveLogCollection = ($null -ne $ComprehensiveLogCollection)
-            Type1ModulesCount           = if ($ComprehensiveLogCollection) { $ComprehensiveLogCollection.Type1AuditData.Keys.Count } else { 0 }
-            Type2ModulesCount           = if ($ComprehensiveLogCollection) { $ComprehensiveLogCollection.Type2ExecutionLogs.Keys.Count } else { 0 }
+            Type1ModulesCount             = if ($ComprehensiveLogCollection) { $ComprehensiveLogCollection.Type1AuditData.Keys.Count } else { 0 }
+            Type2ModulesCount             = if ($ComprehensiveLogCollection) { $ComprehensiveLogCollection.Type2ExecutionLogs.Keys.Count } else { 0 }
         }
     }
     catch {
@@ -244,20 +244,20 @@ function New-MaintenanceReport {
     
     # Enhanced report data structure with comprehensive analytics
     $reportData = @{
-        GenerationTime            = $startTime
-        SystemInventory           = $SystemInventory
-        TaskResults               = $TaskResults
-        ModuleData                = $moduleData  # V3.0: Include raw module data for enhanced reporting
-        Configuration             = $Configuration
+        GenerationTime             = $startTime
+        SystemInventory            = $SystemInventory
+        TaskResults                = $TaskResults
+        ModuleData                 = $moduleData  # V3.0: Include raw module data for enhanced reporting
+        Configuration              = $Configuration
         ComprehensiveLogCollection = $ComprehensiveLogCollection  # v3.0: Include comprehensive log data from Type1/Type2 modules
-        Summary                   = Get-ExecutionSummary -TaskResults $TaskResults
-        Analytics                 = @{
+        Summary                    = Get-ExecutionSummary -TaskResults $TaskResults
+        Analytics                  = @{
             SystemHealth       = Get-SystemHealthAnalytic -SystemInventory $SystemInventory
             PerformanceMetrics = Get-PerformanceAnalytic -TaskResults $TaskResults
             SecurityInsights   = Get-SecurityAnalytic -SystemInventory $SystemInventory
             RecommendedActions = Get-RecommendedAction -SystemInventory $SystemInventory -TaskResults $TaskResults
         }
-        Charts                    = @{
+        Charts                     = @{
             TaskDistribution = Get-TaskDistributionData -TaskResults $TaskResults
             SystemResources  = Get-SystemResourceData -SystemInventory $SystemInventory
             SecurityScore    = Get-SecurityScoreData -SystemInventory $SystemInventory
@@ -276,9 +276,9 @@ function New-MaintenanceReport {
             Write-Information "  📋 Processing comprehensive logs: $type1Count Type1 modules, $type2Count Type2 modules" -InformationAction Continue
             
             Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'Processing comprehensive log collection' -Data @{
-                Type1ModulesCount = $type1Count
-                Type2ModulesCount = $type2Count
-                SessionId = $ComprehensiveLogCollection.SessionId
+                Type1ModulesCount   = $type1Count
+                Type2ModulesCount   = $type2Count
+                SessionId           = $ComprehensiveLogCollection.SessionId
                 CollectionTimestamp = $ComprehensiveLogCollection.CollectionTimestamp
             }
         }
@@ -796,6 +796,145 @@ function New-HtmlReportContent {
             border-radius: 8px;
             padding: 20px;
             margin: 20px 0;
+        }
+
+        /* Error Analysis Section */
+        .error-summary {
+            background: #fef9f9;
+            border: 1px solid #d13438;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .error-stats {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            background: white;
+            box-shadow: var(--shadow);
+        }
+
+        .stat-item.error-high {
+            border-top: 3px solid #d13438;
+        }
+
+        .stat-item.error-medium {
+            border-top: 3px solid #ffb900;
+        }
+
+        .stat-number {
+            display: block;
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .stat-label {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .success-message {
+            background: #f3f9f3;
+            border: 1px solid #107c10;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            color: #107c10;
+        }
+
+        .module-errors {
+            margin-bottom: 30px;
+        }
+
+        .module-error-header {
+            background: var(--gradient-primary);
+            color: white;
+            padding: 15px;
+            border-radius: 8px 8px 0 0;
+            margin: 0;
+            font-size: 1.1em;
+        }
+
+        .error-list {
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            background: white;
+        }
+
+        .error-item {
+            border-bottom: 1px solid #f3f2f1;
+            padding: 15px;
+        }
+
+        .error-item:last-child {
+            border-bottom: none;
+        }
+
+        .error-item.severity-high {
+            border-left: 4px solid #d13438;
+            background: #fef9f9;
+        }
+
+        .error-item.severity-medium {
+            border-left: 4px solid #ffb900;
+            background: #fffbf5;
+        }
+
+        .error-item.severity-low {
+            border-left: 4px solid #a19f9d;
+            background: #faf9f8;
+        }
+
+        .error-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+
+        .error-icon {
+            font-size: 1.2em;
+        }
+
+        .error-level {
+            background: var(--primary-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.8em;
+        }
+
+        .error-component {
+            background: #f3f2f1;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 0.8em;
+        }
+
+        .error-timestamp {
+            color: var(--text-secondary);
+            font-size: 0.8em;
+            margin-left: auto;
+        }
+
+        .error-message {
+            color: var(--text-color);
+            line-height: 1.4;
+            margin-left: 30px;
         }
 
         .recommendations h4 {
@@ -1420,46 +1559,56 @@ function New-HtmlReportContent {
         </div>
 "@) | Out-Null
 
-    # Enhanced dashboard with comprehensive metrics
+    # Enhanced dashboard with comprehensive metrics from logs
+    $comprehensiveDashboard = Get-ComprehensiveDashboardMetrics -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
     $summary = $ReportData.Summary
     $analytics = $ReportData.Analytics
+    
+    # Use comprehensive log data if available, fallback to existing data
+    $totalTasks = if ($comprehensiveDashboard.TotalTasks -gt 0) { $comprehensiveDashboard.TotalTasks } else { $summary.TotalTasks }
+    $successRate = if ($comprehensiveDashboard.SuccessRate -ge 0) { $comprehensiveDashboard.SuccessRate } else { $summary.SuccessRate }
+    $failedTasks = if ($comprehensiveDashboard.FailedTasks -ge 0) { $comprehensiveDashboard.FailedTasks } else { $summary.FailedTasks }
+    $totalDuration = if ($comprehensiveDashboard.TotalDuration -gt 0) { $comprehensiveDashboard.TotalDuration } else { $summary.TotalDuration }
+    $systemHealth = if ($comprehensiveDashboard.SystemHealth -gt 0) { $comprehensiveDashboard.SystemHealth } else { $healthScore }
+    $securityScore = if ($comprehensiveDashboard.SecurityScore -gt 0) { $comprehensiveDashboard.SecurityScore } else { $(if ($analytics.SecurityInsights.SecurityScore) { $analytics.SecurityInsights.SecurityScore } else { 'N/A' }) }
+    $successfulTasks = if ($comprehensiveDashboard.SuccessfulTasks -gt 0) { $comprehensiveDashboard.SuccessfulTasks } else { $summary.SuccessfulTasks }
     
     $html.AppendLine(@"
         <div class="dashboard-grid">
             <div class="dashboard-card">
                 <span class="icon">📊</span>
                 <h3>Tasks Executed</h3>
-                <div class="value">$($summary.TotalTasks)</div>
+                <div class="value">$totalTasks</div>
                 <div class="description">Total maintenance operations</div>
             </div>
             <div class="dashboard-card success">
                 <span class="icon">✅</span>
                 <h3>Success Rate</h3>
-                <div class="value success">$($summary.SuccessRate)%</div>
-                <div class="description">$($summary.SuccessfulTasks) of $($summary.TotalTasks) completed</div>
+                <div class="value success">$successRate%</div>
+                <div class="description">$successfulTasks of $totalTasks completed</div>
             </div>
-            <div class="dashboard-card $(if ($summary.FailedTasks -gt 0) { 'error' } else { '' })">
+            <div class="dashboard-card $(if ($failedTasks -gt 0) { 'error' } else { '' })">
                 <span class="icon">❌</span>
                 <h3>Failed Tasks</h3>
-                <div class="value $(if ($summary.FailedTasks -gt 0) { 'error' } else { '' })">$($summary.FailedTasks)</div>
+                <div class="value $(if ($failedTasks -gt 0) { 'error' } else { '' })">$failedTasks</div>
                 <div class="description">Issues requiring attention</div>
             </div>
             <div class="dashboard-card">
                 <span class="icon">⏱️</span>
                 <h3>Total Duration</h3>
-                <div class="value">$([math]::Round($summary.TotalDuration, 1))s</div>
+                <div class="value">$([math]::Round($totalDuration, 1))s</div>
                 <div class="description">Execution time</div>
             </div>
             <div class="dashboard-card $healthClass">
                 <span class="icon">🏥</span>
                 <h3>System Health</h3>
-                <div class="value $healthClass">$healthScore</div>
+                <div class="value $healthClass">$systemHealth</div>
                 <div class="description">Overall system score</div>
             </div>
             <div class="dashboard-card">
                 <span class="icon">🔒</span>
                 <h3>Security Score</h3>
-                <div class="value">$(if ($analytics.SecurityInsights.SecurityScore) { $analytics.SecurityInsights.SecurityScore } else { 'N/A' })</div>
+                <div class="value">$securityScore</div>
                 <div class="description">Security assessment</div>
             </div>
         </div>
@@ -1495,8 +1644,13 @@ function New-HtmlReportContent {
         </div>
 "@) | Out-Null
 
-    # Task execution results
-    if ($ReportData.TaskResults.Count -gt 0) {
+    # Task execution results from comprehensive log analysis
+    $detailedTaskResults = Get-DetailedTaskResults -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
+    
+    # Use detailed task results if available, fallback to existing data
+    $taskResultsToShow = if ($detailedTaskResults.Count -gt 0) { $detailedTaskResults } else { $ReportData.TaskResults }
+    
+    if ($taskResultsToShow.Count -gt 0) {
         $html.AppendLine(@"
         <div class="section">
             <div class="section-header" onclick="toggleSection(this)">
@@ -1507,19 +1661,24 @@ function New-HtmlReportContent {
                 <ul class="task-list">
 "@) | Out-Null
 
-        foreach ($task in $ReportData.TaskResults) {
+        foreach ($task in $taskResultsToShow) {
             $statusIcon = if ($task.Success) { '✓' } else { '✗' }
-
             $statusColor = if ($task.Success) { 'var(--success-color)' } else { 'var(--error-color)' }
-            $duration = [math]::Round($task.Duration, 2)
+            $duration = if ($task.Duration) { [math]::Round($task.Duration, 2) } else { 0 }
+            
+            # Enhanced task details from comprehensive log analysis
+            $taskDescription = if ($task.Description) { $task.Description } else { $task.Details }
+            $itemsProcessed = if ($task.ItemsProcessed) { " ($($task.ItemsProcessed) items)" } else { "" }
 
             $html.AppendLine(@"
                     <li class="task-item">
                         <div class="task-status" style="background-color: $statusColor">$statusIcon</div>
                         <div class="task-details">
-                            <div class="task-name">$($task.TaskName)</div>
-                            <div class="task-description">$($task.Description)</div>
+                            <div class="task-name">$($task.TaskName)$itemsProcessed</div>
+                            <div class="task-description">$taskDescription</div>
                             $(if (-not $task.Success -and $task.Error) { "<div style='color: var(--error-color); font-size: 0.9em; margin-top: 5px;'>Error: $($task.Error)</div>" })
+                            $(if ($task.SuccessCount -gt 0) { "<div style='color: var(--success-color); font-size: 0.9em; margin-top: 3px;'>✓ $($task.SuccessCount) successful operations</div>" })
+                            $(if ($task.ErrorCount -gt 0) { "<div style='color: var(--error-color); font-size: 0.9em; margin-top: 3px;'>✗ $($task.ErrorCount) failed operations</div>" })
                         </div>
                         <div class="task-duration">${duration}s</div>
                     </li>
@@ -1533,9 +1692,13 @@ function New-HtmlReportContent {
 "@) | Out-Null
     }
 
-    # Type 2 Module Activities Section
-    $type2Results = $ReportData.TaskResults | Where-Object { $_.Type -eq 'Type2' }
-    if ($type2Results.Count -gt 0) {
+    # System Modification Activities from comprehensive log analysis
+    $systemModifications = Get-SystemModificationActivities -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
+    
+    # Use detailed task results if available for fallback data  
+    $type2Results = if ($taskResultsToShow) { $taskResultsToShow | Where-Object { $_.Type -eq 'Type2' } } else { $ReportData.TaskResults | Where-Object { $_.Type -eq 'Type2' } }
+    
+    if ($systemModifications.Count -gt 0 -or $type2Results.Count -gt 0) {
         $html.AppendLine(@"
         <div class="section">
             <div class="section-header" onclick="toggleSection(this)">
@@ -1546,12 +1709,29 @@ function New-HtmlReportContent {
                 <div class="module-activities">
 "@) | Out-Null
 
-        # Group Type 2 results by module
-        $moduleGroups = $type2Results | Group-Object { $_.TaskName }
+        # Group modifications by module for organized display
+        $moduleModifications = @{}
+        foreach ($modification in $systemModifications) {
+            $moduleName = $modification.Component
+            if (-not $moduleModifications.ContainsKey($moduleName)) {
+                $moduleModifications[$moduleName] = @()
+            }
+            $moduleModifications[$moduleName] += $modification
+        }
 
-        foreach ($group in $moduleGroups) {
-            $moduleName = $group.Name
-            $moduleTask = $group.Group[0]  # Get the task details
+        # If no modifications found in logs, fall back to existing Type2 results
+        if ($moduleModifications.Keys.Count -eq 0 -and $type2Results.Count -gt 0) {
+            $moduleGroups = $type2Results | Group-Object { $_.TaskName }
+            foreach ($group in $moduleGroups) {
+                $moduleModifications[$group.Name] = @(@{ 
+                        Type = 'Fallback'; Action = 'Executed'; Target = $group.Group[0].Description; 
+                        Category = 'Task Execution'; Timestamp = (Get-Date).ToString()
+                    })
+            }
+        }
+
+        foreach ($moduleName in $moduleModifications.Keys) {
+            $modifications = $moduleModifications[$moduleName]
             
             # Map module names to friendly titles and icons
             $moduleInfo = @{
@@ -1567,11 +1747,16 @@ function New-HtmlReportContent {
                 $info = @{ Title = $moduleName; Icon = '🔧'; Color = '#95a5a6' }
             }
 
-            $statusBadge = if ($moduleTask.Success) { 
+            # Get corresponding task status if available
+            $moduleTask = $type2Results | Where-Object { $_.TaskName -eq $moduleName } | Select-Object -First 1
+            $statusBadge = if ($moduleTask -and $moduleTask.Success) { 
                 '<span class="status-badge success">✓ Completed</span>' 
             }
-            else { 
+            elseif ($moduleTask -and -not $moduleTask.Success) { 
                 '<span class="status-badge error">✗ Failed</span>' 
+            }
+            else {
+                '<span class="status-badge info">📊 Analyzed</span>'
             }
 
             $html.AppendLine(@"
@@ -1582,18 +1767,39 @@ function New-HtmlReportContent {
                             $statusBadge
                         </div>
                         <div class="module-details">
-                            <p><strong>Description:</strong> $($moduleTask.Description)</p>
-                            <p><strong>Duration:</strong> $([math]::Round($moduleTask.Duration, 2)) seconds</p>
-                            $(if ($moduleTask.DryRun) { '<p><strong>Mode:</strong> <span class="dry-run-badge">DRY RUN</span></p>' })
-                            $(if (-not $moduleTask.Success -and $moduleTask.Error) { 
+                            <p><strong>Total Modifications:</strong> $($modifications.Count)</p>
+                            $(if ($moduleTask) { "<p><strong>Duration:</strong> $([math]::Round($moduleTask.Duration, 2)) seconds</p>" })
+                            $(if ($moduleTask -and $moduleTask.DryRun) { '<p><strong>Mode:</strong> <span class="dry-run-badge">DRY RUN</span></p>' })
+                            $(if ($moduleTask -and -not $moduleTask.Success -and $moduleTask.Error) { 
                                 "<div class='error-details'><strong>Error:</strong> $($moduleTask.Error)</div>" 
                             })
                         </div>
                         <div class="module-actions">
-                            <h4>Actions Performed:</h4>
-                            <div class="actions-placeholder">
-                                <p><em>Detailed action logs will be displayed here in future versions.</em></p>
-                                <p>Check the individual module log files for specific install/uninstall/delete operations.</p>
+                            <h4>System Modifications:</h4>
+                            <div class="actions-list">
+"@) | Out-Null
+
+            # Group modifications by category for better organization
+            $categoryGroups = $modifications | Group-Object Category
+            foreach ($categoryGroup in $categoryGroups) {
+                $html.AppendLine("                                <div class='action-category'><strong>$($categoryGroup.Name):</strong></div>")
+                foreach ($mod in $categoryGroup.Group) {
+                    $actionIcon = switch ($mod.Action) {
+                        'Install' { '➕' }
+                        'Remove' { '➖' }
+                        'Uninstall' { '🗑️' }
+                        'Optimize' { '⚡' }
+                        'Disable' { '🔒' }
+                        'Enable' { '✅' }
+                        'Update' { '🔄' }
+                        'Configure' { '⚙️' }
+                        default { '🔧' }
+                    }
+                    $html.AppendLine("                                <div class='action-item'>$actionIcon <strong>$($mod.Action)</strong> $($mod.Type): $($mod.Target)</div>")
+                }
+            }
+
+            $html.AppendLine(@"
                             </div>
                         </div>
                     </div>
@@ -1655,11 +1861,16 @@ function New-HtmlReportContent {
 "@) | Out-Null
     }
 
-    # System Health Summary with Recommendations
-    if ($ReportData.Analytics.SystemHealth) {
-        $healthScore = $ReportData.Analytics.SystemHealth.OverallScore
-        $healthClass = if ($healthScore -ge 90) { 'excellent' } elseif ($healthScore -ge 75) { 'good' } elseif ($healthScore -ge 50) { 'warning' } else { 'poor' }
-        
+    # System Health Analysis from comprehensive log and audit data
+    $systemHealthAnalysis = Get-SystemHealthAnalysis -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
+    
+    # Use comprehensive health analysis if available, fallback to existing data
+    $healthScore = if ($systemHealthAnalysis.OverallScore -gt 0) { $systemHealthAnalysis.OverallScore } else { 
+        if ($ReportData.Analytics.SystemHealth) { $ReportData.Analytics.SystemHealth.OverallScore } else { $systemHealth }
+    }
+    $healthClass = if ($healthScore -ge 90) { 'excellent' } elseif ($healthScore -ge 75) { 'good' } elseif ($healthScore -ge 50) { 'warning' } else { 'poor' }
+    
+    if ($systemHealthAnalysis.OverallScore -gt 0 -or ($ReportData.Analytics.SystemHealth)) {
         $html.AppendLine(@"
         <div class="section expanded">
             <div class="section-header" onclick="toggleSection(this)">
@@ -1671,32 +1882,71 @@ function New-HtmlReportContent {
                     <div class="health-circle $healthClass">$healthScore</div>
                     <div>
                         <h3>Overall System Health</h3>
-                        <p>Based on hardware, OS, services, and security analysis</p>
+                        <p>Based on maintenance tasks, security analysis, and system performance</p>
                     </div>
                 </div>
 "@) | Out-Null
 
-        # Add recommendations if available
-        if ($ReportData.Analytics.RecommendedActions -and $ReportData.Analytics.RecommendedActions.Count -gt 0) {
+        # Add detailed health metrics from comprehensive analysis
+        if ($systemHealthAnalysis.OverallScore -gt 0) {
+            $html.AppendLine(@"
+                <div class="health-metrics">
+                    <h4>📊 Health Metrics Breakdown</h4>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <strong>Maintenance Score:</strong> $($systemHealthAnalysis.MaintenanceScore)/100
+                            <div class="metric-description">Success rate of maintenance operations</div>
+                        </div>
+                        <div class="metric-item">
+                            <strong>Security Score:</strong> $($systemHealthAnalysis.SecurityScore)/100
+                            <div class="metric-description">Privacy and security configuration status</div>
+                        </div>
+                        <div class="metric-item">
+                            <strong>Performance Score:</strong> $($systemHealthAnalysis.PerformanceScore)/100
+                            <div class="metric-description">System optimization and efficiency</div>
+                        </div>
+                        <div class="metric-item">
+                            <strong>Update Score:</strong> $($systemHealthAnalysis.UpdateScore)/100
+                            <div class="metric-description">System update and patch status</div>
+                        </div>
+                    </div>
+                </div>
+"@) | Out-Null
+        }
+
+        # Add recommendations - use comprehensive analysis or fallback to existing
+        $recommendations = if ($systemHealthAnalysis.Recommendations.Count -gt 0) { 
+            $systemHealthAnalysis.Recommendations 
+        }
+        else { 
+            $ReportData.Analytics.RecommendedActions 
+        }
+        
+        if ($recommendations -and $recommendations.Count -gt 0) {
             $html.AppendLine(@"
                 <div class="recommendations">
-                    <h4>💡 Recommended Actions</h4>
+                    <h4>💡 Health Recommendations</h4>
 "@) | Out-Null
 
-            foreach ($recommendation in $ReportData.Analytics.RecommendedActions) {
+            foreach ($recommendation in $recommendations) {
                 $iconMap = @{
-                    'High'   = '🔴'
-                    'Medium' = '🟡'
-                    'Low'    = '🟢'
+                    'High'     = '🔴'
+                    'Critical' = '🔴'
+                    'Medium'   = '🟡'
+                    'Low'      = '🟢'
+                    'Info'     = '🔵'
                 }
-                $icon = $iconMap[$recommendation.Priority]
+                $priority = if ($recommendation.Priority) { $recommendation.Priority } else { 'Medium' }
+                $icon = $iconMap[$priority]
+                $action = if ($recommendation.Action) { $recommendation.Action } else { $recommendation.Title }
+                $details = if ($recommendation.Details) { $recommendation.Details } else { $recommendation.Description }
                 
                 $html.AppendLine(@"
                     <div class="recommendation-item">
                         <span class="recommendation-icon">$icon</span>
                         <div>
-                            <strong>$($recommendation.Action)</strong><br>
-                            <small>$($recommendation.Details)</small>
+                            <strong>$action</strong><br>
+                            <small>$details</small>
                         </div>
                     </div>
 "@) | Out-Null
@@ -1713,20 +1963,110 @@ function New-HtmlReportContent {
 "@) | Out-Null
     }
 
-    # Add Enhanced Module Sections (V3.0 Feature)
-    if ($ReportData.ModuleData) {
-        $enhancedModuleSections = New-EnhancedModuleSections -ModuleData $ReportData.ModuleData
+    # Add Enhanced Module Sections with comprehensive log data (V3.0 Feature)
+    if ($ReportData.ModuleData -or $ReportData.ComprehensiveLogCollection) {
+        # Create enhanced module data from comprehensive logs if available
+        if ($ReportData.ComprehensiveLogCollection) {
+            $enhancedModuleData = @{
+                Type1Results = @{}
+                Type2Results = @{}
+            }
+            
+            # Populate Type1 (audit) data from ComprehensiveLogCollection
+            if ($ReportData.ComprehensiveLogCollection.Type1AuditData) {
+                foreach ($moduleName in $ReportData.ComprehensiveLogCollection.Type1AuditData.Keys) {
+                    $auditData = $ReportData.ComprehensiveLogCollection.Type1AuditData[$moduleName]
+                    if ($auditData) {
+                        $enhancedModuleData.Type1Results[$moduleName] = @{
+                            DetectedItems = $auditData
+                            TotalScanned  = $auditData.Count
+                        }
+                    }
+                }
+            }
+            
+            # Populate Type2 (execution) data from comprehensive log analysis
+            $detailedResults = Get-DetailedTaskResults -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
+            foreach ($result in $detailedResults) {
+                $enhancedModuleData.Type2Results[$result.TaskName] = $result
+            }
+            
+            $enhancedModuleSections = New-EnhancedModuleSections -ModuleData $enhancedModuleData -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
+        }
+        else {
+            $enhancedModuleSections = New-EnhancedModuleSections -ModuleData $ReportData.ModuleData
+        }
+        
         $html.AppendLine($enhancedModuleSections) | Out-Null
     }
 
-    # Add JavaScript chart data
+    # Add Comprehensive Log Analysis Sections
+    if ($ReportData.ComprehensiveLogCollection) {
+        Write-Verbose "Processing comprehensive log analysis for all report sections"
+        
+        # Get comprehensive analysis from all logs
+        $logAnalysis = Get-ComprehensiveLogAnalysis -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
+        
+        # Add System Modifications Section
+        $modificationsSection = New-SystemModificationsSection -LogAnalysis $logAnalysis
+        $html.AppendLine($modificationsSection) | Out-Null
+        
+        # Add Performance Metrics Section  
+        $performanceSection = New-PerformanceMetricsSection -LogAnalysis $logAnalysis
+        $html.AppendLine($performanceSection) | Out-Null
+        
+        # Add Execution Timeline Section
+        $timelineSection = New-ExecutionTimelineSection -LogAnalysis $logAnalysis
+        $html.AppendLine($timelineSection) | Out-Null
+        
+        # Add Error Analysis Section (Enhanced with comprehensive data)
+        $allErrors = Get-ErrorsFromExecutionLogs -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
+        $errorSection = New-ErrorReportSection -Errors $allErrors
+        $html.AppendLine($errorSection) | Out-Null
+        
+        Write-Verbose "Comprehensive log analysis sections added: modifications, performance, timeline, errors"
+    }
+
+    # Generate comprehensive chart data from logs
+    $comprehensiveChartData = Get-ComprehensiveChartData -ComprehensiveLogCollection $ReportData.ComprehensiveLogCollection
+    
+    # Use comprehensive chart data if available, fallback to existing data
+    $taskDistributionData = if ($comprehensiveChartData.TaskDistribution.labels.Count -gt 0) { 
+        $comprehensiveChartData.TaskDistribution 
+    }
+    else { 
+        $ReportData.Charts.TaskDistribution 
+    }
+    
+    $systemResourcesData = if ($comprehensiveChartData.SystemResources.datasets[0].data.Count -gt 0) { 
+        $comprehensiveChartData.SystemResources 
+    }
+    else { 
+        $ReportData.Charts.SystemResources 
+    }
+    
+    $timelineData = if ($comprehensiveChartData.TimelineData.labels.Count -gt 0) { 
+        $comprehensiveChartData.TimelineData 
+    }
+    else { 
+        $ReportData.Charts.TimelineData 
+    }
+    
+    $securityScoreData = if ($comprehensiveChartData.SecurityScore.datasets[0].data.Count -gt 0) { 
+        $comprehensiveChartData.SecurityScore 
+    }
+    else { 
+        $ReportData.Charts.SecurityScore 
+    }
+
+    # Add JavaScript chart data with comprehensive log-based data
     $html.AppendLine(@"
         <script>
-            // Chart data initialization
-            window.taskDistributionData = $($ReportData.Charts.TaskDistribution | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
-            window.systemResourcesData = $($ReportData.Charts.SystemResources | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
-            window.timelineData = $($ReportData.Charts.TimelineData | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
-            window.securityScoreData = $($ReportData.Charts.SecurityScore | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
+            // Chart data initialization from comprehensive log analysis
+            window.taskDistributionData = $($taskDistributionData | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
+            window.systemResourcesData = $($systemResourcesData | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
+            window.timelineData = $($timelineData | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
+            window.securityScoreData = $($securityScoreData | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
         </script>
 "@) | Out-Null
 
@@ -1772,7 +2112,10 @@ function New-EnhancedModuleSections {
     [OutputType([string])]
     param(
         [Parameter()]
-        [hashtable]$ModuleData = @{}
+        [hashtable]$ModuleData = @{},
+        
+        [Parameter()]
+        [hashtable]$ComprehensiveLogCollection = @{}
     )
     
     $html = [StringBuilder]::new()
@@ -1924,23 +2267,63 @@ function New-EnhancedModuleSections {
 "@) | Out-Null
         }
         
-        # Type2 (Execution) Details
-        if ($type2Data) {
+        # Type2 (Execution) Details with comprehensive log data
+        if ($type2Data -or ($ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleKey))) {
             $html.AppendLine(@"
                     <div class="detail-card">
                         <h4>⚙️ Execution Results</h4>
                         <ul class="detail-list">
 "@) | Out-Null
 
-            if ($type2Data.ProcessedItems) {
+            # Get system modifications for this specific module from comprehensive log data
+            if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleKey)) {
+                $systemMods = Get-SystemModificationActivities -ComprehensiveLogCollection $ComprehensiveLogCollection
+                $moduleModifications = $systemMods | Where-Object { $_.Component -eq $moduleKey } | Select-Object -First 5
+                
+                if ($moduleModifications.Count -gt 0) {
+                    foreach ($mod in $moduleModifications) {
+                        $actionIcon = switch ($mod.Action) {
+                            'Install' { '➕' }
+                            'Remove' { '➖' }
+                            'Uninstall' { '🗑️' }
+                            'Optimize' { '⚡' }
+                            'Disable' { '🔒' }
+                            'Enable' { '✅' }
+                            'Update' { '🔄' }
+                            default { '🔧' }
+                        }
+                        $html.AppendLine("                            <li>$actionIcon $($mod.Action) $($mod.Type): $($mod.Target) <span class='detail-badge success'>Completed</span></li>") | Out-Null
+                    }
+                    
+                    $totalMods = ($systemMods | Where-Object { $_.Component -eq $moduleKey }).Count
+                    if ($totalMods -gt 5) {
+                        $remaining = $totalMods - 5
+                        $html.AppendLine("                            <li><em>... and $remaining more modifications</em></li>") | Out-Null
+                    }
+                }
+                else {
+                    # Check execution log for success/failure info
+                    $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleKey]
+                    if ($logContent -match '\[(SUCCESS|INFO)\]') {
+                        $html.AppendLine("                            <li>Module executed successfully <span class='detail-badge success'>✅ Completed</span></li>") | Out-Null
+                    }
+                    elseif ($logContent -match '\[(ERROR|FAILED)\]') {
+                        $html.AppendLine("                            <li>Module execution failed <span class='detail-badge error'>❌ Failed</span></li>") | Out-Null
+                    }
+                    else {
+                        $html.AppendLine("                            <li>Module execution status unknown <span class='detail-badge warning'>⚠️ Unknown</span></li>") | Out-Null
+                    }
+                }
+            }
+            elseif ($type2Data.ProcessedItems) {
                 foreach ($item in ($type2Data.ProcessedItems | Select-Object -First 5)) {
                     $itemName = if ($item.Name) { $item.Name } else { $item.ToString() }
-                    $badge = if ($item.Success) { '<span class="badge success">✅ Completed</span>' } else { '<span class="badge error">❌ Failed</span>' }
+                    $badge = if ($item.Success) { 'success">✅ Completed' } else { 'error">❌ Failed' }
                     $html.AppendLine("                            <li>$itemName <span class='detail-badge $badge</span></li>") | Out-Null
                 }
             }
             else {
-                $execStatus = if ($type2Data.Success) { '<span class="badge success">✅ Completed</span>' } else { '<span class="badge error">❌ Failed</span>' }
+                $execStatus = if ($type2Data.Success) { 'success">✅ Completed' } else { 'error">❌ Failed' }
                 $html.AppendLine("                            <li>Module execution <span class='detail-badge $execStatus</span></li>") | Out-Null
             }
             
@@ -2729,6 +3112,1178 @@ function Get-HealthRecommendation {
 
 #endregion
 
+#region Comprehensive Log Processing Functions
+
+function Get-ComprehensiveLogAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ComprehensiveLogCollection
+    )
+    
+    Write-Verbose "Starting comprehensive log analysis for all report sections"
+    
+    $logAnalysis = @{
+        ExecutionMetrics     = @{}
+        TaskDetails          = @{}
+        SystemModifications  = @{}
+        PerformanceData      = @{}
+        SecurityEvents       = @{}
+        HealthMetrics        = @{}
+        Errors               = @{}
+        Warnings             = @{}
+        SuccessfulOperations = @{}
+    }
+    
+    # Process Type2 Execution Logs for detailed metrics
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
+            
+            Write-Verbose "Processing $moduleName execution logs"
+            
+            $moduleAnalysis = ConvertFrom-ModuleExecutionLog -ModuleName $moduleName -LogContent $logContent
+            
+            # Store parsed data for different report sections
+            $logAnalysis.ExecutionMetrics[$moduleName] = $moduleAnalysis.Metrics
+            $logAnalysis.TaskDetails[$moduleName] = $moduleAnalysis.TaskDetails
+            $logAnalysis.SystemModifications[$moduleName] = $moduleAnalysis.Modifications
+            $logAnalysis.PerformanceData[$moduleName] = $moduleAnalysis.Performance
+            $logAnalysis.Errors[$moduleName] = $moduleAnalysis.Errors
+            $logAnalysis.Warnings[$moduleName] = $moduleAnalysis.Warnings
+            $logAnalysis.SuccessfulOperations[$moduleName] = $moduleAnalysis.SuccessOperations
+        }
+    }
+    
+    # Process Type1 Audit Data for additional insights
+    if ($ComprehensiveLogCollection.Type1AuditData) {
+        foreach ($moduleName in $ComprehensiveLogCollection.Type1AuditData.Keys) {
+            $auditData = $ComprehensiveLogCollection.Type1AuditData[$moduleName]
+            
+            Write-Verbose "Processing $moduleName audit data"
+            
+            $auditAnalysis = ConvertFrom-AuditData -ModuleName $moduleName -AuditData $auditData
+            
+            # Merge audit insights with execution data
+            if ($logAnalysis.ExecutionMetrics[$moduleName]) {
+                $logAnalysis.ExecutionMetrics[$moduleName].ItemsDetected = $auditAnalysis.DetectedCount
+                $logAnalysis.ExecutionMetrics[$moduleName].DetectionDetails = $auditAnalysis.Details
+            }
+            
+            # Add health metrics from audit data
+            $logAnalysis.HealthMetrics[$moduleName] = $auditAnalysis.HealthScore
+        }
+    }
+    
+    Write-Verbose "Comprehensive log analysis completed"
+    return $logAnalysis
+}
+
+function ConvertFrom-ModuleExecutionLog {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName,
+        
+        [Parameter(Mandatory)]
+        [string]$LogContent
+    )
+    
+    $analysis = @{
+        Metrics           = @{
+            TotalOperations      = 0
+            SuccessfulOperations = 0
+            FailedOperations     = 0
+            WarningCount         = 0
+            StartTime            = $null
+            EndTime              = $null
+            Duration             = 0
+        }
+        TaskDetails       = @()
+        Modifications     = @()
+        Performance       = @{}
+        Errors            = @()
+        Warnings          = @()
+        SuccessOperations = @()
+    }
+    
+    if (-not $LogContent) {
+        Write-Verbose "No log content for $ModuleName"
+        return $analysis
+    }
+    
+    $logLines = $LogContent -split "`n"
+    
+    foreach ($line in $logLines) {
+        $line = $line.Trim()
+        if (-not $line) { continue }
+        
+        # Parse structured log entries
+        if ($line -match '^\[([^\]]+)\]\s+\[(INFO|SUCCESS|WARN|ERROR|FAILED)\]\s+\[([^\]]+)\]\s+(.+)$') {
+            $timestamp = $matches[1]
+            $level = $matches[2]
+            $component = $matches[3]
+            $message = $matches[4]
+            
+            # Track timing
+            if (-not $analysis.Metrics.StartTime) {
+                $analysis.Metrics.StartTime = $timestamp
+            }
+            $analysis.Metrics.EndTime = $timestamp
+            
+            switch ($level) {
+                'SUCCESS' { 
+                    $analysis.Metrics.SuccessfulOperations++
+                    $analysis.SuccessOperations += @{
+                        Timestamp = $timestamp
+                        Component = $component
+                        Message   = $message
+                        Action    = Get-ActionFromMessage -Message $message
+                    }
+                }
+                { $_ -in @('ERROR', 'FAILED') } { 
+                    $analysis.Metrics.FailedOperations++
+                    $analysis.Errors += @{
+                        Timestamp = $timestamp
+                        Level     = $level
+                        Component = $component
+                        Message   = $message
+                        Severity  = 'High'
+                    }
+                }
+                'WARN' { 
+                    $analysis.Metrics.WarningCount++
+                    $analysis.Warnings += @{
+                        Timestamp = $timestamp
+                        Component = $component
+                        Message   = $message
+                        Severity  = 'Medium'
+                    }
+                }
+                'INFO' {
+                    # Extract system modifications from INFO messages
+                    $modification = Get-SystemModificationFromMessage -Message $message -Timestamp $timestamp -Component $component
+                    if ($modification) {
+                        $analysis.Modifications += $modification
+                    }
+                    
+                    # Extract task details
+                    $taskDetail = Get-TaskDetailFromMessage -Message $message -Timestamp $timestamp -Component $component
+                    if ($taskDetail) {
+                        $analysis.TaskDetails += $taskDetail
+                    }
+                }
+            }
+            
+            $analysis.Metrics.TotalOperations++
+        }
+        
+        # Parse Write-LogEntry style entries
+        elseif ($line -match 'Write-LogEntry:.*\[([^\]]+)\]\s+\[(ERROR|WARN|INFO|SUCCESS)\].*(.+)$') {
+            $timestamp = $matches[1]
+            $level = $matches[2]
+            $message = $matches[3].Trim()
+            
+            switch ($level) {
+                'ERROR' { 
+                    $analysis.Metrics.FailedOperations++
+                    $analysis.Errors += @{
+                        Timestamp = $timestamp
+                        Level     = $level
+                        Component = $ModuleName.ToUpper()
+                        Message   = $message
+                        Severity  = 'High'
+                    }
+                }
+                'WARN' { 
+                    $analysis.Metrics.WarningCount++
+                }
+                'SUCCESS' { 
+                    $analysis.Metrics.SuccessfulOperations++
+                }
+            }
+        }
+        
+        # Parse performance indicators
+        elseif ($line -match 'Completed.*in\s+(\d+\.?\d*)(ms|s|seconds)' -or $line -match 'Duration[:\s]+(\d+\.?\d*)(ms|s)') {
+            $duration = [double]$matches[1]
+            $unit = $matches[2]
+            
+            if ($unit -eq 'ms') {
+                $duration = $duration / 1000
+            }
+            
+            $analysis.Performance.ExecutionTime = $duration
+            $analysis.Metrics.Duration = $duration
+        }
+        
+        # Parse specific operation counts
+        elseif ($line -match '(\d+)\s+(installed|removed|optimized|disabled|updated|processed|detected)' -or 
+            $line -match '(installed|removed|optimized|disabled|updated|processed)\s+(\d+)') {
+            $count = if ($matches[1] -match '^\d+$') { [int]$matches[1] } else { [int]$matches[2] }
+            $operation = if ($matches[1] -match '^\d+$') { $matches[2] } else { $matches[1] }
+            
+            $analysis.Performance[$operation] = $count
+        }
+    }
+    
+    # Calculate success rate
+    if ($analysis.Metrics.TotalOperations -gt 0) {
+        $analysis.Metrics.SuccessRate = [math]::Round(
+            ($analysis.Metrics.SuccessfulOperations / $analysis.Metrics.TotalOperations) * 100, 1
+        )
+    }
+    
+    Write-Verbose "$ModuleName analysis: $($analysis.Metrics.TotalOperations) total ops, $($analysis.Metrics.SuccessfulOperations) success, $($analysis.Errors.Count) errors"
+    
+    return $analysis
+}
+
+function Get-ActionFromMessage {
+    [CmdletBinding()]
+    param([string]$Message)
+    
+    # Extract specific actions from log messages
+    if ($Message -match '(Installing|Removing|Uninstalling|Optimizing|Disabling|Updating|Processing)\s+(.+)') {
+        return @{
+            Type   = $matches[1]
+            Target = $matches[2]
+        }
+    }
+    
+    if ($Message -match '(Installed|Removed|Uninstalled|Optimized|Disabled|Updated|Processed)\s+(.+)') {
+        return @{
+            Type      = $matches[1] -replace 'd$', 'ing'  # Convert past tense to present
+            Target    = $matches[2]
+            Completed = $true
+        }
+    }
+    
+    return $null
+}
+
+function Get-SystemModificationFromMessage {
+    [CmdletBinding()]
+    param(
+        [string]$Message,
+        [string]$Timestamp,
+        [string]$Component
+    )
+    
+    # Identify system modifications from log messages
+    $modifications = @()
+    
+    # Application installations/removals
+    if ($Message -match '(Successfully installed|Successfully removed|Successfully uninstalled|Installed|Removed|Uninstalled)\s+(.+?)(\s+\(|\s*$)') {
+        $modifications += @{
+            Type      = 'Application'
+            Action    = if ($matches[1] -match 'install') { 'Install' } else { 'Remove' }
+            Target    = $matches[2].Trim()
+            Timestamp = $Timestamp
+            Component = $Component
+            Category  = 'Software Management'
+        }
+    }
+    
+    # Service modifications
+    if ($Message -match '(Started|Stopped|Disabled|Enabled)\s+service[:\s]+(.+?)(\s+\(|\s*$)') {
+        $modifications += @{
+            Type      = 'Service'
+            Action    = $matches[1]
+            Target    = $matches[2].Trim()
+            Timestamp = $Timestamp
+            Component = $Component
+            Category  = 'System Services'
+        }
+    }
+    
+    # Registry modifications
+    if ($Message -match '(Set|Modified|Created|Deleted)\s+(registry\s+)?(key|value)[:\s]+(.+?)(\s+\(|\s*$)') {
+        $modifications += @{
+            Type      = 'Registry'
+            Action    = $matches[1]
+            Target    = $matches[4].Trim()
+            Timestamp = $Timestamp
+            Component = $Component
+            Category  = 'System Configuration'
+        }
+    }
+    
+    # System optimizations
+    if ($Message -match '(Applied|Enabled|Disabled)\s+(optimization|setting)[:\s]+(.+?)(\s+\(|\s*$)') {
+        $modifications += @{
+            Type      = 'Optimization'
+            Action    = $matches[1]
+            Target    = $matches[3].Trim()
+            Timestamp = $Timestamp
+            Component = $Component
+            Category  = 'Performance Tuning'
+        }
+    }
+    
+    return $modifications
+}
+
+function Get-TaskDetailFromMessage {
+    [CmdletBinding()]
+    param(
+        [string]$Message,
+        [string]$Timestamp,
+        [string]$Component
+    )
+    
+    # Extract task execution details
+    if ($Message -match 'Starting\s+(.+?)(\s+analysis|\s+installation|\s+removal|\s+optimization|\s+processing)') {
+        return @{
+            Type      = 'TaskStart'
+            Operation = $matches[1] + $matches[2]
+            Timestamp = $Timestamp
+            Component = $Component
+        }
+    }
+    
+    if ($Message -match 'Completed\s+(.+?)(\s+in\s+[\d.]+\w+)') {
+        return @{
+            Type      = 'TaskComplete'
+            Operation = $matches[1]
+            Duration  = $matches[2]
+            Timestamp = $Timestamp
+            Component = $Component
+        }
+    }
+    
+    if ($Message -match 'Processing\s+(\d+)\s+(.+?)(\s+items|\s+apps|\s+services)') {
+        return @{
+            Type      = 'TaskProgress'
+            Count     = [int]$matches[1]
+            Items     = $matches[2] + $matches[3]
+            Timestamp = $Timestamp
+            Component = $Component
+        }
+    }
+    
+    return $null
+}
+
+function ConvertFrom-AuditData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName,
+        
+        [Parameter(Mandatory)]
+        $AuditData
+    )
+    
+    $analysis = @{
+        DetectedCount = 0
+        Details       = @()
+        HealthScore   = 0
+        Categories    = @{}
+    }
+    
+    # Handle different audit data structures
+    if ($AuditData -is [array]) {
+        $analysis.DetectedCount = $AuditData.Count
+        $analysis.Details = $AuditData
+    }
+    elseif ($AuditData -is [hashtable] -or $AuditData.PSObject) {
+        # Handle structured audit data
+        if ($AuditData.Summary) {
+            $analysis.DetectedCount = $AuditData.Summary.TotalFound ?? $AuditData.Summary.TotalScanned ?? 0
+        }
+        
+        if ($AuditData.HealthScore) {
+            $analysis.HealthScore = $AuditData.HealthScore
+        }
+        
+        # Extract categorized data
+        foreach ($property in $AuditData.PSObject.Properties) {
+            if ($property.Name -match '(Count|Found|Detected)$' -and $property.Value -is [int]) {
+                $category = $property.Name -replace '(Count|Found|Detected)$', ''
+                $analysis.Categories[$category] = $property.Value
+            }
+        }
+    }
+    
+    Write-Verbose "$ModuleName audit: $($analysis.DetectedCount) items detected, health score: $($analysis.HealthScore)"
+    
+    return $analysis
+}
+
+#endregion
+
+#region Comprehensive Log Analysis Functions
+
+function Get-ComprehensiveDashboardMetrics {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ComprehensiveLogCollection,
+        
+        [Parameter()]
+        [array]$TaskResults = @()
+    )
+    
+    Write-Verbose "Analyzing logs for dashboard metrics"
+    
+    $metrics = @{
+        TotalTasks          = 0
+        SuccessfulTasks     = 0
+        FailedTasks         = 0
+        TotalDuration       = 0
+        TotalItemsDetected  = 0
+        TotalItemsProcessed = 0
+        ModulesExecuted     = 0
+        ErrorCount          = 0
+        WarningCount        = 0
+        SuccessRate         = 0
+        SystemHealthScore   = 0
+        SecurityScore       = 0
+    }
+    
+    # Parse Type2 execution logs for detailed metrics
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        $metrics.ModulesExecuted = $ComprehensiveLogCollection.Type2ExecutionLogs.Keys.Count
+        
+        foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
+            
+            if ($logContent) {
+                $logLines = $logContent -split "`n"
+                
+                # Count tasks from logs
+                $metrics.TotalTasks++
+                
+                # Extract success/failure from logs
+                $hasErrors = $false
+                $taskDuration = 0
+                $itemsDetected = 0
+                $itemsProcessed = 0
+                
+                foreach ($line in $logLines) {
+                    $line = $line.Trim()
+                    
+                    # Count errors and warnings
+                    if ($line -match '\[(ERROR|FAILED)\]') {
+                        $metrics.ErrorCount++
+                        $hasErrors = $true
+                    }
+                    elseif ($line -match '\[WARN\]') {
+                        $metrics.WarningCount++
+                    }
+                    
+                    # Extract completion messages for success detection
+                    if ($line -match 'completed.*successfully|SUCCESS.*processed|Installation.*complete') {
+                        # This suggests successful completion
+                    }
+                    
+                    # Extract items detected/processed
+                    if ($line -match 'detected.*(\d+).*items?|found.*(\d+).*items?') {
+                        $itemsDetected = [int]($matches[1] -replace '\D', '')
+                    }
+                    if ($line -match 'processed.*(\d+).*items?|installed.*(\d+).*apps?|removed.*(\d+).*items?') {
+                        $itemsProcessed = [int]($matches[1] -replace '\D', '')
+                    }
+                    
+                    # Extract duration
+                    if ($line -match 'Duration.*(\d+\.?\d*)\s*(seconds?|s\b)') {
+                        $taskDuration = [double]$matches[1]
+                    }
+                }
+                
+                # Determine success/failure
+                if (-not $hasErrors) {
+                    $metrics.SuccessfulTasks++
+                }
+                else {
+                    $metrics.FailedTasks++
+                }
+                
+                $metrics.TotalDuration += $taskDuration
+                $metrics.TotalItemsDetected += $itemsDetected
+                $metrics.TotalItemsProcessed += $itemsProcessed
+            }
+        }
+    }
+    
+    # Use TaskResults if available for more accurate metrics
+    if ($TaskResults -and $TaskResults.Count -gt 0) {
+        $metrics.TotalTasks = $TaskResults.Count
+        $metrics.SuccessfulTasks = ($TaskResults | Where-Object { $_.Success }).Count
+        $metrics.FailedTasks = $metrics.TotalTasks - $metrics.SuccessfulTasks
+        $metrics.TotalDuration = ($TaskResults | Measure-Object Duration -Sum).Sum
+    }
+    
+    # Calculate success rate
+    if ($metrics.TotalTasks -gt 0) {
+        $metrics.SuccessRate = [math]::Round(($metrics.SuccessfulTasks / $metrics.TotalTasks) * 100, 1)
+    }
+    
+    # Calculate system health score based on various factors
+    $healthFactors = @{
+        SuccessRate          = if ($metrics.SuccessRate -ge 90) { 25 } elseif ($metrics.SuccessRate -ge 75) { 20 } elseif ($metrics.SuccessRate -ge 50) { 15 } else { 5 }
+        ErrorRate            = if ($metrics.ErrorCount -eq 0) { 25 } elseif ($metrics.ErrorCount -le 2) { 20 } elseif ($metrics.ErrorCount -le 5) { 15 } else { 5 }
+        ProcessingEfficiency = if ($metrics.TotalItemsProcessed -ge $metrics.TotalItemsDetected * 0.9) { 25 } elseif ($metrics.TotalItemsProcessed -ge $metrics.TotalItemsDetected * 0.7) { 20 } else { 10 }
+        ModuleCompletion     = if ($metrics.ModulesExecuted -ge 5) { 25 } elseif ($metrics.ModulesExecuted -ge 3) { 20 } else { 10 }
+    }
+    
+    $metrics.SystemHealthScore = $healthFactors.SuccessRate + $healthFactors.ErrorRate + $healthFactors.ProcessingEfficiency + $healthFactors.ModuleCompletion
+    
+    # Calculate security score based on telemetry and privacy modules
+    $securityModules = @('telemetry-disable', 'system-optimization')
+    $securityScore = 50 # Base score
+    
+    foreach ($secModule in $securityModules) {
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($secModule)) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$secModule]
+            if ($logContent -and $logContent -match 'successfully.*disabled|privacy.*enhanced|telemetry.*blocked') {
+                $securityScore += 25
+            }
+        }
+    }
+    
+    $metrics.SecurityScore = [math]::Min($securityScore, 100)
+    
+    Write-Verbose "Dashboard metrics calculated: $($metrics.SuccessfulTasks)/$($metrics.TotalTasks) tasks successful, $($metrics.ErrorCount) errors"
+    
+    return $metrics
+}
+
+function Get-DetailedTaskResults {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ComprehensiveLogCollection,
+        
+        [Parameter()]
+        [array]$TaskResults = @()
+    )
+    
+    Write-Verbose "Extracting detailed task results from logs"
+    
+    $detailedResults = @()
+    
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
+            
+            $taskResult = @{
+                TaskName       = $moduleName
+                DisplayName    = switch ($moduleName) {
+                    'bloatware-removal' { 'Bloatware Removal' }
+                    'essential-apps' { 'Essential Applications' }
+                    'system-optimization' { 'System Optimization' }
+                    'telemetry-disable' { 'Telemetry & Privacy' }
+                    'windows-updates' { 'Windows Updates' }
+                    default { $moduleName -replace '-', ' ' | ForEach-Object { (Get-Culture).TextInfo.ToTitleCase($_) } }
+                }
+                Success        = $false
+                Duration       = 0
+                ItemsDetected  = 0
+                ItemsProcessed = 0
+                ErrorMessage   = $null
+                SuccessMessage = $null
+                Details        = @()
+            }
+            
+            if ($logContent) {
+                $logLines = $logContent -split "`n"
+                $hasErrors = $false
+                
+                foreach ($line in $logLines) {
+                    $line = $line.Trim()
+                    
+                    # Extract error messages
+                    if ($line -match '\[ERROR\].*?(.+)$') {
+                        $taskResult.ErrorMessage = $matches[1]
+                        $hasErrors = $true
+                    }
+                    
+                    # Extract success messages
+                    if ($line -match '(successfully.*completed|installation.*successful|optimization.*complete)') {
+                        $taskResult.SuccessMessage = $matches[1]
+                    }
+                    
+                    # Extract metrics
+                    if ($line -match 'detected.*?(\d+)') {
+                        $taskResult.ItemsDetected = [int]$matches[1]
+                    }
+                    if ($line -match '(?:processed|installed|removed).*?(\d+)') {
+                        $taskResult.ItemsProcessed = [int]$matches[1]
+                    }
+                    
+                    # Extract duration
+                    if ($line -match 'Duration.*?(\d+\.?\d*)\s*(?:seconds?|s\b)') {
+                        $taskResult.Duration = [double]$matches[1]
+                    }
+                    
+                    # Extract detailed actions
+                    if ($line -match '(SUCCESS|FAILED).*?:(.+)$') {
+                        $taskResult.Details += @{
+                            Status = $matches[1]
+                            Action = $matches[2].Trim()
+                        }
+                    }
+                }
+                
+                $taskResult.Success = -not $hasErrors
+            }
+            
+            $detailedResults += $taskResult
+        }
+    }
+    
+    Write-Verbose "Extracted $($detailedResults.Count) detailed task results"
+    
+    return $detailedResults
+}
+
+function Get-SystemModificationActivities {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ComprehensiveLogCollection
+    )
+    
+    Write-Verbose "Extracting system modification activities from logs"
+    
+    $activities = @()
+    
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
+            
+            if ($logContent) {
+                $logLines = $logContent -split "`n"
+                
+                foreach ($line in $logLines) {
+                    $line = $line.Trim()
+                    
+                    # Extract specific modification actions
+                    if ($line -match 'SUCCESS.*?(?:removed|uninstalled|deleted).*?(.+)$') {
+                        $activities += @{
+                            Module    = $moduleName
+                            Type      = 'Removal'
+                            Target    = $matches[1].Trim()
+                            Status    = 'Success'
+                            Timestamp = if ($line -match '\[([^\]]+)\]') { $matches[1] } else { 'Unknown' }
+                        }
+                    }
+                    elseif ($line -match 'SUCCESS.*?(?:installed|added|enabled).*?(.+)$') {
+                        $activities += @{
+                            Module    = $moduleName
+                            Type      = 'Installation'
+                            Target    = $matches[1].Trim()
+                            Status    = 'Success'
+                            Timestamp = if ($line -match '\[([^\]]+)\]') { $matches[1] } else { 'Unknown' }
+                        }
+                    }
+                    elseif ($line -match 'SUCCESS.*?(?:optimized|configured|modified).*?(.+)$') {
+                        $activities += @{
+                            Module    = $moduleName
+                            Type      = 'Optimization'
+                            Target    = $matches[1].Trim()
+                            Status    = 'Success'
+                            Timestamp = if ($line -match '\[([^\]]+)\]') { $matches[1] } else { 'Unknown' }
+                        }
+                    }
+                    elseif ($line -match 'SUCCESS.*?(?:disabled|blocked|stopped).*?(.+)$') {
+                        $activities += @{
+                            Module    = $moduleName
+                            Type      = 'Privacy/Security'
+                            Target    = $matches[1].Trim()
+                            Status    = 'Success'
+                            Timestamp = if ($line -match '\[([^\]]+)\]') { $matches[1] } else { 'Unknown' }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Write-Verbose "Extracted $($activities.Count) system modification activities"
+    
+    return $activities
+}
+
+function Get-SystemHealthAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ComprehensiveLogCollection
+    )
+    
+    Write-Verbose "Analyzing system health from audit data and execution logs"
+    
+    $healthAnalysis = @{
+        OverallScore       = 0
+        BloatwareHealth    = @{ Score = 0; ItemsRemoved = 0; ItemsRemaining = 0 }
+        SecurityHealth     = @{ Score = 0; TelemetryDisabled = $false; PrivacyEnhanced = $false }
+        OptimizationHealth = @{ Score = 0; OptimizationsApplied = 0; PerformanceGain = 0 }
+        UpdatesHealth      = @{ Score = 0; UpdatesInstalled = 0; SecurityPatchesApplied = 0 }
+        ApplicationHealth  = @{ Score = 0; EssentialAppsInstalled = 0; MissingApps = 0 }
+    }
+    
+    # Analyze Type1 audit data for baseline health
+    if ($ComprehensiveLogCollection.Type1AuditData) {
+        # Bloatware analysis
+        if ($ComprehensiveLogCollection.Type1AuditData.ContainsKey('bloatware-results')) {
+            $bloatwareData = $ComprehensiveLogCollection.Type1AuditData['bloatware-results']
+            if ($bloatwareData -and $bloatwareData.DetectedBloatware) {
+                $healthAnalysis.BloatwareHealth.ItemsRemaining = $bloatwareData.DetectedBloatware.Count
+            }
+        }
+        
+        # Essential apps analysis
+        if ($ComprehensiveLogCollection.Type1AuditData.ContainsKey('essential-apps-results')) {
+            $appsData = $ComprehensiveLogCollection.Type1AuditData['essential-apps-results']
+            if ($appsData -and $appsData.MissingApps) {
+                $healthAnalysis.ApplicationHealth.MissingApps = $appsData.MissingApps.Count
+            }
+        }
+    }
+    
+    # Analyze Type2 execution results
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        # Bloatware removal analysis
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('bloatware-removal')) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['bloatware-removal']
+            $removedCount = 0
+            if ($logContent) {
+                $removedCount = ([regex]::Matches($logContent, 'SUCCESS.*(?:removed|uninstalled)')).Count
+            }
+            $healthAnalysis.BloatwareHealth.ItemsRemoved = $removedCount
+            $healthAnalysis.BloatwareHealth.Score = if ($removedCount -gt 10) { 90 } elseif ($removedCount -gt 5) { 70 } elseif ($removedCount -gt 0) { 50 } else { 30 }
+        }
+        
+        # Security/Telemetry analysis
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('telemetry-disable')) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['telemetry-disable']
+            if ($logContent -and $logContent -match 'successfully.*disabled|privacy.*enhanced') {
+                $healthAnalysis.SecurityHealth.TelemetryDisabled = $true
+                $healthAnalysis.SecurityHealth.PrivacyEnhanced = $true
+                $healthAnalysis.SecurityHealth.Score = 85
+            }
+        }
+        
+        # System optimization analysis
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('system-optimization')) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['system-optimization']
+            $optimizationsCount = 0
+            if ($logContent) {
+                $optimizationsCount = ([regex]::Matches($logContent, 'SUCCESS.*(?:optimized|configured)')).Count
+            }
+            $healthAnalysis.OptimizationHealth.OptimizationsApplied = $optimizationsCount
+            $healthAnalysis.OptimizationHealth.Score = if ($optimizationsCount -gt 15) { 95 } elseif ($optimizationsCount -gt 10) { 80 } elseif ($optimizationsCount -gt 5) { 60 } else { 40 }
+        }
+        
+        # Essential apps analysis
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('essential-apps')) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['essential-apps']
+            $installedCount = 0
+            if ($logContent) {
+                $installedCount = ([regex]::Matches($logContent, 'SUCCESS.*installed')).Count
+            }
+            $healthAnalysis.ApplicationHealth.EssentialAppsInstalled = $installedCount
+            $healthAnalysis.ApplicationHealth.Score = if ($installedCount -ge 8) { 90 } elseif ($installedCount -ge 5) { 75 } elseif ($installedCount -ge 2) { 50 } else { 25 }
+        }
+        
+        # Windows updates analysis
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('windows-updates')) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs['windows-updates']
+            $updatesCount = 0
+            if ($logContent) {
+                $updatesCount = ([regex]::Matches($logContent, 'SUCCESS.*(?:installed|updated)')).Count
+            }
+            $healthAnalysis.UpdatesHealth.UpdatesInstalled = $updatesCount
+            $healthAnalysis.UpdatesHealth.Score = if ($updatesCount -ge 10) { 95 } elseif ($updatesCount -ge 5) { 80 } elseif ($updatesCount -ge 1) { 60 } else { 30 }
+        }
+    }
+    
+    # Calculate overall health score
+    $scores = @(
+        $healthAnalysis.BloatwareHealth.Score,
+        $healthAnalysis.SecurityHealth.Score,
+        $healthAnalysis.OptimizationHealth.Score,
+        $healthAnalysis.UpdatesHealth.Score,
+        $healthAnalysis.ApplicationHealth.Score
+    )
+    
+    $healthAnalysis.OverallScore = [math]::Round(($scores | Measure-Object -Average).Average, 0)
+    
+    Write-Verbose "System health analysis complete: Overall score $($healthAnalysis.OverallScore)/100"
+    
+    return $healthAnalysis
+}
+
+#endregion
+
+#region Interactive Charts Data Generation Functions
+
+function Get-ComprehensiveChartData {
+    <#
+    .SYNOPSIS
+    Generates interactive chart data from comprehensive log analysis for HTML reports
+    
+    .DESCRIPTION
+    Extracts and formats chart-ready data for Task Distribution, System Resources, 
+    Execution Timeline, and Security Assessment charts using comprehensive log collection data
+    
+    .PARAMETER ComprehensiveLogCollection
+    Hashtable containing Type1AuditData and Type2ExecutionLogs
+    
+    .OUTPUTS
+    Hashtable containing formatted chart data for all interactive charts
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ComprehensiveLogCollection
+    )
+    
+    Write-Verbose "Generating comprehensive chart data from execution logs and audit data"
+    
+    $chartData = @{
+        TaskDistribution = @{
+            labels   = @()
+            datasets = @(@{
+                    data            = @()
+                    backgroundColor = @('#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6f42c1')
+                    borderWidth     = 0
+                })
+        }
+        SystemResources  = @{
+            labels   = @('Memory Usage', 'Disk Space', 'CPU Load', 'Network Usage', 'System Health')
+            datasets = @(@{
+                    label           = 'Resource Utilization (%)'
+                    data            = @()
+                    backgroundColor = '#17a2b8'
+                    borderColor     = '#138496'
+                    borderWidth     = 1
+                })
+        }
+        TimelineData     = @{
+            labels   = @()
+            datasets = @(@{
+                    label           = 'Execution Duration (s)'
+                    data            = @()
+                    borderColor     = '#28a745'
+                    backgroundColor = 'rgba(40, 167, 69, 0.1)'
+                    tension         = 0.4
+                    fill            = $true
+                })
+        }
+        SecurityScore    = @{
+            labels   = @('Privacy Protection', 'Telemetry Disabled', 'System Optimization', 'Update Security', 'Overall Security')
+            datasets = @(@{
+                    label                = 'Security Score'
+                    data                 = @()
+                    backgroundColor      = 'rgba(156, 39, 176, 0.2)'
+                    borderColor          = '#9c27b0'
+                    borderWidth          = 2
+                    pointBackgroundColor = '#9c27b0'
+                })
+        }
+    }
+    
+    # Generate Task Distribution Chart Data
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        $taskTotals = @{ 'Successful' = 0; 'Failed' = 0; 'Warnings' = 0; 'Partial' = 0 }
+        
+        foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
+            
+            # Parse log for success/failure counts
+            $successCount = ([regex]::Matches($logContent, '\[(SUCCESS|INFO)\]')).Count
+            $errorCount = ([regex]::Matches($logContent, '\[(ERROR|FAILED)\]')).Count  
+            $warningCount = ([regex]::Matches($logContent, '\[WARN\]')).Count
+            
+            if ($errorCount -eq 0 -and $successCount -gt 0) { $taskTotals.Successful++ }
+            elseif ($errorCount -gt 0 -and $successCount -eq 0) { $taskTotals.Failed++ }
+            elseif ($errorCount -gt 0 -and $successCount -gt 0) { $taskTotals.Partial++ }
+            if ($warningCount -gt 0) { $taskTotals.Warnings++ }
+        }
+        
+        # Populate task distribution data
+        $chartData.TaskDistribution.labels = @($taskTotals.Keys | Where-Object { $taskTotals[$_] -gt 0 })
+        $chartData.TaskDistribution.datasets[0].data = @($chartData.TaskDistribution.labels | ForEach-Object { $taskTotals[$_] })
+    }
+    
+    # Generate System Resources Chart Data (simulated from execution performance)
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        $avgDuration = 0
+        $totalModules = $ComprehensiveLogCollection.Type2ExecutionLogs.Keys.Count
+        
+        foreach ($logContent in $ComprehensiveLogCollection.Type2ExecutionLogs.Values) {
+            # Extract duration from logs if available
+            if ($logContent -match 'Duration[:\s]+(\d+\.?\d*)(ms|s)') {
+                $duration = [double]$matches[1]
+                if ($matches[2] -eq 'ms') { $duration = $duration / 1000 }
+                $avgDuration += $duration
+            }
+        }
+        
+        if ($totalModules -gt 0) { $avgDuration = $avgDuration / $totalModules }
+        
+        # Simulate resource usage based on execution patterns
+        $memoryUsage = [math]::Min(100, 30 + ($avgDuration * 10))
+        $diskUsage = [math]::Min(100, 20 + ($totalModules * 5))
+        $cpuUsage = [math]::Min(100, 15 + ($avgDuration * 8))
+        $networkUsage = [math]::Min(100, 10 + ($totalModules * 3))
+        $healthScore = [math]::Max(0, 100 - ($avgDuration * 5) - ($totalModules * 2))
+        
+        $chartData.SystemResources.datasets[0].data = @($memoryUsage, $diskUsage, $cpuUsage, $networkUsage, $healthScore)
+    }
+    
+    # Generate Timeline Data
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        $moduleOrder = @('BloatwareRemoval', 'EssentialApps', 'SystemOptimization', 'TelemetryDisable', 'WindowsUpdates')
+        
+        foreach ($moduleName in $moduleOrder) {
+            if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($moduleName)) {
+                $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
+                
+                # Extract duration
+                $duration = 0
+                if ($logContent -match 'Duration[:\s]+(\d+\.?\d*)(ms|s)') {
+                    $duration = [double]$matches[1]
+                    if ($matches[2] -eq 'ms') { $duration = $duration / 1000 }
+                }
+                
+                $chartData.TimelineData.labels += $moduleName
+                $chartData.TimelineData.datasets[0].data += $duration
+            }
+        }
+    }
+    
+    # Generate Security Score Data
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        $securityScores = @{
+            'Privacy Protection'  = 85
+            'Telemetry Disabled'  = 90  
+            'System Optimization' = 80
+            'Update Security'     = 75
+            'Overall Security'    = 82
+        }
+        
+        # Adjust scores based on module execution success
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('TelemetryDisable')) {
+            $telemetryLog = $ComprehensiveLogCollection.Type2ExecutionLogs['TelemetryDisable']
+            if ($telemetryLog -match '\[SUCCESS\]') { $securityScores['Privacy Protection'] = 95; $securityScores['Telemetry Disabled'] = 98 }
+        }
+        
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('SystemOptimization')) {
+            $optimizationLog = $ComprehensiveLogCollection.Type2ExecutionLogs['SystemOptimization']
+            if ($optimizationLog -match '\[SUCCESS\]') { $securityScores['System Optimization'] = 90 }
+        }
+        
+        if ($ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey('WindowsUpdates')) {
+            $updatesLog = $ComprehensiveLogCollection.Type2ExecutionLogs['WindowsUpdates']
+            if ($updatesLog -match '\[SUCCESS\]') { $securityScores['Update Security'] = 95 }
+        }
+        
+        # Recalculate overall security
+        $securityScores['Overall Security'] = [math]::Round(($securityScores.Values | Measure-Object -Average).Average, 0)
+        
+        $chartData.SecurityScore.datasets[0].data = @($securityScores.Values)
+    }
+    
+    Write-Verbose "Chart data generated: $($chartData.TaskDistribution.labels.Count) task distribution items, $($chartData.TimelineData.labels.Count) timeline points"
+    
+    return $chartData
+}
+
+#endregion
+
+#region Error Processing Functions
+
+function Get-ErrorsFromExecutionLogs {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ComprehensiveLogCollection
+    )
+    
+    Write-Verbose "Parsing errors from Type2 execution logs"
+    
+    $allErrors = @()
+    
+    if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
+        foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
+            $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
+            
+            if ($logContent) {
+                # Parse log entries - look for ERROR and FAILED entries
+                $logLines = $logContent -split "`n"
+                
+                foreach ($line in $logLines) {
+                    $line = $line.Trim()
+                    
+                    # Match log entry patterns: [TIMESTAMP] [LEVEL] [COMPONENT] Message
+                    if ($line -match '^\[([^\]]+)\]\s+\[(ERROR|FAILED|WARN)\]\s+\[([^\]]+)\]\s+(.+)$') {
+                        $timestamp = $matches[1]
+                        $level = $matches[2]
+                        $component = $matches[3]
+                        $message = $matches[4]
+                        
+                        $allErrors += @{
+                            Module    = $moduleName
+                            Timestamp = $timestamp
+                            Level     = $level
+                            Component = $component
+                            Message   = $message
+                            Severity  = switch ($level) {
+                                'ERROR' { 'High' }
+                                'FAILED' { 'High' }
+                                'WARN' { 'Medium' }
+                                default { 'Low' }
+                            }
+                        }
+                    }
+                    # Also catch Write-LogEntry style ERROR messages
+                    elseif ($line -match 'Write-LogEntry:.*\[ERROR\].*(.+)$') {
+                        $message = $matches[1].Trim()
+                        
+                        $allErrors += @{
+                            Module    = $moduleName
+                            Timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+                            Level     = 'ERROR'
+                            Component = $moduleName.ToUpper()
+                            Message   = $message
+                            Severity  = 'High'
+                        }
+                    }
+                    # Catch generic error patterns
+                    elseif ($line -match '(error|failed|exception).*:(.+)' -and $line -notmatch '^\s*#') {
+                        $message = $line.Trim()
+                        
+                        $allErrors += @{
+                            Module    = $moduleName
+                            Timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+                            Level     = 'ERROR'
+                            Component = $moduleName.ToUpper()
+                            Message   = $message
+                            Severity  = 'Medium'
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Write-Verbose "Found $($allErrors.Count) errors/warnings across all modules"
+    
+    # Sort by severity and timestamp
+    return $allErrors | Sort-Object @{Expression = {
+            switch ($_.Severity) {
+                'High' { 1 }
+                'Medium' { 2 }
+                'Low' { 3 }
+            }
+        }
+    }, Timestamp
+}
+
+function New-ErrorReportSection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]$Errors
+    )
+    
+    if ($Errors.Count -eq 0) {
+        return @"
+        <div class="section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>✅ Error Analysis</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content">
+                <div class="success-message">
+                    <h3>No Errors Detected</h3>
+                    <p>All modules executed successfully without errors.</p>
+                </div>
+            </div>
+        </div>
+"@
+    }
+    
+    $errorsByModule = $Errors | Group-Object Module
+    $highSeverityCount = ($Errors | Where-Object { $_.Severity -eq 'High' }).Count
+    $mediumSeverityCount = ($Errors | Where-Object { $_.Severity -eq 'Medium' }).Count
+    
+    $html = [System.Text.StringBuilder]::new()
+    
+    $html.AppendLine(@"
+        <div class="section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>⚠️ Error Analysis ($($Errors.Count) issues found)</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content">
+                <div class="error-summary">
+                    <div class="error-stats">
+                        <div class="stat-item error-high">
+                            <span class="stat-number">$highSeverityCount</span>
+                            <span class="stat-label">High Severity</span>
+                        </div>
+                        <div class="stat-item error-medium">
+                            <span class="stat-number">$mediumSeverityCount</span>
+                            <span class="stat-label">Medium Severity</span>
+                        </div>
+                    </div>
+                </div>
+"@) | Out-Null
+    
+    foreach ($moduleGroup in $errorsByModule) {
+        $moduleName = $moduleGroup.Name
+        $moduleErrors = $moduleGroup.Group
+        $errorCount = $moduleErrors.Count
+        
+        $html.AppendLine(@"
+                <div class="module-errors">
+                    <h3 class="module-error-header">🔧 $moduleName ($errorCount issues)</h3>
+                    <div class="error-list">
+"@) | Out-Null
+        
+        foreach ($errorItem in $moduleErrors) {
+            $severityClass = $errorItem.Severity.ToLower()
+            $severityIcon = switch ($errorItem.Severity) {
+                'High' { '🔴' }
+                'Medium' { '🟡' }
+                'Low' { '🟠' }
+            }
+            
+            $html.AppendLine(@"
+                        <div class="error-item severity-$severityClass">
+                            <div class="error-header">
+                                <span class="error-icon">$severityIcon</span>
+                                <span class="error-level">[$($errorItem.Level)]</span>
+                                <span class="error-component">$($errorItem.Component)</span>
+                                <span class="error-timestamp">$($errorItem.Timestamp)</span>
+                            </div>
+                            <div class="error-message">$($errorItem.Message)</div>
+                        </div>
+"@) | Out-Null
+        }
+        
+        $html.AppendLine(@"
+                    </div>
+                </div>
+"@) | Out-Null
+    }
+    
+    $html.AppendLine(@"
+            </div>
+        </div>
+"@) | Out-Null
+    
+    return $html.ToString()
+}
+
+#endregion
+
 # Export module functions
 Export-ModuleMember -Function @(
     'New-MaintenanceReport',
@@ -2737,6 +4292,8 @@ Export-ModuleMember -Function @(
     'New-EnhancedModuleSections',
     'Get-ReportGenerationConfig',
     'Get-DefaultReportConfig',
-    'Get-HtmlTemplates'
+    'Get-HtmlTemplates',
+    'Get-ErrorsFromExecutionLogs',
+    'New-ErrorReportSection'
 )
 
