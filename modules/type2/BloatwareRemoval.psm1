@@ -100,6 +100,9 @@ function Invoke-BloatwareRemoval {
     }
     
     try {
+        # Track execution duration for v3.0 compliance
+        $executionStartTime = Get-Date
+        
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
         Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection'
         $detectionResults = Get-BloatwareAnalysis -Config $Config
@@ -131,13 +134,12 @@ function Invoke-BloatwareRemoval {
         if (-not $diffList -or $diffList.Count -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items to remove after config comparison' -LogPath $executionLogPath
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            $executionTime = (Get-Date) - $executionStartTime
             return @{ 
-                Success          = $true
-                ItemsDetected    = $detectionResults.Count
-                ItemsProcessed   = 0
-                DiffPath         = $diffPath
-                ExecutionLogPath = $executionLogPath
-                Message          = 'No bloatware items matched config for removal'
+                Success        = $true
+                ItemsDetected  = $detectionResults.Count
+                ItemsProcessed = 0
+                Duration       = $executionTime.TotalMilliseconds
             }
         }
         
@@ -154,12 +156,12 @@ function Invoke-BloatwareRemoval {
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         
+        $executionTime = (Get-Date) - $executionStartTime
         return @{
-            Success          = $true
-            ItemsDetected    = $detectionResults.Count
-            ItemsProcessed   = $processedCount
-            DiffPath         = $diffPath
-            ExecutionLogPath = $executionLogPath
+            Success        = $true
+            ItemsDetected  = $detectionResults.Count
+            ItemsProcessed = $processedCount
+            Duration       = $executionTime.TotalMilliseconds
         }
         
     }
@@ -169,12 +171,12 @@ function Invoke-BloatwareRemoval {
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
+        $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         return @{
             Success        = $false
-            Error          = $errorMsg
-            ErrorType      = $_.Exception.GetType().Name
             ItemsDetected  = if ($detectionResults) { $detectionResults.Count } else { 0 }
             ItemsProcessed = 0
+            Duration       = $executionTime.TotalMilliseconds
         }
     }
 }

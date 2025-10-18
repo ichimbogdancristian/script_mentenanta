@@ -102,7 +102,16 @@ function Find-InstalledBloatware {
         # Get bloatware patterns from configuration
         $bloatwareList = $null
         try {
-            $bloatwareList = Get-BloatwareList -Category $Categories
+            # Handle multiple categories by combining results
+            if ($Categories.Count -eq 1 -and $Categories[0] -eq 'all') {
+                $bloatwareList = Get-BloatwareList -Category 'all'
+            }
+            else {
+                $bloatwareList = @()
+                foreach ($category in $Categories) {
+                    $bloatwareList += Get-BloatwareList -Category $category
+                }
+            }
         }
         catch {
             Write-Warning "Failed to get bloatware configuration: $_"

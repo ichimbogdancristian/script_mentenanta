@@ -78,13 +78,17 @@ function Invoke-SystemOptimization {
     catch { }
     
     try {
+        # Track execution duration for v3.0 compliance
+        $executionStartTime = Get-Date
+        
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
         $analysisResults = Get-SystemOptimizationAnalysis -Config $Config
         
         if (-not $analysisResults -or $analysisResults.OptimizationCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'No optimization opportunities detected'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
-            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'System already optimized' }
+            $executionTime = (Get-Date) - $executionStartTime
+            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; Duration = $executionTime.TotalMilliseconds }
         }
         
         # STEP 3: Setup execution logging directory
@@ -109,13 +113,32 @@ function Invoke-SystemOptimization {
                     Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing optimization: $($opportunity.Type)" -LogPath $executionLogPath
                     try {
                         switch ($opportunity.Type) {
-                            'TempCleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
-                            'StartupOptimization' { $result = Optimize-SystemPerformance -OptimizeStartup }
-                            'UIOptimization' { $result = Optimize-SystemPerformance -OptimizeUI }
-                            'RegistryOptimization' { $result = Optimize-SystemPerformance -OptimizeRegistry }
-                            'DiskOptimization' { $result = Optimize-SystemPerformance -OptimizeDisk }
-                            'NetworkOptimization' { $result = Optimize-SystemPerformance -OptimizeNetwork }
-                            default { Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization type: $($opportunity.Type)" -LogPath $executionLogPath }
+                            # Startup and Services
+                            'DisableStartupApp' { $result = Optimize-SystemPerformance -OptimizeStartup }
+                            'OptimizeService' { $result = Optimize-SystemPerformance -OptimizeStartup }
+                            
+                            # UI and Visual Effects
+                            'OptimizeVisualEffects' { $result = Optimize-SystemPerformance -OptimizeUI }
+                            'OptimizeAnimations' { $result = Optimize-SystemPerformance -OptimizeUI }
+                            'OptimizeTaskbar' { $result = Optimize-SystemPerformance -OptimizeUI }
+                            
+                            # Registry and Performance
+                            'CleanUserAssist' { $result = Optimize-SystemPerformance -OptimizeRegistry }
+                            'EnablePrefetch' { $result = Optimize-SystemPerformance -OptimizeRegistry }
+                            
+                            # Disk Operations
+                            'DiskCleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
+                            'CleanTempFiles' { $result = Optimize-SystemPerformance -CleanupTemp }
+                            'DefragmentDisk' { $result = Optimize-SystemPerformance -OptimizeDisk }
+                            
+                            # Network
+                            'EnableRSS' { $result = Optimize-SystemPerformance -OptimizeNetwork }
+                            'OptimizeDNS' { $result = Optimize-SystemPerformance -OptimizeNetwork }
+                            
+                            default { 
+                                Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization type: $($opportunity.Type)" -LogPath $executionLogPath
+                                $result = $false 
+                            }
                         }
                         if ($result) { 
                             $processedCount++
@@ -135,10 +158,12 @@ function Invoke-SystemOptimization {
         
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed: $processedCount optimizations applied" -LogPath $executionLogPath
         
+        $executionTime = (Get-Date) - $executionStartTime
         $returnData = @{
-            Success = $true; ItemsDetected = $optimizationCount; ItemsProcessed = $processedCount
-            DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults
-            ExecutionLogPath = $executionLogPath
+            Success        = $true
+            ItemsDetected  = $optimizationCount
+            ItemsProcessed = $processedCount
+            Duration       = $executionTime.TotalMilliseconds
         }
         
         Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed. Processed: $processedCount/$optimizationCount"
@@ -151,9 +176,12 @@ function Invoke-SystemOptimization {
         Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message $errorMsg -Data @{ Error = $_.Exception }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
+        $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         return @{
-            Success = $false; Error = $errorMsg; ErrorType = $_.Exception.GetType().Name
-            ItemsDetected = if ($analysisResults) { $analysisResults.OptimizationCount } else { 0 }; ItemsProcessed = 0; DryRun = $DryRun.IsPresent
+            Success        = $false
+            ItemsDetected  = if ($analysisResults) { $analysisResults.OptimizationCount } else { 0 }
+            ItemsProcessed = 0
+            Duration       = $executionTime.TotalMilliseconds
         }
     }
 }

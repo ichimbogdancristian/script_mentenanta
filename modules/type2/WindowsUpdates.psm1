@@ -62,13 +62,17 @@ function Invoke-WindowsUpdates {
     $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES' } catch { }
     
     try {
+        # Track execution duration for v3.0 compliance
+        $executionStartTime = Get-Date
+        
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
         $analysisResults = Get-WindowsUpdatesAnalysis -Config $Config
         
         if (-not $analysisResults -or $analysisResults.PendingUpdatesCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No pending Windows updates detected'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
-            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'System is up to date' }
+            $executionTime = (Get-Date) - $executionStartTime
+            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; Duration = $executionTime.TotalMilliseconds }
         }
         
         # STEP 3: Setup execution logging directory
@@ -91,10 +95,12 @@ function Invoke-WindowsUpdates {
         
         Write-LogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message "Windows updates completed. Processed: $processedCount/$updatesCount" -LogPath $executionLogPath
         
+        $executionTime = (Get-Date) - $executionStartTime
         $returnData = @{ 
-            Success = $true; ItemsDetected = $updatesCount; ItemsProcessed = $processedCount; 
-            DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults
-            ExecutionLogPath = $executionLogPath
+            Success        = $true
+            ItemsDetected  = $updatesCount
+            ItemsProcessed = $processedCount
+            Duration       = $executionTime.TotalMilliseconds
         }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         return $returnData
@@ -104,7 +110,13 @@ function Invoke-WindowsUpdates {
         $errorMsg = "Failed to execute Windows updates: $($_.Exception.Message)"
         Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message $errorMsg -Data @{ Error = $_.Exception }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
-        return @{ Success = $false; Error = $errorMsg; ErrorType = $_.Exception.GetType().Name; ItemsDetected = if ($analysisResults) { $analysisResults.PendingUpdatesCount } else { 0 }; ItemsProcessed = 0; DryRun = $DryRun.IsPresent }
+        $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
+        return @{ 
+            Success        = $false
+            ItemsDetected  = if ($analysisResults) { $analysisResults.PendingUpdatesCount } else { 0 }
+            ItemsProcessed = 0
+            Duration       = $executionTime.TotalMilliseconds
+        }
     }
 }
 

@@ -56,13 +56,17 @@ function Invoke-TelemetryDisable {
     $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE' } catch { }
     
     try {
+        # Track execution duration for v3.0 compliance
+        $executionStartTime = Get-Date
+        
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry analysis'
         $analysisResults = Get-TelemetryAnalysis -Config $Config
         
         if (-not $analysisResults -or $analysisResults.ActiveTelemetryCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'No active telemetry detected'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
-            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'Telemetry already disabled' }
+            $executionTime = (Get-Date) - $executionStartTime
+            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; Duration = $executionTime.TotalMilliseconds }
         }
         
         # STEP 3: Setup execution logging directory
@@ -111,10 +115,12 @@ function Invoke-TelemetryDisable {
         
         Write-LogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath
         
+        $executionTime = (Get-Date) - $executionStartTime
         $returnData = @{ 
-            Success = $true; ItemsDetected = $telemetryCount; ItemsProcessed = $processedCount; 
-            DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults
-            ExecutionLogPath = $executionLogPath
+            Success        = $true
+            ItemsDetected  = $telemetryCount
+            ItemsProcessed = $processedCount
+            Duration       = $executionTime.TotalMilliseconds
         }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         return $returnData
@@ -124,7 +130,13 @@ function Invoke-TelemetryDisable {
         $errorMsg = "Failed to execute telemetry disable: $($_.Exception.Message)"
         Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message $errorMsg -Data @{ Error = $_.Exception }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
-        return @{ Success = $false; Error = $errorMsg; ErrorType = $_.Exception.GetType().Name; ItemsDetected = if ($analysisResults) { $analysisResults.ActiveTelemetryCount } else { 0 }; ItemsProcessed = 0; DryRun = $DryRun.IsPresent }
+        $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
+        return @{ 
+            Success        = $false
+            ItemsDetected  = if ($analysisResults) { $analysisResults.ActiveTelemetryCount } else { 0 }
+            ItemsProcessed = 0
+            Duration       = $executionTime.TotalMilliseconds
+        }
     }
 }
 

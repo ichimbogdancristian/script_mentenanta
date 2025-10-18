@@ -494,36 +494,71 @@ function Get-BuiltInAppsAudit {
     }
 
     try {
-        foreach ($appPattern in $telemetryApps.Keys) {
-            $apps = Get-AppxPackage -AllUsers -Name $appPattern -ErrorAction SilentlyContinue
-            if ($apps) {
-                foreach ($app in $apps) {
+        # Try to import Appx module and check if Get-AppxPackage is available
+        try {
+            Import-Module Appx -ErrorAction Stop
+            $appxAvailable = $true
+        }
+        catch {
+            Write-Warning "AppX module not available or not supported on this platform: $($_.Exception.Message)"
+            $appxAvailable = $false
+        }
+        
+        if ($appxAvailable) {
+            foreach ($appPattern in $telemetryApps.Keys) {
+                try {
+                    $apps = Get-AppxPackage -AllUsers -Name $appPattern -ErrorAction SilentlyContinue
+                    if ($apps) {
+                        foreach ($app in $apps) {
+                            $issues += [PSCustomObject]@{
+                                Category        = 'Apps'
+                                Type            = 'TelemetryApp'
+                                Description     = "Telemetry-enabled app installed: $($app.Name)"
+                                Impact          = 'Medium'
+                                AppName         = $app.Name
+                                Version         = $app.Version
+                                InstallLocation = $app.InstallLocation
+                                Recommendation  = $telemetryApps[$appPattern]
+                            }
+                        }
+                    }
+                }
+                catch {
+                    Write-Verbose "Could not check AppX package $appPattern`: $($_.Exception.Message)"
+                }
+            }
+
+            # Check Cortana specifically
+            try {
+                $cortana = Get-AppxPackage -AllUsers -Name 'Microsoft.549981C3F5F10' -ErrorAction SilentlyContinue
+                if ($cortana) {
                     $issues += [PSCustomObject]@{
                         Category        = 'Apps'
-                        Type            = 'TelemetryApp'
-                        Description     = "Telemetry-enabled app installed: $($app.Name)"
-                        Impact          = 'Medium'
-                        AppName         = $app.Name
-                        Version         = $app.Version
-                        InstallLocation = $app.InstallLocation
-                        Recommendation  = $telemetryApps[$appPattern]
+                        Type            = 'CortanaApp'
+                        Description     = 'Cortana voice assistant is installed'
+                        Impact          = 'High'
+                        AppName         = $cortana.Name
+                        Version         = $cortana.Version
+                        InstallLocation = $cortana.InstallLocation
+                        Recommendation  = 'Remove for enhanced privacy (collects voice data)'
                     }
                 }
             }
+            catch {
+                Write-Verbose "Could not check Cortana AppX package: $($_.Exception.Message)"
+            }
         }
-
-        # Check Cortana specifically
-        $cortana = Get-AppxPackage -AllUsers -Name 'Microsoft.549981C3F5F10' -ErrorAction SilentlyContinue
-        if ($cortana) {
+        else {
+            # Add a notification about AppX not being available
             $issues += [PSCustomObject]@{
                 Category        = 'Apps'
-                Type            = 'CortanaApp'
-                Description     = 'Cortana voice assistant is installed'
-                Impact          = 'High'
-                AppName         = $cortana.Name
-                Version         = $cortana.Version
-                InstallLocation = $cortana.InstallLocation
-                Recommendation  = 'Remove for enhanced privacy (collects voice data)'
+                Type            = 'PlatformLimitation'
+                Description     = 'AppX package auditing not available on this platform'
+                Impact          = 'Low'
+                AppName         = 'N/A'
+                Version         = 'N/A'
+                InstallLocation = 'N/A'
+                Recommendation  = 'Manual review of installed apps recommended'
             }
         }
 

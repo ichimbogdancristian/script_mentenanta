@@ -430,14 +430,21 @@ function New-HtmlReportContent {
 
     # Load configuration for styling and layout
     $config = Get-ReportGenerationConfig
-    Write-Verbose "Generating HTML report content with configuration theme: $($config.theme.name ?? 'Default')"
+    if (-not $config) {
+        throw "Report generation configuration is null"
+    }
+    
+    Write-Verbose "Generating HTML report content with configuration theme: $($config.theme.name -or 'Default')"
 
-    $html = [StringBuilder]::new()
+    $html = [System.Text.StringBuilder]::new()
+    if (-not $html) {
+        throw "Failed to initialize StringBuilder for HTML generation"
+    }
 
     # Use configuration values for branding and styling
-    $title = $config.branding.title
-    $subtitle = $config.branding.subtitle
-    $colors = $config.theme.colors
+    $title = if ($config.branding -and $config.branding.title) { $config.branding.title } else { "Windows Maintenance Report" }
+    $subtitle = if ($config.branding -and $config.branding.subtitle) { $config.branding.subtitle } else { "System Analysis Dashboard" }
+    $colors = if ($config.theme -and $config.theme.colors) { $config.theme.colors } else { @{ primary = "#0078d4"; success = "#107c10"; warning = "#ffb900"; error = "#d13438" } }
 
     # Enhanced HTML header with modern dashboard styling and JavaScript
     $html.AppendLine(@"
@@ -455,9 +462,9 @@ function New-HtmlReportContent {
     
     <style>
         :root {
-            --primary-color: $($colors.primary);
-            --primary-dark: $($colors.primaryDark ?? '#106ebe');
-            --success-color: $($colors.success);
+            --primary-color: $($colors.primary -or '#0078d4');
+            --primary-dark: $(if ($colors.primaryDark) { $colors.primaryDark } else { '#106ebe' });
+            --success-color: $($colors.success -or '#107c10');
             --warning-color: #ffb900;
             --error-color: #d13438;
             --critical-color: #a80000;

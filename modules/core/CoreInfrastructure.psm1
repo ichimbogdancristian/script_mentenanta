@@ -830,11 +830,11 @@ function Initialize-TempFilesStructure {
         
         if (-not $ValidateOnly) {
             Write-LogEntry -Level 'INFO' -Component 'CORE-INFRASTRUCTURE' -Message 'Temp files structure initialization completed' -Data @{
-                TempRoot = $tempRoot
-                TotalDirectories = $requiredDirectories.Count
+                TempRoot             = $tempRoot
+                TotalDirectories     = $requiredDirectories.Count
                 ValidatedDirectories = $validatedPaths.Count
-                CreatedDirectories = $createdPaths.Count
-                AllPathsValid = $allPathsValid
+                CreatedDirectories   = $createdPaths.Count
+                AllPathsValid        = $allPathsValid
             }
         }
         
@@ -1097,3 +1097,14 @@ Export-ModuleMember -Function @(
     'Get-SessionData',
     'Save-OrganizedFile'
 )
+
+# Auto-initialize global paths when module is imported
+try {
+    if (-not $script:MaintenanceProjectPaths.Initialized) {
+        Initialize-GlobalPathDiscovery -ErrorAction SilentlyContinue
+    }
+}
+catch {
+    # Path discovery will be attempted again when needed
+    Write-Verbose "Global path discovery will be attempted when required: $($_.Exception.Message)"
+}

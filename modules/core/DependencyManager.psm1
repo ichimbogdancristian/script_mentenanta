@@ -23,7 +23,8 @@ try {
     if (Test-Path $loggingManagerPath) {
         Import-Module $loggingManagerPath -Force -ErrorAction SilentlyContinue
     }
-} catch {
+}
+catch {
     # LoggingManager not available, continue without structured logging
 }
 
@@ -75,7 +76,8 @@ function Install-AllDependency {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'AllDependencyInstallation' -Component 'DEPENDENCY-MANAGER'
         Write-LogEntry -Level 'INFO' -Component 'DEPENDENCY-MANAGER' -Message 'Starting comprehensive dependency installation' -Data @{ Force = $Force.IsPresent; SkipChocolatey = $SkipChocolatey.IsPresent; SkipPSWindowsUpdate = $SkipPSWindowsUpdate.IsPresent }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
 
@@ -212,14 +214,15 @@ function Install-AllDependency {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
                 TotalDependencies = $results.TotalDependencies
-                Successful = $results.Successful
-                Failed = $results.Failed
-                Skipped = $results.Skipped
-                Duration = $duration
-                Dependencies = $results.Dependencies.Keys -join ', '
+                Successful        = $results.Successful
+                Failed            = $results.Failed
+                Skipped           = $results.Skipped
+                Duration          = $duration
+                Dependencies      = $results.Dependencies.Keys -join ', '
             }
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'DEPENDENCY-MANAGER' -Message 'Dependency installation operation completed' -Data $results
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
 
@@ -241,7 +244,8 @@ function Install-AllDependency {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
             Write-LogEntry -Level 'ERROR' -Component 'DEPENDENCY-MANAGER' -Message 'Dependency installation operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -403,8 +407,8 @@ function Test-PowerShell7Installation {
                         # Verify it's actually PowerShell 7+
                         if ([version]$version -ge [version]"7.0") {
                             $source = if ($path -like "*WindowsApps*") { "Microsoft Store" } 
-                                     elseif ($path -like "*Program Files*") { "MSI Installer" }
-                                     else { "Custom Installation" }
+                            elseif ($path -like "*Program Files*") { "MSI Installer" }
+                            else { "Custom Installation" }
                                      
                             return @{
                                 Status  = 'Installed'
@@ -433,7 +437,7 @@ function Test-PowerShell7Installation {
             
             foreach ($regPath in $registryPaths) {
                 $programs = Get-ItemProperty $regPath -ErrorAction SilentlyContinue |
-                    Where-Object { $_.DisplayName -like "*PowerShell*7*" -or $_.DisplayName -like "*PowerShell Core*" }
+                Where-Object { $_.DisplayName -like "*PowerShell*7*" -or $_.DisplayName -like "*PowerShell Core*" }
                 
                 if ($programs) {
                     Write-Verbose "Found PowerShell 7 in registry: $($programs[0].DisplayName)"
@@ -1022,6 +1026,8 @@ Export-ModuleMember -Function @(
     'Install-AllDependencies',
     'Get-DependencyStatus',
     'Get-PowerShell7Path',
-    'Assert-AdminPrivileges'
+    'Assert-AdminPrivileges',
+    'Assert-AdminPrivilege',
+    'Test-AdminPrivilege'
 )
 

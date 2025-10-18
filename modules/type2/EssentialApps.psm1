@@ -111,6 +111,9 @@ function Invoke-EssentialApps {
     }
     
     try {
+        # Track execution duration for v3.0 compliance
+        $executionStartTime = Get-Date
+        
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis'
         $detectionResults = Get-EssentialAppsAnalysis -Config $Config
@@ -137,13 +140,12 @@ function Invoke-EssentialApps {
         if (-not $diffList -or $diffList.Count -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'No missing essential apps found' -LogPath $executionLogPath
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            $executionTime = (Get-Date) - $executionStartTime
             return @{ 
-                Success          = $true
-                ItemsDetected    = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
-                ItemsProcessed   = 0
-                DiffPath         = $diffPath
-                ExecutionLogPath = $executionLogPath
-                Message          = 'All essential apps are already installed'
+                Success        = $true
+                ItemsDetected  = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
+                ItemsProcessed = 0
+                Duration       = $executionTime.TotalMilliseconds
             }
         }
         
@@ -158,7 +160,10 @@ function Invoke-EssentialApps {
             foreach ($app in $diffList) {
                 try {
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath
-                    $result = Install-SingleApplication -AppData $app -ExecutionLogPath $executionLogPath
+                    # Convert PSCustomObject to hashtable for Install-SingleApplication
+                    $appHashtable = @{}
+                    $app.PSObject.Properties | ForEach-Object { $appHashtable[$_.Name] = $_.Value }
+                    $result = Install-SingleApplication -AppData $appHashtable -ExecutionLogPath $executionLogPath
                     if ($result.Success) {
                         $installResults.InstalledApps += $app
                         $processedCount++
@@ -181,12 +186,12 @@ function Invoke-EssentialApps {
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         
+        $executionTime = (Get-Date) - $executionStartTime
         return @{
-            Success          = $true
-            ItemsDetected    = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
-            ItemsProcessed   = $processedCount
-            DiffPath         = $diffPath
-            ExecutionLogPath = $executionLogPath
+            Success        = $true
+            ItemsDetected  = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
+            ItemsProcessed = $processedCount
+            Duration       = $executionTime.TotalMilliseconds
         }
     }
     catch {
@@ -195,11 +200,12 @@ function Invoke-EssentialApps {
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
+        $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         return @{
             Success        = $false
             ItemsDetected  = 0
             ItemsProcessed = 0
-            ErrorMessage   = $errorMsg
+            Duration       = $executionTime.TotalMilliseconds
         }
     }
 }
