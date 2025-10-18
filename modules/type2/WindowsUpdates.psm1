@@ -85,7 +85,7 @@ function Invoke-WindowsUpdates {
         }
         else {
             Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Executing Windows updates installation' -LogPath $executionLogPath
-            $results = Install-WindowsUpdate -UpdatesList $analysisResults.PendingUpdates -LogPath $executionLogPath
+            $results = Install-WindowsUpdate -ExecutionLogPath $executionLogPath
             $processedCount = if ($results.InstalledCount) { $results.InstalledCount } else { 0 }
         }
         
@@ -187,7 +187,10 @@ function Install-WindowsUpdate {
         [switch]$DryRun,
 
         [Parameter()]
-        [switch]$SuppressReboot
+        [switch]$SuppressReboot,
+        
+        [Parameter()]
+        [string]$ExecutionLogPath
     )
 
     Write-Information "🔄 Starting Windows Updates check and installation..." -InformationAction Continue

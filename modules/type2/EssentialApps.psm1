@@ -158,14 +158,15 @@ function Invoke-EssentialApps {
             foreach ($app in $diffList) {
                 try {
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath
-                    $result = Install-EssentialApplication -AppDefinition $app
+                    $result = Install-SingleApplication -AppData $app -ExecutionLogPath $executionLogPath
                     if ($result.Success) {
                         $installResults.InstalledApps += $app
+                        $processedCount++
                         Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Successfully installed: $($app.Name)" -LogPath $executionLogPath
                     }
                     else {
                         $installResults.FailedApps += $app
-                        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Failed to install: $($app.Name)" -LogPath $executionLogPath
+                        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Failed to install: $($app.Name) - $($result.ErrorMessage)" -LogPath $executionLogPath
                     }
                 }
                 catch {
@@ -1255,6 +1256,95 @@ function Get-InstallationStatistic {
 }
 
 #endregion
+
+# v3.0 Individual app installation function (Internal use)
+function Install-SingleApplication {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$AppData,
+        
+        [Parameter(Mandatory)]
+        [string]$ExecutionLogPath
+    )
+    
+    $appName = $AppData.Name
+    $appId = $AppData.Id
+    $source = $AppData.Source
+    
+    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Starting installation: $appName via $source" -LogPath $ExecutionLogPath
+    
+    try {
+        switch ($source.ToLower()) {
+            'winget' {
+                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: winget install --id $appId --silent --accept-package-agreements" -LogPath $ExecutionLogPath
+                $installProcess = Start-Process -FilePath 'winget' -ArgumentList @('install', '--id', $appId, '--silent', '--accept-package-agreements', '--accept-source-agreements') -Wait -PassThru -NoNewWindow
+                
+                if ($installProcess.ExitCode -eq 0) {
+                    Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Winget installation successful: $appName" -LogPath $ExecutionLogPath
+                    return @{ Success = $true; Method = 'Winget'; AppName = $appName }
+                }
+                else {
+                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
+                    return @{ Success = $false; Method = 'Winget'; AppName = $appName; ErrorMessage = "Exit code: $($installProcess.ExitCode)" }
+                }
+            }
+            
+            'chocolatey' {
+                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: choco install $appName --force --yes" -LogPath $ExecutionLogPath
+                $installProcess = Start-Process -FilePath 'choco' -ArgumentList @('install', $appName, '--force', '--yes') -Wait -PassThru -NoNewWindow
+                
+                if ($installProcess.ExitCode -eq 0) {
+                    Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
+                    return @{ Success = $true; Method = 'Chocolatey'; AppName = $appName }
+                }
+                else {
+                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
+                    return @{ Success = $false; Method = 'Chocolatey'; AppName = $appName; ErrorMessage = "Exit code: $($installProcess.ExitCode)" }
+                }
+            }
+            
+            'direct' {
+                if ($AppData.DownloadUrl) {
+                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Direct download installation: $appName from $($AppData.DownloadUrl)" -LogPath $ExecutionLogPath
+                    $tempPath = Join-Path $env:TEMP "$appName-installer.exe"
+                    
+                    # Download installer
+                    Invoke-WebRequest -Uri $AppData.DownloadUrl -OutFile $tempPath -UseBasicParsing
+                    
+                    # Execute installer
+                    $installArgs = if ($AppData.InstallArgs) { $AppData.InstallArgs } else { @('/S') }
+                    $installProcess = Start-Process -FilePath $tempPath -ArgumentList $installArgs -Wait -PassThru
+                    
+                    # Cleanup
+                    Remove-Item $tempPath -ErrorAction SilentlyContinue
+                    
+                    if ($installProcess.ExitCode -eq 0) {
+                        Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Direct installation successful: $appName" -LogPath $ExecutionLogPath
+                        return @{ Success = $true; Method = 'Direct'; AppName = $appName }
+                    }
+                    else {
+                        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Direct installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
+                        return @{ Success = $false; Method = 'Direct'; AppName = $appName; ErrorMessage = "Exit code: $($installProcess.ExitCode)" }
+                    }
+                }
+                else {
+                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Direct installation failed: No download URL provided for $appName" -LogPath $ExecutionLogPath
+                    return @{ Success = $false; Method = 'Direct'; AppName = $appName; ErrorMessage = "No download URL provided" }
+                }
+            }
+            
+            default {
+                Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Unknown installation source: $source for $appName" -LogPath $ExecutionLogPath
+                return @{ Success = $false; Method = $source; AppName = $appName; ErrorMessage = "Unknown installation source: $source" }
+            }
+        }
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Installation exception for $appName`: $($_.Exception.Message)" -LogPath $ExecutionLogPath
+        return @{ Success = $false; Method = $source; AppName = $appName; ErrorMessage = $_.Exception.Message }
+    }
+}
 
 # Export module functions
 Export-ModuleMember -Function @(
