@@ -43,7 +43,7 @@ else {
 }
 
 # Validate Type1 module loaded correctly
-if (-not (Get-Command -Name 'Get-TelemetryAudit' -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command -Name 'Get-TelemetryAnalysis' -ErrorAction SilentlyContinue)) {
     throw "Type 1 module functions not available - ensure TelemetryAudit.psm1 is properly imported"
 }
 
@@ -57,7 +57,7 @@ function Invoke-TelemetryDisable {
     
     try {
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry analysis'
-        $analysisResults = Get-TelemetryAudit
+        $analysisResults = Get-TelemetryAnalysis -Config $Config
         
         if (-not $analysisResults -or $analysisResults.ActiveTelemetryCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'No active telemetry detected'
@@ -65,35 +65,57 @@ function Invoke-TelemetryDisable {
             return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'Telemetry already disabled' }
         }
         
+        # STEP 3: Setup execution logging directory
+        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\telemetry-disable"
+        New-Item -Path $executionLogDir -ItemType Directory -Force
+        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        
         $telemetryCount = $analysisResults.ActiveTelemetryCount
-        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items"
+        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items" -LogPath $executionLogPath
         
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'DRY RUN: Simulating telemetry disable'
+            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'DRY RUN: Simulating telemetry disable' -LogPath $executionLogPath
             $results = @{ ProcessedCount = $telemetryCount; Simulated = $true }; $processedCount = $telemetryCount
         }
         else {
-            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable'
+            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable' -LogPath $executionLogPath
             # Process telemetry items based on detected types
             $processedCount = 0
             if ($analysisResults.ActiveTelemetryItems) {
                 foreach ($item in $analysisResults.ActiveTelemetryItems) {
-                    switch ($item.Type) {
-                        'Service' { $result = Disable-WindowsTelemetry -DisableServices }
-                        'Notification' { $result = Disable-WindowsTelemetry -DisableNotifications }
-                        'ConsumerFeature' { $result = Disable-WindowsTelemetry -DisableConsumerFeatures }
-                        'Cortana' { $result = Disable-WindowsTelemetry -DisableCortana }
-                        'LocationTracking' { $result = Disable-WindowsTelemetry -DisableLocationTracking }
-                        default { Write-LogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" }
+                    Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Processing telemetry item: $($item.Type)" -LogPath $executionLogPath
+                    try {
+                        switch ($item.Type) {
+                            'Service' { $result = Disable-WindowsTelemetry -DisableServices }
+                            'Notification' { $result = Disable-WindowsTelemetry -DisableNotifications }
+                            'ConsumerFeature' { $result = Disable-WindowsTelemetry -DisableConsumerFeatures }
+                            'Cortana' { $result = Disable-WindowsTelemetry -DisableCortana }
+                            'LocationTracking' { $result = Disable-WindowsTelemetry -DisableLocationTracking }
+                            default { Write-LogEntry -Level 'WARN' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" -LogPath $executionLogPath }
+                        }
+                        if ($result) { 
+                            $processedCount++
+                            Write-LogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Successfully disabled: $($item.Type)" -LogPath $executionLogPath
+                        }
+                        else {
+                            Write-LogEntry -Level 'WARN' -Component 'TELEMETRY-DISABLE' -Message "Failed to disable: $($item.Type)" -LogPath $executionLogPath
+                        }
                     }
-                    if ($result) { $processedCount++ }
+                    catch {
+                        Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message "Error disabling $($item.Type): $($_.Exception.Message)" -LogPath $executionLogPath
+                    }
                 }
             }
             $results = @{ ProcessedCount = $processedCount; DisabledCount = $processedCount }
         }
         
-        $returnData = @{ Success = $true; ItemsDetected = $telemetryCount; ItemsProcessed = $processedCount; DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults }
-        Write-LogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount"
+        Write-LogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath
+        
+        $returnData = @{ 
+            Success = $true; ItemsDetected = $telemetryCount; ItemsProcessed = $processedCount; 
+            DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults
+            ExecutionLogPath = $executionLogPath
+        }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         return $returnData
         

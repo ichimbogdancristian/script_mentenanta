@@ -168,7 +168,7 @@ function Get-TelemetryAudit {
         # Save results to session data
         try {
             $outputPath = Get-SessionPath -Category 'data' -FileName 'telemetry-audit.json'
-            $auditResults | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPath -Encoding UTF8
+            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to: $outputPath" -InformationAction Continue
         }
         catch {
@@ -622,7 +622,76 @@ function New-PrivacyRecommendations {
     return $recommendations
 }
 
+<#
+.SYNOPSIS
+    Type2 wrapper function for telemetry analysis
+
+.DESCRIPTION
+    Wrapper function that performs telemetry audit and saves results to temp_files/data/
+    for consumption by Type2 modules. This is the v3.0 standardized interface between
+    Type1 (detection) and Type2 (action) modules.
+    
+    Automatically saves results to temp_files/data/telemetry-results.json using global paths.
+
+.PARAMETER Config
+    Configuration hashtable from orchestrator
+
+.EXAMPLE
+    $results = Get-TelemetryAnalysis -Config $Config
+#>
+function Get-TelemetryAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config
+    )
+    
+    Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-AUDIT' -Message 'Starting telemetry analysis for Type2 module'
+    
+    try {
+        # Perform the telemetry audit with all scans enabled
+        $auditResults = Get-TelemetryAudit -IncludeServices -IncludeRegistry -IncludeFeatures -IncludeApps
+        
+        # Ensure Global:ProjectPaths is available
+        if (-not $Global:ProjectPaths) {
+            Write-Warning "Global:ProjectPaths not available, attempting to initialize"
+            if (Get-Command 'Initialize-GlobalPathDiscovery' -ErrorAction SilentlyContinue) {
+                Initialize-GlobalPathDiscovery
+            }
+        }
+        
+        # Save results to temp_files/data/ using global paths
+        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+            $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\telemetry-results.json"
+            
+            # Ensure directory exists
+            $dataDir = Split-Path -Parent $dataPath
+            if (-not (Test-Path $dataDir)) {
+                New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Save results as JSON
+            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
+            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-AUDIT' -Message "Saved telemetry analysis results to $dataPath"
+        }
+        else {
+            Write-Warning "Global project paths not available - results not saved to file"
+        }
+        
+        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-AUDIT' -Message "Telemetry analysis completed: $($auditResults.Summary.TotalIssues) privacy issues found"
+        
+        return $auditResults
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-AUDIT' -Message "Telemetry analysis failed: $($_.Exception.Message)"
+        return @()
+    }
+}
+
 #endregion
 
 # Export public functions
-Export-ModuleMember -Function 'Get-TelemetryAudit'
+Export-ModuleMember -Function @(
+    'Get-TelemetryAudit',
+    'Get-TelemetryAnalysis'  # v3.0 wrapper for Type2 modules
+)

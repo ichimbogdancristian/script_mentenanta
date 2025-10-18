@@ -729,7 +729,7 @@ function Get-BloatwareAnalysis {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config
+        [PSCustomObject]$Config
     )
     
     Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting bloatware analysis for Type2 module'
@@ -757,7 +757,7 @@ function Get-BloatwareAnalysis {
             }
             
             # Save results as JSON
-            $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $dataPath -Encoding UTF8
+            $detectionResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message "Saved $($detectionResults.Count) detection results to $dataPath"
         }
         else {

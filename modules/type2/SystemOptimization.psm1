@@ -52,7 +52,7 @@ if (Test-Path $DependencyManagerPath) {
 }
 
 # Validate Type1 module loaded correctly
-if (-not (Get-Command -Name 'Get-SystemOptimizationAudit' -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command -Name 'Get-SystemOptimizationAnalysis' -ErrorAction SilentlyContinue)) {
     throw "Type 1 module functions not available - ensure SystemOptimizationAudit.psm1 is properly imported"
 }
 
@@ -79,7 +79,7 @@ function Invoke-SystemOptimization {
     
     try {
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
-        $analysisResults = Get-SystemOptimizationAudit
+        $analysisResults = Get-SystemOptimizationAnalysis -Config $Config
         
         if (-not $analysisResults -or $analysisResults.OptimizationCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'No optimization opportunities detected'
@@ -87,38 +87,58 @@ function Invoke-SystemOptimization {
             return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'System already optimized' }
         }
         
+        # STEP 3: Setup execution logging directory
+        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\system-optimization"
+        New-Item -Path $executionLogDir -ItemType Directory -Force
+        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        
         $optimizationCount = $analysisResults.OptimizationCount
-        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities"
+        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities" -LogPath $executionLogPath
         
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'DRY RUN: Simulating system optimization'
+            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'DRY RUN: Simulating system optimization' -LogPath $executionLogPath
             $results = @{ ProcessedCount = $optimizationCount; Simulated = $true }
             $processedCount = $optimizationCount
         }
         else {
-            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing system optimization'
+            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing system optimization' -LogPath $executionLogPath
             # Process optimization opportunities based on detected types
             $processedCount = 0
             if ($analysisResults.OptimizationOpportunities) {
                 foreach ($opportunity in $analysisResults.OptimizationOpportunities) {
-                    switch ($opportunity.Type) {
-                        'TempCleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
-                        'StartupOptimization' { $result = Optimize-SystemPerformance -OptimizeStartup }
-                        'UIOptimization' { $result = Optimize-SystemPerformance -OptimizeUI }
-                        'RegistryOptimization' { $result = Optimize-SystemPerformance -OptimizeRegistry }
-                        'DiskOptimization' { $result = Optimize-SystemPerformance -OptimizeDisk }
-                        'NetworkOptimization' { $result = Optimize-SystemPerformance -OptimizeNetwork }
-                        default { Write-LogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization type: $($opportunity.Type)" }
+                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing optimization: $($opportunity.Type)" -LogPath $executionLogPath
+                    try {
+                        switch ($opportunity.Type) {
+                            'TempCleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
+                            'StartupOptimization' { $result = Optimize-SystemPerformance -OptimizeStartup }
+                            'UIOptimization' { $result = Optimize-SystemPerformance -OptimizeUI }
+                            'RegistryOptimization' { $result = Optimize-SystemPerformance -OptimizeRegistry }
+                            'DiskOptimization' { $result = Optimize-SystemPerformance -OptimizeDisk }
+                            'NetworkOptimization' { $result = Optimize-SystemPerformance -OptimizeNetwork }
+                            default { Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization type: $($opportunity.Type)" -LogPath $executionLogPath }
+                        }
+                        if ($result) { 
+                            $processedCount++
+                            Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied: $($opportunity.Type)" -LogPath $executionLogPath
+                        }
+                        else {
+                            Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to apply: $($opportunity.Type)" -LogPath $executionLogPath
+                        }
                     }
-                    if ($result) { $processedCount++ }
+                    catch {
+                        Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error applying $($opportunity.Type): $($_.Exception.Message)" -LogPath $executionLogPath
+                    }
                 }
             }
             $results = @{ ProcessedCount = $processedCount; AppliedOptimizations = $processedCount }
         }
         
+        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed: $processedCount optimizations applied" -LogPath $executionLogPath
+        
         $returnData = @{
             Success = $true; ItemsDetected = $optimizationCount; ItemsProcessed = $processedCount
             DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults
+            ExecutionLogPath = $executionLogPath
         }
         
         Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed. Processed: $processedCount/$optimizationCount"

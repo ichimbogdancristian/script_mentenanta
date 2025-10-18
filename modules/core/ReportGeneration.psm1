@@ -205,7 +205,10 @@ function New-MaintenanceReport {
         [PSCustomObject]$Configuration,
 
         [Parameter(Mandatory)]
-        [string]$OutputPath
+        [string]$OutputPath,
+
+        [Parameter()]
+        [hashtable]$ComprehensiveLogCollection
     )
     
     # Start performance tracking for report generation
@@ -213,10 +216,13 @@ function New-MaintenanceReport {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'MaintenanceReportGeneration' -Component 'REPORT-GENERATION'
         Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'Starting comprehensive maintenance report generation' -Data @{ 
-            OutputPath         = $OutputPath
-            HasSystemInventory = ($null -ne $SystemInventory)
-            TaskResultsCount   = $TaskResults.Count
-            HasConfiguration   = ($null -ne $Configuration)
+            OutputPath                  = $OutputPath
+            HasSystemInventory          = ($null -ne $SystemInventory)
+            TaskResultsCount            = $TaskResults.Count
+            HasConfiguration            = ($null -ne $Configuration)
+            HasComprehensiveLogCollection = ($null -ne $ComprehensiveLogCollection)
+            Type1ModulesCount           = if ($ComprehensiveLogCollection) { $ComprehensiveLogCollection.Type1AuditData.Keys.Count } else { 0 }
+            Type2ModulesCount           = if ($ComprehensiveLogCollection) { $ComprehensiveLogCollection.Type2ExecutionLogs.Keys.Count } else { 0 }
         }
     }
     catch {
@@ -238,19 +244,20 @@ function New-MaintenanceReport {
     
     # Enhanced report data structure with comprehensive analytics
     $reportData = @{
-        GenerationTime  = $startTime
-        SystemInventory = $SystemInventory
-        TaskResults     = $TaskResults
-        ModuleData      = $moduleData  # V3.0: Include raw module data for enhanced reporting
-        Configuration   = $Configuration
-        Summary         = Get-ExecutionSummary -TaskResults $TaskResults
-        Analytics       = @{
+        GenerationTime            = $startTime
+        SystemInventory           = $SystemInventory
+        TaskResults               = $TaskResults
+        ModuleData                = $moduleData  # V3.0: Include raw module data for enhanced reporting
+        Configuration             = $Configuration
+        ComprehensiveLogCollection = $ComprehensiveLogCollection  # v3.0: Include comprehensive log data from Type1/Type2 modules
+        Summary                   = Get-ExecutionSummary -TaskResults $TaskResults
+        Analytics                 = @{
             SystemHealth       = Get-SystemHealthAnalytic -SystemInventory $SystemInventory
             PerformanceMetrics = Get-PerformanceAnalytic -TaskResults $TaskResults
             SecurityInsights   = Get-SecurityAnalytic -SystemInventory $SystemInventory
             RecommendedActions = Get-RecommendedAction -SystemInventory $SystemInventory -TaskResults $TaskResults
         }
-        Charts          = @{
+        Charts                    = @{
             TaskDistribution = Get-TaskDistributionData -TaskResults $TaskResults
             SystemResources  = Get-SystemResourceData -SystemInventory $SystemInventory
             SecurityScore    = Get-SecurityScoreData -SystemInventory $SystemInventory
@@ -261,6 +268,20 @@ function New-MaintenanceReport {
     try {
         $ErrorActionPreference = 'Stop'
         Write-Verbose "Starting report generation process"
+        
+        # Log comprehensive log collection information if available
+        if ($ComprehensiveLogCollection) {
+            $type1Count = $ComprehensiveLogCollection.Type1AuditData.Keys.Count
+            $type2Count = $ComprehensiveLogCollection.Type2ExecutionLogs.Keys.Count
+            Write-Information "  📋 Processing comprehensive logs: $type1Count Type1 modules, $type2Count Type2 modules" -InformationAction Continue
+            
+            Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'Processing comprehensive log collection' -Data @{
+                Type1ModulesCount = $type1Count
+                Type2ModulesCount = $type2Count
+                SessionId = $ComprehensiveLogCollection.SessionId
+                CollectionTimestamp = $ComprehensiveLogCollection.CollectionTimestamp
+            }
+        }
         
         # Generate HTML report
         Write-Information "  📄 Creating HTML report..." -InformationAction Continue
@@ -276,12 +297,12 @@ function New-MaintenanceReport {
 
         # Generate JSON data export
         Write-Information "  📊 Creating JSON data export..." -InformationAction Continue
-        $jsonContent = $reportData | ConvertTo-Json -Depth 10
+        $jsonContent = $reportData | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue
         $jsonPath = $htmlPath -replace '\.html$', '.json'
         $jsonContent | Out-File -FilePath $jsonPath -Encoding UTF8 -Force
 
         # Generate execution summary
-        $summaryContent = if ($reportData.Summary) { $reportData.Summary | ConvertTo-Json -Depth 5 } else { '{}' }
+        $summaryContent = if ($reportData.Summary) { $reportData.Summary | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue } else { '{}' }
         $summaryPath = $htmlPath -replace '\.html$', '-summary.json'
         $summaryContent | Out-File -FilePath $summaryPath -Encoding UTF8 -Force
 
@@ -1702,10 +1723,10 @@ function New-HtmlReportContent {
     $html.AppendLine(@"
         <script>
             // Chart data initialization
-            window.taskDistributionData = $($ReportData.Charts.TaskDistribution | ConvertTo-Json -Depth 5);
-            window.systemResourcesData = $($ReportData.Charts.SystemResources | ConvertTo-Json -Depth 5);
-            window.timelineData = $($ReportData.Charts.TimelineData | ConvertTo-Json -Depth 5);
-            window.securityScoreData = $($ReportData.Charts.SecurityScore | ConvertTo-Json -Depth 5);
+            window.taskDistributionData = $($ReportData.Charts.TaskDistribution | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
+            window.systemResourcesData = $($ReportData.Charts.SystemResources | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
+            window.timelineData = $($ReportData.Charts.TimelineData | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
+            window.securityScoreData = $($ReportData.Charts.SecurityScore | ConvertTo-Json -Depth 15 -WarningAction SilentlyContinue);
         </script>
 "@) | Out-Null
 

@@ -741,6 +741,113 @@ function Get-SessionPath {
 
 <#
 .SYNOPSIS
+    Validates and creates the complete temp_files directory structure
+
+.DESCRIPTION
+    Ensures all required temp_files directories exist before Type1/Type2 execution.
+    Creates the standardized directory structure for session-based file organization.
+    This implements v3.0 architecture requirement for organized data flow.
+
+.PARAMETER ValidateOnly
+    When specified, only validates existing structure without creating directories
+
+.EXAMPLE
+    Initialize-TempFilesStructure
+
+.EXAMPLE
+    $isValid = Initialize-TempFilesStructure -ValidateOnly
+#>
+function Initialize-TempFilesStructure {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter()]
+        [switch]$ValidateOnly
+    )
+    
+    Write-LogEntry -Level 'INFO' -Component 'CORE-INFRASTRUCTURE' -Message 'Initializing temp_files directory structure'
+    
+    try {
+        # Determine temp files root using global path discovery
+        $tempRoot = $null
+        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+            $tempRoot = $Global:ProjectPaths.TempFiles
+        }
+        elseif ($env:MAINTENANCE_TEMP_ROOT) {
+            $tempRoot = $env:MAINTENANCE_TEMP_ROOT
+        }
+        else {
+            Write-Warning "Cannot determine temp files root - attempting to initialize global paths"
+            Initialize-GlobalPathDiscovery
+            if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+                $tempRoot = $Global:ProjectPaths.TempFiles
+            }
+            else {
+                throw "Failed to initialize global paths"
+            }
+        }
+        
+        # Define required directory structure
+        $requiredDirectories = @(
+            'data',                        # Type1 audit results
+            'temp',                        # Processing diffs
+            'reports',                     # Temporary report data
+            'logs',                        # Base logs directory
+            'logs\bloatware-removal',      # BloatwareRemoval execution logs
+            'logs\essential-apps',         # EssentialApps execution logs
+            'logs\system-optimization',    # SystemOptimization execution logs
+            'logs\telemetry-disable',      # TelemetryDisable execution logs
+            'logs\windows-updates'         # WindowsUpdates execution logs
+        )
+        
+        $allPathsValid = $true
+        $createdPaths = @()
+        $validatedPaths = @()
+        
+        foreach ($directory in $requiredDirectories) {
+            $fullPath = Join-Path $tempRoot $directory
+            
+            if (Test-Path $fullPath -PathType Container) {
+                $validatedPaths += $fullPath
+                Write-Verbose "✓ Validated: $directory"
+            }
+            elseif (-not $ValidateOnly) {
+                try {
+                    New-Item -Path $fullPath -ItemType Directory -Force | Out-Null
+                    $createdPaths += $fullPath
+                    Write-Verbose "✓ Created: $directory"
+                }
+                catch {
+                    Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to create directory: $directory" -Data @{ Error = $_.Exception.Message }
+                    $allPathsValid = $false
+                }
+            }
+            else {
+                Write-Verbose "✗ Missing: $directory"
+                $allPathsValid = $false
+            }
+        }
+        
+        if (-not $ValidateOnly) {
+            Write-LogEntry -Level 'INFO' -Component 'CORE-INFRASTRUCTURE' -Message 'Temp files structure initialization completed' -Data @{
+                TempRoot = $tempRoot
+                TotalDirectories = $requiredDirectories.Count
+                ValidatedDirectories = $validatedPaths.Count
+                CreatedDirectories = $createdPaths.Count
+                AllPathsValid = $allPathsValid
+            }
+        }
+        
+        return $allPathsValid
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to initialize temp files structure: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
     Saves session data to organized file structure
 #>
 function Save-SessionData {
@@ -764,7 +871,7 @@ function Save-SessionData {
             $Data | Out-File -FilePath $filePath -Encoding UTF8
         }
         else {
-            $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $filePath -Encoding UTF8
+            $Data | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $filePath -Encoding UTF8
         }
         
         Write-Verbose "Saved session data to: $filePath"
@@ -984,6 +1091,7 @@ Export-ModuleMember -Function @(
     
     # File Organization
     'Initialize-FileOrganization',
+    'Initialize-TempFilesStructure',
     'Get-SessionPath',
     'Save-SessionData',
     'Get-SessionData',

@@ -23,18 +23,22 @@ using namespace System.Collections.Generic
 # Import required modules
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
 # v3.0 Type 1 module - imported by Type 2 modules
-# Import CoreInfrastructure for configuration and logging
+# Import CoreInfrastructure for configuration and logging (only if not already loaded)
 $ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
+if ((Test-Path $CoreInfraPath) -and (-not (Get-Module -Name 'CoreInfrastructure'))) {
     Import-Module $CoreInfraPath -Force
 }
 
-# Import shared utilities for fallback functions
+# Import shared utilities for fallback functions (only if needed)
 $CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'
 if (Test-Path $CommonUtilitiesPath) {
     Import-Module $CommonUtilitiesPath -Force
-    Initialize-FallbackFunctions
+    # Only initialize fallbacks if CoreInfrastructure functions are not available
+    $existingLogFunction = Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue
+    if (-not $existingLogFunction -or ($existingLogFunction.Source -ne 'CoreInfrastructure')) {
+        Initialize-FallbackFunctions
+    }
 }
 
 # Provide enhanced fallback for essential apps to prevent divide by zero error
@@ -221,7 +225,7 @@ function Get-EssentialAppsAudit {
                 $outputPath = Get-SessionPath -Category 'data' -FileName 'essential-apps-results.json'
             }
             
-            $auditResults | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPath -Encoding UTF8
+            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to: $outputPath" -InformationAction Continue
         }
         catch {
@@ -428,7 +432,7 @@ function Get-EssentialAppsAnalysis {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config
+        [PSCustomObject]$Config
     )
     
     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-AUDIT' -Message 'Starting essential apps analysis for Type2 module'
@@ -436,6 +440,32 @@ function Get-EssentialAppsAnalysis {
     try {
         # Call the main audit function
         $auditResults = Get-EssentialAppsAudit -Categories @('all')
+        
+        # Ensure Global:ProjectPaths is available
+        if (-not $Global:ProjectPaths) {
+            Write-Warning "Global:ProjectPaths not available, attempting to initialize"
+            if (Get-Command 'Initialize-GlobalPathDiscovery' -ErrorAction SilentlyContinue) {
+                Initialize-GlobalPathDiscovery
+            }
+        }
+        
+        # Save results to temp_files/data/ using global paths
+        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+            $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\essential-apps-results.json"
+            
+            # Ensure directory exists
+            $dataDir = Split-Path -Parent $dataPath
+            if (-not (Test-Path $dataDir)) {
+                New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Save results as JSON
+            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
+            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-AUDIT' -Message "Saved essential apps analysis results to $dataPath"
+        }
+        else {
+            Write-Warning "Global project paths not available - results not saved to file"
+        }
         
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-AUDIT' -Message "Essential apps analysis completed: $($auditResults.Summary.MissingCount) missing apps found"
         

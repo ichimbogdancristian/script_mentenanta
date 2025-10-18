@@ -155,10 +155,24 @@ function Initialize-FallbackFunctions {
     
     $functionsInitialized = 0
     
-    # Initialize Write-LogEntry fallback
-    if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
+    # Initialize Write-LogEntry fallback - only if CoreInfrastructure function is not available
+    $existingLogFunction = Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue
+    if (-not $existingLogFunction) {
+        # No Write-LogEntry exists, create alias to our fallback
         Set-Alias -Name 'Write-LogEntry' -Value 'Write-LogEntryFallback' -Scope Global -Force
         $functionsInitialized++
+        Write-Verbose "Created Write-LogEntry alias to Write-LogEntryFallback"
+    }
+    elseif ($existingLogFunction.CommandType -eq 'Function' -and $existingLogFunction.Source -eq 'CoreInfrastructure') {
+        # CoreInfrastructure function exists, don't override it
+        Write-Verbose "Write-LogEntry function from CoreInfrastructure detected, skipping fallback initialization"
+    }
+    elseif ($existingLogFunction.CommandType -eq 'Alias' -and $existingLogFunction.ResolvedCommandName -eq 'Write-LogEntryFallback') {
+        # Already using our fallback, that's fine
+        Write-Verbose "Write-LogEntry fallback already active"
+    }
+    else {
+        Write-Verbose "Write-LogEntry already available from $($existingLogFunction.Source), type: $($existingLogFunction.CommandType)"
     }
     
     # Initialize Get-SessionPath fallback
@@ -282,9 +296,9 @@ function Invoke-WithErrorHandling {
     )
     
     $result = @{
-        Success = $false
-        Error = $null
-        Data = $null
+        Success  = $false
+        Error    = $null
+        Data     = $null
         Duration = 0
     }
     
@@ -303,8 +317,8 @@ function Invoke-WithErrorHandling {
         $result.Success = $false
         
         $errorData = @{
-            Operation = $OperationName
-            Error = $_.Exception.Message
+            Operation  = $OperationName
+            Error      = $_.Exception.Message
             StackTrace = $_.ScriptStackTrace
         } + $OperationData
         
@@ -312,8 +326,9 @@ function Invoke-WithErrorHandling {
         
         if (-not $ContinueOnError) {
             throw $_
-        } else {
-            Write-LogEntry -Level 'WARNING' -Component $ComponentName -Message $FallbackMessage -LogPath $LogPath
+        }
+        else {
+            Write-LogEntry -Level 'WARN' -Component $ComponentName -Message $FallbackMessage -LogPath $LogPath
         }
     }
     finally {
@@ -356,7 +371,7 @@ function Test-ModulePrerequisites {
     )
     
     $validationResults = @{
-        Success = $true
+        Success  = $true
         Failures = @()
     }
     
@@ -398,7 +413,8 @@ function Test-ModulePrerequisites {
         # Log results
         if ($validationResults.Success) {
             Write-LogEntry -Level 'INFO' -Component $ComponentName -Message "All prerequisites validated successfully" -LogPath $LogPath
-        } else {
+        }
+        else {
             Write-LogEntry -Level 'ERROR' -Component $ComponentName -Message "Prerequisites validation failed" -Data @{ Failures = $validationResults.Failures } -LogPath $LogPath
         }
     }
@@ -450,16 +466,16 @@ function New-ModuleResult {
     )
     
     return @{
-        ModuleName = $ModuleName
-        Success = $Success
-        Status = $Status
-        Message = $Message
-        ItemsDetected = $ItemsDetected
+        ModuleName     = $ModuleName
+        Success        = $Success
+        Status         = $Status
+        Message        = $Message
+        ItemsDetected  = $ItemsDetected
         ItemsProcessed = $ItemsProcessed
-        Duration = $Duration
-        Timestamp = Get-Date
-        Data = $Data
-        Errors = $Errors
+        Duration       = $Duration
+        Timestamp      = Get-Date
+        Data           = $Data
+        Errors         = $Errors
     }
 }
 

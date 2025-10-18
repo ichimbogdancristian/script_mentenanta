@@ -119,7 +119,7 @@ function Invoke-BloatwareRemoval {
         }
         
         $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\bloatware-diff.json"
-        $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath
+        $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
         
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
         $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal"

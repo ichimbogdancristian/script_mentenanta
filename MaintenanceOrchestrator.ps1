@@ -121,6 +121,7 @@ $env:MAINTENANCE_SESSION_TIMESTAMP = $Global:MaintenanceSessionTimestamp
 $TempRoot = $env:MAINTENANCE_TEMP_ROOT
 $ReportsDir = Join-Path $TempRoot 'reports'
 $LogsDir = Join-Path $TempRoot 'logs'
+$MainLogFile = Join-Path $TempRoot 'maintenance.log'
 $InventoryDir = Join-Path $TempRoot 'inventory'
 
 @($TempRoot, $ReportsDir, $LogsDir, $InventoryDir) | ForEach-Object {
@@ -276,6 +277,19 @@ foreach ($moduleName in $Type2Modules) {
     }
 }
 
+# Ensure Write-LogEntry is available after module loading (modules may have overridden it)
+if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
+    function global:Write-LogEntry {
+        param($Level, $Component, $Message, $Data)
+        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
+    }
+    Write-Information "  ⚠️ Write-LogEntry function was lost during module loading, reinstated fallback" -InformationAction Continue
+}
+else {
+    $logFunction = Get-Command -Name 'Write-LogEntry'
+    Write-Information "  ✓ Write-LogEntry available from: $($logFunction.Source)" -InformationAction Continue
+}
+
 #endregion
 
 #region Configuration Loading
@@ -384,9 +398,25 @@ try {
         # Don't exit here as this is not critical for basic operation
     }
 
+    # Initialize temp_files directory structure (v3.0 requirement for Type1/Type2 module flow)
+    try {
+        Write-Information "  Initializing temp_files directory structure..." -InformationAction Continue
+        $tempStructureValid = Initialize-TempFilesStructure
+        if ($tempStructureValid) {
+            Write-Information "  ✓ Temp files directory structure validated/created" -InformationAction Continue
+        }
+        else {
+            Write-Information "  ⚠️ Some temp files directories could not be created - continuing with available structure" -InformationAction Continue
+        }
+    }
+    catch {
+        Write-Information "  ⚠️ Temp files structure validation failed: $($_.Exception.Message)" -InformationAction Continue
+        Write-Information "  ℹ️ Modules will attempt to create directories as needed" -InformationAction Continue
+    }
+
     # Initialize logging system (depends on file organization)
     try {
-        $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $LogsDir -ErrorAction Stop
+        $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $MainLogFile -ErrorAction Stop
         if ($loggingInitResult) {
             Write-Information "  ✓ Logging system initialized" -InformationAction Continue
             # LoggingManager functions are now available
@@ -590,6 +620,92 @@ function Invoke-TaskWithParameters {
         default {
             # For other tasks, call without parameters
             return & $FunctionName
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Collects all log files from temp_files/data/ and temp_files/logs/ for comprehensive reporting
+
+.DESCRIPTION
+    Aggregates Type1 audit results and Type2 execution logs into a comprehensive collection
+    for ReportGeneration to process. This implements the v3.0 flow where orchestrator
+    collects ALL logs after task completion.
+
+.EXAMPLE
+    $logCollection = Get-ComprehensiveLogCollection
+#>
+function Get-ComprehensiveLogCollection {
+    [CmdletBinding()]
+    param()
+    
+    Write-Information "  📋 Collecting comprehensive log data..." -InformationAction Continue
+    
+    try {
+        $logCollection = @{
+            Type1AuditData = @{}
+            Type2ExecutionLogs = @{}
+            CollectionTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            SessionId = $Global:MaintenanceSessionId
+        }
+        
+        # Collect Type1 audit results from temp_files/data/
+        $dataPath = Join-Path $env:MAINTENANCE_TEMP_ROOT "data"
+        if (Test-Path $dataPath) {
+            $auditFiles = Get-ChildItem -Path $dataPath -Filter "*.json" -ErrorAction SilentlyContinue
+            foreach ($file in $auditFiles) {
+                try {
+                    $moduleName = $file.BaseName -replace '-results$', ''
+                    $auditData = Get-Content $file.FullName | ConvertFrom-Json
+                    $logCollection.Type1AuditData[$moduleName] = $auditData
+                    Write-Information "    ✓ Collected Type1 data: $($file.Name)" -InformationAction Continue
+                }
+                catch {
+                    Write-Warning "    ⚠️ Failed to parse audit data: $($file.Name) - $($_.Exception.Message)"
+                }
+            }
+        }
+        
+        # Collect Type2 execution logs from temp_files/logs/
+        $logsPath = Join-Path $env:MAINTENANCE_TEMP_ROOT "logs"
+        if (Test-Path $logsPath) {
+            $logDirectories = Get-ChildItem -Path $logsPath -Directory -ErrorAction SilentlyContinue
+            foreach ($dir in $logDirectories) {
+                $executionLogPath = Join-Path $dir.FullName "execution.log"
+                if (Test-Path $executionLogPath) {
+                    try {
+                        $logContent = Get-Content $executionLogPath -Raw
+                        $logCollection.Type2ExecutionLogs[$dir.Name] = $logContent
+                        Write-Information "    ✓ Collected Type2 logs: $($dir.Name)" -InformationAction Continue
+                    }
+                    catch {
+                        Write-Warning "    ⚠️ Failed to read execution log: $($dir.Name) - $($_.Exception.Message)"
+                    }
+                }
+            }
+        }
+        
+        $auditDataCount = $logCollection.Type1AuditData.Keys.Count
+        $executionLogsCount = $logCollection.Type2ExecutionLogs.Keys.Count
+        
+        Write-Information "  📊 Log collection summary: $auditDataCount Type1 modules, $executionLogsCount Type2 modules" -InformationAction Continue
+        
+        Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Comprehensive log collection completed" -Data @{
+            Type1ModulesCollected = $auditDataCount
+            Type2ModulesCollected = $executionLogsCount
+            CollectionTimestamp = $logCollection.CollectionTimestamp
+        }
+        
+        return $logCollection
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Failed to collect comprehensive logs: $($_.Exception.Message)"
+        return @{
+            Type1AuditData = @{}
+            Type2ExecutionLogs = @{}
+            CollectionTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            Error = $_.Exception.Message
         }
     }
 }
@@ -942,6 +1058,16 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
 
 #endregion
 
+#region Log Collection (v3.0 Architecture)
+
+# Collect comprehensive logs from Type1 audit results and Type2 execution logs
+Write-Information "" -InformationAction Continue
+Write-Information "📋 Collecting comprehensive log data..." -InformationAction Continue
+
+$comprehensiveLogCollection = Get-ComprehensiveLogCollection
+
+#endregion
+
 #region Report Generation (v3.0 Architecture - Preserved)
 
 # Generate comprehensive reports using ReportGeneration module (still orchestrator-loaded)
@@ -969,7 +1095,7 @@ try {
         # v3.0: Generate report in parent directory for portable operation
         $reportBasePath = Join-Path $Global:ProjectPaths.ParentDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
         
-        $reportResult = New-MaintenanceReport -SystemInventory $systemInventory -TaskResults $TaskResults -Configuration $MainConfig -OutputPath $reportBasePath
+        $reportResult = New-MaintenanceReport -SystemInventory $systemInventory -TaskResults $TaskResults -Configuration $MainConfig -OutputPath $reportBasePath -ComprehensiveLogCollection $comprehensiveLogCollection
         
         if ($reportResult -and $reportResult.Success) {
             Write-Information "  ✓ Reports generated successfully" -InformationAction Continue
@@ -1045,7 +1171,7 @@ $executionSummary = @{
 }
 
 $summaryPath = Join-Path $ReportsDir "execution-summary-$Global:MaintenanceSessionTimestamp.json"
-$executionSummary | ConvertTo-Json -Depth 10 | Out-File -FilePath $summaryPath -Encoding UTF8
+$executionSummary | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $summaryPath -Encoding UTF8
 
 Write-Information "" -InformationAction Continue
 Write-Information "Execution summary saved to: $summaryPath" -InformationAction Continue

@@ -191,7 +191,7 @@ function Get-SystemOptimizationAudit {
                 $outputPath = Get-SessionPath -Category 'data' -FileName 'system-optimization-results.json'
             }
             
-            $auditResults | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPath -Encoding UTF8
+            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to: $outputPath" -InformationAction Continue
         }
         catch {
@@ -653,7 +653,7 @@ function Get-SystemOptimizationAnalysis {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config
+        [PSCustomObject]$Config
     )
     
     Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message 'Starting system optimization analysis for Type2 module'
@@ -661,6 +661,32 @@ function Get-SystemOptimizationAnalysis {
     try {
         # Call the main audit function
         $auditResults = Get-SystemOptimizationAudit
+        
+        # Ensure Global:ProjectPaths is available
+        if (-not $Global:ProjectPaths) {
+            Write-Warning "Global:ProjectPaths not available, attempting to initialize"
+            if (Get-Command 'Initialize-GlobalPathDiscovery' -ErrorAction SilentlyContinue) {
+                Initialize-GlobalPathDiscovery
+            }
+        }
+        
+        # Save results to temp_files/data/ using global paths
+        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+            $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\system-optimization-results.json"
+            
+            # Ensure directory exists
+            $dataDir = Split-Path -Parent $dataPath
+            if (-not (Test-Path $dataDir)) {
+                New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Save results as JSON
+            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
+            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message "Saved system optimization analysis results to $dataPath"
+        }
+        else {
+            Write-Warning "Global project paths not available - results not saved to file"
+        }
         
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message "System optimization analysis completed: Score $($auditResults.OptimizationScore.Overall)/100"
         

@@ -40,11 +40,19 @@ if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
 
-# Import shared utilities for fallback functions
+# Import shared utilities for fallback functions (only if CoreInfrastructure functions not available)
 $CommonUtilitiesPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CommonUtilities.psm1'
 if (Test-Path $CommonUtilitiesPath) {
     Import-Module $CommonUtilitiesPath -Force
-    Initialize-FallbackFunctions
+    # Only initialize fallbacks if CoreInfrastructure is not available
+    $existingLogFunction = Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue
+    if (-not $existingLogFunction -or ($existingLogFunction.Source -ne 'CoreInfrastructure')) {
+        Write-Verbose "CoreInfrastructure Write-LogEntry not available, initializing fallbacks"
+        Initialize-FallbackFunctions
+    }
+    else {
+        Write-Verbose "CoreInfrastructure Write-LogEntry available, skipping fallback initialization"
+    }
 }
 
 # Step 3: Import additional dependencies
@@ -117,7 +125,7 @@ function Invoke-EssentialApps {
         # Create diff: Missing apps that need to be installed
         $diffList = if ($detectionResults.MissingApps) { $detectionResults.MissingApps } else { @() }
         $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\essential-apps-diff.json"
-        $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath
+        $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
         
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
         $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\essential-apps"

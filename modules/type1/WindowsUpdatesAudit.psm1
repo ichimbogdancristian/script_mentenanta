@@ -173,7 +173,7 @@ function Get-WindowsUpdatesAudit {
         # Save results to session data
         try {
             $outputPath = Get-SessionPath -Category 'data' -FileName 'windows-updates-audit.json'
-            $auditResults | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPath -Encoding UTF8
+            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to: $outputPath" -InformationAction Continue
         }
         catch {
@@ -728,7 +728,76 @@ function New-UpdateRecommendations {
     return $recommendations
 }
 
+<#
+.SYNOPSIS
+    Type2 wrapper function for Windows Updates analysis
+
+.DESCRIPTION
+    Wrapper function that performs Windows Updates audit and saves results to temp_files/data/
+    for consumption by Type2 modules. This is the v3.0 standardized interface between
+    Type1 (detection) and Type2 (action) modules.
+    
+    Automatically saves results to temp_files/data/windows-updates-results.json using global paths.
+
+.PARAMETER Config
+    Configuration hashtable from orchestrator
+
+.EXAMPLE
+    $results = Get-WindowsUpdatesAnalysis -Config $Config
+#>
+function Get-WindowsUpdatesAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config
+    )
+    
+    Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES-AUDIT' -Message 'Starting Windows Updates analysis for Type2 module'
+    
+    try {
+        # Perform the comprehensive Windows Updates audit
+        $auditResults = Get-WindowsUpdatesAudit
+        
+        # Ensure Global:ProjectPaths is available
+        if (-not $Global:ProjectPaths) {
+            Write-Warning "Global:ProjectPaths not available, attempting to initialize"
+            if (Get-Command 'Initialize-GlobalPathDiscovery' -ErrorAction SilentlyContinue) {
+                Initialize-GlobalPathDiscovery
+            }
+        }
+        
+        # Save results to temp_files/data/ using global paths
+        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+            $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\windows-updates-results.json"
+            
+            # Ensure directory exists
+            $dataDir = Split-Path -Parent $dataPath
+            if (-not (Test-Path $dataDir)) {
+                New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Save results as JSON
+            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
+            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES-AUDIT' -Message "Saved Windows Updates analysis results to $dataPath"
+        }
+        else {
+            Write-Warning "Global project paths not available - results not saved to file"
+        }
+        
+        Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES-AUDIT' -Message "Windows Updates analysis completed: $($auditResults.Summary.PendingUpdates) pending updates found"
+        
+        return $auditResults
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES-AUDIT' -Message "Windows Updates analysis failed: $($_.Exception.Message)"
+        return @()
+    }
+}
+
 #endregion
 
 # Export public functions
-Export-ModuleMember -Function 'Get-WindowsUpdatesAudit'
+Export-ModuleMember -Function @(
+    'Get-WindowsUpdatesAudit',
+    'Get-WindowsUpdatesAnalysis'  # v3.0 wrapper for Type2 modules
+)

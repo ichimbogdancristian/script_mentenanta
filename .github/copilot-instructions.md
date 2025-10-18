@@ -6,6 +6,25 @@ This is a **enterprise-grade PowerShell-based Windows maintenance system** with 
 
 ## 🔄 **Complete Execution Logic & Architecture (v3.0)**
 
+### **🎯 Core Execution Flow Logic**
+
+The system follows a **strict hierarchical flow** where user input triggers a standardized sequence:
+
+```
+User Input → Type2 Modules → Type1 Triggered → Type1 Creates Audit Logs → 
+Type2 Analyzes Logs → Type2 Executes → Type2 Creates Execution Logs → 
+Orchestrator Collects ALL Logs → ReportGeneration Processes All Logs → Final Reports
+```
+
+**Key Principles:**
+1. **Type2 modules** are the primary execution units triggered by user menu selection
+2. **Type1 modules** are audit/detection services that **must be triggered by Type2 modules**
+3. **Type1 modules** independently create standardized audit logs that Type2 modules require
+4. **Type2 modules** analyze Type1 audit logs and execute actions based on diff analysis
+5. **Type2 modules** create detailed execution logs of all actions performed
+6. **Orchestrator** collects all logs (Type1 audit + Type2 execution) after task completion
+7. **ReportGeneration** processes comprehensive log collection to generate final reports
+
 ### **📁 Project Structure & File Locations**
 ```
 script_mentenanta/
@@ -97,22 +116,31 @@ script_mentenanta/
    - Verify all Invoke-[ModuleName] functions are available
 
 **Phase 5: Task Execution Engine (MaintenanceOrchestrator.ps1:738-944)**
-**Fixed execution sequence** for each task:
+**Fixed execution sequence** for each task following the standardized flow:
 ```
 For each task in [BloatwareRemoval, EssentialApps, SystemOptimization, TelemetryDisable, WindowsUpdates]:
   1. Start performance tracking
-  2. Execute standardized function: Invoke-[ModuleName] -Config $MainConfig [-DryRun]
+  2. Execute Type2 function: Invoke-[ModuleName] -Config $MainConfig [-DryRun]
+     → Type2 triggers Type1: Get-[ModuleName]Analysis -Config $Config
+     → Type1 creates audit logs: temp_files/data/[module]-results.json
+     → Type2 analyzes Type1 logs against config to create diff
+     → Type2 executes actions based on diff analysis
+     → Type2 creates execution logs: temp_files/logs/[module]/execution.log
   3. Validate return structure: {Success, ItemsDetected, ItemsProcessed, Duration}
   4. Log results and continue
 ```
 
-**Phase 6: Report Generation (MaintenanceOrchestrator.ps1:945-995)**
-1. **Data Collection**: Aggregate all temp_files/ data
-2. **Template Loading**: Load external templates from config/
-3. **Report Generation**: Create comprehensive before/after HTML report
-4. **Output**: Save to parent directory (Documents/Desktop/USB root)
+**Phase 6: Log Collection & Report Generation (MaintenanceOrchestrator.ps1:945-995)**
+1. **Log Aggregation**: Collect ALL files from temp_files/data/ and temp_files/logs/
+2. **Data Processing**: Aggregate Type1 audit data + Type2 execution logs
+3. **Template Loading**: Load external templates from config/
+4. **Report Generation**: Create comprehensive reports from all collected logs
+5. **Output**: Save to parent directory (Documents/Desktop/USB root)
 
 ### **🎯 Type1 → Type2 Module Pattern (Self-Contained Architecture)**
+
+**Critical Flow Logic (v3.0):**
+The orchestrator runs Type2 modules as requested by user input from the menu. Type2 modules should trigger Type1 to provide the necessary logs for execution. Type1 modules should independently create the kind of logs that Type2 modules require. Type1 modules save their findings as structured JSON data in temp_files/data/. Type2 modules consume this Type1 data, compare it against configuration to create diff lists, then execute actions only on items in the diff list while logging all execution to temp_files/logs/[module]/. The orchestrator collects ALL logs after task completion for ReportGeneration to process into comprehensive reports.
 
 **Every Type2 module follows this exact pattern:**
 

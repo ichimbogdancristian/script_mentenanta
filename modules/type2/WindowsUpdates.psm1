@@ -49,7 +49,7 @@ if (Test-Path $DependencyManagerPath) {
 }
 
 # Validate Type1 module loaded correctly
-if (-not (Get-Command -Name 'Get-WindowsUpdatesAudit' -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command -Name 'Get-WindowsUpdatesAnalysis' -ErrorAction SilentlyContinue)) {
     throw "Type 1 module functions not available - ensure WindowsUpdatesAudit.psm1 is properly imported"
 }
 
@@ -63,7 +63,7 @@ function Invoke-WindowsUpdates {
     
     try {
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
-        $analysisResults = Get-WindowsUpdatesAudit
+        $analysisResults = Get-WindowsUpdatesAnalysis -Config $Config
         
         if (-not $analysisResults -or $analysisResults.PendingUpdatesCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No pending Windows updates detected'
@@ -71,21 +71,31 @@ function Invoke-WindowsUpdates {
             return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'System is up to date' }
         }
         
+        # STEP 3: Setup execution logging directory
+        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\windows-updates"
+        New-Item -Path $executionLogDir -ItemType Directory -Force
+        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        
         $updatesCount = $analysisResults.PendingUpdatesCount
-        Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates"
+        Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates" -LogPath $executionLogPath
         
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'DRY RUN: Simulating Windows updates installation'
+            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'DRY RUN: Simulating Windows updates installation' -LogPath $executionLogPath
             $results = @{ ProcessedCount = $updatesCount; Simulated = $true }; $processedCount = $updatesCount
         }
         else {
-            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Executing Windows updates installation'
-            $results = Install-WindowsUpdates -UpdatesList $analysisResults.PendingUpdates
+            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Executing Windows updates installation' -LogPath $executionLogPath
+            $results = Install-WindowsUpdate -UpdatesList $analysisResults.PendingUpdates -LogPath $executionLogPath
             $processedCount = if ($results.InstalledCount) { $results.InstalledCount } else { 0 }
         }
         
-        $returnData = @{ Success = $true; ItemsDetected = $updatesCount; ItemsProcessed = $processedCount; DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults }
-        Write-LogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message "Windows updates completed. Processed: $processedCount/$updatesCount"
+        Write-LogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message "Windows updates completed. Processed: $processedCount/$updatesCount" -LogPath $executionLogPath
+        
+        $returnData = @{ 
+            Success = $true; ItemsDetected = $updatesCount; ItemsProcessed = $processedCount; 
+            DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults
+            ExecutionLogPath = $executionLogPath
+        }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         return $returnData
         
