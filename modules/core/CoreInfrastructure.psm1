@@ -181,7 +181,6 @@ function Get-MaintenanceModulePath {
     
     return $modulesRoot
 }
-}
 
 #endregion
 

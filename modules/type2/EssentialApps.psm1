@@ -114,8 +114,6 @@ function Invoke-EssentialApps {
             return @{ Success = $false; ItemsDetected = 0; ItemsProcessed = 0; Message = 'Config file not found' }
         }
         
-        $configData = Get-Content $configDataPath | ConvertFrom-Json
-        
         # Create diff: Missing apps that need to be installed
         $diffList = if ($detectionResults.MissingApps) { $detectionResults.MissingApps } else { @() }
         $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\essential-apps-diff.json"

@@ -2,102 +2,571 @@
 
 🚀 **Enterprise-grade Windows 10/11 maintenance system** with hierarchical interactive menus, consolidated modular architecture, session-based file organization, and comprehensive system analytics.
 
-**🎉 Latest Update (v3.0 - October 2025)**: Revolutionary architecture overhaul with hierarchical countdown menus, self-contained Type2 modules, consolidated core infrastructure, and streamlined execution flow.
+**🎉 Latest Update (v3.0 - October 2025)**: Revolutionary architecture overhaul with hierarchical countdown menus, self-contained Type2 modules, consolidated core infrastructure, streamlined execution flow, and external template system.
 
-## 🎯 **Key Improvements in v3.0**
+## 🎯 **System Purpose & Overview**
 
-### **🔄 Hierarchical Menu System**
-- **20-second countdown menus** with automatic fallbacks
-- **Two-level navigation**: Main execution mode → Task selection
-- **Smart defaults**: Auto-selects recommended options when no user input
-- **Integrated workflow**: No separate task selection menus needed
+This automated Windows maintenance system performs comprehensive system cleanup, optimization, and security hardening through a modular architecture that separates detection from action. The system ensures safe, reversible operations with detailed before/after reporting.
 
-### **🏗️ Simplified Architecture** 
-- **Orchestrator loads only 3 core modules** (was 8+)
-- **Self-contained Type2 modules** with internal Type1 dependencies
-- **50% faster startup** with lazy loading
-- **Atomic operations**: Each module pair operates independently
+### **Core Objectives**
+- 🗑️ **Remove bloatware** and unwanted pre-installed applications
+- 📦 **Install essential applications** missing from the system
+- ⚡ **Optimize system performance** through registry and service tweaks
+- 🔒 **Disable telemetry** and privacy-invasive features
+- 🔄 **Install Windows updates** and security patches
+- 📊 **Generate detailed reports** showing all changes made
 
-### **⚡ Enhanced User Experience**
-- **Unattended-first design** with intelligent defaults  
-- **Visual countdown timers** for all user interactions
-- **Comprehensive task visualization** before execution
-- **Real-time execution feedback** and progress tracking
+## 🔄 **Complete Execution Logic & Workflow**
 
-## 🎯 **Execution Workflow**
-
-### **1. Launcher Bootstrap (`script.bat`)**
+### **Phase 1: Bootstrap & Initialization**
 ```
-User runs script.bat → Admin elevation → Pending restart check → System Protection
-→ Dependency bootstrap (PowerShell 7, winget, Chocolatey) → Monthly automation setup
-→ Launch MaintenanceOrchestrator.ps1
+🚀 script.bat (Launcher)
+├── 🔐 Check/Request Administrator Privileges
+├── 🔄 Handle Pending System Restart (auto-resume via scheduled task)
+├── 🛡️ Create System Restore Point + Enable System Protection
+├── 📦 Bootstrap Dependencies (PowerShell 7, winget, Chocolatey)
+├── ⏰ Setup Monthly Automation Task (SYSTEM account)
+└── 🎯 Launch MaintenanceOrchestrator.ps1
 ```
 
-### **2. Hierarchical Menu System** 
+### **Phase 2: System Discovery & Module Loading**
 ```
-Main Menu (20s countdown)
-├─ [1] Execute normally (DEFAULT) ────────┐
-│                                         │
-├─ [2] Dry-run mode ─────────────────────┐│
-                                         ││
-Sub-Menu (20s countdown)                 ││
-├─ [1] Execute all tasks (DEFAULT) ──────┤│
-├─ [2] Execute specific task numbers ────┤│
-                                         ││
-Execution Engine                         ││
-├─ Type2 Module: BloatwareRemoval ──────►││
-│  └─ Internally imports & calls Type1 ──┘│
-├─ Type2 Module: EssentialApps ──────────►│
-├─ Type2 Module: SystemOptimization ─────►│
-├─ Type2 Module: TelemetryDisable ───────►│
-└─ Type2 Module: WindowsUpdates ─────────►┘
-```
-
-### **3. Module Execution Sequence**
-1. **CoreInfrastructure**: Configuration, logging, session management
-2. **UserInterface**: Hierarchical menu system with countdown timers  
-3. **ReportGeneration**: Dashboard analytics and reporting
-4. **Type2 Modules** (self-contained, executed in order):
-   - Each internally imports its Type1 detection module
-   - Validates system state before taking action  
-   - Executes maintenance operations
-   - Reports results to session data
-
-## 🏗️ **Architecture Overview**
-
-### **Core Principles**
-- **Type 1 Modules**: Detection, auditing, inventory (imported by Type2)
-- **Type 2 Modules**: System modifications, installations, cleanup (self-contained)  
-- **Core Modules**: Infrastructure, UI, reporting (orchestrator-loaded)
-- **Session-based organization**: Structured temp_files with automatic cleanup
-- **Unattended-first**: Smart defaults with optional user interaction
-
-### **Module Dependencies** 
-```
-MaintenanceOrchestrator.ps1
-├── CoreInfrastructure.psm1 (config + logging + file organization)
-├── UserInterface.psm1 (hierarchical menus + countdown system)
-└── ReportGeneration.psm1 (dashboard + analytics + exports)
-
-Type2 Modules (Self-Contained)
-├── BloatwareRemoval.psm1 → imports BloatwareDetectionAudit.psm1
-├── EssentialApps.psm1 → imports EssentialAppsAudit.psm1  
-├── SystemOptimization.psm1 → imports SystemOptimizationAudit.psm1
-├── TelemetryDisable.psm1 → imports TelemetryAudit.psm1
-└── WindowsUpdates.psm1 → imports WindowsUpdatesAudit.psm1
+🎯 MaintenanceOrchestrator.ps1
+├── 🔍 Global Path Discovery
+│   ├── Set Environment Variables:
+│   │   ├── MAINTENANCE_PROJECT_ROOT → script_mentenanta/
+│   │   ├── MAINTENANCE_CONFIG_ROOT → script_mentenanta/config/
+│   │   ├── MAINTENANCE_MODULES_ROOT → script_mentenanta/modules/
+│   │   ├── MAINTENANCE_TEMP_ROOT → script_mentenanta/temp_files/
+│   │   └── MAINTENANCE_REPORTS_ROOT → script_mentenanta/
+│   └── 📂 Create Session Directories:
+│       ├── temp_files/data/ (Type1 detection results)
+│       ├── temp_files/logs/ (Type2 execution logs)
+│       ├── temp_files/temp/ (processing diffs)
+│       └── temp_files/reports/ (temporary report data)
+│
+├── 🧩 Load Core Modules (Orchestrator-managed):
+│   ├── CoreInfrastructure.psm1 (16 functions)
+│   │   ├── Configuration Management (5 functions)
+│   │   ├── Logging System (5 functions)
+│   │   └── File Organization (6 functions)
+│   ├── UserInterface.psm1 (hierarchical menus)
+│   └── ReportGeneration.psm1 (HTML report generation)
+│
+└── 📦 Load Type2 Modules (Self-contained):
+    ├── BloatwareRemoval.psm1 → internally imports BloatwareDetectionAudit.psm1
+    ├── EssentialApps.psm1 → internally imports EssentialAppsAudit.psm1
+    ├── SystemOptimization.psm1 → internally imports SystemOptimizationAudit.psm1
+    ├── TelemetryDisable.psm1 → internally imports TelemetryAudit.psm1
+    └── WindowsUpdates.psm1 → internally imports WindowsUpdatesAudit.psm1
 ```
 
-## 📁 **Project Structure**
-
+### **Phase 3: Configuration & Session Setup**
 ```
-script_mentenanta/
-├── script.bat                           # 🚀 Bootstrap launcher with admin elevation
-├── MaintenanceOrchestrator.ps1          # 🎯 Central coordination and execution engine  
-├── modules/
-│   ├── core/                           # 🏗️ Essential infrastructure (orchestrator-loaded)
-│   │   ├── CoreInfrastructure.psm1     # 📊 Config + logging + session management
-│   │   ├── UserInterface.psm1          # 🖥️ Hierarchical menus + countdown system
-│   │   ├── ReportGeneration.psm1       # 📈 Dashboard analytics + HTML reports
+⚙️ Configuration Loading
+├── 📋 Load Configurations from config/:
+│   ├── main-config.json (execution modes, module toggles)
+│   ├── logging-config.json (log levels, destinations)
+│   ├── bloatware-list.json (187 applications to remove)
+│   ├── essential-apps.json (10 applications to install)
+│   └── report-templates-config.json (report structure)
+│
+└── 🔧 Initialize Systems:
+    ├── Configuration Management System
+    ├── Structured Logging System
+    ├── File Organization System
+    └── Session ID Generation (GUID + timestamp)
+```
+
+### **Phase 4: Interactive User Interface**
+```
+🖥️ Hierarchical Menu System (20-second countdowns)
+├── Main Menu:
+│   ├── [1] Execute normally (DEFAULT - auto-selected)
+│   └── [2] Dry-run mode (simulation only)
+│
+└── Sub Menu (per main selection):
+    ├── [1] Execute all tasks (DEFAULT - auto-selected)
+    └── [2] Execute specific task numbers (comma-separated input)
+```
+
+### **Phase 5: Task Execution Engine**
+```
+🚀 Task Execution (Fixed Sequence)
+├── Task 1: 🗑️ BloatwareRemoval
+│   ├── Type1: BloatwareDetectionAudit.psm1
+│   │   ├── 🔍 Scan installed applications
+│   │   ├── 📋 Compare against bloatware-list.json (187 items)
+│   │   ├── 💾 Save results → temp_files/data/bloatware-results.json
+│   │   └── ↩️ Return detected items to Type2
+│   └── Type2: BloatwareRemoval.psm1
+│       ├── 🎯 Create diff (config items found on system)
+│       ├── 💾 Save diff → temp_files/temp/bloatware-diff.json
+│       ├── 🗑️ Uninstall applications (if not dry-run)
+│       ├── 📝 Log execution → temp_files/logs/bloatware-removal/execution.log
+│       └── ↩️ Return result summary
+│
+├── Task 2: 📦 EssentialApps
+│   ├── Type1: EssentialAppsAudit.psm1
+│   │   ├── 🔍 Scan installed applications
+│   │   ├── 📋 Compare against essential-apps.json (10 items)
+│   │   ├── 💾 Save results → temp_files/data/essential-apps-results.json
+│   │   └── ↩️ Return missing applications to Type2
+│   └── Type2: EssentialApps.psm1
+│       ├── 🎯 Create diff (missing apps from config)
+│       ├── 💾 Save diff → temp_files/temp/essential-apps-diff.json
+│       ├── 📦 Install applications via winget/chocolatey (if not dry-run)
+│       ├── 📝 Log execution → temp_files/logs/essential-apps/execution.log
+│       └── ↩️ Return installation summary
+│
+├── Task 3: ⚡ SystemOptimization
+│   ├── Type1: SystemOptimizationAudit.psm1
+│   │   ├── 🔍 Scan system settings, registry, services
+│   │   ├── 📋 Identify optimization opportunities
+│   │   ├── 💾 Save results → temp_files/data/system-optimization-results.json
+│   │   └── ↩️ Return optimization items to Type2
+│   └── Type2: SystemOptimization.psm1
+│       ├── 🎯 Create diff (optimizations to apply)
+│       ├── 💾 Save diff → temp_files/temp/system-optimization-diff.json
+│       ├── ⚡ Apply registry changes, service configs (if not dry-run)
+│       ├── 📝 Log execution → temp_files/logs/system-optimization/execution.log
+│       └── ↩️ Return optimization summary
+│
+├── Task 4: 🔒 TelemetryDisable
+│   ├── Type1: TelemetryAudit.psm1
+│   │   ├── 🔍 Scan telemetry settings, scheduled tasks, services
+│   │   ├── 📋 Identify active data collection
+│   │   ├── 💾 Save results → temp_files/data/telemetry-results.json
+│   │   └── ↩️ Return active telemetry items to Type2
+│   └── Type2: TelemetryDisable.psm1
+│       ├── 🎯 Create diff (telemetry items to disable)
+│       ├── 💾 Save diff → temp_files/temp/telemetry-diff.json
+│       ├── 🔒 Disable telemetry services, tasks, registry (if not dry-run)
+│       ├── 📝 Log execution → temp_files/logs/telemetry-disable/execution.log
+│       └── ↩️ Return privacy changes summary
+│
+└── Task 5: 🔄 WindowsUpdates
+    ├── Type1: WindowsUpdatesAudit.psm1
+    │   ├── 🔍 Scan for available updates
+    │   ├── 📋 Check update service status
+    │   ├── 💾 Save results → temp_files/data/windows-updates-results.json
+    │   └── ↩️ Return available updates to Type2
+    └── Type2: WindowsUpdates.psm1
+        ├── 🎯 Create diff (updates to install)
+        ├── 💾 Save diff → temp_files/temp/windows-updates-diff.json
+        ├── 🔄 Install updates (if not dry-run)
+        ├── 📝 Log execution → temp_files/logs/windows-updates/execution.log
+        └── ↩️ Return update summary
+```
+
+### **Phase 6: Report Generation**
+```
+📊 Report Generation
+├── 📁 Collect Data:
+│   ├── Detection Results: temp_files/data/*.json
+│   ├── Execution Logs: temp_files/logs/*/execution.log
+│   ├── Processing Diffs: temp_files/temp/*-diff.json
+│   └── System Information: Hardware, OS, Security status
+│
+├── 🎨 Generate Report:
+│   ├── Load Templates: config/report-template.html, task-card-template.html
+│   ├── Apply Styling: config/report-styles.css
+│   ├── Module Configuration: config/report-templates-config.json
+│   └── Create Before/After Comparisons for each module
+│
+└── 💾 Save Report:
+    ├── Location: Parent Directory (Documents/Desktop/USB root)
+    └── Format: MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html
+```
+
+## 🏗️ **Detailed Architecture**
+
+## 🏗️ **Detailed Architecture**
+
+### **🎯 Module Organization & Dependencies**
+```
+📁 script_mentenanta/
+├── 🚀 script.bat                           # Bootstrap launcher with admin elevation
+├── 🎯 MaintenanceOrchestrator.ps1          # Central coordination engine (1,126 lines)
+├── 📁 config/                              # Configuration & Templates
+│   ├── 📋 main-config.json                 # Execution modes, module toggles, paths
+│   ├── 📊 logging-config.json              # Log levels, destinations, performance
+│   ├── 🗑️ bloatware-list.json              # 187 applications to remove
+│   ├── 📦 essential-apps.json              # 10 applications to install
+│   ├── 📈 report-generation-config.json    # Report dashboard settings
+│   ├── 🎨 report-template.html             # Main HTML report template
+│   ├── 📄 task-card-template.html          # Module report template
+│   ├── 🎨 report-styles.css                # Report styling (no charts)
+│   └── ⚙️ report-templates-config.json     # Module icons & metadata
+├── 📁 modules/
+│   ├── 📁 core/                            # Essential Infrastructure (Orchestrator-loaded)
+│   │   ├── 🏗️ CoreInfrastructure.psm1      # Config + Logging + File Org (16 functions)
+│   │   ├── 🖥️ UserInterface.psm1           # Hierarchical menus + countdown timers
+│   │   ├── 📊 ReportGeneration.psm1        # HTML dashboard generation
+│   │   ├── 🛠️ CommonUtilities.psm1         # Shared fallback functions
+│   │   ├── 📦 DependencyManager.psm1       # External package management
+│   │   └── 🔍 SystemAnalysis.psm1          # System inventory & security audit
+│   ├── 📁 type1/                           # Detection & Audit Modules (Type1)
+│   │   ├── 🗑️ BloatwareDetectionAudit.psm1 # Scan & detect unwanted apps
+│   │   ├── 📦 EssentialAppsAudit.psm1      # Identify missing essential apps
+│   │   ├── ⚡ SystemOptimizationAudit.psm1  # Find optimization opportunities
+│   │   ├── 🔒 TelemetryAudit.psm1          # Detect active telemetry/tracking
+│   │   └── 🔄 WindowsUpdatesAudit.psm1     # Check for available updates
+│   └── 📁 type2/                           # Action & Modification Modules (Type2)
+│       ├── 🗑️ BloatwareRemoval.psm1        # Remove unwanted applications
+│       ├── 📦 EssentialApps.psm1           # Install missing applications
+│       ├── ⚡ SystemOptimization.psm1      # Apply performance optimizations
+│       ├── 🔒 TelemetryDisable.psm1        # Disable privacy-invasive features
+│       └── 🔄 WindowsUpdates.psm1          # Install Windows updates
+└── 📁 temp_files/                          # Session-based Organized Storage
+    ├── 📁 data/                            # Type1 Detection Results (JSON)
+    │   ├── 🗑️ bloatware-results.json       # BloatwareDetectionAudit findings
+    │   ├── 📦 essential-apps-results.json  # EssentialAppsAudit findings
+    │   ├── ⚡ system-optimization-results.json # SystemOptimizationAudit findings
+    │   ├── 🔒 telemetry-results.json       # TelemetryAudit findings
+    │   └── 🔄 windows-updates-results.json # WindowsUpdatesAudit findings
+    ├── 📁 logs/                            # Type2 Execution Logs (Dedicated dirs)
+    │   ├── 📁 bloatware-removal/execution.log
+    │   ├── 📁 essential-apps/execution.log
+    │   ├── 📁 system-optimization/execution.log
+    │   ├── 📁 telemetry-disable/execution.log
+    │   └── 📁 windows-updates/execution.log
+    ├── 📁 temp/                            # Processing Diffs & Intermediate Data
+    │   ├── 🗑️ bloatware-diff.json          # Config items found on system
+    │   ├── 📦 essential-apps-diff.json     # Missing apps from config
+    │   ├── ⚡ system-optimization-diff.json # Optimizations ready for execution
+    │   ├── 🔒 telemetry-diff.json          # Active telemetry items
+    │   └── 🔄 windows-updates-diff.json    # Available updates
+    └── 📁 reports/                         # Temporary report data
+```
+
+### **🔄 Type1 → Type2 Execution Pattern**
+Each maintenance task follows this standardized pattern:
+
+**1. Type1 Detection Phase:**
+```powershell
+# Example: BloatwareDetectionAudit.psm1
+function Get-BloatwareAnalysis {
+    # 🔍 Scan system for installed applications
+    # 📋 Load bloatware-list.json (187 items)
+    # 🎯 Compare installed vs config list
+    # 💾 Save results to temp_files/data/bloatware-results.json
+    # ↩️ Return detected items to Type2 module
+}
+```
+
+**2. Type2 Action Phase:**
+```powershell
+# Example: BloatwareRemoval.psm1
+function Invoke-BloatwareRemoval {
+    # 📥 Import BloatwareDetectionAudit.psm1 internally
+    # 🔍 Call Get-BloatwareAnalysis for detection
+    # 🎯 Create diff: only items from config found on system
+    # 💾 Save diff to temp_files/temp/bloatware-diff.json
+    # 🗑️ Process ONLY items in diff list (if not dry-run)
+    # 📝 Log execution to temp_files/logs/bloatware-removal/
+    # ↩️ Return standardized result object
+}
+```
+
+### **🎛️ Function Purpose & Execution Sequence**
+
+**Core Infrastructure Functions (CoreInfrastructure.psm1):**
+- `Initialize-GlobalPathDiscovery()` → Set up project-wide path variables
+- `Initialize-ConfigSystem()` → Load all JSON configurations
+- `Get-MainConfig()` → Access main execution settings
+- `Get-BloatwareList()` → Load bloatware application definitions
+- `Get-UnifiedEssentialAppsList()` → Load essential application definitions
+- `Initialize-LoggingSystem()` → Set up structured logging
+- `Write-LogEntry()` → Structured logging with levels and components
+- `Start-PerformanceTracking()` → Begin operation timing
+- `Complete-PerformanceTracking()` → End operation timing
+- `Initialize-FileOrganization()` → Set up session directories
+- `Get-SessionPath()` → Get organized file paths
+- `Save-SessionData()` → Store data in organized structure
+- `Get-SessionData()` → Retrieve stored session data
+
+**User Interface Functions (UserInterface.psm1):**
+- `Show-MaintenanceMenu()` → Display hierarchical countdown menus
+- `Get-UserExecutionMode()` → Get execution mode (normal/dry-run)
+- `Get-UserTaskSelection()` → Get task selection (all/specific)
+- `Show-ConfirmationDialog()` → Final confirmation before execution
+- `Show-ExecutionSummary()` → Display task completion summary
+
+**Report Generation Functions (ReportGeneration.psm1):**
+- `Get-HtmlTemplates()` → Load external templates from config/
+- `New-MaintenanceReport()` → Generate comprehensive HTML report
+- `Get-ModuleExecutionData()` → Collect data from all temp_files/
+- `Convert-ModuleDataToTaskResults()` → Format data for reporting
+
+**Type2 Module Standard Functions:**
+Each Type2 module exports exactly one function following this pattern:
+- `Invoke-BloatwareRemoval()` → Remove unwanted applications
+- `Invoke-EssentialApps()` → Install missing applications  
+- `Invoke-SystemOptimization()` → Apply performance optimizations
+- `Invoke-TelemetryDisable()` → Disable privacy-invasive features
+- `Invoke-WindowsUpdates()` → Install Windows updates
+
+### **📊 Data Flow & File Connections**
+
+**Configuration Files (config/) → System:**
+- `main-config.json` → MaintenanceOrchestrator.ps1 (execution settings)
+- `logging-config.json` → CoreInfrastructure.psm1 (log configuration)
+- `bloatware-list.json` → BloatwareDetectionAudit.psm1 → BloatwareRemoval.psm1
+- `essential-apps.json` → EssentialAppsAudit.psm1 → EssentialApps.psm1
+- `report-templates-config.json` → ReportGeneration.psm1 (module metadata)
+
+**Template Files (config/) → Reports:**
+- `report-template.html` → Main HTML structure
+- `task-card-template.html` → Individual module reports
+- `report-styles.css` → Visual styling (simplified, no charts)
+
+**Session Data Flow:**
+```
+Type1 Detection → temp_files/data/*.json → Type2 Processing → temp_files/temp/*-diff.json
+                                                           ↓
+Type2 Execution → temp_files/logs/*/execution.log → ReportGeneration → Parent Directory/*.html
+```
+
+## 🚀 **Quick Start Guide**
+
+### **Prerequisites**
+- Windows 10/11 (any edition)
+- Administrator privileges
+- Internet connection (for dependency downloads)
+
+### **Basic Usage**
+```cmd
+# 1. Download and extract to any location
+# 2. Right-click script.bat → "Run as administrator"
+# 3. Follow the hierarchical menus (20-second auto-selection)
+# 4. Review the generated report in the parent directory
+```
+
+### **Advanced Usage**
+```powershell
+# Unattended mode (all tasks, normal execution)
+.\script.bat -NonInteractive
+
+# Dry-run specific tasks
+.\script.bat -DryRun -TaskNumbers "1,3,5"
+
+# Direct PowerShell execution (requires PowerShell 7+)
+.\MaintenanceOrchestrator.ps1 -NonInteractive -DryRun
+```
+
+## ⚙️ **Configuration Guide**
+
+### **Main Configuration (main-config.json)**
+```json
+{
+  "executionSettings": {
+    "defaultExecutionMode": "Normal",          // Normal|DryRun
+    "enabledModules": ["all"],                 // Module list or "all"
+    "countdownTimerSeconds": 20,               // Menu countdown duration
+    "requireConfirmation": true                // Final confirmation dialog
+  },
+  "performance": {
+    "enablePerformanceTracking": true,        // Track execution timing
+    "sessionTimeoutMinutes": 60,              // Session data retention
+    "cacheTimeoutMinutes": 5                  // Inventory cache duration
+  }
+}
+```
+
+### **Logging Configuration (logging-config.json)**
+```json
+{
+  "logLevels": {
+    "fileLevel": "INFO",                      // DEBUG|INFO|WARN|ERROR
+    "consoleLevel": "INFO",                   // Console output level
+    "performanceLevel": "INFO"                // Performance tracking level
+  },
+  "destinations": {
+    "logFile": "maintenance.log",             // Main log file
+    "moduleSpecificLogs": true,               // Per-module log files
+    "structuredLogging": true                 // JSON-formatted logs
+  }
+}
+```
+
+### **Customizing Application Lists**
+
+**Bloatware List (bloatware-list.json):**
+```json
+{
+  "applications": [
+    {
+      "name": "Microsoft Teams",
+      "packageName": "MicrosoftTeams",
+      "category": "Communication",
+      "uninstallMethod": "winget",
+      "description": "Microsoft Teams application"
+    }
+  ]
+}
+```
+
+**Essential Apps (essential-apps.json):**
+```json
+{
+  "applications": [
+    {
+      "name": "7-Zip",
+      "installMethod": "winget",
+      "packageId": "7zip.7zip",
+      "category": "Utilities",
+      "description": "File archiver with high compression ratio"
+    }
+  ]
+}
+```
+
+## 📊 **Report System**
+
+### **Report Generation Logic**
+1. **Data Collection**: Gather all temp_files/ data (detection, diffs, logs)
+2. **Template Loading**: Load HTML templates and CSS from config/
+3. **Module Processing**: Create before/after sections for each module
+4. **System Information**: Include hardware, OS, and security details
+5. **Report Output**: Single HTML file in parent directory
+
+### **Report Structure**
+- 🛠️ **Header**: Title, generation time, system info, execution mode
+- 📊 **Executive Summary**: Overall metrics, success rates, module summaries
+- 📦 **Module Reports**: Detailed before/after for each maintenance task
+  - 📋 Before: Detected issues/items requiring action
+  - ✅ After: Actions taken and results
+  - 📊 Detailed Results: Item-by-item breakdown
+  - 📝 Changes Summary: Added/Removed/Modified categorized
+  - ⚠️ Errors/Warnings: Any issues encountered
+  - 💡 Recommendations: Suggested next steps
+- 💻 **System Information**: Hardware and operating system details
+
+### **Before/After Report Examples**
+
+**Bloatware Removal Module:**
+- **Before**: "Detected 15 bloatware applications (Xbox Game Bar, OneDrive, etc.)"
+- **After**: "Successfully removed 12 applications, 2 failed, 1 skipped"
+- **Details**: Table showing each app, action taken, and result
+
+**Essential Apps Module:**
+- **Before**: "Missing 3 essential applications (7-Zip, VLC, Chrome)"
+- **After**: "Installed 3 applications via winget, 0 failures"
+- **Details**: Installation methods, versions, and success status
+
+## 🔧 **Development & Customization**
+
+### **Adding New Modules**
+1. **Create Type1 Detection Module** (modules/type1/YourFeatureAudit.psm1)
+2. **Create Type2 Action Module** (modules/type2/YourFeature.psm1)
+3. **Update Module Lists** in MaintenanceOrchestrator.ps1
+4. **Add Configuration** in config/ directory
+5. **Update Report Templates** in config/report-templates-config.json
+
+### **Module Development Pattern**
+```powershell
+# Type1 Template
+function Get-YourFeatureAnalysis {
+    # 🔍 Detect current state
+    # 📋 Compare with configuration
+    # 💾 Save to temp_files/data/
+    # ↩️ Return findings
+}
+
+# Type2 Template  
+function Invoke-YourFeature {
+    # 📥 Import Type1 module internally
+    # 🔍 Call detection function
+    # 🎯 Create diff of actionable items
+    # 💾 Save diff to temp_files/temp/
+    # 🛠️ Execute changes (if not dry-run)
+    # 📝 Log to temp_files/logs/
+    # ↩️ Return standardized result
+}
+```
+
+## 🛡️ **Safety Features**
+
+### **System Protection**
+- ✅ **System Restore Point**: Created before any changes
+- ✅ **Administrator Validation**: Ensures proper privileges
+- ✅ **Dry-Run Mode**: Simulate changes without modification
+- ✅ **Pending Restart Handling**: Auto-resume after restart
+- ✅ **Structured Logging**: Complete audit trail of all actions
+
+### **Error Handling**
+- 🔄 **Graceful Degradation**: Continue operation if modules fail
+- 📝 **Comprehensive Logging**: Detailed error reporting and stack traces
+- 🎯 **Validation Checks**: Verify system state before operations
+- ⚙️ **Fallback Functions**: Operate without advanced dependencies
+
+### **Data Integrity**
+- 💾 **Session-based Storage**: Organized file structure with cleanup
+- 🔐 **Configuration Validation**: JSON schema validation
+- 📊 **Performance Tracking**: Monitor execution times and resource usage
+- 🎯 **Result Verification**: Validate operations completed successfully
+
+## 📋 **Troubleshooting**
+
+### **Common Issues**
+
+**"Access Denied" Errors:**
+```cmd
+# Ensure running as Administrator
+# Unblock downloaded files
+PowerShell -Command "Get-ChildItem -Recurse | Unblock-File"
+```
+
+**Module Loading Failures:**
+```powershell
+# Check execution policy
+Get-ExecutionPolicy
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**PowerShell Version Issues:**
+```cmd
+# Verify PowerShell 7+ is installed
+pwsh --version
+# The script.bat launcher handles this automatically
+```
+
+### **Log Analysis**
+- **Main Log**: `maintenance.log` in script directory
+- **Module Logs**: `temp_files/logs/[module-name]/execution.log`
+- **Session Data**: `temp_files/data/` for detection results
+- **Processing Diffs**: `temp_files/temp/` for actionable items
+
+## 🎯 **Use Cases**
+
+### **Individual Users**
+- 🏠 **Personal Computer Setup**: Remove bloatware, install essentials
+- ⚡ **Performance Optimization**: Speed up aging systems
+- 🔒 **Privacy Enhancement**: Disable telemetry and tracking
+
+### **IT Professionals**
+- 🏢 **Enterprise Deployment**: Standardize new computer setup
+- 🔧 **Maintenance Automation**: Regular system health checks
+- 📊 **Compliance Reporting**: Document system changes
+
+### **System Administrators**
+- 🌐 **Bulk Processing**: Process multiple systems with consistent settings
+- 📋 **Change Management**: Detailed before/after documentation
+- 🛡️ **Security Hardening**: Apply privacy and security configurations
+
+---
+
+## 📄 **License & Support**
+
+**License**: MIT License - see LICENSE file for details
+**Documentation**: This README and copilot-instructions.md
+**Issues**: Please report issues via GitHub Issues
+**Contributions**: Pull requests welcome following existing patterns
+
+**Version**: 3.0.0 (October 2025)
+**PowerShell**: Requires 7.0+ (automatically managed by launcher)
+**Compatibility**: Windows 10/11 (all editions)
 │   │   ├── SystemAnalysis.psm1         # 🔍 System inventory + health scoring
 │   │   └── DependencyManager.psm1      # 📦 External package management
 │   ├── type1/                          # 🔍 Detection & Auditing (imported by Type2)
