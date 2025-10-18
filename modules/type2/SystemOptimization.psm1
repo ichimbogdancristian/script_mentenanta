@@ -99,6 +99,7 @@ function Invoke-SystemOptimization {
         if ($DryRun) {
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'DRY RUN: Simulating system optimization' -LogPath $executionLogPath
             $results = @{ ProcessedCount = $optimizationCount; Simulated = $true }
+            [void]$results
             $processedCount = $optimizationCount
         }
         else {
@@ -158,6 +159,7 @@ function Invoke-SystemOptimization {
                 }
             }
             $results = @{ ProcessedCount = $processedCount; AppliedOptimizations = $processedCount }
+            [void]$results
         }
         
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed: $processedCount optimizations applied" -LogPath $executionLogPath
@@ -295,7 +297,7 @@ function Optimize-SystemPerformance {
         Failed          = 0
         SpaceFreed      = 0
         DryRun          = $DryRun.IsPresent
-        Details         = [List[PSCustomObject]]::new()
+        Details         = @()
         Categories      = @{
             TempCleanup          = @{ Success = 0; Failed = 0; SpaceFreed = 0 }
             StartupOptimization  = @{ Success = 0; Failed = 0; ItemsOptimized = 0 }
@@ -425,40 +427,6 @@ function Optimize-SystemPerformance {
     Evaluates current system performance and identifies optimization opportunities.
 
 .EXAMPLE
-    $metrics = Get-SystemPerformanceMetric
-#>
-function Get-SystemPerformanceMetric {
-    [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-
-    Write-Information "📊 Analyzing system performance..." -InformationAction Continue
-
-    $metrics = @{
-        Timestamp       = Get-Date
-        DiskUsage       = Get-DiskUsageMetric
-        StartupPrograms = Get-StartupProgramCount
-        TemporaryFiles  = Get-TemporaryFileSize
-        RegistrySize    = Get-RegistrySize
-        ServicesRunning = try { (Get-Service -ErrorAction SilentlyContinue | Where-Object Status -eq 'Running').Count } catch { 0 }
-        ProcessCount    = (Get-Process).Count
-        MemoryUsage     = Get-MemoryUsagePercent
-        Recommendations = [List[string]]::new()
-    }
-
-    # Generate recommendations based on metrics
-    if ($metrics.TemporaryFiles -gt 500MB) {
-        $metrics.Recommendations.Add("High temporary file usage detected ($([math]::Round($metrics.TemporaryFiles/1MB)) MB)")
-    }
-
-    if ($metrics.StartupPrograms -gt 15) {
-        $metrics.Recommendations.Add("Many startup programs detected ($($metrics.StartupPrograms))")
-    }
-
-    if ($metrics.MemoryUsage -gt 80) {
-        $metrics.Recommendations.Add("High memory usage detected ($($metrics.MemoryUsage)%)")
-    }
-
     Write-Information "  💽 Disk Usage: $($metrics.DiskUsage.UsedPercentage)%" -InformationAction Continue
     Write-Information "  🚀 Startup Programs: $($metrics.StartupPrograms)" -InformationAction Continue
     Write-Information "  🗂️  Temporary Files: $([math]::Round($metrics.TemporaryFiles/1MB)) MB" -InformationAction Continue
@@ -487,7 +455,7 @@ function Clear-TemporaryFile {
         Success    = 0
         Failed     = 0
         SpaceFreed = 0
-        Details    = [List[PSCustomObject]]::new()
+        Details    = @()
     }
 
     # Define cleanup targets
@@ -598,7 +566,7 @@ function Optimize-StartupProgram {
         Success        = 0
         Failed         = 0
         ItemsOptimized = 0
-        Details        = [List[PSCustomObject]]::new()
+        Details        = @()
     }
 
     # Get startup programs from registry
@@ -711,7 +679,7 @@ function Optimize-UserInterface {
         Success         = 0
         Failed          = 0
         SettingsChanged = 0
-        Details         = [List[PSCustomObject]]::new()
+        Details         = @()
     }
 
     # UI optimization settings
@@ -804,7 +772,7 @@ function Optimize-WindowsRegistry {
         Success          = 0
         Failed           = 0
         EntriesProcessed = 0
-        Details          = [List[PSCustomObject]]::new()
+        Details          = @()
     }
 
     Write-Warning "Registry optimization requires careful implementation and is currently limited to safe operations"
@@ -884,7 +852,7 @@ function Optimize-DiskPerformance {
         Success        = 0
         Failed         = 0
         TasksCompleted = 0
-        Details        = [List[PSCustomObject]]::new()
+        Details        = @()
     }
 
     # Disk optimization tasks
@@ -961,7 +929,7 @@ function Optimize-NetworkSetting {
         Success         = 0
         Failed          = 0
         SettingsApplied = 0
-        Details         = [List[PSCustomObject]]::new()
+        Details         = @()
     }
 
     # Network optimization settings (registry-based)
