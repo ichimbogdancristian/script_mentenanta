@@ -29,11 +29,10 @@ if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
 
-# Import shared utilities for fallback functions
-$CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'
-if (Test-Path $CommonUtilitiesPath) {
-    Import-Module $CommonUtilitiesPath -Force
-    Initialize-FallbackFunctions
+# Module should use only configuration-based functions from CoreInfrastructure
+# Fallback functions are no longer needed with v3.0 proper loading order
+if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
+    throw "CoreInfrastructure module not properly loaded - required functions not available. Ensure Type2 module loads CoreInfrastructure before importing this Type1 module."
 }
 
 #region Public Functions
@@ -284,11 +283,17 @@ function Get-StartupOptimizationAudit {
             }
         }
 
-        # Audit services
-        $services = Get-Service | Where-Object { $_.StartType -eq 'Automatic' -and $_.Status -eq 'Running' }
-        $nonEssentialServices = $services | Where-Object { 
-            $_.Name -match 'Fax|TabletInputService|WSearch|Spooler|Themes' -and
-            $_.Name -notmatch 'BITS|Winmgmt|RpcSs|EventLog|Dhcp'
+        # Audit services with permission handling
+        try {
+            $services = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.StartType -eq 'Automatic' -and $_.Status -eq 'Running' }
+            $nonEssentialServices = $services | Where-Object { 
+                $_.Name -match 'Fax|TabletInputService|WSearch|Spooler|Themes' -and
+                $_.Name -notmatch 'BITS|Winmgmt|RpcSs|EventLog|Dhcp'
+            }
+        }
+        catch {
+            Write-Warning "Could not enumerate all services for optimization audit: $($_.Exception.Message)"
+            $nonEssentialServices = @()
         }
 
         foreach ($service in $nonEssentialServices) {

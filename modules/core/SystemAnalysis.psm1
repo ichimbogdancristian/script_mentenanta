@@ -263,15 +263,74 @@ function Get-ServicesInfo {
     param()
 
     try {
-        $services = Get-Service
+        # Get services with permission handling - some services may be inaccessible
+        $services = @()
+        $accessibleServices = @()
+        $deniedServices = @()
+        
+        try {
+            # First try to get all services at once
+            $allServices = Get-Service -ErrorAction SilentlyContinue
+            if ($allServices) {
+                $services = $allServices
+            }
+            else {
+                # If that fails, get services individually and handle permission errors
+                $serviceNames = Get-Service | Select-Object -ExpandProperty Name -ErrorAction SilentlyContinue
+                foreach ($serviceName in $serviceNames) {
+                    try {
+                        $service = Get-Service -Name $serviceName -ErrorAction Stop
+                        $accessibleServices += $service
+                    }
+                    catch [System.Security.SecurityException], [System.UnauthorizedAccessException] {
+                        $deniedServices += $serviceName
+                        # Silently skip permission denied services
+                    }
+                    catch {
+                        # Skip other service errors
+                    }
+                }
+                $services = $accessibleServices
+            }
+        }
+        catch {
+            # Fallback: try WMI if Get-Service fails entirely
+            try {
+                $services = Get-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue | ForEach-Object {
+                    [PSCustomObject]@{
+                        Name      = $_.Name
+                        Status    = if ($_.State -eq 'Running') { 'Running' } else { 'Stopped' }
+                        StartType = switch ($_.StartMode) {
+                            'Auto' { 'Automatic' }
+                            'Manual' { 'Manual' }
+                            'Disabled' { 'Disabled' }
+                            default { 'Manual' }
+                        }
+                    }
+                }
+            }
+            catch {
+                Write-Warning "Failed to enumerate services via both Get-Service and WMI: $($_.Exception.Message)"
+                return [PSCustomObject]@{ 
+                    Error          = "Permission denied accessing service information"
+                    DeniedServices = $deniedServices.Count
+                }
+            }
+        }
+        
+        if ($deniedServices.Count -gt 0) {
+            Write-Information "Note: $($deniedServices.Count) services were inaccessible due to permissions (e.g., McpManagementService)" -InformationAction Continue
+        }
         
         return [PSCustomObject]@{
-            Total     = $services.Count
-            Running   = ($services | Where-Object { $_.Status -eq 'Running' }).Count
-            Stopped   = ($services | Where-Object { $_.Status -eq 'Stopped' }).Count
-            Automatic = ($services | Where-Object { $_.StartType -eq 'Automatic' }).Count
-            Manual    = ($services | Where-Object { $_.StartType -eq 'Manual' }).Count
-            Disabled  = ($services | Where-Object { $_.StartType -eq 'Disabled' }).Count
+            Total              = $services.Count
+            Running            = ($services | Where-Object { $_.Status -eq 'Running' }).Count
+            Stopped            = ($services | Where-Object { $_.Status -eq 'Stopped' }).Count
+            Automatic          = ($services | Where-Object { $_.StartType -eq 'Automatic' }).Count
+            Manual             = ($services | Where-Object { $_.StartType -eq 'Manual' }).Count
+            Disabled           = ($services | Where-Object { $_.StartType -eq 'Disabled' }).Count
+            AccessibleServices = $services.Count
+            DeniedServices     = $deniedServices.Count
         }
     }
     catch {

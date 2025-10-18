@@ -25,26 +25,22 @@ using namespace System.Collections.Concurrent
 
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Step 1: Import corresponding Type 1 module (REQUIRED)
+# Step 1: Import core infrastructure FIRST (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
+}
+
+# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
 $Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\BloatwareDetectionAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force
 }
 else {
     throw "Required Type 1 module not found: $Type1ModulePath"
-}
-
-# Step 2: Import core infrastructure (REQUIRED)
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force
-}
-else {
-    # Fallback logging function if CoreInfrastructure fails
-    function Write-LogEntry {
-        param($Level, $Component, $Message, $Data)
-        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
-    }
 }
 
 # Note: DependencyManager import removed as functions are not used
@@ -150,7 +146,18 @@ function Invoke-BloatwareRemoval {
         else {
             # Process only items found in diff comparison
             $results = Remove-DetectedBloatware -BloatwareList $diffList -LogPath $executionLogPath
-            $processedCount = if ($results.ProcessedItems) { $results.ProcessedItems.Count } else { 0 }
+            
+            # Handle different return types from Remove-DetectedBloatware
+            if ($results -is [hashtable] -and $results.ContainsKey('TotalProcessed')) {
+                $processedCount = $results.TotalProcessed
+            }
+            elseif ($results -is [hashtable] -and $results.ContainsKey('Successful')) {
+                $processedCount = $results.Successful
+            }
+            else {
+                $processedCount = 0
+            }
+            
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processed $processedCount bloatware items" -LogPath $executionLogPath
         }
         
@@ -402,7 +409,7 @@ ITEMS BY SOURCE:
             $results.Successful += $sourceResults.Successful
             $results.Failed += $sourceResults.Failed
             $results.Skipped += $sourceResults.Skipped
-            $results.Details.AddRange($sourceResults.Details)
+            $results.Details.AddRange($sourceResults.Details) | Out-Null
             $results.BySource[$source] = $sourceResults
         }
 
@@ -623,7 +630,7 @@ function Remove-AppXBloatware {
             Write-Warning "Failed to remove AppX package ${packageName}: $_"
         }
 
-        $results.Details.Add([PSCustomObject]$result)
+        $results.Details.Add([PSCustomObject]$result) | Out-Null
     }
 
     return $results
@@ -705,7 +712,7 @@ function Remove-WingetBloatware {
             Write-Warning "Failed to uninstall Winget package ${packageName}: $_"
         }
 
-        $results.Details.Add([PSCustomObject]$result)
+        $results.Details.Add([PSCustomObject]$result) | Out-Null
     }
 
     return $results
@@ -787,7 +794,7 @@ function Remove-ChocolateyBloatware {
             Write-Warning "Failed to uninstall Chocolatey package ${packageName}: $_"
         }
 
-        $results.Details.Add([PSCustomObject]$result)
+        $results.Details.Add([PSCustomObject]$result) | Out-Null
     }
 
     return $results
@@ -878,7 +885,7 @@ function Remove-RegistryBloatware {
             Write-Warning "Failed to uninstall ${appName}: $_"
         }
 
-        $results.Details.Add([PSCustomObject]$result)
+        $results.Details.Add([PSCustomObject]$result) | Out-Null
     }
 
     return $results

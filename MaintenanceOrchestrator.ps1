@@ -71,6 +71,29 @@ Write-Information "Windows Maintenance Automation - Central Orchestrator v2.0.0"
 Write-Information "Working Directory: $WorkingDirectory" -InformationAction Continue
 Write-Information "Script Root: $ScriptRoot" -InformationAction Continue
 
+# 🛡️ Administrator Privilege Verification (Critical for service operations)
+Write-Information "`n🛡️ Verifying administrator privileges..." -InformationAction Continue
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error @"
+❌ ADMINISTRATOR PRIVILEGES REQUIRED
+
+This script requires Administrator privileges to:
+• Query all system services (including protected services like McpManagementService)
+• Modify system configurations and registry settings
+• Install/uninstall applications
+• Manage Windows services and scheduled tasks
+• Access system-level Windows Update services
+
+Please run this script as Administrator:
+• Right-click PowerShell and select "Run as Administrator"
+• Or use the script.bat launcher which auto-elevates
+• Or run: Start-Process PowerShell -Verb RunAs -ArgumentList "-File `"$($MyInvocation.MyCommand.Path)`""
+
+"@
+    exit 1
+}
+Write-Information "  ✅ Administrator privileges confirmed" -InformationAction Continue
+
 # 🎯 Initialize Global Path Discovery System
 Write-Information "`n🔍 Initializing global path discovery..." -InformationAction Continue
 $env:MAINTENANCE_PROJECT_ROOT = $ScriptRoot
@@ -307,6 +330,40 @@ if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
 else {
     $logFunction = Get-Command -Name 'Write-LogEntry'
     Write-Information "  ✓ Write-LogEntry available from: $($logFunction.Source)" -InformationAction Continue
+}
+
+# 🔍 System Access Verification
+Write-Information "`n🔍 Verifying system access permissions..." -InformationAction Continue
+try {
+    # Test service enumeration capability
+    $testServiceCount = (Get-Service -ErrorAction SilentlyContinue | Measure-Object).Count
+    Write-Information "  ✓ Service enumeration: $testServiceCount services accessible" -InformationAction Continue
+    
+    # Test registry access
+    try {
+        $testRegRead = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion" -Name "ProductName" -ErrorAction SilentlyContinue
+        if ($testRegRead) {
+            Write-Information "  ✓ Registry access: HKLM accessible" -InformationAction Continue
+        }
+    }
+    catch {
+        Write-Warning "  ⚠️ Limited registry access detected"
+    }
+    
+    # Test WMI access
+    try {
+        $testWmi = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue
+        if ($testWmi) {
+            Write-Information "  ✓ WMI access: System information accessible" -InformationAction Continue
+        }
+    }
+    catch {
+        Write-Warning "  ⚠️ Limited WMI access detected"
+    }
+}
+catch {
+    Write-Warning "  ⚠️ System access verification encountered issues: $($_.Exception.Message)"
+    Write-Information "  ℹ️ Some operations may have limited functionality" -InformationAction Continue
 }
 
 #endregion

@@ -1215,9 +1215,10 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     SET "PS_ARGS=!PS_ARGS!Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
     SET "PS_ARGS=!PS_ARGS!}"
     
-    REM Launch new PowerShell 7 window and exit batch script
-    CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
-    START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!
+    REM Launch new PowerShell 7 window preserving Administrator privileges
+    CALL :LOG_MESSAGE "Launching elevated PowerShell 7: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
+    REM Use direct execution instead of START to preserve admin privileges
+    "%PS_EXECUTABLE%" !PS_ARGS!
     
     REM Give the new window a moment to start
     TIMEOUT /T 2 /NOBREAK >NUL 2>&1
@@ -1310,29 +1311,33 @@ IF "%TASKNUMS%"=="" (
 GOTO :EXECUTE_INSERTED_DRYRUN
 
 :EXECUTE_ALL
-CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Executing all tasks unattended with preserved admin privileges..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
+REM Execute directly to preserve admin privileges (not through START)
 "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_INSERTED
-CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS% with preserved admin privileges..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
+REM Execute directly to preserve admin privileges (not through START)
 "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_ALL_DRYRUN
-CALL :LOG_MESSAGE "Executing all tasks in dry-run unattended..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Executing all tasks in dry-run unattended with preserved admin privileges..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
+REM Execute directly to preserve admin privileges (not through START)
 "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
 :EXECUTE_INSERTED_DRYRUN
-CALL :LOG_MESSAGE "Executing selected tasks in dry-run: %TASKNUMS%..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Executing selected tasks in dry-run: %TASKNUMS% with preserved admin privileges..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
+REM Execute directly to preserve admin privileges (not through START)
 "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP

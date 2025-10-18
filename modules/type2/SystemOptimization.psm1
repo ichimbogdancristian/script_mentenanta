@@ -23,26 +23,22 @@ using namespace System.Collections.Generic
 
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Step 1: Import corresponding Type 1 module (REQUIRED)
+# Step 1: Import core infrastructure FIRST (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    throw "CoreInfrastructure module not found at: $CoreInfraPath - v3.0 requires proper module loading order"
+}
+
+# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
 $Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\SystemOptimizationAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force
 }
 else {
     throw "Required Type 1 module not found: $Type1ModulePath"
-}
-
-# Step 2: Import core infrastructure (REQUIRED)
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force
-}
-else {
-    # Fallback logging function if CoreInfrastructure fails
-    function Write-LogEntry {
-        param($Level, $Component, $Message, $Data)
-        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
-    }
 }
 
 # Step 3: Import additional dependencies
@@ -443,7 +439,7 @@ function Get-SystemPerformanceMetric {
         StartupPrograms = Get-StartupProgramCount
         TemporaryFiles  = Get-TemporaryFileSize
         RegistrySize    = Get-RegistrySize
-        ServicesRunning = (Get-Service | Where-Object Status -eq 'Running').Count
+        ServicesRunning = try { (Get-Service -ErrorAction SilentlyContinue | Where-Object Status -eq 'Running').Count } catch { 0 }
         ProcessCount    = (Get-Process).Count
         MemoryUsage     = Get-MemoryUsagePercent
         Recommendations = [List[string]]::new()
@@ -612,11 +608,11 @@ function Optimize-StartupProgram {
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
     )
 
-    # Programs that are generally safe to disable
+    # v3.0 compliance: Get safe-to-disable startup programs from configuration
+    # TODO: Move this to a configuration file in future version
+    # For now, use a minimal conservative list without specific app references
     $safeToDisable = @(
-        '*Adobe*Updater*', '*Adobe*Update*', '*iTunesHelper*', '*QuickTime*',
-        '*Spotify*', '*Skype*Update*', '*Steam*', '*Discord*Update*',
-        '*CCleaner*', '*WinRAR*', '*7-Zip*', '*VLC*Update*'
+        '*Updater*', '*Update*Helper*', '*AutoUpdate*', '*UpdateChecker*'
     )
 
     foreach ($location in $startupLocations) {

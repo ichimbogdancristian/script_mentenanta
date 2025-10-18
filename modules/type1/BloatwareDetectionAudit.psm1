@@ -29,18 +29,19 @@ if (Test-Path $SystemAnalysisPath) {
 }
 
 # v3.0 Type 1 module - imported by Type 2 modules
-# Import CoreInfrastructure for configuration and logging
-$ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force
+# Note: CoreInfrastructure should be loaded by the Type 2 module before importing this module
+# Check if CoreInfrastructure functions are available (loaded by Type2 module)
+if (Get-Command 'Get-UnifiedBloatwareList' -ErrorAction SilentlyContinue) {
+    Write-Verbose "CoreInfrastructure functions detected - using configuration-based bloatware list"
+}
+else {
+    Write-Verbose "CoreInfrastructure functions not available - fallback functions will be used"
 }
 
-# Import shared utilities for fallback functions
-$CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'
-if (Test-Path $CommonUtilitiesPath) {
-    Import-Module $CommonUtilitiesPath -Force
-    Initialize-FallbackFunctions
+# Module should use only configuration-based functions from CoreInfrastructure
+# Fallback functions are no longer needed with v3.0 proper loading order
+if (-not (Get-Command 'Get-BloatwareList' -ErrorAction SilentlyContinue)) {
+    throw "CoreInfrastructure module not properly loaded - Get-BloatwareList function not available. Ensure Type2 module loads CoreInfrastructure before importing this Type1 module."
 }
 
 #region Public Functions

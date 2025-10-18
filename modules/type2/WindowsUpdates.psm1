@@ -24,19 +24,22 @@ using namespace System.Collections.Generic
 
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Step 1: Import corresponding Type 1 module (REQUIRED)
+# Step 1: Import core infrastructure FIRST (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
+}
+
+# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
 $Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\WindowsUpdatesAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force
 }
 else {
     throw "Required Type 1 module not found: $Type1ModulePath"
-}
-
-# Step 2: Import core infrastructure (REQUIRED)
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force
 }
 else {
     function Write-LogEntry { param($Level, $Component, $Message, $Data); Write-Information "[$Level] [$Component] $Message" -InformationAction Continue }

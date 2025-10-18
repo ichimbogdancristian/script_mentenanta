@@ -25,7 +25,16 @@ using namespace System.Collections.Concurrent
 
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Step 1: Import corresponding Type 1 module (REQUIRED)
+# Step 1: Import core infrastructure FIRST (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
+}
+
+# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
 $Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\EssentialAppsAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force
@@ -34,26 +43,7 @@ else {
     throw "Required Type 1 module not found: $Type1ModulePath"
 }
 
-# Step 2: Import core infrastructure (REQUIRED)
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force
-}
-
-# Import shared utilities for fallback functions (only if CoreInfrastructure functions not available)
-$CommonUtilitiesPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CommonUtilities.psm1'
-if (Test-Path $CommonUtilitiesPath) {
-    Import-Module $CommonUtilitiesPath -Force
-    # Only initialize fallbacks if CoreInfrastructure is not available
-    $existingLogFunction = Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue
-    if (-not $existingLogFunction -or ($existingLogFunction.Source -ne 'CoreInfrastructure')) {
-        Write-Verbose "CoreInfrastructure Write-LogEntry not available, initializing fallbacks"
-        Initialize-FallbackFunctions
-    }
-    else {
-        Write-Verbose "CoreInfrastructure Write-LogEntry available, skipping fallback initialization"
-    }
-}
+# v3.0 compliance: No fallback functions needed with proper loading order
 
 # Step 3: Import additional dependencies
 $DependencyManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\DependencyManager.psm1'
@@ -760,52 +750,37 @@ function Test-AppInstallationStatus {
         }
     }
 
-    # Strategy 3: Enhanced detection for specific apps with known variations
-    $appName = $App.Name.ToLower()
+    # Strategy 3: Configuration-only detection (v3.0 compliance)
+    # No hardcoded variations - uses only configured identifiers
 
-    # Common app name variations and aliases
-    $appVariations = @{
-        'visual studio code'       = @('code', 'vscode', 'vs code')
-        'git for windows'          = @('git', 'git for windows')
-        'powershell 7'             = @('powershell', 'powershell core', 'pwsh')
-        'windows terminal'         = @('terminal', 'windows terminal', 'wt')
-        'java runtime environment' = @('java', 'jre', 'java runtime', 'oracle java')
-        'python 3'                 = @('python', 'python3', 'python 3')
-        'node.js'                  = @('node', 'nodejs', 'node.js')
-        'vlc media player'         = @('vlc', 'vlc player', 'vlc media player')
-        '7-zip'                    = @('7zip', '7-zip')
-        'libreoffice'              = @('libreoffice', 'libre office')
-        'microsoft teams'          = @('teams', 'microsoft teams')
-        'google chrome'            = @('chrome', 'google chrome')
-        'mozilla firefox'          = @('firefox', 'mozilla firefox')
-        'gimp'                     = @('gimp', 'gnu image manipulation program')
-    }
-
-    # Check if this app has known variations
-    $variations = @()
-    foreach ($knownApp in $appVariations.Keys) {
-        if ($appName -like "*$knownApp*") {
-            $variations += $appVariations[$knownApp]
-            break
+    # v3.0 compliance: Strict configuration-only approach
+    # Get configured apps from configuration file - no fallbacks or variations
+    try {
+        $configuredApps = Get-UnifiedEssentialAppsList
+        if (-not $configuredApps -or $configuredApps.Count -eq 0) {
+            throw "Essential apps configuration is empty or not found in config/essential-apps.json"
         }
     }
+    catch {
+        throw "Failed to load essential apps configuration: $($_.Exception.Message). Ensure config/essential-apps.json exists and is properly formatted."
+    }
 
-    # Add original identifiers to variations
-    $variations += $identifiersToCheck
+    # Use exact app name match only - no variations or aliases
+    # This enforces precise configuration control
 
-    # Strategy 4: Check variations against installed programs with enhanced matching
-    foreach ($variation in $variations) {
-        if (-not $variation) { continue }
+    # Strategy 4: Check against installed programs using exact identifiers only
+    # v3.0 compliance: Use only configured identifiers, no variations or aliases
+    foreach ($identifier in $identifiersToCheck) {
+        if (-not $identifier) { continue }
 
         $matchingPrograms = $InstalledPrograms | Where-Object {
-            ($_.Name -and (($_.Name -like "*$variation*") -or ($_.Name -eq $variation))) -or
-            ($_.DisplayName -and (($_.DisplayName -like "*$variation*") -or ($_.DisplayName -eq $variation))) -or
-            ($_.Publisher -and ($variation -like "*$($_.Publisher)*")) -or
-            ($_.Id -and (($_.Id -like "*$variation*") -or ($_.Id -eq $variation)))
+            ($_.Name -and (($_.Name -like "*$identifier*") -or ($_.Name -eq $identifier))) -or
+            ($_.DisplayName -and (($_.DisplayName -like "*$identifier*") -or ($_.DisplayName -eq $identifier))) -or
+            ($_.Id -and (($_.Id -like "*$identifier*") -or ($_.Id -eq $identifier)))
         }
 
         if ($matchingPrograms.Count -gt 0) {
-            Write-Verbose "Found enhanced match for '$($App.Name)' using variation '$variation': $($matchingPrograms[0].Name -or $matchingPrograms[0].DisplayName)"
+            Write-Verbose "Found match for '$($App.Name)' using identifier '$identifier': $($matchingPrograms[0].Name -or $matchingPrograms[0].DisplayName)"
             return $true
         }
     }
