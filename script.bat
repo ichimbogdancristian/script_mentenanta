@@ -26,6 +26,24 @@ ECHO %LOG_ENTRY%
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
 EXIT /B
 
+:REFRESH_PATH_FROM_REGISTRY
+REM Refresh PATH environment variable from system registry
+FOR /F "tokens=2*" %%i IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') DO (
+    SET "SYSTEM_PATH=%%j"
+)
+FOR /F "tokens=2*" %%i IN ('REG QUERY "HKCU\Environment" /v PATH 2^>nul') DO (
+    SET "USER_PATH=%%j"
+)
+REM Combine system and user PATH
+IF DEFINED SYSTEM_PATH IF DEFINED USER_PATH (
+    SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
+) ELSE IF DEFINED SYSTEM_PATH (
+    SET "PATH=%SYSTEM_PATH%"
+) ELSE IF DEFINED USER_PATH (
+    SET "PATH=%USER_PATH%"
+)
+EXIT /B
+
 :MAIN_SCRIPT
 
 REM -----------------------------------------------------------------------------
@@ -445,25 +463,75 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
             CALL :LOG_MESSAGE "App Installer registration failed" "WARN" "LAUNCHER"
         )
         
-        REM Method 2: Try Chocolatey to install winget
-        choco --version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Attempting winget installation via Chocolatey..." "INFO" "LAUNCHER"
-            choco install winget-cli -y --no-progress >nul 2>&1
+        REM Check if Method 1 succeeded before trying Method 2
+        winget --version >nul 2>&1
+        IF !ERRORLEVEL! NEQ 0 (
+            REM Method 2: Try PowerShell Gallery Microsoft.WinGet.Client module (official method)
+            CALL :LOG_MESSAGE "Attempting winget installation via PowerShell Gallery (Microsoft.WinGet.Client)..." "INFO" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Installing NuGet provider...'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Write-Host 'Installing Microsoft.WinGet.Client module...'; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Write-Host 'Running Repair-WinGetPackageManager...'; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
             IF !ERRORLEVEL! EQU 0 (
-                CALL :LOG_MESSAGE "Winget installed via Chocolatey" "SUCCESS" "LAUNCHER"
+                CALL :LOG_MESSAGE "PowerShell Gallery method completed - verifying winget availability..." "INFO" "LAUNCHER"
+                TIMEOUT /T 5 >nul 2>&1
+                
+                REM Verify winget actually works after PowerShell Gallery installation
+                winget --version >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    SET "WINGET_EXE=winget"
+                    SET "WINGET_AVAILABLE=YES"
+                    CALL :LOG_MESSAGE "Winget verified working after PowerShell Gallery installation" "SUCCESS" "LAUNCHER"
+                ) ELSE (
+                    REM Try WindowsApps path after PowerShell Gallery installation
+                    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+                        "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
+                        IF !ERRORLEVEL! EQU 0 (
+                            SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
+                            SET "WINGET_AVAILABLE=YES"
+                            CALL :LOG_MESSAGE "Winget working via WindowsApps after PowerShell Gallery installation" "SUCCESS" "LAUNCHER"
+                        ) ELSE (
+                            CALL :LOG_MESSAGE "PowerShell Gallery installed winget but it's not functional" "WARN" "LAUNCHER"
+                        )
+                    ) ELSE (
+                        CALL :LOG_MESSAGE "PowerShell Gallery method completed but winget not accessible" "WARN" "LAUNCHER"
+                    )
+                )
             ) ELSE (
-                CALL :LOG_MESSAGE "Chocolatey winget installation failed" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "PowerShell Gallery winget installation failed" "WARN" "LAUNCHER"
             )
+        ) ELSE (
+            CALL :LOG_MESSAGE "Method 1 succeeded - skipping PowerShell Gallery installation" "DEBUG" "LAUNCHER"
         )
         
-        REM Method 3: Download and install App Installer MSIX manually
-        IF "%WINGET_AVAILABLE%"=="NO" (
-            CALL :LOG_MESSAGE "Attempting manual App Installer download..." "INFO" "LAUNCHER"
+        REM Check if Methods 1 and 2 succeeded before trying Method 3
+        winget --version >nul 2>&1
+        IF !ERRORLEVEL! NEQ 0 (
+            REM Method 3: Download and install App Installer MSIX manually with fallback URLs
+            CALL :LOG_MESSAGE "Attempting manual App Installer download with fallback URLs..." "INFO" "LAUNCHER"
             DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $url='https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing; Write-Host 'MSIX_DOWNLOADED' } catch { Write-Host 'MSIX_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
-            IF !ERRORLEVEL! EQU 0 (
-                CALL :LOG_MESSAGE "App Installer MSIX downloaded. Installing..." "INFO" "LAUNCHER"
+            
+            REM Try primary URL (Microsoft official shortlink)
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying primary URL (Microsoft official)...'; $url='https://aka.ms/getwinget'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'PRIMARY_MSIX_DOWNLOADED' } catch { Write-Host 'PRIMARY_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! NEQ 0 (
+                CALL :LOG_MESSAGE "Primary URL failed, trying fallback URL 1 (GitHub direct)..." "INFO" "LAUNCHER"
+                DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying fallback URL 1 (GitHub direct)...'; $url='https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'FALLBACK1_MSIX_DOWNLOADED' } catch { Write-Host 'FALLBACK1_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! NEQ 0 (
+                    CALL :LOG_MESSAGE "Fallback URL 1 failed, trying fallback URL 2 (GitHub versioned)..." "INFO" "LAUNCHER"
+                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying fallback URL 2 (GitHub versioned)...'; $url='https://github.com/microsoft/winget-cli/releases/download/v1.11.510/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'FALLBACK2_MSIX_DOWNLOADED' } catch { Write-Host 'FALLBACK2_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+                    IF !ERRORLEVEL! EQU 0 (
+                        CALL :LOG_MESSAGE "App Installer MSIX downloaded via fallback URL 2. Installing..." "INFO" "LAUNCHER"
+                    ) ELSE (
+                        CALL :LOG_MESSAGE "All download URLs failed (primary + 2 fallbacks) for App Installer MSIX" "ERROR" "LAUNCHER"
+                    )
+                ) ELSE (
+                    CALL :LOG_MESSAGE "App Installer MSIX downloaded via fallback URL 1. Installing..." "INFO" "LAUNCHER"
+                )
+            ) ELSE (
+                CALL :LOG_MESSAGE "App Installer MSIX downloaded via primary URL. Installing..." "INFO" "LAUNCHER"
+            )
+            
+            REM Install the MSIX if download succeeded
+            IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
                 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WORKING_DIR%AppInstaller.msixbundle' -ErrorAction Stop; Write-Host 'MSIX_INSTALLED' } catch { Write-Host 'MSIX_INSTALL_FAILED'; exit 1 }" >nul 2>&1
                 IF !ERRORLEVEL! EQU 0 (
                     CALL :LOG_MESSAGE "App Installer MSIX installed successfully" "SUCCESS" "LAUNCHER"
@@ -474,6 +542,8 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
             ) ELSE (
                 CALL :LOG_MESSAGE "Failed to download App Installer MSIX" "WARN" "LAUNCHER"
             )
+        ) ELSE (
+            CALL :LOG_MESSAGE "Methods 1 or 2 succeeded - skipping manual MSIX installation" "DEBUG" "LAUNCHER"
         )
         
         REM Re-check winget availability after installation attempts
@@ -538,6 +608,13 @@ IF "%PS7_FOUND%"=="NO" (
     )
 )
 
+REM Final check - re-verify PowerShell 7 availability before installation attempts
+pwsh.exe -Version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "PS7_FOUND=YES"
+    CALL :LOG_MESSAGE "PowerShell 7 detected - skipping installation" "SUCCESS" "LAUNCHER"
+)
+
 IF "%PS7_FOUND%"=="NO" (
     CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "INFO" "LAUNCHER"
     SET "INSTALL_STATUS=FAILED"
@@ -550,6 +627,11 @@ IF "%PS7_FOUND%"=="NO" (
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             SET "INSTALL_STATUS=SUCCESS"
+            SET "PS7_FOUND=YES"
+            
+            REM Refresh PATH environment to pick up newly installed PowerShell
+            CALL :LOG_MESSAGE "Refreshing PATH environment after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
+            CALL :REFRESH_PATH_FROM_REGISTRY
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
         )
@@ -557,33 +639,52 @@ IF "%PS7_FOUND%"=="NO" (
         CALL :LOG_MESSAGE "Winget not available for PowerShell 7 installation" "WARN" "LAUNCHER"
     )
 
-    REM 2) Fallback to Chocolatey if winget path failed
+    REM 2) Try Chocolatey (prioritize existing installation or install it first)
     IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
-        choco --version >nul 2>&1
-        IF !ERRORLEVEL! NEQ 0 (
-            CALL :LOG_MESSAGE "Chocolatey not found. Attempting to install Chocolatey (official bootstrapper)..." "INFO" "LAUNCHER"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_FAILED'; exit 1 }" >nul 2>&1
-            IF !ERRORLEVEL! EQU 0 (
-                CALL :LOG_MESSAGE "Chocolatey installed successfully" "SUCCESS" "LAUNCHER"
-            ) ELSE (
-                CALL :LOG_MESSAGE "Chocolatey installation failed (continuing to MSI fallback)" "WARN" "LAUNCHER"
-            )
-        )
-        REM Prefer absolute Chocolatey path to avoid PATH refresh issues
+        REM Check if Chocolatey is available
         SET "CHOCO_EXE=choco"
         IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
+        
         "%CHOCO_EXE%" --version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
-            CALL :LOG_MESSAGE "Attempting to install PowerShell 7 via Chocolatey..." "INFO" "LAUNCHER"
-            "%CHOCO_EXE%" install powershell-core -y --no-progress >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Chocolatey found - installing PowerShell 7..." "INFO" "LAUNCHER"
+            "%CHOCO_EXE%" install powershell-core -y --no-progress
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "PowerShell 7 installed successfully via Chocolatey" "SUCCESS" "LAUNCHER"
                 SET "INSTALL_STATUS=SUCCESS"
+                SET "PS7_FOUND=YES"
+                
+                REM Refresh PATH after installation
+                CALL :LOG_MESSAGE "Refreshing PATH after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
+                CALL :REFRESH_PATH_FROM_REGISTRY
             ) ELSE (
                 CALL :LOG_MESSAGE "Chocolatey failed to install PowerShell 7" "WARN" "LAUNCHER"
             )
         ) ELSE (
-            CALL :LOG_MESSAGE "Chocolatey not ready in current session (PATH not refreshed or install blocked)." "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "Chocolatey not available - installing Chocolatey first..." "INFO" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_FAILED'; exit 1 }"
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_MESSAGE "Chocolatey installed successfully - now installing PowerShell 7..." "SUCCESS" "LAUNCHER"
+                TIMEOUT /T 2 >nul 2>&1
+                
+                REM Update Chocolatey path after installation
+                IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
+                
+                "%CHOCO_EXE%" install powershell-core -y --no-progress
+                IF !ERRORLEVEL! EQU 0 (
+                    CALL :LOG_MESSAGE "PowerShell 7 installed successfully via newly installed Chocolatey" "SUCCESS" "LAUNCHER"
+                    SET "INSTALL_STATUS=SUCCESS"
+                    SET "PS7_FOUND=YES"
+                    
+                    REM Refresh PATH after installation
+                    CALL :LOG_MESSAGE "Refreshing PATH after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
+                    CALL :REFRESH_PATH_FROM_REGISTRY
+                ) ELSE (
+                    CALL :LOG_MESSAGE "PowerShell 7 installation failed even with fresh Chocolatey" "WARN" "LAUNCHER"
+                )
+            ) ELSE (
+                CALL :LOG_MESSAGE "Chocolatey installation failed - proceeding to MSI fallback" "WARN" "LAUNCHER"
+            )
         )
     )
 
@@ -598,6 +699,7 @@ IF "%PS7_FOUND%"=="NO" (
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "PowerShell 7 installed successfully via MSI" "SUCCESS" "LAUNCHER"
                 SET "INSTALL_STATUS=SUCCESS"
+                SET "PS7_FOUND=YES"
             ) ELSE (
                 CALL :LOG_MESSAGE "MSI installation failed" "ERROR" "LAUNCHER"
             )
@@ -630,6 +732,23 @@ IF "%PS7_FOUND%"=="NO" (
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
     CALL :LOG_MESSAGE "PowerShell 7 available: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
+)
+
+REM -----------------------------------------------------------------------------
+REM PowerShell Module Dependencies (PSWindowsUpdate for Windows Update management)
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Checking PSWindowsUpdate module availability..." "INFO" "LAUNCHER"
+pwsh.exe -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Write-Host 'PSWINDOWSUPDATE_AVAILABLE' } else { Write-Host 'PSWINDOWSUPDATE_MISSING' }" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "PSWindowsUpdate module is already installed" "SUCCESS" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "PSWindowsUpdate module not found. Installing..." "INFO" "LAUNCHER"
+    pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Repository PSGallery; Write-Host 'PSWINDOWSUPDATE_INSTALLED' } catch { Write-Host 'PSWINDOWSUPDATE_INSTALL_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "PSWindowsUpdate module installed successfully" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed - Windows Updates task will not be available" "WARN" "LAUNCHER"
+    )
 )
 
 REM -----------------------------------------------------------------------------
@@ -711,18 +830,60 @@ CALL :LOG_MESSAGE "Checking for PowerShell 7+ at: %PS7_ABSOLUTE%" "DEBUG" "LAUNC
 IF EXIST "%PS7_ABSOLUTE%" (
     CALL :LOG_MESSAGE "PowerShell 7 found at default installation path: %PS7_ABSOLUTE%" "DEBUG" "LAUNCHER"
     
-    REM Test if the executable actually works
+    REM Test if the executable actually works with multiple methods
     "%PS7_ABSOLUTE%" -Command "exit 0" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        REM Method 1: Try version table using temp file to avoid quoting issues
+        "%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2>nul > "%TEMP%\ps_major.tmp"
+        FOR /F "tokens=*" %%i IN ('TYPE "%TEMP%\ps_major.tmp" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        DEL "%TEMP%\ps_major.tmp" 2>nul
+        
+        REM Method 2: Fallback to simpler version check if first method fails
+        IF "!PS_MAJOR_VERSION!"=="" (
+            "%PS7_ABSOLUTE%" -Command "$Host.Version.Major" 2>nul > "%TEMP%\ps_major2.tmp"
+            FOR /F "tokens=1 delims=." %%i IN ('TYPE "%TEMP%\ps_major2.tmp" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+            DEL "%TEMP%\ps_major2.tmp" 2>nul
+        )
+        
+        REM Method 3: Last resort - parse pwsh.exe -Version output
+        IF "!PS_MAJOR_VERSION!"=="" (
+            FOR /F "tokens=2 delims= " %%i IN ('"%PS7_ABSOLUTE%" -Version 2^>nul ^| findstr "PowerShell"') DO (
+                FOR /F "tokens=1 delims=." %%j IN ("%%i") DO SET PS_MAJOR_VERSION=%%j
+            )
+        )
+        
         CALL :LOG_MESSAGE "PowerShell version test result: !PS_MAJOR_VERSION!" "DEBUG" "LAUNCHER"
-        IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+        
+        REM Accept version 7 or higher, with extra validation
+        IF DEFINED PS_MAJOR_VERSION (
+            IF !PS_MAJOR_VERSION! GEQ 7 (
+                SET "PS_EXECUTABLE=%PS7_ABSOLUTE%"
+                SET "AUTO_NONINTERACTIVE=YES"
+                
+                REM Get full version string for logging (robust method for paths with spaces)
+                SET PS_VERSION_STRING=
+                "%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.ToString()" 2>nul > "%TEMP%\ps_version.tmp"
+                FOR /F "tokens=*" %%i IN ('TYPE "%TEMP%\ps_version.tmp" 2^>nul') DO SET PS_VERSION_STRING=%%i
+                DEL "%TEMP%\ps_version.tmp" 2>nul
+                
+                IF "!PS_VERSION_STRING!"=="" (
+                    "%PS7_ABSOLUTE%" -Version 2>nul > "%TEMP%\ps_version.tmp"
+                    FOR /F "tokens=2" %%i IN ('TYPE "%TEMP%\ps_version.tmp" 2^>nul') DO SET PS_VERSION_STRING=%%i
+                    DEL "%TEMP%\ps_version.tmp" 2>nul
+                )
+                IF "!PS_VERSION_STRING!"=="" SET "PS_VERSION_STRING=7.x.x"
+                
+                CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected at default path - will use for system operations" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell found at default path but version !PS_MAJOR_VERSION! < 7" "WARN" "LAUNCHER"
+            )
+        ) ELSE (
+            CALL :LOG_MESSAGE "Could not determine PowerShell version, but executable exists and responds" "WARN" "LAUNCHER"
+            REM If we can't determine version but executable works, assume it's PS7+ since it's in the PS7 directory
             SET "PS_EXECUTABLE=%PS7_ABSOLUTE%"
             SET "AUTO_NONINTERACTIVE=YES"
-            FOR /F "tokens=*" %%i IN ('"%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
-            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected at default path - will use for system operations" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell found at default path but version !PS_MAJOR_VERSION! < 7" "WARN" "LAUNCHER"
+            SET "PS_VERSION_STRING=7.x.x (version detection failed)"
+            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected - assuming PS7+ since found in PS7 directory" "SUCCESS" "LAUNCHER"
         )
     ) ELSE (
         CALL :LOG_MESSAGE "PowerShell executable at default path is not functional" "WARN" "LAUNCHER"
@@ -1026,17 +1187,46 @@ IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
 
 CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
 
-REM First run the orchestrator to initialize
-CALL :LOG_MESSAGE "Executing: %PS_EXECUTABLE% -ExecutionPolicy Bypass -File \"%ORCHESTRATOR_PATH%\"" "DEBUG" "LAUNCHER"
-CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "LAUNCHER"
+REM Setup complete - transitioning to dedicated PowerShell 7 window for better performance and UI
+CALL :LOG_MESSAGE "Setup phase completed - launching dedicated PowerShell 7+ window" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "This will provide better performance and eliminate visual glitches" "INFO" "LAUNCHER"
 
 REM Critical: Use PowerShell 7+ (pwsh.exe) for MaintenanceOrchestrator.ps1 due to #Requires directive
-REM Only proceed if PowerShell 7+ was detected (AUTO_NONINTERACTIVE=YES indicates PS7+ found)
 IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator (required by #Requires directive)" "DEBUG" "LAUNCHER"
-    CD /D "%WORKING_DIR%"
-    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%"
-    SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
+    CALL :LOG_MESSAGE "Launching PowerShell 7+ in dedicated window for optimal experience" "SUCCESS" "LAUNCHER"
+    
+    REM Prepare arguments for the new PowerShell window
+    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command "
+    SET "PS_ARGS=!PS_ARGS!& { "
+    SET "PS_ARGS=!PS_ARGS!Set-Location '%WORKING_DIR%'; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
+    
+    REM Check for command line arguments to pass through
+    IF "%1"=="-NonInteractive" (
+        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive; "
+    ) ELSE (
+        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'; "
+    )
+    
+    SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
+    SET "PS_ARGS=!PS_ARGS!}"
+    
+    REM Launch new PowerShell 7 window and exit batch script
+    CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
+    START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!
+    
+    REM Give the new window a moment to start
+    TIMEOUT /T 2 /NOBREAK >NUL 2>&1
+    
+    CALL :LOG_MESSAGE "PowerShell 7+ window launched successfully - batch launcher exiting" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "All further operations will run in the dedicated PowerShell window" "INFO" "LAUNCHER"
+    
+    REM Exit batch script cleanly - PowerShell 7 window takes over
+    EXIT /B 0
 ) ELSE (
     CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not detected - cannot run orchestrator" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "The launcher requires a compatible pwsh.exe (PowerShell 7+) to execute the orchestrator" "ERROR" "LAUNCHER"
@@ -1049,22 +1239,9 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     EXIT /B 1
 )
 
-CALL :LOG_MESSAGE "PowerShell orchestrator initialization completed with exit code: %ORCHESTRATOR_EXIT_CODE%" "INFO" "LAUNCHER"
-
-REM Check if running in non-interactive mode from command line OR auto-enabling due to PS7+
-IF "%1"=="-NonInteractive" (
-    CALL :LOG_MESSAGE "Non-interactive mode - executing all tasks unattended" "INFO" "LAUNCHER"
-    CD /D "%WORKING_DIR%"
-    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
-    SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-    GOTO :FINAL_CLEANUP
-) ELSE IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    CALL :LOG_MESSAGE "PowerShell 7+ detected - enabling automatic unattended execution" "INFO" "LAUNCHER"
-    CD /D "%WORKING_DIR%"
-    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
-    SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-    GOTO :FINAL_CLEANUP
-)
+REM Batch script execution completed - PowerShell 7+ window is now handling all operations
+CALL :LOG_MESSAGE "Batch launcher phase completed successfully" "SUCCESS" "LAUNCHER"
+GOTO :FINAL_CLEANUP
 
 REM -----------------------------------------------------------------------------
 REM Post-Orchestrator Execution Logic: Interactive Menu with Countdown
