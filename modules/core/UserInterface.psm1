@@ -36,29 +36,32 @@ $script:MenuConfig = @{
 
 <#
 .SYNOPSIS
-    Shows the main execution menu with countdown timer
+    Shows the main execution menu with hierarchical countdown system
 
 .DESCRIPTION
-    Displays a menu allowing the user to choose between unattended execution and dry-run mode.
-    Features a 20-second countdown with automatic selection of the default option.
+    Displays a hierarchical menu system with 20-second countdowns:
+    - Main menu: Choose between normal execution or dry-run
+    - Sub-menus: Choose between all tasks or specific task numbers
+    Auto-selects defaults when countdown expires.
 
 .PARAMETER CountdownSeconds
     Number of seconds for the countdown timer (default: 20)
 
-.PARAMETER DefaultOption
-    The default option to select when countdown expires (default: 1)
+.PARAMETER AvailableTasks
+    Array of available tasks to display and select from
+
+.OUTPUTS
+    [hashtable] Returns execution parameters: DryRun, SelectedTasks
 
 .EXAMPLE
-    $selection = Show-MainMenu
+    $result = Show-MainMenu -AvailableTasks $taskList
+    # Returns: @{ DryRun = $false; SelectedTasks = @(1,2,3,4,5) }
 #>
 function Show-MainMenu {
     [CmdletBinding()]
     param(
         [Parameter()]
         [int]$CountdownSeconds = 20,
-
-        [Parameter()]
-        [int]$DefaultOption = 1,
 
         [Parameter()]
         [array]$AvailableTasks = @()
@@ -68,117 +71,105 @@ function Show-MainMenu {
     $perfContext = $null
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'MainMenuDisplay' -Component 'USER-INTERFACE'
-        Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message 'Displaying main menu' -Data @{ CountdownSeconds = $CountdownSeconds; DefaultOption = $DefaultOption }
+        Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message 'Displaying hierarchical menu system' -Data @{ CountdownSeconds = $CountdownSeconds; TaskCount = $AvailableTasks.Count }
     }
     catch {
         # CoreInfrastructure not available, continue with standard logging
     }
 
+    # Initialize result object
+    $result = @{
+        DryRun        = $false
+        SelectedTasks = @()
+    }
+
+    # ===== MAIN MENU =====
     Write-Host "`n===================================================" -ForegroundColor Cyan
     Write-Host "    Windows Maintenance Automation v2.1.1" -ForegroundColor White
     Write-Host "===================================================" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Select execution mode:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  [1] Unattended mode (recommended)" -ForegroundColor Green
+    Write-Host "  [1] Execute normally (recommended)" -ForegroundColor Green
     Write-Host "  [2] Dry-run mode (simulate changes)" -ForegroundColor Cyan
-    Write-Host "  [3] Task selection mode" -ForegroundColor Magenta
-    Write-Host "  [4] Exit" -ForegroundColor Red
     Write-Host ""
 
     # Show available tasks if provided
     if ($AvailableTasks.Count -gt 0) {
-        Write-Host "Available maintenance tasks:" -ForegroundColor Yellow
+        Write-Host "Available maintenance tasks:" -ForegroundColor Gray
         for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
-            Write-Host "  [$($i+1)] $($AvailableTasks[$i])" -ForegroundColor Gray
+            Write-Host "    [$($i+1)] $($AvailableTasks[$i])" -ForegroundColor DarkGray
         }
         Write-Host ""
     }
 
-    $selection = Start-CountdownMenu -CountdownSeconds $CountdownSeconds -DefaultOption $DefaultOption -ValidOptions @(1, 2, 3, 4)
+    $mainSelection = Start-CountdownMenu -CountdownSeconds $CountdownSeconds -DefaultOption 1 -ValidOptions @(1, 2)
 
-    # Complete performance tracking
-    try {
-        Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $selection
-    }
-    catch {}
+    # Set dry-run mode based on main selection
+    $result.DryRun = ($mainSelection -eq 2)
 
-    return $selection
-}
-
-<#
-.SYNOPSIS
-    Shows task selection menu
-
-.DESCRIPTION
-    Displays a menu for selecting specific maintenance tasks to execute.
-
-.PARAMETER AvailableTasks
-    Array of available tasks to display
-
-.PARAMETER CountdownSeconds
-    Number of seconds for the countdown timer
-
-.EXAMPLE
-    $tasks = Show-TaskSelectionMenu -AvailableTasks $taskList
-#>
-function Show-TaskSelectionMenu {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [array]$AvailableTasks,
-
-        [Parameter()]
-        [int]$CountdownSeconds = 30
-    )
-
-    try {
-        Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message 'Displaying task selection menu' -Data @{ TaskCount = $AvailableTasks.Count }
-    }
-    catch {}
-
-    Write-Host "`n===================================================" -ForegroundColor Cyan
-    Write-Host "    Task Selection Menu" -ForegroundColor White
-    Write-Host "===================================================" -ForegroundColor Cyan
+    # ===== SUB-MENU =====
     Write-Host ""
-    Write-Host "Available maintenance tasks:" -ForegroundColor Yellow
+    $modeText = if ($result.DryRun) { "DRY-RUN" } else { "NORMAL" }
+    Write-Host "Selected: $modeText execution mode" -ForegroundColor $(if ($result.DryRun) { 'Cyan' } else { 'Green' })
+    Write-Host ""
+    Write-Host "Select task execution:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  [1] Execute all tasks (recommended)" -ForegroundColor Green
+    Write-Host "  [2] Execute specific task numbers" -ForegroundColor Magenta
     Write-Host ""
 
-    for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
-        Write-Host "  [$($i+1)] $($AvailableTasks[$i])" -ForegroundColor Green
-    }
+    $subSelection = Start-CountdownMenu -CountdownSeconds $CountdownSeconds -DefaultOption 1 -ValidOptions @(1, 2)
 
-    Write-Host ""
-    Write-Host "  [A] All tasks (default)" -ForegroundColor Cyan
-    Write-Host "  [C] Cancel" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Enter task numbers (comma-separated) or letter choice:" -ForegroundColor Yellow
-
-    $userInput = Start-CountdownInput -CountdownSeconds $CountdownSeconds -DefaultValue "A"
-    
-    if ($userInput -eq "C" -or $userInput -eq "c") {
-        return @()
+    # Handle task selection based on sub-menu choice
+    if ($subSelection -eq 1) {
+        # All tasks selected
+        $result.SelectedTasks = 1..$AvailableTasks.Count
+        Write-Host ""
+        Write-Host "Selected: All $($AvailableTasks.Count) tasks" -ForegroundColor Green
     }
-    
-    if ($userInput -eq "A" -or $userInput -eq "a" -or [string]::IsNullOrWhiteSpace($userInput)) {
-        return 1..$AvailableTasks.Count
-    }
+    else {
+        # Specific task selection
+        Write-Host ""
+        Write-Host "Enter task numbers (comma-separated, e.g., 1,3,5):" -ForegroundColor Yellow
+        Write-Host ""
 
-    # Parse comma-separated task numbers
-    $selectedTasks = @()
-    $taskNumbers = $userInput -split ',' | ForEach-Object { $_.Trim() }
-    
-    foreach ($num in $taskNumbers) {
-        if ($num -match '^\d+$') {
-            $taskIndex = [int]$num
-            if ($taskIndex -ge 1 -and $taskIndex -le $AvailableTasks.Count) {
-                $selectedTasks += $taskIndex
-            }
+        for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
+            Write-Host "  [$($i+1)] $($AvailableTasks[$i])" -ForegroundColor Green
+        }
+        Write-Host ""
+
+        $defaultTaskList = "1"
+        $taskInput = Start-CountdownInput -CountdownSeconds $CountdownSeconds -DefaultValue $defaultTaskList
+
+        # Parse task numbers
+        $result.SelectedTasks = ConvertFrom-TaskNumbers -TaskInput $taskInput -MaxTasks $AvailableTasks.Count
+
+        if ($result.SelectedTasks.Count -eq 0) {
+            Write-Host "No valid tasks selected, defaulting to all tasks" -ForegroundColor Yellow
+            $result.SelectedTasks = 1..$AvailableTasks.Count
+        }
+        else {
+            Write-Host ""
+            Write-Host "Selected tasks: $($result.SelectedTasks -join ', ')" -ForegroundColor Green
         }
     }
 
-    return $selectedTasks | Sort-Object | Get-Unique
+    # Complete performance tracking
+    try {
+        Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $result.SelectedTasks.Count
+        Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message 'Menu selection completed' -Data @{
+            DryRun            = $result.DryRun
+            SelectedTaskCount = $result.SelectedTasks.Count
+            SelectedTasks     = ($result.SelectedTasks -join ',')
+        }
+    }
+    catch {}
+
+    return $result
 }
+
+
 
 <#
 .SYNOPSIS
@@ -457,12 +448,52 @@ function Start-CountdownInput {
     return $userInput
 }
 
+<#
+.SYNOPSIS
+    Converts comma-separated task numbers into an array
+#>
+function ConvertFrom-TaskNumbers {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$TaskInput,
+
+        [Parameter(Mandatory)]
+        [int]$MaxTasks
+    )
+
+    $selectedTasks = @()
+    
+    if ([string]::IsNullOrWhiteSpace($TaskInput)) {
+        return $selectedTasks
+    }
+
+    # Parse comma-separated task numbers
+    $taskNumbers = $TaskInput -split ',' | ForEach-Object { $_.Trim() }
+    
+    foreach ($num in $taskNumbers) {
+        if ($num -match '^\d+$') {
+            $taskIndex = [int]$num
+            if ($taskIndex -ge 1 -and $taskIndex -le $MaxTasks) {
+                $selectedTasks += $taskIndex
+            }
+            else {
+                Write-Host "Warning: Task number $taskIndex is out of range (1-$MaxTasks)" -ForegroundColor Yellow
+            }
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($num)) {
+            Write-Host "Warning: Invalid task number '$num' (must be numeric)" -ForegroundColor Yellow
+        }
+    }
+
+    return ($selectedTasks | Sort-Object | Get-Unique)
+}
+
 #endregion
 
 # Export public functions
 Export-ModuleMember -Function @(
     'Show-MainMenu',
-    'Show-TaskSelectionMenu', 
     'Show-ConfirmationDialog',
     'Show-Progress',
     'Show-ResultSummary'

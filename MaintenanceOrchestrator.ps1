@@ -638,10 +638,7 @@ $ExecutionParams = @{
 if (-not $NonInteractive) {
     Write-Information "`nStarting interactive mode..." -InformationAction Continue
 
-    # Configure menu system
-    Set-MenuConfiguration -CountdownSeconds $MainConfig.execution.countdownSeconds
-
-    # Show enhanced main menu with integrated task selection
+    # Show hierarchical menu with integrated task selection
     $menuResult = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds -AvailableTasks $AvailableTasks
     
     # Apply menu selections
@@ -654,6 +651,10 @@ if (-not $NonInteractive) {
                 $ExecutionParams.SelectedTasks += $AvailableTasks[$taskIndex - 1]
             }
         }
+        
+        Write-Information "  ✓ Menu selections applied:" -InformationAction Continue
+        Write-Information "    - Execution mode: $(if ($ExecutionParams.DryRun) { 'DRY-RUN' } else { 'NORMAL' })" -InformationAction Continue
+        Write-Information "    - Selected tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
     }
 }
 else {

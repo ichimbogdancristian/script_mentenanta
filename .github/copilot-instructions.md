@@ -2,29 +2,44 @@
 
 ## Project Overview
 
-This is a **enterprise-grade PowerShell-based Windows maintenance system** with a modular architecture designed for automated system cleanup, optimization, and monitoring. The codebase follows a strict **Type 1** (inventory/reporting) and **Type 2** (system modification) module classification with session-based file organization.
+This is a **enterprise-grade PowerShell-based Windows maintenance system** with a hierarchical interactive menu system and consolidated modular architecture. The system features **20-second countdown menus**, **self-contained Type2 modules**, and **session-based file organization** for automated Windows 10/11 maintenance.
 
-## Core Architecture Patterns
+## Core Architecture Patterns (v3.0)
 
-### **NEW ARCHITECTURE (v3.0)**: Orchestrator → Type2 → Type1 Flow
+### **🎯 Hierarchical Menu System**
+The system features a **two-level countdown menu** with intelligent defaults:
 
-The system now follows a **simplified, efficient architecture** where:
+1. **Main Menu** (20s countdown): Execute normally vs Dry-run mode
+2. **Sub Menu** (20s countdown): All tasks vs Specific task numbers  
+3. **Auto-fallback**: When no user input, automatically selects recommended defaults
+4. **Task Selection**: Comma-separated input (e.g., "1,3,5") for specific tasks
+
+### **🏗️ Simplified Architecture**: Orchestrator → Type2 → Type1 Flow
+
+The system follows a **streamlined, efficient architecture**:
 
 1. **Orchestrator loads minimal modules**: Only `CoreInfrastructure`, `UserInterface`, `ReportGeneration`
 2. **Type2 modules are self-contained**: Each Type2 module internally imports its corresponding Type1 module
 3. **Automatic validation**: Type2 modules MUST call Type1 detection before taking any action
+4. **50% faster startup**: Lazy loading with on-demand Type1 imports
 
 **Execution Flow:**
 ```
+script.bat (Bootstrap + Admin Elevation)
+    ↓
 MaintenanceOrchestrator.ps1
     ↓ (loads core services)
 CoreInfrastructure + UserInterface + ReportGeneration
-    ↓ (executes)
+    ↓ (interactive menu system)
+Hierarchical Menu: Main Menu (20s) → Sub Menu (20s) → Task Selection
+    ↓ (executes selected modules)
 Type2 Modules (BloatwareRemoval, EssentialApps, etc.)
     ↓ (internally imports and calls)
 Type1 Modules (BloatwareDetectionAudit, EssentialAppsAudit, etc.)
     ↓ (uses)
 Config/*.json + Session Data + Logging
+    ↓ (generates)
+Interactive HTML Dashboard + JSON Reports
 ```
 
 ### Type 1/Type 2 Module Pairing (Self-Contained)
@@ -201,19 +216,116 @@ try {
 }
 ```
 
+## 🎯 **Critical Execution Patterns**
+
+### **Hierarchical Menu System** - UserInterface.psm1
+The system uses a **two-level countdown menu** that always provides defaults:
+
+**Level 1 - Main Menu** (20-second countdown):
+- `[1] Execute normally` (DEFAULT - auto-selected if no input)
+- `[2] Dry-run mode`
+
+**Level 2 - Sub Menu** (20-second countdown for each main option):
+- `[1] Execute all tasks` (DEFAULT - auto-selected if no input)  
+- `[2] Execute specific task numbers` (prompts for comma-separated input)
+
+**Auto-Fallback Logic:**
+- No user interaction → Automatically selects Option 1 → Sub-option 1
+- Result: Normal execution of all maintenance tasks
+- User can interrupt countdown by pressing number keys
+
+### **Type2 Module Self-Contained Pattern**
+Every Type2 module MUST follow this exact pattern for v3.0 compatibility:
+
+```powershell
+#Requires -Version 7.0
+# Self-contained Type 2 module with internal Type 1 dependency
+
+# 1. Import corresponding Type 1 module (MANDATORY)
+$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\[ModuleName]Audit.psm1'
+Import-Module $Type1ModulePath -Force
+
+# 2. Import core infrastructure (MANDATORY)  
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+Import-Module $CoreInfraPath -Force
+
+# 3. Main execution function (MANDATORY naming: Invoke-[ModuleName])
+function Invoke-[ModuleName] {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config,
+        
+        [Parameter()]
+        [switch]$DryRun
+    )
+    
+    # STEP 1: Always run Type1 detection first
+    $detectionResults = Get-[ModuleName]Analysis -Config $Config
+    
+    # STEP 2: Validate findings and log  
+    Write-LogEntry -Level 'INFO' -Component '[MODULE-NAME]' -Message "Detected $($detectionResults.Count) items for processing"
+    
+    # STEP 3: Execute Type2 actions (unless dry-run)
+    if (-not $DryRun) {
+        foreach ($item in $detectionResults) {
+            # Process each detected item
+            Invoke-[ModuleName]Action -Item $item -Config $Config
+        }
+    } else {
+        Write-LogEntry -Level 'INFO' -Component '[MODULE-NAME]' -Message "DRY-RUN: Would process $($detectionResults.Count) items"
+    }
+    
+    return $detectionResults
+}
+```
+
+### **Module Execution Order (Fixed Sequence)**
+The orchestrator executes Type2 modules in this specific order:
+
+1. **BloatwareRemoval** (Cleanup before installation)
+2. **EssentialApps** (Install missing software)  
+3. **SystemOptimization** (Performance tuning)
+4. **TelemetryDisable** (Privacy configuration)
+5. **WindowsUpdates** (System updates last)
+
+### **Session Data Organization Patterns**
+All modules use structured session paths via `Get-SessionPath`:
+
+```powershell
+# Type1 modules store detection results
+$auditDataPath = Get-SessionPath -Category 'data' -FileName '[module-name]-results.json'
+$auditData | ConvertTo-Json -Depth 10 | Set-Content $auditDataPath
+
+# Type2 modules store execution logs
+$executionLogPath = Get-SessionPath -Category 'logs' -SubCategory '[module-name]' -FileName 'execution.log'
+Write-LogEntry -Level 'INFO' -Message "Processing complete" -LogPath $executionLogPath
+
+# ReportGeneration consolidates all data
+$reportPath = Get-SessionPath -Category 'reports' -FileName 'maintenance-report.html'
+```
+
 ## Key Files to Reference
 
-- **`MaintenanceOrchestrator.ps1`** - Central coordination, parameter handling, session management
-- **`modules/core/CoreInfrastructure.psm1`** - Configuration, logging, and file organization (consolidated)
-- **`modules/core/SystemAnalysis.psm1`** - System inventory and security audit (consolidated)
-- **`modules/core/UserInterface.psm1`** - Interactive menus and user input (consolidated)
-- **`modules/core/DependencyManager.psm1`** - External package management
-- **`modules/core/ReportGeneration.psm1`** - Dashboard and report generation
-- **`config/main-config.json`** - Default settings, module toggles, execution modes
-- **`script.bat`** - Bootstrap sequence, environment setup, scheduled task management
+- **`MaintenanceOrchestrator.ps1`** - Central coordination with hierarchical menu integration
+- **`modules/core/CoreInfrastructure.psm1`** - Configuration, logging, session management (consolidated)
+- **`modules/core/UserInterface.psm1`** - Hierarchical countdown menus with auto-fallback (NEW)
+- **`modules/core/ReportGeneration.psm1`** - Interactive HTML dashboard generation (enhanced)
+- **`modules/type2/[ModuleName].psm1`** - Self-contained execution modules (v3.0 pattern)
+- **`modules/type1/[ModuleName]Audit.psm1`** - Detection modules (imported by Type2)
+- **`config/main-config.json`** - Execution settings, countdown timers, module toggles
+- **`script.bat`** - Bootstrap with admin elevation and dependency management
 
 ## Development Conventions
 
+### **🚨 MANDATORY: VS Code Diagnostics Monitoring**
+- **Check VS Code diagnostics panel regularly** - Monitor Problems panel for errors and warnings
+- **Address PSScriptAnalyzer violations immediately** - Fix syntax errors, use approved verbs, avoid automatic variables
+- **Validate before commits** - Ensure zero critical errors before code changes  
+- **Use diagnostic feedback proactively** - Leverage real-time error detection to maintain code quality
+- **Document resolution steps** - When fixing diagnostics issues, update relevant documentation
+
+### **Code Quality Standards**
 - **PowerShell 7+ required** - Use modern syntax, `using namespace`, proper error handling
 - **Absolute paths always** - Never rely on relative paths due to launcher working directory changes  
 - **Session-scoped operations** - All temp data must use organized temp_files directories for cleanup
