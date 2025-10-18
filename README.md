@@ -174,8 +174,9 @@ This automated Windows maintenance system performs comprehensive system cleanup,
 │   ├── Module Configuration: config/report-templates-config.json
 │   └── Create Before/After Comparisons for each module
 │
-└── 💾 Save Report:
-    ├── Location: Parent Directory (Documents/Desktop/USB root)
+└── 💾 Save Reports:
+    ├── All Reports: temp_files/reports/ (HTML, JSON, TXT, Summary)
+    ├── Main HTML Copy: Parent Directory (Documents/Desktop/USB root)
     └── Format: MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html
 ```
 
@@ -462,7 +463,7 @@ Each Type2 module exports exactly one function following this pattern:
 ```
 Type1 Detection → temp_files/data/*.json → Type2 Processing → temp_files/temp/*-diff.json
                                                            ↓
-Type2 Execution → temp_files/logs/*/execution.log → ReportGeneration → Parent Directory/*.html
+Type2 Execution → temp_files/logs/*/execution.log → ReportGeneration → temp_files/reports/* + Parent Directory/*.html
 ```
 
 ## 🚀 **Quick Start Guide**

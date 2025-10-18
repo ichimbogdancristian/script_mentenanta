@@ -644,10 +644,10 @@ function Get-ComprehensiveLogCollection {
     
     try {
         $logCollection = @{
-            Type1AuditData = @{}
-            Type2ExecutionLogs = @{}
+            Type1AuditData      = @{}
+            Type2ExecutionLogs  = @{}
             CollectionTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            SessionId = $Global:MaintenanceSessionId
+            SessionId           = $Global:MaintenanceSessionId
         }
         
         # Collect Type1 audit results from temp_files/data/
@@ -694,7 +694,7 @@ function Get-ComprehensiveLogCollection {
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Comprehensive log collection completed" -Data @{
             Type1ModulesCollected = $auditDataCount
             Type2ModulesCollected = $executionLogsCount
-            CollectionTimestamp = $logCollection.CollectionTimestamp
+            CollectionTimestamp   = $logCollection.CollectionTimestamp
         }
         
         return $logCollection
@@ -702,10 +702,10 @@ function Get-ComprehensiveLogCollection {
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Failed to collect comprehensive logs: $($_.Exception.Message)"
         return @{
-            Type1AuditData = @{}
-            Type2ExecutionLogs = @{}
+            Type1AuditData      = @{}
+            Type2ExecutionLogs  = @{}
             CollectionTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            Error = $_.Exception.Message
+            Error               = $_.Exception.Message
         }
     }
 }
@@ -1092,16 +1092,36 @@ try {
 
     # Generate reports using the ReportGeneration module (v3.0: Portable report in parent directory)
     if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
-        # v3.0: Generate report in parent directory for portable operation
-        $reportBasePath = Join-Path $Global:ProjectPaths.ParentDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+        # v3.0: Generate all reports in temp_files/reports/, then copy HTML to parent directory
+        $reportsDir = Join-Path $Global:ProjectPaths.TempFiles "reports"
+        New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
+        
+        $reportBasePath = Join-Path $reportsDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
         
         $reportResult = New-MaintenanceReport -SystemInventory $systemInventory -TaskResults $TaskResults -Configuration $MainConfig -OutputPath $reportBasePath -ComprehensiveLogCollection $comprehensiveLogCollection
         
         if ($reportResult -and $reportResult.Success) {
-            Write-Information "  ✓ Reports generated successfully" -InformationAction Continue
+            Write-Information "  ✓ Reports generated successfully in temp_files/reports/" -InformationAction Continue
             if ($reportResult.ReportPaths) {
                 foreach ($reportPath in $reportResult.ReportPaths) {
                     Write-Information "    • $reportPath" -InformationAction Continue
+                }
+            }
+            
+            # Copy only the main HTML report to parent directory (Desktop/Documents/USB root)
+            if ($reportResult.HtmlReport -and (Test-Path $reportResult.HtmlReport)) {
+                try {
+                    $parentHtmlPath = Join-Path $Global:ProjectPaths.ParentDir (Split-Path -Leaf $reportResult.HtmlReport)
+                    Copy-Item -Path $reportResult.HtmlReport -Destination $parentHtmlPath -Force
+                    Write-Information "  ✓ HTML report copied to: $parentHtmlPath" -InformationAction Continue
+                    
+                    # Update result to include parent copy location
+                    if (-not $reportResult.ParentCopy) {
+                        $reportResult | Add-Member -NotePropertyName 'ParentCopy' -NotePropertyValue $parentHtmlPath -Force
+                    }
+                }
+                catch {
+                    Write-Warning "  ⚠️ Failed to copy HTML report to parent directory: $($_.Exception.Message)"
                 }
             }
         }

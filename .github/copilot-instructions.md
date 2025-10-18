@@ -428,7 +428,7 @@ All temporary data uses **organized directories** under `temp_files/` with prope
   - `system-optimization-diff.json` - Optimization opportunities (ready for execution)
   - `telemetry-diff.json` - Active telemetry items (ready for disable)
   - `windows-updates-diff.json` - Available updates (ready for installation)
-- `temp_files/reports/` - **Temporary report data** (consolidated before moving to parent)
+- `temp_files/reports/` - **All generated reports** (HTML, JSON, TXT, Summary - HTML copied to parent)
 
 **Critical Data Flow Pattern (v3.0 Corrected with Global Paths)**:
 ```powershell
@@ -460,13 +460,15 @@ $reportPath = Join-Path $reportDestination "MaintenanceReport_$(Get-Date -Format
 ```
 
 ### **📊 Portable Report Generation Logic (v3.0)**
-The system generates **one comprehensive HTML report** in the **parent directory** of script location:
+The system generates **comprehensive reports** with organized storage:
 
-**Universal Report Placement**:
-- **Script extracted to Documents\script_mentenanta**: Report → Documents\MaintenanceReport_*.html
-- **Script extracted to Desktop\script_mentenanta**: Report → Desktop\MaintenanceReport_*.html  
-- **Script on USB\script_mentenanta**: Report → USB_Root\MaintenanceReport_*.html
-- **Filename format**: `MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html` (single report only)
+**Report Organization**:
+- **All Reports Generated**: `temp_files/reports/` (HTML, JSON, TXT, Summary)
+- **HTML Copy Location**: Parent directory of script location
+- **Script extracted to Documents\script_mentenanta**: HTML Copy → Documents\MaintenanceReport_*.html
+- **Script extracted to Desktop\script_mentenanta**: HTML Copy → Desktop\MaintenanceReport_*.html  
+- **Script on USB\script_mentenanta**: HTML Copy → USB_Root\MaintenanceReport_*.html
+- **Filename format**: `MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html`
 
 **ReportGeneration Data Collection (v3.0)**:
 ```powershell
@@ -513,13 +515,15 @@ $Global:ProjectPaths = @{
 ```
 
 ### **📊 Portable Report Generation Logic**
-The system generates **one comprehensive HTML report** in the **parent directory** of script location:
+The system generates **comprehensive reports** with organized storage:
 
-**Universal Report Placement**:
-- **Script extracted to Documents\script_mentenanta**: Report → Documents\MaintenanceReport_*.html
-- **Script extracted to Desktop\script_mentenanta**: Report → Desktop\MaintenanceReport_*.html  
-- **Script on USB\script_mentenanta**: Report → USB_Root\MaintenanceReport_*.html
-- **Filename format**: `MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html` (single report only)
+**Report Organization**:
+- **All Reports Generated**: `temp_files/reports/` (HTML, JSON, TXT, Summary)
+- **HTML Copy Location**: Parent directory of script location
+- **Script extracted to Documents\script_mentenanta**: HTML Copy → Documents\MaintenanceReport_*.html
+- **Script extracted to Desktop\script_mentenanta**: HTML Copy → Desktop\MaintenanceReport_*.html  
+- **Script on USB\script_mentenanta**: HTML Copy → USB_Root\MaintenanceReport_*.html
+- **Filename format**: `MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html`
 
 **ReportGeneration Data Collection Pattern:**
 ```powershell
