@@ -22,19 +22,85 @@
 
 using namespace System.Collections.Generic
 
-# Import required modules
-$ModuleRoot = Split-Path -Parent $PSScriptRoot
-$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+# v3.0 Self-contained Type 2 module with internal Type 1 dependency
+
+# Step 1: Import corresponding Type 1 module (REQUIRED)
+$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\WindowsUpdatesAudit.psm1'
+if (Test-Path $Type1ModulePath) {
+    Import-Module $Type1ModulePath -Force
+}
+else {
+    throw "Required Type 1 module not found: $Type1ModulePath"
+}
+
+# Step 2: Import core infrastructure (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    function Write-LogEntry { param($Level, $Component, $Message, $Data); Write-Information "[$Level] [$Component] $Message" -InformationAction Continue }
+}
+
+# Step 3: Import additional dependencies
+$DependencyManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\DependencyManager.psm1'
 if (Test-Path $DependencyManagerPath) {
     Import-Module $DependencyManagerPath -Force
 }
 
-$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingManagerPath) {
-    Import-Module $LoggingManagerPath -Force
+# Validate Type1 module loaded correctly
+if (-not (Get-Command -Name 'Get-WindowsUpdatesAudit' -ErrorAction SilentlyContinue)) {
+    throw "Type 1 module functions not available - ensure WindowsUpdatesAudit.psm1 is properly imported"
 }
 
-#region Public Functions
+#region v3.0 Standardized Execution Function
+
+function Invoke-WindowsUpdates {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][PSCustomObject]$Config, [Parameter()][switch]$DryRun)
+    
+    $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES' } catch { }
+    
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
+        $analysisResults = Get-WindowsUpdatesAudit
+        
+        if (-not $analysisResults -or $analysisResults.PendingUpdatesCount -eq 0) {
+            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No pending Windows updates detected'
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'System is up to date' }
+        }
+        
+        $updatesCount = $analysisResults.PendingUpdatesCount
+        Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates"
+        
+        if ($DryRun) {
+            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'DRY RUN: Simulating Windows updates installation'
+            $results = @{ ProcessedCount = $updatesCount; Simulated = $true }; $processedCount = $updatesCount
+        }
+        else {
+            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Executing Windows updates installation'
+            $results = Install-WindowsUpdates -UpdatesList $analysisResults.PendingUpdates
+            $processedCount = if ($results.InstalledCount) { $results.InstalledCount } else { 0 }
+        }
+        
+        $returnData = @{ Success = $true; ItemsDetected = $updatesCount; ItemsProcessed = $processedCount; DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults }
+        Write-LogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message "Windows updates completed. Processed: $processedCount/$updatesCount"
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+        return $returnData
+        
+    }
+    catch {
+        $errorMsg = "Failed to execute Windows updates: $($_.Exception.Message)"
+        Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message $errorMsg -Data @{ Error = $_.Exception }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
+        return @{ Success = $false; Error = $errorMsg; ErrorType = $_.Exception.GetType().Name; ItemsDetected = if ($analysisResults) { $analysisResults.PendingUpdatesCount } else { 0 }; ItemsProcessed = 0; DryRun = $DryRun.IsPresent }
+    }
+}
+
+#endregion
+
+#region Legacy Public Functions (Preserved for Internal Use)
 
 <#
 .SYNOPSIS
@@ -120,20 +186,22 @@ function Install-WindowsUpdate {
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows Updates installation' -Data @{
-            ExcludePreviews = $ExcludePreviews.IsPresent
+            ExcludePreviews   = $ExcludePreviews.IsPresent
             MaxDownloadSizeMB = $MaxDownloadSizeMB
-            DryRun = $DryRun.IsPresent
-            SuppressReboot = $SuppressReboot.IsPresent
+            DryRun            = $DryRun.IsPresent
+            SuppressReboot    = $SuppressReboot.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdatesInstallation' -Component 'WINDOWS-UPDATES'
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
     
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "Windows Updates installation"
-    } catch {
+    }
+    catch {
         Write-Error "Administrator privileges are required for Windows Updates operations: $_"
         return $false
     }
@@ -195,15 +263,16 @@ function Install-WindowsUpdate {
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
-                UpdatesFound = $results.UpdatesFound
+                UpdatesFound     = $results.UpdatesFound
                 UpdatesInstalled = $results.UpdatesInstalled
-                UpdatesFailed = $results.UpdatesFailed
-                TotalSizeMB = $results.TotalSizeMB
-                RebootRequired = $results.RebootRequired
-                Method = $results.Method
+                UpdatesFailed    = $results.UpdatesFailed
+                TotalSizeMB      = $results.TotalSizeMB
+                RebootRequired   = $results.RebootRequired
+                Method           = $results.Method
             }
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation completed' -Data $results
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -222,7 +291,8 @@ function Install-WindowsUpdate {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
             Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -274,7 +344,8 @@ function Get-WindowsUpdateStatus {
     try {
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows Update status check'
         $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdateStatusCheck' -Component 'WINDOWS-UPDATES'
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
 
@@ -313,7 +384,8 @@ function Get-WindowsUpdateStatus {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $status
             Write-LogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message 'Windows Update status check completed' -Data $status
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
 
@@ -326,7 +398,8 @@ function Get-WindowsUpdateStatus {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
             Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message 'Windows Update status check failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -775,6 +848,10 @@ function Get-WindowsUpdateBasicStatus {
 
 # Export module functions
 Export-ModuleMember -Function @(
+    # v3.0 Standardized execution function (Primary)
+    'Invoke-WindowsUpdates',
+    
+    # Legacy functions (Preserved for internal use)
     'Install-WindowsUpdate',
     'Get-WindowsUpdateStatus'
 )

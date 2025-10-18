@@ -23,43 +23,160 @@
 using namespace System.Collections.Generic
 using namespace System.Collections.Concurrent
 
-# Import required modules
-$ModuleRoot = Split-Path -Parent $PSScriptRoot
+# v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Import ConfigManager (required for Get-UnifiedEssentialAppsList)
-# Check if ConfigManager functions are already available first
-if (-not (Get-Command 'Get-UnifiedEssentialAppsList' -ErrorAction SilentlyContinue)) {
-    $ConfigManagerPath = Join-Path $ModuleRoot 'core\ConfigManager.psm1'
-    if (Test-Path $ConfigManagerPath) {
-        Import-Module $ConfigManagerPath -Force -Global
-        Write-Verbose "Imported ConfigManager module for EssentialApps"
+# Step 1: Import corresponding Type 1 module (REQUIRED)
+$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\EssentialAppsAudit.psm1'
+if (Test-Path $Type1ModulePath) {
+    Import-Module $Type1ModulePath -Force
+}
+else {
+    throw "Required Type 1 module not found: $Type1ModulePath"
+}
+
+# Step 2: Import core infrastructure (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    # Fallback logging function if CoreInfrastructure fails
+    function Write-LogEntry {
+        param($Level, $Component, $Message, $Data)
+        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
     }
-    else {
-        Write-Error "ConfigManager module not found at: $ConfigManagerPath"
-    }
 }
 
-$SystemInventoryPath = Join-Path $ModuleRoot 'type1\SystemInventory.psm1'
-if (Test-Path $SystemInventoryPath) {
-    Import-Module $SystemInventoryPath -Force
-}
-
-$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
-if (Test-Path $FileOrgPath) {
-    Import-Module $FileOrgPath -Force
-}
-
-$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingManagerPath) {
-    Import-Module $LoggingManagerPath -Force
-}
-
-$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+# Step 3: Import additional dependencies
+$DependencyManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\DependencyManager.psm1'
 if (Test-Path $DependencyManagerPath) {
     Import-Module $DependencyManagerPath -Force
 }
 
-#region Public Functions
+# Validate Type1 module loaded correctly
+if (-not (Get-Command -Name 'Get-EssentialAppsAudit' -ErrorAction SilentlyContinue)) {
+    throw "Type 1 module functions not available - ensure EssentialAppsAudit.psm1 is properly imported"
+}
+
+#region v3.0 Standardized Execution Function
+
+<#
+.SYNOPSIS
+    Main execution function for essential apps installation - v3.0 Architecture Pattern
+
+.DESCRIPTION
+    Standardized entry point that implements the Type2 → Type1 flow:
+    1. Calls EssentialAppsAudit (Type1) to analyze missing apps
+    2. Validates findings and logs results
+    3. Executes installation actions (Type2) based on DryRun mode
+    4. Returns standardized results for ReportGeneration
+
+.PARAMETER Config
+    Main configuration object from orchestrator
+
+.PARAMETER DryRun
+    When specified, simulates installation without making changes
+
+.EXAMPLE
+    $result = Invoke-EssentialApps -Config $MainConfig -DryRun
+
+.EXAMPLE
+    $result = Invoke-EssentialApps -Config $MainConfig
+#>
+function Invoke-EssentialApps {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        
+        [Parameter()]
+        [switch]$DryRun
+    )
+    
+    # Performance tracking
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'EssentialAppsInstallation' -Component 'ESSENTIAL-APPS'
+    }
+    catch {
+        # CoreInfrastructure not available, continue without performance tracking
+    }
+    
+    try {
+        # Step 1: ALWAYS detect first (Type 1) - MANDATORY
+        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis'
+        $analysisResults = Get-EssentialAppsAudit
+        
+        if (-not $analysisResults -or (-not $analysisResults.MissingApps) -or $analysisResults.MissingApps.Count -eq 0) {
+            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'No missing essential apps detected'
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            return @{ 
+                Success        = $true
+                ItemsDetected  = 0
+                ItemsProcessed = 0
+                DryRun         = $DryRun.IsPresent
+                Message        = 'All essential apps are already installed'
+            }
+        }
+        
+        # Step 2: Validate and log findings
+        $missingCount = $analysisResults.MissingApps.Count
+        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Detected $missingCount missing essential apps"
+        
+        # Step 3: Take action (Type 2) based on DryRun mode
+        if ($DryRun) {
+            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'DRY RUN: Simulating essential apps installation'
+            $results = @{
+                ProcessedCount     = $missingCount
+                SuccessfulInstalls = 0
+                FailedInstalls     = 0
+                Simulated          = $true
+                Details            = $analysisResults.MissingApps
+            }
+            $processedCount = $missingCount
+        }
+        else {
+            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Executing essential apps installation'
+            $results = Install-EssentialApplications -AppsList $analysisResults.MissingApps
+            $processedCount = if ($results.SuccessfulInstalls) { $results.SuccessfulInstalls } else { 0 }
+        }
+        
+        # Step 4: Return standardized results for ReportGeneration
+        $returnData = @{
+            Success        = $true
+            ItemsDetected  = $missingCount
+            ItemsProcessed = $processedCount
+            DryRun         = $DryRun.IsPresent
+            Results        = $results
+            DetectionData  = $analysisResults
+        }
+        
+        Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Essential apps installation completed. Processed: $processedCount/$missingCount"
+        
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+        return $returnData
+        
+    }
+    catch {
+        $errorMsg = "Failed to execute essential apps installation: $($_.Exception.Message)"
+        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg -Data @{ Error = $_.Exception }
+        
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
+        
+        return @{
+            Success        = $false
+            Error          = $errorMsg
+            ErrorType      = $_.Exception.GetType().Name
+            ItemsDetected  = if ($analysisResults -and $analysisResults.MissingApps) { $analysisResults.MissingApps.Count } else { 0 }
+            ItemsProcessed = 0
+            DryRun         = $DryRun.IsPresent
+        }
+    }
+}
+
+#endregion
+
+#region Legacy Public Functions (Preserved for Internal Use)
 
 <#
 .SYNOPSIS
@@ -120,21 +237,23 @@ function Install-EssentialApplication {
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential applications installation' -Data @{
-            Categories = $Categories
-            CustomAppsCount = $CustomApps.Count
-            SkipDuplicates = $SkipDuplicates.IsPresent
-            DryRun = $DryRun.IsPresent
+            Categories       = $Categories
+            CustomAppsCount  = $CustomApps.Count
+            SkipDuplicates   = $SkipDuplicates.IsPresent
+            DryRun           = $DryRun.IsPresent
             ParallelInstalls = $ParallelInstalls
         }
         $perfContext = Start-PerformanceTracking -OperationName 'EssentialAppsInstallation' -Component 'ESSENTIAL-APPS'
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
     
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "Essential applications installation"
-    } catch {
+    }
+    catch {
         Write-Error "Administrator privileges are required for application installation: $_"
         return $false
     }
@@ -144,127 +263,128 @@ function Install-EssentialApplication {
         Write-Verbose "Starting essential applications installation process"
 
         # Get essential apps from configuration
-    $essentialApps = Get-UnifiedEssentialAppsList -IncludeCategories $Categories
+        $essentialApps = Get-UnifiedEssentialAppsList -IncludeCategories $Categories
 
-    # Add custom apps if specified
-    if ($CustomApps.Count -gt 0) {
-        $customAppObjects = $CustomApps | ForEach-Object {
-            @{
-                Name        = $_
-                Category    = 'Custom'
-                Winget      = $_
-                Chocolatey  = $_
-                Description = "Custom app: $_"
+        # Add custom apps if specified
+        if ($CustomApps.Count -gt 0) {
+            $customAppObjects = $CustomApps | ForEach-Object {
+                @{
+                    Name        = $_
+                    Category    = 'Custom'
+                    Winget      = $_
+                    Chocolatey  = $_
+                    Description = "Custom app: $_"
+                }
+            }
+            $essentialApps = $essentialApps + $customAppObjects
+        }
+
+        if (-not $essentialApps -or $essentialApps.Count -eq 0) {
+            Write-Warning "No essential apps found in configuration"
+            return @{
+                TotalApps = 0
+                Installed = 0
+                Skipped   = 0
+                Failed    = 0
             }
         }
-        $essentialApps = $essentialApps + $customAppObjects
-    }
 
-    if (-not $essentialApps -or $essentialApps.Count -eq 0) {
-        Write-Warning "No essential apps found in configuration"
-        return @{
-            TotalApps = 0
-            Installed = 0
-            Skipped   = 0
-            Failed    = 0
+        Write-Information "  📋 Found $($essentialApps.Count) essential apps across $($Categories.Count) categories" -InformationAction Continue
+
+        if ($DryRun) {
+            Write-Information "  🧪 DRY RUN MODE - No installations will be performed" -InformationAction Continue
         }
-    }
 
-    Write-Information "  📋 Found $($essentialApps.Count) essential apps across $($Categories.Count) categories" -InformationAction Continue
+        # Filter out duplicates by default (skip duplicates unless explicitly disabled)
+        $appsToInstall = if ($PSBoundParameters.ContainsKey('SkipDuplicates') -and -not $SkipDuplicates) {
+            $essentialApps
+        }
+        else {
+            Get-AppNotInstalled -AppList $essentialApps
+        }
 
-    if ($DryRun) {
-        Write-Information "  🧪 DRY RUN MODE - No installations will be performed" -InformationAction Continue
-    }
+        if ($appsToInstall.Count -eq 0) {
+            Write-Information "  ✅ All essential apps are already installed" -InformationAction Continue
+            return @{
+                TotalApps        = $essentialApps.Count
+                Installed        = 0
+                Skipped          = $essentialApps.Count
+                Failed           = 0
+                AlreadyInstalled = $true
+            }
+        }
 
-    # Filter out duplicates by default (skip duplicates unless explicitly disabled)
-    $appsToInstall = if ($PSBoundParameters.ContainsKey('SkipDuplicates') -and -not $SkipDuplicates) {
-        $essentialApps
-    }
-    else {
-        Get-AppNotInstalled -AppList $essentialApps
-    }
+        Write-Information "  🎯 Installing $($appsToInstall.Count) applications (skipped $($essentialApps.Count - $appsToInstall.Count) duplicates)" -InformationAction Continue
 
-    if ($appsToInstall.Count -eq 0) {
-        Write-Information "  ✅ All essential apps are already installed" -InformationAction Continue
-        return @{
+        # Initialize results tracking
+        $results = @{
             TotalApps        = $essentialApps.Count
             Installed        = 0
-            Skipped          = $essentialApps.Count
+            Skipped          = $essentialApps.Count - $appsToInstall.Count
             Failed           = 0
-            AlreadyInstalled = $true
+            Details          = [List[PSCustomObject]]::new()
+            ByCategory       = @{}
+            ByPackageManager = @{}
         }
-    }
 
-    Write-Information "  🎯 Installing $($appsToInstall.Count) applications (skipped $($essentialApps.Count - $appsToInstall.Count) duplicates)" -InformationAction Continue
+        # Group apps by package manager preference for optimal installation
+        $wingetApps = $appsToInstall | Where-Object { $_.Winget -and (Test-PackageManagerAvailable -Manager 'Winget') }
+        $chocoApps = $appsToInstall | Where-Object { -not $_.Winget -and $_.Chocolatey -and (Test-PackageManagerAvailable -Manager 'Chocolatey') }
+        $manualApps = $appsToInstall | Where-Object { -not $_.Winget -and -not $_.Chocolatey }
 
-    # Initialize results tracking
-    $results = @{
-        TotalApps        = $essentialApps.Count
-        Installed        = 0
-        Skipped          = $essentialApps.Count - $appsToInstall.Count
-        Failed           = 0
-        Details          = [List[PSCustomObject]]::new()
-        ByCategory       = @{}
-        ByPackageManager = @{}
-    }
-
-    # Group apps by package manager preference for optimal installation
-    $wingetApps = $appsToInstall | Where-Object { $_.Winget -and (Test-PackageManagerAvailable -Manager 'Winget') }
-    $chocoApps = $appsToInstall | Where-Object { -not $_.Winget -and $_.Chocolatey -and (Test-PackageManagerAvailable -Manager 'Chocolatey') }
-    $manualApps = $appsToInstall | Where-Object { -not $_.Winget -and -not $_.Chocolatey }
-
-    # Install apps using preferred package managers
-    if ($wingetApps.Count -gt 0) {
-        Write-Information "  🔹 Installing $($wingetApps.Count) apps via Winget..." -InformationAction Continue
-        $wingetResults = Install-AppViaWinget -Apps $wingetApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
-        Merge-InstallationResult -Results $results -NewResults $wingetResults -PackageManager 'Winget'
-    }
-
-    if ($chocoApps.Count -gt 0) {
-        Write-Information "  🍫 Installing $($chocoApps.Count) apps via Chocolatey..." -InformationAction Continue
-        $chocoResults = Install-AppViaChocolatey -Apps $chocoApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
-        Merge-InstallationResult -Results $results -NewResults $chocoResults -PackageManager 'Chocolatey'
-    }
-
-    if ($manualApps.Count -gt 0) {
-        Write-Information "  ⚠️  $($manualApps.Count) apps require manual installation (no package manager available)" -InformationAction Continue
-        foreach ($app in $manualApps) {
-            Write-Information "    📌 Manual installation needed: $($app.Name) - $($app.Description)" -InformationAction Continue
-            $results.Details.Add([PSCustomObject]@{
-                    Name           = $app.Name
-                    Category       = $app.Category
-                    Status         = 'Manual Required'
-                    PackageManager = 'None'
-                    Error          = 'No supported package manager available'
-                })
+        # Install apps using preferred package managers
+        if ($wingetApps.Count -gt 0) {
+            Write-Information "  🔹 Installing $($wingetApps.Count) apps via Winget..." -InformationAction Continue
+            $wingetResults = Install-AppViaWinget -Apps $wingetApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
+            Merge-InstallationResult -Results $results -NewResults $wingetResults -PackageManager 'Winget'
         }
-        $results.Failed += $manualApps.Count
-    }
 
-    $duration = ((Get-Date) - $startTime).TotalSeconds
+        if ($chocoApps.Count -gt 0) {
+            Write-Information "  🍫 Installing $($chocoApps.Count) apps via Chocolatey..." -InformationAction Continue
+            $chocoResults = Install-AppViaChocolatey -Apps $chocoApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
+            Merge-InstallationResult -Results $results -NewResults $chocoResults -PackageManager 'Chocolatey'
+        }
 
-    # Summary output
-    $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
-    Write-Information "  $statusIcon Essential apps installation completed in $([math]::Round($duration, 2))s" -InformationAction Continue
-    Write-Information "    📊 Total: $($results.TotalApps), Installed: $($results.Installed), Skipped: $($results.Skipped), Failed: $($results.Failed)" -InformationAction Continue
+        if ($manualApps.Count -gt 0) {
+            Write-Information "  ⚠️  $($manualApps.Count) apps require manual installation (no package manager available)" -InformationAction Continue
+            foreach ($app in $manualApps) {
+                Write-Information "    📌 Manual installation needed: $($app.Name) - $($app.Description)" -InformationAction Continue
+                $results.Details.Add([PSCustomObject]@{
+                        Name           = $app.Name
+                        Category       = $app.Category
+                        Status         = 'Manual Required'
+                        PackageManager = 'None'
+                        Error          = 'No supported package manager available'
+                    })
+            }
+            $results.Failed += $manualApps.Count
+        }
+
+        $duration = ((Get-Date) - $startTime).TotalSeconds
+
+        # Summary output
+        $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
+        Write-Information "  $statusIcon Essential apps installation completed in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "    📊 Total: $($results.TotalApps), Installed: $($results.Installed), Skipped: $($results.Skipped), Failed: $($results.Failed)" -InformationAction Continue
 
         $success = $results.Failed -eq 0 && $results.Installed -gt 0
         
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
-                TotalApps = $results.TotalApps
-                Installed = $results.Installed
-                Skipped = $results.Skipped
-                Failed = $results.Failed
-                Duration = $duration
-                Categories = $Categories
-                WingetApps = ($wingetApps | Measure-Object).Count
+                TotalApps      = $results.TotalApps
+                Installed      = $results.Installed
+                Skipped        = $results.Skipped
+                Failed         = $results.Failed
+                Duration       = $duration
+                Categories     = $Categories
+                WingetApps     = ($wingetApps | Measure-Object).Count
                 ChocolateyApps = ($chocoApps | Measure-Object).Count
-                ManualApps = ($manualApps | Measure-Object).Count
+                ManualApps     = ($manualApps | Measure-Object).Count
             }
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation completed' -Data $results
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -283,7 +403,8 @@ function Install-EssentialApplication {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
             Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -426,10 +547,12 @@ function Save-AppDiffList {
             if (Test-Path $ConfigManagerPath) {
                 Import-Module $ConfigManagerPath -Force
                 $tempDir = Get-TempDirectoryPath
-            } else {
+            }
+            else {
                 $tempDir = Join-Path $scriptRoot 'temp_files'
             }
-        } catch {
+        }
+        catch {
             $tempDir = Join-Path $scriptRoot 'temp_files'
         }
         if (-not (Test-Path $tempDir)) { Write-Verbose "temp_files directory not found: $tempDir"; return }
@@ -726,7 +849,8 @@ function Install-AppViaWinget {
     # Start structured logging for Winget installation batch
     try {
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Winget batch installation' -Data @{ AppCount = $Apps.Count; ParallelCount = $ParallelCount; DryRun = $DryRun.IsPresent }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
     
@@ -851,7 +975,8 @@ function Install-AppViaChocolatey {
     # Start structured logging for Chocolatey installation batch
     try {
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Chocolatey batch installation' -Data @{ AppCount = $Apps.Count; DryRun = $DryRun.IsPresent }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
     
@@ -1104,6 +1229,10 @@ function Get-InstallationStatistic {
 
 # Export module functions
 Export-ModuleMember -Function @(
+    # v3.0 Standardized execution function (Primary)
+    'Invoke-EssentialApps',
+    
+    # Legacy functions (Preserved for internal use)
     'Install-EssentialApplication',
     'Get-AppNotInstalled',
     'Get-InstallationStatistic'

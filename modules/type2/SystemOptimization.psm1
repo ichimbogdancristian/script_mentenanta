@@ -21,19 +21,111 @@
 
 using namespace System.Collections.Generic
 
-# Import required modules
-$ModuleRoot = Split-Path -Parent $PSScriptRoot
-$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+# v3.0 Self-contained Type 2 module with internal Type 1 dependency
+
+# Step 1: Import corresponding Type 1 module (REQUIRED)
+$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\SystemOptimizationAudit.psm1'
+if (Test-Path $Type1ModulePath) {
+    Import-Module $Type1ModulePath -Force
+}
+else {
+    throw "Required Type 1 module not found: $Type1ModulePath"
+}
+
+# Step 2: Import core infrastructure (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    # Fallback logging function if CoreInfrastructure fails
+    function Write-LogEntry {
+        param($Level, $Component, $Message, $Data)
+        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
+    }
+}
+
+# Step 3: Import additional dependencies
+$DependencyManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\DependencyManager.psm1'
 if (Test-Path $DependencyManagerPath) {
     Import-Module $DependencyManagerPath -Force
 }
 
-$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingManagerPath) {
-    Import-Module $LoggingManagerPath -Force
+# Validate Type1 module loaded correctly
+if (-not (Get-Command -Name 'Get-SystemOptimizationAudit' -ErrorAction SilentlyContinue)) {
+    throw "Type 1 module functions not available - ensure SystemOptimizationAudit.psm1 is properly imported"
 }
 
-#region Public Functions
+#region v3.0 Standardized Execution Function
+
+<#
+.SYNOPSIS
+    Main execution function for system optimization - v3.0 Architecture Pattern
+#>
+function Invoke-SystemOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        [Parameter()]
+        [switch]$DryRun
+    )
+    
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'SystemOptimization' -Component 'SYSTEM-OPTIMIZATION'
+    }
+    catch { }
+    
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
+        $analysisResults = Get-SystemOptimizationAudit
+        
+        if (-not $analysisResults -or $analysisResults.OptimizationCount -eq 0) {
+            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'No optimization opportunities detected'
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'System already optimized' }
+        }
+        
+        $optimizationCount = $analysisResults.OptimizationCount
+        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities"
+        
+        if ($DryRun) {
+            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'DRY RUN: Simulating system optimization'
+            $results = @{ ProcessedCount = $optimizationCount; Simulated = $true }
+            $processedCount = $optimizationCount
+        }
+        else {
+            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing system optimization'
+            $results = Optimize-SystemPerformance -OptimizationPlan $analysisResults
+            $processedCount = if ($results.AppliedOptimizations) { $results.AppliedOptimizations.Count } else { 0 }
+        }
+        
+        $returnData = @{
+            Success = $true; ItemsDetected = $optimizationCount; ItemsProcessed = $processedCount
+            DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults
+        }
+        
+        Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed. Processed: $processedCount/$optimizationCount"
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+        return $returnData
+        
+    }
+    catch {
+        $errorMsg = "Failed to execute system optimization: $($_.Exception.Message)"
+        Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message $errorMsg -Data @{ Error = $_.Exception }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
+        
+        return @{
+            Success = $false; Error = $errorMsg; ErrorType = $_.Exception.GetType().Name
+            ItemsDetected = if ($analysisResults) { $analysisResults.OptimizationCount } else { 0 }; ItemsProcessed = 0; DryRun = $DryRun.IsPresent
+        }
+    }
+}
+
+#endregion
+
+#region Legacy Public Functions (Preserved for Internal Use)
 
 <#
 .SYNOPSIS
@@ -102,23 +194,25 @@ function Optimize-SystemPerformance {
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting comprehensive system optimization' -Data @{
-            CleanupTemp = $CleanupTemp.IsPresent
-            OptimizeStartup = $OptimizeStartup.IsPresent
-            OptimizeUI = $OptimizeUI.IsPresent
+            CleanupTemp      = $CleanupTemp.IsPresent
+            OptimizeStartup  = $OptimizeStartup.IsPresent
+            OptimizeUI       = $OptimizeUI.IsPresent
             OptimizeRegistry = $OptimizeRegistry.IsPresent
-            OptimizeDisk = $OptimizeDisk.IsPresent
-            OptimizeNetwork = $OptimizeNetwork.IsPresent
-            DryRun = $DryRun.IsPresent
+            OptimizeDisk     = $OptimizeDisk.IsPresent
+            OptimizeNetwork  = $OptimizeNetwork.IsPresent
+            DryRun           = $DryRun.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'SystemPerformanceOptimization' -Component 'SYSTEM-OPTIMIZATION'
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
     
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "System performance optimization"
-    } catch {
+    }
+    catch {
         Write-Error "Administrator privileges are required for system optimization operations: $_"
         return $false
     }
@@ -208,21 +302,22 @@ function Optimize-SystemPerformance {
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
-                TotalOperations = $results.TotalOperations
-                Successful = $results.Successful
-                Failed = $results.Failed
-                SpaceFreed = $results.SpaceFreed
-                SpaceFreedMB = $spaceFreedMB
-                Duration = $duration
+                TotalOperations       = $results.TotalOperations
+                Successful            = $results.Successful
+                Failed                = $results.Failed
+                SpaceFreed            = $results.SpaceFreed
+                SpaceFreedMB          = $spaceFreedMB
+                Duration              = $duration
                 TempCleanupOperations = $results.Categories.TempCleanup
-                StartupOptimizations = $results.Categories.StartupOptimization
-                UIOptimizations = $results.Categories.UIOptimization
+                StartupOptimizations  = $results.Categories.StartupOptimization
+                UIOptimizations       = $results.Categories.UIOptimization
                 RegistryOptimizations = $results.Categories.RegistryOptimization
-                DiskOptimizations = $results.Categories.DiskOptimization
-                NetworkOptimizations = $results.Categories.NetworkOptimization
+                DiskOptimizations     = $results.Categories.DiskOptimization
+                NetworkOptimizations  = $results.Categories.NetworkOptimization
             }
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation completed' -Data $results
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -241,7 +336,8 @@ function Optimize-SystemPerformance {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -972,6 +1068,10 @@ function Merge-OptimizationResult {
 
 # Export module functions
 Export-ModuleMember -Function @(
+    # v3.0 Standardized execution function (Primary)
+    'Invoke-SystemOptimization',
+    
+    # Legacy functions (Preserved for internal use)
     'Optimize-SystemPerformance',
     'Get-SystemPerformanceMetric'
 )

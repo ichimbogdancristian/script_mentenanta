@@ -85,10 +85,11 @@ function Find-InstalledBloatware {
         $perfContext = Start-PerformanceTracking -OperationName 'BloatwareDetection' -Component 'BLOATWARE-DETECTION'
         Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting comprehensive bloatware detection' -Data @{
             Categories = $Categories -join ', '
-            UseCache = $UseCache
-            Context = $Context
+            UseCache   = $UseCache
+            Context    = $Context
         }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue
     }
 
@@ -96,7 +97,7 @@ function Find-InstalledBloatware {
         # Get bloatware patterns from configuration
         $bloatwareList = $null
         try {
-            $bloatwareList = Get-UnifiedBloatwareList -IncludeCategories $Categories
+            $bloatwareList = Get-BloatwareList -Category $Categories
         }
         catch {
             Write-Warning "Failed to get bloatware configuration: $_"
@@ -185,7 +186,8 @@ function Find-InstalledBloatware {
         $duration = ((Get-Date) - $startTime).TotalSeconds
         $sourceStats = if ($allBloatware.Count -gt 0) {
             $allBloatware | Group-Object Source | ForEach-Object { "$($_.Name): $($_.Count)" }
-        } else {
+        }
+        else {
             @("No sources")
         }
 
@@ -219,52 +221,54 @@ function Find-InstalledBloatware {
             
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection completed successfully' -Data @{
                 BloatwareItemsFound = $resultArray.Count
-                ExecutionTime = [math]::Round($duration, 2)
-                Sources = $sourceStats -join ', '
-                Categories = $Categories -join ', '
+                ExecutionTime       = [math]::Round($duration, 2)
+                Sources             = $sourceStats -join ', '
+                Categories          = $Categories -join ', '
             }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue
         }
         
         return $resultArray
+    }
+    catch {
+        # Complete performance tracking with failure
+        try {
+            if ($perfContext) {
+                Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
+            }
+                
+            Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection failed' -Data @{
+                Error         = $_.Exception.Message
+                ExecutionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
+                Categories    = $Categories -join ', '
+            }
         }
         catch {
-            # Complete performance tracking with failure
-            try {
-                if ($perfContext) {
-                    Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
-                }
-                
-                Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection failed' -Data @{
-                    Error = $_.Exception.Message
-                    ExecutionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
-                    Categories = $Categories -join ', '
-                }
-            } catch {
-                # LoggingManager not available, continue
-            }
-            
-            Write-Error "Failed to detect bloatware: $_"
-            Write-Warning "Returning empty array due to error"
-            
-            # Cleanup on error
-            if ($null -ne $allBloatware) {
-                $allBloatware.Clear()
-                $allBloatware = $null
-            }
-            $installedPrograms = $null
-            $systemInventory = $null
-            
-            return @()
+            # LoggingManager not available, continue
         }
-        finally {
-            # Final cleanup in case variables weren't cleared
-            if ($null -ne $allBloatware) {
-                $allBloatware.Clear()
-            }
-            Write-Verbose "Memory cleanup completed for bloatware detection"
+            
+        Write-Error "Failed to detect bloatware: $_"
+        Write-Warning "Returning empty array due to error"
+            
+        # Cleanup on error
+        if ($null -ne $allBloatware) {
+            $allBloatware.Clear()
+            $allBloatware = $null
         }
+        $installedPrograms = $null
+        $systemInventory = $null
+            
+        return @()
+    }
+    finally {
+        # Final cleanup in case variables weren't cleared
+        if ($null -ne $allBloatware) {
+            $allBloatware.Clear()
+        }
+        Write-Verbose "Memory cleanup completed for bloatware detection"
+    }
 }
 
 <#

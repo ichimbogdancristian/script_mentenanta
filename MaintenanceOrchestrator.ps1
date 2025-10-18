@@ -171,13 +171,23 @@ $CoreModulesPath = Join-Path $ModulesPath 'core'
 
 Write-Information "Modules Path: $ModulesPath" -InformationAction Continue
 
+# v3.0 Architecture: Load only essential core modules
 $CoreModules = @(
     'CoreInfrastructure',
-    'SystemAnalysis', 
     'UserInterface',
-    'DependencyManager',
     'ReportGeneration'
 )
+
+# Type2 modules (self-contained with internal Type1 dependencies)
+$Type2Modules = @(
+    'BloatwareRemoval',
+    'EssentialApps',
+    'SystemOptimization',
+    'TelemetryDisable',
+    'WindowsUpdates'
+)
+
+$Type2ModulesPath = Join-Path $ModulesPath 'type2'
 
 foreach ($moduleName in $CoreModules) {
     $modulePath = Join-Path $CoreModulesPath "$moduleName.psm1"
@@ -219,6 +229,34 @@ foreach ($moduleName in $CoreModules) {
             Write-Information "  ℹ️ Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
         }
         exit 1
+    }
+}
+
+# Load Type2 modules (self-contained with internal Type1 dependencies)
+Write-Information "`nLoading Type2 modules..." -InformationAction Continue
+foreach ($moduleName in $Type2Modules) {
+    $modulePath = Join-Path $Type2ModulesPath "$moduleName.psm1"
+    try {
+        if (-not (Test-Path $modulePath)) {
+            Write-Warning "Type2 module not found: $modulePath - will be skipped"
+            continue
+        }
+
+        Import-Module $modulePath -Force -Global -ErrorAction Stop
+        Write-Information "  ✓ Loaded: $moduleName (Type2 - self-contained)" -InformationAction Continue
+        
+        # Verify the standardized Invoke-[ModuleName] function is available
+        $invokeFunction = "Invoke-$moduleName"
+        if (Get-Command -Name $invokeFunction -ErrorAction SilentlyContinue) {
+            Write-Information "    ✓ $invokeFunction function available" -InformationAction Continue
+        }
+        else {
+            Write-Warning "    ⚠️ $invokeFunction function not found - module may not be v3.0 compliant"
+        }
+    }
+    catch {
+        Write-Warning "Failed to load Type2 module $moduleName`: $($_.Exception.Message)"
+        Write-Information "  ℹ️ This module will be skipped during execution" -InformationAction Continue
     }
 }
 
@@ -518,96 +556,70 @@ function Invoke-TaskWithParameters {
 
 Write-Information "`nRegistering maintenance tasks..." -InformationAction Continue
 
-# Define available maintenance tasks
+# v3.0 Architecture: Define standardized maintenance tasks using Invoke-[ModuleName] pattern
 $MaintenanceTasks = @(
     @{
-        Name        = 'SystemInventory'
-        Description = 'Collect comprehensive system information and generate inventory reports'
-        ModulePath  = Join-Path $ModulesPath 'core\SystemAnalysis.psm1'
-        Function    = 'Get-SystemInventory'
-        Type        = 'Type1'
-        Category    = 'Inventory'
-    },
-    @{
-        Name        = 'BloatwareDetection'
-        Description = 'Scan for bloatware applications and system components'
-        ModulePath  = Join-Path $ModulesPath 'type1\BloatwareDetection.psm1'
-        Function    = 'Find-InstalledBloatware'
-        Type        = 'Type1'
-        Category    = 'Detection'
-    },
-    @{
         Name        = 'BloatwareRemoval'
-        Description = 'Remove detected bloatware applications using multiple methods'
-        ModulePath  = Join-Path $ModulesPath 'type2\BloatwareRemoval.psm1'
-        Function    = 'Remove-DetectedBloatware'
+        Description = 'Detect and remove bloatware applications (Type2→Type1 flow)'
+        ModuleName  = 'BloatwareRemoval'
+        Function    = 'Invoke-BloatwareRemoval'
         Type        = 'Type2'
         Category    = 'Cleanup'
+        Enabled     = (-not $MainConfig.modules.skipBloatwareRemoval)
     },
     @{
         Name        = 'EssentialApps'
-        Description = 'Install essential applications from curated lists'
-        ModulePath  = Join-Path $ModulesPath 'type2\EssentialApps.psm1'
-        Function    = 'Install-EssentialApplication'
+        Description = 'Analyze and install essential applications (Type2→Type1 flow)'
+        ModuleName  = 'EssentialApps'
+        Function    = 'Invoke-EssentialApps'
         Type        = 'Type2'
         Category    = 'Installation'
-    },
-    @{
-        Name        = 'WindowsUpdates'
-        Description = 'Check for and install Windows updates'
-        ModulePath  = Join-Path $ModulesPath 'type2\WindowsUpdates.psm1'
-        Function    = 'Install-WindowsUpdate'
-        Type        = 'Type2'
-        Category    = 'Updates'
-    },
-    @{
-        Name        = 'TelemetryDisable'
-        Description = 'Disable Windows telemetry and privacy-invasive features'
-        ModulePath  = Join-Path $ModulesPath 'type2\TelemetryDisable.psm1'
-        Function    = 'Disable-WindowsTelemetry'
-        Type        = 'Type2'
-        Category    = 'Privacy'
-    },
-    @{
-        Name        = 'SecurityAudit'
-        Description = 'Perform security audit and apply hardening recommendations'
-        ModulePath  = Join-Path $ModulesPath 'core\SystemAnalysis.psm1'
-        Function    = 'Get-SecurityAudit'
-        Type        = 'Type1'
-        Category    = 'Security'
+        Enabled     = (-not $MainConfig.modules.skipEssentialApps)
     },
     @{
         Name        = 'SystemOptimization'
-        Description = 'Apply performance optimizations and cleanup temporary files'
-        ModulePath  = Join-Path $ModulesPath 'type2\SystemOptimization.psm1'
-        Function    = 'Optimize-SystemPerformance'
+        Description = 'Analyze and optimize system performance (Type2→Type1 flow)'
+        ModuleName  = 'SystemOptimization'
+        Function    = 'Invoke-SystemOptimization'
         Type        = 'Type2'
         Category    = 'Optimization'
+        Enabled     = (-not $MainConfig.modules.skipSystemOptimization)
     },
     @{
-        Name        = 'ReportGeneration'
-        Description = 'Generate comprehensive HTML and text reports of all operations'
-        ModulePath  = Join-Path $ModulesPath 'type1\ReportGeneration.psm1'
-        Function    = 'New-MaintenanceReport'
-        Type        = 'Type1'
-        Category    = 'Reporting'
+        Name        = 'TelemetryDisable'
+        Description = 'Analyze and disable Windows telemetry (Type2→Type1 flow)'
+        ModuleName  = 'TelemetryDisable'
+        Function    = 'Invoke-TelemetryDisable'
+        Type        = 'Type2'
+        Category    = 'Privacy'
+        Enabled     = (-not $MainConfig.modules.skipTelemetryDisable)
+    },
+    @{
+        Name        = 'WindowsUpdates'
+        Description = 'Analyze and install Windows updates (Type2→Type1 flow)'
+        ModuleName  = 'WindowsUpdates'
+        Function    = 'Invoke-WindowsUpdates'
+        Type        = 'Type2'
+        Category    = 'Updates'
+        Enabled     = (-not $MainConfig.modules.skipWindowsUpdates)
     }
 )
 
-# Filter tasks based on configuration
+# v3.0: Filter enabled tasks and verify functions are available
 $AvailableTasks = @()
 foreach ($task in $MaintenanceTasks) {
-    $skipProperty = "skip$($task.Name)"
-    if ($MainConfig.modules.PSObject.Properties.Name -contains $skipProperty) {
-        if (-not $MainConfig.modules.$skipProperty) {
+    if ($task.Enabled) {
+        # Verify the standardized Invoke-[ModuleName] function is available
+        if (Get-Command -Name $task.Function -ErrorAction SilentlyContinue) {
             $AvailableTasks += $task
+            Write-Information "  ✓ Available: $($task.Name) - $($task.Function)" -InformationAction Continue
         }
         else {
-            Write-Information "  ⊝ Skipped: $($task.Name) (disabled in configuration)" -InformationAction Continue
+            Write-Warning "  ⚠️ Skipped: $($task.Name) - function $($task.Function) not available (module may not be v3.0 compliant)"
         }
     }
     else {
-        $AvailableTasks += $task
+        Write-Information "  ⊝ Disabled: $($task.Name) (disabled in configuration)" -InformationAction Continue
     }
 }
 
@@ -746,87 +758,42 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
     }
 
     try {
-        # Validate task properties
-        if ([string]::IsNullOrEmpty($task.ModulePath)) {
-            throw "Task configuration error: ModulePath is null or empty"
-        }
-        if ([string]::IsNullOrEmpty($task.Function)) {
-            throw "Task configuration error: Function name is null or empty"
-        }
-
+        # v3.0 Architecture: Simplified execution using standardized Invoke-[ModuleName] functions
+        # Type2 modules are already loaded and self-contained with their Type1 dependencies
+        
         # Log task start
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting task: $($task.Name)" -Data @{
             TaskType     = $task.Type
             TaskCategory = $task.Category
-            ModulePath   = $task.ModulePath
             Function     = $task.Function
             DryRun       = $ExecutionParams.DryRun
+            Architecture = 'v3.0'
         }
 
-        # Check if module exists and load it with comprehensive error handling
-        if (-not (Test-Path $task.ModulePath)) {
-            throw "Module file not found: $($task.ModulePath)"
+        # Verify function is available (already checked during module loading)
+        if (-not (Get-Command -Name $task.Function -ErrorAction SilentlyContinue)) {
+            throw "Function '$($task.Function)' not available - ensure $($task.ModuleName) module is properly loaded"
         }
 
-        try {
-            # Validate module syntax before import
-            $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Path $task.ModulePath -Raw), [ref]$null)
-            
-            Import-Module $task.ModulePath -Force -ErrorAction Stop
-            Write-Information "  ✓ Module loaded: $($task.ModulePath | Split-Path -Leaf)" -InformationAction Continue
-            
-            # Verify the target function exists in the loaded module
-            $moduleName = [System.IO.Path]::GetFileNameWithoutExtension($task.ModulePath)
-            $loadedModule = Get-Module -Name $moduleName -ErrorAction SilentlyContinue
-            if (-not $loadedModule) {
-                throw "Module $moduleName failed to load properly"
-            }
-            
-            $availableFunctions = $loadedModule.ExportedFunctions.Keys
-            if ($task.Function -notin $availableFunctions) {
-                throw "Function '$($task.Function)' not found in module. Available functions: $($availableFunctions -join ', ')"
-            }
-        }
-        catch [System.UnauthorizedAccessException] {
-            throw "Access denied loading module: $($task.ModulePath). Check file permissions and ensure administrator privileges."
-        }
-        catch [System.Management.Automation.ParseException] {
-            throw "Module syntax error in $($task.ModulePath): $($_.Exception.Message)"
-        }
-        catch {
-            throw "Failed to load module $($task.ModulePath): $($_.Exception.Message)"
-        }
-
-        # Execute the task function with comprehensive error handling
+        # Execute the standardized v3.0 function with consistent parameters
         $result = $null
         try {
             if ($ExecutionParams.DryRun) {
                 Write-Information "  ▶ Simulating: $($task.Function)" -InformationAction Continue
-                # Try to call with -WhatIf if the function supports it
-                $functionDef = Get-Command $task.Function -ErrorAction SilentlyContinue
-                if ($functionDef -and $functionDef.Parameters.ContainsKey('WhatIf')) {
-                    $result = & $task.Function -WhatIf
-                }
-                else {
-                    $result = "DRY-RUN: Task would be executed (function does not support -WhatIf)"
-                }
+                $result = & $task.Function -Config $MainConfig -DryRun
             }
             else {
                 Write-Information "  ▶ Executing: $($task.Function)" -InformationAction Continue
-                $result = Invoke-TaskWithParameters -TaskName $task.Name -FunctionName $task.Function -DryRun:$ExecutionParams.DryRun
+                $result = & $task.Function -Config $MainConfig
             }
-        }
-        catch [System.Management.Automation.CommandNotFoundException] {
-            throw "Function '$($task.Function)' not found or not accessible"
-        }
-        catch [System.Management.Automation.ParameterBindingException] {
-            throw "Parameter binding error for function '$($task.Function)': $($_.Exception.Message)"
-        }
-        catch [System.Security.SecurityException] {
-            throw "Security error executing function '$($task.Function)': $($_.Exception.Message). Check execution policy and permissions."
-        }
-        catch [System.UnauthorizedAccessException] {
-            throw "Access denied executing function '$($task.Function)': $($_.Exception.Message). Ensure administrator privileges."
+            
+            # Validate standardized return structure
+            if ($result -and $result -is [hashtable] -and $result.ContainsKey('Success')) {
+                Write-Information "  ✓ v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
+            }
+            else {
+                Write-Warning "  ⚠️ Non-standard result format from $($task.Function) - may not be v3.0 compliant"
+            }
         }
         catch {
             # Capture detailed error information for debugging
@@ -926,6 +893,56 @@ for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
 
         Write-Information "  Duration: $([math]::Round($taskResult.Duration, 2)) seconds" -InformationAction Continue
     }
+}
+
+#endregion
+
+#region Report Generation (v3.0 Architecture - Preserved)
+
+# Generate comprehensive reports using ReportGeneration module (still orchestrator-loaded)
+Write-Information "" -InformationAction Continue
+Write-Information "📋 Generating maintenance reports..." -InformationAction Continue
+
+try {
+    # Collect system inventory using SystemAnalysis (core module)
+    $systemInventory = $null
+    if (Get-Command -Name 'Get-SystemInventory' -ErrorAction SilentlyContinue) {
+        try {
+            $systemInventory = Get-SystemInventory -UseCache -IncludeDetailed
+            Write-Information "  ✓ System inventory collected" -InformationAction Continue
+        }
+        catch {
+            Write-Warning "  ⚠️ Failed to collect system inventory: $($_.Exception.Message)"
+        }
+    }
+    else {
+        Write-Warning "  ⚠️ SystemAnalysis module not available for inventory collection"
+    }
+
+    # Generate reports using the ReportGeneration module
+    if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
+        $reportBasePath = Get-SessionPath -Category 'reports' -FileName 'maintenance-report'
+        
+        $reportResult = New-MaintenanceReport -SystemInventory $systemInventory -TaskResults $TaskResults -Configuration $MainConfig -OutputPath $reportBasePath
+        
+        if ($reportResult -and $reportResult.Success) {
+            Write-Information "  ✓ Reports generated successfully" -InformationAction Continue
+            if ($reportResult.ReportPaths) {
+                foreach ($reportPath in $reportResult.ReportPaths) {
+                    Write-Information "    • $reportPath" -InformationAction Continue
+                }
+            }
+        }
+        else {
+            Write-Warning "  ⚠️ Report generation failed"
+        }
+    }
+    else {
+        Write-Warning "  ⚠️ ReportGeneration module not available - reports will not be generated"
+    }
+}
+catch {
+    Write-Warning "  ⚠️ Error during report generation: $($_.Exception.Message)"
 }
 
 #endregion

@@ -22,19 +22,79 @@
 
 using namespace System.Collections.Generic
 
-# Import required modules
-$ModuleRoot = Split-Path -Parent $PSScriptRoot
-$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
-if (Test-Path $DependencyManagerPath) {
-    Import-Module $DependencyManagerPath -Force
+# v3.0 Self-contained Type 2 module with internal Type 1 dependency
+
+# Step 1: Import corresponding Type 1 module (REQUIRED)
+$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\TelemetryAudit.psm1'
+if (Test-Path $Type1ModulePath) {
+    Import-Module $Type1ModulePath -Force
+}
+else {
+    throw "Required Type 1 module not found: $Type1ModulePath"
 }
 
-$LoggingManagerPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingManagerPath) {
-    Import-Module $LoggingManagerPath -Force
+# Step 2: Import core infrastructure (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    function Write-LogEntry { param($Level, $Component, $Message, $Data); Write-Information "[$Level] [$Component] $Message" -InformationAction Continue }
 }
 
-#region Public Functions
+# Validate Type1 module loaded correctly
+if (-not (Get-Command -Name 'Get-TelemetryAudit' -ErrorAction SilentlyContinue)) {
+    throw "Type 1 module functions not available - ensure TelemetryAudit.psm1 is properly imported"
+}
+
+#region v3.0 Standardized Execution Function
+
+function Invoke-TelemetryDisable {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][PSCustomObject]$Config, [Parameter()][switch]$DryRun)
+    
+    $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE' } catch { }
+    
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry analysis'
+        $analysisResults = Get-TelemetryAudit
+        
+        if (-not $analysisResults -or $analysisResults.ActiveTelemetryCount -eq 0) {
+            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'No active telemetry detected'
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; DryRun = $DryRun.IsPresent; Message = 'Telemetry already disabled' }
+        }
+        
+        $telemetryCount = $analysisResults.ActiveTelemetryCount
+        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items"
+        
+        if ($DryRun) {
+            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'DRY RUN: Simulating telemetry disable'
+            $results = @{ ProcessedCount = $telemetryCount; Simulated = $true }; $processedCount = $telemetryCount
+        }
+        else {
+            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable'
+            $results = Disable-WindowsTelemetry -TelemetryItems $analysisResults.ActiveItems
+            $processedCount = if ($results.DisabledCount) { $results.DisabledCount } else { 0 }
+        }
+        
+        $returnData = @{ Success = $true; ItemsDetected = $telemetryCount; ItemsProcessed = $processedCount; DryRun = $DryRun.IsPresent; Results = $results; DetectionData = $analysisResults }
+        Write-LogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount"
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+        return $returnData
+        
+    }
+    catch {
+        $errorMsg = "Failed to execute telemetry disable: $($_.Exception.Message)"
+        Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message $errorMsg -Data @{ Error = $_.Exception }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
+        return @{ Success = $false; Error = $errorMsg; ErrorType = $_.Exception.GetType().Name; ItemsDetected = if ($analysisResults) { $analysisResults.ActiveTelemetryCount } else { 0 }; ItemsProcessed = 0; DryRun = $DryRun.IsPresent }
+    }
+}
+
+#endregion
+
+#region Legacy Public Functions (Preserved for Internal Use)
 
 <#
 .SYNOPSIS
@@ -97,22 +157,24 @@ function Disable-WindowsTelemetry {
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting Windows telemetry and privacy hardening' -Data @{
-            DisableServices = $DisableServices.IsPresent
-            DisableNotifications = $DisableNotifications.IsPresent
+            DisableServices         = $DisableServices.IsPresent
+            DisableNotifications    = $DisableNotifications.IsPresent
             DisableConsumerFeatures = $DisableConsumerFeatures.IsPresent
-            DisableCortana = $DisableCortana.IsPresent
+            DisableCortana          = $DisableCortana.IsPresent
             DisableLocationTracking = $DisableLocationTracking.IsPresent
-            DryRun = $DryRun.IsPresent
+            DryRun                  = $DryRun.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'TelemetryPrivacyHardening' -Component 'TELEMETRY-DISABLE'
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
     
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "Windows telemetry and privacy configuration"
-    } catch {
+    }
+    catch {
         Write-Error "Administrator privileges are required for telemetry disabling operations: $_"
         return $false
     }
@@ -193,18 +255,19 @@ function Disable-WindowsTelemetry {
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
-                TotalOperations = $results.TotalOperations
-                Successful = $results.Successful
-                Failed = $results.Failed
-                Skipped = $results.Skipped
-                Duration = $duration
-                RegistryOperations = $results.Categories.Registry
-                ServicesOperations = $results.Categories.Services
+                TotalOperations        = $results.TotalOperations
+                Successful             = $results.Successful
+                Failed                 = $results.Failed
+                Skipped                = $results.Skipped
+                Duration               = $duration
+                RegistryOperations     = $results.Categories.Registry
+                ServicesOperations     = $results.Categories.Services
                 NotificationOperations = $results.Categories.Notifications
-                FeatureOperations = $results.Categories.Features
+                FeatureOperations      = $results.Categories.Features
             }
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation completed' -Data $results
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -223,7 +286,8 @@ function Disable-WindowsTelemetry {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
             Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -367,7 +431,8 @@ function Set-TelemetryRegistrySetting {
     # Start structured logging for registry settings operation
     try {
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry registry settings configuration' -Data @{ DryRun = $DryRun.IsPresent }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
     
@@ -1065,6 +1130,10 @@ function Merge-Result {
 
 # Export module functions
 Export-ModuleMember -Function @(
+    # v3.0 Standardized execution function (Primary)
+    'Invoke-TelemetryDisable',
+    
+    # Legacy functions (Preserved for internal use)
     'Disable-WindowsTelemetry',
     'Test-PrivacySetting'
 )

@@ -23,29 +23,152 @@
 using namespace System.Collections.Generic
 using namespace System.Collections.Concurrent
 
-# Import required modules
-$ModuleRoot = Split-Path -Parent $PSScriptRoot
-$BloatwareDetectionPath = Join-Path $ModuleRoot 'type1\BloatwareDetection.psm1'
-if (Test-Path $BloatwareDetectionPath) {
-    Import-Module $BloatwareDetectionPath -Force
+# v3.0 Self-contained Type 2 module with internal Type 1 dependency
+
+# Step 1: Import corresponding Type 1 module (REQUIRED)
+$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\BloatwareDetection.psm1'
+if (Test-Path $Type1ModulePath) {
+    Import-Module $Type1ModulePath -Force
+}
+else {
+    throw "Required Type 1 module not found: $Type1ModulePath"
 }
 
-$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
-if (Test-Path $FileOrgPath) {
-    Import-Module $FileOrgPath -Force
+# Step 2: Import core infrastructure (REQUIRED)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
+}
+else {
+    # Fallback logging function if CoreInfrastructure fails
+    function Write-LogEntry {
+        param($Level, $Component, $Message, $Data)
+        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
+    }
 }
 
-$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingPath) {
-    Import-Module $LoggingPath -Force
-}
-
-$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
+# Step 3: Import additional dependencies
+$DependencyManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\DependencyManager.psm1'
 if (Test-Path $DependencyManagerPath) {
     Import-Module $DependencyManagerPath -Force
 }
 
-#region Public Functions
+# Validate Type1 module loaded correctly
+if (-not (Get-Command -Name 'Find-InstalledBloatware' -ErrorAction SilentlyContinue)) {
+    throw "Type 1 module functions not available - ensure BloatwareDetection.psm1 is properly imported"
+}
+
+#region v3.0 Standardized Execution Function
+
+<#
+.SYNOPSIS
+    Main execution function for bloatware removal - v3.0 Architecture Pattern
+
+.DESCRIPTION
+    Standardized entry point that implements the Type2 → Type1 flow:
+    1. Calls BloatwareDetection (Type1) to detect bloatware
+    2. Validates findings and logs results
+    3. Executes removal actions (Type2) based on DryRun mode
+    4. Returns standardized results for ReportGeneration
+
+.PARAMETER Config
+    Main configuration object from orchestrator
+
+.PARAMETER DryRun
+    When specified, simulates removal without making changes
+
+.EXAMPLE
+    $result = Invoke-BloatwareRemoval -Config $MainConfig -DryRun
+
+.EXAMPLE
+    $result = Invoke-BloatwareRemoval -Config $MainConfig
+#>
+function Invoke-BloatwareRemoval {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        
+        [Parameter()]
+        [switch]$DryRun
+    )
+    
+    # Performance tracking
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'BloatwareRemoval' -Component 'BLOATWARE-REMOVAL'
+    }
+    catch {
+        # CoreInfrastructure not available, continue without performance tracking
+    }
+    
+    try {
+        # Step 1: ALWAYS detect first (Type 1) - MANDATORY
+        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection'
+        $detectionResults = Find-InstalledBloatware
+        
+        if (-not $detectionResults -or $detectionResults.Count -eq 0) {
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items detected'
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            return @{ 
+                Success        = $true
+                ItemsDetected  = 0
+                ItemsProcessed = 0
+                DryRun         = $DryRun.IsPresent
+                Message        = 'No bloatware items found'
+            }
+        }
+        
+        # Step 2: Validate and log findings
+        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Detected $($detectionResults.Count) bloatware items"
+        
+        # Step 3: Take action (Type 2) based on DryRun mode
+        if ($DryRun) {
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'DRY RUN: Simulating bloatware removal actions'
+            $results = Test-BloatwareRemoval -BloatwareList $detectionResults
+            $processedCount = $detectionResults.Count
+        }
+        else {
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Executing bloatware removal actions'
+            $results = Remove-DetectedBloatware -BloatwareList $detectionResults
+            $processedCount = if ($results.ProcessedItems) { $results.ProcessedItems.Count } else { 0 }
+        }
+        
+        # Step 4: Return standardized results for ReportGeneration
+        $returnData = @{
+            Success        = $true
+            ItemsDetected  = $detectionResults.Count
+            ItemsProcessed = $processedCount
+            DryRun         = $DryRun.IsPresent
+            Results        = $results
+            DetectionData  = $detectionResults
+        }
+        
+        Write-LogEntry -Level 'SUCCESS' -Component 'BLOATWARE-REMOVAL' -Message "Bloatware removal completed. Processed: $processedCount/$($detectionResults.Count)"
+        
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+        return $returnData
+        
+    }
+    catch {
+        $errorMsg = "Failed to execute bloatware removal: $($_.Exception.Message)"
+        Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-REMOVAL' -Message $errorMsg -Data @{ Error = $_.Exception }
+        
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
+        
+        return @{
+            Success        = $false
+            Error          = $errorMsg
+            ErrorType      = $_.Exception.GetType().Name
+            ItemsDetected  = if ($detectionResults) { $detectionResults.Count } else { 0 }
+            ItemsProcessed = 0
+        }
+    }
+}
+
+#endregion
+
+#region Legacy Public Functions (Preserved for Internal Use)
 
 <#
 .SYNOPSIS
@@ -100,7 +223,8 @@ function Remove-DetectedBloatware {
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "Bloatware removal"
-    } catch {
+    }
+    catch {
         Write-Error "Administrator privileges are required for bloatware removal operations: $_"
         return $false
     }
@@ -110,13 +234,14 @@ function Remove-DetectedBloatware {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'BloatwareRemoval' -Component 'BLOATWARE-REMOVAL'
         Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware removal process' -Data @{
-            Categories = $Categories -join ', '
-            DryRun = $DryRun
-            Force = $Force
-            UseCache = $UseCache
+            Categories             = $Categories -join ', '
+            DryRun                 = $DryRun
+            Force                  = $Force
+            UseCache               = $UseCache
             ProvidedBloatwareCount = if ($BloatwareList) { $BloatwareList.Count } else { 0 }
         }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue
     }
 
@@ -161,41 +286,41 @@ function Remove-DetectedBloatware {
         Write-Verbose "Starting bloatware removal process"
 
         # Prepare bloatware analysis data
-    $bloatwareAnalysis = @{
-        Timestamp         = $startTime
-        DetectedBloatware = $BloatwareList
-        Categories        = $Categories
-        TotalItems        = $BloatwareList.Count
-        Status            = "Bloatware detected and processed"
-    }
+        $bloatwareAnalysis = @{
+            Timestamp         = $startTime
+            DetectedBloatware = $BloatwareList
+            Categories        = $Categories
+            TotalItems        = $BloatwareList.Count
+            Status            = "Bloatware detected and processed"
+        }
 
-    # Persist analysis using organized file system
-    $analysisPath = Save-OrganizedFile -Data $bloatwareAnalysis -FileType 'Data' -Category 'apps' -FileName 'bloatware-analysis' -Format 'JSON'
-    if ($analysisPath) {
-        Write-Information "  📄 Bloatware analysis saved: $analysisPath" -InformationAction Continue
-    }
+        # Persist analysis using organized file system
+        $analysisPath = Save-OrganizedFile -Data $bloatwareAnalysis -FileType 'Data' -Category 'apps' -FileName 'bloatware-analysis' -Format 'JSON'
+        if ($analysisPath) {
+            Write-Information "  📄 Bloatware analysis saved: $analysisPath" -InformationAction Continue
+        }
 
-    # Create comprehensive diff data
-    $diffData = @{
-        Timestamp         = $startTime
-        Categories        = $Categories
-        DetectedBloatware = $BloatwareList
-        TotalItems        = $BloatwareList.Count
-        BySource          = ($BloatwareList | Group-Object Source | ForEach-Object { @{ $_.Name = $_.Count } })
-        ByCategory        = ($BloatwareList | Group-Object MatchedPattern | ForEach-Object { @{ $_.Name = $_.Count } })
-        Status            = "Ready for removal"
-        DryRun            = $DryRun.IsPresent
-    }
+        # Create comprehensive diff data
+        $diffData = @{
+            Timestamp         = $startTime
+            Categories        = $Categories
+            DetectedBloatware = $BloatwareList
+            TotalItems        = $BloatwareList.Count
+            BySource          = ($BloatwareList | Group-Object Source | ForEach-Object { @{ $_.Name = $_.Count } })
+            ByCategory        = ($BloatwareList | Group-Object MatchedPattern | ForEach-Object { @{ $_.Name = $_.Count } })
+            Status            = "Ready for removal"
+            DryRun            = $DryRun.IsPresent
+        }
 
-    # Save diff via organized file system
-    $diffFilePath = Save-OrganizedFile -Data $diffData -FileType 'Data' -Category 'apps' -FileName 'bloatware-diff' -Format 'JSON'
-    if ($diffFilePath) {
-        Write-Information "  📄 Diff file created: $diffFilePath" -InformationAction Continue
-    }
+        # Save diff via organized file system
+        $diffFilePath = Save-OrganizedFile -Data $diffData -FileType 'Data' -Category 'apps' -FileName 'bloatware-diff' -Format 'JSON'
+        if ($diffFilePath) {
+            Write-Information "  📄 Diff file created: $diffFilePath" -InformationAction Continue
+        }
 
-    # Create human-readable summary in organized file system
-    $summaryPath = Get-OrganizedFilePath -FileType 'Report' -Category 'apps' -FileName 'bloatware-summary.txt'
-    $summaryContent = @"
+        # Create human-readable summary in organized file system
+        $summaryPath = Get-OrganizedFilePath -FileType 'Report' -Category 'apps' -FileName 'bloatware-summary.txt'
+        $summaryContent = @"
 BLOATWARE REMOVAL SUMMARY
 ========================
 Generated: $(Get-Date)
@@ -206,84 +331,84 @@ Dry Run: $($DryRun.IsPresent)
 ITEMS BY SOURCE:
 "@
 
-    foreach ($sourceGroup in ($BloatwareList | Group-Object Source)) {
-        $summaryContent += "`n$($sourceGroup.Name): $($sourceGroup.Count) items"
-    }
-
-    $summaryContent += "`n`nDETAILED LIST:"
-    foreach ($item in $BloatwareList) {
-        $summaryContent += "`n- $($item.Name) [$($item.Source)] - Pattern: $($item.MatchedPattern)"
-    }
-
-    $summaryContent | Out-File -FilePath $summaryPath -Encoding UTF8
-    Write-Information "  📝 Summary file created: $summaryPath" -InformationAction Continue
-
-    if ($DryRun) {
-        Write-Information "  🧪 DRY RUN MODE - No changes will be made" -InformationAction Continue
-    }
-
-    # Initialize results tracking
-    $results = @{
-        TotalProcessed = 0
-        Successful     = 0
-        Failed         = 0
-        Skipped        = 0
-        DryRun         = $DryRun.IsPresent
-        Details        = [System.Collections.Generic.List[pscustomobject]]::new()
-        BySource       = @{}
-    }
-
-    if ($analysisPath) { $results.AnalysisPath = $analysisPath }
-
-    # Group by source for efficient removal
-    $groupedBloatware = $BloatwareList | Group-Object Source
-
-    foreach ($sourceGroup in $groupedBloatware) {
-        $source = $sourceGroup.Name
-        $items = $sourceGroup.Group
-
-        Write-Information "  🔧 Processing $($items.Count) items from $source..." -InformationAction Continue
-
-        $sourceResults = switch ($source) {
-            'AppX' { Remove-AppXBloatware -Items $items -DryRun:$DryRun }
-            'Winget' { Remove-WingetBloatware -Items $items -DryRun:$DryRun }
-            'Chocolatey' { Remove-ChocolateyBloatware -Items $items -DryRun:$DryRun }
-            'Registry' { Remove-RegistryBloatware -Items $items -DryRun:$DryRun }
-            default {
-                Write-Warning "Unknown source type: $source"
-                @{ Successful = 0; Failed = $items.Count; Details = @() }
-            }
+        foreach ($sourceGroup in ($BloatwareList | Group-Object Source)) {
+            $summaryContent += "`n$($sourceGroup.Name): $($sourceGroup.Count) items"
         }
 
-        # Aggregate results
-        $results.Successful += $sourceResults.Successful
-        $results.Failed += $sourceResults.Failed
-        $results.Skipped += $sourceResults.Skipped
-        $results.Details.AddRange($sourceResults.Details)
-        $results.BySource[$source] = $sourceResults
-    }
+        $summaryContent += "`n`nDETAILED LIST:"
+        foreach ($item in $BloatwareList) {
+            $summaryContent += "`n- $($item.Name) [$($item.Source)] - Pattern: $($item.MatchedPattern)"
+        }
 
-    $results.TotalProcessed = $BloatwareList.Count
-    $results.DiffFilePath = $diffFilePath
-    $results.SummaryPath = $summaryPath
-    $duration = ((Get-Date) - $startTime).TotalSeconds
+        $summaryContent | Out-File -FilePath $summaryPath -Encoding UTF8
+        Write-Information "  📝 Summary file created: $summaryPath" -InformationAction Continue
 
-    # Update diff file with results
-    $diffData.Results = $results
-    $diffData.Duration = $duration
-    $diffData | ConvertTo-Json -Depth 4 | Set-Content -Path $diffFilePath -Encoding UTF8
-    Write-Information "  📄 Updated diff file with results: $diffFilePath" -InformationAction Continue
+        if ($DryRun) {
+            Write-Information "  🧪 DRY RUN MODE - No changes will be made" -InformationAction Continue
+        }
 
-    # Summary output
-    $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
-    Write-Information "  $statusIcon Bloatware removal completed in $([math]::Round($duration, 2))s" -InformationAction Continue
-    Write-Information "    📊 Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
-    Write-Information "    📄 Files created: JSON diff, TXT summary" -InformationAction Continue
+        # Initialize results tracking
+        $results = @{
+            TotalProcessed = 0
+            Successful     = 0
+            Failed         = 0
+            Skipped        = 0
+            DryRun         = $DryRun.IsPresent
+            Details        = [System.Collections.Generic.List[pscustomobject]]::new()
+            BySource       = @{}
+        }
 
-    $success = $results.Failed -eq 0 && $results.Successful -gt 0
-    if (-not $success) {
-        Write-Information "    ❌ Some items could not be removed. Check logs for details." -InformationAction Continue
-    }
+        if ($analysisPath) { $results.AnalysisPath = $analysisPath }
+
+        # Group by source for efficient removal
+        $groupedBloatware = $BloatwareList | Group-Object Source
+
+        foreach ($sourceGroup in $groupedBloatware) {
+            $source = $sourceGroup.Name
+            $items = $sourceGroup.Group
+
+            Write-Information "  🔧 Processing $($items.Count) items from $source..." -InformationAction Continue
+
+            $sourceResults = switch ($source) {
+                'AppX' { Remove-AppXBloatware -Items $items -DryRun:$DryRun }
+                'Winget' { Remove-WingetBloatware -Items $items -DryRun:$DryRun }
+                'Chocolatey' { Remove-ChocolateyBloatware -Items $items -DryRun:$DryRun }
+                'Registry' { Remove-RegistryBloatware -Items $items -DryRun:$DryRun }
+                default {
+                    Write-Warning "Unknown source type: $source"
+                    @{ Successful = 0; Failed = $items.Count; Details = @() }
+                }
+            }
+
+            # Aggregate results
+            $results.Successful += $sourceResults.Successful
+            $results.Failed += $sourceResults.Failed
+            $results.Skipped += $sourceResults.Skipped
+            $results.Details.AddRange($sourceResults.Details)
+            $results.BySource[$source] = $sourceResults
+        }
+
+        $results.TotalProcessed = $BloatwareList.Count
+        $results.DiffFilePath = $diffFilePath
+        $results.SummaryPath = $summaryPath
+        $duration = ((Get-Date) - $startTime).TotalSeconds
+
+        # Update diff file with results
+        $diffData.Results = $results
+        $diffData.Duration = $duration
+        $diffData | ConvertTo-Json -Depth 4 | Set-Content -Path $diffFilePath -Encoding UTF8
+        Write-Information "  📄 Updated diff file with results: $diffFilePath" -InformationAction Continue
+
+        # Summary output
+        $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
+        Write-Information "  $statusIcon Bloatware removal completed in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "    📊 Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
+        Write-Information "    📄 Files created: JSON diff, TXT summary" -InformationAction Continue
+
+        $success = $results.Failed -eq 0 && $results.Successful -gt 0
+        if (-not $success) {
+            Write-Information "    ❌ Some items could not be removed. Check logs for details." -InformationAction Continue
+        }
 
         # Complete performance tracking and log success
         try {
@@ -292,14 +417,15 @@ ITEMS BY SOURCE:
             }
             
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Bloatware removal completed' -Data @{
-                Success = $success
+                Success        = $success
                 TotalProcessed = $results.TotalProcessed
-                Successful = $results.Successful
-                Failed = $results.Failed
-                ExecutionTime = [math]::Round($duration, 2)
-                Categories = $Categories -join ', '
+                Successful     = $results.Successful
+                Failed         = $results.Failed
+                ExecutionTime  = [math]::Round($duration, 2)
+                Categories     = $Categories -join ', '
             }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue
         }
         
@@ -317,11 +443,12 @@ ITEMS BY SOURCE:
             }
             
             Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-REMOVAL' -Message 'Bloatware removal failed' -Data @{
-                Error = $_.Exception.Message
+                Error         = $_.Exception.Message
                 ExecutionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
-                Categories = $Categories -join ', '
+                Categories    = $Categories -join ', '
             }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue
         }
         
@@ -802,6 +929,10 @@ function Test-ItemRemovable {
 
 # Export module functions
 Export-ModuleMember -Function @(
+    # v3.0 Standardized execution function (Primary)
+    'Invoke-BloatwareRemoval',
+    
+    # Legacy functions (Preserved for internal use)
     'Remove-DetectedBloatware',
     'Test-BloatwareRemoval'
 )

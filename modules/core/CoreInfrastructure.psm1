@@ -278,7 +278,7 @@ function Write-LogEntry {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL')]
+        [ValidateSet('DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL', 'SUCCESS')]
         [string]$Level,
 
         [Parameter(Mandatory)]
@@ -550,6 +550,78 @@ function Get-SessionData {
 
 #endregion
 
+#region Compatibility Functions for Orchestrator
+
+<#
+.SYNOPSIS
+    Gets bloatware configuration in the format expected by orchestrator (compatibility wrapper)
+#>
+function Get-BloatwareConfiguration {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    try {
+        $bloatwareData = Get-BloatwareList -Category 'all'
+        
+        # Return in expected format with categorized data
+        $result = @{
+            all = $bloatwareData
+        }
+        
+        # Group by category for compatibility
+        $categories = @('OEM', 'Windows', 'Gaming', 'Security')
+        foreach ($category in $categories) {
+            $categoryData = $bloatwareData | Where-Object { $_.category -eq $category }
+            if ($categoryData) {
+                $result[$category.ToLower()] = $categoryData
+            }
+        }
+        
+        return $result
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to load bloatware configuration: $($_.Exception.Message)"
+        return @{ all = @() }
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets essential apps configuration in the format expected by orchestrator (compatibility wrapper)
+#>
+function Get-EssentialAppsConfiguration {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    try {
+        $essentialApps = Get-UnifiedEssentialAppsList
+        
+        # Return in expected format with categorized data
+        $result = @{
+            all = $essentialApps
+        }
+        
+        # Group by category for compatibility
+        $categories = @('productivity', 'development', 'multimedia', 'utilities', 'security')
+        foreach ($category in $categories) {
+            $categoryData = $essentialApps | Where-Object { $_.category -eq $category }
+            if ($categoryData) {
+                $result[$category] = $categoryData
+            }
+        }
+        
+        return $result
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to load essential apps configuration: $($_.Exception.Message)"
+        return @{ all = @() }
+    }
+}
+
+#endregion
+
 # Export all public functions
 Export-ModuleMember -Function @(
     # Configuration Management
@@ -557,6 +629,8 @@ Export-ModuleMember -Function @(
     'Get-MainConfig',
     'Get-BloatwareList',
     'Get-UnifiedEssentialAppsList',
+    'Get-BloatwareConfiguration',
+    'Get-EssentialAppsConfiguration',
     
     # Logging Management
     'Get-LoggingConfiguration',
