@@ -28,14 +28,28 @@ if (Test-Path $SystemInventoryPath) {
     Import-Module $SystemInventoryPath -Force
 }
 
-$ConfigManagerPath = Join-Path $ModuleRoot 'core\ConfigManager.psm1'
-if (Test-Path $ConfigManagerPath) {
-    Import-Module $ConfigManagerPath -Force
+# v3.0 Type 1 module - imported by Type 2 modules
+# Import CoreInfrastructure for configuration and logging
+$ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
 }
-
-$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingPath) {
-    Import-Module $LoggingPath -Force
+else {
+    # Fallback functions if CoreInfrastructure not available
+    function Write-LogEntry {
+        param($Level, $Component, $Message, $Data)
+        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
+    }
+    function Get-BloatwareConfiguration {
+        Write-Warning "CoreInfrastructure not available - using fallback configuration"
+        return @{}
+    }
+    function Get-BloatwareList {
+        param($Category)
+        Write-Warning "CoreInfrastructure not available - using fallback bloatware list"
+        return @()
+    }
 }
 
 #region Public Functions

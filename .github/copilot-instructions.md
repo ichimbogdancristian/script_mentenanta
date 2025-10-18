@@ -22,7 +22,7 @@ CoreInfrastructure + UserInterface + ReportGeneration
     ↓ (executes)
 Type2 Modules (BloatwareRemoval, EssentialApps, etc.)
     ↓ (internally imports and calls)
-Type1 Modules (BloatwareDetection, EssentialAppsAudit, etc.)
+Type1 Modules (BloatwareDetectionAudit, EssentialAppsAudit, etc.)
     ↓ (uses)
 Config/*.json + Session Data + Logging
 ```
@@ -34,7 +34,7 @@ Config/*.json + Session Data + Logging
 - Core: Infrastructure modules in `modules/core/` (minimal set loaded by orchestrator)
 
 **Current pairings (internally managed):**
-- ✅ `BloatwareRemoval` → `BloatwareDetection` (internal)
+- ✅ `BloatwareRemoval` → `BloatwareDetectionAudit` (internal)
 - ✅ `EssentialApps` → `EssentialAppsAudit` (internal)
 - ✅ `SystemOptimization` → `SystemOptimizationAudit` (internal)
 - ✅ `TelemetryDisable` → `TelemetryAudit` (internal)
@@ -66,16 +66,32 @@ foreach ($moduleName in $Type2Modules) {
 ### Session-Based File Organization
 All temporary data uses **organized directories** under `temp_files/`:
 - `logs/` - Individual module log files and performance tracking
+  - `logs/bloatware-removal/` - BloatwareRemoval Type2 execution logs
+  - `logs/bloatware-detection-audit/` - BloatwareDetectionAudit Type1 analysis logs
+  - `logs/essential-apps/` - EssentialApps Type2 execution logs
+  - `logs/essential-apps-audit/` - EssentialAppsAudit Type1 analysis logs
+  - `logs/[module-name]/` - Each module has dedicated log directory
 - `data/` - Categorized inventory and audit files (by module/function)
+  - `data/bloatware-results.json` - Detection results for ReportGeneration
+  - `data/system-optimization-results.json` - Optimization analysis results
+  - `data/[module-name]-results.json` - Module-specific audit data
 - `temp/` - Other generated files and processing data
 - `reports/` - Final outputs (HTML, JSON, TXT)
 
-**Key Pattern**: Always use `FileOrganizationManager` functions instead of direct file operations:
+**Key Pattern**: Always use `Get-SessionPath` with module-specific paths that work from any launch directory:
 ```powershell
-# Correct: Use centralized file operations
-$logPath = Get-SessionPath -Category 'logs' -FileName 'module-specific.log'
-$dataPath = Get-SessionPath -Category 'data' -FileName 'audit-results.json'
-$reportPath = Get-SessionPath -Category 'reports' -FileName 'system-report.html'
+# Type1 modules: Generate audit logs in dedicated directories
+$auditLogPath = Get-SessionPath -Category 'logs' -SubCategory 'bloatware-detection-audit' -FileName 'detection-analysis.log'
+$auditDataPath = Get-SessionPath -Category 'data' -FileName 'bloatware-results.json'
+
+# Type2 modules: Generate execution logs in dedicated directories  
+$executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'bloatware-removal' -FileName 'removal-execution.log'
+
+# ReportGeneration: Knows exactly where to find all module data
+$reportDataSources = @{
+    'BloatwareResults' = Get-SessionPath -Category 'data' -FileName 'bloatware-results.json'
+    'BloatwareLogs' = Get-SessionPath -Category 'logs' -SubCategory 'bloatware-removal' -FileName 'removal-execution.log'
+}
 ```
 
 ### Configuration Management

@@ -459,6 +459,9 @@ function Get-SessionPath {
         [ValidateSet('logs', 'data', 'temp', 'reports')]
         [string]$Category,
 
+        [Parameter()]
+        [string]$SubCategory,
+
         [Parameter(Mandatory)]
         [string]$FileName
     )
@@ -468,6 +471,15 @@ function Get-SessionPath {
     }
 
     $categoryPath = Join-Path $script:FileOrgContext.BaseDir $Category
+    
+    if ($SubCategory) {
+        $categoryPath = Join-Path $categoryPath $SubCategory
+        # Ensure subcategory directory exists
+        if (-not (Test-Path $categoryPath)) {
+            New-Item -Path $categoryPath -ItemType Directory -Force | Out-Null
+        }
+    }
+    
     return Join-Path $categoryPath $FileName
 }
 
@@ -622,6 +634,81 @@ function Get-EssentialAppsConfiguration {
 
 #endregion
 
+#region Save-OrganizedFile Function
+function Save-OrganizedFile {
+    <#
+    .SYNOPSIS
+        Saves content to a file in an organized directory structure
+    .DESCRIPTION
+        Creates an organized file with proper directory structure and content
+    .PARAMETER Content
+        The content to save to the file
+    .PARAMETER FilePath
+        The full path where to save the file
+    .PARAMETER Category
+        Optional category for session-based organization
+    .PARAMETER FileName
+        Optional filename for session-based organization
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Content,
+
+        [Parameter(ParameterSetName = 'DirectPath', Mandatory)]
+        [string]$FilePath,
+
+        [Parameter(ParameterSetName = 'SessionPath')]
+        [ValidateSet('logs', 'data', 'temp', 'reports')]
+        [string]$Category,
+
+        [Parameter(ParameterSetName = 'SessionPath')]
+        [string]$FileName
+    )
+
+    try {
+        # Determine the target path
+        if ($PSCmdlet.ParameterSetName -eq 'SessionPath') {
+            $targetPath = Get-SessionPath -Category $Category -FileName $FileName
+        }
+        else {
+            $targetPath = $FilePath
+        }
+
+        # Ensure directory exists
+        $directory = Split-Path -Parent $targetPath
+        if (-not (Test-Path $directory)) {
+            New-Item -Path $directory -ItemType Directory -Force | Out-Null
+        }
+
+        # Save the content
+        $Content | Out-File -FilePath $targetPath -Encoding UTF8 -Force
+
+        Write-LogEntry -Level 'DEBUG' -Component 'FILE-ORGANIZATION' -Message "File saved successfully" -Data @{
+            TargetPath    = $targetPath
+            ContentLength = $Content.Length
+        }
+
+        return @{
+            Success  = $true
+            FilePath = $targetPath
+            Size     = $Content.Length
+        }
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'FILE-ORGANIZATION' -Message "Failed to save file" -Data @{
+            TargetPath = $targetPath
+            Error      = $_.Exception.Message
+        }
+        
+        return @{
+            Success = $false
+            Error   = $_.Exception.Message
+        }
+    }
+}
+#endregion
+
 # Export all public functions
 Export-ModuleMember -Function @(
     # Configuration Management
@@ -643,5 +730,6 @@ Export-ModuleMember -Function @(
     'Initialize-FileOrganization',
     'Get-SessionPath',
     'Save-SessionData',
-    'Get-SessionData'
+    'Get-SessionData',
+    'Save-OrganizedFile'
 )

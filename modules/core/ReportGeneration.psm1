@@ -25,20 +25,92 @@ using namespace System.Text
 
 # Import required modules
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
-$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
-if (Test-Path $FileOrgPath) {
-    Import-Module $FileOrgPath -Force
+$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
 }
 
-# Import LoggingManager for structured logging (with graceful fallback)
-$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingPath) {
+# Import LoggingManager for structured logging (with graceful fallback) - removed since it's in CoreInfrastructure
+# Keeping this section for backward compatibility comments
+
+#region Configuration Management
+
+<#
+.SYNOPSIS
+    Loads the report generation configuration from JSON file
+
+.DESCRIPTION
+    Loads and validates the report generation configuration, applying defaults for missing values
+#>
+function Get-ReportGenerationConfig {
+    [CmdletBinding()]
+    param()
+    
     try {
-        Import-Module $LoggingPath -Force -ErrorAction SilentlyContinue
-    } catch {
-        # LoggingManager not available, continue without structured logging
+        $configPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'config\report-generation-config.json'
+        
+        if (-not (Test-Path $configPath)) {
+            Write-Warning "Report generation config not found at: $configPath. Using defaults."
+            return Get-DefaultReportConfig
+        }
+        
+        $configContent = Get-Content -Path $configPath -Raw -Encoding UTF8
+        $config = $configContent | ConvertFrom-Json -AsHashtable
+        
+        # Validate required fields
+        $requiredFields = @('branding.title', 'theme.colors.primary', 'sections.order')
+        foreach ($field in $requiredFields) {
+            $parts = $field.Split('.')
+            $current = $config
+            foreach ($part in $parts) {
+                if (-not $current.ContainsKey($part)) {
+                    throw "Required configuration field missing: $field"
+                }
+                $current = $current[$part]
+            }
+        }
+        
+        Write-Verbose "Report generation configuration loaded successfully from: $configPath"
+        return $config
+    }
+    catch {
+        Write-Warning "Failed to load report generation config: $($_.Exception.Message). Using defaults."
+        return Get-DefaultReportConfig
     }
 }
+
+<#
+.SYNOPSIS
+    Provides default configuration when config file is not available
+#>
+function Get-DefaultReportConfig {
+    return @{
+        branding = @{
+            title    = "Windows Maintenance Automation Report"
+            subtitle = "System Analysis & Optimization Dashboard"
+            company  = "Enterprise Windows Management"
+        }
+        theme    = @{
+            colors = @{
+                primary    = "#0078d4"
+                success    = "#107c10"
+                warning    = "#ffb900"
+                error      = "#d13438"
+                background = "#faf9f8"
+                text       = "#323130"
+            }
+        }
+        sections = @{
+            order = @('summary', 'systemInfo', 'moduleResults', 'charts', 'recommendations')
+        }
+        layout   = @{
+            maxWidth         = "1400px"
+            containerPadding = "20px"
+        }
+    }
+}
+
+#endregion
 
 #region Public Functions
 
@@ -86,12 +158,13 @@ function New-MaintenanceReport {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'MaintenanceReportGeneration' -Component 'REPORT-GENERATION'
         Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'Starting comprehensive maintenance report generation' -Data @{ 
-            OutputPath = $OutputPath
+            OutputPath         = $OutputPath
             HasSystemInventory = ($null -ne $SystemInventory)
-            TaskResultsCount = $TaskResults.Count
-            HasConfiguration = ($null -ne $Configuration)
+            TaskResultsCount   = $TaskResults.Count
+            HasConfiguration   = ($null -ne $Configuration)
         }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
 
@@ -99,11 +172,21 @@ function New-MaintenanceReport {
 
     $startTime = Get-Date
     
+    # V3.0 Architecture: Auto-collect module data if TaskResults not provided
+    $moduleData = $null
+    if ($TaskResults.Count -eq 0) {
+        Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'TaskResults empty - using v3.0 auto-discovery from session paths'
+        $moduleData = Get-ModuleExecutionData
+        # Convert moduleData to TaskResults format for backward compatibility
+        $TaskResults = Convert-ModuleDataToTaskResults -ModuleData $moduleData
+    }
+    
     # Enhanced report data structure with comprehensive analytics
     $reportData = @{
         GenerationTime  = $startTime
         SystemInventory = $SystemInventory
         TaskResults     = $TaskResults
+        ModuleData      = $moduleData  # V3.0: Include raw module data for enhanced reporting
         Configuration   = $Configuration
         Summary         = Get-ExecutionSummary -TaskResults $TaskResults
         Analytics       = @{
@@ -130,19 +213,25 @@ function New-MaintenanceReport {
         # Generate HTML report
         Write-Information "  📄 Creating HTML report..." -InformationAction Continue
         $htmlContent = New-HtmlReportContent -ReportData $reportData
-        $htmlPath = Save-OrganizedFile -Data $htmlContent -FileType 'Report' -FileName "$reportBaseName" -Format 'HTML'
+        $htmlPath = $OutputPath
+        $htmlContent | Out-File -FilePath $htmlPath -Encoding UTF8 -Force
 
         # Generate text report
         Write-Information "  📝 Creating text report..." -InformationAction Continue
         $textContent = New-TextReportContent -ReportData $reportData
-        $textPath = Save-OrganizedFile -Data $textContent -FileType 'Report' -FileName "$reportBaseName.txt" -Format 'Text'
+        $textPath = $htmlPath -replace '\.html$', '.txt'
+        $textContent | Out-File -FilePath $textPath -Encoding UTF8 -Force
 
         # Generate JSON data export
         Write-Information "  📊 Creating JSON data export..." -InformationAction Continue
-        $jsonPath = Save-OrganizedFile -Data $reportData -FileType 'Report' -FileName "$reportBaseName.json" -Format 'JSON'
+        $jsonContent = $reportData | ConvertTo-Json -Depth 10
+        $jsonPath = $htmlPath -replace '\.html$', '.json'
+        $jsonContent | Out-File -FilePath $jsonPath -Encoding UTF8 -Force
 
         # Generate execution summary
-        $summaryPath = Save-OrganizedFile -Data $reportData.Summary -FileType 'Report' -FileName 'execution-summary.json' -Format 'JSON'
+        $summaryContent = if ($reportData.Summary) { $reportData.Summary | ConvertTo-Json -Depth 5 } else { '{}' }
+        $summaryPath = $htmlPath -replace '\.html$', '-summary.json'
+        $summaryContent | Out-File -FilePath $summaryPath -Encoding UTF8 -Force
 
         $duration = ((Get-Date) - $startTime).TotalSeconds
         
@@ -157,22 +246,49 @@ function New-MaintenanceReport {
         }
         
         try {
-            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
-                HtmlReportPath = $htmlPath
-                TextReportPath = $textPath
-                JsonExportPath = $jsonPath
-                SummaryPath = $summaryPath
-                Duration = $duration
-                TaskResultsProcessed = $TaskResults.Count
-                ChartsGenerated = $reportData.Charts.Keys.Count
-            }
+            Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $TaskResults.Count
             Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATION' -Message 'Maintenance report generation completed successfully' -Data $result
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
         Write-Information "  ✅ Reports generated successfully in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
         Write-Verbose "Report generation completed successfully"
+
+        # V3.0 Enhancement: Copy report to repository root for easy access
+        try {
+            $scriptRoot = $PSScriptRoot
+            if (-not $scriptRoot) {
+                # Fallback for different execution contexts
+                $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path))
+            }
+            else {
+                # Navigate up to repo root from modules/core/
+                $scriptRoot = Split-Path -Parent (Split-Path -Parent $scriptRoot)
+            }
+            
+            if (Test-Path $scriptRoot) {
+                $repoReportName = "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+                $repoReportPath = Join-Path $scriptRoot $repoReportName
+                
+                Copy-Item -Path $htmlPath -Destination $repoReportPath -Force
+                Write-Information "  📋 Report copied to repository: $repoReportName" -InformationAction Continue
+                
+                # Add to result
+                $result.RepositoryCopy = $repoReportPath
+                
+                # Also create a 'latest' symlink/copy for easy access
+                $latestReportPath = Join-Path $scriptRoot "latest-maintenance-report.html"
+                Copy-Item -Path $htmlPath -Destination $latestReportPath -Force
+                Write-Information "  🔗 Latest report link updated: latest-maintenance-report.html" -InformationAction Continue
+                
+                $result.LatestReportCopy = $latestReportPath
+            }
+        }
+        catch {
+            Write-Warning "Failed to copy report to repository root: $($_.Exception.Message)"
+        }
 
         return $result
     }
@@ -183,9 +299,10 @@ function New-MaintenanceReport {
         
         # Complete performance tracking for failed operation
         try {
-            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
+            Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $_.Exception.Message
             Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATION' -Message 'Maintenance report generation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name; OutputPath = $OutputPath }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -238,7 +355,17 @@ function New-HtmlReportContent {
         [hashtable]$ReportData
     )
 
+    # Load configuration for styling and layout
+    $config = Get-ReportGenerationConfig
+    Write-Verbose "Generating HTML report content with configuration theme: $($config.theme.name ?? 'Default')"
+
     $html = [StringBuilder]::new()
+
+    # Use configuration values for branding and styling
+    $title = $config.branding.title
+    $subtitle = $config.branding.subtitle
+    $colors = $config.theme.colors
+    $layout = $config.layout
 
     # Enhanced HTML header with modern dashboard styling and JavaScript
     $html.AppendLine(@"
@@ -247,7 +374,7 @@ function New-HtmlReportContent {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Windows Maintenance Dashboard - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</title>
+    <title>$title - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</title>
     
     <!-- Chart.js for interactive charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -256,9 +383,9 @@ function New-HtmlReportContent {
     
     <style>
         :root {
-            --primary-color: #0078d4;
-            --primary-dark: #106ebe;
-            --success-color: #107c10;
+            --primary-color: $($colors.primary);
+            --primary-dark: $($colors.primaryDark ?? '#106ebe');
+            --success-color: $($colors.success);
             --warning-color: #ffb900;
             --error-color: #d13438;
             --critical-color: #a80000;
@@ -810,6 +937,244 @@ function New-HtmlReportContent {
             .chart-card { break-inside: avoid; }
             .module-activity { break-inside: avoid; }
         }
+
+        /* Enhanced Module Sections with Flexbox Layout */
+        .modules-container {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .module-section {
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .module-section:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-1px);
+        }
+
+        .module-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 25px 30px;
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+
+        .module-header .module-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .module-header .module-icon {
+            font-size: 2.2em;
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            background: var(--gradient-primary);
+        }
+
+        .module-header .module-info h3 {
+            font-size: 1.4em;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: var(--text-color);
+        }
+
+        .module-header .module-info .module-description {
+            color: var(--text-secondary);
+            font-size: 0.95em;
+        }
+
+        .module-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .module-status.success {
+            background: rgba(16, 124, 16, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(16, 124, 16, 0.2);
+        }
+
+        .module-status.warning {
+            background: rgba(255, 185, 0, 0.1);
+            color: var(--warning-color);
+            border: 1px solid rgba(255, 185, 0, 0.2);
+        }
+
+        .module-status.error {
+            background: rgba(209, 52, 56, 0.1);
+            color: var(--error-color);
+            border: 1px solid rgba(209, 52, 56, 0.2);
+        }
+
+        .module-content {
+            padding: 30px;
+        }
+
+        .module-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .summary-item {
+            background: rgba(0, 120, 212, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid rgba(0, 120, 212, 0.1);
+        }
+
+        .summary-item .summary-value {
+            font-size: 2.2em;
+            font-weight: 700;
+            color: var(--primary-color);
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .summary-item .summary-label {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .module-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+        }
+
+        .detail-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .detail-card h4 {
+            color: var(--primary-color);
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detail-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .detail-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .detail-list li:last-child {
+            border-bottom: none;
+        }
+
+        .detail-badge {
+            background: var(--gradient-primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .detail-badge.success { background: var(--gradient-success); }
+        .detail-badge.warning { background: var(--gradient-warning); }
+        .detail-badge.error { background: var(--gradient-error); }
+
+        /* Expandable content */
+        .module-section.collapsed .module-content {
+            display: none;
+        }
+
+        .expand-icon {
+            transition: transform 0.3s ease;
+            font-size: 1.2em;
+            color: var(--text-secondary);
+        }
+
+        .module-section.collapsed .expand-icon {
+            transform: rotate(-90deg);
+        }
+
+        /* Quick Actions Bar */
+        .quick-actions {
+            background: linear-gradient(135deg, #f8f9fa, #ffffff);
+            padding: 20px 30px;
+            border-radius: 12px;
+            margin: 30px 0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .quick-action-btn {
+            background: var(--gradient-primary);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .quick-action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 120, 212, 0.3);
+        }
+
+        .quick-action-btn.secondary {
+            background: var(--gradient-success);
+        }
+
+        .quick-action-btn.warning {
+            background: var(--gradient-warning);
+        }
     </style>
     
     <script>
@@ -971,8 +1336,8 @@ function New-HtmlReportContent {
     
     $html.AppendLine(@"
         <div class="header">
-            <h1>🛠️ Windows Maintenance Dashboard</h1>
-            <div class="subtitle">Comprehensive System Analysis & Report</div>
+            <h1>🛠️ $title</h1>
+            <div class="subtitle">$subtitle</div>
             <div class="meta">
                 <span>📅 $(Get-Date -Format 'dddd, MMMM dd, yyyy at HH:mm:ss')</span>
                 <span>💻 $env:COMPUTERNAME</span>
@@ -1276,6 +1641,12 @@ function New-HtmlReportContent {
 "@) | Out-Null
     }
 
+    # Add Enhanced Module Sections (V3.0 Feature)
+    if ($ReportData.ModuleData) {
+        $enhancedModuleSections = New-EnhancedModuleSections -ModuleData $ReportData.ModuleData
+        $html.AppendLine($enhancedModuleSections) | Out-Null
+    }
+
     # Add JavaScript chart data
     $html.AppendLine(@"
         <script>
@@ -1306,6 +1677,236 @@ function New-HtmlReportContent {
 }
 
 #endregion
+
+<#
+.SYNOPSIS
+    Generates enhanced HTML sections for each module with modern flexbox layout
+
+.DESCRIPTION
+    Creates beautiful, interactive module sections with summaries, details, and status indicators.
+    Each module gets its own independent section with expandable content and quick action buttons.
+
+.PARAMETER ModuleData
+    Module data from Get-ModuleExecutionData containing Type1 and Type2 results
+
+.OUTPUTS
+    [string] HTML content for enhanced module sections
+
+.NOTES
+    V3.0 feature - Creates independent module sections with modern CSS flexbox layout
+#>
+function New-EnhancedModuleSections {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter()]
+        [hashtable]$ModuleData = @{}
+    )
+    
+    $html = [StringBuilder]::new()
+    
+    # Module configuration for display
+    $moduleConfig = @{
+        'BloatwareRemoval'   = @{
+            Title       = 'Bloatware Removal'
+            Icon        = '🗑️'
+            Description = 'Removes unwanted pre-installed software and system bloat'
+            Color       = '#e74c3c'
+            Audit       = 'BloatwareDetectionAudit'
+        }
+        'EssentialApps'      = @{
+            Title       = 'Essential Applications'
+            Icon        = '📦'
+            Description = 'Installs and manages essential productivity applications'
+            Color       = '#3498db'
+            Audit       = 'EssentialAppsAudit'
+        }
+        'SystemOptimization' = @{
+            Title       = 'System Optimization'
+            Icon        = '⚡'
+            Description = 'Optimizes system performance and resource usage'
+            Color       = '#f39c12'
+            Audit       = 'SystemOptimizationAudit'
+        }
+        'TelemetryDisable'   = @{
+            Title       = 'Privacy & Telemetry'
+            Icon        = '🔒'
+            Description = 'Disables telemetry and enhances privacy settings'
+            Color       = '#9b59b6'
+            Audit       = 'TelemetryAudit'
+        }
+        'WindowsUpdates'     = @{
+            Title       = 'Windows Updates'
+            Icon        = '🔄'
+            Description = 'Manages Windows updates and system patches'
+            Color       = '#27ae60'
+            Audit       = 'WindowsUpdatesAudit'
+        }
+    }
+    
+    $html.AppendLine(@"
+    <div class="quick-actions">
+        <h3>📋 Quick Actions</h3>
+        <a href="#bloatware" class="quick-action-btn">🗑️ Bloatware</a>
+        <a href="#apps" class="quick-action-btn secondary">📦 Applications</a>
+        <a href="#optimize" class="quick-action-btn warning">⚡ Optimization</a>
+        <a href="#privacy" class="quick-action-btn">🔒 Privacy</a>
+        <a href="#updates" class="quick-action-btn secondary">🔄 Updates</a>
+    </div>
+
+    <div class="modules-container">
+"@) | Out-Null
+
+    foreach ($moduleKey in $moduleConfig.Keys) {
+        $config = $moduleConfig[$moduleKey]
+        $type2Data = if ($ModuleData.Type2Results.ContainsKey($moduleKey)) { $ModuleData.Type2Results[$moduleKey] } else { $null }
+        $type1Data = if ($ModuleData.Type1Results.ContainsKey($config.Audit)) { $ModuleData.Type1Results[$config.Audit] } else { $null }
+        
+        # Determine status
+        $status = if ($type2Data -and $type2Data.Success) { 'success' } 
+        elseif ($type2Data -and $type2Data.Success -eq $false) { 'error' }
+        elseif ($type1Data) { 'warning' }
+        else { 'warning' }
+                 
+        $statusText = switch ($status) {
+            'success' { '✅ Completed' }
+            'error' { '❌ Failed' }
+            'warning' { '⚠️ Pending' }
+        }
+        
+        # Generate summary stats
+        $summaryStats = @()
+        if ($type1Data) {
+            if ($type1Data.DetectedItems) { $summaryStats += @{ Label = 'Items Detected'; Value = $type1Data.DetectedItems.Count } }
+            if ($type1Data.TotalScanned) { $summaryStats += @{ Label = 'Items Scanned'; Value = $type1Data.TotalScanned } }
+        }
+        if ($type2Data) {
+            if ($type2Data.ProcessedCount) { $summaryStats += @{ Label = 'Items Processed'; Value = $type2Data.ProcessedCount } }
+            if ($type2Data.Duration) { $summaryStats += @{ Label = 'Duration'; Value = "$([math]::Round($type2Data.Duration.TotalSeconds, 1))s" } }
+        }
+        
+        $anchor = $moduleKey.ToLower() -replace 'removal|apps|optimization|disable|updates', ''
+        
+        $html.AppendLine(@"
+        <div class="module-section" id="$anchor">
+            <div class="module-header" onclick="toggleModuleSection('$anchor')">
+                <div class="module-title">
+                    <div class="module-icon" style="background: linear-gradient(135deg, $($config.Color), $($config.Color)aa);">
+                        $($config.Icon)
+                    </div>
+                    <div class="module-info">
+                        <h3>$($config.Title)</h3>
+                        <div class="module-description">$($config.Description)</div>
+                    </div>
+                </div>
+                <div class="module-status $status">
+                    $statusText
+                    <span class="expand-icon">▼</span>
+                </div>
+            </div>
+            <div class="module-content">
+"@) | Out-Null
+
+        # Add summary section
+        if ($summaryStats.Count -gt 0) {
+            $html.AppendLine("                <div class='module-summary'>") | Out-Null
+            foreach ($stat in $summaryStats) {
+                $html.AppendLine(@"
+                    <div class="summary-item">
+                        <span class="summary-value">$($stat.Value)</span>
+                        <span class="summary-label">$($stat.Label)</span>
+                    </div>
+"@) | Out-Null
+            }
+            $html.AppendLine("                </div>") | Out-Null
+        }
+        
+        # Add details section
+        $html.AppendLine("                <div class='module-details'>") | Out-Null
+        
+        # Type1 (Audit) Details
+        if ($type1Data) {
+            $html.AppendLine(@"
+                    <div class="detail-card">
+                        <h4>🔍 Detection Results</h4>
+                        <ul class="detail-list">
+"@) | Out-Null
+
+            if ($type1Data.DetectedItems) {
+                foreach ($item in ($type1Data.DetectedItems | Select-Object -First 5)) {
+                    $itemName = if ($item.Name) { $item.Name } elseif ($item.DisplayName) { $item.DisplayName } else { $item.ToString() }
+                    $html.AppendLine("                            <li>$itemName <span class='detail-badge warning'>Detected</span></li>") | Out-Null
+                }
+                if ($type1Data.DetectedItems.Count -gt 5) {
+                    $remaining = $type1Data.DetectedItems.Count - 5
+                    $html.AppendLine("                            <li><em>... and $remaining more items</em></li>") | Out-Null
+                }
+            }
+            else {
+                $html.AppendLine("                            <li>No items detected <span class='detail-badge success'>Clean</span></li>") | Out-Null
+            }
+            
+            $html.AppendLine(@"
+                        </ul>
+                    </div>
+"@) | Out-Null
+        }
+        
+        # Type2 (Execution) Details
+        if ($type2Data) {
+            $html.AppendLine(@"
+                    <div class="detail-card">
+                        <h4>⚙️ Execution Results</h4>
+                        <ul class="detail-list">
+"@) | Out-Null
+
+            if ($type2Data.ProcessedItems) {
+                foreach ($item in ($type2Data.ProcessedItems | Select-Object -First 5)) {
+                    $itemName = if ($item.Name) { $item.Name } else { $item.ToString() }
+                    $badge = if ($item.Success) { '<span class="badge success">✅ Completed</span>' } else { '<span class="badge error">❌ Failed</span>' }
+                    $html.AppendLine("                            <li>$itemName <span class='detail-badge $badge</span></li>") | Out-Null
+                }
+            }
+            else {
+                $execStatus = if ($type2Data.Success) { '<span class="badge success">✅ Completed</span>' } else { '<span class="badge error">❌ Failed</span>' }
+                $html.AppendLine("                            <li>Module execution <span class='detail-badge $execStatus</span></li>") | Out-Null
+            }
+            
+            $html.AppendLine(@"
+                        </ul>
+                    </div>
+"@) | Out-Null
+        }
+        
+        $html.AppendLine(@"
+                </div>
+            </div>
+        </div>
+"@) | Out-Null
+    }
+    
+    $html.AppendLine("    </div>") | Out-Null
+    
+    # Add JavaScript for module interaction
+    $html.AppendLine(@"
+    <script>
+        function toggleModuleSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            section.classList.toggle('collapsed');
+        }
+        
+        // Initialize all sections as expanded
+        document.addEventListener('DOMContentLoaded', function() {
+            const modules = document.querySelectorAll('.module-section');
+            modules.forEach(module => {
+                // Optionally start collapsed: module.classList.add('collapsed');
+            });
+        });
+    </script>
+"@) | Out-Null
+    
+    return $html.ToString()
+}
 
 #region Text Report Generation
 
@@ -1465,6 +2066,194 @@ function Get-ExecutionSummary {
             [math]::Round(($successful.Count / $TaskResults.Count) * 100, 1)
         }
         else { 0 }
+    }
+}
+
+<#
+.SYNOPSIS
+    Collects module execution data from standardized v3.0 session paths
+
+.DESCRIPTION
+    Automatically discovers and collects data from Type1 audit results and Type2 execution logs
+    using the standardized temp_files/data/ and temp_files/logs/ structure. This replaces
+    the need to pass TaskResults as parameters, implementing true v3.0 architecture.
+
+.OUTPUTS
+    [hashtable] Combined data from all modules including audit results and execution logs
+
+.EXAMPLE
+    $moduleData = Get-ModuleExecutionData
+    $reportData = New-MaintenanceReport -SystemInventory $inventory -ModuleData $moduleData
+
+.NOTES
+    V3.0 Architecture function - ReportGeneration knows exactly where to find module data.
+    Supports the session-based file organization pattern with SubCategory support.
+#>
+function Get-ModuleExecutionData {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+    
+    try {
+        Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message 'Collecting module execution data from v3.0 standardized paths'
+        
+        $moduleData = @{
+            Type1Results = @{}  # Audit/detection results from Type1 modules
+            Type2Results = @{}  # Execution results from Type2 modules  
+            LogPaths     = @{}      # Paths to module-specific log files
+            DataPaths    = @{}     # Paths to module-specific data files
+        }
+        
+        # Define v3.0 module mapping (Type2 -> Type1)
+        $moduleMapping = @{
+            'BloatwareRemoval'   = 'BloatwareDetectionAudit'
+            'EssentialApps'      = 'EssentialAppsAudit'
+            'SystemOptimization' = 'SystemOptimizationAudit'
+            'TelemetryDisable'   = 'TelemetryAudit'
+            'WindowsUpdates'     = 'WindowsUpdatesAudit'
+        }
+        
+        foreach ($type2Module in $moduleMapping.Keys) {
+            $type1Module = $moduleMapping[$type2Module]
+            
+            # Collect Type1 audit data (detection/analysis results)
+            try {
+                $auditDataPath = Get-SessionPath -Category 'data' -FileName "$($type2Module.ToLower())-results.json"
+                if (Test-Path $auditDataPath) {
+                    $auditData = Get-Content $auditDataPath -Raw | ConvertFrom-Json
+                    $moduleData.Type1Results[$type1Module] = $auditData
+                    $moduleData.DataPaths[$type1Module] = $auditDataPath
+                    Write-LogEntry -Level 'DEBUG' -Component 'REPORT-GENERATION' -Message "Loaded audit data for $type1Module"
+                }
+            }
+            catch {
+                Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATION' -Message "Failed to load audit data for $type1Module`: $($_.Exception.Message)"
+            }
+            
+            # Collect Type2 execution data and logs
+            try {
+                $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory $type2Module.ToLower() -FileName 'execution.log'
+                if (Test-Path $executionLogPath) {
+                    $moduleData.LogPaths[$type2Module] = $executionLogPath
+                    # Parse execution results from log or separate data file if available
+                    $executionDataPath = Get-SessionPath -Category 'data' -FileName "$($type2Module.ToLower())-execution-results.json"
+                    if (Test-Path $executionDataPath) {
+                        $executionData = Get-Content $executionDataPath -Raw | ConvertFrom-Json
+                        $moduleData.Type2Results[$type2Module] = $executionData
+                        $moduleData.DataPaths[$type2Module] = $executionDataPath
+                    }
+                    Write-LogEntry -Level 'DEBUG' -Component 'REPORT-GENERATION' -Message "Loaded execution data for $type2Module"
+                }
+            }
+            catch {
+                Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATION' -Message "Failed to load execution data for $type2Module`: $($_.Exception.Message)"
+            }
+        }
+        
+        Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATION' -Message "Module data collection completed" -Data @{
+            Type1ModulesFound = $moduleData.Type1Results.Count
+            Type2ModulesFound = $moduleData.Type2Results.Count
+            TotalLogPaths     = $moduleData.LogPaths.Count
+            TotalDataPaths    = $moduleData.DataPaths.Count
+        }
+        
+        return $moduleData
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATION' -Message "Failed to collect module execution data: $($_.Exception.Message)"
+        # Return empty structure to allow report generation to continue
+        return @{
+            Type1Results = @{}
+            Type2Results = @{}
+            LogPaths     = @{}
+            DataPaths    = @{}
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Converts v3.0 ModuleData format to legacy TaskResults format for backward compatibility
+
+.DESCRIPTION
+    Transforms the new structured module data (Type1/Type2 results) into the legacy
+    TaskResults array format that existing report generation functions expect.
+    Enables v3.0 data collection while maintaining compatibility with existing analytics.
+
+.PARAMETER ModuleData
+    Module data hashtable from Get-ModuleExecutionData
+
+.OUTPUTS
+    [Array] Legacy TaskResults format
+
+.NOTES
+    V3.0 compatibility function - bridges new data collection with existing report logic.
+#>
+function Convert-ModuleDataToTaskResults {
+    [CmdletBinding()]
+    [OutputType([Array])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ModuleData
+    )
+    
+    $taskResults = @()
+    
+    try {
+        # Convert Type2 execution results to TaskResults format
+        foreach ($module in $ModuleData.Type2Results.Keys) {
+            $executionData = $ModuleData.Type2Results[$module]
+            
+            # Create TaskResult object in expected format
+            $taskResult = @{
+                TaskName  = $module
+                Success   = $true  # Default, will be updated based on execution data
+                StartTime = $null
+                EndTime   = $null
+                Duration  = $null
+                Details   = $executionData
+                Component = $module.ToUpper()
+            }
+            
+            # Extract timing and success information if available
+            if ($executionData -is [hashtable] -or $executionData -is [PSCustomObject]) {
+                if ($executionData.Success -ne $null) { $taskResult.Success = $executionData.Success }
+                if ($executionData.StartTime -ne $null) { $taskResult.StartTime = $executionData.StartTime }
+                if ($executionData.EndTime -ne $null) { $taskResult.EndTime = $executionData.EndTime }
+                if ($executionData.Duration -ne $null) { $taskResult.Duration = $executionData.Duration }
+            }
+            
+            $taskResults += $taskResult
+        }
+        
+        # Add Type1 audit results as separate tasks if needed
+        foreach ($module in $ModuleData.Type1Results.Keys) {
+            $auditData = $ModuleData.Type1Results[$module]
+            
+            $taskResult = @{
+                TaskName  = "$module-Audit"
+                Success   = $true
+                StartTime = $null
+                EndTime   = $null
+                Duration  = $null
+                Details   = $auditData
+                Component = $module.ToUpper().Replace('AUDIT', '-AUDIT')
+            }
+            
+            $taskResults += $taskResult
+        }
+        
+        Write-LogEntry -Level 'DEBUG' -Component 'REPORT-GENERATION' -Message "Converted module data to TaskResults format" -Data @{
+            OriginalType2Count = $ModuleData.Type2Results.Count
+            OriginalType1Count = $ModuleData.Type1Results.Count
+            ConvertedTaskCount = $taskResults.Count
+        }
+        
+        return $taskResults
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATION' -Message "Failed to convert module data to TaskResults format: $($_.Exception.Message)"
+        return @()
     }
 }
 
@@ -1862,6 +2651,11 @@ function Get-HealthRecommendation {
 
 # Export module functions
 Export-ModuleMember -Function @(
-    'New-MaintenanceReport'
+    'New-MaintenanceReport',
+    'Get-ModuleExecutionData',
+    'Convert-ModuleDataToTaskResults',
+    'New-EnhancedModuleSections',
+    'Get-ReportGenerationConfig',
+    'Get-DefaultReportConfig'
 )
 

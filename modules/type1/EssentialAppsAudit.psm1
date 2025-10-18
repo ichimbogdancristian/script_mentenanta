@@ -22,19 +22,27 @@ using namespace System.Collections.Generic
 
 # Import required modules
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
-$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingPath) {
-    Import-Module $LoggingPath -Force
+# v3.0 Type 1 module - imported by Type 2 modules
+# Import CoreInfrastructure for configuration and logging
+$ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force
 }
-
-$ConfigManagerPath = Join-Path $ModuleRoot 'core\ConfigManager.psm1'
-if (Test-Path $ConfigManagerPath) {
-    Import-Module $ConfigManagerPath -Force
-}
-
-$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
-if (Test-Path $FileOrgPath) {
-    Import-Module $FileOrgPath -Force
+else {
+    # Fallback functions if CoreInfrastructure not available
+    function Write-LogEntry {
+        param($Level, $Component, $Message, $Data)
+        Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
+    }
+    function Get-EssentialAppsConfiguration {
+        Write-Warning "CoreInfrastructure not available - using fallback configuration"
+        return @{}
+    }
+    function Get-UnifiedEssentialAppsList {
+        Write-Warning "CoreInfrastructure not available - using fallback essential apps list"
+        return @()
+    }
 }
 
 #region Public Functions

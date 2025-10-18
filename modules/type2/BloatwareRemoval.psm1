@@ -2,7 +2,7 @@
 # Module Dependencies:
 #   - ConfigManager.psm1 (for bloatware list configuration)
 #   - LoggingManager.psm1 (for structured logging)
-#   - BloatwareDetection.psm1 (for detection before removal)
+#   - BloatwareDetectionAudit.psm1 (for detection before removal)
 
 <#
 .SYNOPSIS
@@ -14,7 +14,7 @@
 
 .NOTES
     Module Type: Type 2 (System Modification)
-    Dependencies: BloatwareDetection.psm1, ConfigManager.psm1
+    Dependencies: BloatwareDetectionAudit.psm1, ConfigManager.psm1
     Requires: Administrator privileges
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
@@ -26,7 +26,7 @@ using namespace System.Collections.Concurrent
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
 # Step 1: Import corresponding Type 1 module (REQUIRED)
-$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\BloatwareDetection.psm1'
+$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\BloatwareDetectionAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force
 }
