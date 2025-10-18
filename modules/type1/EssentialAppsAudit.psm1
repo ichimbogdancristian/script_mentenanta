@@ -32,7 +32,6 @@ if (Get-Command 'Get-UnifiedEssentialAppsList' -ErrorAction SilentlyContinue) {
 else {
     Write-Verbose "CoreInfrastructure functions not available - fallback functions will be used"
 }
-}
 
 # Import shared utilities for fallback functions (only if needed)
 $CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'

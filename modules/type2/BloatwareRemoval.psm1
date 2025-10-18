@@ -26,7 +26,8 @@ using namespace System.Collections.Concurrent
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
 # Step 1: Import core infrastructure FIRST (REQUIRED)
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+$ModuleRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
+$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force
 }
@@ -34,8 +35,8 @@ else {
     Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
 }
 
-# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
-$Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\BloatwareDetectionAudit.psm1'
+# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)  
+$Type1ModulePath = Join-Path $ModuleRoot 'type1\BloatwareDetectionAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force
 }

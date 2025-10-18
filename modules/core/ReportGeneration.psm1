@@ -4306,16 +4306,22 @@ function New-ErrorReportSection {
 
 #endregion
 
-# Export module functions
-Export-ModuleMember -Function @(
-    'New-MaintenanceReport',
-    'Get-ModuleExecutionData',
-    'Convert-ModuleDataToTaskResults',
-    'New-EnhancedModuleSections',
-    'Get-ReportGenerationConfig',
-    'Get-DefaultReportConfig',
-    'Get-HtmlTemplates',
-    'Get-ErrorsFromExecutionLogs',
-    'New-ErrorReportSection'
-)
+# Export module functions - DEPRECATED: Functions moved to LogProcessor + ReportGenerator split architecture
+# NOTE: This module is being phased out in favor of the v3.0 split architecture
+# All functions have been migrated to LogProcessor.psm1 and ReportGenerator.psm1
+
+# Export-ModuleMember -Function @(
+#     'New-MaintenanceReport',          # → ReportGenerator.psm1
+#     'Get-ModuleExecutionData',        # → LogProcessor.psm1  
+#     'Convert-ModuleDataToTaskResults', # → LogProcessor.psm1 (ConvertFrom-ModuleExecutionLog)
+#     'New-EnhancedModuleSections',     # → ReportGenerator.psm1 (New-ModuleSections)
+#     'Get-ReportGenerationConfig',     # → CoreInfrastructure.psm1
+#     'Get-DefaultReportConfig',        # → CoreInfrastructure.psm1  
+#     'Get-HtmlTemplates',              # → ReportGenerator.psm1
+#     'Get-ErrorsFromExecutionLogs',    # → LogProcessor.psm1
+#     'New-ErrorReportSection'          # → ReportGenerator.psm1
+# )
+
+# v3.0 Split Architecture Migration Complete
+# Use: Import-Module LogProcessor.psm1; Import-Module ReportGenerator.psm1
 

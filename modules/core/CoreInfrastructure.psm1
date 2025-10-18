@@ -813,7 +813,7 @@ function Initialize-TempFilesStructure {
             }
         }
         
-        # Define required directory structure
+        # Define required directory structure (v3.0 Split Architecture)
         $requiredDirectories = @(
             'data',                        # Type1 audit results
             'temp',                        # Processing diffs
@@ -823,7 +823,11 @@ function Initialize-TempFilesStructure {
             'logs\essential-apps',         # EssentialApps execution logs
             'logs\system-optimization',    # SystemOptimization execution logs
             'logs\telemetry-disable',      # TelemetryDisable execution logs
-            'logs\windows-updates'         # WindowsUpdates execution logs
+            'logs\windows-updates',        # WindowsUpdates execution logs
+            'processed',                   # v3.0: LogProcessor output directory
+            'processed\module-specific',   # v3.0: Module-specific processed data
+            'processed\charts-data',       # v3.0: Chart generation data
+            'processed\analytics'          # v3.0: Analytics and metrics data
         )
         
         $allPathsValid = $true
@@ -854,12 +858,19 @@ function Initialize-TempFilesStructure {
             }
         }
         
+        # Initialize v3.0 processed data structure as part of temp files setup
+        if ($allPathsValid) {
+            $processedValid = Initialize-ProcessedDataStructure -ValidateOnly:$ValidateOnly
+            $allPathsValid = $allPathsValid -and $processedValid
+        }
+        
         if (-not $ValidateOnly) {
-            Write-LogEntry -Level 'INFO' -Component 'CORE-INFRASTRUCTURE' -Message 'Temp files structure initialization completed' -Data @{
+            Write-LogEntry -Level 'SUCCESS' -Component 'CORE-INFRASTRUCTURE' -Message 'Complete temp files structure initialization finished' -Data @{
                 TempRoot             = $tempRoot
                 TotalDirectories     = $requiredDirectories.Count
                 ValidatedDirectories = $validatedPaths.Count
                 CreatedDirectories   = $createdPaths.Count
+                ProcessedDataValid   = $processedValid
                 AllPathsValid        = $allPathsValid
             }
         }
@@ -868,6 +879,118 @@ function Initialize-TempFilesStructure {
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to initialize temp files structure: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Initializes the processed data directory structure for v3.0 split architecture
+.DESCRIPTION
+    Creates and validates the processed data directories used by LogProcessor → ReportGenerator pipeline.
+    Ensures standardized JSON data exchange locations exist before module execution.
+.PARAMETER ValidateOnly
+    Only validates existing structure without creating missing directories
+#>
+function Initialize-ProcessedDataStructure {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter()]
+        [switch]$ValidateOnly
+    )
+    
+    Write-LogEntry -Level 'INFO' -Component 'CORE-INFRASTRUCTURE' -Message 'Initializing processed data directory structure for v3.0 split architecture'
+    
+    try {
+        # Get temp files root from global paths
+        $tempRoot = $null
+        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+            $tempRoot = $Global:ProjectPaths.TempFiles
+        }
+        else {
+            Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message 'Global project paths not initialized - call Initialize-GlobalPathDiscovery first'
+            return $false
+        }
+        
+        $processedRoot = Join-Path $tempRoot 'processed'
+        
+        # Define v3.0 processed data structure
+        $processedDirectories = @{
+            'module-specific' = 'Individual module processing results'
+            'charts-data'     = 'Chart generation and visualization data'
+            'analytics'       = 'System analytics and calculated metrics'
+        }
+        
+        $allValid = $true
+        $createdDirs = @()
+        $validatedDirs = @()
+        
+        # Ensure base processed directory exists
+        if (-not (Test-Path $processedRoot -PathType Container)) {
+            if (-not $ValidateOnly) {
+                try {
+                    New-Item -Path $processedRoot -ItemType Directory -Force | Out-Null
+                    Write-Verbose "✓ Created base processed directory: $processedRoot"
+                }
+                catch {
+                    Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to create processed directory: $($_.Exception.Message)"
+                    return $false
+                }
+            }
+            else {
+                Write-LogEntry -Level 'WARN' -Component 'CORE-INFRASTRUCTURE' -Message 'Base processed directory does not exist'
+                $allValid = $false
+            }
+        }
+        
+        # Create/validate subdirectories
+        foreach ($dirName in $processedDirectories.Keys) {
+            $dirPath = Join-Path $processedRoot $dirName
+            $description = $processedDirectories[$dirName]
+            
+            if (Test-Path $dirPath -PathType Container) {
+                $validatedDirs += $dirName
+                Write-Verbose "✓ Validated processed subdirectory: $dirName ($description)"
+            }
+            elseif (-not $ValidateOnly) {
+                try {
+                    New-Item -Path $dirPath -ItemType Directory -Force | Out-Null
+                    $createdDirs += $dirName
+                    Write-Verbose "✓ Created processed subdirectory: $dirName ($description)"
+                }
+                catch {
+                    Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to create processed subdirectory '$dirName': $($_.Exception.Message)"
+                    $allValid = $false
+                }
+            }
+            else {
+                Write-LogEntry -Level 'WARN' -Component 'CORE-INFRASTRUCTURE' -Message "Processed subdirectory missing: $dirName ($description)"
+                $allValid = $false
+            }
+        }
+        
+        # Log initialization results
+        if ($ValidateOnly) {
+            $message = "Processed data structure validation: $($validatedDirs.Count) directories confirmed"
+            if (-not $allValid) {
+                $message += " (validation issues found)"
+            }
+            Write-LogEntry -Level 'INFO' -Component 'CORE-INFRASTRUCTURE' -Message $message
+        }
+        else {
+            $message = "Processed data structure initialized: $($createdDirs.Count) created, $($validatedDirs.Count) validated"
+            Write-LogEntry -Level 'SUCCESS' -Component 'CORE-INFRASTRUCTURE' -Message $message
+            
+            if ($createdDirs.Count -gt 0) {
+                Write-LogEntry -Level 'INFO' -Component 'CORE-INFRASTRUCTURE' -Message "Created processed subdirectories: $($createdDirs -join ', ')"
+            }
+        }
+        
+        return $allValid
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to initialize processed data structure: $($_.Exception.Message)"
         return $false
     }
 }
@@ -1096,6 +1219,72 @@ function Save-OrganizedFile {
         }
     }
 }
+
+<#
+.SYNOPSIS
+    Gets standardized paths for processed data files in the v3.0 split architecture
+.DESCRIPTION
+    Helper function to generate consistent paths for LogProcessor → ReportGenerator data exchange
+.PARAMETER Category
+    The processed data category (main, module-specific, charts-data, analytics)
+.PARAMETER FileName
+    The file name within the category
+.PARAMETER ModuleName
+    Optional module name for module-specific data
+#>
+function Get-ProcessedDataPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('main', 'module-specific', 'charts-data', 'analytics')]
+        [string]$Category,
+        
+        [Parameter(Mandatory)]
+        [string]$FileName,
+        
+        [Parameter()]
+        [string]$ModuleName
+    )
+    
+    try {
+        # Get temp files root from global paths
+        if (-not ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles)) {
+            throw "Global project paths not initialized - call Initialize-GlobalPathDiscovery first"
+        }
+        
+        $processedRoot = Join-Path $Global:ProjectPaths.TempFiles 'processed'
+        
+        # Build path based on category
+        switch ($Category) {
+            'main' {
+                $filePath = Join-Path $processedRoot $FileName
+            }
+            'module-specific' {
+                if ([string]::IsNullOrEmpty($ModuleName)) {
+                    throw "ModuleName parameter required for module-specific category"
+                }
+                $moduleDir = Join-Path $processedRoot 'module-specific'
+                $filePath = Join-Path $moduleDir "$ModuleName-$FileName"
+            }
+            'charts-data' {
+                $chartsDir = Join-Path $processedRoot 'charts-data'
+                $filePath = Join-Path $chartsDir $FileName
+            }
+            'analytics' {
+                $analyticsDir = Join-Path $processedRoot 'analytics'
+                $filePath = Join-Path $analyticsDir $FileName
+            }
+        }
+        
+        return $filePath
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to get processed data path: $($_.Exception.Message)"
+        throw
+    }
+}
+
 #endregion
 
 # Export all public functions
@@ -1118,7 +1307,9 @@ Export-ModuleMember -Function @(
     # File Organization
     'Initialize-FileOrganization',
     'Initialize-TempFilesStructure',
+    'Initialize-ProcessedDataStructure',
     'Get-SessionPath',
+    'Get-ProcessedDataPath',
     'Save-SessionData',
     'Get-SessionData',
     'Save-OrganizedFile'

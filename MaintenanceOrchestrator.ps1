@@ -211,11 +211,12 @@ $CoreModulesPath = Join-Path $ModulesPath 'core'
 
 Write-Information "Modules Path: $ModulesPath" -InformationAction Continue
 
-# v3.0 Architecture: Load only essential core modules
+# v3.0 Split Architecture: Load essential core modules + split report architecture
 $CoreModules = @(
     'CoreInfrastructure',
     'UserInterface',
-    'ReportGeneration'
+    'LogProcessor',
+    'ReportGenerator'
 )
 
 # Type2 modules (self-contained with internal Type1 dependencies)
@@ -651,20 +652,8 @@ function Invoke-TaskWithParameters {
         [switch]$DryRun
     )
 
-    # Prepare task-specific parameters
+    # Prepare task-specific parameters for Type2 modules
     switch ($TaskName) {
-        'ReportGeneration' {
-            # Pass path without extension - ReportGeneration module will add .html, .txt, .json
-            # Use session timestamp for consistent naming
-            $reportPath = Join-Path $TempRoot "reports\maintenance-report-$Global:MaintenanceSessionTimestamp"
-            $params = @{
-                OutputPath      = $reportPath
-                SystemInventory = $null  # Will be populated by the function if needed
-                TaskResults     = $TaskResults
-                Configuration   = $MainConfig
-            }
-            return & $FunctionName @params
-        }
         'EssentialApps' {
             $params = @{}
             if ($DryRun) { $params.DryRun = $true }
@@ -706,8 +695,8 @@ function Invoke-TaskWithParameters {
 
 .DESCRIPTION
     Aggregates Type1 audit results and Type2 execution logs into a comprehensive collection
-    for ReportGeneration to process. This implements the v3.0 flow where orchestrator
-    collects ALL logs after task completion.
+    for LogProcessor → ReportGenerator pipeline. This implements the v3.0 split architecture
+    where orchestrator prepares data for the two-step processing flow.
 
 .EXAMPLE
     $logCollection = Get-ComprehensiveLogCollection
@@ -1157,7 +1146,7 @@ $comprehensiveLogCollection = Get-ComprehensiveLogCollection
 
 #region Report Generation (v3.0 Architecture - Preserved)
 
-# Generate comprehensive reports using ReportGeneration module (still orchestrator-loaded)
+# Generate comprehensive reports using v3.0 split architecture: LogProcessor → ReportGenerator
 Write-Information "" -InformationAction Continue
 Write-Information "📋 Generating maintenance reports..." -InformationAction Continue
 
@@ -1177,47 +1166,96 @@ try {
         Write-Warning "  ⚠️ SystemAnalysis module not available for inventory collection"
     }
 
-    # Generate reports using the ReportGeneration module (v3.0: Portable report in parent directory)
-    if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
-        # v3.0: Generate all reports in temp_files/reports/, then copy HTML to parent directory
-        $reportsDir = Join-Path $Global:ProjectPaths.TempFiles "reports"
-        New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
-        
-        $reportBasePath = Join-Path $reportsDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
-        
-        $reportResult = New-MaintenanceReport -SystemInventory $systemInventory -TaskResults $TaskResults -Configuration $MainConfig -OutputPath $reportBasePath -ComprehensiveLogCollection $comprehensiveLogCollection
-        
-        if ($reportResult -and $reportResult.Success) {
-            Write-Information "  ✓ Reports generated successfully in temp_files/reports/" -InformationAction Continue
-            if ($reportResult.ReportPaths) {
-                foreach ($reportPath in $reportResult.ReportPaths) {
-                    Write-Information "    • $reportPath" -InformationAction Continue
-                }
-            }
+    # v3.0 Split Architecture: LogProcessor → ReportGenerator pipeline
+    Write-Information "📊 Processing logs and generating reports using split architecture..." -InformationAction Continue
+    
+    try {
+        # Step 1: Process logs using LogProcessor module
+        if (Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue) {
+            Write-Information "  📋 Step 1: Processing logs with LogProcessor..." -InformationAction Continue
             
-            # Copy only the main HTML report to parent directory (Desktop/Documents/USB root)
-            if ($reportResult.HtmlReport -and (Test-Path $reportResult.HtmlReport)) {
-                try {
-                    $parentHtmlPath = Join-Path $Global:ProjectPaths.ParentDir (Split-Path -Leaf $reportResult.HtmlReport)
-                    Copy-Item -Path $reportResult.HtmlReport -Destination $parentHtmlPath -Force
-                    Write-Information "  ✓ HTML report copied to: $parentHtmlPath" -InformationAction Continue
-                    
-                    # Update result to include parent copy location
-                    if (-not $reportResult.ParentCopy) {
-                        $reportResult | Add-Member -NotePropertyName 'ParentCopy' -NotePropertyValue $parentHtmlPath -Force
-                    }
-                }
-                catch {
-                    Write-Warning "  ⚠️ Failed to copy HTML report to parent directory: $($_.Exception.Message)"
-                }
+            $logProcessingResult = Invoke-LogProcessing -TaskResults $TaskResults -SystemInventory $systemInventory -Configuration $MainConfig
+            
+            if ($logProcessingResult -and $logProcessingResult.Success) {
+                Write-Information "  ✓ Log processing completed successfully" -InformationAction Continue
+                Write-Information "    • Processed $($logProcessingResult.ProcessedFiles) files" -InformationAction Continue
+                Write-Information "    • Generated $($logProcessingResult.OutputFiles.Count) processed data files" -InformationAction Continue
+            }
+            else {
+                throw "LogProcessor failed: $($logProcessingResult.Error ?? 'Unknown error')"
             }
         }
         else {
-            Write-Warning "  ⚠️ Report generation failed"
+            throw "LogProcessor module (Invoke-LogProcessing) not available"
+        }
+        
+        # Step 2: Generate reports using ReportGenerator module
+        if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
+            Write-Information "  📄 Step 2: Generating reports with ReportGenerator..." -InformationAction Continue
+            
+            # Create reports directory
+            $reportsDir = Join-Path $Global:ProjectPaths.TempFiles "reports"
+            New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
+            
+            $reportBasePath = Join-Path $reportsDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+            
+            # Generate report using processed data (with fallback capability)
+            $reportResult = New-MaintenanceReport -OutputPath $reportBasePath -EnableFallback
+            
+            if ($reportResult -and $reportResult.Success) {
+                Write-Information "  ✓ Reports generated successfully using split architecture" -InformationAction Continue
+                if ($reportResult.ReportPaths) {
+                    foreach ($reportPath in $reportResult.ReportPaths) {
+                        Write-Information "    • $reportPath" -InformationAction Continue
+                    }
+                }
+                
+                # Copy main HTML report to parent directory (Desktop/Documents/USB root)
+                if ($reportResult.HtmlReport -and (Test-Path $reportResult.HtmlReport)) {
+                    try {
+                        $parentHtmlPath = Join-Path $Global:ProjectPaths.ParentDir (Split-Path -Leaf $reportResult.HtmlReport)
+                        Copy-Item -Path $reportResult.HtmlReport -Destination $parentHtmlPath -Force
+                        Write-Information "  ✓ HTML report copied to: $parentHtmlPath" -InformationAction Continue
+                        
+                        # Update result to include parent copy location
+                        if (-not $reportResult.ParentCopy) {
+                            $reportResult | Add-Member -NotePropertyName 'ParentCopy' -NotePropertyValue $parentHtmlPath -Force
+                        }
+                    }
+                    catch {
+                        Write-Warning "  ⚠️ Failed to copy HTML report to parent directory: $($_.Exception.Message)"
+                    }
+                }
+            }
+            else {
+                throw "ReportGenerator failed: $($reportResult.Error ?? 'Unknown error')"
+            }
+        }
+        else {
+            throw "ReportGenerator module (New-MaintenanceReport) not available"
         }
     }
-    else {
-        Write-Warning "  ⚠️ ReportGeneration module not available - reports will not be generated"
+    catch {
+        Write-Warning "  ⚠️ Split architecture report generation failed: $($_.Exception.Message)"
+        Write-Information "  📋 Attempting fallback report generation..." -InformationAction Continue
+        
+        # Fallback: Try to generate basic report with available data
+        if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
+            try {
+                $reportsDir = Join-Path $Global:ProjectPaths.TempFiles "reports"
+                New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
+                
+                $fallbackReportPath = Join-Path $reportsDir "MaintenanceReport_Fallback_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+                $fallbackResult = New-MaintenanceReport -OutputPath $fallbackReportPath -EnableFallback
+                
+                if ($fallbackResult -and $fallbackResult.Success) {
+                    Write-Information "  ✓ Fallback report generated successfully" -InformationAction Continue
+                }
+            }
+            catch {
+                Write-Warning "  ⚠️ Both split architecture and fallback report generation failed"
+            }
+        }
     }
 }
 catch {
