@@ -263,6 +263,7 @@ function Initialize-LoggingSystem {
         }
 
         Write-Verbose "Logging system initialized with path: $($script:LoggingContext.LogPath)"
+        return $true
     }
     catch {
         Write-Error "Failed to initialize logging system: $($_.Exception.Message)"

@@ -287,13 +287,41 @@ try {
     # Initialize configuration system with error handling
     try {
         Write-Information "  Checking for Initialize-ConfigSystem function..." -InformationAction Continue
+        
+        # First, check if CoreInfrastructure module is loaded
+        $coreModule = Get-Module -Name CoreInfrastructure -ErrorAction SilentlyContinue
+        if (-not $coreModule) {
+            Write-Information "  CoreInfrastructure module not found, attempting to re-import..." -InformationAction Continue
+            $coreModulePath = Join-Path $CoreModulesPath "CoreInfrastructure.psm1"
+            Import-Module $coreModulePath -Force -Global -ErrorAction Stop
+            Write-Information "  ✓ CoreInfrastructure module re-imported" -InformationAction Continue
+        }
+        else {
+            Write-Information "  CoreInfrastructure module is loaded (Version: $($coreModule.Version))" -InformationAction Continue
+        }
+        
+        # Check for the specific function
         $configFunction = Get-Command Initialize-ConfigSystem -ErrorAction SilentlyContinue
         if (-not $configFunction) {
-            Write-Information "  Available functions:" -InformationAction Continue
-            Get-Command -Module CoreInfrastructure | ForEach-Object { Write-Information "    $($_.Name)" -InformationAction Continue }
+            Write-Information "  Available functions from CoreInfrastructure:" -InformationAction Continue
+            $availableFunctions = Get-Command -Module CoreInfrastructure -ErrorAction SilentlyContinue
+            if ($availableFunctions) {
+                $availableFunctions | ForEach-Object { Write-Information "    $($_.Name)" -InformationAction Continue }
+            }
+            else {
+                Write-Information "    No functions found from CoreInfrastructure module" -InformationAction Continue
+            }
+            
+            # Also check all available functions with this name pattern
+            Write-Information "  Searching for Initialize-ConfigSystem in all modules:" -InformationAction Continue
+            Get-Command "*Initialize-ConfigSystem*" -ErrorAction SilentlyContinue | ForEach-Object { 
+                Write-Information "    Found: $($_.Name) in module: $($_.ModuleName)" -InformationAction Continue 
+            }
+            
             throw "Initialize-ConfigSystem function not found"
         }
-        Write-Information "  Found Initialize-ConfigSystem, calling with path: $ConfigPath" -InformationAction Continue
+        
+        Write-Information "  Found Initialize-ConfigSystem (Source: $($configFunction.Source)), calling with path: $ConfigPath" -InformationAction Continue
         Initialize-ConfigSystem -ConfigRootPath $ConfigPath -ErrorAction Stop
         Write-Information "  ✓ Configuration system initialized" -InformationAction Continue
     }
@@ -326,7 +354,7 @@ try {
 
     # Initialize file organization system first (required by logging system)
     try {
-        $fileOrgResult = Initialize-FileOrganization -BaseDir $ScriptRoot -SessionId $Global:MaintenanceSessionTimestamp -ErrorAction Stop
+        $fileOrgResult = Initialize-FileOrganization -BaseDirectory $TempRoot -ErrorAction Stop
         if ($fileOrgResult) {
             Write-Information "  ✓ File organization system initialized" -InformationAction Continue
         }
