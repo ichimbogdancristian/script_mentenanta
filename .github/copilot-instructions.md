@@ -758,3 +758,115 @@ Type2 modules (self-contained):
 ├── TelemetryDisable.psm1    # → imports TelemetryAudit.psm1
 └── WindowsUpdates.psm1      # → imports WindowsUpdatesAudit.psm1
 ```
+---
+
+## 🚀 **Adding New Type2 Modules**
+
+When asked to create a new maintenance module, follow the standardized v3.0 architecture pattern.
+
+### **Quick Reference**
+See **[.github/MODULE_DEVELOPMENT_GUIDE.md](.github/MODULE_DEVELOPMENT_GUIDE.md)** for the condensed 10-step procedure.
+See **[ADDING_NEW_MODULES.md](ADDING_NEW_MODULES.md)** for the complete 883-line guide with full code templates.
+
+### **Critical Requirements (AI Agent Checklist)**
+When generating new module code, ensure:
+
+1. ✅ **Type1 Module** (modules/type1/[Name]Audit.psm1):
+   - Exports Get-[ModuleName]Analysis function
+   - Uses Write-Verbose not 	hrow for CoreInfrastructure availability
+   - Returns array of hashtables with detection results
+   - Saves results to `temp_files/data/[module]-results.json`
+
+2. ✅ **Type2 Module** (modules/type2/[Name].psm1):
+   - Imports CoreInfrastructure with `-Global` flag (CRITICAL)
+   - Internally imports Type1 module (self-contained pattern)
+   - Exports Invoke-[ModuleName] function
+   - Uses `System.Collections.Hashtable` for all file operations
+   - Returns @{Success, ItemsDetected, ItemsProcessed, Duration}
+   - Creates execution logs in `temp_files/logs/[module]/execution.log`
+
+3. ✅ **Configuration** (config/[module]-config.json):
+   - JSON structure with module metadata
+   - Items array with patterns for detection matching
+   - Enabled/settings flags
+
+4. ✅ **Orchestrator Registration** (MaintenanceOrchestrator.ps1):
+   - Add to $type2Modules array (~line 280)
+   - Add to $registeredTasks hashtable (~line 800)
+   - Add to $taskSequence array (~line 900)
+
+5. ✅ **Configuration Integration**:
+   - Add toggle to config/main-config.json under Execution.Modules
+   - Add metadata to config/report-templates-config.json
+
+6. ✅ **Testing**:
+   - Test module import standalone
+   - Test with orchestrator DryRun mode
+   - Verify zero VS Code diagnostics errors
+   - Test full execution with proper logging
+
+### **Code Pattern Template (Type2 Module Essentials)**
+`powershell
+#Requires -Version 7.0
+
+# CRITICAL: Import CoreInfrastructure with -Global
+ = Join-Path (Split-Path -Parent ) 'core\CoreInfrastructure.psm1'
+Import-Module  -Force -Global -WarningAction SilentlyContinue
+
+# Import Type1 (self-contained)
+ = Join-Path (Split-Path -Parent ) 'type1\[Name]Audit.psm1'
+Import-Module  -Force -WarningAction SilentlyContinue
+
+function Invoke-[ModuleName] {
+    param([hashtable], [switch])
+     = Get-Date
+    
+    # 1. Run Type1 detection
+     = Get-[ModuleName]Analysis -Config 
+     | ConvertTo-Json | Set-Content (Join-Path System.Collections.Hashtable.TempFiles "data\[module]-results.json")
+    
+    # 2. Load config and create diff
+     = Get-Content (Join-Path System.Collections.Hashtable.Config "[module]-config.json") | ConvertFrom-Json
+     =  | Where-Object { .Items.Pattern -contains .Name }
+    
+    # 3. Setup logging
+     = Join-Path System.Collections.Hashtable.TempFiles "logs\[module]"
+    New-Item -Path  -ItemType Directory -Force | Out-Null
+    
+    # 4. Process items (with DryRun check)
+     = 0
+    if (-not ) {
+        foreach ( in ) {
+            # YOUR ACTION LOGIC
+            ++
+        }
+    }
+    
+    # 5. Return standardized result
+    return @{
+        Success = True
+        ItemsDetected = .Count
+        ItemsProcessed = 
+        Duration = ((Get-Date) - ).TotalMilliseconds
+    }
+}
+
+Export-ModuleMember -Function Invoke-[ModuleName]
+`
+
+### **Common Mistakes to Avoid**
+- ❌ Missing -Global flag on CoreInfrastructure import
+- ❌ Using relative paths instead of $Global:ProjectPaths
+- ❌ Throwing errors in Type1 during initialization
+- ❌ Forgetting to register in all 3 orchestrator locations
+- ❌ Not handling DryRun mode correctly
+- ❌ Missing standardized return object structure
+
+### **Validation Before Completion**
+Before marking module development complete, verify:
+- Module loads without errors in orchestrator logs
+- Function appears in Get-Command Invoke-[ModuleName]
+- DryRun mode creates logs without OS modifications
+- Full run creates proper temp_files structure
+- Reports include new module section
+- Zero critical errors in VS Code diagnostics
