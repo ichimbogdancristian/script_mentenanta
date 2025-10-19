@@ -254,14 +254,16 @@ function Get-ProcessedLogData {
             HealthScores    = @{}
             PerformanceData = @{}
             ChartsData      = @{}
+            MaintenanceLog  = @{}
         }
         
         # Load main summary files
         $summaryFiles = @{
-            'MetricsSummary' = 'metrics-summary.json'
-            'ModuleResults'  = 'module-results.json'
-            'ErrorsAnalysis' = 'errors-analysis.json'
-            'HealthScores'   = 'health-scores.json'
+            'MetricsSummary'  = 'metrics-summary.json'
+            'ModuleResults'   = 'module-results.json'
+            'ErrorsAnalysis'  = 'errors-analysis.json'
+            'HealthScores'    = 'health-scores.json'
+            'MaintenanceLog'  = 'maintenance-log.json'
         }
         
         foreach ($key in $summaryFiles.Keys) {
@@ -598,6 +600,13 @@ function New-HtmlReportContent {
         $moduleSections = New-ModuleSections -ProcessedData $ProcessedData -Templates $Templates  
         $html = $html -replace '{{MODULE_SECTIONS}}', $moduleSections
         
+        # Generate maintenance log section (if available)
+        $maintenanceLogSection = New-MaintenanceLogSection -ProcessedData $ProcessedData -Templates $Templates
+        if ($maintenanceLogSection) {
+            # Insert maintenance log section after module sections
+            $html = $html -replace '({{MODULE_SECTIONS}}.*?</div>)', "`$1`n$maintenanceLogSection"
+        }
+        
         # Generate summary section
         $summarySection = New-SummarySection -ProcessedData $ProcessedData
         $html = $html -replace '{{SUMMARY_SECTION}}', $summarySection
@@ -820,6 +829,160 @@ function New-SummarySection {
             <div class="stat-item">
                 <span class="stat-label">Total Errors:</span>
                 <span class="stat-value warning">$($errorsData.ErrorSummary.TotalErrors ?? 0)</span>
+            </div>
+        </div>
+    </div>
+</div>
+"@)
+    
+    return $html.ToString()
+}
+
+<#
+.SYNOPSIS
+    Generate maintenance log section with parsed log entries and statistics
+#>
+function New-MaintenanceLogSection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ProcessedData,
+        
+        [Parameter(Mandatory)]
+        [hashtable]$Templates
+    )
+    
+    $html = [System.Text.StringBuilder]::new()
+    
+    # Check if maintenance log data is available
+    $maintenanceLog = if ($ProcessedData.ContainsKey('MaintenanceLog')) {
+        $ProcessedData.MaintenanceLog
+    } else {
+        $null
+    }
+    
+    if (-not $maintenanceLog -or -not $maintenanceLog.Available) {
+        Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message 'Maintenance log not available for report'
+        return ""
+    }
+    
+    $parsed = $maintenanceLog.Parsed
+    $logConfig = $Templates.Config.reportConfiguration.moduleReports.MaintenanceLog
+    
+    $html.AppendLine(@"
+<div class="module-card">
+    <div class="module-header">
+        <h3>$($logConfig.icon) $($logConfig.displayName)</h3>
+        <p class="module-description">$($logConfig.description)</p>
+    </div>
+    
+    <div class="module-content">
+        <div class="before-after-container">
+            <!-- Before Section: Log Statistics -->
+            <div class="before-section">
+                <h4>$($logConfig.beforeTitle)</h4>
+                <div class="changes-summary">
+                    <div class="change-stat">
+                        <span class="change-label">📁 Log File:</span>
+                        <span class="change-value">$([System.IO.Path]::GetFileName($maintenanceLog.LogFile))</span>
+                    </div>
+                    <div class="change-stat">
+                        <span class="change-label">📏 Total Lines:</span>
+                        <span class="change-value">$($maintenanceLog.LineCount)</span>
+                    </div>
+                    <div class="change-stat">
+                        <span class="change-label">💾 File Size:</span>
+                        <span class="change-value">$([math]::Round($maintenanceLog.Size / 1KB, 2)) KB</span>
+                    </div>
+                    <div class="change-stat">
+                        <span class="change-label">🕐 Last Modified:</span>
+                        <span class="change-value">$($maintenanceLog.LastModified.ToString('yyyy-MM-dd HH:mm:ss'))</span>
+                    </div>
+                    <div class="change-stat">
+                        <span class="change-label">📊 Total Entries:</span>
+                        <span class="change-value">$($parsed.TotalEntries)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- After Section: Entry Breakdown -->
+            <div class="after-section">
+                <h4>$($logConfig.afterTitle)</h4>
+                <div class="changes-list">
+                    <div class="change-category">
+                        <h5 class="info">ℹ️ $($logConfig.changeCategories.info) ($($parsed.InfoMessages.Count))</h5>
+                        <div class="change-items">
+"@)
+    
+    # Add sample INFO messages (limit to 5 for brevity)
+    $sampleInfo = $parsed.InfoMessages | Select-Object -First 5
+    foreach ($msg in $sampleInfo) {
+        $escapedMsg = [System.Web.HttpUtility]::HtmlEncode($msg)
+        $html.AppendLine("                            <div class='change-item'><code>$escapedMsg</code></div>")
+    }
+    if ($parsed.InfoMessages.Count -gt 5) {
+        $html.AppendLine("                            <div class='change-item'><em>... and $($parsed.InfoMessages.Count - 5) more INFO entries</em></div>")
+    }
+    
+    $html.AppendLine(@"
+                        </div>
+                    </div>
+                    
+                    <div class="change-category">
+                        <h5 class="success">✅ $($logConfig.changeCategories.success) ($($parsed.SuccessMessages.Count))</h5>
+                        <div class="change-items">
+"@)
+    
+    # Add sample SUCCESS messages
+    $sampleSuccess = $parsed.SuccessMessages | Select-Object -First 5
+    foreach ($msg in $sampleSuccess) {
+        $escapedMsg = [System.Web.HttpUtility]::HtmlEncode($msg)
+        $html.AppendLine("                            <div class='change-item'><code>$escapedMsg</code></div>")
+    }
+    if ($parsed.SuccessMessages.Count -gt 5) {
+        $html.AppendLine("                            <div class='change-item'><em>... and $($parsed.SuccessMessages.Count - 5) more SUCCESS entries</em></div>")
+    }
+    
+    $html.AppendLine(@"
+                        </div>
+                    </div>
+                    
+                    <div class="change-category">
+                        <h5 class="warning">⚠️ $($logConfig.changeCategories.warning) ($($parsed.WarningMessages.Count))</h5>
+                        <div class="change-items">
+"@)
+    
+    # Add WARNING messages
+    foreach ($msg in $parsed.WarningMessages) {
+        $escapedMsg = [System.Web.HttpUtility]::HtmlEncode($msg)
+        $html.AppendLine("                            <div class='change-item warning'><code>$escapedMsg</code></div>")
+    }
+    if ($parsed.WarningMessages.Count -eq 0) {
+        $html.AppendLine("                            <div class='change-item'><em>No warnings</em></div>")
+    }
+    
+    $html.AppendLine(@"
+                        </div>
+                    </div>
+                    
+                    <div class="change-category">
+                        <h5 class="error">❌ $($logConfig.changeCategories.error) ($($parsed.ErrorMessages.Count))</h5>
+                        <div class="change-items">
+"@)
+    
+    # Add ERROR messages
+    foreach ($msg in $parsed.ErrorMessages) {
+        $escapedMsg = [System.Web.HttpUtility]::HtmlEncode($msg)
+        $html.AppendLine("                            <div class='change-item error'><code>$escapedMsg</code></div>")
+    }
+    if ($parsed.ErrorMessages.Count -eq 0) {
+        $html.AppendLine("                            <div class='change-item'><em>No errors</em></div>")
+    }
+    
+    $html.AppendLine(@"
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1934,6 +2097,7 @@ Export-ModuleMember -Function @(
     'New-HtmlReportContent',
     'New-DashboardSection',
     'New-ModuleSections',
+    'New-MaintenanceLogSection',
     'New-SummarySection',
     'New-TextReportContent',
     'New-JsonExportContent',

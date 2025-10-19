@@ -62,6 +62,33 @@
           "modified": "Update Settings",
           "failed": "Failed Updates"
         }
+      },
+      "AppUpgrade": {
+        "displayName": "Application Updates",
+        "icon": "🔄",
+        "description": "Automated application upgrades via Winget and Chocolatey package managers",
+        "beforeTitle": "Available Upgrades",
+        "afterTitle": "Upgrade Actions",
+        "changeCategories": {
+          "added": "Upgraded Applications",
+          "modified": "Version Changes",
+          "failed": "Failed Upgrades",
+          "skipped": "Excluded Applications"
+        }
+      },
+      "MaintenanceLog": {
+        "displayName": "System Maintenance Log",
+        "icon": "📋",
+        "description": "Complete orchestrator execution log with all operations and system messages",
+        "beforeTitle": "Log Statistics",
+        "afterTitle": "Log Entries",
+        "changeCategories": {
+          "info": "Information Messages",
+          "success": "Success Messages",
+          "warning": "Warning Messages",
+          "error": "Error Messages",
+          "debug": "Debug Messages"
+        }
       }
     },
     "statusClasses": {

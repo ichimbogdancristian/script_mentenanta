@@ -225,7 +225,8 @@ $Type2Modules = @(
     'EssentialApps',
     'SystemOptimization',
     'TelemetryDisable',
-    'WindowsUpdates'
+    'WindowsUpdates',
+    'AppUpgrade'
 )
 
 $Type2ModulesPath = Join-Path $ModulesPath 'type2'
@@ -827,6 +828,15 @@ $MaintenanceTasks = @(
         Type        = 'Type2'
         Category    = 'Updates'
         Enabled     = (-not $MainConfig.modules.skipWindowsUpdates)
+    },
+    @{
+        Name        = 'AppUpgrade'
+        Description = 'Analyze and upgrade applications via Winget/Chocolatey (Type2→Type1 flow)'
+        ModuleName  = 'AppUpgrade'
+        Function    = 'Invoke-AppUpgrade'
+        Type        = 'Type2'
+        Category    = 'Updates'
+        Enabled     = (-not $MainConfig.modules.skipAppUpgrade)
     }
 )
 
