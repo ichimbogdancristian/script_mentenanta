@@ -1,5 +1,42 @@
 # Windows Maintenance Automation - AI Coding Agent Instructions
 
+## 🚨 **CRITICAL: VS Code Diagnostics - Primary Problem Discovery Tool**
+
+**MANDATORY REQUIREMENT**: Before making ANY code changes, analyzing ANY files, or providing ANY solutions, you MUST first check the VS Code diagnostics panel to discover existing problems.
+
+### **Why Diagnostics are Critical:**
+- **Real-time validation**: VS Code + PSScriptAnalyzer provide immediate syntax and best practice feedback
+- **Comprehensive coverage**: Detects syntax errors, deprecated cmdlets, style violations, and security issues
+- **Context-aware**: Problems panel shows exact file, line number, and severity
+- **Prevents cascading errors**: Fixing diagnostics issues first prevents introducing new problems
+
+### **When to Check Diagnostics (ALWAYS):**
+1. ✅ **Before starting any task** - Understand current state of the codebase
+2. ✅ **After every file edit** - Validate changes didn't introduce new issues
+3. ✅ **When user reports problems** - Check if diagnostics already identified the issue
+4. ✅ **Before suggesting solutions** - Ensure your fix addresses real problems
+5. ✅ **During code review** - Verify zero critical errors before completion
+6. ✅ **When developing new modules** - Continuous validation during development
+
+### **How to Use Diagnostics Effectively:**
+```plaintext
+1. Use get_errors tool with no filePaths to see ALL workspace problems
+2. Analyze errors by severity: Error > Warning > Information
+3. Prioritize PSScriptAnalyzer violations (code quality issues)
+4. Check specific files after editing using get_errors with filePaths
+5. Verify zero critical errors before marking tasks complete
+```
+
+### **Diagnostic-Driven Workflow:**
+```
+Check Diagnostics → Identify Real Problems → Plan Fix → Implement → Verify Diagnostics Clear
+```
+
+**DO NOT**: Guess at problems, assume everything works, or skip validation
+**DO**: Let diagnostics guide your analysis and solutions
+
+---
+
 ## Project Overview
 
 This is a **enterprise-grade PowerShell-based Windows maintenance system** with hierarchical interactive menus, consolidated modular architecture, and comprehensive before/after reporting. The system features **20-second countdown menus**, **self-contained Type2 modules**, **session-based file organization**, and **external template system** for automated Windows 10/11 maintenance.
@@ -582,12 +619,53 @@ $reportPath = Join-Path $Global:ProjectPaths.ParentDir "MaintenanceReport_$(Get-
 
 ## Development Conventions
 
-### **🚨 MANDATORY: VS Code Diagnostics Monitoring**
-- **Check VS Code diagnostics panel regularly** - Monitor Problems panel for errors and warnings
-- **Address PSScriptAnalyzer violations immediately** - Fix syntax errors, use approved verbs, avoid automatic variables
-- **Validate before commits** - Ensure zero critical errors before code changes  
-- **Use diagnostic feedback proactively** - Leverage real-time error detection to maintain code quality
-- **Document resolution steps** - When fixing diagnostics issues, update relevant documentation
+### **🚨 MANDATORY: VS Code Diagnostics Monitoring (ALWAYS FIRST)**
+
+**ABSOLUTE REQUIREMENT**: The `get_errors` tool is your PRIMARY problem discovery mechanism. Use it FIRST, use it OFTEN.
+
+#### **Diagnostic Check Requirements:**
+1. **Before ANY code analysis**: Check diagnostics to understand current problems
+2. **After EVERY file edit**: Validate using `get_errors` with specific filePath
+3. **When user reports issues**: Check if diagnostics already identified the problem
+4. **Before suggesting solutions**: Ensure fix targets actual diagnostic errors
+5. **Before completing tasks**: Verify zero critical errors in Problems panel
+6. **During module development**: Continuous validation after each function addition
+
+#### **Mandatory Diagnostic Actions:**
+- ✅ **Use get_errors tool immediately** when starting any task
+- ✅ **Address PSScriptAnalyzer violations first** - Fix syntax errors, use approved verbs, avoid automatic variables
+- ✅ **Validate incrementally** - Check diagnostics after each file modification
+- ✅ **Zero tolerance for critical errors** - Never complete tasks with unresolved errors
+- ✅ **Prioritize by severity** - Error > Warning > Information > Hint
+- ✅ **Document resolutions** - When fixing diagnostics issues, explain what was wrong
+
+#### **Common Diagnostic Issues to Watch For:**
+- **PSScriptAnalyzer Rules**: 
+  - PSAvoidUsingWriteHost (use Write-Output or logging functions)
+  - PSUseApprovedVerbs (Get-, Set-, Invoke-, Remove-, etc.)
+  - PSAvoidUsingPositionalParameters
+  - PSAvoidGlobalVars (use $Global:ProjectPaths correctly)
+- **Syntax Errors**: Missing brackets, quotes, semicolons
+- **Type Errors**: Incorrect parameter types, missing type constraints
+- **Scope Issues**: Variable visibility, module import problems
+- **Path Errors**: Invalid file references, broken relative paths
+
+#### **Diagnostic-Driven Development Process:**
+```
+1. Run get_errors (no parameters) → See all problems
+2. Analyze by file and severity → Prioritize fixes
+3. Make targeted changes → Fix specific issues
+4. Run get_errors (with filePath) → Verify fix worked
+5. Repeat until zero critical errors → Task complete
+```
+
+#### **Tools for Diagnostic Validation:**
+- `get_errors` - Primary tool for discovering problems
+- `get_errors` with `filePaths` array - Check specific files after edits
+- Look for PSScriptAnalyzer output in terminal if running manually
+- Monitor VS Code Problems panel through diagnostic feedback
+
+**REMEMBER**: Diagnostics are not optional - they are your PRIMARY quality assurance mechanism!
 
 ### **Code Quality Standards**
 - **PowerShell 7+ required** - Use modern syntax, `using namespace`, proper error handling
@@ -765,8 +843,8 @@ Type2 modules (self-contained):
 When asked to create a new maintenance module, follow the standardized v3.0 architecture pattern.
 
 ### **Quick Reference**
-See **[.github/MODULE_DEVELOPMENT_GUIDE.md](.github/MODULE_DEVELOPMENT_GUIDE.md)** for the condensed 10-step procedure.
-See **[ADDING_NEW_MODULES.md](ADDING_NEW_MODULES.md)** for the complete 883-line guide with full code templates.
+See **[MODULE_DEVELOPMENT_GUIDE.md](MODULE_DEVELOPMENT_GUIDE.md)** for the condensed 10-step procedure.
+See **[ADDING_NEW_MODULES.md](../ADDING_NEW_MODULES.md)** for the complete 883-line guide with full code templates.
 
 ### **Critical Requirements (AI Agent Checklist)**
 When generating new module code, ensure:
