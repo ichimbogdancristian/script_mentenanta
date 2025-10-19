@@ -1,25 +1,34 @@
 # Windows Maintenance Automation v3.0
 
-🚀 **Enterprise-grade Windows 10/11 maintenance system** with hierarchical interactive menus, consolidated modular architecture, session-based file organization, and comprehensive system analytics.
+🚀 **Enterprise-grade Windows 10/11 maintenance system** with hierarchical interactive menus, self-contained modular architecture, global path discovery, and comprehensive before/after reporting.
 
-**🎉 Latest Update (v3.0 - October 2025)**: Revolutionary architecture overhaul with hierarchical countdown menus, self-contained Type2 modules, consolidated core infrastructure, streamlined execution flow, and external template system. **All module loading issues resolved with global scope imports.**
+**🎉 Latest Update (v3.0 - October 2025)**: Revolutionary architecture with Type1→Type2 flow, consolidated core infrastructure (29 functions), global `-Global` scope imports, session-based file organization, external template system, and diagnostic-driven development.
 
-## 🎯 **System Purpose & Overview**
+## 🎯 **System Purpose & Architecture Overview**
 
-This automated Windows maintenance system performs comprehensive system cleanup, optimization, and security hardening through a modular architecture that separates detection from action. The system ensures safe, reversible operations with detailed before/after reporting.
+This automated Windows maintenance system performs comprehensive system cleanup, optimization, and security hardening through a **strict separation of detection (Type1) from action (Type2)**. The system ensures safe, reversible operations with detailed logging and comprehensive reporting.
 
 ### **Core Objectives**
-- 🗑️ **Remove bloatware** and unwanted pre-installed applications
-- 📦 **Install essential applications** missing from the system
-- ⚡ **Optimize system performance** through registry and service tweaks
-- 🔒 **Disable telemetry** and privacy-invasive features
-- 🔄 **Install Windows updates** and security patches
-- 📊 **Generate detailed reports** showing all changes made
+- 🗑️ **Remove bloatware** - Uninstall 187+ unwanted pre-installed applications
+- 📦 **Install essential apps** - Deploy 10+ missing productivity applications
+- ⚡ **Optimize performance** - Apply registry/service tweaks for faster operation
+- 🔒 **Disable telemetry** - Block privacy-invasive Windows data collection
+- 🔄 **Install updates** - Apply critical Windows security patches
+- 📊 **Generate reports** - Create comprehensive before/after HTML dashboards
+
+### **Key Architecture Principles**
+1. **Type1 Detection First** - Always scan before taking action
+2. **Diff-Based Execution** - Only process items found in (detected ∩ config)
+3. **DryRun Support** - All operations support simulation mode
+4. **Session Isolation** - Organized temp_files/ structure per execution
+5. **Global Path Discovery** - Portable execution from any location
+6. **Standardized Returns** - Consistent result objects for reporting
 
 ### **📚 Documentation**
-- **[Complete Module Development Guide](ADDING_NEW_MODULES.md)** - Step-by-step instructions for adding new Type2 modules
-- **[Module Loading Resolution](MODULE_LOADING_RESOLUTION.md)** - Technical analysis of v3.0 module scope fixes
-- **[Copilot Instructions](.github/copilot-instructions.md)** - AI coding agent guidelines and architecture reference
+- **[Complete Module Development Guide](ADDING_NEW_MODULES.md)** - 883-line guide for adding new Type2 modules
+- **[Quick Development Reference](.github/MODULE_DEVELOPMENT_GUIDE.md)** - 10-step condensed procedure
+- **[Copilot Instructions](.github/copilot-instructions.md)** - AI agent guidelines with diagnostic-driven development
+- **[Contributing Guide](.github/CONTRIBUTING.md)** - Development setup and coding standards
 
 ## 🔄 **Complete Execution Logic & Workflow**
 
@@ -450,7 +459,292 @@ Each Type2 module exports exactly one function following this pattern:
 - `Invoke-TelemetryDisable()` → Disable privacy-invasive features
 - `Invoke-WindowsUpdates()` → Install Windows updates
 
-### **📊 Data Flow & File Connections**
+### **� Module Import/Export Logic & Dependencies**
+
+#### **CoreInfrastructure.psm1 (29 Exported Functions)**
+
+**Imports:** None (base module)
+
+**Exports:**
+```powershell
+# Path Discovery (3 functions)
+- Initialize-GlobalPathDiscovery  # Set $Global:ProjectPaths with auto-detection
+- Get-MaintenanceProjectPath      # Return project root directory  
+- Get-MaintenanceModulePath       # Return specific module directory path
+
+# Configuration Management (5 functions)
+- Initialize-ConfigSystem         # Load all JSON configs from config/
+- Get-MainConfig                  # Return main-config.json settings
+- Get-BloatwareList               # Return bloatware-list.json (187 apps)
+- Get-UnifiedEssentialAppsList    # Return essential-apps.json (10 apps)
+- Get-LoggingConfiguration        # Return logging-config.json settings
+
+# Logging System (9 functions)
+- Initialize-LoggingSystem        # Set up structured logging with levels
+- Get-VerbositySettings           # Get current logging verbosity
+- Test-ShouldLogOperation         # Check if operation should be logged
+- Write-LogEntry                  # Main logging function (INFO/WARN/ERROR/DEBUG)
+- Write-OperationStart            # Log operation beginning
+- Write-OperationSuccess          # Log successful completion
+- Write-OperationFailure          # Log error with stack trace
+- Write-OperationSkipped          # Log skipped operations
+- Write-DetectionLog              # Log Type1 detection results
+
+# Performance Tracking (2 functions)
+- Start-PerformanceTracking       # Begin timing with operation context
+- Complete-PerformanceTracking    # End timing and calculate duration
+
+# File Organization (10 functions)
+- Initialize-FileOrganization     # Create session directory structure
+- Get-SessionPath                 # Get organized path for data/logs/temp/reports
+- Initialize-TempFilesStructure   # Create temp_files/ subdirectories
+- Initialize-ProcessedDataStructure # Initialize processed data storage
+- Save-SessionData                # Save data to organized location
+- Get-SessionData                 # Retrieve stored session data
+- Get-BloatwareConfiguration      # Load bloatware config with validation
+- Get-EssentialAppsConfiguration  # Load essential apps config with validation
+- Save-OrganizedFile              # Save file to organized structure
+- Get-ProcessedDataPath           # Get path for processed data files
+```
+
+**Global Variables Created:**
+- `$Global:ProjectPaths` - Hashtable with Root, Config, Modules, TempFiles, ParentDir
+- `$Global:MaintenanceSession` - Session ID, Timestamp, Directories
+
+**Used By:** All modules (imported with `-Global` flag)
+
+#### **UserInterface.psm1 (7 Exported Functions)**
+
+**Imports:**
+- CoreInfrastructure.psm1 (for logging and configuration)
+
+**Exports:**
+```powershell
+- Show-MainMenu                   # Hierarchical main menu (Normal/DryRun)
+- Show-TaskSelectionMenu          # Hierarchical sub menu (All/Specific)
+- Show-ConfirmationDialog         # Final confirmation before execution
+- Show-Progress                   # Real-time progress bar updates
+- Show-ResultSummary              # Post-execution summary display
+- Start-CountdownMenu             # 20-second auto-selection countdown
+- ConvertFrom-TaskNumbers         # Parse "1,3,5" into task array
+```
+
+**Used By:** MaintenanceOrchestrator.ps1
+
+#### **ReportGenerator.psm1 (Multiple Exported Functions)**
+
+**Imports:**
+- CoreInfrastructure.psm1 (for session data and file organization)
+
+**Exports:**
+```powershell
+- Get-HtmlTemplates               # Load external HTML/CSS from config/
+- New-MaintenanceReport           # Generate comprehensive HTML report
+- Get-ModuleExecutionData         # Collect all temp_files/ data
+- Convert-ModuleDataToTaskResults # Transform data for report generation
+- New-ExecutiveSummary            # Create summary statistics section
+- New-ModuleReportCard            # Generate before/after module cards
+```
+
+**Reads From:**
+- `config/report-template.html` - Main report structure
+- `config/task-card-template.html` - Module report template
+- `config/report-styles.css` - Visual styling
+- `config/report-templates-config.json` - Module metadata
+- `temp_files/data/*.json` - Type1 detection results
+- `temp_files/logs/*/execution.log` - Type2 execution logs
+- `temp_files/temp/*-diff.json` - Processing diffs
+
+**Outputs To:**
+- `temp_files/reports/*.html` - All report formats
+- Parent Directory (Documents/Desktop/USB root) - HTML copy
+
+**Used By:** MaintenanceOrchestrator.ps1
+
+#### **Type1 Modules (Detection/Audit) - Standard Pattern**
+
+**Example: BloatwareDetectionAudit.psm1**
+
+**Imports:**
+- CoreInfrastructure.psm1 (imported globally by Type2 module, available via scope inheritance)
+
+**Exports:**
+```powershell
+- Find-InstalledBloatware         # Main detection function
+  ├─ Get-AppxBloatware            # Scan UWP/Modern apps
+  ├─ Get-Win32Bloatware           # Scan traditional programs
+  ├─ Get-WingetBloatware          # Scan winget-managed apps
+  └─ Get-ChocolateyBloatware      # Scan Chocolatey packages
+```
+
+**Execution Flow:**
+1. Read bloatware-list.json via Get-BloatwareList()
+2. Scan system across 4 package managers (AppX, Win32, winget, Chocolatey)
+3. Match detected apps against config patterns
+4. Return array of hashtables with detection metadata
+5. Save results to `temp_files/data/bloatware-results.json`
+
+**Imported By:** BloatwareRemoval.psm1 (Type2 module)
+
+**Similar Pattern For:**
+- EssentialAppsAudit.psm1 → Exports: `Get-MissingEssentialApps()`
+- SystemOptimizationAudit.psm1 → Exports: `Get-OptimizationOpportunities()`
+- TelemetryAudit.psm1 → Exports: `Get-ActiveTelemetry()`
+- WindowsUpdatesAudit.psm1 → Exports: `Get-AvailableUpdates()`
+
+#### **Type2 Modules (Action/Modification) - Self-Contained Pattern**
+
+**Example: BloatwareRemoval.psm1**
+
+**Imports (Self-Contained):**
+```powershell
+# Step 1: Import CoreInfrastructure with -Global flag (CRITICAL)
+$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
+
+# Step 2: Import Type1 module internally (after CoreInfrastructure)
+$Type1Path = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\BloatwareDetectionAudit.psm1'
+Import-Module $Type1Path -Force -WarningAction SilentlyContinue
+```
+
+**Exports:**
+```powershell
+- Invoke-BloatwareRemoval         # Main execution function (v3.0 standardized)
+  ├─ Remove-AppxBloatware         # Remove UWP apps
+  ├─ Remove-Win32Bloatware        # Uninstall traditional programs
+  ├─ Remove-WingetPackage         # Remove via winget
+  └─ Remove-ChocolateyPackage     # Remove via Chocolatey
+```
+
+**Execution Flow:**
+1. Call `Find-InstalledBloatware()` from Type1 module
+2. Save detection results to `temp_files/data/bloatware-results.json`
+3. Load `bloatware-list.json` via `Get-BloatwareList()`
+4. Create diff: items from config found on system
+5. Save diff to `temp_files/temp/bloatware-diff.json`
+6. **IF NOT DryRun**: Process each item in diff list
+   - Try removal via detected source (AppX, Win32, winget, Chocolatey)
+   - Log all actions to `temp_files/logs/bloatware-removal/execution.log`
+7. **IF DryRun**: Log "Would remove..." without OS modifications
+8. Return standardized result object:
+   ```powershell
+   @{
+       Success = $true/$false
+       ItemsDetected = 15
+       ItemsProcessed = 12
+       ItemsFailed = 3
+       Duration = 45234.56  # milliseconds
+       DryRun = $true/$false
+       LogPath = "temp_files/logs/bloatware-removal/execution.log"
+   }
+   ```
+
+**Why `-Global` Flag is Critical:**
+- CoreInfrastructure must be imported with `-Global` flag
+- This makes 29 functions available in global scope
+- Type1 modules can then access these functions via scope inheritance
+- Without `-Global`, Type1 modules fail to find Write-LogEntry, Get-BloatwareList, etc.
+
+**Similar Pattern For:**
+- EssentialApps.psm1 → Imports EssentialAppsAudit.psm1 → Exports `Invoke-EssentialApps()`
+- SystemOptimization.psm1 → Imports SystemOptimizationAudit.psm1 → Exports `Invoke-SystemOptimization()`
+- TelemetryDisable.psm1 → Imports TelemetryAudit.psm1 → Exports `Invoke-TelemetryDisable()`
+- WindowsUpdates.psm1 → Imports WindowsUpdatesAudit.psm1 → Exports `Invoke-WindowsUpdates()`
+
+**Imported By:** MaintenanceOrchestrator.ps1 (direct import, functions available for task execution)
+
+### **🔁 Complete Execution Sequence with Function Calls**
+
+```
+1. script.bat (Bootstrap)
+   └─ Calls: MaintenanceOrchestrator.ps1
+
+2. MaintenanceOrchestrator.ps1 (Initialization)
+   ├─ Import CoreInfrastructure.psm1 -Global
+   │  └─ Calls: Initialize-GlobalPathDiscovery()
+   │  └─ Calls: Initialize-ConfigSystem($ConfigPath)
+   │  └─ Calls: Initialize-LoggingSystem()
+   │  └─ Calls: Initialize-FileOrganization()
+   │
+   ├─ Import UserInterface.psm1
+   ├─ Import ReportGenerator.psm1
+   │
+   ├─ Import Type2 Modules (self-contained, each imports its Type1)
+   │  ├─ BloatwareRemoval.psm1
+   │  ├─ EssentialApps.psm1
+   │  ├─ SystemOptimization.psm1
+   │  ├─ TelemetryDisable.psm1
+   │  └─ WindowsUpdates.psm1
+   │
+   ├─ Load Configurations
+   │  ├─ Calls: Get-MainConfig() → main-config.json
+   │  ├─ Calls: Get-LoggingConfiguration() → logging-config.json
+   │  ├─ Calls: Get-BloatwareList() → bloatware-list.json
+   │  └─ Calls: Get-UnifiedEssentialAppsList() → essential-apps.json
+   │
+   └─ Display Interactive Interface
+      ├─ Calls: Show-MainMenu() → User selects Normal/DryRun
+      ├─ Calls: Show-TaskSelectionMenu() → User selects All/Specific
+      └─ Calls: Show-ConfirmationDialog() → Final confirmation
+
+3. Task Execution Loop (for each selected task)
+   │
+   ├─ Task 1: BloatwareRemoval
+   │  ├─ Calls: Invoke-BloatwareRemoval($Config, -DryRun:$DryRun)
+   │  │  ├─ Calls: Start-PerformanceTracking("BloatwareRemoval")
+   │  │  ├─ Calls: Find-InstalledBloatware() [Type1]
+   │  │  │  └─ Returns: Array of detected bloatware
+   │  │  ├─ Calls: Save-SessionData($detectionResults, "data/bloatware-results.json")
+   │  │  ├─ Create Diff: config items found on system
+   │  │  ├─ Save Diff: temp_files/temp/bloatware-diff.json
+   │  │  ├─ IF NOT DryRun:
+   │  │  │  └─ For each item in diff:
+   │  │  │     ├─ Calls: Remove-AppxBloatware() / Remove-Win32Bloatware() / etc.
+   │  │  │     └─ Calls: Write-LogEntry("SUCCESS: Removed X", "logs/bloatware-removal/execution.log")
+   │  │  ├─ Calls: Complete-PerformanceTracking($perfContext)
+   │  │  └─ Returns: @{ Success, ItemsDetected, ItemsProcessed, Duration }
+   │  │
+   │  └─ Orchestrator logs result summary
+   │
+   ├─ Task 2: EssentialApps
+   │  └─ [Same pattern as Task 1]
+   │
+   ├─ Task 3: SystemOptimization
+   │  └─ [Same pattern as Task 1]
+   │
+   ├─ Task 4: TelemetryDisable
+   │  └─ [Same pattern as Task 1]
+   │
+   └─ Task 5: WindowsUpdates
+      └─ [Same pattern as Task 1]
+
+4. Report Generation
+   ├─ Calls: Get-ModuleExecutionData()
+   │  ├─ Reads: temp_files/data/*.json (Type1 detection results)
+   │  ├─ Reads: temp_files/logs/*/execution.log (Type2 execution logs)
+   │  └─ Reads: temp_files/temp/*-diff.json (processing diffs)
+   │
+   ├─ Calls: Get-HtmlTemplates()
+   │  ├─ Reads: config/report-template.html
+   │  ├─ Reads: config/task-card-template.html
+   │  ├─ Reads: config/report-styles.css
+   │  └─ Reads: config/report-templates-config.json
+   │
+   ├─ Calls: New-MaintenanceReport($allData, $templates)
+   │  ├─ Calls: New-ExecutiveSummary()
+   │  ├─ Calls: New-ModuleReportCard() for each module
+   │  └─ Generates: MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html
+   │
+   └─ Saves Reports:
+      ├─ temp_files/reports/*.html (all formats)
+      └─ Parent Directory/*.html (main HTML copy for easy access)
+
+5. Completion
+   ├─ Calls: Show-ResultSummary($allResults)
+   └─ Exits: Returns control to user
+```
+
+### **�📊 Data Flow & File Connections**
 
 **Configuration Files (config/) → System:**
 - `main-config.json` → MaintenanceOrchestrator.ps1 (execution settings)

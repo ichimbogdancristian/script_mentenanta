@@ -607,15 +607,332 @@ $reportPath = Join-Path $Global:ProjectPaths.ParentDir "MaintenanceReport_$(Get-
 ## Key Files to Reference
 
 - **`MaintenanceOrchestrator.ps1`** - Central coordination with hierarchical menu integration (1,126 lines)
-- **`modules/core/CoreInfrastructure.psm1`** - Configuration, logging, session management (consolidated)
-- **`modules/core/UserInterface.psm1`** - Hierarchical countdown menus with auto-fallback
-- **`modules/core/ReportGeneration.psm1`** - External template-based HTML dashboard generation
+- **`modules/core/CoreInfrastructure.psm1`** - Configuration, logging, session management (29 functions)
+- **`modules/core/UserInterface.psm1`** - Hierarchical countdown menus (7 functions)
+- **`modules/core/ReportGenerator.psm1`** - External template-based HTML reports (6+ functions)
 - **`modules/type2/[ModuleName].psm1`** - Self-contained execution modules (v3.0 pattern)
 - **`modules/type1/[ModuleName]Audit.psm1`** - Detection modules (imported by Type2)
 - **`config/main-config.json`** - Execution settings, countdown timers, module toggles
 - **`config/report-template.html`** - External HTML report template structure
 - **`config/report-styles.css`** - Report styling without chart dependencies
 - **`script.bat`** - Bootstrap with admin elevation and dependency management
+
+## 📦 **Module Import/Export Complete Reference**
+
+### **CoreInfrastructure.psm1 - Base Module (29 Functions)**
+
+**Purpose**: Consolidated infrastructure providing configuration management, structured logging, performance tracking, and organized file storage for all modules.
+
+**Imports**: None (base module, no dependencies)
+
+**Exports (29 functions organized in 5 categories)**:
+
+#### **1. Path Discovery (3 functions)**
+```powershell
+Initialize-GlobalPathDiscovery()  # Auto-detect project root, set $Global:ProjectPaths
+Get-MaintenanceProjectPath()      # Return project root directory path
+Get-MaintenanceModulePath()       # Return specific module directory path
+```
+
+#### **2. Configuration Management (5 functions)**
+```powershell
+Initialize-ConfigSystem($ConfigRootPath)  # Load all JSON configurations
+Get-MainConfig()                          # Return main-config.json (execution settings)
+Get-BloatwareList()                       # Return bloatware-list.json (187 apps)
+Get-UnifiedEssentialAppsList()            # Return essential-apps.json (10 apps)
+Get-LoggingConfiguration()                # Return logging-config.json (log settings)
+```
+
+#### **3. Logging System (9 functions)**
+```powershell
+Initialize-LoggingSystem()                # Setup structured logging with levels
+Get-VerbositySettings()                   # Get current logging verbosity
+Test-ShouldLogOperation($operation)       # Check if operation should be logged
+Write-LogEntry($Level, $Message, $Component, $LogPath)  # Main structured logging
+Write-OperationStart($operation, $component)            # Log operation beginning
+Write-OperationSuccess($operation, $result, $component) # Log successful completion
+Write-OperationFailure($operation, $error, $component)  # Log error with stack trace
+Write-OperationSkipped($operation, $reason, $component) # Log skipped operations
+Write-DetectionLog($items, $category, $component)       # Log Type1 detection results
+```
+
+#### **4. Performance Tracking (2 functions)**
+```powershell
+Start-PerformanceTracking($OperationName, $Component)  # Begin timing with context
+Complete-PerformanceTracking($Context)                 # End timing, calculate duration
+```
+
+#### **5. File Organization (10 functions)**
+```powershell
+Initialize-FileOrganization()                          # Create session directory structure
+Get-SessionPath($Category, $SubCategory, $FileName)    # Get organized file path
+Initialize-TempFilesStructure()                        # Create temp_files/ subdirectories
+Initialize-ProcessedDataStructure()                    # Initialize processed data storage
+Save-SessionData($Data, $FilePath)                     # Save data to organized location
+Get-SessionData($FilePath)                             # Retrieve stored session data
+Get-BloatwareConfiguration()                           # Load bloatware config with validation
+Get-EssentialAppsConfiguration()                       # Load essential apps config
+Save-OrganizedFile($Content, $Path)                    # Save file to organized structure
+Get-ProcessedDataPath($Category, $FileName)            # Get path for processed data
+```
+
+**Global Variables Created**:
+```powershell
+$Global:ProjectPaths = @{
+    Root      = "C:\...\script_mentenanta"
+    Config    = "C:\...\script_mentenanta\config"
+    Modules   = "C:\...\script_mentenanta\modules"
+    TempFiles = "C:\...\script_mentenanta\temp_files"
+    ParentDir = "C:\...\Documents"  # or Desktop, USB root
+}
+
+$Global:MaintenanceSession = @{
+    SessionId   = "GUID"
+    Timestamp   = "yyyyMMdd-HHmmss"
+    Directories = @{ Data, Logs, Temp, Reports }
+}
+```
+
+**Imported By**: 
+- MaintenanceOrchestrator.ps1 (with `-Global` flag)
+- All Type2 modules (with `-Global` flag)
+- UserInterface.psm1
+- ReportGenerator.psm1
+
+**Critical Requirement**: MUST be imported with `-Global` flag for Type1 modules to access functions via scope inheritance.
+
+---
+
+### **UserInterface.psm1 - Interactive Menus (7 Functions)**
+
+**Purpose**: Hierarchical countdown menus with 20-second auto-selection for both attended and unattended execution.
+
+**Imports**: CoreInfrastructure.psm1 (for logging and configuration)
+
+**Exports (7 functions)**:
+```powershell
+Show-MainMenu()                  # Hierarchical main menu (Normal/DryRun selection)
+Show-TaskSelectionMenu()         # Sub-menu (All Tasks / Specific Numbers)
+Show-ConfirmationDialog()        # Final confirmation before execution
+Show-Progress($Current, $Total)  # Real-time progress bar updates
+Show-ResultSummary($Results)     # Post-execution summary display
+Start-CountdownMenu($Options)    # 20-second countdown with auto-selection
+ConvertFrom-TaskNumbers($Input)  # Parse "1,3,5" to task array
+```
+
+**Used By**: MaintenanceOrchestrator.ps1 (for user interaction)
+
+---
+
+### **ReportGenerator.psm1 - HTML Report Generation (6+ Functions)**
+
+**Purpose**: Generate comprehensive HTML reports using external templates from config/ directory.
+
+**Imports**: CoreInfrastructure.psm1 (for session data and file organization)
+
+**Exports (6+ functions)**:
+```powershell
+Get-HtmlTemplates()                          # Load external HTML/CSS from config/
+New-MaintenanceReport($Data, $Templates)     # Generate comprehensive HTML report
+Get-ModuleExecutionData()                    # Collect all temp_files/ data
+Convert-ModuleDataToTaskResults($RawData)    # Transform data for reporting
+New-ExecutiveSummary($ModuleResults)         # Create summary statistics section
+New-ModuleReportCard($ModuleData, $Template) # Generate before/after module cards
+```
+
+**Reads From**:
+- `config/report-template.html` - Main report HTML structure
+- `config/task-card-template.html` - Individual module report template
+- `config/report-styles.css` - Visual styling (simplified, no charts)
+- `config/report-templates-config.json` - Module metadata (icons, descriptions)
+- `temp_files/data/*.json` - Type1 detection results
+- `temp_files/logs/*/execution.log` - Type2 execution logs
+- `temp_files/temp/*-diff.json` - Processing diffs
+
+**Outputs To**:
+- `temp_files/reports/*.html` - All report formats (HTML, JSON, TXT, Summary)
+- Parent Directory - MaintenanceReport_YYYY-MM-DD_HH-mm-ss.html (HTML copy)
+
+**Used By**: MaintenanceOrchestrator.ps1 (after task execution completion)
+
+---
+
+### **Type1 Modules (Detection/Audit) - Standard Pattern**
+
+**Purpose**: System scanning and detection WITHOUT modifications. Create structured JSON data for Type2 processing.
+
+**Example: BloatwareDetectionAudit.psm1**
+
+**Imports**: CoreInfrastructure.psm1 (available via global scope from Type2 import)
+
+**Exports (1 main function + 4 helpers)**:
+```powershell
+Find-InstalledBloatware()  # Main detection function - orchestrates all scans
+  ├─ Get-AppxBloatware()            # Scan UWP/Modern apps (Get-AppxPackage)
+  ├─ Get-Win32Bloatware()           # Scan traditional programs (Registry)
+  ├─ Get-WingetBloatware()          # Scan winget-managed apps (winget list)
+  └─ Get-ChocolateyBloatware()      # Scan Chocolatey packages (choco list)
+```
+
+**Execution Flow**:
+1. Load bloatware-list.json via `Get-BloatwareList()` (from CoreInfrastructure)
+2. Scan system across 4 package managers
+3. Match detected apps against config patterns (wildcards supported)
+4. Return array of hashtables with detection metadata
+5. Save results to `temp_files/data/bloatware-results.json`
+
+**Imported By**: BloatwareRemoval.psm1 (Type2 module - internal import)
+
+**Similar Pattern For**:
+- **EssentialAppsAudit.psm1** → Exports: `Get-MissingEssentialApps()`
+- **SystemOptimizationAudit.psm1** → Exports: `Get-OptimizationOpportunities()`
+- **TelemetryAudit.psm1** → Exports: `Get-ActiveTelemetry()`
+- **WindowsUpdatesAudit.psm1** → Exports: `Get-AvailableUpdates()`
+
+---
+
+### **Type2 Modules (Action/Modification) - Self-Contained Pattern**
+
+**Purpose**: Execute system modifications based on Type1 detection results and configuration. Support DryRun simulation mode.
+
+**Example: BloatwareRemoval.psm1**
+
+**Imports (Self-Contained - CRITICAL ORDER)**:
+```powershell
+# STEP 1: Import CoreInfrastructure with -Global flag (MANDATORY)
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
+Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
+
+# STEP 2: Import Type1 module AFTER CoreInfrastructure
+$Type1Path = Join-Path $ModuleRoot 'type1\BloatwareDetectionAudit.psm1'
+Import-Module $Type1Path -Force -WarningAction SilentlyContinue
+```
+
+**Why `-Global` Flag is CRITICAL**:
+- CoreInfrastructure exports 29 functions needed by Type1 modules
+- `-Global` makes these functions available in global scope
+- Type1 modules access them via scope inheritance
+- WITHOUT `-Global`: Type1 fails with "command not found" errors
+
+**Exports (1 main function + 4 action helpers)**:
+```powershell
+Invoke-BloatwareRemoval($Config, -DryRun)  # Main execution (v3.0 standardized)
+  ├─ Remove-AppxBloatware($app)            # Remove UWP apps (Remove-AppxPackage)
+  ├─ Remove-Win32Bloatware($app)           # Uninstall Win32 (UninstallString)
+  ├─ Remove-WingetPackage($app)            # Remove via winget (winget uninstall)
+  └─ Remove-ChocolateyPackage($app)        # Remove via Chocolatey (choco uninstall)
+```
+
+**Execution Flow (Standardized v3.0)**:
+```powershell
+function Invoke-BloatwareRemoval {
+    param([PSCustomObject]$Config, [switch]$DryRun)
+    
+    # 1. Start performance tracking
+    $perfContext = Start-PerformanceTracking -OperationName 'BloatwareRemoval'
+    
+    # 2. Call Type1 detection
+    $detectionResults = Find-InstalledBloatware()  # Type1 function
+    $detectionPath = Join-Path $Global:ProjectPaths.TempFiles "data\bloatware-results.json"
+    $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $detectionPath
+    
+    # 3. Load configuration and create diff
+    $configData = Get-BloatwareList()  # From CoreInfrastructure
+    $diffList = $detectionResults | Where-Object { 
+        $configData | Where-Object { $_.Name -like $detectedItem.Name }
+    }
+    $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\bloatware-diff.json"
+    $diffList | ConvertTo-Json | Set-Content $diffPath
+    
+    # 4. Setup execution logging
+    $logDir = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal"
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    $logPath = Join-Path $logDir "execution.log"
+    
+    # 5. Process items (with DryRun check)
+    $processedCount = 0
+    if (-not $DryRun) {
+        foreach ($item in $diffList) {
+            # Actual OS modification here
+            Remove-AppxBloatware -App $item
+            Write-LogEntry -Level 'INFO' -Message "SUCCESS: Removed $($item.Name)" -LogPath $logPath
+            $processedCount++
+        }
+    } else {
+        foreach ($item in $diffList) {
+            Write-LogEntry -Level 'INFO' -Message "DRY-RUN: Would remove $($item.Name)" -LogPath $logPath
+        }
+    }
+    
+    # 6. Complete performance tracking
+    Complete-PerformanceTracking -Context $perfContext
+    
+    # 7. Return standardized result object (MANDATORY)
+    return @{
+        Success = $true
+        ItemsDetected = $detectionResults.Count
+        ItemsProcessed = $processedCount
+        ItemsFailed = 0
+        Duration = $perfContext.ElapsedMilliseconds
+        DryRun = $DryRun.IsPresent
+        LogPath = $logPath
+    }
+}
+```
+
+**Imported By**: MaintenanceOrchestrator.ps1 (direct import for task execution)
+
+**Similar Pattern For**:
+- **EssentialApps.psm1** → Imports EssentialAppsAudit.psm1 → Exports `Invoke-EssentialApps()`
+- **SystemOptimization.psm1** → Imports SystemOptimizationAudit.psm1 → Exports `Invoke-SystemOptimization()`
+- **TelemetryDisable.psm1** → Imports TelemetryAudit.psm1 → Exports `Invoke-TelemetryDisable()`
+- **WindowsUpdates.psm1** → Imports WindowsUpdatesAudit.psm1 → Exports `Invoke-WindowsUpdates()`
+
+---
+
+### **📊 Complete Module Dependency Graph**
+
+```
+MaintenanceOrchestrator.ps1
+├─ Import: CoreInfrastructure.psm1 -Global
+│  └─ Exports: 29 functions (config, logging, file org)
+│     └─ Creates: $Global:ProjectPaths, $Global:MaintenanceSession
+│
+├─ Import: UserInterface.psm1
+│  ├─ Imports: CoreInfrastructure.psm1
+│  └─ Exports: 7 functions (menus, progress, results)
+│
+├─ Import: ReportGenerator.psm1
+│  ├─ Imports: CoreInfrastructure.psm1
+│  └─ Exports: 6+ functions (HTML report generation)
+│
+├─ Import: BloatwareRemoval.psm1
+│  ├─ Imports: CoreInfrastructure.psm1 -Global (29 functions available)
+│  ├─ Imports: BloatwareDetectionAudit.psm1
+│  │  └─ Uses CoreInfrastructure via global scope inheritance
+│  └─ Exports: Invoke-BloatwareRemoval()
+│
+├─ Import: EssentialApps.psm1
+│  ├─ Imports: CoreInfrastructure.psm1 -Global
+│  ├─ Imports: EssentialAppsAudit.psm1
+│  └─ Exports: Invoke-EssentialApps()
+│
+├─ Import: SystemOptimization.psm1
+│  ├─ Imports: CoreInfrastructure.psm1 -Global
+│  ├─ Imports: SystemOptimizationAudit.psm1
+│  └─ Exports: Invoke-SystemOptimization()
+│
+├─ Import: TelemetryDisable.psm1
+│  ├─ Imports: CoreInfrastructure.psm1 -Global
+│  ├─ Imports: TelemetryAudit.psm1
+│  └─ Exports: Invoke-TelemetryDisable()
+│
+└─ Import: WindowsUpdates.psm1
+   ├─ Imports: CoreInfrastructure.psm1 -Global
+   ├─ Imports: WindowsUpdatesAudit.psm1
+   └─ Exports: Invoke-WindowsUpdates()
+```
 
 ## Development Conventions
 
