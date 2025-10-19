@@ -123,7 +123,7 @@ function Invoke-EssentialApps {
         
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
         $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\essential-apps"
-        New-Item -Path $executionLogDir -ItemType Directory -Force
+        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Processing $($diffList.Count) missing apps from diff" -LogPath $executionLogPath

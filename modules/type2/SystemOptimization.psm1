@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for configuration access)
 #   - LoggingManager.psm1 (for structured logging)
@@ -90,7 +90,7 @@ function Invoke-SystemOptimization {
         
         # STEP 3: Setup execution logging directory
         $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\system-optimization"
-        New-Item -Path $executionLogDir -ItemType Directory -Force
+        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         $optimizationCount = $analysisResults.OptimizationCount
@@ -297,7 +297,7 @@ function Optimize-SystemPerformance {
         Failed          = 0
         SpaceFreed      = 0
         DryRun          = $DryRun.IsPresent
-        Details         = @()
+        Details         = [System.Collections.ArrayList]::new()
         Categories      = @{
             TempCleanup          = @{ Success = 0; Failed = 0; SpaceFreed = 0 }
             StartupOptimization  = @{ Success = 0; Failed = 0; ItemsOptimized = 0 }
@@ -455,7 +455,7 @@ function Clear-TemporaryFile {
         Success    = 0
         Failed     = 0
         SpaceFreed = 0
-        Details    = @()
+        Details    = [System.Collections.ArrayList]::new()
     }
 
     # Define cleanup targets
@@ -566,7 +566,7 @@ function Optimize-StartupProgram {
         Success        = 0
         Failed         = 0
         ItemsOptimized = 0
-        Details        = @()
+        Details        = [System.Collections.ArrayList]::new()
     }
 
     # Get startup programs from registry
@@ -679,7 +679,7 @@ function Optimize-UserInterface {
         Success         = 0
         Failed          = 0
         SettingsChanged = 0
-        Details         = @()
+        Details         = [System.Collections.ArrayList]::new()
     }
 
     # UI optimization settings
@@ -772,7 +772,7 @@ function Optimize-WindowsRegistry {
         Success          = 0
         Failed           = 0
         EntriesProcessed = 0
-        Details          = @()
+        Details          = [System.Collections.ArrayList]::new()
     }
 
     Write-Warning "Registry optimization requires careful implementation and is currently limited to safe operations"
@@ -852,7 +852,7 @@ function Optimize-DiskPerformance {
         Success        = 0
         Failed         = 0
         TasksCompleted = 0
-        Details        = @()
+        Details        = [System.Collections.ArrayList]::new()
     }
 
     # Disk optimization tasks
@@ -929,7 +929,7 @@ function Optimize-NetworkSetting {
         Success         = 0
         Failed          = 0
         SettingsApplied = 0
-        Details         = @()
+        Details         = [System.Collections.ArrayList]::new()
     }
 
     # Network optimization settings (registry-based)
@@ -1110,3 +1110,4 @@ Export-ModuleMember -Function @(
     'Optimize-SystemPerformance',
     'Get-SystemPerformanceMetric'
 )
+

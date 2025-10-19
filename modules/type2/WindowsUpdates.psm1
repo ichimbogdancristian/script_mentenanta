@@ -78,7 +78,7 @@ function Invoke-WindowsUpdates {
         
         # STEP 3: Setup execution logging directory
         $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\windows-updates"
-        New-Item -Path $executionLogDir -ItemType Directory -Force
+        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         $updatesCount = $analysisResults.PendingUpdatesCount
@@ -263,7 +263,14 @@ function Install-WindowsUpdate {
         elseif (Test-NativeWindowsUpdateAvailable) {
             Write-Information "  🪟 Using native Windows Update API..." -InformationAction Continue
             try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using native Windows Update API for update installation' } catch {}
-            $results = Install-UpdatesViaNativeAPI @PSBoundParameters
+            # Remove ExecutionLogPath from parameters as native API doesn't support it
+            $nativeApiParams = @{}
+            foreach ($key in $PSBoundParameters.Keys) {
+                if ($key -ne 'ExecutionLogPath') {
+                    $nativeApiParams[$key] = $PSBoundParameters[$key]
+                }
+            }
+            $results = Install-UpdatesViaNativeAPI @nativeApiParams
         }
         # Final fallback to basic checks
         else {

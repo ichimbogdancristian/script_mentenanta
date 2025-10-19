@@ -123,7 +123,7 @@ function Invoke-BloatwareRemoval {
         
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
         $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal"
-        New-Item -Path $executionLogDir -ItemType Directory -Force
+        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath

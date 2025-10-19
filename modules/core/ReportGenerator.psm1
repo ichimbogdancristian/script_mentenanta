@@ -625,8 +625,18 @@ function New-DashboardSection {
         [hashtable]$Templates
     )
     
-    $metricsData = $ProcessedData.MetricsSummary.DashboardMetrics
-    $executionSummary = $ProcessedData.MetricsSummary.ExecutionSummary
+    # Safely access nested properties with null checks
+    $metricsData = if ($ProcessedData.MetricsSummary) { 
+        $ProcessedData.MetricsSummary.DashboardMetrics 
+    } else { 
+        @{ SuccessRate = 0; TotalTasks = 0; SystemHealthScore = 0; SecurityScore = 0 }
+    }
+    
+    $executionSummary = if ($ProcessedData.MetricsSummary) { 
+        $ProcessedData.MetricsSummary.ExecutionSummary 
+    } else { 
+        @{ TotalDuration = 0; SuccessfulTasks = 0; FailedTasks = 0 }
+    }
     
     $html = [System.Text.StringBuilder]::new()
     
@@ -709,7 +719,13 @@ function New-ModuleSections {
     )
     
     $html = [System.Text.StringBuilder]::new()
-    $moduleResults = $ProcessedData.ModuleResults
+    
+    # Safely access nested properties with null checks
+    $moduleResults = if ($ProcessedData.ModuleResults) { 
+        $ProcessedData.ModuleResults 
+    } else { 
+        @{ Type2ExecutionAnalysis = @{} }
+    }
     
     $html.AppendLine(@"
 <div class="modules-section">
@@ -729,7 +745,12 @@ function New-ModuleSections {
     )
     
     foreach ($module in $moduleNames) {
-        $moduleData = $moduleResults.Type2ExecutionAnalysis[$module.Name]
+        # Safely access module-specific data with null checks
+        $moduleData = if ($moduleResults.Type2ExecutionAnalysis) {
+            $moduleResults.Type2ExecutionAnalysis[$module.Name]
+        } else {
+            $null
+        }
         
         if ($moduleData) {
             $taskCard = $Templates.TaskCard
@@ -762,8 +783,19 @@ function New-SummarySection {
     )
     
     $html = [System.Text.StringBuilder]::new()
-    $executionSummary = $ProcessedData.MetricsSummary.ExecutionSummary
-    $errorsData = $ProcessedData.ErrorsAnalysis
+    
+    # Safely access nested properties with null checks
+    $executionSummary = if ($ProcessedData.MetricsSummary) { 
+        $ProcessedData.MetricsSummary.ExecutionSummary 
+    } else { 
+        @{ TotalDuration = 0; SuccessfulTasks = 0; FailedTasks = 0 }
+    }
+    
+    $errorsData = if ($ProcessedData.ErrorsAnalysis) { 
+        $ProcessedData.ErrorsAnalysis 
+    } else { 
+        @{ ErrorSummary = @{ TotalErrors = 0 } }
+    }
     
     $html.AppendLine(@"
 <div class="summary-section">
@@ -826,12 +858,28 @@ function New-TextReportContent {
         $text.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
         $text.AppendLine("Computer: $env:COMPUTERNAME")
         $text.AppendLine("User: $env:USERNAME")
-        $text.AppendLine("Session ID: $($ProcessedData.MetricsSummary.ProcessingMetadata.SessionId)")
+        
+        # Safely access nested properties with null checks
+        $sessionId = if ($ProcessedData.MetricsSummary -and $ProcessedData.MetricsSummary.ProcessingMetadata) {
+            $ProcessedData.MetricsSummary.ProcessingMetadata.SessionId
+        } else {
+            'N/A'
+        }
+        $text.AppendLine("Session ID: $sessionId")
         $text.AppendLine("")
         
-        # Executive Summary
-        $executionSummary = $ProcessedData.MetricsSummary.ExecutionSummary
-        $dashboardMetrics = $ProcessedData.MetricsSummary.DashboardMetrics
+        # Executive Summary - safely access nested properties
+        $executionSummary = if ($ProcessedData.MetricsSummary) { 
+            $ProcessedData.MetricsSummary.ExecutionSummary 
+        } else { 
+            @{ TotalTasks = 0; SuccessfulTasks = 0; FailedTasks = 0; TotalDuration = 0 }
+        }
+        
+        $dashboardMetrics = if ($ProcessedData.MetricsSummary) { 
+            $ProcessedData.MetricsSummary.DashboardMetrics 
+        } else { 
+            @{ SuccessRate = 0; SystemHealthScore = 0; SecurityScore = 0 }
+        }
         
         $text.AppendLine("EXECUTIVE SUMMARY")
         $text.AppendLine("-" * 40)
@@ -946,7 +994,7 @@ function New-JsonExportContent {
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating JSON export content'
     
     try {
-        # Create export-friendly structure
+        # Create export-friendly structure with safe null handling
         $exportData = @{
             ExportMetadata     = @{
                 GeneratedAt  = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -955,12 +1003,12 @@ function New-JsonExportContent {
                 Computer     = $env:COMPUTERNAME
                 User         = $env:USERNAME
             }
-            ExecutionSummary   = $ProcessedData.MetricsSummary.ExecutionSummary
-            DashboardMetrics   = $ProcessedData.MetricsSummary.DashboardMetrics
-            ModuleResults      = $ProcessedData.ModuleResults
-            ErrorsAnalysis     = $ProcessedData.ErrorsAnalysis
-            HealthScores       = $ProcessedData.HealthScores
-            ProcessingMetadata = $ProcessedData.MetricsSummary.ProcessingMetadata
+            ExecutionSummary   = if ($ProcessedData.MetricsSummary) { $ProcessedData.MetricsSummary.ExecutionSummary } else { @{} }
+            DashboardMetrics   = if ($ProcessedData.MetricsSummary) { $ProcessedData.MetricsSummary.DashboardMetrics } else { @{} }
+            ModuleResults      = if ($ProcessedData.ModuleResults) { $ProcessedData.ModuleResults } else { @{} }
+            ErrorsAnalysis     = if ($ProcessedData.ErrorsAnalysis) { $ProcessedData.ErrorsAnalysis } else { @{} }
+            HealthScores       = if ($ProcessedData.HealthScores) { $ProcessedData.HealthScores } else { @{} }
+            ProcessingMetadata = if ($ProcessedData.MetricsSummary) { $ProcessedData.MetricsSummary.ProcessingMetadata } else { @{} }
         }
         
         $jsonContent = $exportData | ConvertTo-Json -Depth 10
@@ -990,9 +1038,24 @@ function New-SummaryReportContent {
     try {
         $summary = [System.Text.StringBuilder]::new()
         
-        $executionSummary = $ProcessedData.MetricsSummary.ExecutionSummary
-        $dashboardMetrics = $ProcessedData.MetricsSummary.DashboardMetrics
-        $errorsData = $ProcessedData.ErrorsAnalysis
+        # Safely access nested properties with null checks
+        $executionSummary = if ($ProcessedData.MetricsSummary) { 
+            $ProcessedData.MetricsSummary.ExecutionSummary 
+        } else { 
+            @{ TotalTasks = 0; SuccessfulTasks = 0; FailedTasks = 0; TotalDuration = 0 }
+        }
+        
+        $dashboardMetrics = if ($ProcessedData.MetricsSummary) { 
+            $ProcessedData.MetricsSummary.DashboardMetrics 
+        } else { 
+            @{ SuccessRate = 0; SystemHealthScore = 0; SecurityScore = 0 }
+        }
+        
+        $errorsData = if ($ProcessedData.ErrorsAnalysis) { 
+            $ProcessedData.ErrorsAnalysis 
+        } else { 
+            @{ ErrorSummary = @{ TotalErrors = 0 } }
+        }
         
         # Compact summary format
         $summary.AppendLine("🔧 WINDOWS MAINTENANCE SUMMARY")
@@ -1043,8 +1106,12 @@ function Get-TaskDistributionData {
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating task distribution chart data'
     
     try {
-        # Extract task data from processed results
-        $moduleResults = $ProcessedData.ModuleResults.Type2ExecutionAnalysis
+        # Extract task data from processed results with safe null handling
+        $moduleResults = if ($ProcessedData.ModuleResults) {
+            $ProcessedData.ModuleResults.Type2ExecutionAnalysis
+        } else {
+            $null
+        }
         
         if (-not $moduleResults -or $moduleResults.Keys.Count -eq 0) {
             return @{
@@ -1109,8 +1176,12 @@ function Get-SystemResourceData {
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating system resource chart data'
     
     try {
-        # Extract system health data from processed results
-        $systemHealth = $ProcessedData.HealthScores.SystemHealth
+        # Extract system health data from processed results with safe null handling
+        $systemHealth = if ($ProcessedData.HealthScores) {
+            $ProcessedData.HealthScores.SystemHealth
+        } else {
+            $null
+        }
         
         if (-not $systemHealth -or -not $systemHealth.HealthFactors) {
             return @{
@@ -1182,8 +1253,12 @@ function Get-ExecutionTimelineData {
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating execution timeline chart data'
     
     try {
-        # Extract execution metrics from processed results
-        $moduleResults = $ProcessedData.ModuleResults.Type2ExecutionAnalysis
+        # Extract execution metrics from processed results with safe null handling
+        $moduleResults = if ($ProcessedData.ModuleResults) {
+            $ProcessedData.ModuleResults.Type2ExecutionAnalysis
+        } else {
+            $null
+        }
         
         if (-not $moduleResults -or $moduleResults.Keys.Count -eq 0) {
             return @{
@@ -1240,8 +1315,12 @@ function Get-SecurityScoreData {
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating security score chart data'
     
     try {
-        # Extract security analytics from processed results
-        $securityAnalytics = $ProcessedData.HealthScores.Security
+        # Extract security analytics from processed results with safe null handling
+        $securityAnalytics = if ($ProcessedData.HealthScores) {
+            $ProcessedData.HealthScores.Security
+        } else {
+            $null
+        }
         
         # Define security categories and extract scores
         $categories = @('Privacy', 'Updates', 'System Security', 'Services', 'Network Protection', 'Configuration')

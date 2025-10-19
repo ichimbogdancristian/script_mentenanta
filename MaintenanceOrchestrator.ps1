@@ -1182,16 +1182,11 @@ try {
         if (Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue) {
             Write-Information "  📋 Step 1: Processing logs with LogProcessor..." -InformationAction Continue
             
-            $logProcessingResult = Invoke-LogProcessing -TaskResults $TaskResults -SystemInventory $systemInventory -Configuration $MainConfig
+            # LogProcessor reads directly from temp_files/data and temp_files/logs
+            # It does not accept TaskResults, SystemInventory, or Configuration parameters
+            Invoke-LogProcessing
             
-            if ($logProcessingResult -and $logProcessingResult.Success) {
-                Write-Information "  ✓ Log processing completed successfully" -InformationAction Continue
-                Write-Information "    • Processed $($logProcessingResult.ProcessedFiles) files" -InformationAction Continue
-                Write-Information "    • Generated $($logProcessingResult.OutputFiles.Count) processed data files" -InformationAction Continue
-            }
-            else {
-                throw "LogProcessor failed: $($logProcessingResult.Error ?? 'Unknown error')"
-            }
+            Write-Information "  ✓ Log processing completed successfully" -InformationAction Continue
         }
         else {
             throw "LogProcessor module (Invoke-LogProcessing) not available"
