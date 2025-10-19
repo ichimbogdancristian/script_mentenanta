@@ -606,7 +606,7 @@ function Get-UserSecurityAudit {
         $users = Get-LocalUser | Where-Object { $_.Enabled -eq $true }
         foreach ($user in $users) {
             # This is a simplified check - in practice, you'd need more sophisticated password policy checking
-            if ($user.PasswordExpires -eq $null -and $user.Name -ne 'DefaultAccount') {
+            if ($null -eq $user.PasswordExpires -and $user.Name -ne 'DefaultAccount') {
                 $issues += [PSCustomObject]@{
                     Category       = 'PasswordPolicy'
                     Severity       = 'Medium'
@@ -654,12 +654,12 @@ function Get-NetworkSecurityAudit {
 
         # Check firewall status
         $firewallProfiles = Get-NetFirewallProfile
-        foreach ($profile in $firewallProfiles) {
-            if (-not $profile.Enabled) {
+        foreach ($firewallProfile in $firewallProfiles) {
+            if (-not $firewallProfile.Enabled) {
                 $issues += [PSCustomObject]@{
                     Category       = 'Firewall'
                     Severity       = 'High'
-                    Issue          = "Windows Firewall is disabled for $($profile.Name) profile"
+                    Issue          = "Windows Firewall is disabled for $($firewallProfile.Name) profile"
                     Recommendation = 'Enable Windows Firewall for all network profiles'
                 }
             }

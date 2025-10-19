@@ -651,6 +651,7 @@ function Disable-TelemetryService {
     )
 
     foreach ($serviceName in $telemetryServices) {
+        $operationStart = Get-Date
         $serviceResult = @{
             Name    = $serviceName
             Success = $false
@@ -672,23 +673,63 @@ function Disable-TelemetryService {
                 Write-Information "    ✅ Service $serviceName already disabled" -InformationAction Continue
             }
             else {
+                # Enhanced logging: Pre-action state
+                Write-OperationStart -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Details @{
+                    PreviousState     = $service.Status
+                    PreviousStartType = $service.StartType
+                    Type              = 'TelemetryService'
+                }
+                
                 if ($DryRun) {
                     $serviceResult.Action = 'Would Disable'
                     $serviceResult.Success = $true
                     Write-Information "    [DRY RUN] Would disable service: $serviceName" -InformationAction Continue
+                    Write-OperationSkipped -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Reason 'DryRun mode enabled'
                 }
                 else {
                     if ($PSCmdlet.ShouldProcess($serviceName, 'Stop and disable telemetry service')) {
                         # Stop the service if running
                         if ($service.Status -eq 'Running') {
+                            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Executing: Stop-Service -Name $serviceName"
                             Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
                         }
 
                         # Disable the service
+                        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Executing: Set-Service -Name $serviceName -StartupType Disabled"
                         Set-Service -Name $serviceName -StartupType Disabled
-                        $serviceResult.Action = 'Disabled'
-                        $serviceResult.Success = $true
-                        Write-Information "    🛑 Disabled service: $serviceName" -InformationAction Continue
+                        
+                        # Verification
+                        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Message 'Verifying service disabled state'
+                        
+                        $verifyService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+                        $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+                        
+                        if ($verifyService.StartupType -eq 'Disabled') {
+                            # Log successful verification
+                            Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Metrics @{
+                                ExpectedStartType  = 'Disabled'
+                                ActualStartType    = $verifyService.StartupType
+                                ActualStatus       = $verifyService.Status
+                                VerificationPassed = $true
+                            }
+                            
+                            # Log successful disable
+                            Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Metrics @{
+                                Duration          = $operationDuration
+                                PreviousState     = $service.Status
+                                PreviousStartType = $service.StartType
+                                NewStartType      = 'Disabled'
+                                Verified          = $true
+                            }
+                            $serviceResult.Action = 'Disabled'
+                            $serviceResult.Success = $true
+                            Write-Information "    🛑 Disabled service: $serviceName (${operationDuration}s)" -InformationAction Continue
+                        }
+                        else {
+                            # Log failed verification
+                            Write-OperationFailure -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Error (New-Object Exception("Service not disabled - StartType: $($verifyService.StartupType)"))
+                            throw "Verification failed: Service not disabled"
+                        }
                     }
                 }
 
@@ -698,6 +739,7 @@ function Disable-TelemetryService {
         catch {
             $serviceResult.Error = $_.Exception.Message
             $results.Failed++
+            Write-OperationFailure -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Error $_
             Write-Warning "Failed to disable service ${serviceName}: $_"
         }
 

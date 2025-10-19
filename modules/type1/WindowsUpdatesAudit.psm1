@@ -304,10 +304,22 @@ function Get-PendingUpdatesAudit {
                             RebootRequired = $update.RebootRequired
                         }
                         $pendingUpdates += $updateInfo
+                        
+                        # Log detected pending update
+                        Write-DetectionLog -Operation 'Detect' -Target $update.Title -Component 'WINDOWS-UPDATES' -AdditionalInfo @{
+                            KB             = $update.KBArticleIDs -join ', '
+                            Size           = "$([math]::Round($update.Size / 1MB, 2)) MB"
+                            Category       = $update.Categories -join ', '
+                            Severity       = $update.MsrcSeverity
+                            IsDownloaded   = $update.IsDownloaded
+                            RebootRequired = $update.RebootRequired
+                            Status         = 'Pending Installation'
+                            Source         = 'PSWindowsUpdate'
+                        }
 
                         # Create issues for critical updates
                         if ($update.MsrcSeverity -eq 'Critical' -or $update.Categories -match 'Security') {
-                            $issues += [PSCustomObject]@{
+                            $issueItem = [PSCustomObject]@{
                                 Category       = 'Security'
                                 Type           = 'CriticalUpdatePending'
                                 Description    = "Critical security update pending: $($update.Title)"
@@ -316,6 +328,19 @@ function Get-PendingUpdatesAudit {
                                 KBArticleIDs   = $update.KBArticleIDs -join ', '
                                 Recommendation = 'Install immediately for security'
                             }
+                            
+                            # Log critical update alert
+                            Write-DetectionLog -Operation 'Detect' -Target $update.Title -Component 'WINDOWS-UPDATES-CRITICAL' -AdditionalInfo @{
+                                KB             = $update.KBArticleIDs -join ', '
+                                Severity       = $update.MsrcSeverity
+                                Category       = $update.Categories -join ', '
+                                Priority       = 'CRITICAL'
+                                SecurityRisk   = 'High - Unpatched security vulnerability'
+                                Recommendation = 'Install immediately for security'
+                                Reason         = "Critical security update not installed"
+                            }
+                            
+                            $issues += $issueItem
                         }
                     }
                 }
@@ -343,9 +368,21 @@ function Get-PendingUpdatesAudit {
                         RebootRequired = $update.RebootRequired
                     }
                     $pendingUpdates += $updateInfo
+                    
+                    # Log detected pending update
+                    Write-DetectionLog -Operation 'Detect' -Target $update.Title -Component 'WINDOWS-UPDATES' -AdditionalInfo @{
+                        KB             = $update.KBArticleIDs -join ', '
+                        Size           = "$([math]::Round($update.MaxDownloadSize / 1MB, 2)) MB"
+                        Category       = ($update.Categories | ForEach-Object { $_.Name }) -join ', '
+                        Severity       = $update.MsrcSeverity
+                        IsDownloaded   = $update.IsDownloaded
+                        RebootRequired = $update.RebootRequired
+                        Status         = 'Pending Installation'
+                        Source         = 'Windows Update COM API'
+                    }
 
                     if ($update.MsrcSeverity -eq 'Critical' -or $update.Categories.Name -match 'Security') {
-                        $issues += [PSCustomObject]@{
+                        $issueItem = [PSCustomObject]@{
                             Category       = 'Security'
                             Type           = 'CriticalUpdatePending'
                             Description    = "Critical security update pending: $($update.Title)"
@@ -354,6 +391,19 @@ function Get-PendingUpdatesAudit {
                             KBArticleIDs   = $update.KBArticleIDs -join ', '
                             Recommendation = 'Install immediately for security'
                         }
+                        
+                        # Log critical update alert
+                        Write-DetectionLog -Operation 'Detect' -Target $update.Title -Component 'WINDOWS-UPDATES-CRITICAL' -AdditionalInfo @{
+                            KB             = $update.KBArticleIDs -join ', '
+                            Severity       = $update.MsrcSeverity
+                            Category       = ($update.Categories | ForEach-Object { $_.Name }) -join ', '
+                            Priority       = 'CRITICAL'
+                            SecurityRisk   = 'High - Unpatched security vulnerability'
+                            Recommendation = 'Install immediately for security'
+                            Reason         = "Critical security update not installed"
+                        }
+                        
+                        $issues += $issueItem
                     }
                 }
             }

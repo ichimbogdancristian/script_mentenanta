@@ -409,7 +409,7 @@ function Get-AppXBloatware {
                 }
 
                 if ($matched) {
-                    $found += [PSCustomObject]@{
+                    $detectedItem = [PSCustomObject]@{
                         Name           = $app.Name
                         DisplayName    = $app.DisplayName
                         Version        = $app.Version
@@ -428,6 +428,27 @@ function Get-AppXBloatware {
                             default { 50 }
                         }
                     }
+                    
+                    # Log detailed detection information
+                    Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-APPX' -AdditionalInfo @{
+                        PackageName    = $app.Name
+                        Version        = $app.Version
+                        Publisher      = $app.Publisher
+                        InstallDate    = $app.InstallDate
+                        MatchedPattern = $pattern
+                        MatchType      = $matchType
+                        Confidence     = $detectedItem.Confidence
+                        RemovalMethod  = 'Remove-AppxPackage'
+                        MatchReason    = switch ($matchType) {
+                            "Exact" { "Exact match with pattern '$pattern'" }
+                            "Publisher+Name" { "Publisher and name match pattern '$pattern'" }
+                            "Wildcard" { "Wildcard match with pattern '$pattern'" }
+                            "Publisher" { "Publisher contains pattern '$pattern'" }
+                            default { "Unknown match type" }
+                        }
+                    }
+                    
+                    $found += $detectedItem
                     break  # Only match first pattern to avoid duplicates
                 }
             }
@@ -505,7 +526,7 @@ function Get-WingetBloatware {
                 }
 
                 if ($matched) {
-                    $found += [PSCustomObject]@{
+                    $detectedItem = [PSCustomObject]@{
                         Name           = $app.Name
                         DisplayName    = $app.DisplayName
                         Version        = $app.Version
@@ -524,6 +545,27 @@ function Get-WingetBloatware {
                             default { 50 }
                         }
                     }
+                    
+                    # Log detailed detection information
+                    Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-WINGET' -AdditionalInfo @{
+                        PackageName    = $app.Name
+                        Version        = $app.Version
+                        Publisher      = $app.Publisher
+                        InstallDate    = $app.InstallDate
+                        MatchedPattern = $pattern
+                        MatchType      = $matchType
+                        Confidence     = $detectedItem.Confidence
+                        RemovalMethod  = 'winget uninstall'
+                        MatchReason    = switch ($matchType) {
+                            "Exact" { "Exact match with pattern '$pattern'" }
+                            "Publisher+Name" { "Publisher and name match pattern '$pattern'" }
+                            "Wildcard" { "Wildcard match with pattern '$pattern'" }
+                            "Publisher" { "Publisher contains pattern '$pattern'" }
+                            default { "Unknown match type" }
+                        }
+                    }
+                    
+                    $found += $detectedItem
                     break  # Only match first pattern to avoid duplicates
                 }
             }
@@ -573,7 +615,7 @@ function Get-ChocolateyBloatware {
             
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
-                    $found += [PSCustomObject]@{
+                    $detectedItem = [PSCustomObject]@{
                         Name           = $app.Name
                         DisplayName    = $app.DisplayName
                         Version        = $app.Version
@@ -584,6 +626,20 @@ function Get-ChocolateyBloatware {
                         Context        = $Context
                         RemovalMethod  = 'choco uninstall'
                     }
+                    
+                    # Log detailed detection information
+                    Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-CHOCO' -AdditionalInfo @{
+                        PackageName    = $app.Name
+                        Version        = $app.Version
+                        Publisher      = $app.Publisher
+                        InstallDate    = $app.InstallDate
+                        MatchedPattern = $pattern
+                        MatchType      = 'Wildcard'
+                        RemovalMethod  = 'choco uninstall'
+                        MatchReason    = "Name or DisplayName matches pattern '$pattern'"
+                    }
+                    
+                    $found += $detectedItem
                     break  # Only match first pattern to avoid duplicates
                 }
             }
@@ -633,7 +689,7 @@ function Get-RegistryBloatware {
             
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
-                    $found += [PSCustomObject]@{
+                    $detectedItem = [PSCustomObject]@{
                         Name            = $app.Name
                         DisplayName     = $app.DisplayName
                         Version         = $app.Version
@@ -645,6 +701,21 @@ function Get-RegistryBloatware {
                         RemovalMethod   = 'Registry-based uninstall'
                         UninstallString = $app.UninstallString
                     }
+                    
+                    # Log detailed detection information
+                    Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-REGISTRY' -AdditionalInfo @{
+                        PackageName     = $app.Name
+                        Version         = $app.Version
+                        Publisher       = $app.Publisher
+                        InstallDate     = $app.InstallDate
+                        MatchedPattern  = $pattern
+                        MatchType       = 'Wildcard'
+                        RemovalMethod   = 'Registry-based uninstall'
+                        UninstallString = $app.UninstallString
+                        MatchReason     = "Name or DisplayName matches pattern '$pattern'"
+                    }
+                    
+                    $found += $detectedItem
                     break  # Only match first pattern to avoid duplicates
                 }
             }

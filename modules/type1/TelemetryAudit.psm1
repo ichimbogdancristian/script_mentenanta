@@ -236,7 +236,7 @@ function Get-TelemetryServicesAudit {
 
                 if ($service.Status -eq 'Running' -or $service.StartType -eq 'Automatic') {
                     $activeServices += $serviceInfo
-                    $issues += [PSCustomObject]@{
+                    $issueItem = [PSCustomObject]@{
                         Category         = 'Services'
                         Type             = 'ActiveTelemetryService'
                         Description      = "Active telemetry service: $($service.DisplayName)"
@@ -246,6 +246,21 @@ function Get-TelemetryServicesAudit {
                         CurrentStartType = $service.StartType
                         Recommendation   = 'Disable service to improve privacy'
                     }
+                    
+                    # Log detected active telemetry service
+                    Write-DetectionLog -Operation 'Detect' -Target $serviceName -Component 'TELEMETRY-SERVICE' -AdditionalInfo @{
+                        Category       = 'Telemetry Service'
+                        DisplayName    = $service.DisplayName
+                        Description    = $telemetryServices[$serviceName]
+                        Status         = $service.Status
+                        StartType      = $service.StartType
+                        Impact         = 'High'
+                        PrivacyRisk    = 'Service actively collecting or transmitting telemetry data'
+                        Recommendation = 'Stop and disable service'
+                        Reason         = "Telemetry service running or set to automatic start"
+                    }
+                    
+                    $issues += $issueItem
                 }
             }
         }

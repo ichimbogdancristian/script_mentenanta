@@ -608,6 +608,7 @@ function Optimize-StartupProgram {
                         }
 
                         if ($shouldOptimize) {
+                            $operationStart = Get-Date
                             $optimizationResult = @{
                                 Name     = $itemName
                                 Value    = $itemValue
@@ -617,8 +618,16 @@ function Optimize-StartupProgram {
                             }
 
                             try {
+                                # Enhanced logging: Pre-action state
+                                Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Details @{
+                                    Location = $location
+                                    Value    = $itemValue
+                                    Type     = 'StartupProgram'
+                                }
+                                
                                 if ($DryRun) {
                                     Write-Information "    [DRY RUN] Would disable startup item: $itemName" -InformationAction Continue
+                                    Write-OperationSkipped -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Reason 'DryRun mode enabled'
                                     $optimizationResult.Success = $true
                                 }
                                 else {
@@ -627,12 +636,30 @@ function Optimize-StartupProgram {
                                     if (-not (Test-Path $backupPath)) {
                                         New-Item -Path $backupPath -Force | Out-Null
                                     }
+                                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Backing up startup item to: $backupPath"
                                     Set-ItemProperty -Path $backupPath -Name $itemName -Value $itemValue -Force
 
                                     # Remove from startup
+                                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Executing: Remove-ItemProperty -Path $location -Name $itemName"
                                     Remove-ItemProperty -Path $location -Name $itemName -Force
-                                    $optimizationResult.Success = $true
-                                    Write-Information "    🚀 Disabled startup item: $itemName" -InformationAction Continue
+                                    
+                                    # Verification
+                                    $stillExists = Get-ItemProperty -Path $location -Name $itemName -ErrorAction SilentlyContinue
+                                    $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+                                    
+                                    if (-not $stillExists) {
+                                        Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Metrics @{
+                                            Duration = $operationDuration
+                                            Location = $location
+                                            BackedUp = $true
+                                            Verified = $true
+                                        }
+                                        $optimizationResult.Success = $true
+                                        Write-Information "    🚀 Disabled startup item: $itemName (${operationDuration}s)" -InformationAction Continue
+                                    }
+                                    else {
+                                        throw "Verification failed: Item still exists after removal"
+                                    }
                                 }
 
                                 $results.Success++
@@ -641,6 +668,7 @@ function Optimize-StartupProgram {
                             catch {
                                 $optimizationResult.Error = $_.Exception.Message
                                 $results.Failed++
+                                Write-OperationFailure -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Error $_
                                 Write-Warning "Failed to disable startup item $itemName`: $_"
                             }
 
@@ -712,6 +740,7 @@ function Optimize-UserInterface {
 
     foreach ($registryPath in $uiOptimizations.Keys) {
         foreach ($setting in $uiOptimizations[$registryPath].GetEnumerator()) {
+            $operationStart = Get-Date
             $settingResult = @{
                 Path    = $registryPath
                 Setting = $setting.Key
@@ -721,20 +750,63 @@ function Optimize-UserInterface {
             }
 
             try {
+                # Enhanced logging: Pre-action state
+                $oldValue = $null
+                if (Test-Path $registryPath) {
+                    $oldValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
+                }
+                
+                Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -Details @{
+                    OldValue = $oldValue
+                    NewValue = $setting.Value
+                    Type     = 'UIOptimization'
+                }
+                
                 if ($DryRun) {
                     Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -InformationAction Continue
+                    Write-OperationSkipped -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -Reason 'DryRun mode enabled'
                     $settingResult.Success = $true
                 }
                 else {
                     # Ensure registry path exists
                     if (-not (Test-Path $registryPath)) {
+                        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Creating registry path: $registryPath"
                         New-Item -Path $registryPath -Force | Out-Null
                     }
 
                     # Set the value
+                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Executing: Set-ItemProperty -Path $registryPath -Name $($setting.Key) -Value $($setting.Value)"
                     Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
-                    $settingResult.Success = $true
-                    Write-Information "    🎨 Applied UI optimization: $($setting.Key)" -InformationAction Continue
+                    
+                    # Verification
+                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Message 'Verifying registry value change'
+                    
+                    $newValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
+                    $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+                    
+                    if ($newValue -eq $setting.Value) {
+                        # Log successful verification
+                        Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Metrics @{
+                            ExpectedValue      = $setting.Value
+                            ActualValue        = $newValue
+                            VerificationPassed = $true
+                        }
+                        
+                        # Log successful modification
+                        Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -Metrics @{
+                            Duration = $operationDuration
+                            OldValue = $oldValue
+                            NewValue = $newValue
+                            Verified = $true
+                        }
+                        $settingResult.Success = $true
+                        Write-Information "    🎨 Applied UI optimization: $($setting.Key) (${operationDuration}s)" -InformationAction Continue
+                    }
+                    else {
+                        # Log failed verification
+                        Write-OperationFailure -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Error (New-Object Exception("Expected value: $($setting.Value), Actual value: $newValue"))
+                        throw "Verification failed: Value not set correctly"
+                    }
                 }
 
                 $results.Success++
@@ -743,6 +815,7 @@ function Optimize-UserInterface {
             catch {
                 $settingResult.Error = $_.Exception.Message
                 $results.Failed++
+                Write-OperationFailure -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -Error $_
                 Write-Warning "Failed to apply UI setting $($setting.Key): $_"
             }
 

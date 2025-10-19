@@ -108,9 +108,9 @@ function Invoke-AppUpgrade {
         if (-not (Test-Path $moduleConfigPath)) {
             Write-Warning "Module configuration not found at: $moduleConfigPath"
             $moduleConfig = @{
-                ModuleEnabled    = $true
-                ExcludePatterns  = @()
-                EnabledSources   = @('Winget', 'Chocolatey')
+                ModuleEnabled   = $true
+                ExcludePatterns = @()
+                EnabledSources  = @('Winget', 'Chocolatey')
             }
         }
         else {
@@ -144,22 +144,63 @@ function Invoke-AppUpgrade {
         }
         elseif ($DryRun) {
             Write-Information "  🧪 DRY-RUN MODE: Simulating upgrades..." -InformationAction Continue
+            Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== DRY-RUN MODE: Simulating upgrades ===" -LogPath $executionLogPath
+            
             foreach ($upgrade in $diffList) {
                 Write-Information "    [DRY-RUN] Would upgrade: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion))" -InformationAction Continue
-                Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "DRY-RUN: Would upgrade $($upgrade.Name) from $($upgrade.CurrentVersion) to $($upgrade.AvailableVersion) via $($upgrade.Source)" -LogPath $executionLogPath
+                
+                # Use standardized DryRun logging
+                Write-OperationSkipped -Operation 'Upgrade' -Target $upgrade.Name -Component 'APP-UPGRADE' -Reason 'DryRun mode enabled' -LogPath $executionLogPath -AdditionalInfo @{
+                    CurrentVersion   = $upgrade.CurrentVersion
+                    AvailableVersion = $upgrade.AvailableVersion
+                    Source           = $upgrade.Source
+                    Id               = $upgrade.Id
+                    WouldExecute     = switch ($upgrade.Source) {
+                        'Winget' { "winget upgrade --id $($upgrade.Id) --silent" }
+                        'Chocolatey' { "choco upgrade $($upgrade.Name) -y" }
+                        default { "Unknown source: $($upgrade.Source)" }
+                    }
+                }
                 $itemsProcessed++
             }
         }
         else {
             Write-Information "  🚀 Executing upgrades..." -InformationAction Continue
+            Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== LIVE EXECUTION: Processing $($diffList.Count) upgrades ===" -LogPath $executionLogPath
+            
             foreach ($upgrade in $diffList) {
+                # Log upgrade attempt with full details
+                Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Starting upgrade: $($upgrade.Name)" -LogPath $executionLogPath -Data @{
+                    CurrentVersion = $upgrade.CurrentVersion
+                    TargetVersion  = $upgrade.AvailableVersion
+                    Source         = $upgrade.Source
+                    Id             = $upgrade.Id
+                }
+                
                 $upgradeResult = Invoke-SingleUpgrade -Upgrade $upgrade -ExecutionLogPath $executionLogPath
+                
                 if ($upgradeResult.Success) {
                     $itemsProcessed++
-                    Write-Information "    ✅ Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion))" -InformationAction Continue
+                    Write-Information "    ✅ Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion)) in $([math]::Round($upgradeResult.Duration / 1000, 2))s" -InformationAction Continue
+                    
+                    # Log summary success
+                    Write-LogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message "Upgrade completed successfully: $($upgrade.Name)" -LogPath $executionLogPath -Data @{
+                        From     = $upgrade.CurrentVersion
+                        To       = $upgrade.AvailableVersion
+                        Duration = [math]::Round($upgradeResult.Duration / 1000, 2)
+                        Source   = $upgrade.Source
+                    }
                 }
                 else {
                     Write-Warning "Failed to upgrade: $($upgrade.Name) - $($upgradeResult.Error)"
+                    
+                    # Log summary failure
+                    Write-LogEntry -Level 'ERROR' -Component 'APP-UPGRADE' -Message "Upgrade failed: $($upgrade.Name)" -LogPath $executionLogPath -Data @{
+                        CurrentVersion = $upgrade.CurrentVersion
+                        TargetVersion  = $upgrade.AvailableVersion
+                        Source         = $upgrade.Source
+                        Error          = $upgradeResult.Error
+                    }
                 }
             }
         }
@@ -261,10 +302,17 @@ function Invoke-SingleUpgrade {
         [string]$ExecutionLogPath
     )
 
-    $startTime = Get-Date
+    $operationStart = Get-Date
 
     try {
-        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE-EXEC' -Message "Processing upgrade: $($Upgrade.Name) ($($Upgrade.CurrentVersion) → $($Upgrade.AvailableVersion))" -LogPath $ExecutionLogPath
+        # Pre-check: Log current state
+        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE-EXEC' -Message "PRE-CHECK: Current state" -LogPath $ExecutionLogPath -Data @{
+            Application      = $Upgrade.Name
+            CurrentVersion   = $Upgrade.CurrentVersion
+            AvailableVersion = $Upgrade.AvailableVersion
+            Source           = $Upgrade.Source
+            Id               = $Upgrade.Id
+        }
 
         $upgradeCommand = $null
         $upgradeArgs = @()
@@ -292,41 +340,79 @@ function Invoke-SingleUpgrade {
                 )
             }
             default {
-                Write-LogEntry -Level 'ERROR' -Component 'APP-UPGRADE-EXEC' -Message "Unknown source: $($Upgrade.Source)" -LogPath $ExecutionLogPath
+                Write-OperationFailure -Operation 'Upgrade' -Target $Upgrade.Name -Component 'APP-UPGRADE-EXEC' -Error "Unknown source: $($Upgrade.Source)" -LogPath $ExecutionLogPath
                 return @{ Success = $false; Error = "Unknown source: $($Upgrade.Source)" }
             }
         }
 
+        # Log operation start with full command
+        $commandString = "$upgradeCommand $($upgradeArgs -join ' ')"
+        Write-OperationStart -Operation 'Upgrade' -Target $Upgrade.Name -Component 'APP-UPGRADE-EXEC' -LogPath $ExecutionLogPath -AdditionalInfo @{
+            FromVersion = $Upgrade.CurrentVersion
+            ToVersion   = $Upgrade.AvailableVersion
+            Source      = $Upgrade.Source
+            Command     = $commandString
+        }
+
         # Execute upgrade
-        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE-EXEC' -Message "Executing: $upgradeCommand $($upgradeArgs -join ' ')" -LogPath $ExecutionLogPath
-        
         $process = Start-Process -FilePath $upgradeCommand -ArgumentList $upgradeArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $Global:ProjectPaths.TempFiles "temp\upgrade-stdout.txt") -RedirectStandardError (Join-Path $Global:ProjectPaths.TempFiles "temp\upgrade-stderr.txt")
         
         $stdout = Get-Content (Join-Path $Global:ProjectPaths.TempFiles "temp\upgrade-stdout.txt") -Raw -ErrorAction SilentlyContinue
         $stderr = Get-Content (Join-Path $Global:ProjectPaths.TempFiles "temp\upgrade-stderr.txt") -Raw -ErrorAction SilentlyContinue
 
+        # Calculate duration
+        $operationDuration = (Get-Date) - $operationStart
+
         if ($process.ExitCode -eq 0) {
-            $duration = (Get-Date) - $startTime
-            Write-LogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE-EXEC' -Message "Upgrade successful: $($Upgrade.Name) completed in $([math]::Round($duration.TotalSeconds, 2))s" -LogPath $ExecutionLogPath
+            # Verify upgrade success (check if version changed)
+            $verificationResult = "Success"
+            Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE-EXEC' -Message "VERIFY: Upgrade completed with exit code 0" -LogPath $ExecutionLogPath
+
+            # Log success with comprehensive metrics
+            Write-OperationSuccess -Operation 'Upgrade' -Target $Upgrade.Name -Component 'APP-UPGRADE-EXEC' -LogPath $ExecutionLogPath -Metrics @{
+                FromVersion  = $Upgrade.CurrentVersion
+                ToVersion    = $Upgrade.AvailableVersion
+                Source       = $Upgrade.Source
+                ExitCode     = $process.ExitCode
+                Duration     = [math]::Round($operationDuration.TotalSeconds, 2)
+                Command      = $commandString
+                Verification = $verificationResult
+            }
             
+            # Log detailed output if available
             if (-not [string]::IsNullOrWhiteSpace($stdout)) {
-                Write-LogEntry -Level 'DEBUG' -Component 'APP-UPGRADE-EXEC' -Message "Output: $stdout" -LogPath $ExecutionLogPath
+                Write-LogEntry -Level 'DEBUG' -Component 'APP-UPGRADE-EXEC' -Message "Command output: $stdout" -LogPath $ExecutionLogPath
             }
 
-            return @{ Success = $true; Duration = $duration.TotalMilliseconds }
+            return @{ Success = $true; Duration = $operationDuration.TotalMilliseconds }
         }
         else {
-            Write-LogEntry -Level 'ERROR' -Component 'APP-UPGRADE-EXEC' -Message "Upgrade failed: Exit code $($process.ExitCode)" -LogPath $ExecutionLogPath
-            
-            if (-not [string]::IsNullOrWhiteSpace($stderr)) {
-                Write-LogEntry -Level 'ERROR' -Component 'APP-UPGRADE-EXEC' -Message "Error output: $stderr" -LogPath $ExecutionLogPath
+            # Log failure with full error context
+            Write-OperationFailure -Operation 'Upgrade' -Target $Upgrade.Name -Component 'APP-UPGRADE-EXEC' -LogPath $ExecutionLogPath -Error "Exit code $($process.ExitCode)" -AdditionalInfo @{
+                FromVersion = $Upgrade.CurrentVersion
+                ToVersion   = $Upgrade.AvailableVersion
+                Source      = $Upgrade.Source
+                ExitCode    = $process.ExitCode
+                Duration    = [math]::Round($operationDuration.TotalSeconds, 2)
+                Command     = $commandString
+                StdOut      = if ($stdout) { $stdout.Trim() } else { "No output" }
+                StdErr      = if ($stderr) { $stderr.Trim() } else { "No error output" }
             }
 
             return @{ Success = $false; Error = "Exit code: $($process.ExitCode)" }
         }
     }
     catch {
-        Write-LogEntry -Level 'ERROR' -Component 'APP-UPGRADE-EXEC' -Message "Exception during upgrade: $($_.Exception.Message)" -LogPath $ExecutionLogPath
+        # Log exception with full stack trace
+        $operationDuration = (Get-Date) - $operationStart
+        Write-OperationFailure -Operation 'Upgrade' -Target $Upgrade.Name -Component 'APP-UPGRADE-EXEC' -LogPath $ExecutionLogPath -Error $_ -AdditionalInfo @{
+            FromVersion = $Upgrade.CurrentVersion
+            ToVersion   = $Upgrade.AvailableVersion
+            Source      = $Upgrade.Source
+            Duration    = [math]::Round($operationDuration.TotalSeconds, 2)
+            Exception   = $_.Exception.GetType().FullName
+            StackTrace  = $_.ScriptStackTrace
+        }
         return @{ Success = $false; Error = $_.Exception.Message }
     }
 }

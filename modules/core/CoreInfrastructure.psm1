@@ -464,13 +464,115 @@ function Initialize-LoggingSystem {
 
 <#
 .SYNOPSIS
-    Writes a structured log entry
+    Gets the current verbosity settings from logging configuration
+#>
+function Get-VerbositySettings {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+    
+    try {
+        # Get logging configuration
+        $loggingConfig = Get-LoggingConfiguration
+        
+        # Get current verbosity level
+        $verbosityLevel = 'Detailed'  # Default
+        if ($loggingConfig.logging -and $loggingConfig.logging.operationVerbosity) {
+            $verbosityLevel = $loggingConfig.logging.operationVerbosity
+        }
+        elseif ($loggingConfig.verbosity -and $loggingConfig.verbosity.currentLevel) {
+            $verbosityLevel = $loggingConfig.verbosity.currentLevel
+        }
+        
+        # Get settings for current level
+        if ($loggingConfig.verbosity -and $loggingConfig.verbosity.levels -and $loggingConfig.verbosity.levels.$verbosityLevel) {
+            return $loggingConfig.verbosity.levels.$verbosityLevel
+        }
+        
+        # Return default Detailed settings if not found
+        return @{
+            logOperationStart   = $true
+            logOperationSuccess = $true
+            logOperationFailure = $true
+            logOperationSkipped = $true
+            logDetectionResults = $true
+            logPreChecks        = $true
+            logVerification     = $true
+            logMetrics          = $true
+            logAdditionalInfo   = $true
+            logCommands         = $true
+        }
+    }
+    catch {
+        Write-Verbose "Failed to get verbosity settings, using defaults: $_"
+        # Return default Detailed settings on error
+        return @{
+            logOperationStart   = $true
+            logOperationSuccess = $true
+            logOperationFailure = $true
+            logOperationSkipped = $true
+            logDetectionResults = $true
+            logPreChecks        = $true
+            logVerification     = $true
+            logMetrics          = $true
+            logAdditionalInfo   = $true
+            logCommands         = $true
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Tests if a specific operation should be logged based on verbosity settings
+#>
+function Test-ShouldLogOperation {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('OperationStart', 'OperationSuccess', 'OperationFailure', 'OperationSkipped', 
+            'DetectionResults', 'PreCheck', 'Verification', 'Metrics', 'AdditionalInfo', 'Commands')]
+        [string]$OperationType
+    )
+    
+    try {
+        $verbositySettings = Get-VerbositySettings
+        
+        $settingKey = switch ($OperationType) {
+            'OperationStart' { 'logOperationStart' }
+            'OperationSuccess' { 'logOperationSuccess' }
+            'OperationFailure' { 'logOperationFailure' }
+            'OperationSkipped' { 'logOperationSkipped' }
+            'DetectionResults' { 'logDetectionResults' }
+            'PreCheck' { 'logPreChecks' }
+            'Verification' { 'logVerification' }
+            'Metrics' { 'logMetrics' }
+            'AdditionalInfo' { 'logAdditionalInfo' }
+            'Commands' { 'logCommands' }
+            default { return $true }  # Log by default
+        }
+        
+        if ($verbositySettings.ContainsKey($settingKey)) {
+            return $verbositySettings[$settingKey]
+        }
+        
+        return $true  # Log by default if setting not found
+    }
+    catch {
+        Write-Verbose "Error checking verbosity setting for $OperationType : $_"
+        return $true  # Log by default on error
+    }
+}
+
+<#
+.SYNOPSIS
+    Writes a structured log entry with optional operation context
 #>
 function Write-LogEntry {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL', 'SUCCESS')]
+        [ValidateSet('DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL', 'SUCCESS', 'TRACE')]
         [string]$Level,
 
         [Parameter(Mandatory)]
@@ -483,7 +585,22 @@ function Write-LogEntry {
         [hashtable]$Data = @{},
         
         [Parameter()]
-        [string]$LogPath  # Optional specific log file path for Type2 modules
+        [string]$LogPath,  # Optional specific log file path for Type2 modules
+        
+        # NEW: Operation context parameters for detailed logging
+        [Parameter()]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
+        [string]$Operation,
+        
+        [Parameter()]
+        [string]$Target,  # What is being operated on (app name, registry key, service, etc.)
+        
+        [Parameter()]
+        [ValidateSet('Success', 'Failed', 'Skipped', 'Pending', 'InProgress')]
+        [string]$Result,
+        
+        [Parameter()]
+        [hashtable]$Metrics  # Performance metrics (Duration, Size, Count, etc.)
     )
 
     try {
@@ -498,12 +615,26 @@ function Write-LogEntry {
             SessionId = $sessionId
             Data      = $Data
         }
+        
+        # Add operation context if provided
+        if ($Operation) { $logEntry.Operation = $Operation }
+        if ($Target) { $logEntry.Target = $Target }
+        if ($Result) { $logEntry.Result = $Result }
+        if ($Metrics) { $logEntry.Metrics = $Metrics }
 
         # Add to buffer
         $script:LoggingContext.LogBuffer.Add($logEntry)
 
-        # Format for console and file
-        $formattedMessage = "[$timestamp] [$Level] [$Component] $Message"
+        # Format for console and file - enhanced with operation context
+        $formattedMessage = "[$timestamp] [$Level] [$Component]"
+        if ($Operation) { $formattedMessage += " [$Operation]" }
+        if ($Target) { $formattedMessage += " [$Target]" }
+        $formattedMessage += " $Message"
+        if ($Result) { $formattedMessage += " - Result: $Result" }
+        if ($Metrics) {
+            $metricsStr = ($Metrics.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', '
+            $formattedMessage += " - Metrics: $metricsStr"
+        }
         
         # Output to console based on level
         switch ($Level) {
@@ -543,6 +674,232 @@ function Write-LogEntry {
     catch {
         Write-Warning "Failed to write log entry: $($_.Exception.Message)"
     }
+}
+
+<#
+.SYNOPSIS
+    Logs the start of an operation with details
+.DESCRIPTION
+    Helper function for consistent operation start logging across all modules
+.EXAMPLE
+    Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target 'Microsoft.BingWeather' -LogPath $logPath -Details @{ Version = '4.25'; Size = '12.5MB' }
+#>
+function Write-OperationStart {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Component,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
+        [string]$Operation,
+        
+        [Parameter(Mandatory)]
+        [string]$Target,
+        
+        [Parameter()]
+        [string]$LogPath,
+        
+        [Parameter()]
+        [hashtable]$AdditionalInfo = @{}
+    )
+    
+    # Check verbosity setting
+    if (-not (Test-ShouldLogOperation -OperationType 'OperationStart')) {
+        return
+    }
+    
+    Write-LogEntry -Level 'INFO' -Component $Component `
+        -Message "Starting $Operation operation" `
+        -Operation $Operation -Target $Target -Result 'InProgress' `
+        -LogPath $LogPath -Data $AdditionalInfo
+}
+
+<#
+.SYNOPSIS
+    Logs successful completion of an operation
+.DESCRIPTION
+    Helper function for consistent operation success logging across all modules
+.EXAMPLE
+    Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target 'Microsoft.BingWeather' -LogPath $logPath -Metrics @{ Duration = 1.2; SpaceFreed = '12.5MB' }
+#>
+function Write-OperationSuccess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Component,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
+        [string]$Operation,
+        
+        [Parameter(Mandatory)]
+        [string]$Target,
+        
+        [Parameter()]
+        [string]$LogPath,
+        
+        [Parameter()]
+        [hashtable]$Metrics = @{},
+        
+        [Parameter()]
+        [hashtable]$Details = @{}
+    )
+    
+    # Check verbosity setting
+    if (-not (Test-ShouldLogOperation -OperationType 'OperationSuccess')) {
+        return
+    }
+    
+    $combinedData = $Details.Clone()
+    if ($Metrics.Count -gt 0) {
+        # Only include metrics if verbosity allows
+        if (Test-ShouldLogOperation -OperationType 'Metrics') {
+            $combinedData['Metrics'] = $Metrics
+        }
+    }
+    
+    Write-LogEntry -Level 'SUCCESS' -Component $Component `
+        -Message "Completed $Operation operation successfully" `
+        -Operation $Operation -Target $Target -Result 'Success' `
+        -LogPath $LogPath -Metrics $Metrics -Data $combinedData
+}
+
+<#
+.SYNOPSIS
+    Logs failure of an operation
+.DESCRIPTION
+    Helper function for consistent operation failure logging across all modules
+.EXAMPLE
+    Write-OperationFailure -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target 'Microsoft.BingWeather' -LogPath $logPath -Error $_.Exception -Details @{ Reason = 'Access denied' }
+#>
+function Write-OperationFailure {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Component,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
+        [string]$Operation,
+        
+        [Parameter(Mandatory)]
+        [string]$Target,
+        
+        [Parameter()]
+        [string]$LogPath,
+        
+        [Parameter()]
+        [System.Management.Automation.ErrorRecord]$Error,
+        
+        [Parameter()]
+        [hashtable]$AdditionalInfo = @{}
+    )
+    
+    # Always log failures regardless of verbosity
+    if (-not (Test-ShouldLogOperation -OperationType 'OperationFailure')) {
+        return
+    }
+    
+    $errorData = $AdditionalInfo.Clone()
+    if ($Error) {
+        $errorData['ErrorMessage'] = $Error.Exception.Message
+        $errorData['ErrorType'] = $Error.Exception.GetType().FullName
+        # Only include stack trace if verbosity allows (Debug level)
+        $verbositySettings = Get-VerbositySettings
+        if ($verbositySettings.logStackTraces -eq $true) {
+            $errorData['StackTrace'] = $Error.ScriptStackTrace
+        }
+    }
+    
+    Write-LogEntry -Level 'ERROR' -Component $Component `
+        -Message "Failed $Operation operation" `
+        -Operation $Operation -Target $Target -Result 'Failed' `
+        -LogPath $LogPath -Data $errorData
+}
+
+<#
+.SYNOPSIS
+    Logs that an operation was skipped
+.DESCRIPTION
+    Helper function for logging when an operation is intentionally skipped
+.EXAMPLE
+    Write-OperationSkipped -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target 'Microsoft.Store' -LogPath $logPath -Reason 'Protected system app'
+#>
+function Write-OperationSkipped {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Component,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
+        [string]$Operation,
+        
+        [Parameter(Mandatory)]
+        [string]$Target,
+        
+        [Parameter()]
+        [string]$LogPath,
+        
+        [Parameter()]
+        [string]$Reason = 'Not applicable',
+        
+        [Parameter()]
+        [hashtable]$AdditionalInfo = @{}
+    )
+    
+    # Check verbosity setting
+    if (-not (Test-ShouldLogOperation -OperationType 'OperationSkipped')) {
+        return
+    }
+    
+    $skipData = $AdditionalInfo.Clone()
+    $skipData['SkipReason'] = $Reason
+    
+    Write-LogEntry -Level 'INFO' -Component $Component `
+        -Message "Skipped $Operation operation: $Reason" `
+        -Operation $Operation -Target $Target -Result 'Skipped' `
+        -LogPath $LogPath -Data $skipData
+}
+
+<#
+.SYNOPSIS
+    Logs detection of an item
+.DESCRIPTION
+    Helper function for Type1 modules to log each detected item with full details
+.EXAMPLE
+    Write-DetectionLog -Component 'BLOATWARE-AUDIT' -Target 'Microsoft.BingWeather' -LogPath $logPath -Details @{ Source = 'AppX'; Version = '4.25'; Size = '12.5MB'; MatchedPattern = 'Microsoft.Bing*' }
+#>
+function Write-DetectionLog {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
+        [string]$Operation = 'Detect',
+        
+        [Parameter(Mandatory)]
+        [string]$Component,
+        
+        [Parameter(Mandatory)]
+        [string]$Target,
+        
+        [Parameter()]
+        [string]$LogPath,
+        
+        [Parameter()]
+        [hashtable]$AdditionalInfo = @{}
+    )
+    
+    # Check verbosity setting
+    if (-not (Test-ShouldLogOperation -OperationType 'DetectionResults')) {
+        return
+    }
+    
+    Write-LogEntry -Level 'INFO' -Component $Component `
+        -Message "Detected item: $Target" `
+        -Operation $Operation -Target $Target -Result 'Success' `
+        -LogPath $LogPath -Data $AdditionalInfo
 }
 
 <#
@@ -1301,6 +1658,13 @@ Export-ModuleMember -Function @(
     'Get-LoggingConfiguration',
     'Initialize-LoggingSystem',
     'Write-LogEntry',
+    'Get-VerbositySettings',
+    'Test-ShouldLogOperation',
+    'Write-OperationStart',
+    'Write-OperationSuccess',
+    'Write-OperationFailure',
+    'Write-OperationSkipped',
+    'Write-DetectionLog',
     'Start-PerformanceTracking',
     'Complete-PerformanceTracking',
     

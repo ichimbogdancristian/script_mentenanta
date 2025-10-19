@@ -619,10 +619,34 @@ function Install-UpdatesViaPSWindowsUpdate {
                 $installResults = Install-WindowsUpdate @installParams
 
                 foreach ($result in $installResults) {
+                    $operationStart = Get-Date
                     $status = if ($result.Result -eq 'Installed') { 'Installed' } else { 'Failed' }
+                    $kbNumber = if ($result.KB) { "KB$($result.KB)" } else { 'N/A' }
+
+                    # Enhanced logging for each update
+                    if ($status -eq 'Installed') {
+                        $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+                        Write-OperationSuccess -Component 'WINDOWS-UPDATES' -Operation 'Install' -Target $kbNumber -Metrics @{
+                            Duration = $operationDuration
+                            SizeMB   = [math]::Round($result.Size / 1MB, 2)
+                            Title    = $result.Title
+                            Category = ($result.Categories -join ', ')
+                        }
+                        Write-Information "      ✅ Installed: $kbNumber - $($result.Title) ($([math]::Round($result.Size / 1MB, 2)) MB)" -InformationAction Continue
+                    }
+                    else {
+                        Write-OperationFailure -Component 'WINDOWS-UPDATES' -Operation 'Install' -Target $kbNumber -Error ([System.Management.Automation.ErrorRecord]::new(
+                                [Exception]::new("Installation failed: $($result.Result)"),
+                                "UpdateInstallationFailed",
+                                [System.Management.Automation.ErrorCategory]::NotSpecified,
+                                $result
+                            ))
+                        Write-Warning "      ❌ Failed: $kbNumber - $($result.Title)"
+                    }
 
                     $results.Details.Add([PSCustomObject]@{
                             Title    = $result.Title
+                            KB       = $kbNumber
                             SizeMB   = [math]::Round($result.Size / 1MB, 2)
                             Category = $result.Categories -join ', '
                             Status   = $status
@@ -639,6 +663,9 @@ function Install-UpdatesViaPSWindowsUpdate {
 
                 # Check if reboot is required
                 $results.RebootRequired = Test-PendingReboot
+                if ($results.RebootRequired) {
+                    Write-LogEntry -Level 'WARN' -Component 'WINDOWS-UPDATES' -Message 'System reboot required to complete installation'
+                }
 
             }
             catch {

@@ -142,7 +142,7 @@ function Get-EssentialAppsAudit {
             
             if ($installationStatus.IsInstalled) {
                 if ($IncludeInstalled) {
-                    $auditResults.InstalledApps += [PSCustomObject]@{
+                    $installedItem = [PSCustomObject]@{
                         Name               = $app.name
                         Category           = $app.category
                         Description        = $app.description
@@ -150,6 +150,18 @@ function Get-EssentialAppsAudit {
                         InstallationSource = $installationStatus.Source
                         InstallPath        = $installationStatus.InstallPath
                     }
+                    
+                    # Log detected installed application
+                    Write-DetectionLog -Operation 'Detect' -Target $app.name -Component 'ESSENTIAL-APPS-INSTALLED' -AdditionalInfo @{
+                        Status      = 'Already Installed'
+                        Category    = $app.category
+                        Version     = $installationStatus.Version
+                        Source      = $installationStatus.Source
+                        InstallPath = $installationStatus.InstallPath
+                        Description = $app.description
+                    }
+                    
+                    $auditResults.InstalledApps += $installedItem
                 }
             }
             else {
@@ -162,11 +174,33 @@ function Get-EssentialAppsAudit {
                     Priority          = Get-AppInstallPriority -AppDefinition $app
                     RecommendedMethod = Get-RecommendedInstallMethod -AppDefinition $app
                 }
+                
+                # Log detected missing application with detailed metadata
+                Write-DetectionLog -Operation 'Detect' -Target $app.name -Component 'ESSENTIAL-APPS-MISSING' -AdditionalInfo @{
+                    Status            = 'Not Installed'
+                    Category          = $app.category
+                    Description       = $app.description
+                    WingetId          = $app.winget
+                    ChocolateyId      = $app.choco
+                    Priority          = $missingApp.Priority
+                    RecommendedMethod = $missingApp.RecommendedMethod
+                    InstallReason     = "Essential $($app.category) application not found on system"
+                }
+                
                 $auditResults.MissingApps += $missingApp
                 
                 # Add to recommended installs if high priority
                 if ($missingApp.Priority -eq 'High') {
                     $auditResults.RecommendedInstalls += $missingApp
+                    
+                    # Log high priority recommendation
+                    Write-DetectionLog -Operation 'Detect' -Target $app.name -Component 'ESSENTIAL-APPS-PRIORITY' -AdditionalInfo @{
+                        Status            = 'High Priority Missing'
+                        Category          = $app.category
+                        Priority          = 'High'
+                        RecommendedMethod = $missingApp.RecommendedMethod
+                        ActionRequired    = 'Install recommended'
+                    }
                 }
             }
         }

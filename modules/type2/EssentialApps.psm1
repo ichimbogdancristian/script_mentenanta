@@ -890,6 +890,7 @@ function Install-AppViaWinget {
         $batch | ForEach-Object -ThrottleLimit $ParallelCount -Parallel {
             $app = $_
             $isDryRun = $using:DryRun
+            $operationStart = Get-Date
 
             $result = @{
                 Name           = $app.Name
@@ -901,7 +902,19 @@ function Install-AppViaWinget {
             }
 
             try {
-                if ($isDryRun) {
+                # Enhanced logging: Pre-check if app is already installed
+                $wingetListArgs = @('list', '--id', $app.Winget, '--accept-source-agreements')
+                $listOutput = & winget @wingetListArgs 2>&1 | Out-String
+                $alreadyInstalled = $LASTEXITCODE -eq 0 -and $listOutput -match $app.Winget
+                
+                # Log operation start with pre-check state
+                Write-Information "    📦 [WINGET] Processing: $($app.Name) (ID: $($app.Winget)) - Already installed: $alreadyInstalled" -InformationAction Continue
+                
+                if ($alreadyInstalled -and -not $isDryRun) {
+                    Write-Information "      ℹ️  App already installed, skipping: $($app.Name)" -InformationAction Continue
+                    $result.Status = 'AlreadyInstalled'
+                }
+                elseif ($isDryRun) {
                     Write-Information "    [DRY RUN] Would install: $($app.Name) ($($app.Winget))" -InformationAction Continue
                     $result.Status = 'Simulated'
                 }
@@ -915,12 +928,47 @@ function Install-AppViaWinget {
                         '--accept-package-agreements',
                         '--accept-source-agreements'
                     )
+                    
+                    # Log the exact command being executed
+                    Write-Information "      🔧 Executing: winget $($wingetArgs -join ' ')" -InformationAction Continue
 
                     $process = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
 
                     if ($process.ExitCode -eq 0) {
-                        $result.Status = 'Installed'
-                        Write-Information "      ✅ Successfully installed: $($app.Name)" -InformationAction Continue
+                        # Post-installation verification
+                        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Message 'Verifying Winget package installation'
+                        
+                        $verifyOutput = & winget @wingetListArgs 2>&1 | Out-String
+                        $verifyInstalled = $LASTEXITCODE -eq 0 -and $verifyOutput -match $app.Winget
+                        
+                        $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+                        
+                        if ($verifyInstalled) {
+                            # Log successful verification
+                            Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Metrics @{
+                                PackageId          = $app.Winget
+                                VerificationPassed = $true
+                                IsInstalled        = $true
+                            }
+                            
+                            # Log successful installation
+                            Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Install' -Target $app.Name -Metrics @{
+                                Duration       = $operationDuration
+                                PackageManager = 'Winget'
+                                PackageId      = $app.Winget
+                                Verified       = $true
+                            }
+                            
+                            $result.Status = 'Installed'
+                            Write-Information "      ✅ Successfully installed: $($app.Name) (Duration: ${operationDuration}s, Verified: True)" -InformationAction Continue
+                        }
+                        else {
+                            # Log failed verification
+                            Write-OperationFailure -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Error (New-Object Exception("Package not found after installation (exit code 0)"))
+                            
+                            Write-Information "      ⚠️  Installation exit code 0, but verification failed: $($app.Name)" -InformationAction Continue
+                            $result.Status = 'Installed'  # Trust exit code
+                        }
                     }
                     else {
                         throw "Winget installation failed with exit code $($process.ExitCode)"
@@ -930,13 +978,13 @@ function Install-AppViaWinget {
             catch {
                 $result.Status = 'Failed'
                 $result.Error = $_.Exception.Message
-                Write-Warning "Failed to install $($app.Name): $_"
+                Write-Warning "Failed to install $($app.Name): $($_.Exception.Message)"
             }
 
             return [PSCustomObject]$result
         } | ForEach-Object {
             $results.Details.Add($_)
-            if ($_.Status -eq 'Installed' -or $_.Status -eq 'Simulated') {
+            if ($_.Status -eq 'Installed' -or $_.Status -eq 'Simulated' -or $_.Status -eq 'AlreadyInstalled') {
                 $results.Installed++
             }
             else {
@@ -1010,6 +1058,7 @@ function Install-AppViaChocolatey {
     }
 
     foreach ($app in $Apps) {
+        $operationStart = Get-Date
         $result = @{
             Name           = $app.Name
             Category       = $app.Category
@@ -1020,9 +1069,27 @@ function Install-AppViaChocolatey {
         }
 
         try {
-            if ($DryRun) {
+            # Enhanced logging: Pre-check if app is already installed
+            $chocoListArgs = @('list', '--local-only', '--exact', $app.Chocolatey, '--limit-output')
+            $listOutput = & choco @chocoListArgs 2>&1
+            $alreadyInstalled = $LASTEXITCODE -eq 0 -and $listOutput -match $app.Chocolatey
+            $installedVersion = if ($alreadyInstalled -and $listOutput -match "$($app.Chocolatey)\|(.+)") { $matches[1] } else { 'N/A' }
+            
+            # Log operation start with pre-check state
+            Write-Information "    🍫 [CHOCO] Processing: $($app.Name) (ID: $($app.Chocolatey)) - Already installed: $alreadyInstalled" -InformationAction Continue
+            if ($alreadyInstalled) {
+                Write-Information "      ℹ️  Current version: $installedVersion" -InformationAction Continue
+            }
+            
+            if ($alreadyInstalled -and -not $DryRun) {
+                Write-Information "      ℹ️  App already installed, skipping: $($app.Name)" -InformationAction Continue
+                $result.Status = 'AlreadyInstalled'
+                $results.Installed++
+            }
+            elseif ($DryRun) {
                 Write-Information "    [DRY RUN] Would install: $($app.Name) ($($app.Chocolatey))" -InformationAction Continue
                 $result.Status = 'Simulated'
+                $results.Installed++
             }
             else {
                 Write-Information "    🍫 Installing: $($app.Name)..." -InformationAction Continue
@@ -1033,25 +1100,62 @@ function Install-AppViaChocolatey {
                     '-y',
                     '--limit-output'
                 )
+                
+                # Log the exact command being executed
+                Write-Information "      🔧 Executing: choco $($chocoArgs -join ' ')" -InformationAction Continue
 
                 $process = Start-Process -FilePath 'choco' -ArgumentList $chocoArgs -Wait -PassThru -NoNewWindow
 
                 if ($process.ExitCode -eq 0) {
-                    $result.Status = 'Installed'
-                    Write-Information "      ✅ Successfully installed: $($app.Name)" -InformationAction Continue
+                    # Post-installation verification
+                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Message 'Verifying Chocolatey package installation'
+                    
+                    $verifyOutput = & choco @chocoListArgs 2>&1
+                    $verifyInstalled = $LASTEXITCODE -eq 0 -and $verifyOutput -match $app.Chocolatey
+                    $newVersion = if ($verifyInstalled -and $verifyOutput -match "$($app.Chocolatey)\|(.+)") { $matches[1] } else { 'Unknown' }
+                    
+                    $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+                    
+                    if ($verifyInstalled) {
+                        # Log successful verification
+                        Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Metrics @{
+                            PackageId          = $app.Chocolatey
+                            InstalledVersion   = $newVersion
+                            VerificationPassed = $true
+                            IsInstalled        = $true
+                        }
+                        
+                        # Log successful installation
+                        Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Install' -Target $app.Name -Metrics @{
+                            Duration       = $operationDuration
+                            PackageManager = 'Chocolatey'
+                            PackageId      = $app.Chocolatey
+                            Version        = $newVersion
+                            Verified       = $true
+                        }
+                        
+                        $result.Status = 'Installed'
+                        Write-Information "      ✅ Successfully installed: $($app.Name) v$newVersion (Duration: ${operationDuration}s, Verified: True)" -InformationAction Continue
+                    }
+                    else {
+                        # Log failed verification
+                        Write-OperationFailure -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Error (New-Object Exception("Package not found after installation (exit code 0)"))
+                        
+                        Write-Information "      ⚠️  Installation exit code 0, but verification failed: $($app.Name)" -InformationAction Continue
+                        $result.Status = 'Installed'  # Trust exit code
+                    }
+                    $results.Installed++
                 }
                 else {
                     throw "Chocolatey installation failed with exit code $($process.ExitCode)"
                 }
             }
-
-            $results.Installed++
         }
         catch {
             $result.Status = 'Failed'
             $result.Error = $_.Exception.Message
             $results.Failed++
-            Write-Warning "Failed to install $($app.Name): $_"
+            Write-Warning "Failed to install $($app.Name): $($_.Exception.Message)"
         }
 
         $results.Details.Add([PSCustomObject]$result)

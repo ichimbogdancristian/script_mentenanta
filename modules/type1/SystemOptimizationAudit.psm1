@@ -271,7 +271,7 @@ function Get-StartupOptimizationAudit {
         foreach ($app in $startupApps) {
             if ($app.Name -match 'Adobe|Steam|Spotify|Skype|Teams' -and $app.Command -notmatch 'Critical|System') {
                 $highImpactApps += $app
-                $opportunities += [PSCustomObject]@{
+                $opportunityItem = [PSCustomObject]@{
                     Category         = 'Startup'
                     Type             = 'DisableStartupApp'
                     Description      = "Disable non-essential startup application: $($app.Name)"
@@ -279,6 +279,20 @@ function Get-StartupOptimizationAudit {
                     EstimatedSavings = '2-5 seconds boot time'
                     Target           = $app.Name
                 }
+                
+                # Log detected startup optimization opportunity
+                Write-DetectionLog -Operation 'Detect' -Target $app.Name -Component 'SYSOPT-STARTUP' -AdditionalInfo @{
+                    Category         = 'Startup Application'
+                    Location         = $app.Location
+                    Command          = $app.Command
+                    User             = $app.User
+                    Impact           = 'High'
+                    EstimatedSavings = '2-5 seconds boot time'
+                    OptimizationType = 'DisableStartupApp'
+                    Reason           = "Non-essential application starting automatically at boot"
+                }
+                
+                $opportunities += $opportunityItem
             }
         }
 
@@ -296,7 +310,7 @@ function Get-StartupOptimizationAudit {
         }
 
         foreach ($service in $nonEssentialServices) {
-            $opportunities += [PSCustomObject]@{
+            $opportunityItem = [PSCustomObject]@{
                 Category         = 'Services'
                 Type             = 'OptimizeService'
                 Description      = "Optimize service startup: $($service.Name)"
@@ -304,6 +318,20 @@ function Get-StartupOptimizationAudit {
                 EstimatedSavings = '1-2 seconds boot time'
                 Target           = $service.Name
             }
+            
+            # Log detected service optimization opportunity
+            Write-DetectionLog -Operation 'Detect' -Target $service.Name -Component 'SYSOPT-SERVICE' -AdditionalInfo @{
+                Category         = 'System Service'
+                DisplayName      = $service.DisplayName
+                Status           = $service.Status
+                StartType        = $service.StartType
+                Impact           = 'Medium'
+                EstimatedSavings = '1-2 seconds boot time'
+                OptimizationType = 'ChangeStartupType'
+                Reason           = "Non-essential service running automatically"
+            }
+            
+            $opportunities += $opportunityItem
         }
 
     }
@@ -334,7 +362,7 @@ function Get-UIOptimizationAudit {
         # Check visual effects settings
         $visualEffects = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -ErrorAction SilentlyContinue
         if ($visualEffects -and $visualEffects.VisualFXSetting -ne 2) {
-            $opportunities += [PSCustomObject]@{
+            $opportunityItem = [PSCustomObject]@{
                 Category         = 'UI'
                 Type             = 'OptimizeVisualEffects'
                 Description      = 'Optimize visual effects for performance'
@@ -342,12 +370,26 @@ function Get-UIOptimizationAudit {
                 EstimatedSavings = '10-20% UI responsiveness'
                 Target           = 'VisualEffects'
             }
+            
+            # Log detected visual effects optimization
+            Write-DetectionLog -Operation 'Detect' -Target 'Visual Effects' -Component 'SYSOPT-UI' -AdditionalInfo @{
+                Category           = 'User Interface'
+                CurrentSetting     = $visualEffects.VisualFXSetting
+                RecommendedSetting = 2
+                RegistryPath       = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
+                Impact             = 'Medium'
+                EstimatedSavings   = '10-20% UI responsiveness improvement'
+                OptimizationType   = 'Registry modification'
+                Reason             = "Visual effects not optimized for performance"
+            }
+            
+            $opportunities += $opportunityItem
         }
 
         # Check animation settings
         $animationSettings = Get-ItemProperty 'HKCU:\Control Panel\Desktop\WindowMetrics' -ErrorAction SilentlyContinue
         if ($animationSettings) {
-            $opportunities += [PSCustomObject]@{
+            $opportunityItem = [PSCustomObject]@{
                 Category         = 'UI'
                 Type             = 'OptimizeAnimations'
                 Description      = 'Optimize window animations for performance'
@@ -355,6 +397,18 @@ function Get-UIOptimizationAudit {
                 EstimatedSavings = '5-10% UI responsiveness'
                 Target           = 'Animations'
             }
+            
+            # Log detected animation optimization
+            Write-DetectionLog -Operation 'Detect' -Target 'Window Animations' -Component 'SYSOPT-UI' -AdditionalInfo @{
+                Category         = 'User Interface'
+                RegistryPath     = 'HKCU:\Control Panel\Desktop\WindowMetrics'
+                Impact           = 'Low'
+                EstimatedSavings = '5-10% UI responsiveness improvement'
+                OptimizationType = 'Registry modification'
+                Reason           = "Window animations can be optimized for better performance"
+            }
+            
+            $opportunities += $opportunityItem
         }
 
         # Check taskbar settings

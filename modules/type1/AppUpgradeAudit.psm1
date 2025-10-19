@@ -219,7 +219,7 @@ function Get-WingetUpgrades {
                         continue
                     }
 
-                    $upgrades += [PSCustomObject]@{
+                    $upgradeItem = [PSCustomObject]@{
                         Name             = $appName
                         Id               = $appId
                         CurrentVersion   = $currentVersion
@@ -228,6 +228,20 @@ function Get-WingetUpgrades {
                         SourceDetail     = $source
                         UpdateSize       = 'Unknown'
                     }
+                    
+                    # Log detected upgrade opportunity
+                    Write-DetectionLog -Operation 'Detect' -Target $appName -Component 'APP-UPGRADE-WINGET' -AdditionalInfo @{
+                        ApplicationId = $appId
+                        CurrentVersion = $currentVersion
+                        AvailableVersion = $availableVersion
+                        Source = 'Winget'
+                        SourceDetail = $source
+                        Status = 'Upgrade Available'
+                        UpgradeCommand = "winget upgrade --id $appId"
+                        Reason = "Newer version available: $currentVersion → $availableVersion"
+                    }
+                    
+                    $upgrades += $upgradeItem
                 }
             }
         }
@@ -302,7 +316,7 @@ function Get-ChocolateyUpgrades {
                     continue
                 }
 
-                $upgrades += [PSCustomObject]@{
+                $upgradeItem = [PSCustomObject]@{
                     Name             = $packageName
                     Id               = $packageName  # Choco uses name as ID
                     CurrentVersion   = $currentVersion
@@ -311,6 +325,19 @@ function Get-ChocolateyUpgrades {
                     SourceDetail     = 'chocolatey'
                     UpdateSize       = 'Unknown'
                 }
+                
+                # Log detected upgrade opportunity
+                Write-DetectionLog -Operation 'Detect' -Target $packageName -Component 'APP-UPGRADE-CHOCO' -AdditionalInfo @{
+                    PackageName = $packageName
+                    CurrentVersion = $currentVersion
+                    AvailableVersion = $availableVersion
+                    Source = 'Chocolatey'
+                    Status = 'Upgrade Available'
+                    UpgradeCommand = "choco upgrade $packageName -y"
+                    Reason = "Newer version available: $currentVersion → $availableVersion"
+                }
+                
+                $upgrades += $upgradeItem
             }
         }
 

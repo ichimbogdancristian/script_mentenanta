@@ -259,11 +259,11 @@ function Get-ProcessedLogData {
         
         # Load main summary files
         $summaryFiles = @{
-            'MetricsSummary'  = 'metrics-summary.json'
-            'ModuleResults'   = 'module-results.json'
-            'ErrorsAnalysis'  = 'errors-analysis.json'
-            'HealthScores'    = 'health-scores.json'
-            'MaintenanceLog'  = 'maintenance-log.json'
+            'MetricsSummary' = 'metrics-summary.json'
+            'ModuleResults'  = 'module-results.json'
+            'ErrorsAnalysis' = 'errors-analysis.json'
+            'HealthScores'   = 'health-scores.json'
+            'MaintenanceLog' = 'maintenance-log.json'
         }
         
         foreach ($key in $summaryFiles.Keys) {
@@ -469,6 +469,226 @@ function Get-FallbackRawLogData {
 
 #endregion
 
+#region Operation Log Parsing
+
+<#
+.SYNOPSIS
+    Parses operation logs from temp_files/logs/ directories
+.DESCRIPTION
+    Reads execution.log files from each module's log directory and parses them into structured data
+    for display in the HTML report. Extracts timestamps, operations, targets, results, and metrics.
+.PARAMETER ModuleName
+    Name of the module whose logs to parse (e.g., 'bloatware-removal', 'essential-apps')
+.OUTPUTS
+    Hashtable containing parsed operations grouped by operation type with full details
+#>
+function Get-ParsedOperationLogs {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName
+    )
+    
+    Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Parsing operation logs for module: $ModuleName"
+    
+    try {
+        $logsPath = Join-Path $Global:ProjectPaths.TempFiles "logs\$ModuleName"
+        $executionLogPath = Join-Path $logsPath 'execution.log'
+        
+        $result = @{
+            Available       = $false
+            Operations      = @()
+            Summary         = @{
+                Total      = 0
+                Success    = 0
+                Failed     = 0
+                Skipped    = 0
+                InProgress = 0
+            }
+            ByOperationType = @{}
+            FirstOperation  = $null
+            LastOperation   = $null
+        }
+        
+        if (-not (Test-Path $executionLogPath)) {
+            Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "No execution log found for $ModuleName at: $executionLogPath"
+            return $result
+        }
+        
+        $logContent = Get-Content $executionLogPath -ErrorAction Stop
+        if ($logContent.Count -eq 0) {
+            Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Empty execution log for $ModuleName"
+            return $result
+        }
+        
+        $result.Available = $true
+        
+        # Parse log format: [Timestamp] [Level] [Component] [Operation] [Target] Message - Result: Status - Metrics: Data
+        $logPattern = '^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+(.+?)(?:\s+-\s+Result:\s+(\w+))?(?:\s+-\s+Metrics:\s+(.+))?$'
+        
+        foreach ($line in $logContent) {
+            if ($line -match $logPattern) {
+                $operation = @{
+                    Timestamp     = $matches[1]
+                    Level         = $matches[2]
+                    Component     = $matches[3]
+                    Operation     = $matches[4]
+                    Target        = $matches[5]
+                    Message       = $matches[6]
+                    Result        = if ($matches[7]) { $matches[7] } else { 'Unknown' }
+                    Metrics       = if ($matches[8]) { $matches[8] } else { $null }
+                    MetricsParsed = @{}
+                }
+                
+                # Parse metrics if available (format: "Key1=Value1, Key2=Value2")
+                if ($operation.Metrics) {
+                    $metricsPairs = $operation.Metrics -split ',\s*'
+                    foreach ($pair in $metricsPairs) {
+                        if ($pair -match '([^=]+)=(.+)') {
+                            $operation.MetricsParsed[$matches[1].Trim()] = $matches[2].Trim()
+                        }
+                    }
+                }
+                
+                $result.Operations += $operation
+                $result.Summary.Total++
+                
+                # Count by result status
+                switch ($operation.Result) {
+                    'Success' { $result.Summary.Success++ }
+                    'Failed' { $result.Summary.Failed++ }
+                    'Skipped' { $result.Summary.Skipped++ }
+                    'InProgress' { $result.Summary.InProgress++ }
+                }
+                
+                # Group by operation type
+                if (-not $result.ByOperationType.ContainsKey($operation.Operation)) {
+                    $result.ByOperationType[$operation.Operation] = @()
+                }
+                $result.ByOperationType[$operation.Operation] += $operation
+                
+                # Track first and last operations
+                if (-not $result.FirstOperation) {
+                    $result.FirstOperation = $operation.Timestamp
+                }
+                $result.LastOperation = $operation.Timestamp
+            }
+        }
+        
+        Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Parsed $($result.Summary.Total) operations from $ModuleName logs"
+        return $result
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to parse operation logs for ${ModuleName}: $($_.Exception.Message)"
+        return @{
+            Available       = $false
+            Operations      = @()
+            Summary         = @{ Total = 0; Success = 0; Failed = 0; Skipped = 0; InProgress = 0 }
+            ByOperationType = @{}
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Generates HTML table displaying parsed operation logs
+.DESCRIPTION
+    Creates formatted HTML table showing all operations with timestamps, targets, results, and metrics
+.PARAMETER ParsedLogs
+    Hashtable containing parsed operation logs from Get-ParsedOperationLogs
+.PARAMETER ModuleName
+    Display name of the module for the table title
+.OUTPUTS
+    HTML string containing the operation log table
+#>
+function New-OperationLogTable {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ParsedLogs,
+        
+        [Parameter(Mandatory)]
+        [string]$ModuleName
+    )
+    
+    if (-not $ParsedLogs.Available -or $ParsedLogs.Summary.Total -eq 0) {
+        return @"
+<div class="operation-logs-section">
+    <h4>📋 Operation Logs</h4>
+    <p class="no-data">No operation logs available for this module.</p>
+</div>
+"@
+    }
+    
+    $html = [System.Text.StringBuilder]::new()
+    
+    $html.AppendLine(@"
+<div class="operation-logs-section">
+    <h4>📋 Operation Logs - $ModuleName</h4>
+    <div class="log-summary">
+        <span class="log-stat">Total: <strong>$($ParsedLogs.Summary.Total)</strong></span>
+        <span class="log-stat success">Success: <strong>$($ParsedLogs.Summary.Success)</strong></span>
+        <span class="log-stat error">Failed: <strong>$($ParsedLogs.Summary.Failed)</strong></span>
+        <span class="log-stat warning">Skipped: <strong>$($ParsedLogs.Summary.Skipped)</strong></span>
+    </div>
+    
+    <div class="operation-table-container">
+        <table class="operation-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Operation</th>
+                    <th>Target</th>
+                    <th>Result</th>
+                    <th>Metrics</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+"@)
+    
+    foreach ($operation in $ParsedLogs.Operations) {
+        $resultClass = switch ($operation.Result) {
+            'Success' { 'result-success' }
+            'Failed' { 'result-failed' }
+            'Skipped' { 'result-skipped' }
+            'InProgress' { 'result-inprogress' }
+            default { 'result-unknown' }
+        }
+        
+        $metricsDisplay = if ($operation.MetricsParsed.Count -gt 0) {
+            ($operation.MetricsParsed.GetEnumerator() | ForEach-Object { "$($_.Key): $($_.Value)" }) -join '<br>'
+        }
+        else {
+            '-'
+        }
+        
+        $html.AppendLine(@"
+                <tr>
+                    <td class="timestamp">$($operation.Timestamp)</td>
+                    <td class="operation-type">$($operation.Operation)</td>
+                    <td class="target">$($operation.Target)</td>
+                    <td class="$resultClass">$($operation.Result)</td>
+                    <td class="metrics">$metricsDisplay</td>
+                    <td class="message">$($operation.Message)</td>
+                </tr>
+"@)
+    }
+    
+    $html.AppendLine(@"
+            </tbody>
+        </table>
+    </div>
+</div>
+"@)
+    
+    return $html.ToString()
+}
+
+#endregion
+
 #region Main Report Generation
 
 <#
@@ -637,13 +857,15 @@ function New-DashboardSection {
     # Safely access nested properties with null checks
     $metricsData = if ($ProcessedData.MetricsSummary) { 
         $ProcessedData.MetricsSummary.DashboardMetrics 
-    } else { 
+    }
+    else { 
         @{ SuccessRate = 0; TotalTasks = 0; SystemHealthScore = 0; SecurityScore = 0 }
     }
     
     $executionSummary = if ($ProcessedData.MetricsSummary) { 
         $ProcessedData.MetricsSummary.ExecutionSummary 
-    } else { 
+    }
+    else { 
         @{ TotalDuration = 0; SuccessfulTasks = 0; FailedTasks = 0 }
     }
     
@@ -732,7 +954,8 @@ function New-ModuleSections {
     # Safely access nested properties with null checks
     $moduleResults = if ($ProcessedData.ModuleResults) { 
         $ProcessedData.ModuleResults 
-    } else { 
+    }
+    else { 
         @{ Type2ExecutionAnalysis = @{} }
     }
     
@@ -757,9 +980,17 @@ function New-ModuleSections {
         # Safely access module-specific data with null checks
         $moduleData = if ($moduleResults.Type2ExecutionAnalysis) {
             $moduleResults.Type2ExecutionAnalysis[$module.Name]
-        } else {
+        }
+        else {
             $null
         }
+        
+        # Parse operation logs for this module (convert PascalCase to kebab-case for directory name)
+        $moduleLogDir = $module.Name -creplace '([A-Z])', '-$1' -replace '^-', '' | ForEach-Object { $_.ToLower() }
+        $parsedLogs = Get-ParsedOperationLogs -ModuleName $moduleLogDir
+        
+        # Generate operation log table HTML
+        $operationLogTable = New-OperationLogTable -ParsedLogs $parsedLogs -ModuleName $module.DisplayName
         
         if ($moduleData) {
             $taskCard = $Templates.TaskCard
@@ -774,6 +1005,22 @@ function New-ModuleSections {
             
             $html.AppendLine($taskCard)
         }
+        else {
+            # Create basic module card if no processed data available
+            $html.AppendLine(@"
+        <div class="module-card">
+            <div class="module-header">
+                <h3>$($module.Icon) $($module.DisplayName)</h3>
+            </div>
+            <div class="module-content">
+                <p>No processed data available for this module.</p>
+            </div>
+        </div>
+"@)
+        }
+        
+        # Append operation log table after module card
+        $html.AppendLine($operationLogTable)
     }
     
     $html.AppendLine("</div>")
@@ -796,13 +1043,15 @@ function New-SummarySection {
     # Safely access nested properties with null checks
     $executionSummary = if ($ProcessedData.MetricsSummary) { 
         $ProcessedData.MetricsSummary.ExecutionSummary 
-    } else { 
+    }
+    else { 
         @{ TotalDuration = 0; SuccessfulTasks = 0; FailedTasks = 0 }
     }
     
     $errorsData = if ($ProcessedData.ErrorsAnalysis) { 
         $ProcessedData.ErrorsAnalysis 
-    } else { 
+    }
+    else { 
         @{ ErrorSummary = @{ TotalErrors = 0 } }
     }
     
@@ -857,7 +1106,8 @@ function New-MaintenanceLogSection {
     # Check if maintenance log data is available
     $maintenanceLog = if ($ProcessedData.ContainsKey('MaintenanceLog')) {
         $ProcessedData.MaintenanceLog
-    } else {
+    }
+    else {
         $null
     }
     
@@ -1025,7 +1275,8 @@ function New-TextReportContent {
         # Safely access nested properties with null checks
         $sessionId = if ($ProcessedData.MetricsSummary -and $ProcessedData.MetricsSummary.ProcessingMetadata) {
             $ProcessedData.MetricsSummary.ProcessingMetadata.SessionId
-        } else {
+        }
+        else {
             'N/A'
         }
         $text.AppendLine("Session ID: $sessionId")
@@ -1034,13 +1285,15 @@ function New-TextReportContent {
         # Executive Summary - safely access nested properties
         $executionSummary = if ($ProcessedData.MetricsSummary) { 
             $ProcessedData.MetricsSummary.ExecutionSummary 
-        } else { 
+        }
+        else { 
             @{ TotalTasks = 0; SuccessfulTasks = 0; FailedTasks = 0; TotalDuration = 0 }
         }
         
         $dashboardMetrics = if ($ProcessedData.MetricsSummary) { 
             $ProcessedData.MetricsSummary.DashboardMetrics 
-        } else { 
+        }
+        else { 
             @{ SuccessRate = 0; SystemHealthScore = 0; SecurityScore = 0 }
         }
         
@@ -1204,19 +1457,22 @@ function New-SummaryReportContent {
         # Safely access nested properties with null checks
         $executionSummary = if ($ProcessedData.MetricsSummary) { 
             $ProcessedData.MetricsSummary.ExecutionSummary 
-        } else { 
+        }
+        else { 
             @{ TotalTasks = 0; SuccessfulTasks = 0; FailedTasks = 0; TotalDuration = 0 }
         }
         
         $dashboardMetrics = if ($ProcessedData.MetricsSummary) { 
             $ProcessedData.MetricsSummary.DashboardMetrics 
-        } else { 
+        }
+        else { 
             @{ SuccessRate = 0; SystemHealthScore = 0; SecurityScore = 0 }
         }
         
         $errorsData = if ($ProcessedData.ErrorsAnalysis) { 
             $ProcessedData.ErrorsAnalysis 
-        } else { 
+        }
+        else { 
             @{ ErrorSummary = @{ TotalErrors = 0 } }
         }
         
@@ -1272,7 +1528,8 @@ function Get-TaskDistributionData {
         # Extract task data from processed results with safe null handling
         $moduleResults = if ($ProcessedData.ModuleResults) {
             $ProcessedData.ModuleResults.Type2ExecutionAnalysis
-        } else {
+        }
+        else {
             $null
         }
         
@@ -1342,7 +1599,8 @@ function Get-SystemResourceData {
         # Extract system health data from processed results with safe null handling
         $systemHealth = if ($ProcessedData.HealthScores) {
             $ProcessedData.HealthScores.SystemHealth
-        } else {
+        }
+        else {
             $null
         }
         
@@ -1419,7 +1677,8 @@ function Get-ExecutionTimelineData {
         # Extract execution metrics from processed results with safe null handling
         $moduleResults = if ($ProcessedData.ModuleResults) {
             $ProcessedData.ModuleResults.Type2ExecutionAnalysis
-        } else {
+        }
+        else {
             $null
         }
         
@@ -1481,7 +1740,8 @@ function Get-SecurityScoreData {
         # Extract security analytics from processed results with safe null handling
         $securityAnalytics = if ($ProcessedData.HealthScores) {
             $ProcessedData.HealthScores.Security
-        } else {
+        }
+        else {
             $null
         }
         
@@ -2094,6 +2354,8 @@ Export-ModuleMember -Function @(
     'Get-ProcessedLogData',
     'Test-ProcessedDataIntegrity',
     'Get-FallbackRawLogData',
+    'Get-ParsedOperationLogs',
+    'New-OperationLogTable',
     'New-HtmlReportContent',
     'New-DashboardSection',
     'New-ModuleSections',
