@@ -20,9 +20,9 @@ Write-Host "=" * 70
 
 $results = @{
     TotalTests = 0
-    Passed = 0
-    Failed = 0
-    Warnings = 0
+    Passed     = 0
+    Failed     = 0
+    Warnings   = 0
 }
 
 # Test 1: CoreInfrastructure Loading
@@ -37,7 +37,8 @@ try {
     # Verify global paths created
     if ($Global:ProjectPaths) {
         Write-Host "   ✅ Global paths initialized: $($Global:ProjectPaths.Keys -join ', ')" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "   ⚠️ Global paths not initialized" -ForegroundColor Yellow
         $results.Warnings++
     }
@@ -73,11 +74,13 @@ foreach ($moduleName in $type2Modules) {
             $cmd = Get-Command $functionName
             if ($cmd.Parameters.Config.ParameterType.Name -eq 'Hashtable') {
                 Write-Host "      ✓ Parameter type: Hashtable" -ForegroundColor Gray
-            } else {
+            }
+            else {
                 Write-Host "      ⚠️ Parameter type: $($cmd.Parameters.Config.ParameterType.Name)" -ForegroundColor Yellow
                 $results.Warnings++
             }
-        } else {
+        }
+        else {
             Write-Host "   ⚠️ $moduleName loaded but function not found" -ForegroundColor Yellow
             $results.Passed++
             $results.Warnings++
@@ -100,7 +103,8 @@ try {
     if ($mainConfig) {
         Write-Host "   ✅ Main configuration loaded successfully" -ForegroundColor Green
         $results.Passed++
-    } else {
+    }
+    else {
         Write-Host "   ⚠️ Main configuration returned null" -ForegroundColor Yellow
         $results.Passed++
         $results.Warnings++
@@ -127,11 +131,13 @@ try {
         $warningMatches = [regex]::Matches($content, "-Level\s+'WARNING'")
         if ($warningMatches.Count -eq 0) {
             Write-Host "      ✓ No 'WARNING' log levels found (TODO-001 fix confirmed)" -ForegroundColor Gray
-        } else {
+        }
+        else {
             Write-Host "      ❌ Found $($warningMatches.Count) instances of 'WARNING' log level" -ForegroundColor Red
             $results.Failed++
         }
-    } else {
+    }
+    else {
         Write-Host "   ⚠️ LogProcessor loaded but Invoke-LogProcessing not found" -ForegroundColor Yellow
         $results.Passed++
         $results.Warnings++
@@ -158,18 +164,21 @@ try {
             if ($logContent -match 'Testing WARN level') {
                 Write-Host "   ✅ Write-LogEntry accepts 'WARN' level successfully" -ForegroundColor Green
                 $results.Passed++
-            } else {
+            }
+            else {
                 Write-Host "   ⚠️ Log entry written but content unexpected" -ForegroundColor Yellow
                 $results.Passed++
                 $results.Warnings++
             }
             Remove-Item $testLogPath -Force -ErrorAction SilentlyContinue
-        } else {
+        }
+        else {
             Write-Host "   ⚠️ Log file not created" -ForegroundColor Yellow
             $results.Passed++
             $results.Warnings++
         }
-    } else {
+    }
+    else {
         Write-Host "   ⚠️ Write-LogEntry command not available" -ForegroundColor Yellow
         $results.Passed++
         $results.Warnings++
@@ -194,7 +203,8 @@ Write-Host "   Warnings: $($results.Warnings)" -ForegroundColor $(if ($results.W
 
 $successRate = if ($results.TotalTests -gt 0) { 
     [math]::Round(($results.Passed / $results.TotalTests) * 100, 2) 
-} else { 
+}
+else { 
     0 
 }
 Write-Host "   Success Rate: $successRate%" -ForegroundColor $(if ($successRate -eq 100 -and $results.Warnings -eq 0) { 'Green' } elseif ($successRate -ge 80) { 'Yellow' } else { 'Red' })
@@ -204,11 +214,13 @@ if ($results.Failed -eq 0 -and $results.Warnings -eq 0) {
     Write-Host "✅ ALL TESTS PASSED: Modules ready for execution" -ForegroundColor Green
     Write-Host "   Next step: Run with administrator privileges for full test" -ForegroundColor Cyan
     exit 0
-} elseif ($results.Failed -eq 0) {
+}
+elseif ($results.Failed -eq 0) {
     Write-Host "⚠️ TESTS PASSED WITH WARNINGS: Review warnings above" -ForegroundColor Yellow
     Write-Host "   All critical functionality working, minor issues detected" -ForegroundColor Yellow
     exit 0
-} else {
+}
+else {
     Write-Host "❌ SOME TESTS FAILED: Review errors above" -ForegroundColor Red
     Write-Host "   Fix failures before running with administrator privileges" -ForegroundColor Red
     exit 1
