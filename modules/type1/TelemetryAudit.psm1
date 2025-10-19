@@ -488,14 +488,12 @@ function Get-BuiltInAppsAudit {
     }
 
     try {
-        # Try to import Appx module and check if Get-AppxPackage is available
-        try {
-            Import-Module Appx -ErrorAction Stop
-            $appxAvailable = $true
-        }
-        catch {
-            Write-Warning "AppX module not available or not supported on this platform: $($_.Exception.Message)"
-            $appxAvailable = $false
+        # Check if Get-AppxPackage cmdlet is available without importing module
+        # This avoids triggering Windows AppX module initialization bugs
+        $appxAvailable = $null -ne (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue)
+        
+        if (-not $appxAvailable) {
+            Write-Verbose "AppX cmdlets not available - skipping AppX package telemetry scan"
         }
         
         if ($appxAvailable) {

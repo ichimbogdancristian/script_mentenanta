@@ -1159,21 +1159,10 @@ Write-Information "" -InformationAction Continue
 Write-Information "📋 Generating maintenance reports..." -InformationAction Continue
 
 try {
-    # Collect system inventory using SystemAnalysis (core module)
-    $systemInventory = $null
-    if (Get-Command -Name 'Get-SystemInventory' -ErrorAction SilentlyContinue) {
-        try {
-            $systemInventory = Get-SystemInventory -UseCache -IncludeDetailed
-            Write-Information "  ✓ System inventory collected" -InformationAction Continue
-        }
-        catch {
-            Write-Warning "  ⚠️ Failed to collect system inventory: $($_.Exception.Message)"
-        }
-    }
-    else {
-        Write-Warning "  ⚠️ SystemAnalysis module not available for inventory collection"
-    }
-
+    # SystemAnalysis module is optional in v3.0 - not loaded by default for performance
+    # All necessary data comes from Type1/Type2 module logs processed by LogProcessor
+    # If needed in future, add SystemAnalysis to core modules list and use inventory here
+    
     # v3.0 Split Architecture: LogProcessor → ReportGenerator pipeline
     Write-Information "📊 Processing logs and generating reports using split architecture..." -InformationAction Continue
     

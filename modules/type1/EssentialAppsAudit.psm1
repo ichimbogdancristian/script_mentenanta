@@ -279,14 +279,19 @@ function Get-InstalledApplications {
             }
         }
 
-        # Get from AppX packages
-        try {
-            $appxPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue |
-            Select-Object Name, Version, InstallLocation, Publisher
-            $installedApps += $appxPackages
+        # Get from AppX packages (check availability first to avoid module initialization errors)
+        if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) {
+            try {
+                $appxPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue |
+                Select-Object Name, Version, InstallLocation, Publisher
+                $installedApps += $appxPackages
+            }
+            catch {
+                Write-Verbose "Failed to get AppX packages: $($_.Exception.Message)"
+            }
         }
-        catch {
-            Write-Verbose "Failed to get AppX packages: $($_.Exception.Message)"
+        else {
+            Write-Verbose "AppX cmdlets not available - skipping AppX package detection"
         }
 
     }

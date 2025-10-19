@@ -632,8 +632,12 @@ function ConvertFrom-ModuleExecutionLog {
     $logLines = $LogContent -split "`n"
     
     foreach ($line in $logLines) {
+        # Skip null or empty lines to avoid "cannot call method on null-valued expression" errors
+        if ($null -eq $line -or [string]::IsNullOrWhiteSpace($line)) { 
+            continue 
+        }
+        
         $line = $line.Trim()
-        if (-not $line) { continue }
         
         # Parse structured log entries
         if ($line -match '^\[([^\]]+)\]\s+\[(INFO|SUCCESS|WARN|ERROR|FAILED)\]\s+\[([^\]]+)\]\s+(.+)$') {

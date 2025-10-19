@@ -584,7 +584,7 @@ function Remove-AppXBloatware {
     }
 
     if (-not (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue)) {
-        Write-Warning "AppX module not available, skipping AppX removals"
+        Write-Verbose "AppX cmdlets not available - skipping AppX package removals"
         $results.Skipped = $Items.Count
         return $results
     }
