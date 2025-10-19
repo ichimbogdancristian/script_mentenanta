@@ -23,11 +23,11 @@ using namespace System.Collections.Generic
 
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Step 1: Import core infrastructure FIRST (REQUIRED)
+# Step 1: Import core infrastructure FIRST (REQUIRED) - Global scope for Type1 access
 $ModuleRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 $CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force
+    Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
 }
 else {
     throw "CoreInfrastructure module not found at: $CoreInfraPath - v3.0 requires proper module loading order"

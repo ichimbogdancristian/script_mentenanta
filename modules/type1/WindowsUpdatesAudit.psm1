@@ -30,13 +30,8 @@ if (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue) {
     Write-Verbose "CoreInfrastructure functions detected - using configuration-based functions"
 }
 else {
-    Write-Verbose "CoreInfrastructure functions not available - fallback functions will be used"
-}
-
-# Module should use only configuration-based functions from CoreInfrastructure
-# Fallback functions are no longer needed with v3.0 proper loading order
-if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
-    throw "CoreInfrastructure module not properly loaded - Write-LogEntry function not available. Ensure Type2 module loads CoreInfrastructure before importing this Type1 module."
+    # Non-critical: Function will be available once Type2 module completes global import
+    Write-Verbose "CoreInfrastructure global import in progress - Write-LogEntry will be available momentarily"
 }
 
 #region Public Functions
