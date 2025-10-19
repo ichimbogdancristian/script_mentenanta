@@ -590,6 +590,11 @@ function Get-MaintenanceLog {
             $maintenanceLogData.LineCount = $logLines.Count
             
             foreach ($line in $logLines) {
+                # Null safety check
+                if ([string]::IsNullOrWhiteSpace($line)) {
+                    continue
+                }
+                
                 if ($line -match '\[(INFO|WARN|ERROR|SUCCESS|DEBUG)\]') {
                     $level = $matches[1]
                     
@@ -657,7 +662,17 @@ function Get-ModuleExecutionData {
         }
         
         foreach ($type2Module in $moduleMapping.Keys) {
+            # Null safety check
+            if ([string]::IsNullOrWhiteSpace($type2Module)) {
+                Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Skipping null or empty module name in mapping"
+                continue
+            }
+            
             $type1Module = $moduleMapping[$type2Module]
+            if ([string]::IsNullOrWhiteSpace($type1Module)) {
+                Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Skipping null Type1 module mapping for $type2Module"
+                continue
+            }
             
             # Collect Type1 audit data (detection/analysis results)
             try {
@@ -1613,11 +1628,32 @@ function Invoke-LogProcessing {
         # Initialize processed data paths
         $processedRoot = Initialize-ProcessedDataPaths
         
-        # Collect raw data
+        # Collect raw data with defensive error handling
         Write-Information "📊 Collecting raw log data..." -InformationAction Continue
-        $type1AuditData = Get-Type1AuditData
-        $type2ExecutionLogs = Get-Type2ExecutionLogs
-        $maintenanceLog = Get-MaintenanceLog
+        
+        $type1AuditData = @{}
+        try {
+            $type1AuditData = Get-Type1AuditData
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect Type1 audit data: $($_.Exception.Message)"
+        }
+        
+        $type2ExecutionLogs = @{}
+        try {
+            $type2ExecutionLogs = Get-Type2ExecutionLogs
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect Type2 execution logs: $($_.Exception.Message)"
+        }
+        
+        $maintenanceLog = $null
+        try {
+            $maintenanceLog = Get-MaintenanceLog
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect maintenance log: $($_.Exception.Message)"
+        }
         
         # Create comprehensive log collection
         $logCollection = @{
@@ -1632,8 +1668,24 @@ function Invoke-LogProcessing {
         # Process logs and generate standardized data files
         Write-Information "🔍 Analyzing logs and calculating metrics..." -InformationAction Continue
         
-        # Generate comprehensive log analysis
-        $comprehensiveAnalysis = Get-ComprehensiveLogAnalysis -ComprehensiveLogCollection $logCollection
+        # Generate comprehensive log analysis with error handling
+        $comprehensiveAnalysis = $null
+        try {
+            $comprehensiveAnalysis = Get-ComprehensiveLogAnalysis -ComprehensiveLogCollection $logCollection
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate comprehensive analysis: $($_.Exception.Message)"
+            # Create minimal fallback structure
+            $comprehensiveAnalysis = @{
+                ExecutionMetrics    = @{}
+                SystemModifications = @{}
+                PerformanceData     = @{}
+                Errors              = @{}
+                Warnings            = @{}
+                HealthMetrics       = @{}
+                TaskDetails         = @{}
+            }
+        }
         
         # Calculate dashboard metrics (mock TaskResults - in real implementation this would come from orchestrator)
         $mockTaskResults = @()
@@ -1644,10 +1696,23 @@ function Invoke-LogProcessing {
                 Type     = $moduleName
             }
         }
-        $dashboardMetrics = Get-ComprehensiveDashboardMetrics -ComprehensiveLogCollection $logCollection -TaskResults $mockTaskResults
         
-        # Extract errors analysis
-        $errorsAnalysis = Get-ErrorsFromExecutionLogs -ComprehensiveLogCollection $logCollection
+        $dashboardMetrics = @{}
+        try {
+            $dashboardMetrics = Get-ComprehensiveDashboardMetrics -ComprehensiveLogCollection $logCollection -TaskResults $mockTaskResults
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to calculate dashboard metrics: $($_.Exception.Message)"
+        }
+        
+        # Extract errors analysis with error handling
+        $errorsAnalysis = @()
+        try {
+            $errorsAnalysis = Get-ErrorsFromExecutionLogs -ComprehensiveLogCollection $logCollection
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to extract errors analysis: $($_.Exception.Message)"
+        }
         
         # Generate analytics (requires system inventory - mock for now)
         $mockSystemInventory = @{
@@ -1659,77 +1724,150 @@ function Invoke-LogProcessing {
             SystemInfo      = @{ TotalPhysicalMemory = 16GB }
             Services        = @(@{ Status = 'Running' }, @{ Status = 'Running' }, @{ Status = 'Running' })
         }
-        $executionSummary = Get-ExecutionSummary -TaskResults $mockTaskResults
-        $systemHealthAnalytics = Get-SystemHealthAnalytic -SystemInventory $mockSystemInventory
-        $performanceAnalytics = Get-PerformanceAnalytic -TaskResults $mockTaskResults
-        $securityAnalytics = Get-SecurityAnalytic -SystemInventory $mockSystemInventory
         
-        # Save processed data to standardized JSON files
+        $executionSummary = @{}
+        try {
+            $executionSummary = Get-ExecutionSummary -TaskResults $mockTaskResults
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate execution summary: $($_.Exception.Message)"
+        }
+        
+        $systemHealthAnalytics = @{}
+        try {
+            $systemHealthAnalytics = Get-SystemHealthAnalytic -SystemInventory $mockSystemInventory
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate system health analytics: $($_.Exception.Message)"
+        }
+        
+        $performanceAnalytics = @{}
+        try {
+            $performanceAnalytics = Get-PerformanceAnalytic -TaskResults $mockTaskResults
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate performance analytics: $($_.Exception.Message)"
+        }
+        
+        $securityAnalytics = @{}
+        try {
+            $securityAnalytics = Get-SecurityAnalytic -SystemInventory $mockSystemInventory
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate security analytics: $($_.Exception.Message)"
+        }
+        
+        # Save processed data to standardized JSON files (with defensive error handling)
         Write-Information "💾 Saving processed data files..." -InformationAction Continue
         
         # Main metrics summary
-        $metricsSummary = @{
-            ProcessingMetadata    = @{
-                SessionId    = $logCollection.SessionId
-                ProcessedAt  = $logCollection.ProcessedAt
-                ModulesCount = @{
-                    Type1 = $type1AuditData.Keys.Count
-                    Type2 = $type2ExecutionLogs.Keys.Count
+        try {
+            $metricsSummary = @{
+                ProcessingMetadata    = @{
+                    SessionId    = $logCollection.SessionId
+                    ProcessedAt  = $logCollection.ProcessedAt
+                    ModulesCount = @{
+                        Type1 = if ($type1AuditData) { $type1AuditData.Keys.Count } else { 0 }
+                        Type2 = if ($type2ExecutionLogs) { $type2ExecutionLogs.Keys.Count } else { 0 }
+                    }
                 }
+                DashboardMetrics      = if ($dashboardMetrics) { $dashboardMetrics } else { @{} }
+                ExecutionSummary      = if ($executionSummary) { $executionSummary } else { @{} }
+                ComprehensiveAnalysis = if ($comprehensiveAnalysis) { $comprehensiveAnalysis } else { @{} }
             }
-            DashboardMetrics      = $dashboardMetrics
-            ExecutionSummary      = $executionSummary
-            ComprehensiveAnalysis = $comprehensiveAnalysis
+            $metricsSummary | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'metrics-summary.json')
+            Write-Information "  ✓ Metrics summary saved" -InformationAction Continue
         }
-        $metricsSummary | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'metrics-summary.json')
+        catch {
+            Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save metrics-summary.json: $($_.Exception.Message)"
+        }
         
         # Module-specific results
-        $moduleResults = @{
-            Type1AuditResults      = $type1AuditData
-            Type2ExecutionAnalysis = $comprehensiveAnalysis.ExecutionMetrics
-            SystemModifications    = $comprehensiveAnalysis.SystemModifications
-            PerformanceData        = $comprehensiveAnalysis.PerformanceData
+        try {
+            $moduleResults = @{
+                Type1AuditResults      = if ($type1AuditData) { $type1AuditData } else { @{} }
+                Type2ExecutionAnalysis = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.ExecutionMetrics) { $comprehensiveAnalysis.ExecutionMetrics } else { @{} }
+                SystemModifications    = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.SystemModifications) { $comprehensiveAnalysis.SystemModifications } else { @{} }
+                PerformanceData        = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.PerformanceData) { $comprehensiveAnalysis.PerformanceData } else { @{} }
+            }
+            $moduleResults | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'module-results.json')
+            Write-Information "  ✓ Module results saved" -InformationAction Continue
         }
-        $moduleResults | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'module-results.json')
+        catch {
+            Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save module-results.json: $($_.Exception.Message)"
+        }
         
         # Save maintenance log data separately for easy access
-        if ($maintenanceLog -and $maintenanceLog.Available) {
-            $maintenanceLog | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'maintenance-log.json')
-            Write-Information "  ✓ Maintenance log data saved" -InformationAction Continue
+        try {
+            if ($maintenanceLog -and $maintenanceLog.Available) {
+                $maintenanceLog | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'maintenance-log.json')
+                Write-Information "  ✓ Maintenance log data saved" -InformationAction Continue
+            }
+            else {
+                Write-Information "  ⚠ No maintenance log data available" -InformationAction Continue
+            }
+        }
+        catch {
+            Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save maintenance-log.json: $($_.Exception.Message)"
         }
         
         # Errors and warnings analysis
-        $errorsData = @{
-            AllErrors        = $errorsAnalysis
-            ErrorsByModule   = $comprehensiveAnalysis.Errors
-            WarningsByModule = $comprehensiveAnalysis.Warnings
-            ErrorSummary     = @{
-                TotalErrors    = $errorsAnalysis.Count
-                HighSeverity   = ($errorsAnalysis | Where-Object { $_.Severity -eq 'High' }).Count
-                MediumSeverity = ($errorsAnalysis | Where-Object { $_.Severity -eq 'Medium' }).Count
+        try {
+            $errorsData = @{
+                AllErrors        = if ($errorsAnalysis) { $errorsAnalysis } else { @() }
+                ErrorsByModule   = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.Errors) { $comprehensiveAnalysis.Errors } else { @{} }
+                WarningsByModule = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.Warnings) { $comprehensiveAnalysis.Warnings } else { @{} }
+                ErrorSummary     = @{
+                    TotalErrors    = if ($errorsAnalysis) { $errorsAnalysis.Count } else { 0 }
+                    HighSeverity   = if ($errorsAnalysis) { ($errorsAnalysis | Where-Object { $_.Severity -eq 'High' }).Count } else { 0 }
+                    MediumSeverity = if ($errorsAnalysis) { ($errorsAnalysis | Where-Object { $_.Severity -eq 'Medium' }).Count } else { 0 }
+                }
             }
+            $errorsData | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'errors-analysis.json')
+            Write-Information "  ✓ Errors analysis saved" -InformationAction Continue
         }
-        $errorsData | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'errors-analysis.json')
+        catch {
+            Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save errors-analysis.json: $($_.Exception.Message)"
+        }
         
         # Health scores and analytics
-        $healthScores = @{
-            SystemHealth        = $systemHealthAnalytics
-            Security            = $securityAnalytics
-            Performance         = $performanceAnalytics
-            ModuleHealthMetrics = $comprehensiveAnalysis.HealthMetrics
+        try {
+            $healthScores = @{
+                SystemHealth        = if ($systemHealthAnalytics) { $systemHealthAnalytics } else { @{} }
+                Security            = if ($securityAnalytics) { $securityAnalytics } else { @{} }
+                Performance         = if ($performanceAnalytics) { $performanceAnalytics } else { @{} }
+                ModuleHealthMetrics = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.HealthMetrics) { $comprehensiveAnalysis.HealthMetrics } else { @{} }
+            }
+            $healthScores | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'health-scores.json')
+            Write-Information "  ✓ Health scores saved" -InformationAction Continue
         }
-        $healthScores | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'health-scores.json')
+        catch {
+            Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save health-scores.json: $($_.Exception.Message)"
+        }
         
         # Save individual module data to module-specific subdirectory
-        $moduleSpecificDir = Join-Path $processedRoot 'module-specific'
-        foreach ($moduleName in $type1AuditData.Keys) {
-            $moduleData = @{
-                AuditData        = $type1AuditData[$moduleName]
-                ExecutionMetrics = $comprehensiveAnalysis.ExecutionMetrics[$moduleName]
-                TaskDetails      = $comprehensiveAnalysis.TaskDetails[$moduleName]
-                Modifications    = $comprehensiveAnalysis.SystemModifications[$moduleName]
+        try {
+            $moduleSpecificDir = Join-Path $processedRoot 'module-specific'
+            if ($type1AuditData -and $type1AuditData.Keys.Count -gt 0) {
+                foreach ($moduleName in $type1AuditData.Keys) {
+                    try {
+                        $moduleData = @{
+                            AuditData        = if ($type1AuditData[$moduleName]) { $type1AuditData[$moduleName] } else { @{} }
+                            ExecutionMetrics = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.ExecutionMetrics -and $comprehensiveAnalysis.ExecutionMetrics[$moduleName]) { $comprehensiveAnalysis.ExecutionMetrics[$moduleName] } else { @{} }
+                            TaskDetails      = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.TaskDetails -and $comprehensiveAnalysis.TaskDetails[$moduleName]) { $comprehensiveAnalysis.TaskDetails[$moduleName] } else { @{} }
+                            Modifications    = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.SystemModifications -and $comprehensiveAnalysis.SystemModifications[$moduleName]) { $comprehensiveAnalysis.SystemModifications[$moduleName] } else { @{} }
+                        }
+                        $moduleData | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $moduleSpecificDir "$moduleName.json")
+                    }
+                    catch {
+                        Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to save module-specific data for ${moduleName}: $($_.Exception.Message)"
+                    }
+                }
+                Write-Information "  ✓ Module-specific data files saved" -InformationAction Continue
             }
-            $moduleData | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $moduleSpecificDir "$moduleName.json")
+        }
+        catch {
+            Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save module-specific data: $($_.Exception.Message)"
         }
         
         Write-Information "📋 Log processing completed successfully" -InformationAction Continue

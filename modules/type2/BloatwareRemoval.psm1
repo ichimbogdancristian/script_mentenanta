@@ -613,7 +613,7 @@ function Remove-AppXBloatware {
                 InstallLocation = if ($package) { $package.InstallLocation } else { 'N/A' }
             }
             
-            Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Details "AppX Package - Version: $($preActionState.Version), Provisioned: $($preActionState.IsProvisioned)"
+            Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -AdditionalInfo "AppX Package - Version: $($preActionState.Version), Provisioned: $($preActionState.IsProvisioned)"
             
             if ($DryRun) {
                 Write-Information "    [DRY RUN] Would remove AppX package: $packageName" -InformationAction Continue
@@ -729,7 +729,7 @@ function Remove-WingetBloatware {
 
         try {
             # Enhanced logging: Pre-action state detection
-            Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Details "Winget Package - Querying installed state"
+            Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -AdditionalInfo "Winget Package - Querying installed state"
             
             # Check if package is installed before attempting removal
             $wingetListArgs = @('list', '--id', $packageName, '--accept-source-agreements')
@@ -858,7 +858,7 @@ function Remove-ChocolateyBloatware {
 
         try {
             # Enhanced logging: Pre-action state detection
-            Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Details "Chocolatey Package - Querying installed state"
+            Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -AdditionalInfo "Chocolatey Package - Querying installed state"
             
             # Check if package is installed before attempting removal
             $chocoListArgs = @('list', '--local-only', '--exact', $packageName, '--limit-output')
@@ -993,7 +993,7 @@ function Remove-RegistryBloatware {
                 EstimatedSize   = $item.EstimatedSize ?? 'N/A'
             }
             
-            Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $appName -Details "Registry Uninstaller - Version: $($preActionState.Version), Publisher: $($preActionState.Publisher)"
+            Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $appName -AdditionalInfo "Registry Uninstaller - Version: $($preActionState.Version), Publisher: $($preActionState.Publisher)"
 
             if ($DryRun) {
                 Write-Information "    [DRY RUN] Would execute uninstaller: $appName" -InformationAction Continue

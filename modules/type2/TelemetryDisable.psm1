@@ -674,7 +674,7 @@ function Disable-TelemetryService {
             }
             else {
                 # Enhanced logging: Pre-action state
-                Write-OperationStart -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Details @{
+                Write-OperationStart -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -AdditionalInfo @{
                     PreviousState     = $service.Status
                     PreviousStartType = $service.StartType
                     Type              = 'TelemetryService'

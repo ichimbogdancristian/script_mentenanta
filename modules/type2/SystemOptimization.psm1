@@ -619,7 +619,7 @@ function Optimize-StartupProgram {
 
                             try {
                                 # Enhanced logging: Pre-action state
-                                Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Details @{
+                                Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -AdditionalInfo @{
                                     Location = $location
                                     Value    = $itemValue
                                     Type     = 'StartupProgram'
@@ -756,7 +756,7 @@ function Optimize-UserInterface {
                     $oldValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
                 }
                 
-                Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -Details @{
+                Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -AdditionalInfo @{
                     OldValue = $oldValue
                     NewValue = $setting.Value
                     Type     = 'UIOptimization'

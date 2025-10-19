@@ -79,7 +79,7 @@ function Invoke-AppUpgrade {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config,
+        [PSCustomObject]$Config,
 
         [Parameter()]
         [switch]$DryRun

@@ -154,9 +154,11 @@ function Invoke-EssentialApps {
                     
                     # Transform app data for Install-SingleApplication
                     $appHashtable = @{
-                        Name   = $app.Name
-                        Source = $app.RecommendedMethod
-                        Id     = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId }
+                        Name     = $app.Name
+                        Source   = $app.RecommendedMethod
+                        Id       = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId }
+                        WingetId = $app.WingetId
+                        ChocoId  = $app.ChocoId
                     }
                     
                     $result = Install-SingleApplication -AppData $appHashtable -ExecutionLogPath $executionLogPath
@@ -1406,6 +1408,44 @@ function Install-SingleApplication {
                     Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
                     return @{ Success = $false; Method = 'Chocolatey'; AppName = $appName; ErrorMessage = "Exit code: $($installProcess.ExitCode)" }
                 }
+            }
+            
+            'manual' {
+                # Try Winget first if ID is available
+                if ($AppData.WingetId -or $appId) {
+                    $wingetId = if ($AppData.WingetId) { $AppData.WingetId } else { $appId }
+                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Winget installation for $appName (ID: $wingetId)" -LogPath $ExecutionLogPath
+                    
+                    if (Get-Command winget -ErrorAction SilentlyContinue) {
+                        $installProcess = Start-Process -FilePath 'winget' -ArgumentList @('install', '--id', $wingetId, '--silent', '--accept-package-agreements', '--accept-source-agreements') -Wait -PassThru -NoNewWindow
+                        
+                        if ($installProcess.ExitCode -eq 0) {
+                            Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget installation successful: $appName" -LogPath $ExecutionLogPath
+                            return @{ Success = $true; Method = 'Manual-Winget'; AppName = $appName }
+                        }
+                        else {
+                            Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget failed (Exit: $($installProcess.ExitCode)), trying Chocolatey..." -LogPath $ExecutionLogPath
+                        }
+                    }
+                }
+                
+                # Try Chocolatey as fallback
+                if ($AppData.ChocoId -or $appName) {
+                    $chocoId = if ($AppData.ChocoId) { $AppData.ChocoId } else { $appName }
+                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Chocolatey installation for $appName (ID: $chocoId)" -LogPath $ExecutionLogPath
+                    
+                    if (Get-Command choco -ErrorAction SilentlyContinue) {
+                        $installProcess = Start-Process -FilePath 'choco' -ArgumentList @('install', $chocoId, '--force', '--yes') -Wait -PassThru -NoNewWindow
+                        
+                        if ($installProcess.ExitCode -eq 0) {
+                            Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
+                            return @{ Success = $true; Method = 'Manual-Chocolatey'; AppName = $appName }
+                        }
+                    }
+                }
+                
+                Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Manual mode: All installation methods failed for $appName" -LogPath $ExecutionLogPath
+                return @{ Success = $false; Method = 'Manual'; AppName = $appName; ErrorMessage = "All installation methods exhausted" }
             }
             
             'direct' {

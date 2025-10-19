@@ -125,22 +125,40 @@ function Find-InstalledBloatware {
         $allBloatware = [List[PSCustomObject]]::new(200)  # Pre-allocate capacity to reduce reallocations
         
         # Variables for cleanup tracking
-        $systemInventory = $null
         $installedPrograms = $null
         
-        # Get system inventory once to avoid repeated calls
-        Write-Information "  📊 Collecting system inventory..." -InformationAction Continue
-        $systemInventory = Get-SystemInventory -UseCache:$UseCache
+        # Collect installed programs directly from registry (SystemAnalysis only provides summary metrics)
+        Write-Information "  📊 Collecting installed programs from registry..." -InformationAction Continue
+        try {
+            $programs = @()
+            $registryPaths = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            )
 
-        if ($null -eq $systemInventory -or $null -eq $systemInventory.InstalledSoftware -or $null -eq $systemInventory.InstalledSoftware.Programs) {
-            Write-Warning "No installed software inventory found"
-            return @()
+            foreach ($path in $registryPaths) {
+                try {
+                    $programs += Get-ItemProperty $path -ErrorAction SilentlyContinue |
+                    Where-Object { $_.DisplayName -and $_.DisplayName.Trim() -ne '' } |
+                    Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, PSPath
+                }
+                catch {
+                    Write-Verbose "Failed to read registry path ${path}: $($_.Exception.Message)"
+                }
+            }
+
+            $installedPrograms = $programs
+            Write-Information "  ✓ Found $($installedPrograms.Count) installed programs" -InformationAction Continue
+        }
+        catch {
+            Write-Warning "Failed to collect installed programs: $($_.Exception.Message)"
+            $installedPrograms = @()
         }
 
-        $installedPrograms = $systemInventory.InstalledSoftware.Programs
-        if ($null -eq $installedPrograms) {
-            Write-Warning "Installed programs data is null"
-            return @()
+        if ($null -eq $installedPrograms -or $installedPrograms.Count -eq 0) {
+            Write-Warning "No installed programs found in registry"
+            # Continue anyway - AppX, Winget, Chocolatey scans can still work
         }
 
         # Scan AppX packages
