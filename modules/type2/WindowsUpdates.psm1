@@ -58,7 +58,7 @@ if (-not (Get-Command -Name 'Get-WindowsUpdatesAnalysis' -ErrorAction SilentlyCo
 
 function Invoke-WindowsUpdates {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][PSCustomObject]$Config, [Parameter()][switch]$DryRun)
+    param([Parameter(Mandatory)][hashtable]$Config, [Parameter()][switch]$DryRun)
     
     $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES' } catch { }
     

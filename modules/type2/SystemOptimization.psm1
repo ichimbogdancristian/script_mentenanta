@@ -63,7 +63,7 @@ function Invoke-SystemOptimization {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [PSCustomObject]$Config,
+        [hashtable]$Config,
         [Parameter()]
         [switch]$DryRun
     )

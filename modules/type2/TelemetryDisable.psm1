@@ -52,7 +52,7 @@ if (-not (Get-Command -Name 'Get-TelemetryAnalysis' -ErrorAction SilentlyContinu
 
 function Invoke-TelemetryDisable {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][PSCustomObject]$Config, [Parameter()][switch]$DryRun)
+    param([Parameter(Mandatory)][hashtable]$Config, [Parameter()][switch]$DryRun)
     
     $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE' } catch { }
     

@@ -86,7 +86,7 @@ function Invoke-EssentialApps {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [PSCustomObject]$Config,
+        [hashtable]$Config,
         
         [Parameter()]
         [switch]$DryRun

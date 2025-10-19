@@ -1636,7 +1636,7 @@ function Invoke-LogProcessing {
             $type1AuditData = Get-Type1AuditData
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect Type1 audit data: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to collect Type1 audit data: $($_.Exception.Message)"
         }
         
         $type2ExecutionLogs = @{}
@@ -1644,7 +1644,7 @@ function Invoke-LogProcessing {
             $type2ExecutionLogs = Get-Type2ExecutionLogs
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect Type2 execution logs: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to collect Type2 execution logs: $($_.Exception.Message)"
         }
         
         $maintenanceLog = $null
@@ -1652,7 +1652,7 @@ function Invoke-LogProcessing {
             $maintenanceLog = Get-MaintenanceLog
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect maintenance log: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to collect maintenance log: $($_.Exception.Message)"
         }
         
         # Create comprehensive log collection
@@ -1674,7 +1674,7 @@ function Invoke-LogProcessing {
             $comprehensiveAnalysis = Get-ComprehensiveLogAnalysis -ComprehensiveLogCollection $logCollection
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate comprehensive analysis: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to generate comprehensive analysis: $($_.Exception.Message)"
             # Create minimal fallback structure
             $comprehensiveAnalysis = @{
                 ExecutionMetrics    = @{}
@@ -1702,7 +1702,7 @@ function Invoke-LogProcessing {
             $dashboardMetrics = Get-ComprehensiveDashboardMetrics -ComprehensiveLogCollection $logCollection -TaskResults $mockTaskResults
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to calculate dashboard metrics: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to calculate dashboard metrics: $($_.Exception.Message)"
         }
         
         # Extract errors analysis with error handling
@@ -1711,7 +1711,7 @@ function Invoke-LogProcessing {
             $errorsAnalysis = Get-ErrorsFromExecutionLogs -ComprehensiveLogCollection $logCollection
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to extract errors analysis: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to extract errors analysis: $($_.Exception.Message)"
         }
         
         # Generate analytics (requires system inventory - mock for now)
@@ -1730,7 +1730,7 @@ function Invoke-LogProcessing {
             $executionSummary = Get-ExecutionSummary -TaskResults $mockTaskResults
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate execution summary: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to generate execution summary: $($_.Exception.Message)"
         }
         
         $systemHealthAnalytics = @{}
@@ -1738,7 +1738,7 @@ function Invoke-LogProcessing {
             $systemHealthAnalytics = Get-SystemHealthAnalytic -SystemInventory $mockSystemInventory
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate system health analytics: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to generate system health analytics: $($_.Exception.Message)"
         }
         
         $performanceAnalytics = @{}
@@ -1746,7 +1746,7 @@ function Invoke-LogProcessing {
             $performanceAnalytics = Get-PerformanceAnalytic -TaskResults $mockTaskResults
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate performance analytics: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to generate performance analytics: $($_.Exception.Message)"
         }
         
         $securityAnalytics = @{}
@@ -1754,7 +1754,7 @@ function Invoke-LogProcessing {
             $securityAnalytics = Get-SecurityAnalytic -SystemInventory $mockSystemInventory
         }
         catch {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate security analytics: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to generate security analytics: $($_.Exception.Message)"
         }
         
         # Save processed data to standardized JSON files (with defensive error handling)
@@ -1860,7 +1860,7 @@ function Invoke-LogProcessing {
                         $moduleData | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $moduleSpecificDir "$moduleName.json")
                     }
                     catch {
-                        Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to save module-specific data for ${moduleName}: $($_.Exception.Message)"
+                        Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to save module-specific data for ${moduleName}: $($_.Exception.Message)"
                     }
                 }
                 Write-Information "  ✓ Module-specific data files saved" -InformationAction Continue

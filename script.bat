@@ -378,16 +378,29 @@ IF EXIST "%WORKING_DIR%modules" (
     IF EXIST "%WORKING_DIR%modules\core" (
         CALL :LOG_MESSAGE "  ✓ Core modules directory present" "SUCCESS" "LAUNCHER"
         
-        IF EXIST "%WORKING_DIR%modules\core\ConfigManager.psm1" (
-            CALL :LOG_MESSAGE "    ✓ ConfigManager.psm1 present" "SUCCESS" "LAUNCHER"
+        REM v3.0 Core Modules Validation
+        IF EXIST "%WORKING_DIR%modules\core\CoreInfrastructure.psm1" (
+            CALL :LOG_MESSAGE "    ✓ CoreInfrastructure.psm1 present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    ✗ ConfigManager.psm1 missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    ✗ CoreInfrastructure.psm1 missing" "WARN" "LAUNCHER"
         )
         
-        IF EXIST "%WORKING_DIR%modules\core\MenuSystem.psm1" (
-            CALL :LOG_MESSAGE "    ✓ MenuSystem.psm1 present" "SUCCESS" "LAUNCHER"
+        IF EXIST "%WORKING_DIR%modules\core\UserInterface.psm1" (
+            CALL :LOG_MESSAGE "    ✓ UserInterface.psm1 present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    ✗ MenuSystem.psm1 missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    ✗ UserInterface.psm1 missing" "WARN" "LAUNCHER"
+        )
+        
+        IF EXIST "%WORKING_DIR%modules\core\ReportGenerator.psm1" (
+            CALL :LOG_MESSAGE "    ✓ ReportGenerator.psm1 present" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "    ✗ ReportGenerator.psm1 missing" "WARN" "LAUNCHER"
+        )
+        
+        IF EXIST "%WORKING_DIR%modules\core\LogProcessor.psm1" (
+            CALL :LOG_MESSAGE "    ✓ LogProcessor.psm1 present" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "    ✗ LogProcessor.psm1 missing" "WARN" "LAUNCHER"
         )
     ) ELSE (
         CALL :LOG_MESSAGE "  ✗ Core modules directory missing" "WARN" "LAUNCHER"
@@ -1195,25 +1208,12 @@ REM Critical: Use PowerShell 7+ (pwsh.exe) for MaintenanceOrchestrator.ps1 due t
 IF "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "Launching PowerShell 7+ in dedicated window for optimal experience" "SUCCESS" "LAUNCHER"
     
-    REM Prepare arguments for the new PowerShell window
-    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command "
-    SET "PS_ARGS=!PS_ARGS!& { "
-    SET "PS_ARGS=!PS_ARGS!Set-Location '%WORKING_DIR%'; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    
-    REM Check for command line arguments to pass through
+    REM Prepare arguments for the new PowerShell window (simplified single-line approach)
     IF "%1"=="-NonInteractive" (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive; "
+        SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command ""Set-Location '%WORKING_DIR%'; Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; Write-Host ''; ^& '%ORCHESTRATOR_PATH%' -NonInteractive; Write-Host ''; Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green"""
     ) ELSE (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'; "
+        SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command ""Set-Location '%WORKING_DIR%'; Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; Write-Host ''; ^& '%ORCHESTRATOR_PATH%'; Write-Host ''; Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green"""
     )
-    
-    SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
-    SET "PS_ARGS=!PS_ARGS!}"
     
     REM Launch new PowerShell 7 window preserving Administrator privileges
     CALL :LOG_MESSAGE "Launching elevated PowerShell 7: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
