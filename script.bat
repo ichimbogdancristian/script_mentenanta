@@ -816,11 +816,10 @@ IF !ERRORLEVEL! EQU 0 (
     )
 )
 
-REM -----------------------------------------------------------------------------
 REM =============================================================================
-REM PowerShell 7+ Executable Detection (Must run BEFORE any PS operations)
+REM Final PowerShell 7+ Executable Detection (After installation attempts)
 REM =============================================================================
-CALL :LOG_MESSAGE "Detecting PowerShell 7+ executable..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Detecting PowerShell 7+ executable for orchestrator..." "INFO" "LAUNCHER"
 
 SET "PS_EXECUTABLE="
 SET "PS_VERSION_STRING="
@@ -868,18 +867,21 @@ IF "%PS_EXECUTABLE%"=="" (
 
 REM Final check: PowerShell 7+ is required
 IF "%PS_EXECUTABLE%"=="" (
-    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not found" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not found after installation attempts" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "The orchestrator requires PowerShell 7+ (pwsh.exe)" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Install PowerShell 7+ using one of these methods:" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  1. winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  2. https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  3. choco install powershell-core" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "All automated installation methods failed:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - choco install powershell-core" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - MSI from https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "After installation, restart this script." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please manually install PowerShell 7+ and restart this script." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Download from: https://github.com/PowerShell/PowerShell/releases/latest" "ERROR" "LAUNCHER"
     PAUSE
     EXIT /B 1
 )
+
+CALL :LOG_MESSAGE "PowerShell 7+ ready for orchestrator execution: %PS_VERSION_STRING%" "SUCCESS" "LAUNCHER"
 
 REM =============================================================================
 REM Windows Defender Exclusions (Using PowerShell 7)
@@ -887,7 +889,9 @@ REM ============================================================================
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
 %PS_EXECUTABLE% -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
-REM Package Manager Dependencies
+REM =============================================================================
+REM Package Manager Verification Summary
+REM =============================================================================
 CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
 
 REM Winget
