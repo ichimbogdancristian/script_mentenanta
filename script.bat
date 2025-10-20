@@ -467,164 +467,22 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Starting dependency management..." "INFO" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
-REM Winget Installation and Verification Section (Moved before PowerShell detection)
+REM PowerShell 7+ Installation and Detection (Critical for Orchestrator)
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
-    
-    SET "WINGET_AVAILABLE=NO"
-    SET "WINGET_EXE="
-    
-    REM Initial winget check (PATH and WindowsApps)
-    winget --version >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        SET "WINGET_EXE=winget"
-        SET "WINGET_AVAILABLE=YES"
-        CALL :LOG_MESSAGE "Winget found via PATH" "DEBUG" "LAUNCHER"
-    ) ELSE (
-        IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
-            "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
-            IF !ERRORLEVEL! EQU 0 (
-                SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
-                SET "WINGET_AVAILABLE=YES"
-                CALL :LOG_MESSAGE "Winget found via WindowsApps alias" "DEBUG" "LAUNCHER"
-            )
-        )
-    )
-    
-    REM Install winget if not available
-    IF "%WINGET_AVAILABLE%"=="NO" (
-        CALL :LOG_MESSAGE "Winget not found. Attempting to install winget..." "INFO" "LAUNCHER"
-        
-        REM Method 1: Try installing App Installer via PowerShell (if allowed)
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) { $appInstaller = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction SilentlyContinue; if (-not $appInstaller) { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop; Write-Host 'APPINSTALLER_REGISTERED' } else { Write-Host 'APPINSTALLER_EXISTS' } } else { Write-Host 'APPX_NOT_SUPPORTED' } } catch { Write-Host 'APPINSTALLER_FAILED'; exit 1 }" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "App Installer registration attempted" "INFO" "LAUNCHER"
-            TIMEOUT /T 5 >nul 2>&1
-        ) ELSE (
-            CALL :LOG_MESSAGE "App Installer registration failed" "WARN" "LAUNCHER"
-        )
-        
-        REM Check if Method 1 succeeded before trying Method 2
-        winget --version >nul 2>&1
-        IF !ERRORLEVEL! NEQ 0 (
-            REM Method 2: Try PowerShell Gallery Microsoft.WinGet.Client module (official method)
-            CALL :LOG_MESSAGE "Attempting winget installation via PowerShell Gallery (Microsoft.WinGet.Client)..." "INFO" "LAUNCHER"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Installing NuGet provider...'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Write-Host 'Installing Microsoft.WinGet.Client module...'; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Write-Host 'Running Repair-WinGetPackageManager...'; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
-            IF !ERRORLEVEL! EQU 0 (
-                CALL :LOG_MESSAGE "PowerShell Gallery method completed - verifying winget availability..." "INFO" "LAUNCHER"
-                TIMEOUT /T 5 >nul 2>&1
-                
-                REM Verify winget actually works after PowerShell Gallery installation
-                winget --version >nul 2>&1
-                IF !ERRORLEVEL! EQU 0 (
-                    SET "WINGET_EXE=winget"
-                    SET "WINGET_AVAILABLE=YES"
-                    CALL :LOG_MESSAGE "Winget verified working after PowerShell Gallery installation" "SUCCESS" "LAUNCHER"
-                ) ELSE (
-                    REM Try WindowsApps path after PowerShell Gallery installation
-                    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
-                        "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
-                        IF !ERRORLEVEL! EQU 0 (
-                            SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
-                            SET "WINGET_AVAILABLE=YES"
-                            CALL :LOG_MESSAGE "Winget working via WindowsApps after PowerShell Gallery installation" "SUCCESS" "LAUNCHER"
-                        ) ELSE (
-                            CALL :LOG_MESSAGE "PowerShell Gallery installed winget but it's not functional" "WARN" "LAUNCHER"
-                        )
-                    ) ELSE (
-                        CALL :LOG_MESSAGE "PowerShell Gallery method completed but winget not accessible" "WARN" "LAUNCHER"
-                    )
-                )
-            ) ELSE (
-                CALL :LOG_MESSAGE "PowerShell Gallery winget installation failed" "WARN" "LAUNCHER"
-            )
-        ) ELSE (
-            CALL :LOG_MESSAGE "Method 1 succeeded - skipping PowerShell Gallery installation" "DEBUG" "LAUNCHER"
-        )
-        
-        REM Check if Methods 1 and 2 succeeded before trying Method 3
-        winget --version >nul 2>&1
-        IF !ERRORLEVEL! NEQ 0 (
-            REM Method 3: Download and install App Installer MSIX manually with fallback URLs
-            CALL :LOG_MESSAGE "Attempting manual App Installer download with fallback URLs..." "INFO" "LAUNCHER"
-            DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-            
-            REM Try primary URL (Microsoft official shortlink)
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying primary URL (Microsoft official)...'; $url='https://aka.ms/getwinget'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'PRIMARY_MSIX_DOWNLOADED' } catch { Write-Host 'PRIMARY_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
-            IF !ERRORLEVEL! NEQ 0 (
-                CALL :LOG_MESSAGE "Primary URL failed, trying fallback URL 1 (GitHub direct)..." "INFO" "LAUNCHER"
-                DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying fallback URL 1 (GitHub direct)...'; $url='https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'FALLBACK1_MSIX_DOWNLOADED' } catch { Write-Host 'FALLBACK1_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
-                IF !ERRORLEVEL! NEQ 0 (
-                    CALL :LOG_MESSAGE "Fallback URL 1 failed, trying fallback URL 2 (GitHub versioned)..." "INFO" "LAUNCHER"
-                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying fallback URL 2 (GitHub versioned)...'; $url='https://github.com/microsoft/winget-cli/releases/download/v1.11.510/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'FALLBACK2_MSIX_DOWNLOADED' } catch { Write-Host 'FALLBACK2_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
-                    IF !ERRORLEVEL! EQU 0 (
-                        CALL :LOG_MESSAGE "App Installer MSIX downloaded via fallback URL 2. Installing..." "INFO" "LAUNCHER"
-                    ) ELSE (
-                        CALL :LOG_MESSAGE "All download URLs failed (primary + 2 fallbacks) for App Installer MSIX" "ERROR" "LAUNCHER"
-                    )
-                ) ELSE (
-                    CALL :LOG_MESSAGE "App Installer MSIX downloaded via fallback URL 1. Installing..." "INFO" "LAUNCHER"
-                )
-            ) ELSE (
-                CALL :LOG_MESSAGE "App Installer MSIX downloaded via primary URL. Installing..." "INFO" "LAUNCHER"
-            )
-            
-            REM Install the MSIX if download succeeded
-            IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WORKING_DIR%AppInstaller.msixbundle' -ErrorAction Stop; Write-Host 'MSIX_INSTALLED' } catch { Write-Host 'MSIX_INSTALL_FAILED'; exit 1 }" >nul 2>&1
-                IF !ERRORLEVEL! EQU 0 (
-                    CALL :LOG_MESSAGE "App Installer MSIX installed successfully" "SUCCESS" "LAUNCHER"
-                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-                ) ELSE (
-                    CALL :LOG_MESSAGE "App Installer MSIX installation failed" "WARN" "LAUNCHER"
-                )
-            ) ELSE (
-                CALL :LOG_MESSAGE "Failed to download App Installer MSIX" "WARN" "LAUNCHER"
-            )
-        ) ELSE (
-            CALL :LOG_MESSAGE "Methods 1 or 2 succeeded - skipping manual MSIX installation" "DEBUG" "LAUNCHER"
-        )
-        
-        REM Re-check winget availability after installation attempts
-        CALL :LOG_MESSAGE "Re-checking winget availability after installation attempts..." "INFO" "LAUNCHER"
-        TIMEOUT /T 3 >nul 2>&1
-        
-        winget --version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            SET "WINGET_EXE=winget"
-            SET "WINGET_AVAILABLE=YES"
-            CALL :LOG_MESSAGE "Winget now available via PATH" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
-                "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
-                IF !ERRORLEVEL! EQU 0 (
-                    SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
-                    SET "WINGET_AVAILABLE=YES"
-                    CALL :LOG_MESSAGE "Winget now available via WindowsApps alias" "SUCCESS" "LAUNCHER"
-                )
-            )
-        )
-        
-        IF "%WINGET_AVAILABLE%"=="NO" (
-            CALL :LOG_MESSAGE "All winget installation methods failed" "WARN" "LAUNCHER"
-        )
-    )
+CALL :LOG_MESSAGE "Checking PowerShell 7+ availability..." "INFO" "LAUNCHER"
 
-REM -----------------------------------------------------------------------------
-REM PowerShell 7 Detection and Installation (Moved after winget setup)
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
-
-REM Try multiple detection methods before deciding to install
 SET "PS7_FOUND=NO"
+SET "WINGET_AVAILABLE=NO"
+SET "WINGET_EXE="
 
-REM Method 1: Direct pwsh.exe command
+REM Method 1: Direct PowerShell 7 check
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    SET "PS7_FOUND=YES"
-    CALL :LOG_MESSAGE "PowerShell 7 detected via pwsh.exe command" "DEBUG" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR=%%i
+    IF DEFINED PS_MAJOR IF !PS_MAJOR! GEQ 7 (
+        SET "PS7_FOUND=YES"
+        CALL :LOG_MESSAGE "PowerShell 7+ detected via direct command" "DEBUG" "LAUNCHER"
+    )
 )
 
 REM Method 2: Check default installation path
@@ -633,7 +491,7 @@ IF "%PS7_FOUND%"=="NO" (
         "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
             SET "PS7_FOUND=YES"
-            CALL :LOG_MESSAGE "PowerShell 7 detected at default installation path" "DEBUG" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell 7 detected at default path" "DEBUG" "LAUNCHER"
         )
     )
 )
@@ -751,49 +609,17 @@ IF "%PS7_FOUND%"=="NO" (
 
     REM Post-install verification and restart logic
     IF "%INSTALL_STATUS%"=="SUCCESS" (
-        CALL :LOG_MESSAGE "PowerShell 7 installation completed - verifying installation..." "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
         
-        REM Refresh PATH environment to pick up PowerShell 7
-        CALL :LOG_MESSAGE "Refreshing environment PATH..." "DEBUG" "LAUNCHER"
-        CALL :REFRESH_PATH_FROM_REGISTRY
+        REM Create restart flag with timestamp to prevent infinite loops
+        ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
         
-        REM Wait for PATH refresh and PowerShell 7 registration
+        REM Restart the script with a fresh environment (give Windows a moment to update PATH)
         TIMEOUT /T 3 /NOBREAK >nul 2>&1
+        START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
         
-        REM Verify PowerShell 7 is now accessible
-        SET "PS7_VERIFIED=NO"
-        pwsh.exe -Command "if($PSVersionTable.PSVersion.Major -ge 7){exit 0}else{exit 1}" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            FOR /F "tokens=*" %%V IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS7_VERSION_NEW=%%V"
-            CALL :LOG_MESSAGE "PowerShell 7 installation verified: !PS7_VERSION_NEW!" "SUCCESS" "LAUNCHER"
-            SET "PS7_VERIFIED=YES"
-        ) ELSE (
-            REM Try default installation path
-            IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
-                "%ProgramFiles%\PowerShell\7\pwsh.exe" -Command "if($PSVersionTable.PSVersion.Major -ge 7){exit 0}else{exit 1}" >nul 2>&1
-                IF !ERRORLEVEL! EQU 0 (
-                    FOR /F "tokens=*" %%V IN ('"%ProgramFiles%\PowerShell\7\pwsh.exe" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS7_VERSION_NEW=%%V"
-                    CALL :LOG_MESSAGE "PowerShell 7 installation verified at default path: !PS7_VERSION_NEW!" "SUCCESS" "LAUNCHER"
-                    SET "PS7_VERIFIED=YES"
-                )
-            )
-        )
-        
-        IF "%PS7_VERIFIED%"=="YES" (
-            REM Create restart flag with timestamp to prevent infinite loops
-            ECHO POWERSHELL7_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%SCRIPT_DIR%restart_flag.tmp"
-            
-            REM Restart the script in PowerShell 7 environment
-            CALL :LOG_MESSAGE "Relaunching script in PowerShell 7 environment..." "SUCCESS" "LAUNCHER"
-            CALL :LOG_MESSAGE "All further operations will benefit from PowerShell 7 features" "INFO" "LAUNCHER"
-            START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
-            
-            REM Exit current instance after new instance completes
-            EXIT /B !ERRORLEVEL!
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installation reported success but verification failed" "WARN" "LAUNCHER"
-            CALL :LOG_MESSAGE "Continuing with current environment - manual restart may be required" "WARN" "LAUNCHER"
-        )
+        REM Exit current instance after new instance completes
+        EXIT /B !ERRORLEVEL!
     ) ELSE (
         CALL :LOG_MESSAGE "All automated installation methods for PowerShell 7 failed." "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "Troubleshooting tips:" "ERROR" "LAUNCHER"
@@ -823,6 +649,45 @@ IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed - Windows Updates task will not be available" "WARN" "LAUNCHER"
     )
 )
+
+REM -----------------------------------------------------------------------------
+REM Windows Defender Exclusions (Moved after PowerShell installation)
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
+powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
+
+REM Package Manager Dependencies
+CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
+
+REM Winget
+winget --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
+    CALL :LOG_MESSAGE "Winget available: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+) ELSE (
+    REM Check typical location for App Execution Aliases
+    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+        FOR /F "tokens=*" %%i IN ('"%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version 2^>nul') DO SET WINGET_VERSION=%%i
+        IF DEFINED WINGET_VERSION (
+            CALL :LOG_MESSAGE "Winget available via WindowsApps path: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Winget appears installed but not yet ready (App Execution Alias may require session refresh)" "INFO" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget not available - some features may be limited" "INFO" "LAUNCHER"
+    )
+)
+
+REM Chocolatey  
+choco --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    FOR /F "tokens=*" %%i IN ('choco --version 2^>nul') DO SET CHOCO_VERSION=%%i
+    CALL :LOG_MESSAGE "Chocolatey available: %CHOCO_VERSION%" "SUCCESS" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Chocolatey not available - will be installed if needed" "INFO" "LAUNCHER"
+)
+
+CALL :LOG_MESSAGE "Dependency verification completed" "SUCCESS" "LAUNCHER"
 
 REM =============================================================================
 REM Enhanced PowerShell 7+ Executable Detection (Comprehensive Methods)
