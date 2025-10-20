@@ -325,23 +325,31 @@ IF EXIST "%EXTRACTED_PATH%" (
 REM Clean up
 DEL /Q "%ZIP_FILE%" >nul 2>&1
 
-REM Self-update: Copy script.bat from extracted repo for next run
-IF EXIST "%EXTRACTED_PATH%\script.bat" (
-    CALL :LOG_MESSAGE "Updating script.bat from repository for next run..." "INFO" "LAUNCHER"
-    COPY /Y "%EXTRACTED_PATH%\script.bat" "%SCRIPT_DIR%script.bat" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "script.bat updated successfully (will be used on next execution)" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to update script.bat - continuing with current version" "WARN" "LAUNCHER"
-    )
+REM Priority 1: Use local files if available (faster, no internet dependency)
+IF EXIST "%SCRIPT_DIR%MaintenanceOrchestrator.ps1" (
+    SET "WORKING_DIR=%SCRIPT_DIR%"
+    SET "WORKING_DIRECTORY=%WORKING_DIR%"
+    CALL :LOG_MESSAGE "Using local repository files for execution: %WORKING_DIR%" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "No script.bat found in extracted repository" "WARN" "LAUNCHER"
+    REM Priority 2: Use extracted repository as fallback
+    SET "WORKING_DIR=%EXTRACTED_PATH%\"
+    SET "WORKING_DIRECTORY=%WORKING_DIR%"
+    CALL :LOG_MESSAGE "Using extracted repository for execution: %WORKING_DIR%" "INFO" "LAUNCHER"
+    
+    REM Optional: Update script.bat from extracted repo for next run (if different)
+    IF EXIST "%EXTRACTED_PATH%\script.bat" (
+        FC /B "%SCRIPT_DIR%script.bat" "%EXTRACTED_PATH%\script.bat" >nul 2>&1
+        IF !ERRORLEVEL! NEQ 0 (
+            CALL :LOG_MESSAGE "Updating script.bat from repository for next run..." "INFO" "LAUNCHER"
+            COPY /Y "%EXTRACTED_PATH%\script.bat" "%SCRIPT_DIR%script.bat" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_MESSAGE "script.bat updated successfully (will be used on next execution)" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "Failed to update script.bat - continuing with current version" "WARN" "LAUNCHER"
+            )
+        )
+    )
 )
-
-REM Use extracted folder for execution (latest modules/config/orchestrator)
-SET "WORKING_DIR=%EXTRACTED_PATH%\"
-SET "WORKING_DIRECTORY=%WORKING_DIR%"
-CALL :LOG_MESSAGE "Using extracted repository for execution: %WORKING_DIR%" "INFO" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Project Structure Validation (Extracted Repository)
@@ -817,38 +825,57 @@ IF !ERRORLEVEL! EQU 0 (
 )
 
 REM =============================================================================
-REM Final PowerShell 7+ Executable Detection (After installation attempts)
+REM Enhanced PowerShell 7+ Executable Detection (Comprehensive Methods)
 REM =============================================================================
 CALL :LOG_MESSAGE "Detecting PowerShell 7+ executable for orchestrator..." "INFO" "LAUNCHER"
 
 SET "PS_EXECUTABLE="
 SET "PS_VERSION_STRING="
+SET "AUTO_NONINTERACTIVE=NO"
 
-REM Try common paths in priority order
-CALL :LOG_MESSAGE "Checking common PowerShell 7+ locations..." "DEBUG" "LAUNCHER"
+REM Method 1: Direct pwsh.exe command test
+CALL :LOG_MESSAGE "Method 1: Testing pwsh.exe command..." "DEBUG" "LAUNCHER"
+pwsh.exe -Command "if($PSVersionTable.PSVersion.Major -ge 7){exit 0}else{exit 1}" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "PS_EXECUTABLE=pwsh.exe"
+    SET "AUTO_NONINTERACTIVE=YES"
+    FOR /F "tokens=*" %%V IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS_VERSION_STRING=%%V"
+    CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected via PATH command" "SUCCESS" "LAUNCHER"
+)
 
-FOR %%P IN (
-    "pwsh.exe"
-    "%ProgramFiles%\PowerShell\7\pwsh.exe"
-    "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe"
-    "%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
-    "%LocalAppData%\Microsoft\powershell\7\pwsh.exe"
-    "%ProgramData%\chocolatey\lib\powershell-core\tools\pwsh.exe"
-) DO (
-    IF "%PS_EXECUTABLE%"=="" (
-        REM Test if this path has PowerShell 7+
-        %%~P -Command "if($PSVersionTable.PSVersion.Major -ge 7){exit 0}else{exit 1}" >nul 2>&1
+REM Method 2: Check default installation path
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Method 2: Testing default installation path..." "DEBUG" "LAUNCHER"
+    SET "PS7_DEFAULT=%ProgramFiles%\PowerShell\7\pwsh.exe"
+    IF EXIST "!PS7_DEFAULT!" (
+        "!PS7_DEFAULT!" -Command "if($PSVersionTable.PSVersion.Major -ge 7){exit 0}else{exit 1}" >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            SET "PS_EXECUTABLE=%%~P"
-            FOR /F "tokens=*" %%V IN ('%%~P -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS_VERSION_STRING=%%V"
-            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected at: %%~P" "SUCCESS" "LAUNCHER"
+            SET "PS_EXECUTABLE=!PS7_DEFAULT!"
+            SET "AUTO_NONINTERACTIVE=YES"
+            FOR /F "tokens=*" %%V IN ('"!PS7_DEFAULT!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS_VERSION_STRING=%%V"
+            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected at default installation path" "SUCCESS" "LAUNCHER"
         )
     )
 )
 
-REM If still not found, check the registry
+REM Method 3: Check WindowsApps alias
 IF "%PS_EXECUTABLE%"=="" (
-    CALL :LOG_MESSAGE "Checking Windows Registry for PowerShell 7 installation..." "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Method 3: Testing WindowsApps alias..." "DEBUG" "LAUNCHER"
+    SET "PS7_ALIAS=%LocalAppData%\Microsoft\WindowsApps\pwsh.exe"
+    IF EXIST "!PS7_ALIAS!" (
+        "!PS7_ALIAS!" -Command "if($PSVersionTable.PSVersion.Major -ge 7){exit 0}else{exit 1}" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "PS_EXECUTABLE=!PS7_ALIAS!"
+            SET "AUTO_NONINTERACTIVE=YES"
+            FOR /F "tokens=*" %%V IN ('"!PS7_ALIAS!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS_VERSION_STRING=%%V"
+            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected via WindowsApps alias" "SUCCESS" "LAUNCHER"
+        )
+    )
+)
+
+REM Method 4: Registry-based detection
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Method 4: Registry-based detection..." "DEBUG" "LAUNCHER"
     REG QUERY "HKLM\SOFTWARE\Microsoft\PowerShell\7" /v "InstallLocation" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         FOR /F "tokens=3*" %%a IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\PowerShell\7" /v "InstallLocation" 2^>nul ^| findstr InstallLocation') DO (
@@ -857,6 +884,7 @@ IF "%PS_EXECUTABLE%"=="" (
                 "!REG_PS7_PATH!" -Command "if($PSVersionTable.PSVersion.Major -ge 7){exit 0}else{exit 1}" >nul 2>&1
                 IF !ERRORLEVEL! EQU 0 (
                     SET "PS_EXECUTABLE=!REG_PS7_PATH!"
+                    SET "AUTO_NONINTERACTIVE=YES"
                     FOR /F "tokens=*" %%V IN ('"!REG_PS7_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS_VERSION_STRING=%%V"
                     CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected via registry" "SUCCESS" "LAUNCHER"
                 )
@@ -865,18 +893,38 @@ IF "%PS_EXECUTABLE%"=="" (
     )
 )
 
-REM Final check: PowerShell 7+ is required
+REM Method 5: 'where' command search
 IF "%PS_EXECUTABLE%"=="" (
-    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not found after installation attempts" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "The orchestrator requires PowerShell 7+ (pwsh.exe)" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Method 5: Using 'where' command..." "DEBUG" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('where pwsh.exe 2^>nul') DO (
+        IF "%PS_EXECUTABLE%"=="" (
+            SET "TEST_PATH=%%i"
+            IF EXIST "!TEST_PATH!" (
+                "!TEST_PATH!" -Command "if($PSVersionTable.PSVersion.Major -ge 7){exit 0}else{exit 1}" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    SET "PS_EXECUTABLE=!TEST_PATH!"
+                    SET "AUTO_NONINTERACTIVE=YES"
+                    FOR /F "tokens=*" %%V IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET "PS_VERSION_STRING=%%V"
+                    CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! located via 'where' command" "SUCCESS" "LAUNCHER"
+                )
+            )
+        )
+    )
+)
+
+REM Final check: Ensure we have PowerShell 7+
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not found after comprehensive detection" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Detection methods attempted:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  1. PATH environment variable lookup for pwsh.exe" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  2. Default installation path: %ProgramFiles%\PowerShell\7\pwsh.exe" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  3. WindowsApps alias: %LocalAppData%\Microsoft\WindowsApps\pwsh.exe" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  4. Registry-based PowerShell 7 detection" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  5. Windows 'where' command search" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "All automated installation methods failed:" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  - winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  - choco install powershell-core" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  - MSI from https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please manually install PowerShell 7+ and restart this script." "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Download from: https://github.com/PowerShell/PowerShell/releases/latest" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7+ is required for this maintenance system." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please install PowerShell 7+ from: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Or install via winget: winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
     PAUSE
     EXIT /B 1
 )
@@ -1050,29 +1098,44 @@ IF NOT EXIST "%ORCHESTRATOR_PATH%" (
 
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
-REM Parse command line arguments for the orchestrator (simplified)
+REM Parse command line arguments for the orchestrator
 SET "PS_ARGS_ORCHESTRATOR="
 IF "%1"=="-NonInteractive" SET "PS_ARGS_ORCHESTRATOR=-NonInteractive"
 IF "%1"=="-DryRun" SET "PS_ARGS_ORCHESTRATOR=-DryRun"
 IF "%2"=="-DryRun" SET "PS_ARGS_ORCHESTRATOR=%PS_ARGS_ORCHESTRATOR% -DryRun"
 IF "%1"=="-TaskNumbers" SET "PS_ARGS_ORCHESTRATOR=-TaskNumbers %2"
 
+REM Auto-enable non-interactive mode if PowerShell 7+ was detected automatically
+IF "%AUTO_NONINTERACTIVE%"=="YES" (
+    IF NOT "%1"=="-NonInteractive" (
+        SET "PS_ARGS_ORCHESTRATOR=%PS_ARGS_ORCHESTRATOR% -NonInteractive"
+        CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
+    )
+)
+
 CALL :LOG_MESSAGE "Orchestrator arguments: %PS_ARGS_ORCHESTRATOR%" "DEBUG" "LAUNCHER"
 
 REM Critical: Use PowerShell 7+ (pwsh.exe) for MaintenanceOrchestrator.ps1 due to #Requires directive
-CALL :LOG_MESSAGE "Launching PowerShell 7+ in dedicated window for optimal experience" "SUCCESS" "LAUNCHER"
+CALL :LOG_MESSAGE "Launching PowerShell 7+ orchestrator..." "SUCCESS" "LAUNCHER"
 
-REM Prepare arguments for the new PowerShell window (simplified single-line approach)
+REM Choose execution method based on arguments
 IF "%1"=="-NonInteractive" (
-    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command ""Set-Location '%WORKING_DIR%'; Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; Write-Host ''; $exitCode = 0; try { ^& '%ORCHESTRATOR_PATH%' -NonInteractive; $exitCode = $LASTEXITCODE } catch { $exitCode = 1 }; Write-Host ''; if($exitCode -eq 0){ Write-Host '✅ Maintenance session completed successfully.' -ForegroundColor Green } else { Write-Host '⚠️ Maintenance session completed with errors (exit code: $exitCode)' -ForegroundColor Yellow }; Write-Host 'You can close this window or run additional commands.' -ForegroundColor Cyan; exit $exitCode"""
+    REM Direct execution for non-interactive mode (preserves admin privileges)
+    CALL :LOG_MESSAGE "Executing in non-interactive mode with preserved admin privileges..." "INFO" "LAUNCHER"
+    CD /D "%WORKING_DIR%"
+    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" %PS_ARGS_ORCHESTRATOR%
+    SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
 ) ELSE (
-    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command ""Set-Location '%WORKING_DIR%'; Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; Write-Host ''; $exitCode = 0; try { ^& '%ORCHESTRATOR_PATH%'; $exitCode = $LASTEXITCODE } catch { $exitCode = 1 }; Write-Host ''; if($exitCode -eq 0){ Write-Host '✅ Maintenance session completed successfully.' -ForegroundColor Green } else { Write-Host '⚠️ Maintenance session completed with errors (exit code: $exitCode)' -ForegroundColor Yellow }; Write-Host 'You can close this window or run additional commands.' -ForegroundColor Cyan; exit $exitCode"""
+    REM Interactive mode with enhanced PowerShell window
+    CALL :LOG_MESSAGE "Launching interactive PowerShell 7+ window for optimal experience..." "INFO" "LAUNCHER"
+    
+    REM Prepare arguments for the new PowerShell window
+    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command ""Set-Location '%WORKING_DIR%'; Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; Write-Host ''; $exitCode = 0; try { ^& '%ORCHESTRATOR_PATH%' %PS_ARGS_ORCHESTRATOR%; $exitCode = $LASTEXITCODE } catch { $exitCode = 1 }; Write-Host ''; if($exitCode -eq 0){ Write-Host '✅ Maintenance session completed successfully.' -ForegroundColor Green } else { Write-Host '⚠️ Maintenance session completed with errors (exit code: $exitCode)' -ForegroundColor Yellow }; Write-Host 'You can close this window or run additional commands.' -ForegroundColor Cyan; exit $exitCode"""
+    
+    REM Launch new PowerShell 7 window preserving Administrator privileges
+    "%PS_EXECUTABLE%" !PS_ARGS!
+    SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
 )
-
-REM Launch new PowerShell 7 window preserving Administrator privileges
-CALL :LOG_MESSAGE "Launching elevated PowerShell 7: \"%PS_EXECUTABLE%\" with orchestrator" "DEBUG" "LAUNCHER"
-"%PS_EXECUTABLE%" !PS_ARGS!
-SET "ORCHESTRATOR_EXIT_CODE=%ERRORLEVEL%"
 
 REM Log the final result
 IF %ORCHESTRATOR_EXIT_CODE% EQU 0 (
