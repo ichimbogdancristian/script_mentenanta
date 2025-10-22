@@ -58,6 +58,36 @@ SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 
+REM -----------------------------------------------------------------------------
+REM Administrator Privilege Verification
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Verifying administrator privileges..." "INFO" "LAUNCHER"
+
+REM Multiple methods for admin detection (improved reliability)
+NET SESSION >nul 2>&1
+SET "NET_ADMIN_CHECK=%ERRORLEVEL%"
+
+FOR /F "tokens=*" %%i IN ('powershell -Command "([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)" 2^>nul') DO SET PS_ADMIN_CHECK=%%i
+
+SET "IS_ADMIN=NO"
+IF %NET_ADMIN_CHECK% EQU 0 SET "IS_ADMIN=YES"
+IF "%PS_ADMIN_CHECK%"=="True" SET "IS_ADMIN=YES"
+
+CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHECK%" "DEBUG" "LAUNCHER"
+
+IF "%IS_ADMIN%"=="NO" (
+    CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
+    IF !ERRORLEVEL! NEQ 0 (
+        CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
+        PAUSE
+        EXIT /B 1
+    )
+    exit
+)
+
+CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
+
 REM Robust Script Path Detection for Scheduled Tasks (use the exact running script path)
 SET "SCHEDULED_TASK_SCRIPT_PATH="
 IF EXIST "%SCRIPT_PATH%" (
@@ -78,17 +108,52 @@ SET "LOG_FILE=%WORKING_DIR%maintenance.log"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
+SET "ZIP_FILE=%TEMP%\script_mentenanta.zip"
 
 CALL :LOG_MESSAGE "Environment variables initialized" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "  LOG_FILE: %LOG_FILE%" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "  REPO_URL: %REPO_URL%" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "  EXTRACT_FOLDER: %EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "  ZIP_FILE: %ZIP_FILE%" "DEBUG" "LAUNCHER"
 
 REM Detect if running from a network location
 IF "%SCRIPT_PATH:~0,2%"=="\\" (
     SET "IS_NETWORK_LOCATION=YES"
     CALL :LOG_MESSAGE "Running from network location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
     CALL :LOG_MESSAGE "Network locations are supported - continuing with local execution" "INFO" "LAUNCHER"
+)
+
+REM -----------------------------------------------------------------------------
+REM Startup Task Cleanup and Pending Restart Handling (Always check first)
+REM -----------------------------------------------------------------------------
+SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
+CALL :LOG_MESSAGE "Checking existing startup scheduled task..." "INFO" "LAUNCHER"
+
+REM Clean slate: remove existing startup task if present
+schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "Existing startup task found. Removing: %STARTUP_TASK_NAME%" "INFO" "LAUNCHER"
+    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Startup task removed successfully" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to remove startup task (continuing)" "WARN" "LAUNCHER"
+    )
+)
+
+REM Detect pending restart specifically due to Windows Updates
+CALL :LOG_MESSAGE "Checking for pending restart due to Windows Updates..." "INFO" "LAUNCHER"
+SET "RESTART_NEEDED=NO"
+
+REM Prefer PSWindowsUpdate if available for accurate detection
+powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
+IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 2 (
+    CALL :LOG_MESSAGE "PSWindowsUpdate not available. Falling back to registry reboot flags." "INFO" "LAUNCHER"
+    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
 )
 
 IF /I "%RESTART_NEEDED%"=="YES" (
