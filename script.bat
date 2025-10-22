@@ -13,6 +13,22 @@ REM ----------------------------------------------------------------------------
 REM Enhanced Logging System
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
+
+:LOG_SECTION
+REM Log a major section header
+SET "SECTION_TITLE=%~1"
+ECHO.
+ECHO ============================================================
+ECHO %SECTION_TITLE%
+ECHO ============================================================
+IF EXIST "%LOG_FILE%" (
+    ECHO. >> "%LOG_FILE%"
+    ECHO ============================================================ >> "%LOG_FILE%"
+    ECHO %SECTION_TITLE% >> "%LOG_FILE%"
+    ECHO ============================================================ >> "%LOG_FILE%"
+)
+EXIT /B
+
 :LOG_MESSAGE
 SET "LOG_TIMESTAMP=%TIME:~0,8%"
 SET "LEVEL=%~2"
@@ -20,10 +36,34 @@ IF "%LEVEL%"=="" SET "LEVEL=INFO"
 SET "COMPONENT=%~3"
 IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 
-SET "LOG_ENTRY=[%DATE% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
+REM Create human-readable log entry
+SET "MESSAGE=%~1"
 
-ECHO %LOG_ENTRY%
-IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
+REM Format console output with colors/symbols based on level
+IF "%LEVEL%"=="INFO" (
+    ECHO [i] %MESSAGE%
+    SET "LOG_PREFIX=INFO   "
+) ELSE IF "%LEVEL%"=="SUCCESS" (
+    ECHO [+] SUCCESS: %MESSAGE%
+    SET "LOG_PREFIX=SUCCESS"
+) ELSE IF "%LEVEL%"=="ERROR" (
+    ECHO [X] ERROR: %MESSAGE%
+    SET "LOG_PREFIX=ERROR  "
+) ELSE IF "%LEVEL%"=="WARN" (
+    ECHO [!] WARNING: %MESSAGE%
+    SET "LOG_PREFIX=WARNING"
+) ELSE IF "%LEVEL%"=="DEBUG" (
+    ECHO [D] DEBUG: %MESSAGE%
+    SET "LOG_PREFIX=DEBUG  "
+) ELSE (
+    ECHO %MESSAGE%
+    SET "LOG_PREFIX=INFO   "
+)
+
+REM Write to log file with timestamp
+IF EXIST "%LOG_FILE%" (
+    ECHO [%DATE% %LOG_TIMESTAMP%] [!LOG_PREFIX!] %MESSAGE% >> "%LOG_FILE%" 2>nul
+)
 EXIT /B
 
 :REFRESH_PATH_FROM_REGISTRY
@@ -49,18 +89,31 @@ EXIT /B
 REM -----------------------------------------------------------------------------
 REM Self-Discovery Environment Setup
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
-
 REM Enhanced path detection - works from any location
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 
+REM Initialize log file at script location
+SET "LOG_FILE=%SCRIPT_DIR%maintenance.log"
+
+REM Create/clear log file with header
+ECHO ============================================================================ > "%LOG_FILE%"
+ECHO Windows Maintenance Automation Log >> "%LOG_FILE%"
+ECHO Started: %DATE% %TIME% >> "%LOG_FILE%"
+ECHO User: %USERNAME% @ Computer: %COMPUTERNAME% >> "%LOG_FILE%"
+ECHO Script Location: %SCRIPT_PATH% >> "%LOG_FILE%"
+ECHO ============================================================================ >> "%LOG_FILE%"
+ECHO. >> "%LOG_FILE%"
+
+CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Log file created at: %LOG_FILE%" "INFO" "LAUNCHER"
+
 REM -----------------------------------------------------------------------------
 REM Administrator Privilege Verification
 REM -----------------------------------------------------------------------------
+CALL :LOG_SECTION "STEP 1: Administrator Privilege Check"
 CALL :LOG_MESSAGE "Verifying administrator privileges..." "INFO" "LAUNCHER"
 
 REM Multiple methods for admin detection (improved reliability)
@@ -197,6 +250,7 @@ IF EXIST "%WORKING_DIR%restart_flag.tmp" (
 
 REM Create/Verify monthly maintenance scheduled task before continuing
 SET "TASK_NAME=WindowsMaintenanceAutomation"
+CALL :LOG_SECTION "STEP 2: Monthly Maintenance Task Setup"
 CALL :LOG_MESSAGE "Ensuring monthly maintenance task exists (1st day 01:00)..." "INFO" "LAUNCHER"
 
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
@@ -233,6 +287,11 @@ REM ----------------------------------------------------------------------------
 :SYSTEM_REQUIREMENTS
 CALL :LOG_MESSAGE "Verifying system requirements..." "INFO" "LAUNCHER"
 
+REM -----------------------------------------------------------------------------
+REM System Requirements Verification (Windows version and PowerShell)
+REM -----------------------------------------------------------------------------
+CALL :LOG_SECTION "STEP 3: System Requirements Verification"
+
 REM Windows version detection
 FOR /F "tokens=*" %%i IN ('powershell -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }"') DO SET OS_VERSION=%%i
 CALL :LOG_MESSAGE "Windows version: %OS_VERSION%" "INFO" "LAUNCHER"
@@ -248,12 +307,13 @@ IF %PS_VERSION% LSS 5 (
     EXIT /B 2
 )
 
-CALL :LOG_MESSAGE "System requirements verified" "SUCCESS" "LAUNCHER"
+CALL :LOG_MESSAGE "System requirements verified successfully" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Winget Installation and Verification (Critical for PowerShell 7 installation)
 REM -----------------------------------------------------------------------------
 :WINGET_INSTALLATION
+CALL :LOG_SECTION "STEP 4: Winget Package Manager Setup"
 CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
     
 SET "WINGET_AVAILABLE=NO"
@@ -294,7 +354,7 @@ IF "%WINGET_AVAILABLE%"=="NO" (
     IF !ERRORLEVEL! NEQ 0 (
         REM Method 2: PowerShell Gallery Microsoft.WinGet.Client module
         CALL :LOG_MESSAGE "Attempting winget installation via PowerShell Gallery (Microsoft.WinGet.Client)..." "INFO" "LAUNCHER"
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; exit 1 }"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; exit 1 }"
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell Gallery method completed - verifying..." "INFO" "LAUNCHER"
             TIMEOUT /T 5 >nul 2>&1
@@ -415,10 +475,18 @@ IF "%WINGET_AVAILABLE%"=="NO" (
     )
 )
 
-REM Final winget status
+REM Final winget status with functionality verification
 IF "%WINGET_AVAILABLE%"=="YES" (
-    FOR /F "tokens=*" %%i IN ('%WINGET_EXE% --version 2^>nul') DO SET WINGET_VERSION=%%i
-    CALL :LOG_MESSAGE "Winget ready: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+    REM Verify winget is actually functional, not just present
+    "%WINGET_EXE%" --version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        FOR /F "tokens=*" %%i IN ('"%WINGET_EXE%" --version 2^>nul') DO SET WINGET_VERSION=%%i
+        CALL :LOG_MESSAGE "Winget ready and functional: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget executable found but not functional - marking as unavailable" "WARN" "LAUNCHER"
+        SET "WINGET_AVAILABLE=NO"
+        SET "WINGET_EXE="
+    )
 ) ELSE (
     CALL :LOG_MESSAGE "Winget not available - will use alternative methods for PowerShell 7" "WARN" "LAUNCHER"
 )
@@ -625,6 +693,7 @@ REM ----------------------------------------------------------------------------
 REM Enhanced Dependency Management
 REM -----------------------------------------------------------------------------
 :DEPENDENCY_MANAGEMENT
+CALL :LOG_SECTION "STEP 5: Dependency Management"
 CALL :LOG_MESSAGE "Starting dependency management..." "INFO" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
@@ -633,8 +702,8 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking PowerShell 7+ availability..." "INFO" "LAUNCHER"
 
 SET "PS7_FOUND=NO"
-SET "WINGET_AVAILABLE=NO"
-SET "WINGET_EXE="
+REM Note: WINGET_AVAILABLE and WINGET_EXE are already set from earlier winget installation section
+REM DO NOT reset these variables here - they contain the winget status from lines 250-441
 
 REM Method 1: Direct PowerShell 7 check
 pwsh.exe -Version >nul 2>&1
@@ -722,10 +791,20 @@ IF "%PS7_FOUND%"=="NO" (
             )
         ) ELSE (
             CALL :LOG_MESSAGE "Chocolatey not available - installing Chocolatey first..." "INFO" "LAUNCHER"
+            
+            REM Try primary Chocolatey installation URL
+            CALL :LOG_MESSAGE "Attempting Chocolatey installation from community.chocolatey.org..." "DEBUG" "LAUNCHER"
             powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_FAILED'; exit 1 }"
+            
+            REM If primary URL failed, try GitHub mirror fallback
+            IF !ERRORLEVEL! NEQ 0 (
+                CALL :LOG_MESSAGE "Primary Chocolatey URL failed - trying GitHub mirror..." "WARN" "LAUNCHER"
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/chocolatey/choco/master/setup.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_GITHUB_FAILED'; exit 1 }"
+            )
+            
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "Chocolatey installed successfully - now installing PowerShell 7..." "SUCCESS" "LAUNCHER"
-                TIMEOUT /T 2 >nul 2>&1
+                TIMEOUT /T 5 >nul 2>&1
                 
                 REM Update Chocolatey path after installation and refresh environment
                 SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
@@ -818,7 +897,20 @@ IF "%PS7_FOUND%"=="NO" (
                 SET "MSI_DOWNLOADED=YES"
                 CALL :LOG_MESSAGE "MSI downloaded successfully - PowerShell 7.2.23" "SUCCESS" "LAUNCHER"
             ) ELSE (
-                CALL :LOG_MESSAGE "PowerShell 7.2.23 download failed - All MSI URLs exhausted" "ERROR" "LAUNCHER"
+                CALL :LOG_MESSAGE "PowerShell 7.2.23 download failed - trying Microsoft CDN fallback..." "WARN" "LAUNCHER"
+                DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
+            )
+        )
+        
+        REM Try Method 6: Microsoft CDN (aka.ms redirect - final fallback)
+        IF "%MSI_DOWNLOADED%"=="NO" (
+            CALL :LOG_MESSAGE "MSI Method 6: Microsoft CDN via aka.ms (final fallback)..." "DEBUG" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $cdnUrl = 'https://aka.ms/powershell-release?tag=stable'; Invoke-WebRequest -Uri $cdnUrl -OutFile '%WORKING_DIR%pwsh.msi' -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 5; Write-Host 'MSI_CDN_DOWNLOADED' } catch { Write-Host 'MSI_CDN_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%pwsh.msi" (
+                SET "MSI_DOWNLOADED=YES"
+                CALL :LOG_MESSAGE "MSI downloaded successfully from Microsoft CDN" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "Microsoft CDN download failed - All 6 MSI methods exhausted" "ERROR" "LAUNCHER"
                 DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
             )
         )
@@ -826,26 +918,57 @@ IF "%PS7_FOUND%"=="NO" (
         REM Install MSI if downloaded from any method
         IF "%MSI_DOWNLOADED%"=="YES" (
             CALL :LOG_MESSAGE "PowerShell MSI downloaded. Installing silently..." "INFO" "LAUNCHER"
-            msiexec /i "%WORKING_DIR%pwsh.msi" /qn ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 >nul 2>&1
-            IF !ERRORLEVEL! EQU 0 (
+            
+            REM Attempt MSI installation with detailed error capture
+            SET "MSI_INSTALL_EXIT_CODE=0"
+            msiexec /i "%WORKING_DIR%pwsh.msi" /qn ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 /log "%WORKING_DIR%pwsh_install.log" >nul 2>&1
+            SET "MSI_INSTALL_EXIT_CODE=!ERRORLEVEL!"
+            
+            IF !MSI_INSTALL_EXIT_CODE! EQU 0 (
                 CALL :LOG_MESSAGE "PowerShell 7 installed successfully via MSI" "SUCCESS" "LAUNCHER"
                 SET "INSTALL_STATUS=SUCCESS"
                 SET "PS7_FOUND=YES"
+            ) ELSE IF !MSI_INSTALL_EXIT_CODE! EQU 1603 (
+                CALL :LOG_MESSAGE "MSI installation failed with error 1603 (Fatal error during installation)" "ERROR" "LAUNCHER"
+                CALL :LOG_MESSAGE "Check %WORKING_DIR%pwsh_install.log for details" "ERROR" "LAUNCHER"
+            ) ELSE IF !MSI_INSTALL_EXIT_CODE! EQU 1602 (
+                CALL :LOG_MESSAGE "MSI installation cancelled by user (error 1602)" "ERROR" "LAUNCHER"
+            ) ELSE IF !MSI_INSTALL_EXIT_CODE! EQU 1618 (
+                CALL :LOG_MESSAGE "MSI installation failed (error 1618 - Another installation in progress)" "ERROR" "LAUNCHER"
+            ) ELSE IF !MSI_INSTALL_EXIT_CODE! EQU 3010 (
+                CALL :LOG_MESSAGE "PowerShell 7 installed successfully - reboot required (exit code 3010)" "SUCCESS" "LAUNCHER"
+                SET "INSTALL_STATUS=SUCCESS"
+                SET "PS7_FOUND=YES"
             ) ELSE (
-                CALL :LOG_MESSAGE "MSI installation failed (exit code: !ERRORLEVEL!)" "ERROR" "LAUNCHER"
+                CALL :LOG_MESSAGE "MSI installation failed with exit code: !MSI_INSTALL_EXIT_CODE!" "ERROR" "LAUNCHER"
+                CALL :LOG_MESSAGE "Check %WORKING_DIR%pwsh_install.log for details" "ERROR" "LAUNCHER"
             )
             DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
         ) ELSE (
-            CALL :LOG_MESSAGE "Failed to download PowerShell MSI - all 5 fallback URLs exhausted" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "Failed to download PowerShell MSI - all 6 fallback methods exhausted" "ERROR" "LAUNCHER"
         )
     )
 
     REM Post-install verification and restart logic
     IF "%INSTALL_STATUS%"=="SUCCESS" (
-        CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
+        REM Check for restart loop prevention
+        SET "RESTART_COUNT=0"
+        IF EXIST "%WORKING_DIR%restart_flag.tmp" (
+            FOR /F "tokens=*" %%i IN ('type "%WORKING_DIR%restart_flag.tmp" 2^>nul ^| find /C "POWERSHELL_RESTART"') DO SET RESTART_COUNT=%%i
+            CALL :LOG_MESSAGE "Detected previous restart attempts: !RESTART_COUNT!" "DEBUG" "LAUNCHER"
+        )
         
-        REM Create restart flag with timestamp to prevent infinite loops
-        ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
+        IF !RESTART_COUNT! GEQ 3 (
+            CALL :LOG_MESSAGE "Maximum restart attempts (3) reached - installation succeeded but verification failed" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell 7 may be installed but not in PATH. Try manual verification." "ERROR" "LAUNCHER"
+            DEL /Q "%WORKING_DIR%restart_flag.tmp" >nul 2>&1
+            EXIT /B 1
+        )
+        
+        CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7 (attempt !RESTART_COUNT! of 3)..." "INFO" "LAUNCHER"
+        
+        REM Append restart entry to flag file for loop tracking
+        ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% >> "%WORKING_DIR%restart_flag.tmp"
         
         REM Restart the script with a fresh environment (give Windows a moment to update PATH)
         TIMEOUT /T 3 /NOBREAK >nul 2>&1
@@ -860,6 +983,7 @@ IF "%PS7_FOUND%"=="NO" (
         CALL :LOG_MESSAGE " 2. Chocolatey (powershell-core)" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " 3. MSI via GitHub API (latest)" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " 4. MSI Direct: v7.4.6 LTS, v7.4.0, v7.3.12, v7.2.23" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE " 5. MSI via Microsoft CDN (aka.ms/powershell-release)" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "Troubleshooting tips:" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " - Ensure winget can access sources: winget source list / reset --force / update" "ERROR" "LAUNCHER"
@@ -876,6 +1000,7 @@ IF "%PS7_FOUND%"=="NO" (
 REM -----------------------------------------------------------------------------
 REM PowerShell Module Dependencies (PSWindowsUpdate for Windows Update management)
 REM -----------------------------------------------------------------------------
+CALL :LOG_SECTION "STEP 6: PowerShell Module Dependencies"
 CALL :LOG_MESSAGE "Checking PSWindowsUpdate module availability..." "INFO" "LAUNCHER"
 pwsh.exe -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Write-Host 'PSWINDOWSUPDATE_AVAILABLE' } else { Write-Host 'PSWINDOWSUPDATE_MISSING' }" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
@@ -893,6 +1018,7 @@ IF !ERRORLEVEL! EQU 0 (
 REM -----------------------------------------------------------------------------
 REM Windows Defender Exclusions (Moved after PowerShell installation)
 REM -----------------------------------------------------------------------------
+CALL :LOG_SECTION "STEP 7: Windows Defender Exclusions"
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
 powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
@@ -1234,6 +1360,7 @@ echo Write-Log "PowerShell 7 bootstrap script completed" "INFO"
 echo exit $exitCode
 ) > "%PS7_SCRIPT%"
 
+CALL :LOG_SECTION "STEP 8: Launching Maintenance Orchestrator"
 CALL :LOG_MESSAGE "PowerShell 7 bootstrap script created: %PS7_SCRIPT%" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "Executing PowerShell 7 bootstrap with full system access..." "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Passing arguments to PS7 script: %ALL_ARGS%" "DEBUG" "LAUNCHER"
@@ -1251,6 +1378,16 @@ IF %FINAL_EXIT_CODE% EQU 0 (
 ) ELSE (
     CALL :LOG_MESSAGE "Operations completed with errors (exit code: %FINAL_EXIT_CODE%)" "WARN" "LAUNCHER"
 )
+
+REM Log file closure
+ECHO. >> "%LOG_FILE%"
+ECHO ============================================================================ >> "%LOG_FILE%"
+ECHO Session Completed: %DATE% %TIME% >> "%LOG_FILE%"
+ECHO Exit Code: %FINAL_EXIT_CODE% >> "%LOG_FILE%"
+ECHO Log file location: %LOG_FILE% >> "%LOG_FILE%"
+ECHO ============================================================================ >> "%LOG_FILE%"
+
+CALL :LOG_MESSAGE "Complete log available at: %LOG_FILE%" "INFO" "LAUNCHER"
 
 CALL :LOG_MESSAGE "Batch launcher phase completed - exiting" "INFO" "LAUNCHER"
 EXIT /B %FINAL_EXIT_CODE%
