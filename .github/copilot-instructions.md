@@ -1300,7 +1300,7 @@ Type2 modules (self-contained):
 When asked to create a new maintenance module, follow the standardized v3.0 architecture pattern.
 
 ### **Quick Reference**
-See **[MODULE_DEVELOPMENT_GUIDE.md](MODULE_DEVELOPMENT_GUIDE.md)** for the condensed 10-step procedure.
+See **[MODULE_DEVELOPMENT_GUIDE.md](./MODULE_DEVELOPMENT_GUIDE.md)** for the condensed 10-step procedure.
 See **[ADDING_NEW_MODULES.md](../ADDING_NEW_MODULES.md)** for the complete 883-line guide with full code templates.
 
 ### **Critical Requirements (AI Agent Checklist)**
