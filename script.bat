@@ -78,85 +78,66 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
     SET "IS_NETWORK_LOCATION=YES"
     CALL :LOG_MESSAGE "Running from network location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 ) ELSE (
-    SET "IS_NETWORK_LOCATION=NO"
-    CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
-)
 
-REM Setup logging (always in script directory, not extracted folder)
-SET "LOG_FILE=%SCRIPT_DIR%maintenance.log"
-CALL :LOG_MESSAGE "Log file: %LOG_FILE%" "DEBUG" "LAUNCHER"
+    REM -----------------------------------------------------------------------------
+    REM PowerShell Orchestrator Launch (Merged logic from archive/script.bat, no menu)
+    REM -----------------------------------------------------------------------------
+    CALL :LOG_MESSAGE "Preparing to launch PowerShell orchestrator..." "INFO" "LAUNCHER"
 
-REM Environment variables for PowerShell orchestrator
-SET "WORKING_DIRECTORY=%WORKING_DIR%"
-SET "SCRIPT_LOG_FILE=%LOG_FILE%"
+    REM Debug: Show what PowerShell executable was detected
+    CALL :LOG_MESSAGE "Detected PowerShell executable: %PS_EXECUTABLE%" "DEBUG" "LAUNCHER"
 
-REM Repository configuration for auto-updates
-SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
-SET "ZIP_FILE=%WORKING_DIR%update.zip"
-SET "EXTRACT_FOLDER=script_mentenanta-main"
-
-CALL :LOG_MESSAGE "Self-discovery environment initialized" "SUCCESS" "LAUNCHER"
-
-REM -----------------------------------------------------------------------------
-REM Administrator Privilege Verification
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Verifying administrator privileges..." "INFO" "LAUNCHER"
-
-REM Multiple methods for admin detection (improved reliability)
-NET SESSION >nul 2>&1
-SET "NET_ADMIN_CHECK=%ERRORLEVEL%"
-
-FOR /F "tokens=*" %%i IN ('powershell -Command "([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)" 2^>nul') DO SET PS_ADMIN_CHECK=%%i
-
-SET "IS_ADMIN=NO"
-IF %NET_ADMIN_CHECK% EQU 0 SET "IS_ADMIN=YES"
-IF "%PS_ADMIN_CHECK%"=="True" SET "IS_ADMIN=YES"
-
-CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHECK%" "DEBUG" "LAUNCHER"
-
-IF "%IS_ADMIN%"=="NO" (
-    CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
-    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
-    IF !ERRORLEVEL! NEQ 0 (
-        CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
+    IF "%ORCHESTRATOR_PATH%"=="" (
+        CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
         PAUSE
-        EXIT /B 1
+        EXIT /B 4
     )
-    exit
-)
 
-CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 
-REM -----------------------------------------------------------------------------
-REM Startup Task Cleanup and Pending Restart Handling (Always check first)
-REM -----------------------------------------------------------------------------
-SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
-CALL :LOG_MESSAGE "Checking existing startup scheduled task..." "INFO" "LAUNCHER"
+    REM Verify orchestrator file exists
+    IF NOT EXIST "%ORCHESTRATOR_PATH%" (
+        CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
+        PAUSE
+        EXIT /B 4
+    )
 
-REM Clean slate: remove existing startup task if present
-schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Existing startup task found. Removing: %STARTUP_TASK_NAME%" "INFO" "LAUNCHER"
-    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Startup task removed successfully" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
+
+    REM Parse command line arguments for the orchestrator
+    SET "PS_ARGS="
+    IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
+    IF "%1"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
+    IF "%2"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
+    IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
+    IF "%AUTO_NONINTERACTIVE%"=="YES" (
+        IF NOT "%1"=="-NonInteractive" (
+            SET "PS_ARGS=%PS_ARGS% -NonInteractive"
+            CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
+        )
+    )
+
+    CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
+
+    REM Always launch orchestrator directly (menu logic handled in orchestrator)
+    CD /D "%WORKING_DIR%"
+    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
+    SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
+
+    REM Log the final result
+    IF %ORCHESTRATOR_EXIT_CODE% EQU 0 (
+        CALL :LOG_MESSAGE "Orchestrator completed successfully (exit code: %ORCHESTRATOR_EXIT_CODE%)" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "Failed to remove startup task (continuing)" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Orchestrator completed with errors (exit code: %ORCHESTRATOR_EXIT_CODE%)" "WARN" "LAUNCHER"
     )
-)
 
-REM Detect pending restart specifically due to Windows Updates
-CALL :LOG_MESSAGE "Checking for pending restart due to Windows Updates..." "INFO" "LAUNCHER"
-SET "RESTART_NEEDED=NO"
+    CALL :LOG_MESSAGE "Batch launcher phase completed" "INFO" "LAUNCHER"
+    EXIT /B %ORCHESTRATOR_EXIT_CODE%
 
-REM Prefer PSWindowsUpdate if available for accurate detection
-powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
-IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
-IF !ERRORLEVEL! EQU 2 (
-    CALL :LOG_MESSAGE "PSWindowsUpdate not available. Falling back to registry reboot flags." "INFO" "LAUNCHER"
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+    REM -----------------------------------------------------------------------------
+    REM End of Script
+    REM -----------------------------------------------------------------------------
+    ENDLOCAL
     IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
 )
 
