@@ -105,13 +105,153 @@ script_mentenanta/
 
 ### **🔄 Detailed Execution Sequence**
 
-**Phase 1: Bootstrap (script.bat)**
-1. Check/Request Administrator privileges
-2. Handle pending system restart (auto-resume via scheduled task)
-3. Create System Restore Point + Enable System Protection
-4. Bootstrap dependencies: PowerShell 7, winget, Chocolatey, PowerShellGet
-5. Setup monthly automation task (SYSTEM account, highest priority)
-6. Launch MaintenanceOrchestrator.ps1
+**Phase 1: Bootstrap (script.bat - Lines 1-1075)**
+
+**Logging System (Always Active)**:
+- Function: `LOG_MESSAGE` with timestamp, level (INFO/DEBUG/SUCCESS/WARN/ERROR), component
+- Output: Console + `maintenance.log` file in working directory
+- Logs: Every major step, variable initialization, errors, success confirmations
+
+**Step 1: Administrator Privilege Check**
+- Method: NET SESSION command (exit code 0 = admin)
+- Action: Exit with error if not administrator
+- Log: "Administrator check" with result
+
+**Step 2: Path Discovery & Environment Setup**
+- Auto-detect: `SCRIPT_PATH` (full path), `SCRIPT_DIR` (directory), `WORKING_DIR` (execution location)
+- Set: `SCHEDULED_TASK_SCRIPT_PATH` (for scheduled task creation)
+- Initialize Variables:
+  - `LOG_FILE=%WORKING_DIR%maintenance.log`
+  - `REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip`
+  - `EXTRACT_FOLDER=script_mentenanta-main`
+- Log: All paths and variables with DEBUG level
+
+**Step 3: Network Location Detection**
+- Check: If script path starts with "\\\\" (UNC path)
+- Action: Set `IS_NETWORK_LOCATION=YES` flag
+- Log: Network location status
+
+**Step 4: Pending Restart Handling**
+- Check: Registry key `HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired`
+- If restart needed:
+  - Create ONLOGON scheduled task: `WindowsMaintenanceStartup`
+  - Task runs this script with HIGHEST priority under current user
+  - Delay: 1 minute after logon
+  - Schedule: `shutdown /r /t 5` with 10-second countdown warning
+  - Log: Task creation and restart scheduling
+
+**Step 5: PowerShell 7 Restart Flag Cleanup**
+- Check: `restart_flag.tmp` file exists
+- Action: Read context, delete file, log restart recovery
+- Purpose: Handle script continuation after PowerShell 7 installation restart
+
+**Step 6: Monthly Automation Task Setup**
+- Task Name: `WindowsMaintenanceAutomation`
+- Schedule: Monthly, 1st day at 01:00
+- Account: SYSTEM (highest privileges)
+- Priority: HIGHEST
+- Action: Run `%SCHEDULED_TASK_SCRIPT_PATH%`
+- Verification: Query task details and log next run time
+
+**Step 7: System Requirements Verification**
+- Check Windows version: `Get-CimInstance Win32_OperatingSystem`
+- Check PowerShell version: `$PSVersionTable.PSVersion.Major`
+- Requirement: PowerShell 5.1+ minimum
+- Exit with error if requirements not met
+
+**Step 8: Winget Installation (3 Methods with Fallbacks)**
+- Initial Check: `winget --version` in PATH and WindowsApps
+- Method 1: App Installer registration
+  - `Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe`
+  - Wait 5 seconds, verify
+- Method 2: PowerShell Gallery
+  - Install NuGet provider
+  - Install `Microsoft.WinGet.Client` module
+  - Run `Repair-WinGetPackageManager -AllUsers`
+  - Wait 5 seconds, verify
+- Method 3: Manual MSIX Download
+  - URL 1: `https://aka.ms/getwinget`
+  - URL 2: `https://github.com/microsoft/winget-cli/releases/download/v1.6.3482/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle`
+  - URL 3: Latest from GitHub API
+  - Download to temp, install with `Add-AppxPackage`, verify
+- Log: Method used, success/failure, final winget availability
+
+**Step 9: Repository Download & Extraction** (if not already present locally)
+- Download: `%REPO_URL%` to `%TEMP%\script_mentenanta.zip`
+- Extract: To `%WORKING_DIR%%EXTRACT_FOLDER%\`
+- Update: `WORKING_DIR` to extracted location
+- Optional: Update local `script.bat` from extracted version if different
+- Log: Download progress, extraction success, path updates
+
+**Step 10: Project Structure Validation**
+- Verify orchestrator: `MaintenanceOrchestrator.ps1` or `script.ps1`
+- Verify config directory: `config\main-config.json`, `config\bloatware-list.json`
+- Verify modules: `modules\core\CoreInfrastructure.psm1`, `modules\type1`, `modules\type2`
+- Count: Major components (expect 3: orchestrator, config, modules)
+- Exit with detailed error if structure invalid
+
+**Step 11: PowerShell 7+ Detection (5 Methods)**
+- Method 1: Direct command - `pwsh.exe -Version`
+- Method 2: Default path - `%ProgramFiles%\PowerShell\7\pwsh.exe`
+- Method 3: WindowsApps alias - `%LocalAppData%\Microsoft\WindowsApps\pwsh.exe`
+- Method 4: Registry - `HKLM:\SOFTWARE\Microsoft\PowerShellCore\InstalledVersions`
+- Method 5: 'where' command - `where pwsh.exe`
+- Set: `PS_EXECUTABLE` variable with found path
+- Install if not found: Via winget, Chocolatey, or direct MSI download
+- Log: Detection method used, version found
+
+**Step 12: Transition to PowerShell 7** (Critical Architecture Change)
+- Generate inline PowerShell 7 bootstrap script: `%TEMP%\maintenance_bootstrap_%RANDOM%.ps1`
+- Script contents:
+  ```powershell
+  #Requires -Version 7.0
+  #Requires -RunAsAdministrator
+  
+  param(
+      [string]$WorkingDir,
+      [string]$LogFile,
+      [string]$ScriptPath,
+      [string]$ScheduledTaskScriptPath,
+      [string]$OrchestratorPath,
+      [string]$RepoUrl,
+      [string]$ExtractFolder
+  )
+  
+  # Parse command-line arguments from $args automatic variable
+  $BatchArgs = if ($args) { $args } else { @() }
+  
+  # Logging function (mirrors batch LOG_MESSAGE)
+  function Write-Log { ... }
+  
+  # Operations:
+  # 1. Windows Defender Exclusions (working dir, powershell.exe, pwsh.exe)
+  # 2. Package Manager Verification (winget, chocolatey versions)
+  # 3. Scheduled Task Management (verify monthly, cleanup startup)
+  # 4. System Restore Point Creation:
+  #    - Enable-ComputerRestore -Drive $env:SystemDrive
+  #    - Checkpoint-Computer -Description "WindowsMaintenance-{GUID}"
+  #    - Verify with Get-ComputerRestorePoint
+  # 5. Parse orchestrator arguments (-NonInteractive, -DryRun, -TaskNumbers)
+  # 6. Set-Location to working directory
+  # 7. Execute orchestrator: & $OrchestratorPath @orchestratorArgs
+  # 8. Capture exit code: $exitCode = $LASTEXITCODE
+  # 9. Return: exit $exitCode
+  ```
+- Execute: `"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -NoProfile -File "%PS7_SCRIPT%" %ALL_ARGS%`
+- Capture: `FINAL_EXIT_CODE=%ERRORLEVEL%`
+- Cleanup: Delete temporary PS7 script
+- Log: PS7 script creation, execution start, final exit code
+- Exit: `EXIT /B %FINAL_EXIT_CODE%`
+
+**Exit Code Propagation Chain**:
+```
+MaintenanceOrchestrator.ps1 (exit code)
+    ↓ $LASTEXITCODE
+PowerShell 7 Bootstrap Script (exit $exitCode)
+    ↓ %ERRORLEVEL%
+script.bat (EXIT /B %FINAL_EXIT_CODE%)
+    ↓ Caller environment
+```
 
 **Phase 2: Orchestrator Initialization (MaintenanceOrchestrator.ps1:60-172)**
 1. **Global Path Discovery** (lines 73-95):

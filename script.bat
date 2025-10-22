@@ -73,72 +73,22 @@ IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH (
     CALL :LOG_MESSAGE "Using fallback script path for scheduled tasks: %SCHEDULED_TASK_SCRIPT_PATH%" "WARN" "LAUNCHER"
 )
 
+REM Initialize essential environment variables
+SET "LOG_FILE=%WORKING_DIR%maintenance.log"
+SET "SCRIPT_LOG_FILE=%LOG_FILE%"
+SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
+SET "EXTRACT_FOLDER=script_mentenanta-main"
+
+CALL :LOG_MESSAGE "Environment variables initialized" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "  LOG_FILE: %LOG_FILE%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "  REPO_URL: %REPO_URL%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "  EXTRACT_FOLDER: %EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
+
 REM Detect if running from a network location
 IF "%SCRIPT_PATH:~0,2%"=="\\" (
     SET "IS_NETWORK_LOCATION=YES"
     CALL :LOG_MESSAGE "Running from network location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
-) ELSE (
-
-    REM -----------------------------------------------------------------------------
-    REM PowerShell Orchestrator Launch (Merged logic from archive/script.bat, no menu)
-    REM -----------------------------------------------------------------------------
-    CALL :LOG_MESSAGE "Preparing to launch PowerShell orchestrator..." "INFO" "LAUNCHER"
-
-    REM Debug: Show what PowerShell executable was detected
-    CALL :LOG_MESSAGE "Detected PowerShell executable: %PS_EXECUTABLE%" "DEBUG" "LAUNCHER"
-
-    IF "%ORCHESTRATOR_PATH%"=="" (
-        CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
-        PAUSE
-        EXIT /B 4
-    )
-
-    CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
-
-    REM Verify orchestrator file exists
-    IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-        CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-        PAUSE
-        EXIT /B 4
-    )
-
-    CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
-
-    REM Parse command line arguments for the orchestrator
-    SET "PS_ARGS="
-    IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-    IF "%1"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
-    IF "%2"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
-    IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
-    IF "%AUTO_NONINTERACTIVE%"=="YES" (
-        IF NOT "%1"=="-NonInteractive" (
-            SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-            CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
-        )
-    )
-
-    CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
-
-    REM Always launch orchestrator directly (menu logic handled in orchestrator)
-    CD /D "%WORKING_DIR%"
-    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" %PS_ARGS%
-    SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
-
-    REM Log the final result
-    IF %ORCHESTRATOR_EXIT_CODE% EQU 0 (
-        CALL :LOG_MESSAGE "Orchestrator completed successfully (exit code: %ORCHESTRATOR_EXIT_CODE%)" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Orchestrator completed with errors (exit code: %ORCHESTRATOR_EXIT_CODE%)" "WARN" "LAUNCHER"
-    )
-
-    CALL :LOG_MESSAGE "Batch launcher phase completed" "INFO" "LAUNCHER"
-    EXIT /B %ORCHESTRATOR_EXIT_CODE%
-
-    REM -----------------------------------------------------------------------------
-    REM End of Script
-    REM -----------------------------------------------------------------------------
-    ENDLOCAL
-    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+    CALL :LOG_MESSAGE "Network locations are supported - continuing with local execution" "INFO" "LAUNCHER"
 )
 
 IF /I "%RESTART_NEEDED%"=="YES" (
@@ -236,6 +186,128 @@ IF %PS_VERSION% LSS 5 (
 )
 
 CALL :LOG_MESSAGE "System requirements verified" "SUCCESS" "LAUNCHER"
+
+REM -----------------------------------------------------------------------------
+REM Winget Installation and Verification (Critical for PowerShell 7 installation)
+REM -----------------------------------------------------------------------------
+:WINGET_INSTALLATION
+CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
+    
+SET "WINGET_AVAILABLE=NO"
+SET "WINGET_EXE="
+
+REM Initial winget check (PATH and WindowsApps)
+winget --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "WINGET_EXE=winget"
+    SET "WINGET_AVAILABLE=YES"
+    CALL :LOG_MESSAGE "Winget found via PATH" "DEBUG" "LAUNCHER"
+) ELSE (
+    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+        "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
+            SET "WINGET_AVAILABLE=YES"
+            CALL :LOG_MESSAGE "Winget found via WindowsApps alias" "DEBUG" "LAUNCHER"
+        )
+    )
+)
+
+REM Install winget if not available
+IF "%WINGET_AVAILABLE%"=="NO" (
+    CALL :LOG_MESSAGE "Winget not found. Attempting to install winget..." "INFO" "LAUNCHER"
+    
+    REM Method 1: Try installing App Installer via PowerShell
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) { $appInstaller = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction SilentlyContinue; if (-not $appInstaller) { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop; Write-Host 'APPINSTALLER_REGISTERED' } else { Write-Host 'APPINSTALLER_EXISTS' } } else { Write-Host 'APPX_NOT_SUPPORTED' } } catch { Write-Host 'APPINSTALLER_FAILED'; exit 1 }" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "App Installer registration attempted" "INFO" "LAUNCHER"
+        TIMEOUT /T 5 >nul 2>&1
+    ) ELSE (
+        CALL :LOG_MESSAGE "App Installer registration failed" "WARN" "LAUNCHER"
+    )
+    
+    REM Check if Method 1 succeeded
+    winget --version >nul 2>&1
+    IF !ERRORLEVEL! NEQ 0 (
+        REM Method 2: PowerShell Gallery Microsoft.WinGet.Client module
+        CALL :LOG_MESSAGE "Attempting winget installation via PowerShell Gallery (Microsoft.WinGet.Client)..." "INFO" "LAUNCHER"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; exit 1 }"
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "PowerShell Gallery method completed - verifying..." "INFO" "LAUNCHER"
+            TIMEOUT /T 5 >nul 2>&1
+            
+            winget --version >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                SET "WINGET_EXE=winget"
+                SET "WINGET_AVAILABLE=YES"
+                CALL :LOG_MESSAGE "Winget verified working after PowerShell Gallery installation" "SUCCESS" "LAUNCHER"
+            ) ELSE IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+                "%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    SET "WINGET_EXE=%LocalAppData%\Microsoft\WindowsApps\winget.exe"
+                    SET "WINGET_AVAILABLE=YES"
+                    CALL :LOG_MESSAGE "Winget working via WindowsApps after PowerShell Gallery" "SUCCESS" "LAUNCHER"
+                )
+            )
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Method 1 succeeded - winget now available" "SUCCESS" "LAUNCHER"
+        SET "WINGET_EXE=winget"
+        SET "WINGET_AVAILABLE=YES"
+    )
+    
+    REM Check if Methods 1 and 2 succeeded
+    IF "%WINGET_AVAILABLE%"=="NO" (
+        winget --version >nul 2>&1
+        IF !ERRORLEVEL! NEQ 0 (
+            REM Method 3: Manual MSIX download with fallback URLs
+            CALL :LOG_MESSAGE "Attempting manual App Installer MSIX download..." "INFO" "LAUNCHER"
+            DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+            
+            REM Try primary URL
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'PRIMARY_DOWNLOADED' } catch { Write-Host 'PRIMARY_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! NEQ 0 (
+                CALL :LOG_MESSAGE "Primary URL failed, trying GitHub direct..." "INFO" "LAUNCHER"
+                DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'GITHUB_DOWNLOADED' } catch { Write-Host 'GITHUB_FAILED'; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! NEQ 0 (
+                    CALL :LOG_MESSAGE "GitHub URL failed, trying versioned fallback..." "INFO" "LAUNCHER"
+                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-cli/releases/download/v1.11.510/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'VERSIONED_DOWNLOADED' } catch { Write-Host 'VERSIONED_FAILED'; exit 1 }" >nul 2>&1
+                )
+            )
+            
+            REM Install MSIX if downloaded
+            IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WORKING_DIR%AppInstaller.msixbundle' -ErrorAction Stop; Write-Host 'MSIX_INSTALLED' } catch { Write-Host 'MSIX_FAILED'; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    CALL :LOG_MESSAGE "App Installer MSIX installed successfully" "SUCCESS" "LAUNCHER"
+                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                    TIMEOUT /T 3 >nul 2>&1
+                    
+                    winget --version >nul 2>&1
+                    IF !ERRORLEVEL! EQU 0 (
+                        SET "WINGET_EXE=winget"
+                        SET "WINGET_AVAILABLE=YES"
+                    )
+                ) ELSE (
+                    CALL :LOG_MESSAGE "MSIX installation failed" "WARN" "LAUNCHER"
+                )
+            )
+        ) ELSE (
+            SET "WINGET_EXE=winget"
+            SET "WINGET_AVAILABLE=YES"
+        )
+    )
+)
+
+REM Final winget status
+IF "%WINGET_AVAILABLE%"=="YES" (
+    FOR /F "tokens=*" %%i IN ('%WINGET_EXE% --version 2^>nul') DO SET WINGET_VERSION=%%i
+    CALL :LOG_MESSAGE "Winget ready: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Winget not available - will use alternative methods for PowerShell 7" "WARN" "LAUNCHER"
+)
 
 REM -----------------------------------------------------------------------------
 REM Repository Download and Extraction (Moved before structure discovery)
@@ -778,220 +850,224 @@ IF "%PS_EXECUTABLE%"=="" (
 CALL :LOG_MESSAGE "PowerShell 7+ ready for orchestrator execution: %PS_VERSION_STRING%" "SUCCESS" "LAUNCHER"
 
 REM =============================================================================
-REM Windows Defender Exclusions (Using PowerShell 7)
+REM TRANSITION TO POWERSHELL 7 FOR REMAINING STEPS
 REM =============================================================================
-CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
-%PS_EXECUTABLE% -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
+CALL :LOG_MESSAGE "Transitioning to PowerShell 7 environment for system-level operations..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Remaining steps will execute using PowerShell 7 native cmdlets and syntax" "INFO" "LAUNCHER"
 
-REM =============================================================================
-REM Package Manager Verification Summary
-REM =============================================================================
-CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
+REM Create inline PowerShell 7 script for remaining bootstrap steps
+SET "PS7_SCRIPT=%TEMP%\maintenance_bootstrap_%RANDOM%.ps1"
 
-REM Winget
-winget --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
-    CALL :LOG_MESSAGE "Winget available: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+REM Capture all command-line arguments for passthrough to orchestrator
+SET "ALL_ARGS=%*"
+
+REM Write PowerShell 7 script content
+(
+echo # Windows Maintenance Bootstrap - PowerShell 7 Native Script
+echo # Auto-generated by script.bat at %DATE% %TIME%
+echo.
+echo #Requires -Version 7.0
+echo #Requires -RunAsAdministrator
+echo.
+echo param(
+echo     [string]$WorkingDir = '%WORKING_DIR%',
+echo     [string]$LogFile = '%LOG_FILE%',
+echo     [string]$ScriptPath = '%SCRIPT_PATH%',
+echo     [string]$ScheduledTaskScriptPath = '%SCHEDULED_TASK_SCRIPT_PATH%',
+echo     [string]$OrchestratorPath = '%ORCHESTRATOR_PATH%',
+echo     [string]$RepoUrl = '%REPO_URL%',
+echo     [string]$ExtractFolder = '%EXTRACT_FOLDER%'
+echo ^)
+echo.
+echo # Parse command-line arguments from batch (passed via $args automatic variable)
+echo $BatchArgs = if ($args) { $args } else { @() }
+echo.
+echo # Logging function
+echo function Write-Log {
+echo     param([string]$Message, [string]$Level = 'INFO', [string]$Component = 'PS7-BOOTSTRAP'^)
+echo     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+echo     $logEntry = "[$timestamp] [$Level] [$Component] $Message"
+echo     Write-Host $logEntry
+echo     if (Test-Path $LogFile^) { Add-Content -Path $LogFile -Value $logEntry -ErrorAction SilentlyContinue }
+echo }
+echo.
+echo Write-Log "PowerShell 7 bootstrap script started" "INFO"
+echo Write-Log "PSVersion: $($PSVersionTable.PSVersion.ToString(^)^)" "DEBUG"
+echo.
+echo # Windows Defender Exclusions
+echo Write-Log "Setting up Windows Defender exclusions..." "INFO"
+echo try {
+echo     Add-MpPreference -ExclusionPath $WorkingDir -ErrorAction SilentlyContinue
+echo     Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue
+echo     Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue
+echo     Write-Log "Defender exclusions added" "SUCCESS"
+echo } catch {
+echo     Write-Log "Defender exclusions failed: $_" "WARN"
+echo }
+echo.
+echo # Package Manager Verification
+echo Write-Log "Verifying package managers..." "INFO"
+echo try {
+echo     $wingetVersion = ^& winget --version 2^>$null
+echo     if ($wingetVersion^) { Write-Log "Winget available: $wingetVersion" "SUCCESS" }
+echo     else { Write-Log "Winget not available" "WARN" }
+echo } catch { Write-Log "Winget check failed" "WARN" }
+echo.
+echo try {
+echo     $chocoVersion = ^& choco --version 2^>$null
+echo     if ($chocoVersion^) { Write-Log "Chocolatey available: $chocoVersion" "SUCCESS" }
+echo     else { Write-Log "Chocolatey not available" "INFO" }
+echo } catch { Write-Log "Chocolatey check failed" "INFO" }
+echo.
+echo # Scheduled Task Management
+echo Write-Log "Managing scheduled tasks..." "INFO"
+echo $taskName = "WindowsMaintenanceAutomation"
+echo $startupTaskName = "WindowsMaintenanceStartup"
+echo.
+echo if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue^) {
+echo     Write-Log "Monthly scheduled task exists: $taskName" "SUCCESS"
+echo } else {
+echo     Write-Log "Monthly task not found" "WARN"
+echo }
+echo.
+echo if (Get-ScheduledTask -TaskName $startupTaskName -ErrorAction SilentlyContinue^) {
+echo     Write-Log "Cleaning up startup task: $startupTaskName" "INFO"
+echo     Unregister-ScheduledTask -TaskName $startupTaskName -Confirm:$false -ErrorAction SilentlyContinue
+echo }
+echo.
+echo # System Restore Point Creation
+echo Write-Log "Checking System Protection status..." "INFO"
+echo $srAvailable = $false
+echo try {
+echo     if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue^) {
+echo         $testRP = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
+echo         $srAvailable = $true
+echo         Write-Log "System Protection is available" "SUCCESS"
+echo.
+echo         # Enable System Protection
+echo         try {
+echo             Enable-ComputerRestore -Drive $env:SystemDrive -ErrorAction Stop
+echo             Write-Log "System Protection enabled" "SUCCESS"
+echo         } catch {
+echo             if ($_.Exception.Message -like '*already enabled*'^) {
+echo                 Write-Log "System Protection already enabled" "SUCCESS"
+echo             } else {
+echo                 Write-Log "Could not enable System Protection: $_" "WARN"
+echo             }
+echo         }
+echo     } else {
+echo         Write-Log "System Protection commands not available" "WARN"
+echo     }
+echo } catch {
+echo     Write-Log "System Protection check failed: $_" "WARN"
+echo }
+echo.
+echo if ($srAvailable^) {
+echo     Write-Log "Creating system restore point..." "INFO"
+echo     $restoreGuid = [guid]::NewGuid(^).ToString(^).Substring(0,8^)
+echo     $restoreDesc = "WindowsMaintenance-$restoreGuid"
+echo.
+echo     try {
+echo         Checkpoint-Computer -Description $restoreDesc -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+echo         Write-Log "System restore point created: $restoreDesc" "SUCCESS"
+echo.
+echo         # Verify restore point
+echo         $rp = Get-ComputerRestorePoint ^| Where-Object Description -eq $restoreDesc ^| Select-Object -First 1
+echo         if ($rp^) {
+echo             Write-Log "Restore point verified (Sequence: $($rp.SequenceNumber^)^)" "SUCCESS"
+echo         } else {
+echo             Write-Log "Restore point created but verification inconclusive" "WARN"
+echo         }
+echo     } catch {
+echo         Write-Log "Failed to create restore point: $_" "WARN"
+echo         Write-Log "Continuing without restore point" "WARN"
+echo     }
+echo }
+echo.
+echo # Launch Orchestrator
+echo Write-Log "Preparing to launch orchestrator..." "INFO"
+echo Write-Log "Orchestrator path: $OrchestratorPath" "DEBUG"
+echo.
+echo if (-not (Test-Path $OrchestratorPath^)^) {
+echo     Write-Log "Orchestrator file not found: $OrchestratorPath" "ERROR"
+echo     exit 4
+echo }
+echo.
+echo # Parse arguments for orchestrator
+echo $orchestratorArgs = @(^)
+echo if ($BatchArgs -contains '-NonInteractive'^) { $orchestratorArgs += '-NonInteractive' }
+echo if ($BatchArgs -contains '-DryRun'^) { $orchestratorArgs += '-DryRun' }
+echo if ($BatchArgs -contains '-TaskNumbers'^) {
+echo     $taskNumIndex = $BatchArgs.IndexOf('-TaskNumbers'^) + 1
+echo     if ($taskNumIndex -lt $BatchArgs.Count^) {
+echo         $orchestratorArgs += '-TaskNumbers', $BatchArgs[$taskNumIndex]
+echo     }
+echo }
+echo.
+echo Write-Log "Orchestrator arguments: $orchestratorArgs" "DEBUG"
+echo Write-Log "Launching PowerShell 7+ orchestrator..." "SUCCESS"
+echo.
+echo # Execute orchestrator
+echo Set-Location -Path $WorkingDir
+echo $exitCode = 0
+echo.
+echo if ($BatchArgs -contains '-NonInteractive'^) {
+echo     Write-Log "Executing in non-interactive mode..." "INFO"
+echo     ^& $OrchestratorPath @orchestratorArgs
+echo     $exitCode = $LASTEXITCODE
+echo } else {
+echo     Write-Host ""
+echo     Write-Host "🚀 Windows Maintenance Automation - PowerShell 7+ Mode" -ForegroundColor Green
+echo     Write-Host "📁 Working Directory: $WorkingDir" -ForegroundColor Cyan
+echo     Write-Host "🔧 Launching MaintenanceOrchestrator..." -ForegroundColor Yellow
+echo     Write-Host ""
+echo.
+echo     try {
+echo         ^& $OrchestratorPath @orchestratorArgs
+echo         $exitCode = $LASTEXITCODE
+echo     } catch {
+echo         $exitCode = 1
+echo         Write-Log "Orchestrator execution failed: $_" "ERROR"
+echo     }
+echo.
+echo     Write-Host ""
+echo     if ($exitCode -eq 0^) {
+echo         Write-Host "✅ Maintenance session completed successfully." -ForegroundColor Green
+echo     } else {
+echo         Write-Host "⚠️ Maintenance session completed with errors (exit code: $exitCode^)" -ForegroundColor Yellow
+echo     }
+echo }
+echo.
+echo if ($exitCode -eq 0^) {
+echo     Write-Log "Orchestrator completed successfully (exit code: $exitCode^)" "SUCCESS"
+echo } else {
+echo     Write-Log "Orchestrator completed with errors (exit code: $exitCode^)" "WARN"
+echo }
+echo.
+echo Write-Log "PowerShell 7 bootstrap script completed" "INFO"
+echo exit $exitCode
+) > "%PS7_SCRIPT%"
+
+CALL :LOG_MESSAGE "PowerShell 7 bootstrap script created: %PS7_SCRIPT%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Executing PowerShell 7 bootstrap with full system access..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Passing arguments to PS7 script: %ALL_ARGS%" "DEBUG" "LAUNCHER"
+
+REM Execute the PowerShell 7 script and capture exit code, passing all arguments
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -NoProfile -File "%PS7_SCRIPT%" %ALL_ARGS%
+SET "FINAL_EXIT_CODE=%ERRORLEVEL%"
+
+REM Clean up temporary script
+IF EXIST "%PS7_SCRIPT%" DEL /Q "%PS7_SCRIPT%" >nul 2>&1
+
+REM Log final result
+IF %FINAL_EXIT_CODE% EQU 0 (
+    CALL :LOG_MESSAGE "All operations completed successfully (exit code: %FINAL_EXIT_CODE%)" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    REM Check typical location for App Execution Aliases
-    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
-        FOR /F "tokens=*" %%i IN ('"%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version 2^>nul') DO SET WINGET_VERSION=%%i
-        IF DEFINED WINGET_VERSION (
-            CALL :LOG_MESSAGE "Winget available via WindowsApps path: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Winget appears installed but not yet ready (App Execution Alias may require session refresh)" "INFO" "LAUNCHER"
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "Winget not available - some features may be limited" "INFO" "LAUNCHER"
-    )
+    CALL :LOG_MESSAGE "Operations completed with errors (exit code: %FINAL_EXIT_CODE%)" "WARN" "LAUNCHER"
 )
 
-REM Chocolatey  
-choco --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    FOR /F "tokens=*" %%i IN ('choco --version 2^>nul') DO SET CHOCO_VERSION=%%i
-    CALL :LOG_MESSAGE "Chocolatey available: %CHOCO_VERSION%" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Chocolatey not available - will be installed if needed" "INFO" "LAUNCHER"
-)
-
-CALL :LOG_MESSAGE "Dependency verification completed" "SUCCESS" "LAUNCHER"
-
-REM -----------------------------------------------------------------------------
-REM Modular Task Scheduler Management
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
-
-SET "TASK_NAME=WindowsMaintenanceAutomation"
-SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
-
-REM Report monthly task status only (creation handled earlier)
-schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly scheduled task present: %TASK_NAME%" "SUCCESS" "LAUNCHER"
-    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
-        CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "Monthly scheduled task not found (was expected to exist)." "WARN" "LAUNCHER"
-)
-
-REM Clean up startup task if it still exists (e.g., after reboot resume)
-schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Cleaning up startup task: %STARTUP_TASK_NAME%" "INFO" "LAUNCHER"
-    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-)
-
-REM =============================================================================
-REM System Restore Point Creation (Using PowerShell 7)
-REM =============================================================================
-CALL :LOG_MESSAGE "Checking System Protection status..." "INFO" "LAUNCHER"
-
-SET "SYS_DRIVE=%SystemDrive%"
-SET "SR_STATUS=UNKNOWN"
-SET "SR_VERIFY_STATUS=UNKNOWN"
-
-REM Simple check for System Protection availability
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
-
-IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
-    CALL :LOG_MESSAGE "System Protection is available and functional" "SUCCESS" "LAUNCHER"
-    
-    REM Try to enable System Protection if not already enabled
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Continue'; $drive = $env:SystemDrive; try { Enable-ComputerRestore -Drive $drive -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { if ($_.Exception.Message -like '*already enabled*' -or $_.Exception.Message -like '*System Protection*already*') { Write-Host 'SR_ALREADY_ENABLED' } else { Write-Host 'SR_ENABLE_FAILED' } } } catch { Write-Host 'SR_ENABLE_ERROR' }" 2^>nul`) DO SET "SR_ENABLE_STATUS=%%i"
-    
-    IF /I "!SR_ENABLE_STATUS!"=="SR_ENABLED" (
-        CALL :LOG_MESSAGE "System Protection enabled successfully" "SUCCESS" "LAUNCHER"
-        SET "SR_STATUS=ENABLED"
-    ) ELSE IF /I "!SR_ENABLE_STATUS!"=="SR_ALREADY_ENABLED" (
-        CALL :LOG_MESSAGE "System Protection already enabled" "SUCCESS" "LAUNCHER"
-        SET "SR_STATUS=ENABLED"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Could not enable System Protection (!SR_ENABLE_STATUS!) - will try restore point anyway" "WARN" "LAUNCHER"
-        SET "SR_STATUS=UNKNOWN"
-    )
-    
-) ELSE IF /I "!SR_CHECK!"=="SR_NOT_SUPPORTED" (
-    CALL :LOG_MESSAGE "System Protection commands not available on this system" "WARN" "LAUNCHER"
-    GOTO :SKIP_RESTORE_POINT
-) ELSE (
-    CALL :LOG_MESSAGE "System Protection check failed (!SR_CHECK!) - skipping restore point" "WARN" "LAUNCHER"
-    GOTO :SKIP_RESTORE_POINT
-)
-
-CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
-
-FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]::NewGuid().ToString().Substring(0,8)" 2^>nul`) DO SET "RESTORE_GUID=%%i"
-SET "RESTORE_DESC=WindowsMaintenance-!RESTORE_GUID!"
-
-REM Simple restore point creation using Checkpoint-Computer
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS'; Write-Host 'RESTORE_CREATED' } catch { Write-Host 'RESTORE_FAILED'; Write-Host $_.Exception.Message }" 2^>nul`) DO (
-    IF /I "%%i"=="RESTORE_CREATED" (
-        SET "RESTORE_RESULT=SUCCESS"
-    ) ELSE (
-        SET "RESTORE_RESULT=FAILED"
-        SET "RESTORE_ERROR=%%i"
-    )
-)
-
-IF /I "!RESTORE_RESULT!"=="SUCCESS" (
-    CALL :LOG_MESSAGE "System restore point created successfully: !RESTORE_DESC!" "SUCCESS" "LAUNCHER"
-    
-    REM Quick verification that restore point exists
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $rp = Get-ComputerRestorePoint | Where-Object Description -eq '!RESTORE_DESC!' | Select-Object -First 1; if ($rp) { Write-Host ('VERIFIED:' + $rp.SequenceNumber) } else { Write-Host 'NOT_FOUND' } } catch { Write-Host 'VERIFY_ERROR' }" 2^>nul`) DO SET "RESTORE_VERIFY=%%i"
-    
-    IF "!RESTORE_VERIFY:~0,8!"=="VERIFIED" (
-        SET "RESTORE_SEQ=!RESTORE_VERIFY:~9!"
-        CALL :LOG_MESSAGE "Restore point verified (Sequence: !RESTORE_SEQ!)" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Restore point created but verification inconclusive (!RESTORE_VERIFY!)" "WARN" "LAUNCHER"
-    )
-) ELSE (
-    IF DEFINED RESTORE_ERROR (
-        CALL :LOG_MESSAGE "Failed to create restore point: !RESTORE_ERROR!" "WARN" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create system restore point (System Protection may be disabled)" "WARN" "LAUNCHER"
-    )
-    CALL :LOG_MESSAGE "Continuing without restore point - you may want to create one manually" "WARN" "LAUNCHER"
-)
-
-:SKIP_RESTORE_POINT
-
-REM -----------------------------------------------------------------------------
-REM PowerShell Orchestrator Launch
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Preparing to launch PowerShell orchestrator..." "INFO" "LAUNCHER"
-
-REM Debug: Show what PowerShell executable was detected
-CALL :LOG_MESSAGE "Detected PowerShell executable: %PS_EXECUTABLE%" "DEBUG" "LAUNCHER"
-
-IF "%ORCHESTRATOR_PATH%"=="" (
-    CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
-    PAUSE
-    EXIT /B 4
-)
-
-CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
-
-REM Verify orchestrator file exists
-IF NOT EXIST "%ORCHESTRATOR_PATH%" (
-    CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    PAUSE
-    EXIT /B 4
-)
-
-CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
-
-REM Parse command line arguments for the orchestrator
-SET "PS_ARGS_ORCHESTRATOR="
-IF "%1"=="-NonInteractive" SET "PS_ARGS_ORCHESTRATOR=-NonInteractive"
-IF "%1"=="-DryRun" SET "PS_ARGS_ORCHESTRATOR=-DryRun"
-IF "%2"=="-DryRun" SET "PS_ARGS_ORCHESTRATOR=%PS_ARGS_ORCHESTRATOR% -DryRun"
-IF "%1"=="-TaskNumbers" SET "PS_ARGS_ORCHESTRATOR=-TaskNumbers %2"
-
-REM Auto-enable non-interactive mode if PowerShell 7+ was detected automatically
-IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    IF NOT "%1"=="-NonInteractive" (
-        SET "PS_ARGS_ORCHESTRATOR=%PS_ARGS_ORCHESTRATOR% -NonInteractive"
-        CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
-    )
-)
-
-CALL :LOG_MESSAGE "Orchestrator arguments: %PS_ARGS_ORCHESTRATOR%" "DEBUG" "LAUNCHER"
-
-REM Critical: Use PowerShell 7+ (pwsh.exe) for MaintenanceOrchestrator.ps1 due to #Requires directive
-CALL :LOG_MESSAGE "Launching PowerShell 7+ orchestrator..." "SUCCESS" "LAUNCHER"
-
-REM Choose execution method based on arguments
-IF "%1"=="-NonInteractive" (
-    REM Direct execution for non-interactive mode (preserves admin privileges)
-    CALL :LOG_MESSAGE "Executing in non-interactive mode with preserved admin privileges..." "INFO" "LAUNCHER"
-    CD /D "%WORKING_DIR%"
-    "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" %PS_ARGS_ORCHESTRATOR%
-    SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
-) ELSE (
-    REM Interactive mode with enhanced PowerShell window
-    CALL :LOG_MESSAGE "Launching interactive PowerShell 7+ window for optimal experience..." "INFO" "LAUNCHER"
-    
-    REM Prepare arguments for the new PowerShell window
-    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command ""Set-Location '%WORKING_DIR%'; Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; Write-Host ''; $exitCode = 0; try { ^& '%ORCHESTRATOR_PATH%' %PS_ARGS_ORCHESTRATOR%; $exitCode = $LASTEXITCODE } catch { $exitCode = 1 }; Write-Host ''; if($exitCode -eq 0){ Write-Host '✅ Maintenance session completed successfully.' -ForegroundColor Green } else { Write-Host '⚠️ Maintenance session completed with errors (exit code: $exitCode)' -ForegroundColor Yellow }; Write-Host 'You can close this window or run additional commands.' -ForegroundColor Cyan; exit $exitCode"""
-    
-    REM Launch new PowerShell 7 window preserving Administrator privileges
-    "%PS_EXECUTABLE%" !PS_ARGS!
-    SET "ORCHESTRATOR_EXIT_CODE=!ERRORLEVEL!"
-)
-
-REM Log the final result
-IF %ORCHESTRATOR_EXIT_CODE% EQU 0 (
-    CALL :LOG_MESSAGE "Orchestrator completed successfully (exit code: %ORCHESTRATOR_EXIT_CODE%)" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Orchestrator completed with errors (exit code: %ORCHESTRATOR_EXIT_CODE%)" "WARN" "LAUNCHER"
-)
-
-CALL :LOG_MESSAGE "Batch launcher phase completed" "INFO" "LAUNCHER"
-EXIT /B %ORCHESTRATOR_EXIT_CODE%
+CALL :LOG_MESSAGE "Batch launcher phase completed - exiting" "INFO" "LAUNCHER"
+EXIT /B %FINAL_EXIT_CODE%
 
 REM -----------------------------------------------------------------------------
 REM End of Script

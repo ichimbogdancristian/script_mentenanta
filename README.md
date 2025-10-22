@@ -34,13 +34,95 @@ This automated Windows maintenance system performs comprehensive system cleanup,
 
 ### **Phase 1: Bootstrap & Initialization**
 ```
-🚀 script.bat (Launcher)
-├── 🔐 Check/Request Administrator Privileges
-├── 🔄 Handle Pending System Restart (auto-resume via scheduled task)
-├── 🛡️ Create System Restore Point + Enable System Protection
-├── 📦 Bootstrap Dependencies (PowerShell 7, winget, Chocolatey)
-├── ⏰ Setup Monthly Automation Task (SYSTEM account)
+🚀 script.bat (CMD Launcher - Lines 1-1075)
+├── � Logging System Initialization
+│   ├── LOG_MESSAGE function (timestamps, levels, components)
+│   └── Creates: maintenance.log in working directory
+│
+├── 🔐 Administrator Privilege Check (NET SESSION)
+│   └── Exit with error if not admin
+│
+├── 📂 Path Discovery & Environment Setup
+│   ├── Auto-detect: SCRIPT_PATH, SCRIPT_DIR, WORKING_DIR
+│   ├── Set: SCHEDULED_TASK_SCRIPT_PATH (for tasks)
+│   └── Initialize Variables:
+│       ├── LOG_FILE=%WORKING_DIR%maintenance.log
+│       ├── REPO_URL=github.com/ichimbogdancristian/script_mentenanta
+│       └── EXTRACT_FOLDER=script_mentenanta-main
+│
+├── 🔄 Handle Pending System Restart
+│   ├── Check: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired
+│   ├── Create ONLOGON startup task if restart needed
+│   └── Schedule shutdown with 10-second countdown
+│
+├── ⏰ Setup Monthly Automation Task
+│   ├── Task Name: WindowsMaintenanceAutomation
+│   ├── Schedule: 1st day of month at 01:00
+│   ├── Account: SYSTEM (highest privileges)
+│   └── Action: Run script.bat with HIGHEST priority
+│
+├── 📦 Winget Installation (3 Methods with Fallbacks)
+│   ├── Method 1: App Installer registration (Add-AppxPackage)
+│   ├── Method 2: PowerShell Gallery (Microsoft.WinGet.Client module)
+│   └── Method 3: Manual MSIX download
+│       ├── URL 1: aka.ms/getwinget
+│       ├── URL 2: GitHub direct download
+│       └── URL 3: GitHub versioned release
+│
+├── 🌐 Repository Download & Extraction
+│   ├── Download: main.zip from GitHub
+│   ├── Extract: script_mentenanta-main folder
+│   └── Update WORKING_DIR to extracted location
+│
+├── ✅ Project Structure Validation
+│   ├── Verify: MaintenanceOrchestrator.ps1 exists
+│   ├── Verify: config/ directory with main-config.json
+│   ├── Verify: modules/core/CoreInfrastructure.psm1
+│   └── Exit with error if critical components missing
+│
+├── 🔧 PowerShell 7+ Detection (5 Methods)
+│   ├── Method 1: Direct pwsh.exe command
+│   ├── Method 2: Default installation path
+│   ├── Method 3: WindowsApps alias
+│   ├── Method 4: Registry detection
+│   └── Method 5: 'where' command scan
+│
+└── � Transition to PowerShell 7
+    ├── Generate inline PowerShell 7 bootstrap script
+    ├── Pass Variables:
+    │   ├── WorkingDir, LogFile, OrchestratorPath
+    │   ├── ScriptPath, ScheduledTaskScriptPath
+    │   ├── RepoUrl, ExtractFolder
+    │   └── All command-line arguments ($args)
+    └── Execute PS7 script with full admin access
+```
+
+```powershell
+# PowerShell 7 Bootstrap Script (Generated inline by script.bat)
+🔷 PS7 Bootstrap Operations
+├── 🛡️ Windows Defender Exclusions
+│   ├── Exclude: Working directory path
+│   ├── Exclude: powershell.exe process
+│   └── Exclude: pwsh.exe process
+│
+├── 📦 Package Manager Verification
+│   ├── Verify: winget availability & version
+│   └── Verify: Chocolatey availability & version
+│
+├── 📅 Scheduled Task Management
+│   ├── Verify: Monthly task exists (WindowsMaintenanceAutomation)
+│   └── Cleanup: Startup task if exists (WindowsMaintenanceStartup)
+│
+├── 🛡️ System Restore Point Creation
+│   ├── Enable-ComputerRestore -Drive $env:SystemDrive
+│   ├── Checkpoint-Computer -Description "WindowsMaintenance-{GUID}"
+│   └── Verify: Get-ComputerRestorePoint confirmation
+│
 └── 🎯 Launch MaintenanceOrchestrator.ps1
+    ├── Set-Location to working directory
+    ├── Parse arguments: -NonInteractive, -DryRun, -TaskNumbers
+    ├── Execute orchestrator with @orchestratorArgs splatting
+    └── Return exit code: $LASTEXITCODE → %ERRORLEVEL% → EXIT /B
 ```
 
 ### **Phase 2: System Discovery & Module Loading**
