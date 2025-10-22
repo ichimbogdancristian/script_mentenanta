@@ -80,7 +80,6 @@ IF "%IS_ADMIN%"=="NO" (
     powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
-        PAUSE
         EXIT /B 1
     )
     exit
@@ -246,7 +245,6 @@ CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 IF %PS_VERSION% LSS 5 (
     CALL :LOG_MESSAGE "PowerShell 5.1 or higher required. Current: %PS_VERSION%" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install Windows PowerShell 5.1 or PowerShell 7+" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 2
 )
 
@@ -325,24 +323,75 @@ IF "%WINGET_AVAILABLE%"=="NO" (
     IF "%WINGET_AVAILABLE%"=="NO" (
         winget --version >nul 2>&1
         IF !ERRORLEVEL! NEQ 0 (
-            REM Method 3: Manual MSIX download with fallback URLs
-            CALL :LOG_MESSAGE "Attempting manual App Installer MSIX download..." "INFO" "LAUNCHER"
+            REM Method 3: Manual MSIX download with multiple fallback URLs
+            CALL :LOG_MESSAGE "Attempting manual App Installer MSIX download with fallback URLs..." "INFO" "LAUNCHER"
             DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+            SET "MSIX_DOWNLOADED=NO"
             
-            REM Try primary URL
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'PRIMARY_DOWNLOADED' } catch { Write-Host 'PRIMARY_FAILED'; exit 1 }" >nul 2>&1
-            IF !ERRORLEVEL! NEQ 0 (
-                CALL :LOG_MESSAGE "Primary URL failed, trying GitHub direct..." "INFO" "LAUNCHER"
+            REM Try URL 1: aka.ms shortlink (Microsoft official redirect)
+            CALL :LOG_MESSAGE "Trying URL 1: aka.ms/getwinget (Microsoft official redirect)..." "DEBUG" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://aka.ms/getwinget' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'PRIMARY_DOWNLOADED' } catch { Write-Host 'PRIMARY_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
+                SET "MSIX_DOWNLOADED=YES"
+                CALL :LOG_MESSAGE "MSIX downloaded successfully from aka.ms/getwinget" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "URL 1 failed - aka.ms/getwinget unreachable" "WARN" "LAUNCHER"
                 DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'GITHUB_DOWNLOADED' } catch { Write-Host 'GITHUB_FAILED'; exit 1 }" >nul 2>&1
-                IF !ERRORLEVEL! NEQ 0 (
-                    CALL :LOG_MESSAGE "GitHub URL failed, trying versioned fallback..." "INFO" "LAUNCHER"
+            )
+            
+            REM Try URL 2: GitHub latest release (if URL 1 failed)
+            IF "%MSIX_DOWNLOADED%"=="NO" (
+                CALL :LOG_MESSAGE "Trying URL 2: GitHub latest release..." "DEBUG" "LAUNCHER"
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'GITHUB_DOWNLOADED' } catch { Write-Host 'GITHUB_FAILED'; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
+                    SET "MSIX_DOWNLOADED=YES"
+                    CALL :LOG_MESSAGE "MSIX downloaded successfully from GitHub latest" "SUCCESS" "LAUNCHER"
+                ) ELSE (
+                    CALL :LOG_MESSAGE "URL 2 failed - GitHub latest release unreachable" "WARN" "LAUNCHER"
                     DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-cli/releases/download/v1.11.510/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'VERSIONED_DOWNLOADED' } catch { Write-Host 'VERSIONED_FAILED'; exit 1 }" >nul 2>&1
                 )
             )
             
-            REM Install MSIX if downloaded
+            REM Try URL 3: GitHub v1.11.510 (stable known version)
+            IF "%MSIX_DOWNLOADED%"=="NO" (
+                CALL :LOG_MESSAGE "Trying URL 3: GitHub v1.11.510 (stable known version)..." "DEBUG" "LAUNCHER"
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-cli/releases/download/v1.11.510/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'V1_11_DOWNLOADED' } catch { Write-Host 'V1_11_FAILED'; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
+                    SET "MSIX_DOWNLOADED=YES"
+                    CALL :LOG_MESSAGE "MSIX downloaded successfully from GitHub v1.11.510" "SUCCESS" "LAUNCHER"
+                ) ELSE (
+                    CALL :LOG_MESSAGE "URL 3 failed - GitHub v1.11.510 unreachable" "WARN" "LAUNCHER"
+                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                )
+            )
+            
+            REM Try URL 4: GitHub v1.10.1921 (older stable fallback)
+            IF "%MSIX_DOWNLOADED%"=="NO" (
+                CALL :LOG_MESSAGE "Trying URL 4: GitHub v1.10.1921 (older stable)..." "DEBUG" "LAUNCHER"
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-cli/releases/download/v1.10.1921/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'V1_10_DOWNLOADED' } catch { Write-Host 'V1_10_FAILED'; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
+                    SET "MSIX_DOWNLOADED=YES"
+                    CALL :LOG_MESSAGE "MSIX downloaded successfully from GitHub v1.10.1921" "SUCCESS" "LAUNCHER"
+                ) ELSE (
+                    CALL :LOG_MESSAGE "URL 4 failed - GitHub v1.10.1921 unreachable" "WARN" "LAUNCHER"
+                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                )
+            )
+            
+            REM Try URL 5: GitHub v1.9.1901 (maximum compatibility fallback)
+            IF "%MSIX_DOWNLOADED%"=="NO" (
+                CALL :LOG_MESSAGE "Trying URL 5: GitHub v1.9.1901 (max compatibility)..." "DEBUG" "LAUNCHER"
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-cli/releases/download/v1.9.1901/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'V1_9_DOWNLOADED' } catch { Write-Host 'V1_9_FAILED'; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
+                    SET "MSIX_DOWNLOADED=YES"
+                    CALL :LOG_MESSAGE "MSIX downloaded successfully from GitHub v1.9.1901" "SUCCESS" "LAUNCHER"
+                ) ELSE (
+                    CALL :LOG_MESSAGE "URL 5 failed - All winget download URLs exhausted" "ERROR" "LAUNCHER"
+                    DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
+                )
+            )
+            
+            REM Install MSIX if downloaded from any URL
             IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
                 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WORKING_DIR%AppInstaller.msixbundle' -ErrorAction Stop; Write-Host 'MSIX_INSTALLED' } catch { Write-Host 'MSIX_FAILED'; exit 1 }" >nul 2>&1
                 IF !ERRORLEVEL! EQU 0 (
@@ -390,13 +439,11 @@ powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'Silent
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 3
 )
 
@@ -408,7 +455,6 @@ powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 3
 )
 
@@ -431,12 +477,10 @@ IF EXIST "%EXTRACTED_PATH%" (
         CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        PAUSE
         EXIT /B 3
     )
 ) ELSE (
     CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 3
 )
 
@@ -572,7 +616,6 @@ IF "%STRUCTURE_VALID%"=="NO" (
     CALL :LOG_MESSAGE "  - modules/core/ with CoreInfrastructure.psm1" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "The script cannot continue without these components." "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 4
 ) ELSE (
     CALL :LOG_MESSAGE "Repository structure validated successfully - ready for execution" "SUCCESS" "LAUNCHER"
@@ -640,7 +683,7 @@ IF "%PS7_FOUND%"=="NO" (
     REM 1) Try installing PowerShell via winget (if available)
     IF "%WINGET_AVAILABLE%"=="YES" (
         CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-        "%WINGET_EXE%" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
+        "%WINGET_EXE%" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             SET "INSTALL_STATUS=SUCCESS"
@@ -650,7 +693,7 @@ IF "%PS7_FOUND%"=="NO" (
             CALL :LOG_MESSAGE "Refreshing PATH environment after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
             CALL :REFRESH_PATH_FROM_REGISTRY
         ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed (exit code: !ERRORLEVEL!)" "WARN" "LAUNCHER"
         )
     ) ELSE (
         CALL :LOG_MESSAGE "Winget not available for PowerShell 7 installation" "WARN" "LAUNCHER"
@@ -684,10 +727,14 @@ IF "%PS7_FOUND%"=="NO" (
                 CALL :LOG_MESSAGE "Chocolatey installed successfully - now installing PowerShell 7..." "SUCCESS" "LAUNCHER"
                 TIMEOUT /T 2 >nul 2>&1
                 
-                REM Update Chocolatey path after installation
-                IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
+                REM Update Chocolatey path after installation and refresh environment
+                SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
+                IF NOT EXIST "!CHOCO_EXE!" (
+                    CALL :LOG_MESSAGE "Chocolatey executable not found after installation" "ERROR" "LAUNCHER"
+                    GOTO :SKIP_CHOCO_PS7_INSTALL
+                )
                 
-                "%CHOCO_EXE%" install powershell-core -y --no-progress
+                "!CHOCO_EXE!" install powershell-core -y --no-progress
                 IF !ERRORLEVEL! EQU 0 (
                     CALL :LOG_MESSAGE "PowerShell 7 installed successfully via newly installed Chocolatey" "SUCCESS" "LAUNCHER"
                     SET "INSTALL_STATUS=SUCCESS"
@@ -699,18 +746,85 @@ IF "%PS7_FOUND%"=="NO" (
                 ) ELSE (
                     CALL :LOG_MESSAGE "PowerShell 7 installation failed even with fresh Chocolatey" "WARN" "LAUNCHER"
                 )
+                
+                :SKIP_CHOCO_PS7_INSTALL
             ) ELSE (
                 CALL :LOG_MESSAGE "Chocolatey installation failed - proceeding to MSI fallback" "WARN" "LAUNCHER"
             )
         )
     )
 
-    REM 3) MSI fallback from GitHub Releases (latest stable)
+    REM 3) MSI fallback from GitHub Releases with multiple version fallbacks
     IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
-        CALL :LOG_MESSAGE "Attempting MSI fallback from GitHub Releases (latest stable)..." "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Attempting MSI installation with multiple version fallbacks..." "INFO" "LAUNCHER"
         DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
+        SET "MSI_DOWNLOADED=NO"
+        
+        REM Try Method 1: GitHub API (latest stable release)
+        CALL :LOG_MESSAGE "MSI Method 1: GitHub API latest stable release..." "DEBUG" "LAUNCHER"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest' -TimeoutSec 30; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi' -TimeoutSec 60; Write-Host 'MSI_API_DOWNLOADED' } catch { Write-Host 'MSI_API_FAILED'; exit 1 }" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%pwsh.msi" (
+            SET "MSI_DOWNLOADED=YES"
+            CALL :LOG_MESSAGE "MSI downloaded successfully via GitHub API (latest)" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "GitHub API method failed - trying direct version URLs..." "WARN" "LAUNCHER"
+            DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
+        )
+        
+        REM Try Method 2: PowerShell 7.4.6 (LTS - Long-Term Support)
+        IF "%MSI_DOWNLOADED%"=="NO" (
+            CALL :LOG_MESSAGE "MSI Method 2: PowerShell 7.4.6 LTS (x64)..." "DEBUG" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $url = 'https://github.com/PowerShell/PowerShell/releases/download/v7.4.6/PowerShell-7.4.6-win-' + $arch + '.msi'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%pwsh.msi' -UseBasicParsing -TimeoutSec 60; Write-Host 'MSI_7_4_6_DOWNLOADED' } catch { Write-Host 'MSI_7_4_6_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%pwsh.msi" (
+                SET "MSI_DOWNLOADED=YES"
+                CALL :LOG_MESSAGE "MSI downloaded successfully - PowerShell 7.4.6 LTS" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell 7.4.6 LTS download failed" "WARN" "LAUNCHER"
+                DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
+            )
+        )
+        
+        REM Try Method 3: PowerShell 7.4.0 (stable)
+        IF "%MSI_DOWNLOADED%"=="NO" (
+            CALL :LOG_MESSAGE "MSI Method 3: PowerShell 7.4.0 stable (x64)..." "DEBUG" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $url = 'https://github.com/PowerShell/PowerShell/releases/download/v7.4.0/PowerShell-7.4.0-win-' + $arch + '.msi'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%pwsh.msi' -UseBasicParsing -TimeoutSec 60; Write-Host 'MSI_7_4_0_DOWNLOADED' } catch { Write-Host 'MSI_7_4_0_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%pwsh.msi" (
+                SET "MSI_DOWNLOADED=YES"
+                CALL :LOG_MESSAGE "MSI downloaded successfully - PowerShell 7.4.0" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell 7.4.0 download failed" "WARN" "LAUNCHER"
+                DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
+            )
+        )
+        
+        REM Try Method 4: PowerShell 7.3.12 (older stable)
+        IF "%MSI_DOWNLOADED%"=="NO" (
+            CALL :LOG_MESSAGE "MSI Method 4: PowerShell 7.3.12 older stable (x64)..." "DEBUG" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $url = 'https://github.com/PowerShell/PowerShell/releases/download/v7.3.12/PowerShell-7.3.12-win-' + $arch + '.msi'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%pwsh.msi' -UseBasicParsing -TimeoutSec 60; Write-Host 'MSI_7_3_12_DOWNLOADED' } catch { Write-Host 'MSI_7_3_12_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%pwsh.msi" (
+                SET "MSI_DOWNLOADED=YES"
+                CALL :LOG_MESSAGE "MSI downloaded successfully - PowerShell 7.3.12" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell 7.3.12 download failed" "WARN" "LAUNCHER"
+                DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
+            )
+        )
+        
+        REM Try Method 5: PowerShell 7.2.23 (maximum compatibility)
+        IF "%MSI_DOWNLOADED%"=="NO" (
+            CALL :LOG_MESSAGE "MSI Method 5: PowerShell 7.2.23 max compatibility (x64)..." "DEBUG" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $url = 'https://github.com/PowerShell/PowerShell/releases/download/v7.2.23/PowerShell-7.2.23-win-' + $arch + '.msi'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%pwsh.msi' -UseBasicParsing -TimeoutSec 60; Write-Host 'MSI_7_2_23_DOWNLOADED' } catch { Write-Host 'MSI_7_2_23_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 IF EXIST "%WORKING_DIR%pwsh.msi" (
+                SET "MSI_DOWNLOADED=YES"
+                CALL :LOG_MESSAGE "MSI downloaded successfully - PowerShell 7.2.23" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell 7.2.23 download failed - All MSI URLs exhausted" "ERROR" "LAUNCHER"
+                DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
+            )
+        )
+        
+        REM Install MSI if downloaded from any method
+        IF "%MSI_DOWNLOADED%"=="YES" (
             CALL :LOG_MESSAGE "PowerShell MSI downloaded. Installing silently..." "INFO" "LAUNCHER"
             msiexec /i "%WORKING_DIR%pwsh.msi" /qn ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 >nul 2>&1
             IF !ERRORLEVEL! EQU 0 (
@@ -718,10 +832,11 @@ IF "%PS7_FOUND%"=="NO" (
                 SET "INSTALL_STATUS=SUCCESS"
                 SET "PS7_FOUND=YES"
             ) ELSE (
-                CALL :LOG_MESSAGE "MSI installation failed" "ERROR" "LAUNCHER"
+                CALL :LOG_MESSAGE "MSI installation failed (exit code: !ERRORLEVEL!)" "ERROR" "LAUNCHER"
             )
+            DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
         ) ELSE (
-            CALL :LOG_MESSAGE "Failed to download PowerShell MSI from GitHub (network or API blocked)" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "Failed to download PowerShell MSI - all 5 fallback URLs exhausted" "ERROR" "LAUNCHER"
         )
     )
 
@@ -740,10 +855,17 @@ IF "%PS7_FOUND%"=="NO" (
         EXIT /B !ERRORLEVEL!
     ) ELSE (
         CALL :LOG_MESSAGE "All automated installation methods for PowerShell 7 failed." "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "Attempted installation methods:" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE " 1. Winget (Microsoft.PowerShell)" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE " 2. Chocolatey (powershell-core)" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE " 3. MSI via GitHub API (latest)" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE " 4. MSI Direct: v7.4.6 LTS, v7.4.0, v7.3.12, v7.2.23" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "Troubleshooting tips:" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " - Ensure winget can access sources: winget source list / reset --force / update" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " - Update App Installer from Microsoft Store (for winget updates)" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " - Check corporate proxy/firewall settings for GitHub and CDN access" "ERROR" "LAUNCHER"
+        CALL :LOG_MESSAGE " - Verify TLS 1.2 is enabled: [Net.ServicePointManager]::SecurityProtocol" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " - Manually install from https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
     )
 ) ELSE (
@@ -908,7 +1030,6 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "PowerShell 7+ is required for this maintenance system." "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install PowerShell 7+ from: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Or install via winget: winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 1
 )
 
