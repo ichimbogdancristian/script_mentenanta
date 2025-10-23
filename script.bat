@@ -82,9 +82,9 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
     CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 )
 
-REM Setup logging - Bootstrap launcher uses separate log file
-SET "LOG_FILE=%WORKING_DIR%bootstrap-launcher.log"
-CALL :LOG_MESSAGE "Bootstrap log file: %LOG_FILE%" "DEBUG" "LAUNCHER"
+REM Setup logging - Create maintenance.log at repository root initially
+SET "LOG_FILE=%WORKING_DIR%maintenance.log"
+CALL :LOG_MESSAGE "Maintenance log file initialized at repository root: %LOG_FILE%" "DEBUG" "LAUNCHER"
 
 REM Environment variables for PowerShell orchestrator
 SET "WORKING_DIRECTORY=%WORKING_DIR%"
@@ -325,22 +325,33 @@ IF EXIST "%EXTRACTED_PATH%" (
 REM Clean up
 DEL /Q "%ZIP_FILE%" >nul 2>&1
 
-REM Ensure orchestrator temp_files location exists and switch bootstrap logging to orchestrator main log
+REM Ensure orchestrator temp_files location exists
 IF NOT EXIST "%WORKING_DIR%temp_files" (
     MKDIR "%WORKING_DIR%temp_files" >nul 2>&1
     CALL :LOG_MESSAGE "Created temp_files directory at %WORKING_DIR%temp_files" "DEBUG" "LAUNCHER"
 )
 
-REM Update LOG_FILE and SCRIPT_LOG_FILE to point to the orchestrator main log (temp_files/maintenance.log)
-SET "LOG_FILE=%WORKING_DIR%temp_files\maintenance.log"
-SET "SCRIPT_LOG_FILE=%LOG_FILE%"
-CALL :LOG_MESSAGE "Bootstrap switching to orchestrator main log: %LOG_FILE%" "DEBUG" "LAUNCHER"
-REM Preserve the bootstrap log by copying it into temp_files/logs for reporting
-IF EXIST "%WORKING_DIR%bootstrap-launcher.log" (
-    IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
-    COPY /Y "%WORKING_DIR%bootstrap-launcher.log" "%WORKING_DIR%temp_files\logs\bootstrap-launcher.log" >nul 2>&1
-    CALL :LOG_MESSAGE "Copied bootstrap-launcher.log to temp_files/logs/bootstrap-launcher.log" "DEBUG" "LAUNCHER"
+REM Create logs subdirectory if it doesn't exist
+IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
+    MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
 )
+
+REM Move maintenance.log from root to temp_files/logs/ (preserving all bootstrap content)
+IF EXIST "%WORKING_DIR%maintenance.log" (
+    CALL :LOG_MESSAGE "Moving maintenance.log from repository root to temp_files/logs/" "INFO" "LAUNCHER"
+    MOVE /Y "%WORKING_DIR%maintenance.log" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Successfully moved maintenance.log to organized location" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to move maintenance.log - copying instead" "WARN" "LAUNCHER"
+        COPY /Y "%WORKING_DIR%maintenance.log" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
+    )
+)
+
+REM Update LOG_FILE pointer to new location for all subsequent logging
+SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
+SET "SCRIPT_LOG_FILE=%LOG_FILE%"
+CALL :LOG_MESSAGE "Log file now at organized location: %LOG_FILE%" "DEBUG" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Project Structure Discovery and Validation (Moved after extraction)

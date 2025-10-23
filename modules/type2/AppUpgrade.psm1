@@ -1,7 +1,11 @@
 #Requires -Version 7.0
 # Module Dependencies:
-#   - CoreInfrastructure.psm1 (for logging and configuration)
-#   - AppUpgradeAudit.psm1 (Type 1 module for detection)
+#   - CoreInfrastructure.psm1 (configuration, logging, path management)
+#   - AppUpgradeAudit.psm1 (Type1 - detection/analysis)
+#
+# External Tools (managed by script.bat launcher):
+#   - winget.exe (Windows Package Manager)
+#   - choco.exe (Chocolatey - optional)
 
 <#
 .SYNOPSIS
@@ -13,7 +17,7 @@
 
 .NOTES
     Module Type: Type 2 (Execution)
-    Dependencies: winget, chocolatey (optional), CoreInfrastructure, AppUpgradeAudit
+    Dependencies: AppUpgradeAudit.psm1, CoreInfrastructure.psm1
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
 #>
@@ -139,20 +143,20 @@ function Invoke-AppUpgrade {
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
-        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== Application Upgrade Execution ===" -LogPath $executionLogPath
-        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detected: $($detectionResults.Count) upgrades available" -LogPath $executionLogPath
-        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Filtered: $($diffList.Count) upgrades to process" -LogPath $executionLogPath
-        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "DryRun: $DryRun" -LogPath $executionLogPath
-        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== Application Upgrade Execution ===" -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DetectedCount = $detectionResults.Count; FilteredCount = $diffList.Count; DryRun = $DryRun.IsPresent }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detected: $($detectionResults.Count) upgrades available" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ Count = $detectionResults.Count }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Filtered: $($diffList.Count) upgrades to process" -LogPath $executionLogPath -Operation 'Filter' -Metadata @{ FilteredCount = $diffList.Count; ExcludedCount = ($detectionResults.Count - $diffList.Count) }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "DryRun: $DryRun" -LogPath $executionLogPath -Metadata @{ DryRun = $DryRun.IsPresent }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -LogPath $executionLogPath
 
         # STEP 5: Process upgrades (with DryRun check)
         if ($diffList.Count -eq 0) {
             Write-Information "  ℹ️  No upgrades to process" -InformationAction Continue
-            Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "No upgrades required - all applications up to date" -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "No upgrades required - all applications up to date" -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
         }
         elseif ($DryRun) {
             Write-Information "  🧪 DRY-RUN MODE: Simulating upgrades..." -InformationAction Continue
-            Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== DRY-RUN MODE: Simulating upgrades ===" -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "🧪 DRY-RUN: Simulating upgrades" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
             
             foreach ($upgrade in $diffList) {
                 Write-Information "    [DRY-RUN] Would upgrade: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion))" -InformationAction Continue
@@ -174,11 +178,11 @@ function Invoke-AppUpgrade {
         }
         else {
             Write-Information "  🚀 Executing upgrades..." -InformationAction Continue
-            Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== LIVE EXECUTION: Processing $($diffList.Count) upgrades ===" -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "LIVE EXECUTION: Processing $($diffList.Count) upgrades" -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $diffList.Count }
             
             foreach ($upgrade in $diffList) {
                 # Log upgrade attempt with full details
-                Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Starting upgrade: $($upgrade.Name)" -LogPath $executionLogPath -Data @{
+                Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Starting upgrade: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Metadata @{
                     CurrentVersion = $upgrade.CurrentVersion
                     TargetVersion  = $upgrade.AvailableVersion
                     Source         = $upgrade.Source
@@ -192,7 +196,7 @@ function Invoke-AppUpgrade {
                     Write-Information "    ✅ Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion)) in $([math]::Round($upgradeResult.Duration / 1000, 2))s" -InformationAction Continue
                     
                     # Log summary success
-                    Write-LogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message "Upgrade completed successfully: $($upgrade.Name)" -LogPath $executionLogPath -Data @{
+                    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message "Upgrade completed successfully: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Result 'Success' -Metadata @{
                         From     = $upgrade.CurrentVersion
                         To       = $upgrade.AvailableVersion
                         Duration = [math]::Round($upgradeResult.Duration / 1000, 2)
@@ -203,7 +207,7 @@ function Invoke-AppUpgrade {
                     Write-Warning "Failed to upgrade: $($upgrade.Name) - $($upgradeResult.Error)"
                     
                     # Log summary failure
-                    Write-LogEntry -Level 'ERROR' -Component 'APP-UPGRADE' -Message "Upgrade failed: $($upgrade.Name)" -LogPath $executionLogPath -Data @{
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'APP-UPGRADE' -Message "Upgrade failed: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Result 'Failed' -Metadata @{
                         CurrentVersion = $upgrade.CurrentVersion
                         TargetVersion  = $upgrade.AvailableVersion
                         Source         = $upgrade.Source
@@ -215,7 +219,45 @@ function Invoke-AppUpgrade {
 
         # STEP 6: Return standardized result
         $duration = (Get-Date) - $startTime
-        Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Execution complete: $itemsProcessed processed in $([math]::Round($duration.TotalSeconds, 2))s" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message "Execution complete: $itemsProcessed processed in $([math]::Round($duration.TotalSeconds, 2))s" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $itemsProcessed; DurationSeconds = [math]::Round($duration.TotalSeconds, 2) }
+
+        # Create execution summary JSON
+        $summaryPath = Join-Path $executionLogDir "execution-summary.json"
+        $executionSummary = @{
+            ModuleName = 'AppUpgrade'
+            ExecutionTime = @{
+                Start = $startTime.ToString('o')
+                End = (Get-Date).ToString('o')
+                DurationMs = $duration.TotalMilliseconds
+            }
+            Results = @{
+                Success = $true
+                ItemsDetected = $detectionResults.Count
+                ItemsProcessed = $itemsProcessed
+                ItemsFailed = 0
+                ItemsSkipped = ($diffList.Count - $itemsProcessed)
+            }
+            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            LogFiles = @{
+                TextLog = $executionLogPath
+                JsonLog = $executionLogPath -replace '\.log$', '-data.json'
+                Summary = $summaryPath
+            }
+            SessionInfo = @{
+                SessionId = $env:MAINTENANCE_SESSION_ID
+                ComputerName = $env:COMPUTERNAME
+                UserName = $env:USERNAME
+                PSVersion = $PSVersionTable.PSVersion.ToString()
+            }
+        }
+        
+        try {
+            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
+            Write-Verbose "Execution summary saved to: $summaryPath"
+        }
+        catch {
+            Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
+        }
 
         Complete-PerformanceTracking -Context $perfContext -Status 'Success'
         Write-LogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message 'Application upgrade execution completed' -Data @{

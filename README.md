@@ -323,18 +323,30 @@ This automated Windows maintenance system performs comprehensive system cleanup,
     │   ├── 🔒 telemetry-results.json       # TelemetryAudit findings
     │   └── 🔄 windows-updates-results.json # WindowsUpdatesAudit findings
     ├── 📁 logs/                            # Type2 Execution Logs (Dedicated dirs)
-    │   ├── 📁 bloatware-removal/execution.log
-    │   ├── 📁 essential-apps/execution.log
-    │   ├── 📁 system-optimization/execution.log
-    │   ├── 📁 telemetry-disable/execution.log
-    │   └── 📁 windows-updates/execution.log
-    ├── 📁 temp/                            # Processing Diffs & Intermediate Data
-    │   ├── 🗑️ bloatware-diff.json          # Config items found on system
-    │   ├── 📦 essential-apps-diff.json     # Missing apps from config
-    │   ├── ⚡ system-optimization-diff.json # Optimizations ready for execution
-    │   ├── 🔒 telemetry-diff.json          # Active telemetry items
-    │   └── 🔄 windows-updates-diff.json    # Available updates
-    └── 📁 reports/                         # Temporary report data
+    │   ├── 📁 bloatware-removal/
+    │   │   ├── execution.log               # Human-readable execution log
+    │   │   ├── execution-data.json         # Structured log entries (v3.1+)
+    │   │   └── execution-summary.json      # Module execution summary (v3.1+)
+    │   ├── 📁 essential-apps/
+    │   │   ├── execution.log
+    │   │   ├── execution-data.json
+    │   │   └── execution-summary.json
+    │   ├── 📁 system-optimization/
+    │   │   ├── execution.log
+    │   │   ├── execution-data.json
+    │   │   └── execution-summary.json
+    │   ├── 📁 telemetry-disable/
+    │   │   ├── execution.log
+    │   │   ├── execution-data.json
+    │   │   └── execution-summary.json
+    │   └── � windows-updates/
+    │       ├── execution.log
+    │       ├── execution-data.json
+    │       └── execution-summary.json
+    ├── � temp/                            # In-memory processing (not persisted)
+    │   └── � Note: Diff lists created in-memory only, not saved to disk
+    └── 📁 reports/                         # Generated Reports
+        └── MaintenanceReport_YYYYMMDD-HHMMSS.html
 ```
 
 ### **🔄 Type1 → Type2 Execution Pattern**
@@ -1218,6 +1230,18 @@ Main Menu (20s) → Sub Menu (20s) → Task Selection (if needed) → Execution
 - `Test-UpdateSystemHealth`: Validates Windows Update service health
 - **Output**: JSON report with pending updates, update history, and configuration recommendations
 
+#### **AppUpgradeAudit.psm1**
+**Purpose**: Detects installed applications with available version upgrades across package managers.
+- `Get-AppUpgradeAnalysis`: Scans winget and Chocolatey for available application upgrades
+- `Test-UpgradeAvailability`: Validates upgrade candidates and version compatibility
+- **Output**: JSON report with available upgrades including current version, available version, source, and upgrade size
+
+#### **SystemInventoryAudit.psm1**
+**Purpose**: Gathers comprehensive system information for baseline documentation and change tracking.
+- `Get-SystemInventoryAnalysis`: Collects hardware, software, and configuration details
+- `Get-InstalledSoftwareInventory`: Retrieves complete installed application catalog
+- **Output**: JSON report with detailed system inventory including hardware specs, installed software, network configuration
+
 ---
 
 ### **🔧 Type2 Modules - System Modifications** 
@@ -1257,24 +1281,58 @@ Main Menu (20s) → Sub Menu (20s) → Task Selection (if needed) → Execution
 - `Install-WindowsUpdate`: Handles update installation with progress tracking
 - **Features**: Selective update installation, reboot scheduling, update validation
 
+#### **AppUpgrade.psm1** (Self-Contained)
+**Purpose**: Upgrades installed applications to their latest versions across multiple package managers.
+- **Internal Flow**: Imports AppUpgradeAudit → Detects available upgrades → Executes upgrades
+- `Invoke-AppUpgrade`: Main execution function with version tracking and dry-run support
+- `Upgrade-Application`: Handles individual application upgrade with before/after version logging
+- **Package Managers**: winget (Windows Package Manager), Chocolatey (optional)
+- **Features**: Parallel upgrade support, version pinning, selective upgrade patterns, upgrade history tracking
+- **Configuration**: `config/app-upgrade-config.json` - Define upgrade policies, exclusions, and version constraints
+- **Safety**: Dry-run mode simulates upgrades without actual modifications, detailed logging of all operations
+
+#### **SystemInventory.psm1** (Self-Contained)
+**Purpose**: Collects comprehensive system information for reporting and documentation.
+- **Internal Flow**: Imports SystemInventoryAudit → Collects system data → Saves inventory
+- `Invoke-SystemInventory`: Main execution function for data collection
+- `Get-SystemDetails`: Retrieves hardware, software, and configuration information
+- **Features**: Hardware inventory, software catalog, system configuration, network details
+- **Output**: Structured JSON data for report generation and historical tracking
+
 ---
 
 ### **📊 Session Data & File Organization**
 
 **Session Structure** (under `temp_files/`):
 ```
-session_YYYYMMDD-HHMMSS_[SessionID]/
-├── logs/[module-name]/           # Module-specific execution logs
-├── data/                         # Structured JSON audit results  
-├── temp/                         # Temporary processing files
-└── reports/                      # Generated HTML, JSON, CSV reports
+temp_files/
+├── data/                         # Type1 Detection Results (JSON)
+│   ├── bloatware-results.json
+│   ├── essential-apps-results.json
+│   ├── system-optimization-results.json
+│   ├── telemetry-results.json
+│   └── windows-updates-results.json
+├── logs/[module-name]/           # Type2 Execution Logs (per module)
+│   ├── execution.log             # Human-readable execution log
+│   ├── execution-data.json       # Structured log entries (v3.1+)
+│   └── execution-summary.json    # Module execution summary (v3.1+)
+├── temp/                         # In-memory processing (not persisted)
+│   └── (Diff lists created in-memory, not saved to disk)
+└── reports/                      # Generated Reports
+    └── MaintenanceReport_YYYYMMDD-HHMMSS.html
 ```
 
 **Data Flow**:
 1. **Type1 modules** generate audit data → `data/[module]-results.json`
-2. **Type2 modules** log execution details → `logs/[module]/execution.log`  
-3. **ReportGeneration** consolidates all data → `reports/maintenance-report.html`
-4. **Session cleanup** removes temporary files, retains reports
+2. **Type2 modules** log execution details → `logs/[module]/execution.log`
+3. **Type2 modules** create structured logs → `logs/[module]/execution-data.json` (v3.1+)
+4. **Type2 modules** create execution summaries → `logs/[module]/execution-summary.json` (v3.1+)
+5. **ReportGeneration** consolidates all data → `reports/maintenance-report.html`
+6. **Session cleanup** removes temporary files, retains reports
+
+**Note**: Diff lists (items from config matched on system) are created **in-memory** during Type2 module 
+execution but **not persisted to disk**. This is intentional for performance and security (diff lists 
+are regenerated fresh each run).
 
 ---
 

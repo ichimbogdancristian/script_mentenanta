@@ -1,8 +1,9 @@
 ﻿#Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for configuration access)
-#   - LoggingManager.psm1 (for structured logging)
-#   - DependencyManager.psm1 (for privilege validation)
+#   - CoreInfrastructure.psm1 (configuration, logging, path management)
+#   - TelemetryAudit.psm1 (Type1 - detection/analysis)
+#
+# External Tools: None (uses native Windows registry, services, firewall)
 
 <#
 .SYNOPSIS
@@ -14,7 +15,7 @@
 
 .NOTES
     Module Type: Type 2 (System Modification)
-    Dependencies: Registry access, service control capabilities
+    Dependencies: TelemetryAudit.psm1, CoreInfrastructure.psm1
     Requires: Administrator privileges
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
@@ -76,19 +77,19 @@ function Invoke-TelemetryDisable {
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         $telemetryCount = $analysisResults.ActiveTelemetryCount
-        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ TelemetryCount = $telemetryCount }
         
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'DRY RUN: Simulating telemetry disable' -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message '🧪 DRY-RUN: Simulating telemetry disable' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $telemetryCount }
             $results = @{ ProcessedCount = $telemetryCount; Simulated = $true }; $processedCount = $telemetryCount
         }
         else {
-            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable' -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $telemetryCount }
             # Process telemetry items based on detected types
             $processedCount = 0
             if ($analysisResults.ActiveTelemetryItems) {
                 foreach ($item in $analysisResults.ActiveTelemetryItems) {
-                    Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Processing telemetry item: $($item.Type)" -LogPath $executionLogPath
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Processing telemetry item: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Metadata @{ ItemName = $item.Name }
                     try {
                         switch ($item.Type) {
                             'Service' { $result = Disable-WindowsTelemetry -DisableServices }
@@ -96,27 +97,65 @@ function Invoke-TelemetryDisable {
                             'ConsumerFeature' { $result = Disable-WindowsTelemetry -DisableConsumerFeatures }
                             'Cortana' { $result = Disable-WindowsTelemetry -DisableCortana }
                             'LocationTracking' { $result = Disable-WindowsTelemetry -DisableLocationTracking }
-                            default { Write-LogEntry -Level 'WARN' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" -LogPath $executionLogPath }
+                            default { Write-StructuredLogEntry -Level 'WARN' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Result 'Unknown' }
                         }
                         if ($result) { 
                             $processedCount++
-                            Write-LogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Successfully disabled: $($item.Type)" -LogPath $executionLogPath
+                            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Successfully disabled: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Success'
                         }
                         else {
-                            Write-LogEntry -Level 'WARN' -Component 'TELEMETRY-DISABLE' -Message "Failed to disable: $($item.Type)" -LogPath $executionLogPath
+                            Write-StructuredLogEntry -Level 'WARN' -Component 'TELEMETRY-DISABLE' -Message "Failed to disable: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Failed'
                         }
                     }
                     catch {
-                        Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message "Error disabling $($item.Type): $($_.Exception.Message)" -LogPath $executionLogPath
+                        Write-StructuredLogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message "Error disabling $($item.Type): $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
                     }
                 }
             }
             $results = @{ ProcessedCount = $processedCount; DisabledCount = $processedCount }
         }
         
-        Write-LogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalCount = $telemetryCount }
         
+        # Create execution summary JSON
+        $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
+        $executionSummary = @{
+            ModuleName    = 'TelemetryDisable'
+            ExecutionTime = @{
+                Start      = $executionStartTime.ToString('o')
+                End        = (Get-Date).ToString('o')
+                DurationMs = $executionTime.TotalMilliseconds
+            }
+            Results       = @{
+                Success        = $true
+                ItemsDetected  = $telemetryCount
+                ItemsProcessed = $processedCount
+                ItemsFailed    = 0
+                ItemsSkipped   = ($telemetryCount - $processedCount)
+            }
+            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            LogFiles      = @{
+                TextLog = $executionLogPath
+                JsonLog = $executionLogPath -replace '\.log$', '-data.json'
+                Summary = $summaryPath
+            }
+            SessionInfo   = @{
+                SessionId    = $env:MAINTENANCE_SESSION_ID
+                ComputerName = $env:COMPUTERNAME
+                UserName     = $env:USERNAME
+                PSVersion    = $PSVersionTable.PSVersion.ToString()
+            }
+        }
+        
+        try {
+            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
+            Write-Verbose "Execution summary saved to: $summaryPath"
+        }
+        catch {
+            Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
+        }
+        
         $returnData = @{ 
             Success        = $true
             ItemsDetected  = $telemetryCount

@@ -1,8 +1,11 @@
 ﻿#Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for essential apps configuration)
-#   - LoggingManager.psm1 (for structured logging)
-#   - DependencyManager.psm1 (for package management)
+#   - CoreInfrastructure.psm1 (configuration, logging, path management)
+#   - EssentialAppsAudit.psm1 (Type1 - detection/analysis)
+#
+# External Tools (managed by script.bat launcher):
+#   - winget.exe (Windows Package Manager)
+#   - choco.exe (Chocolatey - optional)
 
 <#
 .SYNOPSIS
@@ -14,7 +17,7 @@
 
 .NOTES
     Module Type: Type 2 (System Modification)
-    Dependencies: ConfigManager.psm1, SystemInventory.psm1
+    Dependencies: EssentialAppsAudit.psm1, CoreInfrastructure.psm1
     Requires: Administrator privileges for installations
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
@@ -45,12 +48,8 @@ else {
 }
 
 # v3.0 compliance: No fallback functions needed with proper loading order
-
-# Step 3: Import additional dependencies
-$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
-if (Test-Path $DependencyManagerPath) {
-    Import-Module $DependencyManagerPath -Force
-}
+# Note: Package management (winget, chocolatey) handled by script.bat bootstrap
+# Type2 modules call package managers directly via CLI (winget.exe, choco.exe)
 
 # Validate Type1 module loaded correctly
 if (-not (Get-Command -Name 'Get-EssentialAppsAudit' -ErrorAction SilentlyContinue)) {
@@ -106,7 +105,11 @@ function Invoke-EssentialApps {
         $executionStartTime = Get-Date
         
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
-        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis'
+        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\essential-apps"
+        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
+        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
         $detectionResults = Get-EssentialAppsAnalysis -Config $Config
         
         # STEP 2: Compare detection with config to create diff list
@@ -122,14 +125,10 @@ function Invoke-EssentialApps {
         $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
         
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\essential-apps"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
-        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Processing $($diffList.Count) missing apps from diff" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Processing $($diffList.Count) missing apps from diff" -LogPath $executionLogPath -Operation 'Process' -Metadata @{ MissingCount = $diffList.Count }
         
         if (-not $diffList -or $diffList.Count -eq 0) {
-            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'No missing essential apps found' -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'No missing essential apps found' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
             $executionTime = (Get-Date) - $executionStartTime
             return @{ 
@@ -141,7 +140,7 @@ function Invoke-EssentialApps {
         }
         
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "DRY-RUN: Would install $($diffList.Count) missing apps" -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "🧪 DRY-RUN: Would install $($diffList.Count) missing apps" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
             $processedCount = 0
         }
         else {
@@ -150,7 +149,7 @@ function Invoke-EssentialApps {
             
             foreach ($app in $diffList) {
                 try {
-                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Metadata @{ Source = $app.RecommendedMethod; Id = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId } }
                     
                     # Transform app data for Install-SingleApplication
                     $appHashtable = @{
@@ -165,26 +164,64 @@ function Invoke-EssentialApps {
                     if ($result.Success) {
                         $installResults.InstalledApps += $app
                         $processedCount++
-                        Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Successfully installed: $($app.Name)" -LogPath $executionLogPath
+                        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Successfully installed: $($app.Name)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Success' -Metadata @{ Source = $app.RecommendedMethod }
                     }
                     else {
                         $installResults.FailedApps += $app
-                        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Failed to install: $($app.Name) - $($result.ErrorMessage)" -LogPath $executionLogPath
+                        Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Failed to install: $($app.Name) - $($result.ErrorMessage)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Failed' -Metadata @{ Error = $result.ErrorMessage }
                     }
                 }
                 catch {
                     $installResults.FailedApps += $app
-                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Error installing $($app.Name): $($_.Exception.Message)" -LogPath $executionLogPath
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Error installing $($app.Name): $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
                 }
             }
             
             $processedCount = $installResults.InstalledApps.Count
-            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installed $processedCount essential apps" -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Installed $processedCount essential apps" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ InstalledCount = $processedCount; FailedCount = $installResults.FailedApps.Count }
         }
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         
+        # Create execution summary JSON
+        $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
+        $executionSummary = @{
+            ModuleName    = 'EssentialApps'
+            ExecutionTime = @{
+                Start      = $executionStartTime.ToString('o')
+                End        = (Get-Date).ToString('o')
+                DurationMs = $executionTime.TotalMilliseconds
+            }
+            Results       = @{
+                Success        = $true
+                ItemsDetected  = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
+                ItemsProcessed = $processedCount
+                ItemsFailed    = if ($installResults) { $installResults.FailedApps.Count } else { 0 }
+                ItemsSkipped   = ($diffList.Count - $processedCount)
+            }
+            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            LogFiles      = @{
+                TextLog = $executionLogPath
+                JsonLog = $executionLogPath -replace '\.log$', '-data.json'
+                Summary = $summaryPath
+            }
+            SessionInfo   = @{
+                SessionId    = $env:MAINTENANCE_SESSION_ID
+                ComputerName = $env:COMPUTERNAME
+                UserName     = $env:USERNAME
+                PSVersion    = $PSVersionTable.PSVersion.ToString()
+            }
+        }
+        
+        try {
+            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
+            Write-Verbose "Execution summary saved to: $summaryPath"
+        }
+        catch {
+            Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
+        }
+        
         return @{
             Success        = $true
             ItemsDetected  = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }

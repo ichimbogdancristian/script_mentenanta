@@ -1,8 +1,11 @@
 ﻿#Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for bloatware list configuration)
-#   - LoggingManager.psm1 (for structured logging)
-#   - BloatwareDetectionAudit.psm1 (for detection before removal)
+#   - CoreInfrastructure.psm1 (configuration, logging, path management)
+#   - BloatwareDetectionAudit.psm1 (Type1 - detection/analysis)
+#
+# External Tools (managed by script.bat launcher):
+#   - winget.exe (Windows Package Manager)
+#   - choco.exe (Chocolatey - optional)
 
 <#
 .SYNOPSIS
@@ -14,7 +17,7 @@
 
 .NOTES
     Module Type: Type 2 (System Modification)
-    Dependencies: BloatwareDetectionAudit.psm1, ConfigManager.psm1
+    Dependencies: BloatwareDetectionAudit.psm1, CoreInfrastructure.psm1
     Requires: Administrator privileges
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
@@ -101,7 +104,11 @@ function Invoke-BloatwareRemoval {
         $executionStartTime = Get-Date
         
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
-        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection'
+        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal"
+        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
+        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        
+        Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
         $detectionResults = Get-BloatwareAnalysis -Config $Config
         
         # STEP 2: Compare detection with config to create diff list
@@ -122,14 +129,10 @@ function Invoke-BloatwareRemoval {
         $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
         
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
-        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath -Operation 'Process' -Metadata @{ ItemCount = $diffList.Count; DetectedCount = $detectionResults.Count }
         
         if (-not $diffList -or $diffList.Count -eq 0) {
-            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items to remove after config comparison' -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items to remove after config comparison' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound' -Metadata @{ DetectedCount = $detectionResults.Count }
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
             $executionTime = (Get-Date) - $executionStartTime
             return @{ 
@@ -141,7 +144,7 @@ function Invoke-BloatwareRemoval {
         }
         
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "DRY-RUN: Would process $($diffList.Count) bloatware items" -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "🧪 DRY-RUN: Would process $($diffList.Count) bloatware items" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
             $processedCount = 0
         }
         else {
@@ -159,12 +162,50 @@ function Invoke-BloatwareRemoval {
                 $processedCount = 0
             }
             
-            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processed $processedCount bloatware items" -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'BLOATWARE-REMOVAL' -Message "Processed $processedCount bloatware items" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalDetected = $detectionResults.Count }
         }
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         
+        # Create execution summary JSON
+        $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
+        $executionSummary = @{
+            ModuleName    = 'BloatwareRemoval'
+            ExecutionTime = @{
+                Start      = $executionStartTime.ToString('o')
+                End        = (Get-Date).ToString('o')
+                DurationMs = $executionTime.TotalMilliseconds
+            }
+            Results       = @{
+                Success        = $true
+                ItemsDetected  = $detectionResults.Count
+                ItemsProcessed = $processedCount
+                ItemsFailed    = 0
+                ItemsSkipped   = ($detectionResults.Count - $processedCount)
+            }
+            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            LogFiles      = @{
+                TextLog = $executionLogPath
+                JsonLog = $executionLogPath -replace '\.log$', '-data.json'
+                Summary = $summaryPath
+            }
+            SessionInfo   = @{
+                SessionId    = $env:MAINTENANCE_SESSION_ID
+                ComputerName = $env:COMPUTERNAME
+                UserName     = $env:USERNAME
+                PSVersion    = $PSVersionTable.PSVersion.ToString()
+            }
+        }
+        
+        try {
+            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
+            Write-Verbose "Execution summary saved to: $summaryPath"
+        }
+        catch {
+            Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
+        }
+        
         return @{
             Success        = $true
             ItemsDetected  = $detectionResults.Count

@@ -1,7 +1,9 @@
 #Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for configuration access)
-#   - LoggingManager.psm1 (for structured logging)
+#   - CoreInfrastructure.psm1 (configuration, logging, path management)
+#   - SystemOptimizationAudit.psm1 (Type1 - detection/analysis)
+#
+# External Tools: None (uses native Windows APIs and registry)
 
 <#
 .SYNOPSIS
@@ -13,7 +15,7 @@
 
 .NOTES
     Module Type: Type 2 (System Modification)
-    Dependencies: Registry access, file system access
+    Dependencies: SystemOptimizationAudit.psm1, CoreInfrastructure.psm1
     Requires: Administrator privileges for system-wide optimizations
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
@@ -42,11 +44,8 @@ else {
     throw "Required Type 1 module not found: $Type1ModulePath"
 }
 
-# Step 3: Import additional dependencies
-$DependencyManagerPath = Join-Path $ModuleRoot 'core\DependencyManager.psm1'
-if (Test-Path $DependencyManagerPath) {
-    Import-Module $DependencyManagerPath -Force
-}
+# Note: System optimization primarily uses registry and Windows APIs
+# No external package manager dependencies required
 
 # Validate Type1 module loaded correctly
 if (-not (Get-Command -Name 'Get-SystemOptimizationAnalysis' -ErrorAction SilentlyContinue)) {
@@ -94,16 +93,16 @@ function Invoke-SystemOptimization {
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         $optimizationCount = $analysisResults.OptimizationCount
-        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ OpportunityCount = $optimizationCount }
         
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'DRY RUN: Simulating system optimization' -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message '🧪 DRY-RUN: Simulating system optimization' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $optimizationCount }
             $results = @{ ProcessedCount = $optimizationCount; Simulated = $true }
             [void]$results
             $processedCount = $optimizationCount
         }
         else {
-            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing system optimization' -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing system optimization' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ OpportunityCount = $optimizationCount }
             # Process optimization opportunities based on detected types
             $processedCount = 0
             if ($analysisResults.OptimizationOpportunities) {
@@ -130,7 +129,7 @@ function Invoke-SystemOptimization {
                 
                 # Execute each optimization group once
                 foreach ($groupName in $executeGroups.Keys) {
-                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing optimization group: $groupName" -LogPath $executionLogPath
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing optimization group: $groupName" -LogPath $executionLogPath -Operation 'ProcessGroup' -Target $groupName
                     try {
                         $result = $false
                         switch ($groupName) {
@@ -141,20 +140,20 @@ function Invoke-SystemOptimization {
                             'Disk' { $result = Optimize-SystemPerformance -OptimizeDisk }
                             'Network' { $result = Optimize-SystemPerformance -OptimizeNetwork }
                             default { 
-                                Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization group: $groupName" -LogPath $executionLogPath
+                                Write-StructuredLogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization group: $groupName" -LogPath $executionLogPath -Operation 'ProcessGroup' -Target $groupName -Result 'Unknown'
                                 $result = $false 
                             }
                         }
                         if ($result) { 
                             $processedCount++
-                            Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied optimization group: $groupName" -LogPath $executionLogPath
+                            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied optimization group: $groupName" -LogPath $executionLogPath -Operation 'Apply' -Target $groupName -Result 'Success'
                         }
                         else {
-                            Write-LogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to apply optimization group: $groupName" -LogPath $executionLogPath
+                            Write-StructuredLogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to apply optimization group: $groupName" -LogPath $executionLogPath -Operation 'Apply' -Target $groupName -Result 'Failed'
                         }
                     }
                     catch {
-                        Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error applying $($opportunity.Type): $($_.Exception.Message)" -LogPath $executionLogPath
+                        Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error applying $($opportunity.Type): $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Apply' -Target $opportunity.Type -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
                     }
                 }
             }
@@ -162,9 +161,47 @@ function Invoke-SystemOptimization {
             [void]$results
         }
         
-        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed: $processedCount optimizations applied" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed: $processedCount optimizations applied" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalOpportunities = $optimizationCount }
         
+        # Create execution summary JSON
+        $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
+        $executionSummary = @{
+            ModuleName    = 'SystemOptimization'
+            ExecutionTime = @{
+                Start      = $executionStartTime.ToString('o')
+                End        = (Get-Date).ToString('o')
+                DurationMs = $executionTime.TotalMilliseconds
+            }
+            Results       = @{
+                Success        = $true
+                ItemsDetected  = $optimizationCount
+                ItemsProcessed = $processedCount
+                ItemsFailed    = 0
+                ItemsSkipped   = ($optimizationCount - $processedCount)
+            }
+            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            LogFiles      = @{
+                TextLog = $executionLogPath
+                JsonLog = $executionLogPath -replace '\.log$', '-data.json'
+                Summary = $summaryPath
+            }
+            SessionInfo   = @{
+                SessionId    = $env:MAINTENANCE_SESSION_ID
+                ComputerName = $env:COMPUTERNAME
+                UserName     = $env:USERNAME
+                PSVersion    = $PSVersionTable.PSVersion.ToString()
+            }
+        }
+        
+        try {
+            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
+            Write-Verbose "Execution summary saved to: $summaryPath"
+        }
+        catch {
+            Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
+        }
+        
         $returnData = @{
             Success        = $true
             ItemsDetected  = $optimizationCount

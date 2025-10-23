@@ -2167,6 +2167,121 @@ function Get-SafeDirectoryContents {
     return $result.Data
 }
 
+<#
+.SYNOPSIS
+    Retrieves module execution data from JSON logs and summaries
+
+.DESCRIPTION
+    Reads structured JSON logs (execution-data.json) and execution summaries
+    (execution-summary.json) created by Type2 modules with structured logging.
+    Provides easy access to structured log data for report generation.
+
+.PARAMETER ModuleName
+    Name of the module to retrieve data for (e.g., 'BloatwareRemoval')
+
+.OUTPUTS
+    Hashtable with Summary, LogEntries, and HasStructuredData properties
+
+.EXAMPLE
+    $data = Get-ModuleExecutionDataFromJson -ModuleName 'BloatwareRemoval'
+    if ($data.HasStructuredData) {
+        Write-Host "Processed: $($data.Summary.Results.ItemsProcessed)"
+    }
+#>
+function Get-ModuleExecutionDataFromJson {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('BloatwareRemoval', 'EssentialApps', 'SystemOptimization', 'TelemetryDisable', 'WindowsUpdates', 'AppUpgrade', 'SystemInventory', 
+                     'bloatware-removal', 'essential-apps', 'system-optimization', 'telemetry-disable', 'windows-updates', 'app-upgrade', 'system-inventory')]
+        [string]$ModuleName
+    )
+    
+    try {
+        # Normalize module name to directory format (lowercase with hyphens)
+        $normalizedName = switch -Regex ($ModuleName) {
+            '^BloatwareRemoval$' { 'bloatware-removal' }
+            '^EssentialApps$' { 'essential-apps' }
+            '^SystemOptimization$' { 'system-optimization' }
+            '^TelemetryDisable$' { 'telemetry-disable' }
+            '^WindowsUpdates$' { 'windows-updates' }
+            '^AppUpgrade$' { 'app-upgrade' }
+            '^SystemInventory$' { 'system-inventory' }
+            default { $ModuleName.ToLower() }
+        }
+        
+        $logsPath = Join-Path $Global:ProjectPaths.TempFiles "logs\$normalizedName"
+        
+        if (-not (Test-Path $logsPath)) {
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Module logs directory not found: $logsPath"
+            return @{
+                Summary = $null
+                LogEntries = @()
+                HasStructuredData = $false
+                ModuleName = $ModuleName
+                Error = "Logs directory not found"
+            }
+        }
+        
+        # Load execution summary
+        $summaryPath = Join-Path $logsPath 'execution-summary.json'
+        $summary = if (Test-Path $summaryPath) {
+            try {
+                Get-Content $summaryPath -Raw | ConvertFrom-Json
+            }
+            catch {
+                Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to parse summary JSON: $($_.Exception.Message)"
+                $null
+            }
+        } else {
+            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "No execution summary found for $ModuleName"
+            $null
+        }
+        
+        # Load detailed log entries
+        $jsonLogPath = Join-Path $logsPath 'execution-data.json'
+        $logEntries = if (Test-Path $jsonLogPath) {
+            try {
+                $jsonContent = Get-Content $jsonLogPath -Raw | ConvertFrom-Json
+                # Ensure it's an array
+                if ($jsonContent -is [System.Collections.IEnumerable] -and $jsonContent -isnot [string]) {
+                    @($jsonContent)
+                } else {
+                    @($jsonContent)
+                }
+            }
+            catch {
+                Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to parse execution log JSON: $($_.Exception.Message)"
+                @()
+            }
+        } else {
+            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "No JSON execution log found for $ModuleName"
+            @()
+        }
+        
+        return @{
+            Summary = $summary
+            LogEntries = $logEntries
+            HasStructuredData = ($null -ne $summary -and $logEntries.Count -gt 0)
+            ModuleName = $ModuleName
+            LogsPath = $logsPath
+            SummaryPath = $summaryPath
+            JsonLogPath = $jsonLogPath
+        }
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to load JSON data for ${ModuleName}: $($_.Exception.Message)"
+        return @{
+            Summary = $null
+            LogEntries = @()
+            HasStructuredData = $false
+            ModuleName = $ModuleName
+            Error = $_.Exception.Message
+        }
+    }
+}
+
 #endregion
 
 #endregion
@@ -2179,6 +2294,7 @@ Export-ModuleMember -Function @(
     'Get-Type2ExecutionLogs',
     'Get-MaintenanceLog',
     'Get-ModuleExecutionData',
+    'Get-ModuleExecutionDataFromJson',
     'ConvertFrom-ModuleExecutionLog',
     'ConvertFrom-AuditData',
     'Get-ComprehensiveLogAnalysis',

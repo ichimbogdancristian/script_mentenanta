@@ -1,8 +1,10 @@
 ﻿#Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for configuration access)
-#   - LoggingManager.psm1 (for structured logging)
-#   - DependencyManager.psm1 (for PSWindowsUpdate module)
+#   - CoreInfrastructure.psm1 (configuration, logging, path management)
+#   - WindowsUpdatesAudit.psm1 (Type1 - detection/analysis)
+#
+# External Tools (optional, auto-installed if needed):
+#   - PSWindowsUpdate module (PowerShell Gallery)
 
 <#
 .SYNOPSIS
@@ -14,7 +16,7 @@
 
 .NOTES
     Module Type: Type 2 (System Modification)
-    Dependencies: PSWindowsUpdate module (optional), Administrator privileges
+    Dependencies: WindowsUpdatesAudit.psm1, CoreInfrastructure.psm1
     Requires: Administrator privileges, internet connectivity
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
@@ -43,11 +45,8 @@ else {
     throw "Required Type 1 module not found: $Type1ModulePath"
 }
 
-# Step 3: Import additional dependencies
-$DependencyManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\DependencyManager.psm1'
-if (Test-Path $DependencyManagerPath) {
-    Import-Module $DependencyManagerPath -Force
-}
+# Note: PSWindowsUpdate PowerShell module is installed automatically if needed
+# Windows Update operations use native Windows Update Agent APIs
 
 # Validate Type1 module loaded correctly
 if (-not (Get-Command -Name 'Get-WindowsUpdatesAnalysis' -ErrorAction SilentlyContinue)) {
@@ -82,21 +81,59 @@ function Invoke-WindowsUpdates {
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         $updatesCount = $analysisResults.PendingUpdatesCount
-        Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ UpdateCount = $updatesCount }
         
         if ($DryRun) {
-            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'DRY RUN: Simulating Windows updates installation' -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message '🧪 DRY-RUN: Simulating Windows updates installation' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; UpdateCount = $updatesCount }
             $results = @{ ProcessedCount = $updatesCount; Simulated = $true }; $processedCount = $updatesCount
         }
         else {
-            Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Executing Windows updates installation' -LogPath $executionLogPath
+            Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Executing Windows updates installation' -LogPath $executionLogPath -Operation 'Install' -Metadata @{ UpdateCount = $updatesCount }
             $results = Install-WindowsUpdate -ExecutionLogPath $executionLogPath
             $processedCount = if ($results.InstalledCount) { $results.InstalledCount } else { 0 }
         }
         
-        Write-LogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message "Windows updates completed. Processed: $processedCount/$updatesCount" -LogPath $executionLogPath
+        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message "Windows updates completed. Processed: $processedCount/$updatesCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalUpdates = $updatesCount }
         
+        # Create execution summary JSON
+        $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
+        $executionSummary = @{
+            ModuleName = 'WindowsUpdates'
+            ExecutionTime = @{
+                Start = $executionStartTime.ToString('o')
+                End = (Get-Date).ToString('o')
+                DurationMs = $executionTime.TotalMilliseconds
+            }
+            Results = @{
+                Success = $true
+                ItemsDetected = $updatesCount
+                ItemsProcessed = $processedCount
+                ItemsFailed = 0
+                ItemsSkipped = ($updatesCount - $processedCount)
+            }
+            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            LogFiles = @{
+                TextLog = $executionLogPath
+                JsonLog = $executionLogPath -replace '\.log$', '-data.json'
+                Summary = $summaryPath
+            }
+            SessionInfo = @{
+                SessionId = $env:MAINTENANCE_SESSION_ID
+                ComputerName = $env:COMPUTERNAME
+                UserName = $env:USERNAME
+                PSVersion = $PSVersionTable.PSVersion.ToString()
+            }
+        }
+        
+        try {
+            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
+            Write-Verbose "Execution summary saved to: $summaryPath"
+        }
+        catch {
+            Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
+        }
+        
         $returnData = @{ 
             Success        = $true
             ItemsDetected  = $updatesCount

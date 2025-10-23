@@ -533,19 +533,30 @@ $diffList = $detectionResults | Where-Object {
 │   ├── telemetry-results.json          # TelemetryAudit findings
 │   └── windows-updates-results.json    # WindowsUpdatesAudit findings
 ├── 📁 logs/                    # Type2 Execution Logs
-│   ├── bloatware-removal/execution.log     # BloatwareRemoval actions
-│   ├── essential-apps/execution.log        # EssentialApps actions
-│   ├── system-optimization/execution.log   # SystemOptimization actions
-│   ├── telemetry-disable/execution.log     # TelemetryDisable actions
-│   └── windows-updates/execution.log       # WindowsUpdates actions
-├── 📁 temp/                    # Processing Diffs
-│   ├── bloatware-diff.json             # Items from config found on system
-│   ├── essential-apps-diff.json        # Missing apps ready for installation
-│   ├── system-optimization-diff.json   # Optimizations ready for execution
-│   ├── telemetry-diff.json             # Active telemetry ready for disable
-│   └── windows-updates-diff.json       # Available updates ready for install
-└── 📁 reports/                 # Temporary Report Data
-    └── (consolidated before moving to parent directory)
+│   ├── bloatware-removal/
+│   │   ├── execution.log               # Human-readable log
+│   │   ├── execution-data.json         # Structured log entries (v3.1+)
+│   │   └── execution-summary.json      # Module summary (v3.1+)
+│   ├── essential-apps/
+│   │   ├── execution.log
+│   │   ├── execution-data.json (v3.1+)
+│   │   └── execution-summary.json (v3.1+)
+│   ├── system-optimization/
+│   │   ├── execution.log
+│   │   ├── execution-data.json (v3.1+)
+│   │   └── execution-summary.json (v3.1+)
+│   ├── telemetry-disable/
+│   │   ├── execution.log
+│   │   ├── execution-data.json (v3.1+)
+│   │   └── execution-summary.json (v3.1+)
+│   └── windows-updates/
+│       ├── execution.log
+│       ├── execution-data.json (v3.1+)
+│       └── execution-summary.json (v3.1+)
+├── 📁 temp/                    # In-memory processing (not persisted)
+│   └── (Diff lists created in-memory only, not saved to disk)
+└── 📁 reports/                 # Generated Reports
+    └── MaintenanceReport_YYYYMMDD-HHMMSS.html
 ```
 
 ### **📊 External Template System (config/ directory)**
@@ -594,17 +605,28 @@ All temporary data uses **organized directories** under `temp_files/` with prope
   - `telemetry-results.json` - TelemetryAudit findings
   - `windows-updates-results.json` - WindowsUpdatesAudit findings
 - `temp_files/logs/` - **Type2 module execution logs** (dedicated subdirectories)
-  - `logs/bloatware-removal/execution.log` - BloatwareRemoval execution tracking
-  - `logs/essential-apps/execution.log` - EssentialApps execution tracking
-  - `logs/system-optimization/execution.log` - SystemOptimization execution tracking
-  - `logs/telemetry-disable/execution.log` - TelemetryDisable execution tracking
-  - `logs/windows-updates/execution.log` - WindowsUpdates execution tracking
-- `temp_files/temp/` - **Processing diffs and intermediate data**
-  - `bloatware-diff.json` - Config items found on system (ready for removal)
-  - `essential-apps-diff.json` - Missing apps from config (ready for installation)
-  - `system-optimization-diff.json` - Optimization opportunities (ready for execution)
-  - `telemetry-diff.json` - Active telemetry items (ready for disable)
-  - `windows-updates-diff.json` - Available updates (ready for installation)
+  - `logs/bloatware-removal/`
+    - `execution.log` - Human-readable execution log
+    - `execution-data.json` - Structured log entries (v3.1+)
+    - `execution-summary.json` - Module execution summary (v3.1+)
+  - `logs/essential-apps/`
+    - `execution.log`
+    - `execution-data.json` (v3.1+)
+    - `execution-summary.json` (v3.1+)
+  - `logs/system-optimization/`
+    - `execution.log`
+    - `execution-data.json` (v3.1+)
+    - `execution-summary.json` (v3.1+)
+  - `logs/telemetry-disable/`
+    - `execution.log`
+    - `execution-data.json` (v3.1+)
+    - `execution-summary.json` (v3.1+)
+  - `logs/windows-updates/`
+    - `execution.log`
+    - `execution-data.json` (v3.1+)
+    - `execution-summary.json` (v3.1+)
+- `temp_files/temp/` - **In-memory processing (not persisted to disk)**
+  - Note: Diff lists (items from config matched on system) are created in-memory during Type2 execution but NOT saved to disk. This is intentional for performance and security.
 - `temp_files/reports/` - **All generated reports** (HTML, JSON, TXT, Summary - HTML copied to parent)
 
 **Critical Data Flow Pattern (v3.0 Corrected with Global Paths)**:

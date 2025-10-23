@@ -1044,6 +1044,153 @@ function Write-DetectionLog {
 
 <#
 .SYNOPSIS
+    Writes structured log entry to both text and JSON logs
+
+.DESCRIPTION
+    Enhanced logging function that maintains human-readable text logs
+    while also creating machine-readable JSON logs for better parsing.
+    Backwards compatible with Write-LogEntry.
+
+.PARAMETER Level
+    Log level (DEBUG, INFO, SUCCESS, WARN, ERROR)
+
+.PARAMETER Component
+    Component name (e.g., BLOATWARE-REMOVAL)
+
+.PARAMETER Message
+    Human-readable log message
+
+.PARAMETER LogPath
+    Path to text log file (JSON log will be created alongside with -data.json extension)
+
+.PARAMETER Metadata
+    Structured data to include in JSON log (hashtable)
+
+.PARAMETER Operation
+    Optional operation type for categorization
+
+.PARAMETER Target
+    Optional target identifier for the operation
+
+.PARAMETER Result
+    Optional result status for the operation
+
+.EXAMPLE
+    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'BLOATWARE-REMOVAL' `
+        -Message "Removed Candy Crush" -LogPath $executionLogPath `
+        -Metadata @{ AppName = "Candy Crush"; Size = "125MB"; Source = "AppX" }
+
+.EXAMPLE
+    Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
+        -Message "Starting bloatware detection" -LogPath $executionLogPath
+
+.NOTES
+    JSON logging is non-critical - failures are logged but don't stop execution
+#>
+function Write-StructuredLogEntry {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('DEBUG', 'INFO', 'SUCCESS', 'WARN', 'ERROR')]
+        [string]$Level,
+        
+        [Parameter(Mandatory)]
+        [string]$Component,
+        
+        [Parameter(Mandatory)]
+        [string]$Message,
+        
+        [Parameter()]
+        [string]$LogPath,
+        
+        [Parameter()]
+        [hashtable]$Metadata = @{},
+        
+        [Parameter()]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
+        [string]$Operation,
+        
+        [Parameter()]
+        [string]$Target,
+        
+        [Parameter()]
+        [ValidateSet('Success', 'Failed', 'Skipped', 'Pending', 'InProgress')]
+        [string]$Result
+    )
+    
+    # Write traditional text log (backwards compatible)
+    $logParams = @{
+        Level     = $Level
+        Component = $Component
+        Message   = $Message
+        Data      = $Metadata
+    }
+    if ($LogPath) { $logParams.LogPath = $LogPath }
+    if ($Operation) { $logParams.Operation = $Operation }
+    if ($Target) { $logParams.Target = $Target }
+    if ($Result) { $logParams.Result = $Result }
+    
+    Write-LogEntry @logParams
+    
+    # If LogPath specified, also write to JSON log
+    if ($LogPath) {
+        try {
+            # Determine JSON log path (same directory, different extension)
+            $jsonLogPath = $LogPath -replace '\.log$', '-data.json'
+            
+            # Create log entry object
+            $logEntry = [PSCustomObject]@{
+                Timestamp = Get-Date -Format 'o'  # ISO 8601 format
+                Level     = $Level
+                Component = $Component
+                Message   = $Message
+                Metadata  = if ($Metadata.Count -gt 0) { $Metadata } else { $null }
+            }
+            
+            # Add optional fields if provided
+            if ($Operation) { $logEntry | Add-Member -MemberType NoteProperty -Name 'Operation' -Value $Operation }
+            if ($Target) { $logEntry | Add-Member -MemberType NoteProperty -Name 'Target' -Value $Target }
+            if ($Result) { $logEntry | Add-Member -MemberType NoteProperty -Name 'Result' -Value $Result }
+            
+            # Load existing JSON log or create new array
+            $logData = if (Test-Path $jsonLogPath) {
+                try {
+                    $existingJson = Get-Content $jsonLogPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                    # Ensure it's an array
+                    if ($existingJson -is [System.Collections.IEnumerable] -and $existingJson -isnot [string]) {
+                        [System.Collections.ArrayList]@($existingJson)
+                    }
+                    else {
+                        [System.Collections.ArrayList]@($existingJson)
+                    }
+                }
+                catch {
+                    # Corrupted JSON, start fresh
+                    Write-Verbose "JSON log corrupted or invalid, creating new: $jsonLogPath"
+                    [System.Collections.ArrayList]@()
+                }
+            }
+            else {
+                [System.Collections.ArrayList]@()
+            }
+            
+            # Add new entry
+            [void]$logData.Add($logEntry)
+            
+            # Write back to file (atomic write via temp file)
+            $tempPath = "$jsonLogPath.tmp"
+            $logData | ConvertTo-Json -Depth 10 -Compress:$false | Set-Content $tempPath -Force -Encoding UTF8
+            Move-Item $tempPath $jsonLogPath -Force
+        }
+        catch {
+            # JSON logging is non-critical, don't break execution
+            Write-Verbose "Failed to write JSON log entry: $($_.Exception.Message)"
+        }
+    }
+}
+
+<#
+.SYNOPSIS
     Starts performance tracking for an operation
 #>
 function Start-PerformanceTracking {
@@ -1796,6 +1943,7 @@ Export-ModuleMember -Function @(
     'Get-LoggingConfiguration',
     'Initialize-LoggingSystem',
     'Write-LogEntry',
+    'Write-StructuredLogEntry',
     'Get-VerbositySetting',
     'Test-ShouldLogOperation',
     'Write-OperationStart',
