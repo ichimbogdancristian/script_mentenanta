@@ -142,17 +142,17 @@ CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
 
 REM Robust Script Path Detection for Scheduled Tasks (use the exact running script path)
 SET "SCHEDULED_TASK_SCRIPT_PATH="
-IF EXIST "%SCRIPT_PATH%" (
-    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+IF EXIST "!SCRIPT_PATH!" (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=!SCRIPT_PATH!"
+    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: !SCHEDULED_TASK_SCRIPT_PATH!" "DEBUG" "LAUNCHER"
 )
-IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH IF EXIST "%SCRIPT_DIR%script.bat" (
-    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
-    CALL :LOG_MESSAGE "Scheduled tasks will use directory script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH IF EXIST "!SCRIPT_DIR!script.bat" (
+    SET "SCHEDULED_TASK_SCRIPT_PATH=!SCRIPT_DIR!script.bat"
+    CALL :LOG_MESSAGE "Scheduled tasks will use directory script path: !SCHEDULED_TASK_SCRIPT_PATH!" "DEBUG" "LAUNCHER"
 )
 IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH (
-    SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "Using fallback script path for scheduled tasks: %SCHEDULED_TASK_SCRIPT_PATH%" "WARN" "LAUNCHER"
+    SET "SCHEDULED_TASK_SCRIPT_PATH=!SCRIPT_PATH!"
+    CALL :LOG_MESSAGE "Using fallback script path for scheduled tasks: !SCHEDULED_TASK_SCRIPT_PATH!" "WARN" "LAUNCHER"
 )
 
 REM Initialize essential environment variables
@@ -215,11 +215,11 @@ IF /I "%RESTART_NEEDED%"=="YES" (
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
 
     REM Create startup task to resume after user logon with admin rights
-    CALL :LOG_MESSAGE "Creating ONLOGON startup task with script: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Creating ONLOGON startup task with script: !SCHEDULED_TASK_SCRIPT_PATH!" "DEBUG" "LAUNCHER"
     schtasks /Create ^
         /SC ONLOGON ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
+        /TR "\"!SCHEDULED_TASK_SCRIPT_PATH!\"" ^
         /RL HIGHEST ^
         /RU "%USERNAME%" ^
         /DELAY 0001:00 ^
@@ -266,7 +266,7 @@ IF !ERRORLEVEL! EQU 0 (
         /MO 1 ^
         /D 1 ^
         /TN "%TASK_NAME%" ^
-        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
+        /TR "\"!SCHEDULED_TASK_SCRIPT_PATH!\"" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
