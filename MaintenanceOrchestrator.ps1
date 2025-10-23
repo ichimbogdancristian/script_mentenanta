@@ -439,11 +439,12 @@ try {
     
     # Load configurations with validation
     try {
-        $MainConfig = Get-MainConfig -ErrorAction Stop
+        # Get configuration as hashtable for Type2 module compatibility
+        $MainConfig = Get-MainConfigHashtable -ErrorAction Stop
         if (-not $MainConfig) {
             throw "Main configuration is null or empty"
         }
-        Write-Information "  ✓ Main configuration loaded" -InformationAction Continue
+        Write-Information "  ✓ Main configuration loaded (converted to hashtable)" -InformationAction Continue
     }
     catch {
         throw "Failed to load main configuration: $($_.Exception.Message)"

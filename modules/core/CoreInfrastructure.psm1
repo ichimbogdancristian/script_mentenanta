@@ -302,7 +302,60 @@ function Initialize-ConfigSystem {
 
 <#
 .SYNOPSIS
-    Gets the main configuration object
+    Converts PSCustomObject to Hashtable recursively
+
+.DESCRIPTION
+    Helper function to convert JSON-deserialized PSCustomObject to hashtable
+    for compatibility with Type2 modules that expect [hashtable] parameters.
+#>
+function ConvertTo-HashtableDeep {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [object]$InputObject
+    )
+    
+    process {
+        if ($null -eq $InputObject) {
+            return $null
+        }
+        
+        if ($InputObject -is [hashtable]) {
+            $output = @{}
+            foreach ($key in $InputObject.Keys) {
+                $output[$key] = ConvertTo-HashtableDeep -InputObject $InputObject[$key]
+            }
+            return $output
+        }
+        
+        if ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string]) {
+            $collection = @()
+            foreach ($item in $InputObject) {
+                $collection += ConvertTo-HashtableDeep -InputObject $item
+            }
+            return $collection
+        }
+        
+        if ($InputObject -is [PSCustomObject]) {
+            $output = @{}
+            foreach ($property in $InputObject.PSObject.Properties) {
+                $output[$property.Name] = ConvertTo-HashtableDeep -InputObject $property.Value
+            }
+            return $output
+        }
+        
+        return $InputObject
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets the main configuration object as PSCustomObject
+
+.DESCRIPTION
+    Returns the raw configuration object loaded from JSON.
+    Use Get-MainConfigHashtable for hashtable format.
 #>
 function Get-MainConfig {
     [CmdletBinding()]
@@ -314,6 +367,26 @@ function Get-MainConfig {
     }
     
     return $script:LoadedConfig
+}
+
+<#
+.SYNOPSIS
+    Gets the main configuration as a hashtable
+
+.DESCRIPTION
+    Converts the configuration PSCustomObject to hashtable format
+    for compatibility with Type2 modules that expect [hashtable] parameters.
+#>
+function Get-MainConfigHashtable {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    if (-not $script:LoadedConfig) {
+        throw "Configuration system not initialized. Call Initialize-ConfigSystem first."
+    }
+    
+    return ConvertTo-HashtableDeep -InputObject $script:LoadedConfig
 }
 
 <#
@@ -740,16 +813,20 @@ function Write-OperationSuccess {
         [string]$LogPath,
         
         [Parameter()]
-        [hashtable]$Metrics = @{},
+        [hashtable]$Metrics,
         
         [Parameter()]
-        [hashtable]$Details = @{}
+        [hashtable]$Details
     )
     
     # Check verbosity setting
     if (-not (Test-ShouldLogOperation -OperationType 'OperationSuccess')) {
         return
     }
+    
+    # Initialize hashtables if null
+    if (-not $Metrics) { $Metrics = @{} }
+    if (-not $Details) { $Details = @{} }
     
     $combinedData = $Details.Clone()
     if ($Metrics.Count -gt 0) {
@@ -790,10 +867,10 @@ function Write-OperationFailure {
         [string]$LogPath,
         
         [Parameter()]
-        [System.Management.Automation.ErrorRecord]$Error,
+        [System.Management.Automation.ErrorRecord]$ErrorRecord,
         
         [Parameter()]
-        [hashtable]$AdditionalInfo = @{}
+        [hashtable]$AdditionalInfo
     )
     
     # Always log failures regardless of verbosity
@@ -801,14 +878,17 @@ function Write-OperationFailure {
         return
     }
     
+    # Initialize parameters if null
+    if (-not $AdditionalInfo) { $AdditionalInfo = @{} }
+    
     $errorData = $AdditionalInfo.Clone()
-    if ($Error) {
-        $errorData['ErrorMessage'] = $Error.Exception.Message
-        $errorData['ErrorType'] = $Error.Exception.GetType().FullName
+    if ($ErrorRecord) {
+        $errorData['ErrorMessage'] = $ErrorRecord.Exception.Message
+        $errorData['ErrorType'] = $ErrorRecord.Exception.GetType().FullName
         # Only include stack trace if verbosity allows (Debug level)
         $verbositySettings = Get-VerbositySettings
         if ($verbositySettings.logStackTraces -eq $true) {
-            $errorData['StackTrace'] = $Error.ScriptStackTrace
+            $errorData['StackTrace'] = $ErrorRecord.ScriptStackTrace
         }
     }
     
@@ -843,16 +923,20 @@ function Write-OperationSkipped {
         [string]$LogPath,
         
         [Parameter()]
-        [string]$Reason = 'Not applicable',
+        [string]$Reason,
         
         [Parameter()]
-        [hashtable]$AdditionalInfo = @{}
+        [hashtable]$AdditionalInfo
     )
     
     # Check verbosity setting
     if (-not (Test-ShouldLogOperation -OperationType 'OperationSkipped')) {
         return
     }
+    
+    # Initialize parameters if null
+    if (-not $Reason) { $Reason = 'Not applicable' }
+    if (-not $AdditionalInfo) { $AdditionalInfo = @{} }
     
     $skipData = $AdditionalInfo.Clone()
     $skipData['SkipReason'] = $Reason
@@ -1649,6 +1733,8 @@ Export-ModuleMember -Function @(
     # Configuration Management
     'Initialize-ConfigSystem',
     'Get-MainConfig',
+    'Get-MainConfigHashtable',
+    'ConvertTo-HashtableDeep',
     'Get-BloatwareList',
     'Get-UnifiedEssentialAppsList',
     'Get-BloatwareConfiguration',
