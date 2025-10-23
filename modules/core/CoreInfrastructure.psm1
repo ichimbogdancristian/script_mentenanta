@@ -971,16 +971,16 @@ function Write-OperationSkipped {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$Component
+        [string]$Component,
         [Parameter(Mandatory)]
         [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
-        [string]$Operation
+        [string]$Operation,
         [Parameter(Mandatory)]
-        [string]$Target
+        [string]$Target,
         [Parameter()]
-        [string]$LogPath
+        [string]$LogPath,
         [Parameter()]
-        [string]$Reason
+        [string]$Reason,
         [Parameter()]
         [hashtable]$AdditionalInfo
     )
