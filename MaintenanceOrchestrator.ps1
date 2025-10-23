@@ -1,11 +1,6 @@
 # Note: PowerShell 7+ verification is handled by the launcher (script.bat).
 # The launcher ensures a compatible pwsh.exe is available before invoking this orchestrator.
 
-# UTF-8 Encoding Configuration - Fix emoji and special character display
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
-$PSDefaultParameterValues['*:Encoding'] = 'utf8'
-
 using namespace System.Collections.Generic
 
 <#
@@ -62,6 +57,11 @@ param(
     [ValidatePattern('^(\d+)(,\d+)*$|^$')]
     [string]$TaskNumbers
 )
+
+# UTF-8 Encoding Configuration - Fix emoji and special character display
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
+$PSDefaultParameterValues['*:Encoding'] = 'utf8'
 
 #region Script Initialization
 
