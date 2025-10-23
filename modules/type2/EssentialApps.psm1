@@ -1470,16 +1470,48 @@ function Install-SingleApplication {
                     $wingetId = if ($AppData.WingetId) { $AppData.WingetId } else { $appId }
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Winget installation for $appName (ID: $wingetId)" -LogPath $ExecutionLogPath
                     
-                    if (Get-Command winget -ErrorAction SilentlyContinue) {
-                        $installProcess = Start-Process -FilePath 'winget' -ArgumentList @('install', '--id', $wingetId, '--silent', '--accept-package-agreements', '--accept-source-agreements') -Wait -PassThru -NoNewWindow
+                    $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
+                    if ($wingetAvailable) {
+                        # Verify winget is functional
+                        try {
+                            $wingetVersion = & winget --version 2>&1
+                            Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget version: $wingetVersion" -LogPath $ExecutionLogPath
+                        }
+                        catch {
+                            Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Winget command exists but failed version check: $($_.Exception.Message)" -LogPath $ExecutionLogPath
+                        }
                         
-                        if ($installProcess.ExitCode -eq 0) {
-                            Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget installation successful: $appName" -LogPath $ExecutionLogPath
-                            return @{ Success = $true; Method = 'Manual-Winget'; AppName = $appName }
+                        # Capture stdout and stderr for diagnostics
+                        $tempStdOut = [System.IO.Path]::GetTempFileName()
+                        $tempStdErr = [System.IO.Path]::GetTempFileName()
+                        
+                        try {
+                            $installArgs = @('install', '--id', $wingetId, '--silent', '--accept-package-agreements', '--accept-source-agreements')
+                            Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Executing: winget $($installArgs -join ' ')" -LogPath $ExecutionLogPath
+                            
+                            $installProcess = Start-Process -FilePath 'winget' -ArgumentList $installArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput $tempStdOut -RedirectStandardError $tempStdErr
+                            
+                            $stdout = Get-Content $tempStdOut -Raw -ErrorAction SilentlyContinue
+                            $stderr = Get-Content $tempStdErr -Raw -ErrorAction SilentlyContinue
+                            
+                            if ($installProcess.ExitCode -eq 0) {
+                                Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget installation successful: $appName" -LogPath $ExecutionLogPath
+                                if ($stdout) { Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget output: $stdout" -LogPath $ExecutionLogPath }
+                                return @{ Success = $true; Method = 'Manual-Winget'; AppName = $appName }
+                            }
+                            else {
+                                $errorDetail = "Exit code: $($installProcess.ExitCode)"
+                                if ($stderr) { $errorDetail += " | StdErr: $stderr" }
+                                if ($stdout) { $errorDetail += " | StdOut: $stdout" }
+                                Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget failed - $errorDetail. Trying Chocolatey..." -LogPath $ExecutionLogPath
+                            }
                         }
-                        else {
-                            Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget failed (Exit: $($installProcess.ExitCode)), trying Chocolatey..." -LogPath $ExecutionLogPath
+                        finally {
+                            Remove-Item $tempStdOut, $tempStdErr -ErrorAction SilentlyContinue
                         }
+                    }
+                    else {
+                        Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget command not found, trying Chocolatey..." -LogPath $ExecutionLogPath
                     }
                 }
                 
@@ -1488,18 +1520,44 @@ function Install-SingleApplication {
                     $chocoId = if ($AppData.ChocoId) { $AppData.ChocoId } else { $appName }
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Chocolatey installation for $appName (ID: $chocoId)" -LogPath $ExecutionLogPath
                     
-                    if (Get-Command choco -ErrorAction SilentlyContinue) {
-                        $installProcess = Start-Process -FilePath 'choco' -ArgumentList @('install', $chocoId, '--force', '--yes') -Wait -PassThru -NoNewWindow
+                    $chocoAvailable = Get-Command choco -ErrorAction SilentlyContinue
+                    if ($chocoAvailable) {
+                        # Capture stdout and stderr for diagnostics
+                        $tempStdOut = [System.IO.Path]::GetTempFileName()
+                        $tempStdErr = [System.IO.Path]::GetTempFileName()
                         
-                        if ($installProcess.ExitCode -eq 0) {
-                            Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
-                            return @{ Success = $true; Method = 'Manual-Chocolatey'; AppName = $appName }
+                        try {
+                            $installArgs = @('install', $chocoId, '--force', '--yes', '--no-progress')
+                            Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Executing: choco $($installArgs -join ' ')" -LogPath $ExecutionLogPath
+                            
+                            $installProcess = Start-Process -FilePath 'choco' -ArgumentList $installArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput $tempStdOut -RedirectStandardError $tempStdErr
+                            
+                            $stdout = Get-Content $tempStdOut -Raw -ErrorAction SilentlyContinue
+                            $stderr = Get-Content $tempStdErr -Raw -ErrorAction SilentlyContinue
+                            
+                            if ($installProcess.ExitCode -eq 0) {
+                                Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
+                                if ($stdout) { Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco output: $stdout" -LogPath $ExecutionLogPath }
+                                return @{ Success = $true; Method = 'Manual-Chocolatey'; AppName = $appName }
+                            }
+                            else {
+                                $errorDetail = "Exit code: $($installProcess.ExitCode)"
+                                if ($stderr) { $errorDetail += " | StdErr: $stderr" }
+                                if ($stdout) { $errorDetail += " | StdOut: $stdout" }
+                                Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey failed - $errorDetail" -LogPath $ExecutionLogPath
+                            }
                         }
+                        finally {
+                            Remove-Item $tempStdOut, $tempStdErr -ErrorAction SilentlyContinue
+                        }
+                    }
+                    else {
+                        Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey command not found" -LogPath $ExecutionLogPath
                     }
                 }
                 
-                Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Manual mode: All installation methods failed for $appName" -LogPath $ExecutionLogPath
-                return @{ Success = $false; Method = 'Manual'; AppName = $appName; ErrorMessage = "All installation methods exhausted" }
+                Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Manual mode: All installation methods failed for $appName - Check logs for detailed error messages" -LogPath $ExecutionLogPath
+                return @{ Success = $false; Method = 'Manual'; AppName = $appName; ErrorMessage = "All installation methods exhausted - see logs for details" }
             }
             
             'direct' {

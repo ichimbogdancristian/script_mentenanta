@@ -875,13 +875,6 @@ function New-DashboardSection {
         @{ SuccessRate = 0; TotalTasks = 0; SystemHealthScore = 0; SecurityScore = 0 }
     }
     
-    $executionSummary = if ($ProcessedData.MetricsSummary) { 
-        $ProcessedData.MetricsSummary.ExecutionSummary 
-    }
-    else { 
-        @{ TotalDuration = 0; SuccessfulTasks = 0; FailedTasks = 0 }
-    }
-    
     $html = [System.Text.StringBuilder]::new()
     
     # Dashboard header
