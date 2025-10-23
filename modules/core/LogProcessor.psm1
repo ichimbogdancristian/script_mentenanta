@@ -2034,7 +2034,11 @@ function Test-JsonDataIntegrity {
         if ($RequiredProperties -and $RequiredProperties.Count -gt 0) {
             $missingProperties = @()
             foreach ($property in $RequiredProperties) {
-                if (-not ($jsonData.PSObject.Properties.Name -contains $property)) {
+                # Null safety: check if jsonData exists and has PSObject properties
+                if ($null -eq $jsonData -or $null -eq $jsonData.PSObject -or $null -eq $jsonData.PSObject.Properties) {
+                    $missingProperties += $property
+                }
+                elseif (-not ($jsonData.PSObject.Properties.Name -contains $property)) {
                     $missingProperties += $property
                 }
             }

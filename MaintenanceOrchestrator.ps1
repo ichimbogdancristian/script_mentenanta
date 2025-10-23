@@ -1,5 +1,11 @@
 # Note: PowerShell 7+ verification is handled by the launcher (script.bat).
 # The launcher ensures a compatible pwsh.exe is available before invoking this orchestrator.
+
+# UTF-8 Encoding Configuration - Fix emoji and special character display
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
+$PSDefaultParameterValues['*:Encoding'] = 'utf8'
+
 using namespace System.Collections.Generic
 
 <#
@@ -221,6 +227,7 @@ $CoreModules = @(
 
 # Type2 modules (self-contained with internal Type1 dependencies)
 $Type2Modules = @(
+    'SystemInventory',     # NEW: System information collection (always first)
     'BloatwareRemoval',
     'EssentialApps',
     'SystemOptimization',
@@ -785,6 +792,15 @@ Write-Information "`nRegistering maintenance tasks..." -InformationAction Contin
 
 # v3.0 Architecture: Define standardized maintenance tasks using Invoke-[ModuleName] pattern
 $MaintenanceTasks = @(
+    @{
+        Name        = 'SystemInventory'
+        Description = 'Collect comprehensive system inventory (Type2→Type1 flow)'
+        ModuleName  = 'SystemInventory'
+        Function    = 'Invoke-SystemInventory'
+        Type        = 'Type2'
+        Category    = 'Information'
+        Enabled     = $true  # Always enabled
+    },
     @{
         Name        = 'BloatwareRemoval'
         Description = 'Detect and remove bloatware applications (Type2→Type1 flow)'

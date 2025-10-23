@@ -98,6 +98,14 @@ function Invoke-AppUpgrade {
         Write-Information "  🔍 Running upgrade detection..." -InformationAction Continue
         $detectionResults = Get-AppUpgradeAnalysis -Config $Config
         
+        # Null safety: ensure detectionResults is an array
+        if ($null -eq $detectionResults) {
+            $detectionResults = @()
+        }
+        elseif ($detectionResults -isnot [Array]) {
+            $detectionResults = @($detectionResults)
+        }
+        
         # Save detection results to temp_files/data/
         $detectionDataPath = Join-Path $Global:ProjectPaths.TempFiles "data\app-upgrade-results.json"
         $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $detectionDataPath
@@ -254,6 +262,8 @@ function Get-FilteredUpgradeList {
     [OutputType([Array])]
     param(
         [Parameter(Mandatory)]
+        [AllowNull()]
+        [AllowEmptyCollection()]
         [Array]$DetectionResults,
 
         [Parameter(Mandatory)]
@@ -261,6 +271,12 @@ function Get-FilteredUpgradeList {
     )
 
     $filtered = [List[PSCustomObject]]::new()
+
+    # Null safety check
+    if ($null -eq $DetectionResults -or $DetectionResults.Count -eq 0) {
+        Write-Verbose "No detection results to filter"
+        return $filtered.ToArray()
+    }
 
     foreach ($upgrade in $DetectionResults) {
         # Check if source is enabled

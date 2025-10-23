@@ -82,9 +82,9 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
     CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 )
 
-REM Setup logging
-SET "LOG_FILE=%WORKING_DIR%maintenance.log"
-CALL :LOG_MESSAGE "Log file: %LOG_FILE%" "DEBUG" "LAUNCHER"
+REM Setup logging - Bootstrap launcher uses separate log file
+SET "LOG_FILE=%WORKING_DIR%bootstrap-launcher.log"
+CALL :LOG_MESSAGE "Bootstrap log file: %LOG_FILE%" "DEBUG" "LAUNCHER"
 
 REM Environment variables for PowerShell orchestrator
 SET "WORKING_DIRECTORY=%WORKING_DIR%"

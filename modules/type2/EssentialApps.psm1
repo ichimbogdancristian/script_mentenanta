@@ -1383,30 +1383,84 @@ function Install-SingleApplication {
     try {
         switch ($source.ToLower()) {
             'winget' {
-                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: winget install --id $appId --silent --accept-package-agreements" -LogPath $ExecutionLogPath
-                $installProcess = Start-Process -FilePath 'winget' -ArgumentList @('install', '--id', $appId, '--silent', '--accept-package-agreements', '--accept-source-agreements') -Wait -PassThru -NoNewWindow
+                # Verify winget is available
+                $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
+                if (-not $wingetAvailable) {
+                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget not found in PATH - installation cannot proceed" -LogPath $ExecutionLogPath
+                    return @{ Success = $false; Method = 'Winget'; AppName = $appName; ErrorMessage = "Winget not available" }
+                }
                 
-                if ($installProcess.ExitCode -eq 0) {
+                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: winget install --id $appId --silent --accept-package-agreements --accept-source-agreements" -LogPath $ExecutionLogPath
+                
+                # Capture stdout and stderr
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = 'winget'
+                $psi.Arguments = "install --id $appId --silent --accept-package-agreements --accept-source-agreements"
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                
+                $process = New-Object System.Diagnostics.Process
+                $process.StartInfo = $psi
+                $process.Start() | Out-Null
+                $stdout = $process.StandardOutput.ReadToEnd()
+                $stderr = $process.StandardError.ReadToEnd()
+                $process.WaitForExit()
+                
+                Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget output: $stdout" -LogPath $ExecutionLogPath
+                if ($stderr) {
+                    Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget errors: $stderr" -LogPath $ExecutionLogPath
+                }
+                
+                if ($process.ExitCode -eq 0) {
                     Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Winget installation successful: $appName" -LogPath $ExecutionLogPath
                     return @{ Success = $true; Method = 'Winget'; AppName = $appName }
                 }
                 else {
-                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
-                    return @{ Success = $false; Method = 'Winget'; AppName = $appName; ErrorMessage = "Exit code: $($installProcess.ExitCode)" }
+                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget installation failed: $appName (Exit code: $($process.ExitCode))" -LogPath $ExecutionLogPath
+                    return @{ Success = $false; Method = 'Winget'; AppName = $appName; ErrorMessage = "Exit code: $($process.ExitCode), Stderr: $stderr" }
                 }
             }
             
             'chocolatey' {
-                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: choco install $appName --force --yes" -LogPath $ExecutionLogPath
-                $installProcess = Start-Process -FilePath 'choco' -ArgumentList @('install', $appName, '--force', '--yes') -Wait -PassThru -NoNewWindow
+                # Verify chocolatey is available
+                $chocoAvailable = Get-Command choco -ErrorAction SilentlyContinue
+                if (-not $chocoAvailable) {
+                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey not found in PATH - installation cannot proceed" -LogPath $ExecutionLogPath
+                    return @{ Success = $false; Method = 'Chocolatey'; AppName = $appName; ErrorMessage = "Chocolatey not available" }
+                }
                 
-                if ($installProcess.ExitCode -eq 0) {
+                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: choco install $appName --force --yes" -LogPath $ExecutionLogPath
+                
+                # Capture stdout and stderr
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = 'choco'
+                $psi.Arguments = "install $appName --force --yes"
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                
+                $process = New-Object System.Diagnostics.Process
+                $process.StartInfo = $psi
+                $process.Start() | Out-Null
+                $stdout = $process.StandardOutput.ReadToEnd()
+                $stderr = $process.StandardError.ReadToEnd()
+                $process.WaitForExit()
+                
+                Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco output: $stdout" -LogPath $ExecutionLogPath
+                if ($stderr) {
+                    Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco errors: $stderr" -LogPath $ExecutionLogPath
+                }
+                
+                if ($process.ExitCode -eq 0) {
                     Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
                     return @{ Success = $true; Method = 'Chocolatey'; AppName = $appName }
                 }
                 else {
-                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
-                    return @{ Success = $false; Method = 'Chocolatey'; AppName = $appName; ErrorMessage = "Exit code: $($installProcess.ExitCode)" }
+                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation failed: $appName (Exit code: $($process.ExitCode))" -LogPath $ExecutionLogPath
+                    return @{ Success = $false; Method = 'Chocolatey'; AppName = $appName; ErrorMessage = "Exit code: $($process.ExitCode), Stderr: $stderr" }
                 }
             }
             

@@ -677,7 +677,8 @@ function Write-LogEntry {
     )
 
     try {
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+        # Simplified timestamp format (time only, date in log header)
+        $timestamp = Get-Date -Format "HH:mm:ss"
         $sessionId = $script:LoggingContext.SessionId
         
         $logEntry = @{
@@ -719,6 +720,7 @@ function Write-LogEntry {
         }
 
         # Write to specific log file if provided (for Type2 modules)
+        # When LogPath is specified, write ONLY to that path (not to main log)
         if ($LogPath) {
             try {
                 # Ensure the directory exists
@@ -732,8 +734,7 @@ function Write-LogEntry {
                 Write-Warning "Failed to write to specific log path $LogPath`: $($_.Exception.Message)"
             }
         }
-        
-        # Write to main log file if available
+        # Write to main log file only if no specific LogPath was provided
         elseif ($script:LoggingContext.LogPath) {
             try {
                 $formattedMessage | Out-File -FilePath $script:LoggingContext.LogPath -Append -Encoding UTF8
