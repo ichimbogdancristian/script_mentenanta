@@ -159,7 +159,7 @@ Collection completed successfully
         # Complete performance tracking
         if ($perfContext) {
             try {
-                Complete-PerformanceTracking -Context $perfContext
+                Complete-PerformanceTracking -Context $perfContext -Status 'Success'
             }
             catch {
                 # Performance tracking is optional
@@ -180,7 +180,18 @@ Collection completed successfully
         }
     }
     catch {
-        Write-Error "System inventory collection failed: $($_.Exception.Message)"
+        $errorMsg = "System inventory collection failed: $($_.Exception.Message)"
+        Write-Error $errorMsg
+        
+        # Complete performance tracking with failure
+        if ($perfContext) {
+            try {
+                Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
+            }
+            catch {
+                # Performance tracking is optional
+            }
+        }
         
         # Return failure result
         return @{
