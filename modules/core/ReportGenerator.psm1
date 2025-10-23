@@ -291,7 +291,20 @@ function Get-ProcessedLogData {
             foreach ($file in $moduleFiles) {
                 $moduleName = $file.BaseName
                 try {
-                    $content = Get-Content $file.FullName | ConvertFrom-Json
+                    $content = Get-Content $file.FullName -Raw | ConvertFrom-Json
+                    
+                    # Ensure ModuleResults is a hashtable before indexing
+                    if ($processedData.ModuleResults -isnot [hashtable]) {
+                        # Convert PSCustomObject to hashtable if needed
+                        $tempHashtable = @{}
+                        if ($processedData.ModuleResults) {
+                            $processedData.ModuleResults.PSObject.Properties | ForEach-Object {
+                                $tempHashtable[$_.Name] = $_.Value
+                            }
+                        }
+                        $processedData.ModuleResults = $tempHashtable
+                    }
+                    
                     $processedData.ModuleResults[$moduleName] = $content
                     Write-Verbose "Loaded module-specific data for: $moduleName"
                 }

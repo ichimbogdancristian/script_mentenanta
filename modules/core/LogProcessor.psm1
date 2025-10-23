@@ -849,7 +849,7 @@ function ConvertFrom-ModuleExecutionLog {
                     $analysis.Errors += @{
                         Timestamp = $timestamp
                         Level     = $level
-                        Component = $ModuleName.ToUpper()
+                        Component = if ($ModuleName) { $ModuleName.ToUpper() } else { 'UNKNOWN' }
                         Message   = $message
                         Severity  = 'High'
                     }
@@ -1357,7 +1357,7 @@ function Get-ErrorsFromExecutionLogs {
                             Module    = $moduleName
                             Timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
                             Level     = 'ERROR'
-                            Component = $moduleName.ToUpper()
+                            Component = if ($moduleName) { $moduleName.ToUpper() } else { 'UNKNOWN' }
                             Message   = $message
                             Severity  = 'High'
                         }
@@ -1370,7 +1370,7 @@ function Get-ErrorsFromExecutionLogs {
                             Module    = $moduleName
                             Timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
                             Level     = 'ERROR'
-                            Component = $moduleName.ToUpper()
+                            Component = if ($moduleName) { $moduleName.ToUpper() } else { 'UNKNOWN' }
                             Message   = $message
                             Severity  = 'Medium'
                         }
