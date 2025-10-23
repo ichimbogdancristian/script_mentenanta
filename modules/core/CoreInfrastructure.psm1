@@ -63,18 +63,18 @@ function Initialize-GlobalPathDiscovery {
             return $true
         }
         
-        Write-Information "🔍 Initializing global path discovery system..." -InformationAction Continue
+        Write-Information "Initializing global path discovery system..." -InformationAction Continue
     
         # Method 1: Use environment variables set by orchestrator
         if ($env:MAINTENANCE_PROJECT_ROOT) {
             $script:MaintenanceProjectPaths.ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
-            Write-Information "  📍 Found project root from environment: $($script:MaintenanceProjectPaths.ProjectRoot)" -InformationAction Continue
+            Write-Information "  Found project root from environment: $($script:MaintenanceProjectPaths.ProjectRoot)" -InformationAction Continue
         }
     
         # Method 2: Use hint path from caller
         elseif ($HintPath -and (Test-Path $HintPath)) {
             $script:MaintenanceProjectPaths.ProjectRoot = $HintPath
-            Write-Information "  📍 Using hint path as project root: $HintPath" -InformationAction Continue
+            Write-Information "  Using hint path as project root: $HintPath" -InformationAction Continue
         }
     
         # Method 3: Auto-detect from calling script location
@@ -86,7 +86,7 @@ function Initialize-GlobalPathDiscovery {
                     (Test-Path (Join-Path $testPath 'modules')) -and 
                     (Test-Path (Join-Path $testPath 'MaintenanceOrchestrator.ps1'))) {
                     $script:MaintenanceProjectPaths.ProjectRoot = $testPath
-                    Write-Information "  📍 Auto-detected project root: $testPath" -InformationAction Continue
+                    Write-Information "  Auto-detected project root: $testPath" -InformationAction Continue
                     break
                 }
                 $testPath = Split-Path $testPath -Parent
@@ -99,7 +99,7 @@ function Initialize-GlobalPathDiscovery {
             if ((Test-Path (Join-Path $currentDir 'config')) -and 
                 (Test-Path (Join-Path $currentDir 'modules'))) {
                 $script:MaintenanceProjectPaths.ProjectRoot = $currentDir
-                Write-Information "  📍 Using current directory as project root: $currentDir" -InformationAction Continue
+                Write-Information "  Using current directory as project root: $currentDir" -InformationAction Continue
             }
         }
     
@@ -155,12 +155,12 @@ function Initialize-GlobalPathDiscovery {
     
         $script:MaintenanceProjectPaths.Initialized = $true
     
-        Write-Information "  ✅ Global path discovery completed:" -InformationAction Continue
-        Write-Information "     🎯 Project Root: $($Global:ProjectPaths.Root)" -InformationAction Continue
-        Write-Information "     ⚙️  Config Root: $($Global:ProjectPaths.Config)" -InformationAction Continue
-        Write-Information "     🧩 Modules Root: $($Global:ProjectPaths.Modules)" -InformationAction Continue
-        Write-Information "     📂 Temp Root: $($Global:ProjectPaths.TempFiles)" -InformationAction Continue
-        Write-Information "     📊 Reports Root: $($Global:ProjectPaths.ParentDir)" -InformationAction Continue
+        Write-Information "  Global path discovery completed:" -InformationAction Continue
+        Write-Information "     Project Root: $($Global:ProjectPaths.Root)" -InformationAction Continue
+        Write-Information "     Config Root: $($Global:ProjectPaths.Config)" -InformationAction Continue
+        Write-Information "     Modules Root: $($Global:ProjectPaths.Modules)" -InformationAction Continue
+        Write-Information "     Temp Root: $($Global:ProjectPaths.TempFiles)" -InformationAction Continue
+        Write-Information "     Reports Root: $($Global:ProjectPaths.ParentDir)" -InformationAction Continue
     
         return $true
     }
@@ -195,7 +195,7 @@ function Get-MaintenanceModulePath {
         [string]$ModuleName
     )
     
-    $modulesRoot = $Global:ProjectPaths.Modules
+    $modulesRoot = Get-MaintenanceProjectPath -PathType 'Modules'
     
     if ($ModuleType) {
         $typePath = Join-Path $modulesRoot $ModuleType
@@ -523,10 +523,45 @@ function Initialize-LoggingSystem {
             $script:LoggingContext.LogPath = $BaseLogPath
         }
         else {
-            $script:LoggingContext.LogPath = Join-Path (Get-Location) 'maintenance.log'
+            # Prefer temp_files/maintenance.log if project paths initialized
+            try {
+                $tempPath = Get-MaintenanceProjectPath -PathType 'TempFiles' -ErrorAction SilentlyContinue
+                if ($tempPath) {
+                    $script:LoggingContext.LogPath = Join-Path $tempPath 'maintenance.log'
+                }
+                else {
+                    $script:LoggingContext.LogPath = Join-Path (Get-Location) 'maintenance.log'
+                }
+            }
+            catch {
+                $script:LoggingContext.LogPath = Join-Path (Get-Location) 'maintenance.log'
+            }
         }
 
+        # Ensure LogPath is not empty - resolve from Global:ProjectPaths if necessary
+        if (-not $script:LoggingContext.LogPath -or [string]::IsNullOrWhiteSpace($script:LoggingContext.LogPath)) {
+            $tempPath = Get-MaintenanceProjectPath -PathType 'TempFiles' -ErrorAction SilentlyContinue
+            if ($tempPath) {
+                $script:LoggingContext.LogPath = Join-Path $tempPath 'maintenance.log'
+            }
+            else {
+                $script:LoggingContext.LogPath = Join-Path (Get-Location) 'maintenance.log'
+            }
+        }
         Write-Verbose "Logging system initialized with path: $($script:LoggingContext.LogPath)"
+        # Ensure directory exists and header added if missing
+        try {
+            $logDir = Split-Path -Parent $script:LoggingContext.LogPath
+            if (-not (Test-Path $logDir)) { New-Item -Path $logDir -ItemType Directory -Force | Out-Null }
+            if (-not (Test-Path $script:LoggingContext.LogPath)) {
+                $dateHeader = "=== Maintenance Log - $(Get-Date -Format 'yyyy-MM-dd') ===" 
+                $dateHeader | Out-File -FilePath $script:LoggingContext.LogPath -Encoding UTF8
+            }
+        }
+        catch {
+            Write-Verbose "Failed to ensure main log file/header: $($_.Exception.Message)"
+        }
+
         return $true
     }
     catch {
@@ -539,7 +574,7 @@ function Initialize-LoggingSystem {
 .SYNOPSIS
     Gets the current verbosity settings from logging configuration
 #>
-function Get-VerbositySettings {
+function Get-VerbositySetting {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param()
@@ -609,7 +644,7 @@ function Test-ShouldLogOperation {
     )
     
     try {
-        $verbositySettings = Get-VerbositySettings
+        $verbositySettings = Get-VerbositySetting
         
         $settingKey = switch ($OperationType) {
             'OperationStart' { 'logOperationStart' }
@@ -723,10 +758,35 @@ function Write-LogEntry {
         # When LogPath is specified, write ONLY to that path (not to main log)
         if ($LogPath) {
             try {
+                # If LogPath is relative, resolve it under the project's temp_files root
+                if (-not [System.IO.Path]::IsPathRooted($LogPath)) {
+                    try {
+                        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+                            $LogPath = Join-Path $Global:ProjectPaths.TempFiles $LogPath
+                        }
+                        elseif ($script:MaintenanceProjectPaths -and $script:MaintenanceProjectPaths.TempRoot) {
+                            $LogPath = Join-Path $script:MaintenanceProjectPaths.TempRoot $LogPath
+                        }
+                    }
+                    catch {
+                        # leave LogPath as-is if resolution fails
+                    }
+                }
+
+                # Normalize path (remove any trailing directory separator)
+                if ($LogPath.EndsWith([System.IO.Path]::DirectorySeparatorChar) -or $LogPath.EndsWith([System.IO.Path]::AltDirectorySeparatorChar)) {
+                    $LogPath = $LogPath.TrimEnd('\', '/')
+                }
+
                 # Ensure the directory exists
                 $logDir = Split-Path -Parent $LogPath
                 if (-not (Test-Path $logDir)) {
                     New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+                }
+                # Add date header if file missing
+                if (-not (Test-Path $LogPath)) {
+                    $dateHeader = "=== Execution Log - $(Get-Date -Format 'yyyy-MM-dd') ==="
+                    $dateHeader | Out-File -FilePath $LogPath -Encoding UTF8
                 }
                 $formattedMessage | Out-File -FilePath $LogPath -Append -Encoding UTF8
             }
@@ -887,7 +947,7 @@ function Write-OperationFailure {
         $errorData['ErrorMessage'] = $ErrorRecord.Exception.Message
         $errorData['ErrorType'] = $ErrorRecord.Exception.GetType().FullName
         # Only include stack trace if verbosity allows (Debug level)
-        $verbositySettings = Get-VerbositySettings
+        $verbositySettings = Get-VerbositySetting
         if ($verbositySettings.logStackTraces -eq $true) {
             $errorData['StackTrace'] = $ErrorRecord.ScriptStackTrace
         }
@@ -911,21 +971,16 @@ function Write-OperationSkipped {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$Component,
-        
+        [string]$Component
         [Parameter(Mandatory)]
         [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
-        [string]$Operation,
-        
+        [string]$Operation
         [Parameter(Mandatory)]
-        [string]$Target,
-        
+        [string]$Target
         [Parameter()]
-        [string]$LogPath,
-        
+        [string]$LogPath
         [Parameter()]
-        [string]$Reason,
-        
+        [string]$Reason
         [Parameter()]
         [hashtable]$AdditionalInfo
     )
@@ -959,21 +1014,21 @@ function Write-OperationSkipped {
 function Write-DetectionLog {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
+        [Parameter()]
         [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
-        [string]$Operation = 'Detect',
-        
+        [string]$Operation,
+    
         [Parameter(Mandatory)]
         [string]$Component,
-        
+    
         [Parameter(Mandatory)]
         [string]$Target,
-        
+    
         [Parameter()]
         [string]$LogPath,
-        
+    
         [Parameter()]
-        [hashtable]$AdditionalInfo = @{}
+        [hashtable]$AdditionalInfo
     )
     
     # Check verbosity setting
@@ -992,7 +1047,7 @@ function Write-DetectionLog {
     Starts performance tracking for an operation
 #>
 function Start-PerformanceTracking {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
@@ -1011,7 +1066,9 @@ function Start-PerformanceTracking {
         StartTicks    = [System.Diagnostics.Stopwatch]::GetTimestamp()
     }
 
-    $script:LoggingContext.PerformanceMetrics[$perfId] = $perfContext
+    if ($PSCmdlet.ShouldProcess("PerformanceMetrics", "Register new performance context for $OperationName")) {
+        $script:LoggingContext.PerformanceMetrics[$perfId] = $perfContext
+    }
     
     Write-LogEntry -Level 'DEBUG' -Component $Component -Message "Started operation: $OperationName" -Data @{ PerformanceId = $perfId }
     
@@ -1147,7 +1204,7 @@ function Get-SessionPath {
     
     # Primary: Use global path discovery
     if ($script:MaintenanceProjectPaths.Initialized) {
-        $tempRoot = $script:MaintenanceProjectPaths.TempRoot
+        $tempRoot = Get-MaintenanceProjectPath -PathType 'TempFiles'
         $categoryPath = Join-Path $tempRoot $Category
         
         if ($SubCategory) {
@@ -1238,20 +1295,17 @@ function Initialize-TempFilesStructure {
     try {
         # Determine temp files root using global path discovery
         $tempRoot = $null
-        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
-            $tempRoot = $Global:ProjectPaths.TempFiles
+        try {
+            $tempRoot = Get-MaintenanceProjectPath -PathType 'TempFiles'
         }
-        elseif ($env:MAINTENANCE_TEMP_ROOT) {
-            $tempRoot = $env:MAINTENANCE_TEMP_ROOT
-        }
-        else {
-            Write-Warning "Cannot determine temp files root - attempting to initialize global paths"
-            Initialize-GlobalPathDiscovery
-            if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
-                $tempRoot = $Global:ProjectPaths.TempFiles
+        catch {
+            if ($env:MAINTENANCE_TEMP_ROOT) {
+                $tempRoot = $env:MAINTENANCE_TEMP_ROOT
             }
             else {
-                throw "Failed to initialize global paths"
+                Write-Warning "Cannot determine temp files root - attempting to initialize global paths"
+                Initialize-GlobalPathDiscovery
+                $tempRoot = Get-MaintenanceProjectPath -PathType 'TempFiles'
             }
         }
         
@@ -1347,10 +1401,10 @@ function Initialize-ProcessedDataStructure {
     try {
         # Get temp files root from global paths
         $tempRoot = $null
-        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
-            $tempRoot = $Global:ProjectPaths.TempFiles
+        try {
+            $tempRoot = Get-MaintenanceProjectPath -PathType 'TempFiles'
         }
-        else {
+        catch {
             Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message 'Global project paths not initialized - call Initialize-GlobalPathDiscovery first'
             return $false
         }
@@ -1691,11 +1745,8 @@ function Get-ProcessedDataPath {
     
     try {
         # Get temp files root from global paths
-        if (-not ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles)) {
-            throw "Global project paths not initialized - call Initialize-GlobalPathDiscovery first"
-        }
-        
-        $processedRoot = Join-Path $Global:ProjectPaths.TempFiles 'processed'
+        $tempRoot = Get-MaintenanceProjectPath -PathType 'TempFiles'
+        $processedRoot = Join-Path $tempRoot 'processed'
         
         # Build path based on category
         switch ($Category) {
@@ -1745,7 +1796,7 @@ Export-ModuleMember -Function @(
     'Get-LoggingConfiguration',
     'Initialize-LoggingSystem',
     'Write-LogEntry',
-    'Get-VerbositySettings',
+    'Get-VerbositySetting',
     'Test-ShouldLogOperation',
     'Write-OperationStart',
     'Write-OperationSuccess',

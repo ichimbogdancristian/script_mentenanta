@@ -325,6 +325,23 @@ IF EXIST "%EXTRACTED_PATH%" (
 REM Clean up
 DEL /Q "%ZIP_FILE%" >nul 2>&1
 
+REM Ensure orchestrator temp_files location exists and switch bootstrap logging to orchestrator main log
+IF NOT EXIST "%WORKING_DIR%temp_files" (
+    MKDIR "%WORKING_DIR%temp_files" >nul 2>&1
+    CALL :LOG_MESSAGE "Created temp_files directory at %WORKING_DIR%temp_files" "DEBUG" "LAUNCHER"
+)
+
+REM Update LOG_FILE and SCRIPT_LOG_FILE to point to the orchestrator main log (temp_files/maintenance.log)
+SET "LOG_FILE=%WORKING_DIR%temp_files\maintenance.log"
+SET "SCRIPT_LOG_FILE=%LOG_FILE%"
+CALL :LOG_MESSAGE "Bootstrap switching to orchestrator main log: %LOG_FILE%" "DEBUG" "LAUNCHER"
+REM Preserve the bootstrap log by copying it into temp_files/logs for reporting
+IF EXIST "%WORKING_DIR%bootstrap-launcher.log" (
+    IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
+    COPY /Y "%WORKING_DIR%bootstrap-launcher.log" "%WORKING_DIR%temp_files\logs\bootstrap-launcher.log" >nul 2>&1
+    CALL :LOG_MESSAGE "Copied bootstrap-launcher.log to temp_files/logs/bootstrap-launcher.log" "DEBUG" "LAUNCHER"
+)
+
 REM -----------------------------------------------------------------------------
 REM Project Structure Discovery and Validation (Moved after extraction)
 REM -----------------------------------------------------------------------------
