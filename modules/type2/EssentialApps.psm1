@@ -119,7 +119,7 @@ function Invoke-EssentialApps {
             return @{ Success = $false; ItemsDetected = 0; ItemsProcessed = 0; Message = 'Config file not found' }
         }
         
-        # Create diff: Missing apps that need to be installed
+        # Create diff: Missing apps that need to be installed (already computed by Type1 audit)
         $diffList = if ($detectionResults.MissingApps) { $detectionResults.MissingApps } else { @() }
         $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\essential-apps-diff.json"
         $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
@@ -222,12 +222,14 @@ function Invoke-EssentialApps {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
         
-        return @{
-            Success        = $true
-            ItemsDetected  = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
-            ItemsProcessed = $processedCount
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $true `
+            -ItemsDetected (if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }) `
+            -ItemsProcessed $processedCount `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'EssentialApps' `
+            -DryRun $DryRun.IsPresent
     }
     catch {
         $errorMsg = "Failed to execute essential apps installation: $($_.Exception.Message)"
@@ -236,12 +238,14 @@ function Invoke-EssentialApps {
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
-        return @{
-            Success        = $false
-            ItemsDetected  = 0
-            ItemsProcessed = 0
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected 0 `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'EssentialApps' `
+            -ErrorMessage "EssentialApps execution failed: $($_.Exception.Message)"
     }
 }
 

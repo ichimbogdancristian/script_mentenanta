@@ -202,12 +202,14 @@ function Invoke-SystemOptimization {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
         
-        $returnData = @{
-            Success        = $true
-            ItemsDetected  = $optimizationCount
-            ItemsProcessed = $processedCount
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        $returnData = New-ModuleExecutionResult `
+            -Success $true `
+            -ItemsDetected $optimizationCount `
+            -ItemsProcessed $processedCount `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'SystemOptimization' `
+            -DryRun $DryRun.IsPresent
         
         Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed. Processed: $processedCount/$optimizationCount"
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
@@ -220,12 +222,14 @@ function Invoke-SystemOptimization {
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
-        return @{
-            Success        = $false
-            ItemsDetected  = if ($analysisResults) { $analysisResults.OptimizationCount } else { 0 }
-            ItemsProcessed = 0
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected (if ($analysisResults) { $analysisResults.OptimizationCount } else { 0 }) `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'SystemOptimization' `
+            -ErrorMessage $errorMsg
     }
 }
 

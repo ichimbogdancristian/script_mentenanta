@@ -58,6 +58,10 @@ SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 
+REM v3.0 FIX: Store original script directory BEFORE any updates (used for log file location)
+SET "ORIGINAL_SCRIPT_DIR=%SCRIPT_DIR%"
+CALL :LOG_MESSAGE "Original script directory stored: %ORIGINAL_SCRIPT_DIR%" "DEBUG" "LAUNCHER"
+
 REM Robust Script Path Detection for Scheduled Tasks (use the exact running script path)
 SET "SCHEDULED_TASK_SCRIPT_PATH="
 IF EXIST "%SCRIPT_PATH%" (
@@ -83,7 +87,8 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
 )
 
 REM Setup logging - Create maintenance.log at repository root initially
-SET "LOG_FILE=%WORKING_DIR%maintenance.log"
+REM v3.0 FIX: Use ORIGINAL_SCRIPT_DIR to ensure log is created in correct location
+SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
 CALL :LOG_MESSAGE "Maintenance log file initialized at repository root: %LOG_FILE%" "DEBUG" "LAUNCHER"
 
 REM Environment variables for PowerShell orchestrator
@@ -337,14 +342,15 @@ IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
 )
 
 REM Move maintenance.log from root to temp_files/logs/ (preserving all bootstrap content)
-IF EXIST "%WORKING_DIR%maintenance.log" (
+REM v3.0 FIX: Move from ORIGINAL location, not current WORKING_DIR
+IF EXIST "%LOG_FILE%" (
     CALL :LOG_MESSAGE "Moving maintenance.log from repository root to temp_files/logs/" "INFO" "LAUNCHER"
-    MOVE /Y "%WORKING_DIR%maintenance.log" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
+    MOVE /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Successfully moved maintenance.log to organized location" "SUCCESS" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "Failed to move maintenance.log - copying instead" "WARN" "LAUNCHER"
-        COPY /Y "%WORKING_DIR%maintenance.log" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
+        COPY /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
     )
 )
 

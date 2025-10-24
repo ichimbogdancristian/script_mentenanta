@@ -134,12 +134,14 @@ function Invoke-WindowsUpdates {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
         
-        $returnData = @{ 
-            Success        = $true
-            ItemsDetected  = $updatesCount
-            ItemsProcessed = $processedCount
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        $returnData = New-ModuleExecutionResult `
+            -Success $true `
+            -ItemsDetected $updatesCount `
+            -ItemsProcessed $processedCount `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'WindowsUpdates' `
+            -DryRun $DryRun.IsPresent
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         return $returnData
         
@@ -149,12 +151,14 @@ function Invoke-WindowsUpdates {
         Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message $errorMsg -Data @{ Error = $_.Exception }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
-        return @{ 
-            Success        = $false
-            ItemsDetected  = if ($analysisResults) { $analysisResults.PendingUpdatesCount } else { 0 }
-            ItemsProcessed = 0
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected (if ($analysisResults) { $analysisResults.PendingUpdatesCount } else { 0 }) `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'WindowsUpdates' `
+            -ErrorMessage $errorMsg
     }
 }
 

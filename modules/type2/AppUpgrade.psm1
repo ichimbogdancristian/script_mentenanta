@@ -268,12 +268,14 @@ function Invoke-AppUpgrade {
 
         Write-Information "  ✅ Upgrade execution complete: $itemsProcessed processed" -InformationAction Continue
 
-        return @{
-            Success        = $true
-            ItemsDetected  = $detectionResults.Count
-            ItemsProcessed = $itemsProcessed
-            Duration       = $duration.TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $true `
+            -ItemsDetected $detectionResults.Count `
+            -ItemsProcessed $itemsProcessed `
+            -DurationMilliseconds $duration.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'AppUpgrade' `
+            -DryRun $DryRun.IsPresent
     }
     catch {
         Complete-PerformanceTracking -Context $perfContext -Status 'Failed'
@@ -282,12 +284,14 @@ function Invoke-AppUpgrade {
         }
 
         Write-Error "AppUpgrade execution failed: $_"
-        return @{
-            Success        = $false
-            ItemsDetected  = 0
-            ItemsProcessed = $itemsProcessed
-            Duration       = ((Get-Date) - $startTime).TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected 0 `
+            -ItemsProcessed $itemsProcessed `
+            -DurationMilliseconds ((Get-Date) - $startTime).TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'AppUpgrade' `
+            -ErrorMessage $_.Exception.Message
     }
 }
 

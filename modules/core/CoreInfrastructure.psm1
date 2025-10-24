@@ -40,24 +40,31 @@ function Initialize-GlobalPathDiscovery {
         [switch]$Force
     )
     
-    # Thread-safe initialization check with lock
+    # v3.0 FIX: Thread-safe initialization using System.Threading.Mutex
+    # This prevents race conditions when 8 modules import CoreInfrastructure with -Global simultaneously
+    
+    # Early return if already initialized and not forcing
     if ($script:MaintenanceProjectPaths.Initialized -and -not $Force) {
         return $true
     }
     
-    # Use a simple lock to prevent multiple initializations
-    $lockKey = 'GlobalPathsInitLock'
-    if ($Global:MaintenanceInitLocks -and $Global:MaintenanceInitLocks.ContainsKey($lockKey)) {
-        # Another thread is initializing, wait briefly and return
-        Start-Sleep -Milliseconds 100
-        return $script:MaintenanceProjectPaths.Initialized
-    }
-    
-    # Set lock
-    if (-not $Global:MaintenanceInitLocks) { $Global:MaintenanceInitLocks = @{} }
-    $Global:MaintenanceInitLocks[$lockKey] = $true
+    # Use System.Threading.Mutex for robust thread-safe locking
+    $mutexName = 'Global\MaintenancePathDiscovery'
+    $mutex = $null
+    $lockAcquired = $false
     
     try {
+        # Create or get existing mutex (thread-safe across processes)
+        $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+        
+        # Attempt to acquire lock with 5-second timeout (prevents deadlocks)
+        $lockAcquired = $mutex.WaitOne([System.TimeSpan]::FromSeconds(5))
+        
+        if (-not $lockAcquired) {
+            Write-Warning "Could not acquire initialization lock within 5 seconds - proceeding anyway"
+            return $script:MaintenanceProjectPaths.Initialized
+        }
+        
         # Double-check pattern - another thread might have completed initialization
         if ($script:MaintenanceProjectPaths.Initialized -and -not $Force) {
             return $true
@@ -165,9 +172,24 @@ function Initialize-GlobalPathDiscovery {
         return $true
     }
     finally {
-        # Release lock
-        if ($Global:MaintenanceInitLocks -and $Global:MaintenanceInitLocks.ContainsKey($lockKey)) {
-            $Global:MaintenanceInitLocks.Remove($lockKey)
+        # Release mutex lock safely
+        if ($lockAcquired -and $mutex) {
+            try {
+                $mutex.ReleaseMutex()
+            }
+            catch {
+                Write-Warning "Failed to release mutex: $($_.Exception.Message)"
+            }
+        }
+        
+        # Clean up mutex resource
+        if ($mutex) {
+            try {
+                $mutex.Dispose()
+            }
+            catch {
+                Write-Warning "Failed to dispose mutex: $($_.Exception.Message)"
+            }
         }
     }
 }
@@ -272,16 +294,17 @@ function Initialize-ConfigSystem {
         throw "Configuration root path does not exist: $ConfigRootPath"
     }
 
-    # Set up configuration paths
+    # Set up configuration paths (in preferred load order)
     $script:ConfigPaths = @{
-        Root          = $ConfigRootPath
-        MainConfig    = Join-Path $ConfigRootPath 'main-config.json'
-        LoggingConfig = Join-Path $ConfigRootPath 'logging-config.json'
-        BloatwareList = Join-Path $ConfigRootPath 'bloatware-list.json'
-        EssentialApps = Join-Path $ConfigRootPath 'essential-apps.json'
+        Root            = $ConfigRootPath
+        MainConfig      = Join-Path $ConfigRootPath 'main-config.json'
+        LoggingConfig   = Join-Path $ConfigRootPath 'logging-config.json'
+        BloatwareList   = Join-Path $ConfigRootPath 'bloatware-list.json'
+        EssentialApps   = Join-Path $ConfigRootPath 'essential-apps.json'
+        AppUpgradeConfig = Join-Path $ConfigRootPath 'app-upgrade-config.json'
     }
 
-    # Validate required configuration files exist
+    # Validate required configuration files exist (MANDATORY)
     $requiredFiles = @('main-config.json', 'logging-config.json')
     foreach ($file in $requiredFiles) {
         $filePath = Join-Path $ConfigRootPath $file
@@ -290,14 +313,81 @@ function Initialize-ConfigSystem {
         }
     }
 
-    # Load and validate JSON syntax
+    # Validate optional but expected files exist (WARNING if missing)
+    $expectedFiles = @('bloatware-list.json', 'essential-apps.json', 'app-upgrade-config.json')
+    foreach ($file in $expectedFiles) {
+        $filePath = Join-Path $ConfigRootPath $file
+        if (-not (Test-Path $filePath)) {
+            Write-Warning "Expected configuration file not found: $filePath"
+        }
+    }
+
+    # STEP 1: Load main-config.json (MANDATORY)
     try {
+        Write-Verbose "Loading main-config.json..."
         $script:LoadedConfig = Get-Content $script:ConfigPaths.MainConfig | ConvertFrom-Json
-        Write-Verbose "Configuration system initialized successfully"
+        if (-not $script:LoadedConfig) {
+            throw "main-config.json loaded but is empty"
+        }
     }
     catch {
         throw "Failed to load main configuration: $($_.Exception.Message)"
     }
+
+    # STEP 2: Load logging-config.json (MANDATORY)
+    try {
+        Write-Verbose "Loading logging-config.json..."
+        $script:ConfigData = @{}
+        $loggingConfig = Get-Content $script:ConfigPaths.LoggingConfig | ConvertFrom-Json
+        $script:ConfigData['LoggingConfig'] = $loggingConfig
+        if (-not $loggingConfig) {
+            throw "logging-config.json loaded but is empty"
+        }
+    }
+    catch {
+        throw "Failed to load logging configuration: $($_.Exception.Message)"
+    }
+
+    # STEP 3: Load bloatware-list.json (OPTIONAL)
+    if (Test-Path $script:ConfigPaths.BloatwareList) {
+        try {
+            Write-Verbose "Loading bloatware-list.json..."
+            $bloatwareList = Get-Content $script:ConfigPaths.BloatwareList | ConvertFrom-Json
+            $script:ConfigData['BloatwareList'] = $bloatwareList
+            Write-Verbose "Bloatware list loaded with $($bloatwareList.bloatware.Count) items"
+        }
+        catch {
+            Write-Warning "Failed to load bloatware list: $($_.Exception.Message)"
+        }
+    }
+
+    # STEP 4: Load essential-apps.json (OPTIONAL)
+    if (Test-Path $script:ConfigPaths.EssentialApps) {
+        try {
+            Write-Verbose "Loading essential-apps.json..."
+            $essentialApps = Get-Content $script:ConfigPaths.EssentialApps | ConvertFrom-Json
+            $script:ConfigData['EssentialApps'] = $essentialApps
+            Write-Verbose "Essential apps list loaded with $($essentialApps.apps.Count) items"
+        }
+        catch {
+            Write-Warning "Failed to load essential apps list: $($_.Exception.Message)"
+        }
+    }
+
+    # STEP 5: Load app-upgrade-config.json (OPTIONAL)
+    if (Test-Path $script:ConfigPaths.AppUpgradeConfig) {
+        try {
+            Write-Verbose "Loading app-upgrade-config.json..."
+            $appUpgradeConfig = Get-Content $script:ConfigPaths.AppUpgradeConfig | ConvertFrom-Json
+            $script:ConfigData['AppUpgradeConfig'] = $appUpgradeConfig
+            Write-Verbose "App upgrade config loaded"
+        }
+        catch {
+            Write-Warning "Failed to load app upgrade configuration: $($_.Exception.Message)"
+        }
+    }
+
+    Write-Verbose "Configuration system initialized successfully with all available configurations"
 }
 
 <#
@@ -712,8 +802,8 @@ function Write-LogEntry {
     )
 
     try {
-        # Simplified timestamp format (time only, date in log header)
-        $timestamp = Get-Date -Format "HH:mm:ss"
+        # Standardized timestamp format: YYYY-MM-DD HH:mm:ss (v3.0 requirement for TODO-012)
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $sessionId = $script:LoggingContext.SessionId
         
         $logEntry = @{
@@ -1319,7 +1409,334 @@ function Assert-AdminPrivilege {
 
 #endregion
 
+#region Module Execution Result Builder
+
+<#
+.SYNOPSIS
+    Creates standardized execution result objects for Type2 modules
+
+.DESCRIPTION
+    Builds consistent hashtable results that all Type2 modules return after execution.
+    Ensures uniform structure for report generation and orchestrator processing.
+
+.PARAMETER Success
+    Boolean indicating successful execution
+
+.PARAMETER ItemsDetected
+    Total number of items detected by Type1 analysis
+
+.PARAMETER ItemsProcessed
+    Number of items successfully processed
+
+.PARAMETER DurationMilliseconds
+    Execution duration in milliseconds
+
+.PARAMETER ItemsFailed
+    Optional: Number of items that failed processing
+
+.PARAMETER ItemsSkipped
+    Optional: Number of items skipped from processing
+
+.PARAMETER DryRun
+    Optional: Boolean indicating if this was a dry-run simulation
+
+.PARAMETER LogPath
+    Optional: Path to execution log file
+
+.PARAMETER ModuleName
+    Optional: Name of the module that generated this result
+
+.PARAMETER ErrorMessage
+    Optional: Error message if execution failed
+
+.PARAMETER AdditionalData
+    Optional: Hashtable with additional context-specific data
+
+.EXAMPLE
+    $result = New-ModuleExecutionResult -Success $true -ItemsDetected 10 -ItemsProcessed 8 -DurationMilliseconds 1234
+
+.EXAMPLE
+    $result = New-ModuleExecutionResult `
+        -Success $false `
+        -ItemsDetected 5 `
+        -ItemsProcessed 2 `
+        -ItemsFailed 3 `
+        -DurationMilliseconds 5000 `
+        -ErrorMessage "Failed to process item X"
+
+.OUTPUTS
+    System.Collections.Hashtable - Ordered hashtable with standardized result structure
+#>
+function New-ModuleExecutionResult {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [bool]$Success,
+        
+        [Parameter(Mandatory)]
+        [int]$ItemsDetected,
+        
+        [Parameter(Mandatory)]
+        [int]$ItemsProcessed,
+        
+        [Parameter(Mandatory)]
+        [double]$DurationMilliseconds,
+        
+        [Parameter()]
+        [int]$ItemsFailed = 0,
+        
+        [Parameter()]
+        [int]$ItemsSkipped = 0,
+        
+        [Parameter()]
+        [bool]$DryRun = $false,
+        
+        [Parameter()]
+        [string]$LogPath = '',
+        
+        [Parameter()]
+        [string]$ModuleName = '',
+        
+        [Parameter()]
+        [string]$ErrorMessage = '',
+        
+        [Parameter()]
+        [hashtable]$AdditionalData = @{}
+    )
+    
+    # Build ordered result hashtable
+    $result = [ordered]@{
+        Success        = $Success
+        ItemsDetected  = $ItemsDetected
+        ItemsProcessed = $ItemsProcessed
+        Duration       = $DurationMilliseconds
+    }
+    
+    # Add optional properties only if meaningful
+    if ($ItemsFailed -gt 0) {
+        $result.ItemsFailed = $ItemsFailed
+    }
+    
+    if ($ItemsSkipped -gt 0) {
+        $result.ItemsSkipped = $ItemsSkipped
+    }
+    
+    if ($DryRun) {
+        $result.DryRun = $true
+    }
+    
+    if (-not [string]::IsNullOrEmpty($LogPath)) {
+        $result.LogPath = $LogPath
+    }
+    
+    if (-not [string]::IsNullOrEmpty($ModuleName)) {
+        $result.Module = $ModuleName
+    }
+    
+    if (-not [string]::IsNullOrEmpty($ErrorMessage)) {
+        $result.Error = $ErrorMessage
+    }
+    
+    # Add timestamp for audit trail
+    $result.Timestamp = (Get-Date -Format 'o')
+    
+    # Merge additional data if provided
+    if ($AdditionalData -and $AdditionalData.Count -gt 0) {
+        foreach ($key in $AdditionalData.Keys) {
+            if (-not $result.ContainsKey($key)) {
+                $result[$key] = $AdditionalData[$key]
+            }
+        }
+    }
+    
+    return $result
+}
+
+#endregion
+
 #region File Organization Functions
+
+#region Diff List Utilities
+
+<#
+.SYNOPSIS
+    Compares detection results against configuration to create diff list
+
+.DESCRIPTION
+    Creates a diff list by matching detected items against configuration.
+    Supports multiple matching strategies: exact name match, pattern match, or category match.
+    Diff list contains ONLY items from detection that are in configuration (intersection).
+
+.PARAMETER DetectionResults
+    Array of detected items from Type1 module (e.g., @{Name='item'; PackageName='pkg'; Category='cat'})
+
+.PARAMETER ConfigData
+    Configuration data loaded from JSON (contains array of items to match against)
+
+.PARAMETER MatchField
+    Primary field to match on (default: 'Name'). Can be 'Name', 'PackageName', 'Id', or custom field
+
+.PARAMETER ConfigItemsPath
+    Path to the array in ConfigData (default: 'items' or module-specific). E.g., 'bloatware' or 'apps'
+
+.PARAMETER CaseSensitive
+    If $true, perform case-sensitive matching (default: $false)
+
+.PARAMETER AllowPatterns
+    If $true, support wildcard patterns in config (default: $true)
+
+.OUTPUTS
+    System.Collections.ArrayList of matched items ready for Type2 processing
+
+.EXAMPLE
+    $bloatware = Get-BloatwareAnalysis
+    $config = Get-Content 'bloatware-list.json' | ConvertFrom-Json
+    $diffList = Compare-DetectedVsConfig -DetectionResults $bloatware -ConfigData $config -ConfigItemsPath 'bloatware'
+
+.EXAMPLE
+    $detected = @(@{Name='Firefox'; Id='mozilla.firefox'}, @{Name='Chrome'; Id='google.chrome'})
+    $config = @{items = @(@{name='Firefox'; category='browser'}, @{name='Notepad'; category='editor'})}
+    $diffList = Compare-DetectedVsConfig -DetectionResults $detected -ConfigData $config
+#>
+function Compare-DetectedVsConfig {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        $DetectionResults,
+        
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$ConfigData,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Name', 'PackageName', 'Id', 'Path', 'Service', 'Task')]
+        [string]$MatchField = 'Name',
+        
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigItemsPath = 'items',
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$CaseSensitive,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$AllowPatterns
+    )
+    
+    # Initialize result collection
+    $diffList = [System.Collections.ArrayList]::new()
+    
+    # Handle null or empty detection results
+    if (-not $DetectionResults -or $DetectionResults.Count -eq 0) {
+        Write-Verbose "No detection results provided - returning empty diff list"
+        return $diffList
+    }
+    
+    # Get config items array using path
+    $configItems = $null
+    try {
+        if ($ConfigItemsPath -contains '.') {
+            # Support nested paths like 'config.bloatware.items'
+            $pathParts = $ConfigItemsPath -split '\.'
+            $current = $ConfigData
+            foreach ($part in $pathParts) {
+                $current = $current.$part
+            }
+            $configItems = $current
+        }
+        else {
+            # Direct property access
+            $configItems = $ConfigData.$ConfigItemsPath
+        }
+    }
+    catch {
+        Write-Warning "Failed to access ConfigItemsPath '$ConfigItemsPath': $_"
+        return $diffList
+    }
+    
+    if (-not $configItems -or $configItems.Count -eq 0) {
+        Write-Verbose "No configuration items found at path '$ConfigItemsPath' - returning empty diff list"
+        return $diffList
+    }
+    
+    # Convert to array if single item
+    if ($configItems -isnot [System.Collections.IEnumerable] -or $configItems -is [string]) {
+        $configItems = @($configItems)
+    }
+    if ($DetectionResults -isnot [System.Collections.IEnumerable] -or $DetectionResults -is [string]) {
+        $DetectionResults = @($DetectionResults)
+    }
+    
+    # Create diff list: matched items from detection
+    foreach ($detectedItem in $DetectionResults) {
+        $matched = $false
+        
+        # Try to find matching config item
+        foreach ($configItem in $configItems) {
+            # Build match criteria - check multiple possible fields
+            $detectedValue = $detectedItem.$MatchField
+            if (-not $detectedValue) {
+                # If primary match field missing, try alternatives
+                if ($MatchField -eq 'Name' -and $detectedItem.PackageName) {
+                    $detectedValue = $detectedItem.PackageName
+                }
+                elseif ($MatchField -eq 'Name' -and $detectedItem.Id) {
+                    $detectedValue = $detectedItem.Id
+                }
+            }
+            
+            if (-not $detectedValue) {
+                continue
+            }
+            
+            # Also try common config property names
+            $configValue = $configItem.Name -or $configItem.name -or $configItem.Id -or $configItem.id -or $configItem.PackageName -or $configItem.packageName
+            
+            if (-not $configValue) {
+                continue
+            }
+            
+            # Perform match with case sensitivity option
+            $comparisonParams = @{
+                ReferenceObject  = $detectedValue
+                DifferenceObject = $configValue
+            }
+            
+            # Try exact match first
+            if ($CaseSensitive) {
+                $match = $detectedValue -ceq $configValue
+            }
+            else {
+                $match = $detectedValue -ieq $configValue
+            }
+            
+            # If no exact match and patterns allowed, try wildcard
+            if (-not $match -and $AllowPatterns) {
+                if ($CaseSensitive) {
+                    $match = $detectedValue -clike $configValue -or $detectedValue -cmatch $configValue
+                }
+                else {
+                    $match = $detectedValue -ilike $configValue -or $detectedValue -imatch $configValue
+                }
+            }
+            
+            if ($match) {
+                $matched = $true
+                break
+            }
+        }
+        
+        # Add to diff if matched
+        if ($matched) {
+            [void]$diffList.Add($detectedItem)
+        }
+    }
+    
+    Write-Verbose "Diff list created: $($diffList.Count) items matched out of $($DetectionResults.Count) detected"
+    return $diffList
+}
+
+#endregion
 
 <#
 .SYNOPSIS
@@ -1569,6 +1986,185 @@ function Initialize-TempFilesStructure {
         Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to initialize temp files structure: $($_.Exception.Message)"
         return $false
     }
+}
+
+<#
+.SYNOPSIS
+    Validates temp_files structure and cleans up stale session data
+
+.DESCRIPTION
+    Comprehensive validation function that:
+    1. Verifies all required temp_files subdirectories exist
+    2. Validates directory permissions (read/write access)
+    3. Cleans up session data older than specified age (default: 30 days)
+    4. Reports directory size and age metrics
+    5. Ensures processed data structure is ready
+
+.PARAMETER RequiredAge
+    Number of days after which session data is considered stale (default: 30)
+
+.PARAMETER ForceCleanup
+    If $true, delete stale session data without confirmation
+
+.PARAMETER ReportMetrics
+    If $true, return detailed metrics including directory sizes
+
+.OUTPUTS
+    Hashtable with validation results: Success, ValidatedDirectories, StaleDataFound, CleanedSize
+
+.EXAMPLE
+    $result = Validate-TempFilesStructure -RequiredAge 30 -ForceCleanup
+    $result.Success  # $true if all validations passed
+#>
+function Validate-TempFilesStructure {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter()]
+        [ValidateRange(1, 365)]
+        [int]$RequiredAge = 30,
+        
+        [Parameter()]
+        [switch]$ForceCleanup,
+        
+        [Parameter()]
+        [switch]$ReportMetrics
+    )
+    
+    Write-Verbose "Starting temp_files structure validation (StaleAge: $RequiredAge days)"
+    
+    $validationResult = @{
+        Success                = $true
+        ValidatedDirectories   = @()
+        InvalidDirectories     = @()
+        PermissionErrors       = @()
+        StaleDataFound         = @()
+        CleanedSize            = 0
+        TotalSize              = 0
+        StructureValid         = $false
+        ProcessedDataValid     = $false
+        Timestamp              = Get-Date
+    }
+    
+    try {
+        # Get temp files root
+        $tempRoot = $null
+        try {
+            $tempRoot = Get-MaintenanceProjectPath -PathType 'TempFiles' -ErrorAction SilentlyContinue
+        }
+        catch {
+            Write-Verbose "Project paths not initialized - attempting discovery"
+            Initialize-GlobalPathDiscovery
+            $tempRoot = Get-MaintenanceProjectPath -PathType 'TempFiles'
+        }
+        
+        if (-not $tempRoot -or -not (Test-Path $tempRoot)) {
+            $validationResult.Success = $false
+            $validationResult.StructureValid = $false
+            Write-Warning "Temp files root not found or inaccessible: $tempRoot"
+            return $validationResult
+        }
+        
+        # Define required directories
+        $requiredDirs = @('data', 'logs', 'temp', 'reports', 'processed')
+        
+        # Validate each required directory
+        foreach ($dir in $requiredDirs) {
+            $fullPath = Join-Path $tempRoot $dir
+            
+            # Check existence
+            if (-not (Test-Path $fullPath -PathType Container)) {
+                $validationResult.InvalidDirectories += $fullPath
+                $validationResult.Success = $false
+                Write-Warning "Missing directory: $dir"
+                continue
+            }
+            
+            # Check permissions (try to list contents)
+            try {
+                $null = Get-Item $fullPath -ErrorAction Stop
+                $validationResult.ValidatedDirectories += $fullPath
+            }
+            catch {
+                $validationResult.PermissionErrors += @{
+                    Path  = $fullPath
+                    Error = $_.Exception.Message
+                }
+                $validationResult.Success = $false
+                Write-Warning "Permission denied on directory: $dir"
+                continue
+            }
+            
+            # Calculate directory size if metrics requested
+            if ($ReportMetrics) {
+                try {
+                    $dirSize = (Get-ChildItem -Path $fullPath -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                    $validationResult.TotalSize += if ($dirSize) { $dirSize } else { 0 }
+                }
+                catch {
+                    Write-Verbose "Could not calculate size for $dir"
+                }
+            }
+        }
+        
+        # STEP 1: Mark structure as valid if all required directories exist and accessible
+        $validationResult.StructureValid = ($validationResult.InvalidDirectories.Count -eq 0 -and $validationResult.PermissionErrors.Count -eq 0)
+        
+        # STEP 2: Validate processed data structure
+        $processedDataValid = Test-Path (Join-Path $tempRoot 'processed') -PathType Container
+        $validationResult.ProcessedDataValid = $processedDataValid
+        
+        # STEP 3: Cleanup stale session data (logs and data older than RequiredAge days)
+        if ($validationResult.StructureValid) {
+            $staleThreshold = (Get-Date).AddDays(-$RequiredAge)
+            $logsDir = Join-Path $tempRoot 'logs'
+            $dataDir = Join-Path $tempRoot 'data'
+            
+            # Find stale files in logs directory
+            $staleFiles = @()
+            foreach ($dir in @($logsDir, $dataDir)) {
+                if (Test-Path $dir) {
+                    $staleFiles += @(Get-ChildItem -Path $dir -Recurse -File -ErrorAction SilentlyContinue | 
+                        Where-Object { $_.LastWriteTime -lt $staleThreshold })
+                }
+            }
+            
+            if ($staleFiles.Count -gt 0) {
+                $validationResult.StaleDataFound = $staleFiles.Count
+                
+                if ($ForceCleanup) {
+                    foreach ($file in $staleFiles) {
+                        try {
+                            $fileSize = $file.Length
+                            Remove-Item -Path $file.FullName -Force -ErrorAction Stop
+                            $validationResult.CleanedSize += $fileSize
+                            Write-Verbose "Cleaned stale file: $($file.Name)"
+                        }
+                        catch {
+                            Write-Warning "Failed to clean file: $($file.Name) - $_"
+                        }
+                    }
+                    Write-LogEntry -Level 'INFO' -Component 'CORE-INFRASTRUCTURE' -Message "Cleaned $($staleFiles.Count) stale files ($($validationResult.CleanedSize) bytes)"
+                }
+                else {
+                    Write-Verbose "Found $($staleFiles.Count) stale files (use -ForceCleanup to remove)"
+                }
+            }
+        }
+        
+        # Finalize success status
+        if (-not $validationResult.StructureValid) {
+            $validationResult.Success = $false
+        }
+        
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'CORE-INFRASTRUCTURE' -Message "Failed to validate temp files structure: $($_.Exception.Message)"
+        $validationResult.Success = $false
+    }
+    
+    Write-Verbose "Validation complete: Success=$($validationResult.Success), StructureValid=$($validationResult.StructureValid)"
+    return $validationResult
 }
 
 <#
@@ -2002,9 +2598,16 @@ Export-ModuleMember -Function @(
     # Security and Privilege
     'Assert-AdminPrivilege',
     
+    # Module Execution Results
+    'New-ModuleExecutionResult',
+    
+    # Diff List Utilities
+    'Compare-DetectedVsConfig',
+    
     # File Organization
     'Initialize-FileOrganization',
     'Initialize-TempFilesStructure',
+    'Validate-TempFilesStructure',
     'Initialize-ProcessedDataStructure',
     'Get-SessionPath',
     'Get-ProcessedDataPath',

@@ -111,19 +111,12 @@ function Invoke-BloatwareRemoval {
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
         $detectionResults = Get-BloatwareAnalysis -Config $Config
         
-        # STEP 2: Compare detection with config to create diff list
+        # STEP 2: Compare detection with config to create diff list using centralized function
         $configDataPath = Join-Path $Global:ProjectPaths.Config "bloatware-list.json"
         $configData = Get-Content $configDataPath | ConvertFrom-Json
         
         # Create diff: Only items from config that are actually found on system
-        $diffList = $detectionResults | Where-Object {
-            $item = $_
-            $configData.bloatware | Where-Object { 
-                $_.name -eq $item.Name -or 
-                $_.packageName -eq $item.PackageName -or
-                $_.path -contains $item.InstallPath
-            }
-        }
+        $diffList = Compare-DetectedVsConfig -DetectionResults $detectionResults -ConfigData $configData -ConfigItemsPath 'bloatware' -MatchField 'Name'
         
         $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\bloatware-diff.json"
         $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
@@ -206,12 +199,14 @@ function Invoke-BloatwareRemoval {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
         
-        return @{
-            Success        = $true
-            ItemsDetected  = $detectionResults.Count
-            ItemsProcessed = $processedCount
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $true `
+            -ItemsDetected $detectionResults.Count `
+            -ItemsProcessed $processedCount `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'BloatwareRemoval' `
+            -DryRun $DryRun.IsPresent
         
     }
     catch {
@@ -221,12 +216,14 @@ function Invoke-BloatwareRemoval {
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
-        return @{
-            Success        = $false
-            ItemsDetected  = if ($detectionResults) { $detectionResults.Count } else { 0 }
-            ItemsProcessed = 0
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected (if ($detectionResults) { $detectionResults.Count } else { 0 }) `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'BloatwareRemoval' `
+            -ErrorMessage $errorMsg
     }
 }
 

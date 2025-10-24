@@ -81,7 +81,7 @@ function Invoke-TelemetryDisable {
         
         if ($DryRun) {
             Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message '🧪 DRY-RUN: Simulating telemetry disable' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $telemetryCount }
-            $results = @{ ProcessedCount = $telemetryCount; Simulated = $true }; $processedCount = $telemetryCount
+            $processedCount = $telemetryCount
         }
         else {
             Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $telemetryCount }
@@ -163,7 +163,14 @@ function Invoke-TelemetryDisable {
             Duration       = $executionTime.TotalMilliseconds
         }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
-        return $returnData
+        return New-ModuleExecutionResult `
+            -Success $true `
+            -ItemsDetected $telemetryCount `
+            -ItemsProcessed $processedCount `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'TelemetryDisable' `
+            -DryRun $DryRun.IsPresent
         
     }
     catch {
@@ -171,12 +178,14 @@ function Invoke-TelemetryDisable {
         Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message $errorMsg -Data @{ Error = $_.Exception }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
-        return @{ 
-            Success        = $false
-            ItemsDetected  = if ($analysisResults) { $analysisResults.ActiveTelemetryCount } else { 0 }
-            ItemsProcessed = 0
-            Duration       = $executionTime.TotalMilliseconds
-        }
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected (if ($analysisResults) { $analysisResults.ActiveTelemetryCount } else { 0 }) `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'TelemetryDisable' `
+            -ErrorMessage $errorMsg
     }
 }
 

@@ -217,16 +217,14 @@ Collection completed successfully
         }
         
         # STEP 4: Return standardized result
-        return @{
-            Success        = $true
-            ItemsDetected  = 1  # One complete inventory
-            ItemsProcessed = 1  # One inventory collected
-            ItemsFailed    = 0
-            Duration       = $executionTime.TotalMilliseconds
-            DryRun         = $false  # Not applicable for info gathering
-            LogPath        = $executionLogPath
-            DataPath       = $inventoryDataPath
-        }
+        return New-ModuleExecutionResult `
+            -Success $true `
+            -ItemsDetected 1 `
+            -ItemsProcessed 1 `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'SystemInventory' `
+            -AdditionalData @{ DataPath = $inventoryDataPath }
     }
     catch {
         $errorMsg = "System inventory collection failed: $($_.Exception.Message)"
@@ -243,15 +241,14 @@ Collection completed successfully
         }
         
         # Return failure result
-        return @{
-            Success        = $false
-            ItemsDetected  = 0
-            ItemsProcessed = 0
-            ItemsFailed    = 1
-            Duration       = ((Get-Date) - $startTime).TotalMilliseconds
-            DryRun         = $false
-            Error          = $_.Exception.Message
-        }
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected 0 `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds ((Get-Date) - $startTime).TotalMilliseconds `
+            -LogPath $executionLogPath `
+            -ModuleName 'SystemInventory' `
+            -ErrorMessage $errorMsg
     }
 }
 
