@@ -1281,6 +1281,166 @@ function Write-StructuredLogEntry {
 
 <#
 .SYNOPSIS
+    Unified logging function with optional structured data (v3.1)
+    
+.DESCRIPTION
+    Consolidated logging function that replaces both Write-LogEntry and Write-StructuredLogEntry.
+    Supports simple text logging, operation context, metrics, and optional JSON structured logging.
+    
+.PARAMETER Level
+    Log level: INFO, SUCCESS, WARNING, ERROR, DEBUG, VERBOSE, TRACE, FATAL
+    
+.PARAMETER Message
+    Log message text
+    
+.PARAMETER Component
+    Component name for categorization (default: SYSTEM)
+    
+.PARAMETER AdditionalData
+    Optional hashtable with additional structured data (equivalent to old Data/Metadata parameter)
+    
+.PARAMETER LogPath
+    Optional specific log file path (defaults to module-specific log)
+    
+.PARAMETER Operation
+    Operation type being performed (Detect, Remove, Install, etc.)
+    
+.PARAMETER Target
+    What is being operated on (app name, registry key, service, etc.)
+    
+.PARAMETER Result
+    Operation result status (Success, Failed, Skipped, etc.)
+    
+.PARAMETER Metrics
+    Performance metrics hashtable (Duration, Size, Count, etc.)
+    
+.PARAMETER EnableJsonLogging
+    If specified, also writes structured JSON log file alongside text log
+    
+.EXAMPLE
+    Write-ModuleLogEntry -Level 'INFO' -Message 'Task started' -Component 'BLOATWARE'
+    
+.EXAMPLE
+    Write-ModuleLogEntry -Level 'SUCCESS' -Message 'Task completed' -Component 'UPDATES' -AdditionalData @{ Count = 15; Duration = 45.2 }
+    
+.EXAMPLE
+    Write-ModuleLogEntry -Level 'INFO' -Component 'REMOVAL' -Message 'Removing app' -Operation 'Remove' -Target 'CandyCrush' -Result 'Success' -EnableJsonLogging
+#>
+function Write-ModuleLogEntry {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('INFO', 'SUCCESS', 'WARNING', 'ERROR', 'DEBUG', 'VERBOSE', 'TRACE', 'FATAL', 'WARN')]
+        [string]$Level,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Component = 'SYSTEM',
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$AdditionalData = @{},
+        
+        [Parameter(Mandatory = $false)]
+        [string]$LogPath,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute', 'Process', 'ProcessGroup', 'Complete', 'Start', 'Filter', 'Upgrade', 'Simulate')]
+        [string]$Operation,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Target,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Success', 'Failed', 'Skipped', 'Pending', 'InProgress', 'NoItemsFound', 'Unknown', 'Error')]
+        [string]$Result,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$Metrics = @{},
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$EnableJsonLogging
+    )
+    
+    try {
+        # Normalize level (WARN -> WARNING for consistency)
+        if ($Level -eq 'WARN') { $Level = 'WARNING' }
+        
+        # Build parameters for Write-LogEntry (handles all text logging)
+        $logParams = @{
+            Level     = $Level
+            Component = $Component
+            Message   = $Message
+            Data      = $AdditionalData
+        }
+        
+        if ($LogPath) { $logParams.LogPath = $LogPath }
+        if ($Operation) { $logParams.Operation = $Operation }
+        if ($Target) { $logParams.Target = $Target }
+        if ($Result) { $logParams.Result = $Result }
+        if ($Metrics.Count -gt 0) { $logParams.Metrics = $Metrics }
+        
+        # Call existing Write-LogEntry for text logging
+        Write-LogEntry @logParams
+        
+        # If JSON logging enabled and LogPath specified, write structured JSON
+        if ($EnableJsonLogging -and $LogPath) {
+            try {
+                # Determine JSON log path
+                $jsonLogPath = $LogPath -replace '\.log$', '-data.json'
+                
+                # Create structured log entry
+                $logEntry = [PSCustomObject]@{
+                    Timestamp = Get-Date -Format 'o'  # ISO 8601
+                    Level     = $Level
+                    Component = $Component
+                    Message   = $Message
+                }
+                
+                # Add optional fields
+                if ($AdditionalData.Count -gt 0) { $logEntry | Add-Member -MemberType NoteProperty -Name 'Metadata' -Value $AdditionalData }
+                if ($Operation) { $logEntry | Add-Member -MemberType NoteProperty -Name 'Operation' -Value $Operation }
+                if ($Target) { $logEntry | Add-Member -MemberType NoteProperty -Name 'Target' -Value $Target }
+                if ($Result) { $logEntry | Add-Member -MemberType NoteProperty -Name 'Result' -Value $Result }
+                if ($Metrics.Count -gt 0) { $logEntry | Add-Member -MemberType NoteProperty -Name 'Metrics' -Value $Metrics }
+                
+                # Load existing JSON log or create new array
+                $logData = if (Test-Path $jsonLogPath) {
+                    try {
+                        $existingJson = Get-Content $jsonLogPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                        if ($existingJson -is [System.Collections.IEnumerable] -and $existingJson -isnot [string]) {
+                            [System.Collections.ArrayList]@($existingJson)
+                        } else {
+                            [System.Collections.ArrayList]@($existingJson)
+                        }
+                    } catch {
+                        [System.Collections.ArrayList]@()
+                    }
+                } else {
+                    [System.Collections.ArrayList]@()
+                }
+                
+                # Add and save
+                [void]$logData.Add($logEntry)
+                $tempPath = "$jsonLogPath.tmp"
+                $logData | ConvertTo-Json -Depth 10 -Compress:$false | Set-Content $tempPath -Force -Encoding UTF8
+                Move-Item $tempPath $jsonLogPath -Force
+            }
+            catch {
+                # JSON logging is non-critical
+                Write-Verbose "Failed to write JSON log: $($_.Exception.Message)"
+            }
+        }
+    }
+    catch {
+        # Logging should never break execution
+        Write-Warning "Logging failed: $($_.Exception.Message)"
+    }
+}
+
+<#
+.SYNOPSIS
     Starts performance tracking for an operation
 #>
 function Start-PerformanceTracking {
@@ -2585,6 +2745,7 @@ Export-ModuleMember -Function @(
     'Initialize-LoggingSystem',
     'Write-LogEntry',
     'Write-StructuredLogEntry',
+    'Write-ModuleLogEntry',  # v3.1 Unified logging function
     'Get-VerbositySetting',
     'Test-ShouldLogOperation',
     'Write-OperationStart',

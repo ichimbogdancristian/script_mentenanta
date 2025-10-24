@@ -66,10 +66,13 @@ if (Test-Path $CommonUtilitiesPath) {
 .EXAMPLE
     $audit = Get-EssentialAppsAudit -IncludeInstalled
 #>
-function Get-EssentialAppsAudit {
+function Get-EssentialAppsAnalysis {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param(
+        [Parameter()]
+        [PSCustomObject]$Config,
+        
         [Parameter()]
         [ValidateSet('System', 'Runtime', 'Office', 'Document', 'Editor', 'Browsers', 'Media', 'Development', 'all')]
         [string[]]$Categories = @('all'),
@@ -90,6 +93,7 @@ function Get-EssentialAppsAudit {
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-AUDIT' -Message 'Starting essential apps audit' -Data @{
             Categories       = $Categories
             IncludeInstalled = $IncludeInstalled
+            Config           = if ($Config) { 'Provided' } else { 'Not provided' }
         }
     }
     catch {
@@ -449,59 +453,13 @@ function Get-RecommendedInstallMethod {
 .EXAMPLE
     $results = Get-EssentialAppsAnalysis -Config $Config
 #>
-function Get-EssentialAppsAnalysis {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [PSCustomObject]$Config
-    )
-    
-    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-AUDIT' -Message 'Starting essential apps analysis for Type2 module'
-    
-    try {
-        # Call the main audit function
-        $auditResults = Get-EssentialAppsAudit -Categories @('all')
-        
-        # Ensure Global:ProjectPaths is available
-        if (-not $Global:ProjectPaths) {
-            Write-Warning "Global:ProjectPaths not available, attempting to initialize"
-            if (Get-Command 'Initialize-GlobalPathDiscovery' -ErrorAction SilentlyContinue) {
-                Initialize-GlobalPathDiscovery
-            }
-        }
-        
-        # Save results to temp_files/data/ using global paths
-        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
-            $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\essential-apps-results.json"
-            
-            # Ensure directory exists
-            $dataDir = Split-Path -Parent $dataPath
-            if (-not (Test-Path $dataDir)) {
-                New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
-            }
-            
-            # Save results as JSON
-            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
-            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-AUDIT' -Message "Saved essential apps analysis results to $dataPath"
-        }
-        else {
-            Write-Warning "Global project paths not available - results not saved to file"
-        }
-        
-        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-AUDIT' -Message "Essential apps analysis completed: $($auditResults.Summary.MissingCount) missing apps found"
-        
-        return $auditResults
-    }
-    catch {
-        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS-AUDIT' -Message "Essential apps analysis failed: $($_.Exception.Message)"
-        return @()
-    }
-}
 
 #endregion
 
+# Backward compatibility alias
+New-Alias -Name 'Get-EssentialAppsAudit' -Value 'Get-EssentialAppsAnalysis'
+
 # Export public functions
 Export-ModuleMember -Function @(
-    'Get-EssentialAppsAudit',
-    'Get-EssentialAppsAnalysis'  # v3.0 wrapper for Type2 modules
-)
+    'Get-EssentialAppsAnalysis'  # ✅ v3.0 PRIMARY function
+) -Alias @('Get-EssentialAppsAudit')  # Backward compatibility

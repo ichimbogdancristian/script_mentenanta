@@ -68,7 +68,7 @@ else {
 .EXAMPLE
     $audit = Get-SystemOptimizationAudit -IncludeStartup -IncludeDisk
 #>
-function Get-SystemOptimizationAudit {
+function Get-SystemOptimizationAnalysis {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param(
@@ -707,59 +707,13 @@ function New-OptimizationRecommendations {
 .EXAMPLE
     $results = Get-SystemOptimizationAnalysis -Config $Config
 #>
-function Get-SystemOptimizationAnalysis {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [PSCustomObject]$Config
-    )
-    
-    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message 'Starting system optimization analysis for Type2 module'
-    
-    try {
-        # Call the main audit function
-        $auditResults = Get-SystemOptimizationAudit
-        
-        # Ensure Global:ProjectPaths is available
-        if (-not $Global:ProjectPaths) {
-            Write-Warning "Global:ProjectPaths not available, attempting to initialize"
-            if (Get-Command 'Initialize-GlobalPathDiscovery' -ErrorAction SilentlyContinue) {
-                Initialize-GlobalPathDiscovery
-            }
-        }
-        
-        # Save results to temp_files/data/ using global paths
-        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
-            $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\system-optimization-results.json"
-            
-            # Ensure directory exists
-            $dataDir = Split-Path -Parent $dataPath
-            if (-not (Test-Path $dataDir)) {
-                New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
-            }
-            
-            # Save results as JSON
-            $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
-            Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message "Saved system optimization analysis results to $dataPath"
-        }
-        else {
-            Write-Warning "Global project paths not available - results not saved to file"
-        }
-        
-        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message "System optimization analysis completed: Score $($auditResults.OptimizationScore.Overall)/100"
-        
-        return $auditResults
-    }
-    catch {
-        Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPT-AUDIT' -Message "System optimization analysis failed: $($_.Exception.Message)"
-        return @()
-    }
-}
 
 #endregion
 
+# Backward compatibility alias
+New-Alias -Name 'Get-SystemOptimizationAudit' -Value 'Get-SystemOptimizationAnalysis'
+
 # Export public functions
 Export-ModuleMember -Function @(
-    'Get-SystemOptimizationAudit',
-    'Get-SystemOptimizationAnalysis'  # v3.0 wrapper for Type2 modules
-)
+    'Get-SystemOptimizationAnalysis'  # ✅ v3.0 PRIMARY function
+) -Alias @('Get-SystemOptimizationAudit')  # Backward compatibility

@@ -1053,7 +1053,68 @@ function Invoke-BloatwareRemoval {
 
 ---
 
-### **📊 Complete Module Dependency Graph**
+### **� Type2 Module Return Object Standard (v3.0)**
+
+**MANDATORY REQUIREMENT**: All Type2 modules MUST return a standardized hashtable with the following structure:
+
+```powershell
+@{
+    Success         = $true/$false          # Overall success status
+    ItemsDetected   = <count>              # Total items found by Type1 audit
+    ItemsProcessed  = <count>              # Items successfully processed
+    ItemsFailed     = <count>              # Items that failed (optional, default 0)
+    Duration        = <milliseconds>       # Execution time in milliseconds
+    DryRun          = $true/$false         # Whether this was a dry-run
+    LogPath         = <string>             # Path to execution log file
+}
+```
+
+**Implementation Pattern**:
+```powershell
+function Invoke-YourModule {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Config,
+        [switch]$DryRun
+    )
+    
+    $startTime = Get-Date
+    
+    # Module implementation...
+    $detectedCount = $detectionResults.Count
+    $processedCount = 0
+    $failedCount = 0
+    
+    # Processing logic...
+    
+    # Calculate duration
+    $executionTime = (Get-Date) - $startTime
+    
+    # Return standardized result
+    return @{
+        Success         = ($failedCount -eq 0)
+        ItemsDetected   = $detectedCount
+        ItemsProcessed  = $processedCount
+        ItemsFailed     = $failedCount
+        Duration        = $executionTime.TotalMilliseconds
+        DryRun          = $DryRun.IsPresent
+        LogPath         = $executionLogPath
+    }
+}
+```
+
+**Verification Status**: ✅ **ALL TYPE2 MODULES COMPLIANT** (verified October 2025)
+- All 7 Type2 modules use standardized return object pattern
+- Orchestrator depends on this structure for report generation
+- ReportGenerator expects these exact property names
+
+**DO NOT**: Return arrays, strings, or custom objects
+**DO**: Always return hashtable with exact property names shown above
+
+---
+
+### **�📊 Complete Module Dependency Graph**
 
 ```
 MaintenanceOrchestrator.ps1
