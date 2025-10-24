@@ -1107,14 +1107,14 @@ function Write-StructuredLogEntry {
         [hashtable]$Metadata = @{},
         
         [Parameter()]
-        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute')]
+        [ValidateSet('Detect', 'Remove', 'Install', 'Modify', 'Disable', 'Enable', 'Update', 'Configure', 'Verify', 'Analyze', 'Execute', 'Process', 'ProcessGroup', 'Complete', 'Start', 'Filter', 'Upgrade', 'Simulate')]
         [string]$Operation,
         
         [Parameter()]
         [string]$Target,
         
         [Parameter()]
-        [ValidateSet('Success', 'Failed', 'Skipped', 'Pending', 'InProgress')]
+        [ValidateSet('Success', 'Failed', 'Skipped', 'Pending', 'InProgress', 'NoItemsFound', 'Unknown', 'Error')]
         [string]$Result
     )
     
@@ -1269,6 +1269,51 @@ function Complete-PerformanceTracking {
     }
     catch {
         Write-Warning "Failed to complete performance tracking: $($_.Exception.Message)"
+    }
+}
+
+#endregion
+
+#region Security and Privilege Functions
+
+<#
+.SYNOPSIS
+    Asserts that the current process has administrator privileges
+
+.DESCRIPTION
+    Checks if the current PowerShell session is running with administrator privileges.
+    Throws an error if admin rights are not available.
+
+.PARAMETER Operation
+    Description of the operation that requires admin privileges (for error messages)
+
+.EXAMPLE
+    Assert-AdminPrivilege -Operation "Windows Updates installation"
+
+.NOTES
+    This function will throw an exception if administrator privileges are not present.
+#>
+function Assert-AdminPrivilege {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$Operation = "this operation"
+    )
+    
+    try {
+        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        
+        if (-not $isAdmin) {
+            throw "Administrator privileges are required for $Operation. Please run PowerShell as Administrator."
+        }
+        
+        Write-Verbose "Administrator privilege check passed for: $Operation"
+        return $true
+    }
+    catch {
+        Write-Error "Administrator privilege check failed: $($_.Exception.Message)"
+        throw
     }
 }
 
@@ -1953,6 +1998,9 @@ Export-ModuleMember -Function @(
     'Write-DetectionLog',
     'Start-PerformanceTracking',
     'Complete-PerformanceTracking',
+    
+    # Security and Privilege
+    'Assert-AdminPrivilege',
     
     # File Organization
     'Initialize-FileOrganization',
