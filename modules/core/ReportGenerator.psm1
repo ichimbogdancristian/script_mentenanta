@@ -47,6 +47,19 @@ function Get-HtmlTemplates {
     
     try {
         $configPath = $Global:ProjectPaths.Config
+        $templatesPath = Join-Path $configPath 'templates'
+        
+        # Helper to find file with backward compatibility
+        function Find-ConfigTemplate {
+            param([string]$FileName)
+            # Try new location first
+            $newPath = Join-Path $templatesPath $FileName
+            if (Test-Path $newPath) { return $newPath }
+            # Fall back to old location
+            $oldPath = Join-Path $configPath $FileName
+            if (Test-Path $oldPath) { return $oldPath }
+            return $newPath  # Return new path as default
+        }
         
         $templates = @{
             Main     = $null
@@ -55,8 +68,8 @@ function Get-HtmlTemplates {
             Config   = $null
         }
         
-        # Load main report template
-        $mainTemplatePath = Join-Path $configPath 'report-template.html'
+        # Load main report template (check new location first, fallback to old)
+        $mainTemplatePath = Find-ConfigTemplate 'report-template.html'
         if (Test-Path $mainTemplatePath) {
             $templates.Main = Get-Content $mainTemplatePath -Raw
             Write-Verbose "Loaded main template: $mainTemplatePath"
@@ -66,7 +79,7 @@ function Get-HtmlTemplates {
         }
         
         # Load task card template
-        $taskCardPath = Join-Path $configPath 'task-card-template.html'
+        $taskCardPath = Find-ConfigTemplate 'task-card-template.html'
         if (Test-Path $taskCardPath) {
             $templates.TaskCard = Get-Content $taskCardPath -Raw
             Write-Verbose "Loaded task card template: $taskCardPath"
@@ -76,7 +89,7 @@ function Get-HtmlTemplates {
         }
         
         # Load CSS styles
-        $cssPath = Join-Path $configPath 'report-styles.css'
+        $cssPath = Find-ConfigTemplate 'report-styles.css'
         if (Test-Path $cssPath) {
             $templates.CSS = Get-Content $cssPath -Raw
             Write-Verbose "Loaded CSS styles: $cssPath"
@@ -86,7 +99,7 @@ function Get-HtmlTemplates {
         }
         
         # Load template configuration
-        $configJsonPath = Join-Path $configPath 'report-templates-config.json'
+        $configJsonPath = Find-ConfigTemplate 'report-templates-config.json'
         if (Test-Path $configJsonPath) {
             $templates.Config = Get-Content $configJsonPath | ConvertFrom-Json
             Write-Verbose "Loaded template config: $configJsonPath"

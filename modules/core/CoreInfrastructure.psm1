@@ -294,31 +294,57 @@ function Initialize-ConfigSystem {
         throw "Configuration root path does not exist: $ConfigRootPath"
     }
 
-    # Set up configuration paths (in preferred load order)
+    # Helper function to find config file with backward compatibility
+    function Get-ConfigFilePath {
+        param([string]$FileName, [string]$SubDir = $null)
+        
+        # Try new location first (v3.1+)
+        if ($SubDir) {
+            $newPath = Join-Path $ConfigRootPath $SubDir $FileName
+            if (Test-Path $newPath) { return $newPath }
+        }
+        
+        # Fall back to old location (root level)
+        $oldPath = Join-Path $ConfigRootPath $FileName
+        if (Test-Path $oldPath) { return $oldPath }
+        
+        # Return new path as default (for validation purposes)
+        if ($SubDir) {
+            return Join-Path $ConfigRootPath $SubDir $FileName
+        }
+        return $oldPath
+    }
+
+    # Set up configuration paths (checks new locations first, falls back to old for compatibility)
     $script:ConfigPaths = @{
-        Root            = $ConfigRootPath
-        MainConfig      = Join-Path $ConfigRootPath 'main-config.json'
-        LoggingConfig   = Join-Path $ConfigRootPath 'logging-config.json'
-        BloatwareList   = Join-Path $ConfigRootPath 'bloatware-list.json'
-        EssentialApps   = Join-Path $ConfigRootPath 'essential-apps.json'
-        AppUpgradeConfig = Join-Path $ConfigRootPath 'app-upgrade-config.json'
+        Root             = $ConfigRootPath
+        MainConfig       = Get-ConfigFilePath 'main-config.json' 'execution'
+        LoggingConfig    = Get-ConfigFilePath 'logging-config.json' 'execution'
+        BloatwareList    = Get-ConfigFilePath 'bloatware-list.json' 'data'
+        EssentialApps    = Get-ConfigFilePath 'essential-apps.json' 'data'
+        AppUpgradeConfig = Get-ConfigFilePath 'app-upgrade-config.json' 'data'
     }
 
     # Validate required configuration files exist (MANDATORY)
-    $requiredFiles = @('main-config.json', 'logging-config.json')
-    foreach ($file in $requiredFiles) {
-        $filePath = Join-Path $ConfigRootPath $file
-        if (-not (Test-Path $filePath)) {
-            throw "Required configuration file not found: $filePath"
+    $requiredFiles = @(
+        @{ Path = $script:ConfigPaths.MainConfig; Name = 'main-config.json' },
+        @{ Path = $script:ConfigPaths.LoggingConfig; Name = 'logging-config.json' }
+    )
+    foreach ($fileInfo in $requiredFiles) {
+        if (-not (Test-Path $fileInfo.Path)) {
+            throw "Required configuration file not found: $($fileInfo.Name)"
         }
     }
 
     # Validate optional but expected files exist (WARNING if missing)
-    $expectedFiles = @('bloatware-list.json', 'essential-apps.json', 'app-upgrade-config.json')
-    foreach ($file in $expectedFiles) {
-        $filePath = Join-Path $ConfigRootPath $file
-        if (-not (Test-Path $filePath)) {
-            Write-Warning "Expected configuration file not found: $filePath"
+    $expectedFiles = @(
+        @{ Path = $script:ConfigPaths.BloatwareList; Name = 'bloatware-list.json' },
+        @{ Path = $script:ConfigPaths.EssentialApps; Name = 'essential-apps.json' },
+        @{ Path = $script:ConfigPaths.AppUpgradeConfig; Name = 'app-upgrade-config.json' }
+    )
+    foreach ($fileInfo in $expectedFiles) {
+        if (-not (Test-Path $fileInfo.Path)) {
+            Write-Warning "Expected configuration file not found: $($fileInfo.Name)"
         }
     }
 
