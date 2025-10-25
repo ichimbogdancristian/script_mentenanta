@@ -95,20 +95,20 @@ function Get-OperatingSystemInfo {
         $cs = Get-CimInstance -ClassName Win32_ComputerSystem
         
         return [PSCustomObject]@{
-            Name              = $os.Caption
-            Version           = $os.Version
-            Build             = $os.BuildNumber
-            Architecture      = $os.OSArchitecture
-            InstallDate       = $os.InstallDate
-            LastBootTime      = $os.LastBootUpTime
-            Manufacturer      = $cs.Manufacturer
-            Model             = $cs.Model
-            Domain            = $cs.Domain
-            Workgroup         = $cs.Workgroup
-            WindowsDirectory  = $os.WindowsDirectory
-            SystemDirectory   = $os.SystemDirectory
-            Locale            = $os.Locale
-            TimeZone          = $os.CurrentTimeZone
+            Name             = $os.Caption
+            Version          = $os.Version
+            Build            = $os.BuildNumber
+            Architecture     = $os.OSArchitecture
+            InstallDate      = $os.InstallDate
+            LastBootTime     = $os.LastBootUpTime
+            Manufacturer     = $cs.Manufacturer
+            Model            = $cs.Model
+            Domain           = $cs.Domain
+            Workgroup        = $cs.Workgroup
+            WindowsDirectory = $os.WindowsDirectory
+            SystemDirectory  = $os.SystemDirectory
+            Locale           = $os.Locale
+            TimeZone         = $os.CurrentTimeZone
         }
     }
     catch {
@@ -126,25 +126,25 @@ function Get-HardwareInfo {
         
         return [PSCustomObject]@{
             Processor = [PSCustomObject]@{
-                Name               = $cpu.Name
-                Manufacturer       = $cpu.Manufacturer
-                Cores              = $cpu.NumberOfCores
-                LogicalProcessors  = $cpu.NumberOfLogicalProcessors
-                MaxClockSpeed      = "$($cpu.MaxClockSpeed) MHz"
-                Architecture       = $cpu.Architecture
-                L2CacheSize        = "$($cpu.L2CacheSize) KB"
-                L3CacheSize        = "$($cpu.L3CacheSize) KB"
+                Name              = $cpu.Name
+                Manufacturer      = $cpu.Manufacturer
+                Cores             = $cpu.NumberOfCores
+                LogicalProcessors = $cpu.NumberOfLogicalProcessors
+                MaxClockSpeed     = "$($cpu.MaxClockSpeed) MHz"
+                Architecture      = $cpu.Architecture
+                L2CacheSize       = "$($cpu.L2CacheSize) KB"
+                L3CacheSize       = "$($cpu.L3CacheSize) KB"
             }
-            Memory = [PSCustomObject]@{
-                TotalPhysicalGB    = [math]::Round($totalRAM / 1GB, 2)
-                ModulesInstalled   = $ram.Count
-                Speed              = "$($ram[0].Speed) MHz"
-                FormFactor         = $ram[0].FormFactor
+            Memory    = [PSCustomObject]@{
+                TotalPhysicalGB  = [math]::Round($totalRAM / 1GB, 2)
+                ModulesInstalled = $ram.Count
+                Speed            = "$($ram[0].Speed) MHz"
+                FormFactor       = $ram[0].FormFactor
             }
-            BIOS = [PSCustomObject]@{
-                Manufacturer       = $bios.Manufacturer
-                Version            = $bios.SMBIOSBIOSVersion
-                ReleaseDate        = $bios.ReleaseDate
+            BIOS      = [PSCustomObject]@{
+                Manufacturer = $bios.Manufacturer
+                Version      = $bios.SMBIOSBIOSVersion
+                ReleaseDate  = $bios.ReleaseDate
             }
         }
     }
@@ -160,21 +160,21 @@ function Get-NetworkInfo {
         
         $networkAdapters = foreach ($adapter in $adapters) {
             [PSCustomObject]@{
-                Description     = $adapter.Description
-                MACAddress      = $adapter.MACAddress
-                IPAddresses     = $adapter.IPAddress -join ', '
-                SubnetMasks     = $adapter.IPSubnet -join ', '
-                DefaultGateway  = $adapter.DefaultIPGateway -join ', '
-                DNSServers      = $adapter.DNSServerSearchOrder -join ', '
-                DHCPEnabled     = $adapter.DHCPEnabled
-                DHCPServer      = $adapter.DHCPServer
+                Description    = $adapter.Description
+                MACAddress     = $adapter.MACAddress
+                IPAddresses    = $adapter.IPAddress -join ', '
+                SubnetMasks    = $adapter.IPSubnet -join ', '
+                DefaultGateway = $adapter.DefaultIPGateway -join ', '
+                DNSServers     = $adapter.DNSServerSearchOrder -join ', '
+                DHCPEnabled    = $adapter.DHCPEnabled
+                DHCPServer     = $adapter.DHCPServer
             }
         }
         
         return [PSCustomObject]@{
-            Adapters        = $networkAdapters
-            HostName        = $env:COMPUTERNAME
-            DomainName      = (Get-CimInstance Win32_ComputerSystem).Domain
+            Adapters   = $networkAdapters
+            HostName   = $env:COMPUTERNAME
+            DomainName = (Get-CimInstance Win32_ComputerSystem).Domain
         }
     }
     catch {
@@ -190,19 +190,20 @@ function Get-StorageInfo {
         $diskInfo = foreach ($disk in $disks) {
             $freePercent = if ($disk.Size -gt 0) { 
                 [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 2) 
-            } else { 0 }
+            }
+            else { 0 }
             
             [PSCustomObject]@{
-                Drive           = $disk.DeviceID
-                Label           = $disk.VolumeName
-                FileSystem      = $disk.FileSystem
-                TotalSizeGB     = [math]::Round($disk.Size / 1GB, 2)
-                FreeSpaceGB     = [math]::Round($disk.FreeSpace / 1GB, 2)
-                UsedSpaceGB     = [math]::Round(($disk.Size - $disk.FreeSpace) / 1GB, 2)
-                FreePercent     = $freePercent
-                Status          = if ($freePercent -lt 10) { 'Critical' } 
-                                  elseif ($freePercent -lt 20) { 'Warning' } 
-                                  else { 'Healthy' }
+                Drive       = $disk.DeviceID
+                Label       = $disk.VolumeName
+                FileSystem  = $disk.FileSystem
+                TotalSizeGB = [math]::Round($disk.Size / 1GB, 2)
+                FreeSpaceGB = [math]::Round($disk.FreeSpace / 1GB, 2)
+                UsedSpaceGB = [math]::Round(($disk.Size - $disk.FreeSpace) / 1GB, 2)
+                FreePercent = $freePercent
+                Status      = if ($freePercent -lt 10) { 'Critical' } 
+                elseif ($freePercent -lt 20) { 'Warning' } 
+                else { 'Healthy' }
             }
         }
         
@@ -222,23 +223,23 @@ function Get-SoftwareSummary {
     try {
         # Count installed applications from registry
         $x64Apps = Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
-                   Where-Object { $_.DisplayName } | Measure-Object | Select-Object -ExpandProperty Count
+        Where-Object { $_.DisplayName } | Measure-Object | Select-Object -ExpandProperty Count
         
         $x86Apps = Get-ItemProperty 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
-                   Where-Object { $_.DisplayName } | Measure-Object | Select-Object -ExpandProperty Count
+        Where-Object { $_.DisplayName } | Measure-Object | Select-Object -ExpandProperty Count
         
         # Get Windows features count
         $features = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Enabled' }
         
         return [PSCustomObject]@{
-            InstalledApplications  = $x64Apps + $x86Apps
-            X64Applications        = $x64Apps
-            X86Applications        = $x86Apps
-            WindowsFeatures        = $features.Count
-            PowerShellVersion      = $PSVersionTable.PSVersion.ToString()
-            DotNetVersions         = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse -ErrorAction SilentlyContinue | 
-                                     Get-ItemProperty -Name Version -ErrorAction SilentlyContinue | 
-                                     Select-Object -ExpandProperty Version -Unique) -join ', '
+            InstalledApplications = $x64Apps + $x86Apps
+            X64Applications       = $x64Apps
+            X86Applications       = $x86Apps
+            WindowsFeatures       = $features.Count
+            PowerShellVersion     = $PSVersionTable.PSVersion.ToString()
+            DotNetVersions        = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse -ErrorAction SilentlyContinue | 
+                Get-ItemProperty -Name Version -ErrorAction SilentlyContinue | 
+                Select-Object -ExpandProperty Version -Unique) -join ', '
         }
     }
     catch {
@@ -255,22 +256,22 @@ function Get-SecurityStatus {
         
         return [PSCustomObject]@{
             WindowsDefender = [PSCustomObject]@{
-                Enabled                 = $defender.AntivirusEnabled
-                DefinitionsUpToDate     = $defender.AntivirusSignatureAge -le 7
-                SignatureVersion        = $defender.AntivirusSignatureVersion
-                LastScan                = $defender.AntivirusScanEndTime
-                RealTimeProtection      = $defender.RealTimeProtectionEnabled
+                Enabled             = $defender.AntivirusEnabled
+                DefinitionsUpToDate = $defender.AntivirusSignatureAge -le 7
+                SignatureVersion    = $defender.AntivirusSignatureVersion
+                LastScan            = $defender.AntivirusScanEndTime
+                RealTimeProtection  = $defender.RealTimeProtectionEnabled
             }
-            UAC = [PSCustomObject]@{
-                Enabled                 = ($uac -eq 1)
+            UAC             = [PSCustomObject]@{
+                Enabled = ($uac -eq 1)
             }
-            Firewall = [PSCustomObject]@{
-                DomainProfile           = ($firewall | Where-Object { $_.Name -eq 'Domain' }).Enabled
-                PrivateProfile          = ($firewall | Where-Object { $_.Name -eq 'Private' }).Enabled
-                PublicProfile           = ($firewall | Where-Object { $_.Name -eq 'Public' }).Enabled
+            Firewall        = [PSCustomObject]@{
+                DomainProfile  = ($firewall | Where-Object { $_.Name -eq 'Domain' }).Enabled
+                PrivateProfile = ($firewall | Where-Object { $_.Name -eq 'Private' }).Enabled
+                PublicProfile  = ($firewall | Where-Object { $_.Name -eq 'Public' }).Enabled
             }
-            BitLocker = [PSCustomObject]@{
-                Status                  = (Get-BitLockerVolume -ErrorAction SilentlyContinue | Select-Object -First 1).ProtectionStatus
+            BitLocker       = [PSCustomObject]@{
+                Status = (Get-BitLockerVolume -ErrorAction SilentlyContinue | Select-Object -First 1).ProtectionStatus
             }
         }
     }
@@ -293,13 +294,13 @@ function Get-PerformanceMetrics {
         $uptime = (Get-Date) - $bootTime
         
         return [PSCustomObject]@{
-            CPUUsage            = "$([math]::Round($cpu.LoadPercentage, 2))%"
-            MemoryUsageGB       = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 2)
-            MemoryFreeGB        = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
-            MemoryUsagePercent  = [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 2)
-            ProcessCount        = $processes
-            Uptime              = "$($uptime.Days)d $($uptime.Hours)h $($uptime.Minutes)m"
-            UptimeDays          = $uptime.Days
+            CPUUsage           = "$([math]::Round($cpu.LoadPercentage, 2))%"
+            MemoryUsageGB      = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 2)
+            MemoryFreeGB       = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
+            MemoryUsagePercent = [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 2)
+            ProcessCount       = $processes
+            Uptime             = "$($uptime.Days)d $($uptime.Hours)h $($uptime.Minutes)m"
+            UptimeDays         = $uptime.Days
         }
     }
     catch {

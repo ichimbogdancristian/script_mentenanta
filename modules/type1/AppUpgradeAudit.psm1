@@ -231,14 +231,14 @@ function Get-WingetUpgrades {
                     
                     # Log detected upgrade opportunity
                     Write-DetectionLog -Operation 'Detect' -Target $appName -Component 'APP-UPGRADE-WINGET' -AdditionalInfo @{
-                        ApplicationId = $appId
-                        CurrentVersion = $currentVersion
+                        ApplicationId    = $appId
+                        CurrentVersion   = $currentVersion
                         AvailableVersion = $availableVersion
-                        Source = 'Winget'
-                        SourceDetail = $source
-                        Status = 'Upgrade Available'
-                        UpgradeCommand = "winget upgrade --id $appId"
-                        Reason = "Newer version available: $currentVersion → $availableVersion"
+                        Source           = 'Winget'
+                        SourceDetail     = $source
+                        Status           = 'Upgrade Available'
+                        UpgradeCommand   = "winget upgrade --id $appId"
+                        Reason           = "Newer version available: $currentVersion → $availableVersion"
                     }
                     
                     $upgrades += $upgradeItem
@@ -328,13 +328,13 @@ function Get-ChocolateyUpgrades {
                 
                 # Log detected upgrade opportunity
                 Write-DetectionLog -Operation 'Detect' -Target $packageName -Component 'APP-UPGRADE-CHOCO' -AdditionalInfo @{
-                    PackageName = $packageName
-                    CurrentVersion = $currentVersion
+                    PackageName      = $packageName
+                    CurrentVersion   = $currentVersion
                     AvailableVersion = $availableVersion
-                    Source = 'Chocolatey'
-                    Status = 'Upgrade Available'
-                    UpgradeCommand = "choco upgrade $packageName -y"
-                    Reason = "Newer version available: $currentVersion → $availableVersion"
+                    Source           = 'Chocolatey'
+                    Status           = 'Upgrade Available'
+                    UpgradeCommand   = "choco upgrade $packageName -y"
+                    Reason           = "Newer version available: $currentVersion → $availableVersion"
                 }
                 
                 $upgrades += $upgradeItem

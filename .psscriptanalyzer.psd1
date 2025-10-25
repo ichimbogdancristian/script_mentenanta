@@ -7,10 +7,9 @@
         'PSProvideCommentHelp',
         'PSUseDeclaredVarsMoreThanAssigments'
     )
-
     Rules        = @{
         PSAvoidUsingCmdletAliases                   = @{ Enable = $true }
-        PSUseApprovedVerbs                          = @{ 
+        PSUseApprovedVerbs                          = @{
             Enable        = $true;
             ApprovedVerbs = @('Get', 'Set', 'New', 'Remove', 'Add', 'Install', 'Uninstall', 'Test', 'Start', 'Stop', 'Enable', 'Disable', 'Invoke', 'Export', 'Import')
         }
@@ -18,7 +17,6 @@
         PSProvideCommentHelp                        = @{ Enable = $true }
         PSUseDeclaredVarsMoreThanAssigments         = @{ Enable = $true }
     }
-
     Settings     = @{
         Recurse = $true
     }
