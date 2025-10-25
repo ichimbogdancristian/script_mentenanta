@@ -214,6 +214,20 @@ function Initialize-GlobalPathDiscovery {
             $env:MAINTENANCE_SESSION_ID = $sessionId
         }
         
+        # Make paths available globally to Type2 modules (v3.0 requirement)
+        # Type2 modules reference $Global:ProjectPaths.TempFiles, $Global:ProjectPaths.Config, etc.
+        $Global:ProjectPaths = @{
+            ProjectRoot = $script:MaintenanceProjectPaths.ProjectRoot
+            ConfigRoot  = $script:MaintenanceProjectPaths.ConfigRoot
+            ModulesRoot = $script:MaintenanceProjectPaths.ModulesRoot
+            TempFiles   = $script:MaintenanceProjectPaths.TempRoot
+            ParentDir   = $script:MaintenanceProjectPaths.ParentDir
+            Config      = $script:MaintenanceProjectPaths.ConfigRoot  # Alias
+            Modules     = $script:MaintenanceProjectPaths.ModulesRoot # Alias
+        }
+        
+        Write-Verbose "Global ProjectPaths initialized: $($Global:ProjectPaths | ConvertTo-Json)"
+        
         $script:MaintenanceProjectPaths.Initialized = $true
         Write-Verbose "Path discovery completed successfully"
         return $true
@@ -1361,6 +1375,352 @@ function Save-DiffResults {
 
 #endregion
 
+#region v3.0 Module Execution Result
+
+<#
+.SYNOPSIS
+    Creates standardized module execution result object
+
+.DESCRIPTION
+    Constructs a consistent result structure that all Type2 modules return.
+    This standardizes how the orchestrator processes module outcomes.
+
+.PARAMETER Success
+    Boolean indicating if the operation succeeded
+
+.PARAMETER ItemsDetected
+    Number of items found during detection phase
+
+.PARAMETER ItemsProcessed
+    Number of items actually processed
+
+.PARAMETER DurationMilliseconds
+    How long the operation took in milliseconds
+
+.PARAMETER LogPath
+    Path to the execution log file
+
+.PARAMETER ModuleName
+    Name of the module that produced this result
+
+.PARAMETER ErrorMessage
+    Error message if operation failed
+
+.PARAMETER DryRun
+    Whether this was a dry-run (simulation) execution
+
+.PARAMETER AdditionalData
+    Any extra data to include in result
+
+.EXAMPLE
+    $result = New-ModuleExecutionResult -Success $true -ItemsDetected 5 -ItemsProcessed 3 `
+        -DurationMilliseconds 1234 -ModuleName 'BloatwareRemoval' -LogPath 'C:\...\exec.log'
+
+.OUTPUTS
+    [hashtable] Standardized result object
+#>
+function New-ModuleExecutionResult {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [bool]$Success,
+        
+        [Parameter(Mandatory = $true)]
+        [int]$ItemsDetected,
+        
+        [Parameter(Mandatory = $true)]
+        [int]$ItemsProcessed,
+        
+        [Parameter(Mandatory = $true)]
+        [double]$DurationMilliseconds,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$LogPath,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$ModuleName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$ErrorMessage,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$DryRun,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$AdditionalData = @{}
+    )
+    
+    # Build standardized result object
+    $result = @{
+        Success            = [bool]$Success
+        ItemsDetected      = [int]$ItemsDetected
+        ItemsProcessed     = [int]$ItemsProcessed
+        Duration           = [double]$DurationMilliseconds
+        LogPath            = $LogPath
+        ModuleName         = $ModuleName
+        Error              = $ErrorMessage
+        DryRun             = $DryRun.IsPresent
+        ExecutionTimestamp = Get-Date -Format 'o'
+        AdditionalData     = $AdditionalData
+    }
+    
+    return $result
+}
+
+#endregion
+
+#region v3.0 Structured Logging
+
+<#
+.SYNOPSIS
+    Writes structured log entry with multiple output formats
+
+.DESCRIPTION
+    Writes a log entry to multiple outputs:
+    - Console (for user visibility)
+    - Text log file (for easy review)
+    - JSON log file (for programmatic analysis)
+    
+    Ensures consistent logging across all modules.
+
+.PARAMETER Level
+    Severity level: DEBUG, INFO, WARN, SUCCESS, ERROR
+
+.PARAMETER Component
+    Module or component that generated the log entry
+
+.PARAMETER Message
+    The actual log message
+
+.PARAMETER LogPath
+    Path to text log file (optional, writes to console if not specified)
+
+.PARAMETER Operation
+    Name of operation (Detect, Process, Execute, etc.) - optional
+
+.PARAMETER Target
+    Target item being processed (for context) - optional
+
+.PARAMETER Result
+    Result of operation (Success, Failed, Skipped, etc.) - optional
+
+.PARAMETER Metadata
+    Additional structured data as hashtable - optional
+
+.EXAMPLE
+    Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
+        -Message 'Starting bloatware detection' -LogPath 'C:\...\exec.log' `
+        -Operation 'Detect' -Metadata @{ ItemCount = 5 }
+
+.NOTES
+    Always writes to console.
+    Writes to text log if LogPath provided.
+    Creates JSON companion log for structure analysis.
+#>
+function Write-StructuredLogEntry {
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('DEBUG', 'INFO', 'WARN', 'SUCCESS', 'ERROR')]
+        [string]$Level,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Component,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$LogPath,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Operation,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Target,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Result,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$Metadata = @{}
+    )
+    
+    # Build log message
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logMessage = "[$timestamp] [$Level] [$Component]"
+    
+    if ($Operation) {
+        $logMessage += " [$Operation]"
+    }
+    
+    if ($Target) {
+        $logMessage += " TARGET: $Target"
+    }
+    
+    $logMessage += " $Message"
+    
+    if ($Result) {
+        $logMessage += " | Result: $Result"
+    }
+    
+    # Write to console
+    Write-Information $logMessage -InformationAction Continue
+    
+    # Write to text log file if path specified
+    if ($LogPath) {
+        try {
+            # Ensure log directory exists
+            $logDir = Split-Path $LogPath -Parent
+            if (-not (Test-Path $logDir)) {
+                New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Append to log file
+            Add-Content -Path $LogPath -Value $logMessage -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+        catch {
+            # Silently fail if log file writing fails
+            Write-Debug "Failed to write to log file: $_"
+        }
+    }
+    
+    # Write to JSON structured log if text log specified
+    if ($LogPath) {
+        try {
+            $jsonLogPath = $LogPath -replace '\.log$', '-structured.json'
+            
+            # Ensure JSON log directory exists
+            $jsonLogDir = Split-Path $jsonLogPath -Parent
+            if (-not (Test-Path $jsonLogDir)) {
+                New-Item -Path $jsonLogDir -ItemType Directory -Force | Out-Null
+            }
+            
+            # Create JSON entry
+            $jsonEntry = @{
+                timestamp  = $timestamp
+                level      = $Level
+                component  = $Component
+                message    = $Message
+                operation  = $Operation
+                target     = $Target
+                result     = $Result
+                metadata   = $Metadata
+                entry_time = Get-Date -Format 'o'
+            }
+            
+            # Append to JSON structured log
+            $jsonLine = $jsonEntry | ConvertTo-Json -Compress
+            Add-Content -Path $jsonLogPath -Value $jsonLine -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+        catch {
+            # Silently fail if JSON logging fails (optional feature)
+            Write-Debug "Failed to write JSON structured log: $_"
+        }
+    }
+}
+
+#endregion
+
+#region v3.0 Config Comparison
+
+<#
+.SYNOPSIS
+    Compares detected system items against configuration list
+
+.DESCRIPTION
+    Used in Type2→Type1 flow to determine which detected items should actually be processed.
+    Only items that are:
+    1. Detected on the system (Type1 output)
+    2. AND configured to be processed (config file)
+    
+    Are included in the diff list.
+
+.PARAMETER DetectionResults
+    Array of items detected by Type1 module
+
+.PARAMETER ConfigData
+    Configuration data from JSON config file
+
+.PARAMETER ConfigItemsPath
+    Path in config to items (e.g., 'bloatware' or 'items')
+
+.PARAMETER MatchField
+    Which field to use for matching (e.g., 'Name', 'AppId')
+
+.EXAMPLE
+    $diff = Compare-DetectedVsConfig -DetectionResults $detected -ConfigData $config `
+        -ConfigItemsPath 'bloatware' -MatchField 'Name'
+    # Returns: @() array with only items found in both detected and config
+
+.OUTPUTS
+    [array] Items present in both detection results and configuration
+#>
+function Compare-DetectedVsConfig {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [array]$DetectionResults,
+        
+        [Parameter(Mandatory = $true)]
+        $ConfigData,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigItemsPath = 'items',
+        
+        [Parameter(Mandatory = $false)]
+        [string]$MatchField = 'Name'
+    )
+    
+    $diffList = @()
+    
+    # Extract items from config data
+    $configItems = @()
+    if ($ConfigData -is [hashtable]) {
+        # If config has 'all' key, use that
+        if ($ConfigData.ContainsKey('all')) {
+            $configItems = $ConfigData['all']
+        }
+        # Otherwise try to find array in config
+        else {
+            $configItems = $ConfigData.Values | Where-Object { $_ -is [array] } | Select-Object -First 1
+        }
+    }
+    elseif ($ConfigData -is [array]) {
+        $configItems = $ConfigData
+    }
+    else {
+        # Config data is not usable
+        return @()
+    }
+    
+    # Ensure we have arrays
+    if (-not $configItems) {
+        $configItems = @()
+    }
+    if (-not $DetectionResults) {
+        $DetectionResults = @()
+    }
+    
+    # Compare: only include items found in BOTH lists
+    foreach ($detected in $DetectionResults) {
+        # Look for this item in config
+        $configMatch = $configItems | Where-Object { $_.$MatchField -eq $detected.$MatchField } | Select-Object -First 1
+        
+        if ($configMatch) {
+            # Item is in both detected and config, include in diff
+            $diffList += $detected
+        }
+    }
+    
+    return @($diffList)
+}
+
+#endregion
+
 #region Module Exports
 
 Export-ModuleMember -Function @(
@@ -1373,7 +1733,8 @@ Export-ModuleMember -Function @(
     'Initialize-SessionFileOrganization', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
     'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',
     'Initialize-MaintenanceInfrastructure', 'Get-InfrastructureStatus',
-    'Get-AuditResultsPath', 'Save-DiffResults'
+    'Get-AuditResultsPath', 'Save-DiffResults',
+    'New-ModuleExecutionResult', 'Write-StructuredLogEntry', 'Compare-DetectedVsConfig'
 ) -Alias @('Initialize-ConfigSystem', 'Get-MainConfig', 'Get-BloatwareList', 'Get-UnifiedEssentialAppsList')
 
 #endregion
