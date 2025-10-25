@@ -123,7 +123,7 @@ $script:MaintenanceProjectPaths = @{
     TempRoot    = $null
     ParentDir   = $null
     Initialized = $false
-    InitLock    = [System.Threading.ReaderWriterLockSlim]::new()
+    InitLock    = [System.Threading.ReaderWriterLockSlim]::new([System.Threading.LockRecursionPolicy]::SupportsRecursion)
 }
 
 <#
@@ -159,6 +159,7 @@ function Initialize-GlobalPathDiscovery {
     try {
         # Early return if already initialized and not forcing
         if ($script:MaintenanceProjectPaths.Initialized -and -not $Force) {
+            $script:MaintenanceProjectPaths.InitLock.ExitWriteLock()
             return $true
         }
         
@@ -265,7 +266,7 @@ function Get-MaintenancePaths {
         }
     }
     finally {
-        $script:MaintenanceProjectPaths.InitLock.ExitReaderLock()
+        $script:MaintenanceProjectPaths.InitLock.ExitReadLock()
     }
 }
 
