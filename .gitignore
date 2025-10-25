@@ -104,6 +104,10 @@ coverage/
 docs/_build/
 site/
 
+## Local Documentation (Development Only)
+# Complete documentation in /docs folder - not version controlled
+/docs
+
 ## Node Modules (if documentation uses npm)
 node_modules/
 

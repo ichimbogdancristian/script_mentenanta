@@ -839,22 +839,29 @@ function Get-BloatwareAnalysis {
             }
         }
         
-        # Save results to temp_files/data/ using global paths
-        if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+        # FIX #5: Use standardized Get-AuditResultsPath function for consistent path
+        if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
+            $dataPath = Get-AuditResultsPath -ModuleName 'BloatwareDetection'
+        }
+        else {
+            # Fallback to direct path construction if function not available
             $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\bloatware-results.json"
-            
+        }
+        
+        # Save results to standardized temp_files/data/ location
+        if ($dataPath) {
             # Ensure directory exists
             $dataDir = Split-Path -Parent $dataPath
             if (-not (Test-Path $dataDir)) {
                 New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
             }
             
-            # Save results as JSON
+            # Save results as JSON with standardized format
             $detectionResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
-            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message "Saved $($detectionResults.Count) detection results to $dataPath"
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message "Saved $($detectionResults.Count) detection results to standardized path: $dataPath"
         }
         else {
-            Write-Warning "Global project paths not available - results not saved to file"
+            Write-Warning "Could not determine audit results path - results not saved to file"
         }
         
         return $detectionResults

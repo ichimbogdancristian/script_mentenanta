@@ -14,13 +14,21 @@ REM Enhanced Logging System
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
 :LOG_MESSAGE
+REM Convert timestamp to ISO 8601 format: YYYY-MM-DD HH:MM:SS
+REM Extract components from DATE (example: Fri 10/25/2025)
+FOR /F "tokens=2 delims= " %%A IN ("%DATE%") DO (
+    FOR /F "tokens=1-3 delims=/" %%B IN ("%%A") DO (
+        SET "DATESTAMP=20%%D-%%B-%%C"
+    )
+)
 SET "LOG_TIMESTAMP=%TIME:~0,8%"
 SET "LEVEL=%~2"
 IF "%LEVEL%"=="" SET "LEVEL=INFO"
 SET "COMPONENT=%~3"
 IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 
-SET "LOG_ENTRY=[%DATE% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
+REM Format: [YYYY-MM-DD HH:MM:SS] [LEVEL] [COMPONENT] MESSAGE
+SET "LOG_ENTRY=[%DATESTAMP% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
 ECHO %LOG_ENTRY%
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
@@ -89,6 +97,18 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
 REM Setup logging - Create maintenance.log at repository root initially
 REM v3.0 FIX: Use ORIGINAL_SCRIPT_DIR to ensure log is created in correct location
 SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
+
+REM FIX #1: Initialize the log file immediately on startup (don't wait for first LOG_MESSAGE call)
+IF NOT EXIST "%LOG_FILE%" (
+    (
+        ECHO ================================================
+        ECHO  Windows Maintenance Automation Launcher v2.0
+        ECHO  Initial bootstrap started
+        ECHO ================================================
+        ECHO.
+    ) > "%LOG_FILE%"
+)
+
 CALL :LOG_MESSAGE "Maintenance log file initialized at repository root: %LOG_FILE%" "DEBUG" "LAUNCHER"
 
 REM Environment variables for PowerShell orchestrator
@@ -351,13 +371,20 @@ IF EXIST "%LOG_FILE%" (
     ) ELSE (
         CALL :LOG_MESSAGE "Failed to move maintenance.log - copying instead" "WARN" "LAUNCHER"
         COPY /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            DEL /Q "%LOG_FILE%" >nul 2>&1
+        )
     )
+) ELSE (
+    CALL :LOG_MESSAGE "WARNING: Original maintenance.log file not found at %LOG_FILE%" "WARN" "LAUNCHER"
 )
 
-REM Update LOG_FILE pointer to new location for all subsequent logging
+REM FIX #3: Update LOG_FILE and SCRIPT_LOG_FILE to new organized location
+REM This ensures PowerShell orchestrator writes to the correct log file
 SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
-CALL :LOG_MESSAGE "Log file now at organized location: %LOG_FILE%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Log file path updated to organized location: %LOG_FILE%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "SCRIPT_LOG_FILE environment variable set for PowerShell orchestrator: %SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Project Structure Discovery and Validation (Moved after extraction)
@@ -383,21 +410,33 @@ IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
     SET "STRUCTURE_VALID=NO"
 )
 
-REM Check for config directory and its contents
+REM Check for config directory and its contents (FIX #7: Check new subdirectory structure)
 IF EXIST "%WORKING_DIR%config" (
     CALL :LOG_MESSAGE "✓ Found configuration directory" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
     
-    IF EXIST "%WORKING_DIR%config\main-config.json" (
-        CALL :LOG_MESSAGE "  ✓ main-config.json present" "SUCCESS" "LAUNCHER"
+    REM Check for settings subdirectory (execution configs)
+    IF EXIST "%WORKING_DIR%config\settings" (
+        CALL :LOG_MESSAGE "  ✓ config\settings directory present" "SUCCESS" "LAUNCHER"
+        IF EXIST "%WORKING_DIR%config\settings\main-config.json" (
+            CALL :LOG_MESSAGE "    ✓ main-config.json present" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "    ✗ main-config.json missing" "WARN" "LAUNCHER"
+        )
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ main-config.json missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✗ config\settings directory not found" "WARN" "LAUNCHER"
     )
     
-    IF EXIST "%WORKING_DIR%config\bloatware-list.json" (
-        CALL :LOG_MESSAGE "  ✓ bloatware-list.json present" "SUCCESS" "LAUNCHER"
+    REM Check for lists subdirectory (data lists)
+    IF EXIST "%WORKING_DIR%config\lists" (
+        CALL :LOG_MESSAGE "  ✓ config\lists directory present" "SUCCESS" "LAUNCHER"
+        IF EXIST "%WORKING_DIR%config\lists\bloatware-list.json" (
+            CALL :LOG_MESSAGE "    ✓ bloatware-list.json present" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "    ✗ bloatware-list.json missing" "WARN" "LAUNCHER"
+        )
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ bloatware-list.json missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✗ config\lists directory not found" "WARN" "LAUNCHER"
     )
 ) ELSE (
     CALL :LOG_MESSAGE "✗ Configuration directory not found" "WARN" "LAUNCHER"

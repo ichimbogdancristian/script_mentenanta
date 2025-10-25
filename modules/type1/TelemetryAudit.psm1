@@ -159,11 +159,19 @@ function Get-TelemetryAnalysis {
 
         Write-Information "✓ Telemetry audit completed. Privacy Score: $($auditResults.PrivacyScore.Overall)/100" -InformationAction Continue
 
-        # Save results to session data
+        # FIX #5: Save results using standardized Get-AuditResultsPath function
         try {
-            $outputPath = Get-SessionPath -Category 'data' -FileName 'telemetry-audit.json'
+            # Use standardized path function if available
+            if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
+                $outputPath = Get-AuditResultsPath -ModuleName 'Telemetry'
+            }
+            # Fallback to session path
+            else {
+                $outputPath = Get-SessionPath -Category 'data' -FileName 'telemetry-results.json'
+            }
+            
             $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
-            Write-Information "Audit results saved to: $outputPath" -InformationAction Continue
+            Write-Information "Audit results saved to standardized path: $outputPath" -InformationAction Continue
         }
         catch {
             Write-Warning "Failed to save audit results: $($_.Exception.Message)"

@@ -158,11 +158,19 @@ function Get-WindowsUpdatesAnalysis {
 
         Write-Information "✓ Windows Updates audit completed. Health Score: $($auditResults.UpdateScore.Overall)/100" -InformationAction Continue
 
-        # Save results to session data
+        # FIX #5: Save results using standardized Get-AuditResultsPath function
         try {
-            $outputPath = Get-SessionPath -Category 'data' -FileName 'windows-updates-audit.json'
+            # Use standardized path function if available
+            if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
+                $outputPath = Get-AuditResultsPath -ModuleName 'WindowsUpdates'
+            }
+            # Fallback to session path
+            else {
+                $outputPath = Get-SessionPath -Category 'data' -FileName 'windows-updates-results.json'
+            }
+            
             $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
-            Write-Information "Audit results saved to: $outputPath" -InformationAction Continue
+            Write-Information "Audit results saved to standardized path: $outputPath" -InformationAction Continue
         }
         catch {
             Write-Warning "Failed to save audit results: $($_.Exception.Message)"

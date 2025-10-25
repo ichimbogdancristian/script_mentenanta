@@ -113,10 +113,11 @@ function Invoke-EssentialApps {
         $detectionResults = Get-EssentialAppsAnalysis -Config $Config
         
         # STEP 2: Compare detection with config to create diff list
-        $configDataPath = Join-Path $Global:ProjectPaths.Config "essential-apps.json"
-        if (-not (Test-Path $configDataPath)) {
-            Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Config file not found: $configDataPath"
-            return @{ Success = $false; ItemsDetected = 0; ItemsProcessed = 0; Message = 'Config file not found' }
+        # FIX #7: Use configuration manager instead of direct path (now in config/lists/)
+        $configData = Get-EssentialAppsConfiguration
+        if (-not $configData) {
+            Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Essential apps configuration not available"
+            return @{ Success = $false; ItemsDetected = 0; ItemsProcessed = 0; Message = 'Configuration not available' }
         }
         
         # Create diff: Missing apps that need to be installed (already computed by Type1 audit)

@@ -170,10 +170,14 @@ function Get-SystemOptimizationAnalysis {
 
         Write-Information "✓ System optimization audit completed. Score: $($auditResults.OptimizationScore.Overall)/100" -InformationAction Continue
 
-        # Save results to session data using v3.0 global paths
+        # FIX #5: Save results using standardized Get-AuditResultsPath function
         try {
-            # Use global paths if available, fallback to session path
-            if ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
+            # Use standardized path function if available
+            if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
+                $outputPath = Get-AuditResultsPath -ModuleName 'SystemOptimization'
+            }
+            # Fallback to global paths
+            elseif ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
                 $outputPath = Join-Path $Global:ProjectPaths.TempFiles "data\system-optimization-results.json"
                 # Ensure directory exists
                 $dataDir = Split-Path -Parent $outputPath
@@ -181,12 +185,13 @@ function Get-SystemOptimizationAnalysis {
                     New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
                 }
             }
+            # Final fallback to session path
             else {
                 $outputPath = Get-SessionPath -Category 'data' -FileName 'system-optimization-results.json'
             }
             
             $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
-            Write-Information "Audit results saved to: $outputPath" -InformationAction Continue
+            Write-Information "Audit results saved to standardized path: $outputPath" -InformationAction Continue
         }
         catch {
             Write-Warning "Failed to save audit results: $($_.Exception.Message)"
