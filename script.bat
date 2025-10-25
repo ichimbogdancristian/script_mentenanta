@@ -31,13 +31,7 @@ REM Format: [YYYY-MM-DD HH:MM:SS] [LEVEL] [COMPONENT] MESSAGE
 SET "LOG_ENTRY=[%DATESTAMP% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
 ECHO %LOG_ENTRY%
-
-REM FIX #1: Write to BOTH locations (dual logging for reliability)
-REM This ensures logs are NEVER lost even if one location becomes inaccessible
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
-IF DEFINED LOG_FILE_ROOT (
-    IF EXIST "%LOG_FILE_ROOT%" ECHO %LOG_ENTRY% >> "%LOG_FILE_ROOT%" 2>nul
-)
 EXIT /B
 
 :REFRESH_PATH_FROM_REGISTRY
@@ -181,18 +175,10 @@ CALL :LOG_MESSAGE "Checking for pending restart due to Windows Updates..." "INFO
 SET "RESTART_NEEDED=NO"
 
 REM Prefer PSWindowsUpdate if available for accurate detection
-FOR /F "delims=" %%i IN ('powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates ^| Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES' } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES' } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE' } } catch { Write-Host 'UPDATE_CHECK_FAILED' }" 2^>^&1') DO SET "PS_OUTPUT=%%i"
-
-IF /I "%PS_OUTPUT%"=="RESTART_REQUIRED_UPDATES" (
-    SET "RESTART_NEEDED=YES"
-) ELSE IF /I "%PS_OUTPUT%"=="PSWINDOWSUPDATE_NOT_AVAILABLE" (
+powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
+IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 2 (
     CALL :LOG_MESSAGE "PSWindowsUpdate not available. Falling back to registry reboot flags." "INFO" "LAUNCHER"
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
-) ELSE IF /I "%PS_OUTPUT%"=="UPDATE_CHECK_FAILED" (
-    CALL :LOG_MESSAGE "PowerShell update check failed. Falling back to registry reboot flags." "WARN" "LAUNCHER"
     REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
     REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
@@ -375,43 +361,28 @@ IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
     MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
 )
 
-REM FIX #1 v2.0: Dual Logging Strategy (CRITICAL)
-REM Purpose: Ensure logs are NEVER lost, even if orchestrator fails
-REM Implementation: Keep BOTH root backup AND organized copy during execution
-REM 
-REM Flow:
-REM 1. Bootstrap log already at %LOG_FILE% (repo root) from line 106
-REM 2. Copy to organized location (temp_files/logs/)
-REM 3. Keep BOTH active during orchestrator execution
-REM 4. If orchestrator fails, root copy still exists
-REM 5. If orchestrator succeeds, both are synchronized
-
-REM Ensure organized log directory exists
-IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
-    MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
-    CALL :LOG_MESSAGE "Created organized logs directory" "DEBUG" "LAUNCHER"
-)
-
-REM Copy existing log to organized location (creating backup)
+REM Move maintenance.log from root to temp_files/logs/ (preserving all bootstrap content)
+REM v3.0 FIX: Move from ORIGINAL location, not current WORKING_DIR
 IF EXIST "%LOG_FILE%" (
-    CALL :LOG_MESSAGE "Backing up maintenance.log to organized location (temp_files/logs/)" "INFO" "LAUNCHER"
-    COPY /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
+    CALL :LOG_MESSAGE "Moving maintenance.log from repository root to temp_files/logs/" "INFO" "LAUNCHER"
+    MOVE /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Successfully created backup copy in organized location" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Successfully moved maintenance.log to organized location" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create backup (continuing with root-only logging)" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "Failed to move maintenance.log - copying instead" "WARN" "LAUNCHER"
+        COPY /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            DEL /Q "%LOG_FILE%" >nul 2>&1
+        )
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "Bootstrap log not found at root - continuing" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "WARNING: Original maintenance.log file not found at %LOG_FILE%" "WARN" "LAUNCHER"
 )
 
-REM FIX #1 v2.0: Set BOTH log file paths for dual logging
-REM Primary: Root backup (always exists as fallback)
-REM Secondary: Organized copy (created at startup, updated by PowerShell)
-SET "LOG_FILE_ROOT=%ORIGINAL_SCRIPT_DIR%maintenance.log"
-SET "LOG_FILE_ORGANIZED=%WORKING_DIR%temp_files\logs\maintenance.log"
-SET "LOG_FILE=%LOG_FILE_ORGANIZED%"
-SET "SCRIPT_LOG_FILE=%LOG_FILE_ORGANIZED%"
+REM FIX #3: Update LOG_FILE and SCRIPT_LOG_FILE to new organized location
+REM This ensures PowerShell orchestrator writes to the correct log file
+SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
+SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 CALL :LOG_MESSAGE "Log file path updated to organized location: %LOG_FILE%" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "SCRIPT_LOG_FILE environment variable set for PowerShell orchestrator: %SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
 
@@ -838,21 +809,15 @@ IF "%PS7_FOUND%"=="NO" (
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Module Dependencies (PSWindowsUpdate for Windows Update management)
-REM Try to check for PSWindowsUpdate - fallback to powershell.exe if pwsh.exe not available
-REM First try pwsh.exe (PowerShell 7+), then fallback to powershell.exe (PowerShell 5.1)
+REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking PSWindowsUpdate module availability..." "INFO" "LAUNCHER"
-SET "PSWINDOWSUPDATE_CHECK_CMD=powershell"
-WHERE pwsh.exe >nul 2>&1
+pwsh.exe -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Write-Host 'PSWINDOWSUPDATE_AVAILABLE' } else { Write-Host 'PSWINDOWSUPDATE_MISSING' }" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    SET "PSWINDOWSUPDATE_CHECK_CMD=pwsh.exe"
-)
-FOR /F "delims=" %%i IN ('%PSWINDOWSUPDATE_CHECK_CMD% -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Write-Host 'PSWINDOWSUPDATE_AVAILABLE' } else { Write-Host 'PSWINDOWSUPDATE_MISSING' }" 2^>^&1') DO SET "PS_MODULE_CHECK=%%i"
-IF /I "%PS_MODULE_CHECK%"=="PSWINDOWSUPDATE_AVAILABLE" (
     CALL :LOG_MESSAGE "PSWindowsUpdate module is already installed" "SUCCESS" "LAUNCHER"
 ) ELSE (
     CALL :LOG_MESSAGE "PSWindowsUpdate module not found. Installing..." "INFO" "LAUNCHER"
-    FOR /F "delims=" %%i IN ('%PSWINDOWSUPDATE_CHECK_CMD% -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser 2^>$null ^| Out-Null; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue; Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Repository PSGallery -ErrorAction SilentlyContinue; Write-Host 'PSWINDOWSUPDATE_INSTALLED' } catch { Write-Host 'PSWINDOWSUPDATE_INSTALL_FAILED'; Write-Host $_.Exception.Message; exit 1 }" 2^>^&1') DO SET "PS_INSTALL_OUTPUT=%%i"
-    IF /I "%PS_INSTALL_OUTPUT%"=="PSWINDOWSUPDATE_INSTALLED" (
+    pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Repository PSGallery; Write-Host 'PSWINDOWSUPDATE_INSTALLED' } catch { Write-Host 'PSWINDOWSUPDATE_INSTALL_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
+    IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "PSWindowsUpdate module installed successfully" "SUCCESS" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed - Windows Updates task will not be available" "WARN" "LAUNCHER"
