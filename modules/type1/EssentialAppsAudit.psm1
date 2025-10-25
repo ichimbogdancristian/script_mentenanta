@@ -156,7 +156,7 @@ function Get-EssentialAppsAnalysis {
                     }
                     
                     # Log detected installed application
-                    Write-DetectionLog -Operation 'Detect' -Target $app.name -Component 'ESSENTIAL-APPS-INSTALLED' -AdditionalInfo @{
+                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-INSTALLED' -Message "Detected installed: $($app.name)" -Data @{
                         Status      = 'Already Installed'
                         Category    = $app.category
                         Version     = $installationStatus.Version
@@ -180,7 +180,7 @@ function Get-EssentialAppsAnalysis {
                 }
                 
                 # Log detected missing application with detailed metadata
-                Write-DetectionLog -Operation 'Detect' -Target $app.name -Component 'ESSENTIAL-APPS-MISSING' -AdditionalInfo @{
+                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-MISSING' -Message "Missing app: $($app.name)" -Data @{
                     Status            = 'Not Installed'
                     Category          = $app.category
                     Description       = $app.description
@@ -198,7 +198,7 @@ function Get-EssentialAppsAnalysis {
                     $auditResults.RecommendedInstalls += $missingApp
                     
                     # Log high priority recommendation
-                    Write-DetectionLog -Operation 'Detect' -Target $app.name -Component 'ESSENTIAL-APPS-PRIORITY' -AdditionalInfo @{
+                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-PRIORITY' -Message "High priority app missing: $($app.name)" -Data @{
                         Status            = 'High Priority Missing'
                         Category          = $app.category
                         Priority          = 'High'

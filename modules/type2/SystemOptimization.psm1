@@ -78,7 +78,7 @@ function Invoke-SystemOptimization {
         $executionStartTime = Get-Date
         
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
-        $analysisResults = Get-SystemOptimizationAnalysis -Config $Config
+        $analysisResults = Get-SystemOptimizationAnalysis
         
         if (-not $analysisResults -or $analysisResults.OptimizationCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'No optimization opportunities detected'

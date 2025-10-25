@@ -62,7 +62,7 @@ function Invoke-TelemetryDisable {
         $executionStartTime = Get-Date
         
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry analysis'
-        $analysisResults = Get-TelemetryAnalysis -Config $Config
+        $analysisResults = Get-TelemetryAnalysis
         
         if (-not $analysisResults -or $analysisResults.ActiveTelemetryCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'No active telemetry detected'
@@ -112,7 +112,6 @@ function Invoke-TelemetryDisable {
                     }
                 }
             }
-            $results = @{ ProcessedCount = $processedCount; DisabledCount = $processedCount }
         }
         
         Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalCount = $telemetryCount }
@@ -156,12 +155,6 @@ function Invoke-TelemetryDisable {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
         
-        $returnData = @{ 
-            Success        = $true
-            ItemsDetected  = $telemetryCount
-            ItemsProcessed = $processedCount
-            Duration       = $executionTime.TotalMilliseconds
-        }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         return New-ModuleExecutionResult `
             -Success $true `

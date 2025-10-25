@@ -112,7 +112,11 @@ function Invoke-BloatwareRemoval {
         $detectionResults = Get-BloatwareAnalysis -Config $Config
         
         # STEP 2: Compare detection with config to create diff list using centralized function
-        $configDataPath = Join-Path $Global:ProjectPaths.Config "bloatware-list.json"
+        $configDataPath = Join-Path $Global:ProjectPaths.Config "data\bloatware-list.json"
+        if (-not (Test-Path $configDataPath)) {
+            # Fallback to lists folder
+            $configDataPath = Join-Path $Global:ProjectPaths.Config "lists\bloatware-list.json"
+        }
         $configData = Get-Content $configDataPath | ConvertFrom-Json
         
         # Create diff: Only items from config that are actually found on system

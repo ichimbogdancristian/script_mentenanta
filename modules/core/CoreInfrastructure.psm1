@@ -1518,6 +1518,51 @@ function New-ModuleExecutionResult {
     Writes to text log if LogPath provided.
     Creates JSON companion log for structure analysis.
 #>
+
+<#
+.SYNOPSIS
+    Write detection log entry (backward compatibility wrapper)
+
+.DESCRIPTION
+    Compatibility wrapper for Type1 audit modules that use Write-DetectionLog.
+    Wraps Write-LogEntry with detection-specific semantics.
+
+.PARAMETER Operation
+    Operation being performed (Detect, Process, etc.)
+
+.PARAMETER Target
+    Target item being detected/processed
+
+.PARAMETER Component
+    Component performing the operation
+
+.PARAMETER AdditionalInfo
+    Additional contextual information as hashtable
+
+.EXAMPLE
+    Write-DetectionLog -Operation 'Detect' -Target 'AppName' -Component 'BLOATWARE' -AdditionalInfo @{ Version = '1.0' }
+#>
+function Write-DetectionLog {
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Operation,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Target,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Component,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$AdditionalInfo = @{}
+    )
+    
+    $message = "$Operation : $Target"
+    Write-LogEntry -Level 'INFO' -Component $Component -Message $message -Data $AdditionalInfo
+}
+
 function Write-StructuredLogEntry {
     [CmdletBinding()]
     [OutputType([void])]
@@ -1729,6 +1774,7 @@ Export-ModuleMember -Function @(
     'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-ReportTemplatesConfiguration',
     'Get-CachedConfiguration', 'Test-ConfigurationIntegrity',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
+    'Write-DetectionLog',
     'Start-PerformanceTracking', 'Complete-PerformanceTracking', 'Set-LoggingVerbosity', 'Set-LoggingEnabled',
     'Initialize-SessionFileOrganization', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
     'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',

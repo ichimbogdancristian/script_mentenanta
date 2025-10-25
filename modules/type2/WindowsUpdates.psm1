@@ -66,7 +66,7 @@ function Invoke-WindowsUpdates {
         $executionStartTime = Get-Date
         
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
-        $analysisResults = Get-WindowsUpdatesAnalysis -Config $Config
+        $analysisResults = Get-WindowsUpdatesAnalysis
         
         if (-not $analysisResults -or $analysisResults.PendingUpdatesCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No pending Windows updates detected'
@@ -99,30 +99,30 @@ function Invoke-WindowsUpdates {
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
         $executionSummary = @{
-            ModuleName = 'WindowsUpdates'
+            ModuleName    = 'WindowsUpdates'
             ExecutionTime = @{
-                Start = $executionStartTime.ToString('o')
-                End = (Get-Date).ToString('o')
+                Start      = $executionStartTime.ToString('o')
+                End        = (Get-Date).ToString('o')
                 DurationMs = $executionTime.TotalMilliseconds
             }
-            Results = @{
-                Success = $true
-                ItemsDetected = $updatesCount
+            Results       = @{
+                Success        = $true
+                ItemsDetected  = $updatesCount
                 ItemsProcessed = $processedCount
-                ItemsFailed = 0
-                ItemsSkipped = ($updatesCount - $processedCount)
+                ItemsFailed    = 0
+                ItemsSkipped   = ($updatesCount - $processedCount)
             }
             ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
-            LogFiles = @{
+            LogFiles      = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
                 Summary = $summaryPath
             }
-            SessionInfo = @{
-                SessionId = $env:MAINTENANCE_SESSION_ID
+            SessionInfo   = @{
+                SessionId    = $env:MAINTENANCE_SESSION_ID
                 ComputerName = $env:COMPUTERNAME
-                UserName = $env:USERNAME
-                PSVersion = $PSVersionTable.PSVersion.ToString()
+                UserName     = $env:USERNAME
+                PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
         }
         

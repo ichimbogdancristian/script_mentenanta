@@ -105,7 +105,7 @@ function Invoke-SystemInventory {
         $inventoryData = Get-SystemInventoryAnalysis -Config $Config
         
         # STEP 2: Save inventory data to temp_files/data/
-        $inventoryDataPath = Join-Path $Global:ProjectPaths.TempFiles "data\system-inventory.json"
+        $inventoryDataPath = Join-Path $Global:ProjectPaths.TempFiles "system-inventory.json"
         $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8
         Write-Information "  ✓ System inventory saved to data folder" -InformationAction Continue
         
@@ -165,35 +165,35 @@ Collection completed successfully
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $startTime
         $executionSummary = @{
-            ModuleName = 'SystemInventory'
-            ExecutionTime = @{
-                Start = $startTime.ToString('o')
-                End = (Get-Date).ToString('o')
+            ModuleName       = 'SystemInventory'
+            ExecutionTime    = @{
+                Start      = $startTime.ToString('o')
+                End        = (Get-Date).ToString('o')
                 DurationMs = $executionTime.TotalMilliseconds
             }
-            Results = @{
-                Success = $true
-                ItemsDetected = 1
+            Results          = @{
+                Success        = $true
+                ItemsDetected  = 1
                 ItemsProcessed = 1
-                ItemsFailed = 0
-                ItemsSkipped = 0
+                ItemsFailed    = 0
+                ItemsSkipped   = 0
             }
-            ExecutionMode = 'Live'  # Always live - info gathering
-            LogFiles = @{
+            ExecutionMode    = 'Live'  # Always live - info gathering
+            LogFiles         = @{
                 TextLog = $executionLogPath
                 JsonLog = $inventoryDataPath  # Inventory data IS the JSON log
                 Summary = $summaryPath
             }
-            SessionInfo = @{
-                SessionId = $env:MAINTENANCE_SESSION_ID
+            SessionInfo      = @{
+                SessionId    = $env:MAINTENANCE_SESSION_ID
                 ComputerName = $env:COMPUTERNAME
-                UserName = $env:USERNAME
-                PSVersion = $PSVersionTable.PSVersion.ToString()
+                UserName     = $env:USERNAME
+                PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
             InventoryDetails = @{
-                ComputerName = $inventoryData.ComputerName
-                OSVersion = $inventoryData.OperatingSystem.Version
-                TotalRAM = $inventoryData.Hardware.Memory.TotalPhysicalGB
+                ComputerName  = $inventoryData.ComputerName
+                OSVersion     = $inventoryData.OperatingSystem.Version
+                TotalRAM      = $inventoryData.Hardware.Memory.TotalPhysicalGB
                 InstalledApps = $inventoryData.Software.InstalledApplications
             }
         }
