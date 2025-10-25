@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -46,7 +46,7 @@ function Get-HtmlTemplates {
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Loading HTML templates from config directory'
     
     try {
-        $configPath = $Global:ProjectPaths.Config
+        $configPath = Get-MaintenancePath 'ConfigRoot'
         $templatesPath = Join-Path $configPath 'templates'
         
         # Helper to find file with backward compatibility
@@ -245,7 +245,7 @@ function Get-ProcessedLogData {
             $ProcessedDataPath
         }
         else {
-            Join-Path $Global:ProjectPaths.TempFiles 'processed'
+            Join-Path (Get-MaintenancePath 'TempRoot') 'processed'
         }
         
         if (-not (Test-Path $processedRoot)) {
@@ -459,7 +459,7 @@ function Get-FallbackRawLogData {
         }
         
         # Try to load basic module data from logs directory
-        $logsPath = Join-Path $Global:ProjectPaths.TempFiles 'logs'
+        $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') 'logs'
         if (Test-Path $logsPath) {
             $logDirectories = Get-ChildItem -Path $logsPath -Directory
             foreach ($logDir in $logDirectories) {
@@ -519,7 +519,7 @@ function Get-ParsedOperationLogs {
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Parsing operation logs for module: $ModuleName"
     
     try {
-        $logsPath = Join-Path $Global:ProjectPaths.TempFiles "logs\$ModuleName"
+        $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') "logs\$ModuleName"
         $executionLogPath = Join-Path $logsPath 'execution.log'
         
         $result = @{

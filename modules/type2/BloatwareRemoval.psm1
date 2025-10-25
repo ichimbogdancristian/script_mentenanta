@@ -104,7 +104,7 @@ function Invoke-BloatwareRemoval {
         $executionStartTime = Get-Date
         
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\bloatware-removal"
+        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\bloatware-removal"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
@@ -112,17 +112,17 @@ function Invoke-BloatwareRemoval {
         $detectionResults = Get-BloatwareAnalysis -Config $Config
         
         # STEP 2: Compare detection with config to create diff list using centralized function
-        $configDataPath = Join-Path $Global:ProjectPaths.Config "data\bloatware-list.json"
+        $configDataPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "data\bloatware-list.json"
         if (-not (Test-Path $configDataPath)) {
             # Fallback to lists folder
-            $configDataPath = Join-Path $Global:ProjectPaths.Config "lists\bloatware-list.json"
+            $configDataPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\bloatware-list.json"
         }
         $configData = Get-Content $configDataPath | ConvertFrom-Json
         
         # Create diff: Only items from config that are actually found on system
         $diffList = Compare-DetectedVsConfig -DetectionResults $detectionResults -ConfigData $configData -ConfigItemsPath 'bloatware' -MatchField 'Name'
         
-        $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\bloatware-diff.json"
+        $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\bloatware-diff.json"
         $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
         
         # STEP 3: Process ONLY items in diff list and log to dedicated directory

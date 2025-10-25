@@ -76,7 +76,7 @@ function Invoke-WindowsUpdates {
         }
         
         # STEP 3: Setup execution logging directory
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\windows-updates"
+        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\windows-updates"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         

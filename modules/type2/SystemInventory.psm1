@@ -105,12 +105,12 @@ function Invoke-SystemInventory {
         $inventoryData = Get-SystemInventoryAnalysis -Config $Config
         
         # STEP 2: Save inventory data to temp_files/data/
-        $inventoryDataPath = Join-Path $Global:ProjectPaths.TempFiles "system-inventory.json"
+        $inventoryDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "system-inventory.json"
         $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8
         Write-Information "  ✓ System inventory saved to data folder" -InformationAction Continue
         
         # STEP 3: Setup logging (information gathering, minimal logging needed)
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\system-inventory"
+        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\system-inventory"
         if (-not (Test-Path $executionLogDir)) {
             New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         }

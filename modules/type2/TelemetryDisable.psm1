@@ -72,7 +72,7 @@ function Invoke-TelemetryDisable {
         }
         
         # STEP 3: Setup execution logging directory
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\telemetry-disable"
+        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\telemetry-disable"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         

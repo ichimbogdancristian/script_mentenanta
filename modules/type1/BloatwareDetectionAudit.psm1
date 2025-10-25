@@ -830,21 +830,13 @@ function Get-BloatwareAnalysis {
         # Perform the bloatware detection
         $detectionResults = Find-InstalledBloatware -Categories @('all')
         
-        # Ensure Global:ProjectPaths is available
-        if (-not $Global:ProjectPaths) {
-            Write-Warning "Global:ProjectPaths not available, attempting to initialize"
-            if (Get-Command 'Initialize-GlobalPathDiscovery' -ErrorAction SilentlyContinue) {
-                Initialize-GlobalPathDiscovery
-            }
-        }
-        
         # FIX #5: Use standardized Get-AuditResultsPath function for consistent path
         if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
             $dataPath = Get-AuditResultsPath -ModuleName 'BloatwareDetection'
         }
         else {
             # Fallback to direct path construction if function not available
-            $dataPath = Join-Path $Global:ProjectPaths.TempFiles "data\bloatware-results.json"
+            $dataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\bloatware-results.json"
         }
         
         # Save results to standardized temp_files/data/ location

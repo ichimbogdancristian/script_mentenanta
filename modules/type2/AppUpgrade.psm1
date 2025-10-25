@@ -111,12 +111,12 @@ function Invoke-AppUpgrade {
         }
         
         # Save detection results to temp_files/data/
-        $detectionDataPath = Join-Path $Global:ProjectPaths.TempFiles "data\app-upgrade-results.json"
+        $detectionDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\app-upgrade-results.json"
         $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $detectionDataPath
         Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detection complete: $($detectionResults.Count) upgrades available"
 
         # STEP 2: Load module configuration
-        $moduleConfigPath = Join-Path $Global:ProjectPaths.Config "app-upgrade-config.json"
+        $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "app-upgrade-config.json"
         if (-not (Test-Path $moduleConfigPath)) {
             Write-Warning "Module configuration not found at: $moduleConfigPath"
             $moduleConfig = @{
@@ -134,12 +134,12 @@ function Invoke-AppUpgrade {
         $diffList = Get-FilteredUpgradeList -DetectionResults $detectionResults -ModuleConfig $moduleConfig
         
         # Save diff list
-        $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\app-upgrade-diff.json"
+        $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\app-upgrade-diff.json"
         $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath
         Write-Information "    ✓ $($diffList.Count) upgrades after filtering (excluded $($detectionResults.Count - $diffList.Count))" -InformationAction Continue
 
         # STEP 4: Setup execution logging
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\app-upgrade"
+        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\app-upgrade"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
@@ -224,30 +224,30 @@ function Invoke-AppUpgrade {
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionSummary = @{
-            ModuleName = 'AppUpgrade'
+            ModuleName    = 'AppUpgrade'
             ExecutionTime = @{
-                Start = $startTime.ToString('o')
-                End = (Get-Date).ToString('o')
+                Start      = $startTime.ToString('o')
+                End        = (Get-Date).ToString('o')
                 DurationMs = $duration.TotalMilliseconds
             }
-            Results = @{
-                Success = $true
-                ItemsDetected = $detectionResults.Count
+            Results       = @{
+                Success        = $true
+                ItemsDetected  = $detectionResults.Count
                 ItemsProcessed = $itemsProcessed
-                ItemsFailed = 0
-                ItemsSkipped = ($diffList.Count - $itemsProcessed)
+                ItemsFailed    = 0
+                ItemsSkipped   = ($diffList.Count - $itemsProcessed)
             }
             ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
-            LogFiles = @{
+            LogFiles      = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
                 Summary = $summaryPath
             }
-            SessionInfo = @{
-                SessionId = $env:MAINTENANCE_SESSION_ID
+            SessionInfo   = @{
+                SessionId    = $env:MAINTENANCE_SESSION_ID
                 ComputerName = $env:COMPUTERNAME
-                UserName = $env:USERNAME
-                PSVersion = $PSVersionTable.PSVersion.ToString()
+                UserName     = $env:USERNAME
+                PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
         }
         
@@ -417,10 +417,10 @@ function Invoke-SingleUpgrade {
         }
 
         # Execute upgrade
-        $process = Start-Process -FilePath $upgradeCommand -ArgumentList $upgradeArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $Global:ProjectPaths.TempFiles "temp\upgrade-stdout.txt") -RedirectStandardError (Join-Path $Global:ProjectPaths.TempFiles "temp\upgrade-stderr.txt")
+        $process = Start-Process -FilePath $upgradeCommand -ArgumentList $upgradeArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stdout.txt") -RedirectStandardError (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stderr.txt")
         
-        $stdout = Get-Content (Join-Path $Global:ProjectPaths.TempFiles "temp\upgrade-stdout.txt") -Raw -ErrorAction SilentlyContinue
-        $stderr = Get-Content (Join-Path $Global:ProjectPaths.TempFiles "temp\upgrade-stderr.txt") -Raw -ErrorAction SilentlyContinue
+        $stdout = Get-Content (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stdout.txt") -Raw -ErrorAction SilentlyContinue
+        $stderr = Get-Content (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stderr.txt") -Raw -ErrorAction SilentlyContinue
 
         # Calculate duration
         $operationDuration = (Get-Date) - $operationStart

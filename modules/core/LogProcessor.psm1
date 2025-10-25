@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -257,7 +257,7 @@ function Initialize-ProcessedDataPaths {
     
     try {
         # Ensure processed data directories exist
-        $processedRoot = Join-Path $Global:ProjectPaths.TempFiles 'processed'
+        $processedRoot = Join-Path (Get-MaintenancePath 'TempRoot') 'processed'
         $directories = @(
             $processedRoot,
             (Join-Path $processedRoot 'module-specific'),
@@ -308,7 +308,7 @@ function Get-Type1AuditData {
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Scanning Type1 audit data files (cache miss or bypassed)'
     
     $auditData = @{}
-    $dataPath = Join-Path $Global:ProjectPaths.TempFiles 'data'
+    $dataPath = Join-Path (Get-MaintenancePath 'TempRoot') 'data'
     
     if (-not (Test-Path $dataPath)) {
         Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Type1 audit data directory not found: $dataPath"
@@ -404,7 +404,7 @@ function Get-Type2ExecutionLogs {
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Scanning Type2 execution logs (cache miss or bypassed)'
     
     $executionLogs = @{}
-    $logsPath = Join-Path $Global:ProjectPaths.TempFiles 'logs'
+    $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') 'logs'
     
     if (-not (Test-Path $logsPath)) {
         Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Type2 execution logs directory not found: $logsPath"
@@ -544,7 +544,7 @@ function Get-MaintenanceLog {
     
     try {
         # Try to locate maintenance.log in temp_files
-        $mainLogPath = Join-Path $Global:ProjectPaths.TempFiles 'maintenance.log'
+        $mainLogPath = Join-Path (Get-MaintenancePath 'TempRoot') 'maintenance.log'
         
         if (-not (Test-Path $mainLogPath)) {
             Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Maintenance log not found at: $mainLogPath"
@@ -2209,7 +2209,7 @@ function Get-ModuleExecutionDataFromJson {
             default { $ModuleName.ToLower() }
         }
         
-        $logsPath = Join-Path $Global:ProjectPaths.TempFiles "logs\$normalizedName"
+        $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') "logs\$normalizedName"
         
         if (-not (Test-Path $logsPath)) {
             Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Module logs directory not found: $logsPath"

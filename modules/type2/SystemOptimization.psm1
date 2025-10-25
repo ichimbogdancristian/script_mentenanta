@@ -90,7 +90,7 @@ function Invoke-SystemOptimization {
         }
         
         # STEP 3: Setup execution logging directory
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\system-optimization"
+        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\system-optimization"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         

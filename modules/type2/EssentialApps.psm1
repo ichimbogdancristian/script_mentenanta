@@ -105,7 +105,7 @@ function Invoke-EssentialApps {
         $executionStartTime = Get-Date
         
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
-        $executionLogDir = Join-Path $Global:ProjectPaths.TempFiles "logs\essential-apps"
+        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\essential-apps"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
@@ -122,7 +122,7 @@ function Invoke-EssentialApps {
         
         # Create diff: Missing apps that need to be installed (already computed by Type1 audit)
         $diffList = if ($detectionResults.MissingApps) { $detectionResults.MissingApps } else { @() }
-        $diffPath = Join-Path $Global:ProjectPaths.TempFiles "temp\essential-apps-diff.json"
+        $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\essential-apps-diff.json"
         $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
         
         # STEP 3: Process ONLY items in diff list and log to dedicated directory

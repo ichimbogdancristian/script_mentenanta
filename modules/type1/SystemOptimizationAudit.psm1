@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -176,9 +176,9 @@ function Get-SystemOptimizationAnalysis {
             if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
                 $outputPath = Get-AuditResultsPath -ModuleName 'SystemOptimization'
             }
-            # Fallback to global paths
-            elseif ($Global:ProjectPaths -and $Global:ProjectPaths.TempFiles) {
-                $outputPath = Join-Path $Global:ProjectPaths.TempFiles "data\system-optimization-results.json"
+            # Fallback to path retrieval function
+            elseif (Get-Command 'Get-MaintenancePath' -ErrorAction SilentlyContinue) {
+                $outputPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\system-optimization-results.json"
                 # Ensure directory exists
                 $dataDir = Split-Path -Parent $outputPath
                 if (-not (Test-Path $dataDir)) {
