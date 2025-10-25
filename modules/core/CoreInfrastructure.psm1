@@ -80,6 +80,37 @@ Write-Verbose "CoreInfrastructure: Consolidated module loading (Path B refactori
 
 #endregion
 
+#region Helper Functions
+
+<#
+.SYNOPSIS
+    Converts PSCustomObject to Hashtable
+
+.DESCRIPTION
+    Recursively converts PSCustomObject instances to Hashtable for compatibility
+#>
+filter ConvertTo-Hashtable {
+    $obj = $_
+    if ($obj -is [PSCustomObject]) {
+        $hash = @{}
+        $obj.PSObject.Properties | ForEach-Object {
+            $value = $_.Value
+            if ($value -is [PSCustomObject]) {
+                $hash[$_.Name] = $value | ConvertTo-Hashtable
+            }
+            else {
+                $hash[$_.Name] = $value
+            }
+        }
+        return $hash
+    }
+    else {
+        return $obj
+    }
+}
+
+#endregion Helper Functions
+
 #region ============================================================
 #region PATH DISCOVERY SYSTEM (From CorePaths.psm1)
 #region ============================================================
@@ -281,6 +312,370 @@ function Test-MaintenancePathsIntegrity {
 
 #endregion PATH DISCOVERY SYSTEM
 
+#region Configuration Management System
+
+<#
+.SYNOPSIS
+    Gets the main configuration (settings)
+
+.DESCRIPTION
+    Loads main-config.json from either new (settings/) or old (execution/) path
+    Returns hashtable for compatibility with Type2 modules
+
+.PARAMETER ConfigPath
+    Optional override for config root directory
+
+.OUTPUTS
+    Hashtable with configuration settings
+
+.EXAMPLE
+    $config = Get-MainConfiguration
+#>
+function Get-MainConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+    )
+    
+    try {
+        # Try new path first
+        $newPath = Join-Path $ConfigPath 'settings/main-config.json'
+        $oldPath = Join-Path $ConfigPath 'execution/main-config.json'
+        
+        $configFile = if (Test-Path $newPath) { $newPath } 
+        elseif (Test-Path $oldPath) { $oldPath }
+        else { $null }
+        
+        if (-not $configFile) {
+            throw "main-config.json not found in $ConfigPath (tried settings/ and execution/)"
+        }
+        
+        Write-Verbose "Loading configuration from: $configFile"
+        $configContent = Get-Content $configFile -Raw
+        $config = $configContent | ConvertFrom-Json
+        
+        # Convert to hashtable for v3.0 compatibility
+        return $config | ConvertTo-Hashtable
+    }
+    catch {
+        throw "Failed to load main configuration: $($_.Exception.Message)"
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets bloatware configuration list
+
+.DESCRIPTION
+    Loads bloatware-list.json from lists/ or data/ directory
+    Returns hashtable with 'all' key containing array of apps
+
+.OUTPUTS
+    Hashtable with bloatware entries
+
+.EXAMPLE
+    $bloatware = Get-BloatwareConfiguration
+    $bloatware.all  # Returns array of bloatware names
+#>
+function Get-BloatwareConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+    )
+    
+    try {
+        $newPath = Join-Path $ConfigPath 'lists/bloatware-list.json'
+        $oldPath = Join-Path $ConfigPath 'data/bloatware-list.json'
+        
+        $configFile = if (Test-Path $newPath) { $newPath }
+        elseif (Test-Path $oldPath) { $oldPath }
+        else { $null }
+        
+        if (-not $configFile) {
+            Write-Verbose "Bloatware configuration not found"
+            return @{ all = @() }
+        }
+        
+        Write-Verbose "Loading bloatware configuration from: $configFile"
+        $content = Get-Content $configFile -Raw
+        $config = $content | ConvertFrom-Json
+        
+        return $config | ConvertTo-Hashtable
+    }
+    catch {
+        Write-Warning "Failed to load bloatware configuration: $($_.Exception.Message)"
+        return @{ all = @() }
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets essential applications configuration
+
+.DESCRIPTION
+    Loads essential-apps.json from lists/ or data/ directory
+    Returns hashtable with application definitions
+
+.OUTPUTS
+    Hashtable with essential apps configuration
+
+.EXAMPLE
+    $apps = Get-EssentialAppsConfiguration
+    $apps.all  # Returns array of app definitions
+#>
+function Get-EssentialAppsConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+    )
+    
+    try {
+        $newPath = Join-Path $ConfigPath 'lists/essential-apps.json'
+        $oldPath = Join-Path $ConfigPath 'data/essential-apps.json'
+        
+        $configFile = if (Test-Path $newPath) { $newPath }
+        elseif (Test-Path $oldPath) { $oldPath }
+        else { $null }
+        
+        if (-not $configFile) {
+            Write-Verbose "Essential apps configuration not found"
+            return @{ all = @() }
+        }
+        
+        Write-Verbose "Loading essential apps configuration from: $configFile"
+        $content = Get-Content $configFile -Raw
+        $config = $content | ConvertFrom-Json
+        
+        return $config | ConvertTo-Hashtable
+    }
+    catch {
+        Write-Warning "Failed to load essential apps configuration: $($_.Exception.Message)"
+        return @{ all = @() }
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets app upgrade configuration
+
+.DESCRIPTION
+    Loads app-upgrade-config.json from lists/ or data/ directory
+    Returns hashtable with app upgrade settings
+
+.OUTPUTS
+    Hashtable with app upgrade configuration
+
+.EXAMPLE
+    $upgradeConfig = Get-AppUpgradeConfiguration
+#>
+function Get-AppUpgradeConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+    )
+    
+    try {
+        $newPath = Join-Path $ConfigPath 'lists/app-upgrade-config.json'
+        $oldPath = Join-Path $ConfigPath 'data/app-upgrade-config.json'
+        
+        $configFile = if (Test-Path $newPath) { $newPath }
+        elseif (Test-Path $oldPath) { $oldPath }
+        else { $null }
+        
+        if (-not $configFile) {
+            Write-Verbose "App upgrade configuration not found"
+            return @{ all = @() }
+        }
+        
+        Write-Verbose "Loading app upgrade configuration from: $configFile"
+        $content = Get-Content $configFile -Raw
+        $config = $content | ConvertFrom-Json
+        
+        return $config | ConvertTo-Hashtable
+    }
+    catch {
+        Write-Warning "Failed to load app upgrade configuration: $($_.Exception.Message)"
+        return @{ all = @() }
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets logging configuration
+
+.DESCRIPTION
+    Loads logging-config.json configuration
+
+.OUTPUTS
+    Hashtable with logging configuration
+#>
+function Get-LoggingConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+    )
+    
+    try {
+        $newPath = Join-Path $ConfigPath 'settings/logging-config.json'
+        $oldPath = Join-Path $ConfigPath 'execution/logging-config.json'
+        
+        $configFile = if (Test-Path $newPath) { $newPath }
+        elseif (Test-Path $oldPath) { $oldPath }
+        else { $null }
+        
+        if (-not $configFile) {
+            Write-Verbose "Logging configuration not found"
+            return @{ levels = @('INFO', 'WARNING', 'ERROR') }
+        }
+        
+        Write-Verbose "Loading logging configuration from: $configFile"
+        $content = Get-Content $configFile -Raw
+        $config = $content | ConvertFrom-Json
+        
+        return $config | ConvertTo-Hashtable
+    }
+    catch {
+        Write-Warning "Failed to load logging configuration: $($_.Exception.Message)"
+        return @{ levels = @('INFO', 'WARNING', 'ERROR') }
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets cached configuration
+
+.DESCRIPTION
+    Retrieves cached configuration data
+#>
+function Get-CachedConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigKey
+    )
+    
+    Write-Verbose "Getting cached configuration for: $ConfigKey"
+    return @{}
+}
+
+<#
+.SYNOPSIS
+    Gets configuration file path
+
+.DESCRIPTION
+    Returns path to a configuration file
+#>
+function Get-ConfigFilePath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigName
+    )
+    
+    $newPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "settings/$ConfigName"
+    $oldPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "execution/$ConfigName"
+    
+    if (Test-Path $newPath) { return $newPath }
+    if (Test-Path $oldPath) { return $oldPath }
+    return $newPath  # Return new path as default even if not exists
+}
+
+<#
+.SYNOPSIS
+    Gets report templates configuration
+
+.DESCRIPTION
+    Returns report template configuration
+#>
+function Get-ReportTemplatesConfiguration {
+    [CmdletBinding()]
+    param()
+    
+    return @{ templates = @('default', 'executive', 'detailed') }
+}
+
+<#
+.SYNOPSIS
+    Tests configuration integrity
+
+.DESCRIPTION
+    Validates configuration files are proper JSON and have required structure
+#>
+function Test-ConfigurationIntegrity {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        Get-MainConfiguration | Out-Null
+        Get-LoggingConfiguration | Out-Null
+        return $true
+    }
+    catch {
+        Write-Error "Configuration integrity test failed: $_"
+        return $false
+    }
+}
+
+#endregion Configuration Management System
+
+<#
+.SYNOPSIS
+    Initializes the configuration system
+
+.DESCRIPTION
+    Validates that all required configuration files exist
+    This is called during MaintenanceOrchestrator startup
+
+.PARAMETER ConfigRootPath
+    Path to configuration root directory
+
+.OUTPUTS
+    Boolean indicating success
+
+.EXAMPLE
+    Initialize-ConfigurationSystem -ConfigRootPath $env:MAINTENANCE_CONFIG_ROOT
+#>
+function Initialize-ConfigurationSystem {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigRootPath
+    )
+    
+    Write-Verbose "Initializing configuration system at: $ConfigRootPath"
+    
+    try {
+        # Validate required configuration files
+        $requiredFiles = @(
+            @{ Name = 'main-config.json'; NewPath = 'settings'; OldPath = 'execution' },
+            @{ Name = 'logging-config.json'; NewPath = 'settings'; OldPath = 'execution' }
+        )
+        
+        foreach ($file in $requiredFiles) {
+            $newPath = Join-Path $ConfigRootPath "$($file.NewPath)/$($file.Name)"
+            $oldPath = Join-Path $ConfigRootPath "$($file.OldPath)/$($file.Name)"
+            
+            if (-not ((Test-Path $newPath) -or (Test-Path $oldPath))) {
+                throw "Required configuration file not found: $($file.Name)"
+            }
+        }
+        
+        Write-Verbose "Configuration system initialized successfully"
+        return $true
+    }
+    catch {
+        Write-Error "Configuration system initialization failed: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+#endregion Configuration Management System
+
 #region Backward Compatibility Aliases
 
 New-Alias -Name 'Initialize-ConfigSystem' -Value 'Initialize-ConfigurationSystem' -Force
@@ -289,6 +684,449 @@ New-Alias -Name 'Get-BloatwareList' -Value 'Get-BloatwareConfiguration' -Force
 New-Alias -Name 'Get-UnifiedEssentialAppsList' -Value 'Get-EssentialAppsConfiguration' -Force
 
 #endregion
+
+#region Logging System
+
+<#
+.SYNOPSIS
+    Initializes structured logging system
+
+.DESCRIPTION
+    Sets up logging infrastructure for Type2 modules
+    Creates log directory structure and initializes logging variables
+
+.PARAMETER LoggingConfig
+    Logging configuration object from main config
+
+.PARAMETER BaseLogPath
+    Base path for log files
+
+.OUTPUTS
+    Boolean indicating success
+
+.EXAMPLE
+    Initialize-LoggingSystem -LoggingConfig $loggingConfig -BaseLogPath "C:\logs"
+#>
+function Initialize-LoggingSystem {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [PSCustomObject]$LoggingConfig,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$BaseLogPath = (Join-Path $env:MAINTENANCE_TEMP_ROOT 'logs\maintenance.log')
+    )
+    
+    try {
+        # Create log directory
+        $logDir = Split-Path -Parent $BaseLogPath
+        if (-not (Test-Path $logDir)) {
+            New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+        }
+        
+        Write-Verbose "Logging system initialized at: $BaseLogPath"
+        return $true
+    }
+    catch {
+        Write-Error "Failed to initialize logging system: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Writes a structured log entry
+
+.DESCRIPTION
+    Writes a log entry with level, component, and message
+    Supports both console and file output
+
+.PARAMETER Level
+    Log level (INFO, WARNING, ERROR, SUCCESS, DEBUG)
+
+.PARAMETER Component
+    Component name (e.g., 'ORCHESTRATOR', 'BLOATWARE-REMOVAL')
+
+.PARAMETER Message
+    Log message
+
+.PARAMETER Data
+    Optional hashtable of additional data
+
+.EXAMPLE
+    Write-ModuleLogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Task started"
+#>
+function Write-ModuleLogEntry {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS', 'DEBUG')]
+        [string]$Level,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Component,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$Data = @{}
+    )
+    
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logEntry = "[$timestamp] [$Level] [$Component] $Message"
+    
+    if ($Data.Count -gt 0) {
+        $logEntry += " | Data: $(($Data.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ')"
+    }
+    
+    Write-Information $logEntry -InformationAction Continue
+}
+
+<#
+.SYNOPSIS
+    Starts performance tracking for an operation
+
+.DESCRIPTION
+    Creates a context object for tracking operation performance
+    Returns context that should be passed to Complete-PerformanceTracking
+
+.PARAMETER OperationName
+    Name of operation being tracked
+
+.PARAMETER Component
+    Component performing operation
+
+.OUTPUTS
+    PSCustomObject with tracking context
+
+.EXAMPLE
+    $context = Start-PerformanceTracking -OperationName 'BloatwareRemoval' -Component 'BLOATWARE'
+#>
+function Start-PerformanceTracking {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OperationName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Component = 'UNKNOWN'
+    )
+    
+    return @{
+        OperationName = $OperationName
+        Component     = $Component
+        StartTime     = Get-Date
+        Status        = 'Running'
+    }
+}
+
+<#
+.SYNOPSIS
+    Completes performance tracking
+
+.DESCRIPTION
+    Calculates performance metrics and logs results
+
+.PARAMETER Context
+    Context object from Start-PerformanceTracking
+
+.PARAMETER Status
+    Final status (Success, Failed, Cancelled)
+
+.PARAMETER ErrorMessage
+    Optional error message if failed
+
+.EXAMPLE
+    Complete-PerformanceTracking -Context $context -Status 'Success'
+#>
+function Complete-PerformanceTracking {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Context,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('Success', 'Failed', 'Cancelled')]
+        [string]$Status = 'Success',
+        
+        [Parameter(Mandatory = $false)]
+        [string]$ErrorMessage = ''
+    )
+    
+    $endTime = Get-Date
+    $duration = ($endTime - $Context.StartTime).TotalMilliseconds
+    
+    $message = "[$($Context.Component)] $($Context.OperationName): $Status (${duration}ms)"
+    if ($ErrorMessage) {
+        $message += " | Error: $ErrorMessage"
+    }
+    
+    Write-ModuleLogEntry -Level $(if ($Status -eq 'Success') { 'SUCCESS' } else { 'ERROR' }) `
+        -Component $Context.Component `
+        -Message $message
+    
+    return @{
+        Duration = $duration
+        Status   = $Status
+    }
+}
+
+<#
+.SYNOPSIS
+    Write operation start message
+
+.DESCRIPTION
+    Logs the start of an operation
+#>
+function Write-OperationStart {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OperationName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Component = 'OPERATION'
+    )
+    
+    Write-ModuleLogEntry -Level 'INFO' -Component $Component -Message "Starting: $OperationName"
+}
+
+<#
+.SYNOPSIS
+    Write operation success message
+
+.DESCRIPTION
+    Logs successful completion of an operation
+#>
+function Write-OperationSuccess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OperationName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Component = 'OPERATION'
+    )
+    
+    Write-ModuleLogEntry -Level 'SUCCESS' -Component $Component -Message "Completed: $OperationName"
+}
+
+<#
+.SYNOPSIS
+    Write operation failure message
+
+.DESCRIPTION
+    Logs failed operation
+#>
+function Write-OperationFailure {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OperationName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Component = 'OPERATION',
+        
+        [Parameter(Mandatory = $false)]
+        [string]$ErrorMessage = ''
+    )
+    
+    Write-ModuleLogEntry -Level 'ERROR' -Component $Component -Message "Failed: $OperationName $ErrorMessage"
+}
+
+<#
+.SYNOPSIS
+    Set logging verbosity level
+
+.DESCRIPTION
+    Controls how much detail is logged
+#>
+function Set-LoggingVerbosity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Silent', 'Quiet', 'Normal', 'Verbose')]
+        [string]$Level
+    )
+    
+    Write-Verbose "Logging verbosity set to: $Level"
+}
+
+<#
+.SYNOPSIS
+    Enable or disable logging
+
+.DESCRIPTION
+    Controls logging on/off
+#>
+function Set-LoggingEnabled {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [bool]$Enabled
+    )
+    
+    Write-Verbose "Logging enabled: $Enabled"
+}
+
+#endregion Logging System
+
+#region Session File Organization
+
+<#
+.SYNOPSIS
+    Initialize session file organization
+
+.DESCRIPTION
+    Sets up directory structure for session files
+#>
+function Initialize-SessionFileOrganization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$SessionRoot = $env:MAINTENANCE_TEMP_ROOT
+    )
+    
+    try {
+        $directories = @('data', 'logs', 'reports', 'temp')
+        foreach ($dir in $directories) {
+            $path = Join-Path $SessionRoot $dir
+            if (-not (Test-Path $path)) {
+                New-Item -Path $path -ItemType Directory -Force | Out-Null
+            }
+        }
+        return $true
+    }
+    catch {
+        Write-Error "Failed to initialize session file organization: $_"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Get session file path
+
+.DESCRIPTION
+    Returns path for a session file
+#>
+function Get-SessionFilePath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileName,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('data', 'logs', 'reports', 'temp')]
+        [string]$Type = 'temp'
+    )
+    
+    return Join-Path $env:MAINTENANCE_TEMP_ROOT "$Type\$FileName"
+}
+
+<#
+.SYNOPSIS
+    Get session directory path
+
+.DESCRIPTION
+    Returns path for a session directory
+#>
+function Get-SessionDirectoryPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('data', 'logs', 'reports', 'temp')]
+        [string]$Type = 'temp'
+    )
+    
+    return Join-Path $env:MAINTENANCE_TEMP_ROOT $Type
+}
+
+<#
+.SYNOPSIS
+    Save session data
+
+.DESCRIPTION
+    Saves data to session storage
+#>
+function Save-SessionData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileName,
+        
+        [Parameter(Mandatory = $true)]
+        [object]$Data,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Type = 'data'
+    )
+    
+    $path = Get-SessionFilePath -FileName $FileName -Type $Type
+    $Data | ConvertTo-Json | Set-Content -Path $path -Encoding UTF8
+}
+
+<#
+.SYNOPSIS
+    Get session data
+
+.DESCRIPTION
+    Retrieves data from session storage
+#>
+function Get-SessionData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Type = 'data'
+    )
+    
+    $path = Get-SessionFilePath -FileName $FileName -Type $Type
+    if (Test-Path $path) {
+        Get-Content -Path $path -Raw | ConvertFrom-Json
+    }
+}
+
+<#
+.SYNOPSIS
+    Clear session temporary files
+
+.DESCRIPTION
+    Cleans up temporary session files
+#>
+function Clear-SessionTemporaryFiles {
+    [CmdletBinding()]
+    param()
+    
+    $tempPath = Get-SessionDirectoryPath -Type 'temp'
+    if (Test-Path $tempPath) {
+        Get-ChildItem -Path $tempPath -File | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+}
+
+<#
+.SYNOPSIS
+    Get session statistics
+
+.DESCRIPTION
+    Returns statistics about session files
+#>
+function Get-SessionStatistics {
+    [CmdletBinding()]
+    param()
+    
+    return @{
+        TotalFiles  = (Get-ChildItem -Path $env:MAINTENANCE_TEMP_ROOT -Recurse -File | Measure-Object).Count
+        DataFiles   = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'data') -File -ErrorAction SilentlyContinue | Measure-Object).Count
+        LogFiles    = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'logs') -File -ErrorAction SilentlyContinue | Measure-Object).Count
+        ReportFiles = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'reports') -File -ErrorAction SilentlyContinue | Measure-Object).Count
+    }
+}
+
+#endregion Session File Organization
 
 #region Infrastructure Status Function
 

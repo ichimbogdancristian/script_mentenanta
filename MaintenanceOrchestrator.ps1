@@ -328,6 +328,74 @@ foreach ($moduleName in $Type2Modules) {
     }
 }
 
+#region FIX #1: Create Unified Global Path Object
+
+Write-Information "`n🔧 Creating unified global path object..." -InformationAction Continue
+try {
+    $Global:ProjectPaths = @{
+        ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
+        ConfigRoot  = $env:MAINTENANCE_CONFIG_ROOT
+        ModulesRoot = $env:MAINTENANCE_MODULES_ROOT
+        TempRoot    = $env:MAINTENANCE_TEMP_ROOT
+        TempFiles   = Join-Path $env:MAINTENANCE_TEMP_ROOT 'data'
+        Config      = $env:MAINTENANCE_CONFIG_ROOT
+        ParentDir   = Split-Path -Parent $env:MAINTENANCE_PROJECT_ROOT
+        Logs        = Join-Path $env:MAINTENANCE_TEMP_ROOT 'logs'
+        Reports     = Join-Path $env:MAINTENANCE_TEMP_ROOT 'reports'
+        Temp        = Join-Path $env:MAINTENANCE_TEMP_ROOT 'temp'
+    }
+    
+    # Validate all critical paths exist
+    $criticalPaths = @('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot')
+    foreach ($pathKey in $criticalPaths) {
+        if (-not (Test-Path $Global:ProjectPaths[$pathKey])) {
+            throw "Required path not found: $pathKey = $($Global:ProjectPaths[$pathKey])"
+        }
+    }
+    
+    Write-Information "  ✓ Global project paths initialized:" -InformationAction Continue
+    Write-Information "    - TempFiles: $($Global:ProjectPaths.TempFiles)" -InformationAction Continue
+    Write-Information "    - Config: $($Global:ProjectPaths.Config)" -InformationAction Continue
+    Write-Information "    - Logs: $($Global:ProjectPaths.Logs)" -InformationAction Continue
+}
+catch {
+    Write-Error "Failed to create global path object: $($_.Exception.Message)"
+    exit 1
+}
+
+#endregion
+
+#region FIX #2: Validate CoreInfrastructure Functions
+
+Write-Information "`nValidating CoreInfrastructure module..." -InformationAction Continue
+try {
+    $requiredCoreFunctions = @(
+        'Initialize-GlobalPathDiscovery',
+        'Get-MaintenancePaths',
+        'Get-AuditResultsPath',
+        'Save-DiffResults'
+    )
+    
+    $missingFunctions = @()
+    foreach ($funcName in $requiredCoreFunctions) {
+        if (-not (Get-Command -Name $funcName -ErrorAction SilentlyContinue)) {
+            $missingFunctions += $funcName
+        }
+    }
+    
+    if ($missingFunctions.Count -gt 0) {
+        throw "CoreInfrastructure missing required functions: $($missingFunctions -join ', ')"
+    }
+    
+    Write-Information "  ✓ CoreInfrastructure validation passed" -InformationAction Continue
+}
+catch {
+    Write-Error "CoreInfrastructure validation failed: $($_.Exception.Message)"
+    exit 1
+}
+
+#endregion
+
 # Ensure Write-LogEntry is available after module loading (modules may have overridden it)
 if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     function global:Write-LogEntry {
@@ -582,7 +650,7 @@ try {
         # Load configurations with validation
         try {
             # Get configuration as hashtable for Type2 module compatibility
-            $MainConfig = Get-MainConfigHashtable -ErrorAction Stop
+            $MainConfig = Get-MainConfiguration -ConfigPath $ConfigPath -ErrorAction Stop
             if (-not $MainConfig) {
                 throw "Main configuration is null or empty"
             }
@@ -605,7 +673,7 @@ try {
 
         # Initialize file organization system first (required by logging system)
         try {
-            $fileOrgResult = Initialize-FileOrganization -BaseDirectory $TempRoot -ErrorAction Stop
+            $fileOrgResult = Initialize-SessionFileOrganization -SessionRoot $TempRoot -ErrorAction Stop
             if ($fileOrgResult) {
                 Write-Information "  ✓ File organization system initialized" -InformationAction Continue
             }
@@ -622,7 +690,7 @@ try {
         # Initialize temp_files directory structure (v3.0 requirement for Type1/Type2 module flow)
         try {
             Write-Information "  Initializing temp_files directory structure..." -InformationAction Continue
-            $tempStructureValid = Initialize-TempFilesStructure
+            $tempStructureValid = Initialize-SessionFileOrganization -SessionRoot $TempRoot
             if ($tempStructureValid) {
                 Write-Information "  ✓ Temp files directory structure validated/created" -InformationAction Continue
             }
