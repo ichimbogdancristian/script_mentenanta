@@ -69,11 +69,11 @@ function Get-InfrastructureStatus {
     
     return [PSCustomObject]@{
         PathsInitialized = $pathsTest.IsValid
-        PathErrors = $pathsTest.Errors
-        ConfigsLoaded = $configTest.IsValid
-        ConfigErrors = $configTest.Errors
-        SessionId = $env:MAINTENANCE_SESSION_ID
-        Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        PathErrors       = $pathsTest.Errors
+        ConfigsLoaded    = $configTest.IsValid
+        ConfigErrors     = $configTest.Errors
+        SessionId        = $env:MAINTENANCE_SESSION_ID
+        Timestamp        = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     }
 }
 
@@ -112,16 +112,16 @@ function Initialize-MaintenanceInfrastructure {
 #region Module Exports
 
 Export-ModuleMember -Function @(
-    'Initialize-GlobalPathDiscovery','Get-MaintenancePaths','Get-MaintenancePath','Test-MaintenancePathsIntegrity',
-    'Initialize-ConfigurationSystem','Get-ConfigFilePath','Get-MainConfiguration','Get-LoggingConfiguration',
-    'Get-BloatwareConfiguration','Get-EssentialAppsConfiguration','Get-AppUpgradeConfiguration','Get-ReportTemplatesConfiguration',
-    'Get-CachedConfiguration','Test-ConfigurationIntegrity',
-    'Initialize-LoggingSystem','Write-ModuleLogEntry','Write-OperationStart','Write-OperationSuccess','Write-OperationFailure',
-    'Start-PerformanceTracking','Complete-PerformanceTracking','Set-LoggingVerbosity','Set-LoggingEnabled',
-    'Initialize-SessionFileOrganization','Get-SessionFilePath','Save-SessionData','Get-SessionData','Get-SessionDirectoryPath',
-    'Clear-SessionTemporaryFiles','Get-SessionStatistics',
-    'Initialize-MaintenanceInfrastructure','Get-InfrastructureStatus'
-) -Alias @('Initialize-ConfigSystem','Get-MainConfig','Get-BloatwareList','Get-UnifiedEssentialAppsList')
+    'Initialize-GlobalPathDiscovery', 'Get-MaintenancePaths', 'Get-MaintenancePath', 'Test-MaintenancePathsIntegrity',
+    'Initialize-ConfigurationSystem', 'Get-ConfigFilePath', 'Get-MainConfiguration', 'Get-LoggingConfiguration',
+    'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-ReportTemplatesConfiguration',
+    'Get-CachedConfiguration', 'Test-ConfigurationIntegrity',
+    'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
+    'Start-PerformanceTracking', 'Complete-PerformanceTracking', 'Set-LoggingVerbosity', 'Set-LoggingEnabled',
+    'Initialize-SessionFileOrganization', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
+    'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',
+    'Initialize-MaintenanceInfrastructure', 'Get-InfrastructureStatus'
+) -Alias @('Initialize-ConfigSystem', 'Get-MainConfig', 'Get-BloatwareList', 'Get-UnifiedEssentialAppsList')
 
 #endregion
 

@@ -329,8 +329,8 @@ function Test-ConfigurationIntegrity {
     param()
     
     $result = @{
-        IsValid = $true
-        Errors = @()
+        IsValid       = $true
+        Errors        = @()
         LoadedConfigs = @()
     }
     

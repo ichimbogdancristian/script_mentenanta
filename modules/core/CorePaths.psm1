@@ -25,13 +25,13 @@ using namespace System.Threading
 
 # Global project path discovery - makes entire project aware of its structure
 $script:MaintenanceProjectPaths = @{
-    ProjectRoot    = $null
-    ConfigRoot     = $null
-    ModulesRoot    = $null
-    TempRoot       = $null
-    ParentDir      = $null
-    Initialized    = $false
-    InitLock       = [System.Threading.ReaderWriterLockSlim]::new()
+    ProjectRoot = $null
+    ConfigRoot  = $null
+    ModulesRoot = $null
+    TempRoot    = $null
+    ParentDir   = $null
+    Initialized = $false
+    InitLock    = [System.Threading.ReaderWriterLockSlim]::new()
 }
 
 #endregion
@@ -160,11 +160,11 @@ function Get-MaintenancePaths {
         
         return @{
             ProjectRoot = $script:MaintenanceProjectPaths.ProjectRoot
-            ConfigRoot = $script:MaintenanceProjectPaths.ConfigRoot
+            ConfigRoot  = $script:MaintenanceProjectPaths.ConfigRoot
             ModulesRoot = $script:MaintenanceProjectPaths.ModulesRoot
-            TempRoot = $script:MaintenanceProjectPaths.TempRoot
-            ParentDir = $script:MaintenanceProjectPaths.ParentDir
-            SessionId = $env:MAINTENANCE_SESSION_ID
+            TempRoot    = $script:MaintenanceProjectPaths.TempRoot
+            ParentDir   = $script:MaintenanceProjectPaths.ParentDir
+            SessionId   = $env:MAINTENANCE_SESSION_ID
         }
     }
     finally {
@@ -208,7 +208,7 @@ function Test-MaintenancePathsIntegrity {
     $paths = Get-MaintenancePaths
     $result = @{
         IsValid = $true
-        Errors = @()
+        Errors  = @()
     }
     
     $pathsToCheck = @(

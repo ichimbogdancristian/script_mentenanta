@@ -24,10 +24,10 @@ using namespace System.IO
 
 # Session management
 $script:SessionData = @{
-    SessionId = $null
-    Timestamp = $null
+    SessionId          = $null
+    Timestamp          = $null
     DirectoryStructure = @{}
-    Initialized = $false
+    Initialized        = $false
 }
 
 #endregion
@@ -378,8 +378,8 @@ function Get-SessionStatistics {
     }
     
     $stats = @{
-        SessionId = $script:SessionData.SessionId
-        Timestamp = $script:SessionData.Timestamp
+        SessionId          = $script:SessionData.SessionId
+        Timestamp          = $script:SessionData.Timestamp
         DirectoryStructure = @{}
     }
     
@@ -387,7 +387,7 @@ function Get-SessionStatistics {
         $dirPath = $script:SessionData.DirectoryStructure[$category]
         $itemCount = (Get-ChildItem -Path $dirPath -Recurse -File -ErrorAction SilentlyContinue).Count
         $stats.DirectoryStructure[$category] = @{
-            Path = $dirPath
+            Path      = $dirPath
             FileCount = $itemCount
         }
     }
