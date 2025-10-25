@@ -154,7 +154,7 @@ function Initialize-GlobalPathDiscovery {
     )
     
     # Acquire write lock for thread-safe initialization
-    $script:MaintenanceProjectPaths.InitLock.AcquireWriteLock([System.TimeSpan]::FromSeconds(10))
+    $script:MaintenanceProjectPaths.InitLock.EnterWriteLock()
     
     try {
         # Early return if already initialized and not forcing
@@ -233,7 +233,7 @@ function Initialize-GlobalPathDiscovery {
         return $true
     }
     finally {
-        $script:MaintenanceProjectPaths.InitLock.ReleaseWriteLock()
+        $script:MaintenanceProjectPaths.InitLock.ExitWriteLock()
     }
 }
 
@@ -248,7 +248,7 @@ function Get-MaintenancePaths {
     [CmdletBinding()]
     param()
     
-    $script:MaintenanceProjectPaths.InitLock.AcquireReadLock([System.TimeSpan]::FromSeconds(5))
+    $script:MaintenanceProjectPaths.InitLock.EnterReadLock()
     
     try {
         if (-not $script:MaintenanceProjectPaths.Initialized) {
@@ -265,7 +265,7 @@ function Get-MaintenancePaths {
         }
     }
     finally {
-        $script:MaintenanceProjectPaths.InitLock.ReleaseReadLock()
+        $script:MaintenanceProjectPaths.InitLock.ExitReaderLock()
     }
 }
 
