@@ -266,8 +266,8 @@ script.bat (EXIT /B %FINAL_EXIT_CODE%)
    - Create timestamp (yyyyMMdd-HHmmss)
    - Initialize temp directories: data/, logs/, temp/, reports/
 3. **Module Loading** (lines 173-280):
-   - Load 3 core modules: CoreInfrastructure, UserInterface, ReportGeneration
-   - Load 5 Type2 modules: BloatwareRemoval, EssentialApps, SystemOptimization, TelemetryDisable, WindowsUpdates
+   - Load 4 core modules: CoreInfrastructure, UserInterface, LogProcessor, ReportGeneration
+   - Load 7 Type2 modules: SystemInventory, BloatwareRemoval, EssentialApps, SystemOptimization, TelemetryDisable, WindowsUpdates, AppUpgrade
    - Each Type2 module internally imports its Type1 counterpart
 
 **Phase 3: Configuration Loading (MaintenanceOrchestrator.ps1:281-503)**
@@ -530,9 +530,15 @@ $diffList = $detectionResults | Where-Object {
 │   ├── bloatware-results.json          # BloatwareDetectionAudit findings
 │   ├── essential-apps-results.json     # EssentialAppsAudit findings
 │   ├── system-optimization-results.json # SystemOptimizationAudit findings
+│   ├── system-inventory-results.json   # SystemInventoryAudit findings
 │   ├── telemetry-results.json          # TelemetryAudit findings
-│   └── windows-updates-results.json    # WindowsUpdatesAudit findings
+│   ├── windows-updates-results.json    # WindowsUpdatesAudit findings
+│   └── app-upgrade-results.json        # AppUpgradeAudit findings
 ├── 📁 logs/                    # Type2 Execution Logs
+│   ├── system-inventory/
+│   │   ├── execution.log
+│   │   ├── execution-data.json (v3.1+)
+│   │   └── execution-summary.json (v3.1+)
 │   ├── bloatware-removal/
 │   │   ├── execution.log               # Human-readable log
 │   │   ├── execution-data.json         # Structured log entries (v3.1+)
@@ -549,7 +555,11 @@ $diffList = $detectionResults | Where-Object {
 │   │   ├── execution.log
 │   │   ├── execution-data.json (v3.1+)
 │   │   └── execution-summary.json (v3.1+)
-│   └── windows-updates/
+│   ├── windows-updates/
+│   │   ├── execution.log
+│   │   ├── execution-data.json (v3.1+)
+│   │   └── execution-summary.json (v3.1+)
+│   └── app-upgrade/
 │       ├── execution.log
 │       ├── execution-data.json (v3.1+)
 │       └── execution-summary.json (v3.1+)
@@ -673,11 +683,14 @@ The system generates **comprehensive reports** with organized storage:
 ```powershell
 # Collect Type1 detection results from temp_files/data/
 $detectionSources = @{
+    'SystemInventoryResults' = Join-Path $Global:ProjectPaths.TempFiles "data\system-inventory-results.json"
     'BloatwareResults' = Join-Path $Global:ProjectPaths.TempFiles "data\bloatware-results.json"
     'EssentialAppsResults' = Join-Path $Global:ProjectPaths.TempFiles "data\essential-apps-results.json"
     'SystemOptResults' = Join-Path $Global:ProjectPaths.TempFiles "data\system-optimization-results.json"
     'TelemetryResults' = Join-Path $Global:ProjectPaths.TempFiles "data\telemetry-results.json"
     'UpdatesResults' = Join-Path $Global:ProjectPaths.TempFiles "data\windows-updates-results.json"
+    'AppUpgradeResults' = Join-Path $Global:ProjectPaths.TempFiles "data\app-upgrade-results.json"
+}
 ## 🌐 **Global Path Discovery System**
 
 The system implements **robust portable path discovery** for universal deployment across different environments:
@@ -738,11 +751,13 @@ $detectionSources = @{
 ### **Module Execution Order (Fixed Sequence)**
 The orchestrator executes Type2 modules in this specific order:
 
-1. **BloatwareRemoval** (Cleanup before installation)
-2. **EssentialApps** (Install missing software)  
-3. **SystemOptimization** (Performance tuning)
-4. **TelemetryDisable** (Privacy configuration)
-5. **WindowsUpdates** (System updates last)
+1. **SystemInventory** (Always first - enables caching for other modules)
+2. **BloatwareRemoval** (Cleanup before installation)
+3. **EssentialApps** (Install missing software)  
+4. **SystemOptimization** (Performance tuning)
+5. **TelemetryDisable** (Privacy configuration)
+6. **WindowsUpdates** (System updates)
+7. **AppUpgrade** (Application upgrades - always last)
 
 ### **Session Data Organization Patterns**
 All modules use global path variables for consistent file organization:

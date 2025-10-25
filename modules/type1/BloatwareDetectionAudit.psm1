@@ -232,7 +232,6 @@ function Find-InstalledBloatware {
         
         # Clear large variables
         $installedPrograms = $null
-        $systemInventory = $null
         
         # Force garbage collection if collection was large
         if ($resultArray.Count -gt 50) {

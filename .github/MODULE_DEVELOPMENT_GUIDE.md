@@ -2,6 +2,13 @@
 
 This is the condensed version for AI coding agents. For the complete guide, see **[ADDING_NEW_MODULES.md](../ADDING_NEW_MODULES.md)**.
 
+> **📊 Current Module Status (v3.0+)**:
+> - **Core Modules**: 4 (CoreInfrastructure, UserInterface, LogProcessor, ReportGenerator)
+> - **Type1 Modules**: 7 (Detection/Audit services)
+> - **Type2 Modules**: 7 (Action/Modification services)
+> - **Execution Order**: SystemInventory → BloatwareRemoval → EssentialApps → SystemOptimization → TelemetryDisable → WindowsUpdates → AppUpgrade
+> - **Latest Addition**: AppUpgrade module (v3.1) - handles application version upgrades as the final maintenance step
+
 ---
 
 ## **🎯 10-Step Implementation Procedure**
@@ -162,11 +169,13 @@ Export-ModuleMember -Function Invoke-YourNewModule
 1. **Module loading (~line 280)**:
 ```powershell
 $type2Modules = @(
+    'SystemInventory',       # Always first
     'BloatwareRemoval',
     'EssentialApps',
     'SystemOptimization',
     'TelemetryDisable',
     'WindowsUpdates',
+    'AppUpgrade',            # Always last
     'YourNewModule'  # ADD THIS
 )
 ```
@@ -174,23 +183,27 @@ $type2Modules = @(
 2. **Task registration (~line 800)**:
 ```powershell
 $registeredTasks = @{
-    1 = @{ Name = 'BloatwareRemoval'; Function = 'Invoke-BloatwareRemoval' }
-    2 = @{ Name = 'EssentialApps'; Function = 'Invoke-EssentialApps' }
-    3 = @{ Name = 'SystemOptimization'; Function = 'Invoke-SystemOptimization' }
-    4 = @{ Name = 'TelemetryDisable'; Function = 'Invoke-TelemetryDisable' }
-    5 = @{ Name = 'WindowsUpdates'; Function = 'Invoke-WindowsUpdates' }
-    6 = @{ Name = 'YourNewModule'; Function = 'Invoke-YourNewModule' }  # ADD THIS
+    1 = @{ Name = 'SystemInventory'; Function = 'Invoke-SystemInventory' }
+    2 = @{ Name = 'BloatwareRemoval'; Function = 'Invoke-BloatwareRemoval' }
+    3 = @{ Name = 'EssentialApps'; Function = 'Invoke-EssentialApps' }
+    4 = @{ Name = 'SystemOptimization'; Function = 'Invoke-SystemOptimization' }
+    5 = @{ Name = 'TelemetryDisable'; Function = 'Invoke-TelemetryDisable' }
+    6 = @{ Name = 'WindowsUpdates'; Function = 'Invoke-WindowsUpdates' }
+    7 = @{ Name = 'AppUpgrade'; Function = 'Invoke-AppUpgrade' }
+    8 = @{ Name = 'YourNewModule'; Function = 'Invoke-YourNewModule' }  # ADD THIS
 }
 ```
 
 3. **Execution sequence (~line 900)**:
 ```powershell
 $taskSequence = @(
+    'SystemInventory',
     'BloatwareRemoval',
     'EssentialApps',
     'SystemOptimization',
     'TelemetryDisable',
     'WindowsUpdates',
+    'AppUpgrade',
     'YourNewModule'  # ADD THIS
 )
 ```

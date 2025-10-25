@@ -20,10 +20,6 @@
 using namespace System.Collections.Generic
 
 # v3.0 Type 1 module - imported by Type 2 modules
-# Standardized path construction for Type1 modules
-$ModuleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-
-# v3.0 Type 1 module - imported by Type 2 modules
 # Note: CoreInfrastructure should be loaded by the Type 2 module before importing this module
 # Check if CoreInfrastructure functions are available (loaded by Type2 module)
 if (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue) {
