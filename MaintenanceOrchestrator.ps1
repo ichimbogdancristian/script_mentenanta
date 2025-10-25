@@ -550,8 +550,8 @@ try {
                 Write-Information "  CoreInfrastructure module is loaded (Version: $($coreModule.Version))" -InformationAction Continue
             }
         
-            # Check for the specific function
-            $configFunction = Get-Command Initialize-ConfigSystem -ErrorAction SilentlyContinue
+            # Check for the specific function (use actual name, not alias)
+            $configFunction = Get-Command Initialize-ConfigurationSystem -ErrorAction SilentlyContinue
             if (-not $configFunction) {
                 Write-Information "  Available functions from CoreInfrastructure:" -InformationAction Continue
                 $availableFunctions = Get-Command -Module CoreInfrastructure -ErrorAction SilentlyContinue
@@ -563,16 +563,16 @@ try {
                 }
             
                 # Also check all available functions with this name pattern
-                Write-Information "  Searching for Initialize-ConfigSystem in all modules:" -InformationAction Continue
-                Get-Command "*Initialize-ConfigSystem*" -ErrorAction SilentlyContinue | ForEach-Object { 
+                Write-Information "  Searching for Initialize-Configuration in all modules:" -InformationAction Continue
+                Get-Command "*Initialize-Configuration*" -ErrorAction SilentlyContinue | ForEach-Object { 
                     Write-Information "    Found: $($_.Name) in module: $($_.ModuleName)" -InformationAction Continue 
                 }
             
-                throw "Initialize-ConfigSystem function not found"
+                throw "Initialize-ConfigurationSystem function not found"
             }
         
-            Write-Information "  Found Initialize-ConfigSystem (Source: $($configFunction.Source)), calling with path: $ConfigPath" -InformationAction Continue
-            Initialize-ConfigSystem -ConfigRootPath $ConfigPath -ErrorAction Stop
+            Write-Information "  Found Initialize-ConfigurationSystem (Source: $($configFunction.Source)), calling with path: $ConfigPath" -InformationAction Continue
+            Initialize-ConfigurationSystem -ConfigRootPath $ConfigPath -ErrorAction Stop
             Write-Information "  ✓ Configuration system initialized" -InformationAction Continue
         }
         catch {
