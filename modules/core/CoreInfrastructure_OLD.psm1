@@ -63,223 +63,35 @@
 using namespace System.Collections.Generic
 using namespace System.IO
 
-#region Module Architecture Notes
+#region Module Imports
 
-# v3.0 Refactoring: Path B - Consolidation
-# Previously, CoreInfrastructure imported 4 separate modules:
-#   - CorePaths.psm1 (path discovery functions)
-#   - ConfigurationManager.psm1 (config loading/validation)
-#   - LoggingSystem.psm1 (structured logging)
-#   - FileOrganization.psm1 (session file management)
-#
-# All functions from these modules are now inlined below for simplified maintenance
-# and to eliminate inter-module dependency issues.
-# The archived modules remain in archive/modules/core/ for reference.
+Write-Verbose "CoreInfrastructure: Importing specialized modules..."
 
-Write-Verbose "CoreInfrastructure: Consolidated module loading (Path B refactoring)"
+$CorePathsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CorePaths.psm1'
+if (Test-Path $CorePathsPath) {
+    Import-Module $CorePathsPath -Force -Global -WarningAction SilentlyContinue
+    Write-Verbose "CoreInfrastructure: CorePaths module imported"
+}
+
+$ConfigManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\ConfigurationManager.psm1'
+if (Test-Path $ConfigManagerPath) {
+    Import-Module $ConfigManagerPath -Force -WarningAction SilentlyContinue
+    Write-Verbose "CoreInfrastructure: ConfigurationManager module imported"
+}
+
+$LoggingSystemPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\LoggingSystem.psm1'
+if (Test-Path $LoggingSystemPath) {
+    Import-Module $LoggingSystemPath -Force -WarningAction SilentlyContinue
+    Write-Verbose "CoreInfrastructure: LoggingSystem module imported"
+}
+
+$FileOrgPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\FileOrganization.psm1'
+if (Test-Path $FileOrgPath) {
+    Import-Module $FileOrgPath -Force -WarningAction SilentlyContinue
+    Write-Verbose "CoreInfrastructure: FileOrganization module imported"
+}
 
 #endregion
-
-#region ============================================================
-#region PATH DISCOVERY SYSTEM (From CorePaths.psm1)
-#region ============================================================
-
-# Global project path discovery - makes entire project aware of its structure
-$script:MaintenanceProjectPaths = @{
-    ProjectRoot = $null
-    ConfigRoot  = $null
-    ModulesRoot = $null
-    TempRoot    = $null
-    ParentDir   = $null
-    Initialized = $false
-    InitLock    = [System.Threading.ReaderWriterLockSlim]::new()
-}
-
-<#
-.SYNOPSIS
-    Initializes global path discovery system
-
-.DESCRIPTION
-    Performs thread-safe discovery of project root and related paths.
-    Auto-detects structure and sets environment variables for all modules.
-
-.PARAMETER HintPath
-    Optional hint for project root location
-
-.PARAMETER Force
-    Force re-initialization even if already initialized
-
-.OUTPUTS
-    Boolean indicating success
-#>
-function Initialize-GlobalPathDiscovery {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $false)]
-        [string]$HintPath,
-        
-        [Parameter(Mandatory = $false)]
-        [switch]$Force
-    )
-    
-    # Acquire write lock for thread-safe initialization
-    $script:MaintenanceProjectPaths.InitLock.AcquireWriteLock([System.TimeSpan]::FromSeconds(10))
-    
-    try {
-        # Early return if already initialized and not forcing
-        if ($script:MaintenanceProjectPaths.Initialized -and -not $Force) {
-            return $true
-        }
-        
-        Write-Verbose "Initializing global path discovery system"
-        
-        # Method 1: Use environment variables set by orchestrator
-        if ($env:MAINTENANCE_PROJECT_ROOT) {
-            $script:MaintenanceProjectPaths.ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
-            Write-Verbose "  Found project root from environment"
-        }
-        # Method 2: Use hint path
-        elseif ($HintPath -and (Test-Path $HintPath)) {
-            $script:MaintenanceProjectPaths.ProjectRoot = $HintPath
-            Write-Verbose "  Using hint path as project root"
-        }
-        # Method 3: Auto-detect from calling script
-        elseif ($PSScriptRoot) {
-            $testPath = $PSScriptRoot
-            while ($testPath -and $testPath -ne (Split-Path $testPath -Parent)) {
-                if ((Test-Path (Join-Path $testPath 'config')) -and 
-                    (Test-Path (Join-Path $testPath 'modules')) -and 
-                    (Test-Path (Join-Path $testPath 'MaintenanceOrchestrator.ps1'))) {
-                    $script:MaintenanceProjectPaths.ProjectRoot = $testPath
-                    Write-Verbose "  Auto-detected project root"
-                    break
-                }
-                $testPath = Split-Path $testPath -Parent
-            }
-        }
-        
-        # If still not found, use current location as fallback
-        if (-not $script:MaintenanceProjectPaths.ProjectRoot) {
-            $script:MaintenanceProjectPaths.ProjectRoot = Get-Location
-            Write-Verbose "  Using current location as fallback"
-        }
-        
-        # Initialize related paths
-        $script:MaintenanceProjectPaths.ConfigRoot = Join-Path $script:MaintenanceProjectPaths.ProjectRoot 'config'
-        $script:MaintenanceProjectPaths.ModulesRoot = Join-Path $script:MaintenanceProjectPaths.ProjectRoot 'modules'
-        $script:MaintenanceProjectPaths.TempRoot = Join-Path $script:MaintenanceProjectPaths.ProjectRoot 'temp_files'
-        $script:MaintenanceProjectPaths.ParentDir = Split-Path -Parent $script:MaintenanceProjectPaths.ProjectRoot
-        
-        # Set environment variables for all modules
-        $env:MAINTENANCE_PROJECT_ROOT = $script:MaintenanceProjectPaths.ProjectRoot
-        $env:MAINTENANCE_CONFIG_ROOT = $script:MaintenanceProjectPaths.ConfigRoot
-        $env:MAINTENANCE_MODULES_ROOT = $script:MaintenanceProjectPaths.ModulesRoot
-        $env:MAINTENANCE_TEMP_ROOT = $script:MaintenanceProjectPaths.TempRoot
-        $env:MAINTENANCE_PARENT_DIR = $script:MaintenanceProjectPaths.ParentDir
-        
-        # Generate and set session ID if not already set
-        if (-not $env:MAINTENANCE_SESSION_ID) {
-            $sessionId = [guid]::NewGuid().ToString()
-            $env:MAINTENANCE_SESSION_ID = $sessionId
-        }
-        
-        $script:MaintenanceProjectPaths.Initialized = $true
-        Write-Verbose "Path discovery completed successfully"
-        return $true
-    }
-    finally {
-        $script:MaintenanceProjectPaths.InitLock.ReleaseWriteLock()
-    }
-}
-
-<#
-.SYNOPSIS
-    Gets all discovered paths
-
-.OUTPUTS
-    Hashtable with ProjectRoot, ConfigRoot, ModulesRoot, TempRoot, ParentDir, SessionId
-#>
-function Get-MaintenancePaths {
-    [CmdletBinding()]
-    param()
-    
-    $script:MaintenanceProjectPaths.InitLock.AcquireReadLock([System.TimeSpan]::FromSeconds(5))
-    
-    try {
-        if (-not $script:MaintenanceProjectPaths.Initialized) {
-            throw "Path discovery not initialized - call Initialize-GlobalPathDiscovery first"
-        }
-        
-        return @{
-            ProjectRoot = $script:MaintenanceProjectPaths.ProjectRoot
-            ConfigRoot  = $script:MaintenanceProjectPaths.ConfigRoot
-            ModulesRoot = $script:MaintenanceProjectPaths.ModulesRoot
-            TempRoot    = $script:MaintenanceProjectPaths.TempRoot
-            ParentDir   = $script:MaintenanceProjectPaths.ParentDir
-            SessionId   = $env:MAINTENANCE_SESSION_ID
-        }
-    }
-    finally {
-        $script:MaintenanceProjectPaths.InitLock.ReleaseReadLock()
-    }
-}
-
-<#
-.SYNOPSIS
-    Gets specific path by key
-
-.PARAMETER PathKey
-    Path key to retrieve
-
-.OUTPUTS
-    System.String - Full path to requested location
-#>
-function Get-MaintenancePath {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [ValidateSet('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot', 'ParentDir')]
-        [string]$PathKey
-    )
-    
-    $paths = Get-MaintenancePaths
-    return $paths[$PathKey]
-}
-
-<#
-.SYNOPSIS
-    Validates that all required paths exist
-
-.OUTPUTS
-    PSCustomObject with validation results
-#>
-function Test-MaintenancePathsIntegrity {
-    [CmdletBinding()]
-    param()
-    
-    $paths = Get-MaintenancePaths
-    $result = @{
-        IsValid = $true
-        Errors  = @()
-    }
-    
-    $pathsToCheck = @(
-        @{ Key = 'ProjectRoot'; Name = 'Project Root' }
-        @{ Key = 'ConfigRoot'; Name = 'Config Root' }
-        @{ Key = 'ModulesRoot'; Name = 'Modules Root' }
-    )
-    
-    foreach ($pathCheck in $pathsToCheck) {
-        if (-not (Test-Path $paths[$pathCheck.Key])) {
-            $result.IsValid = $false
-            $result.Errors += "Missing: $($pathCheck.Name)"
-        }
-    }
-    
-    return [PSCustomObject]$result
-}
-
-#endregion PATH DISCOVERY SYSTEM
 
 #region Backward Compatibility Aliases
 
