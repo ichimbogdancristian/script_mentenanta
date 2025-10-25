@@ -839,7 +839,7 @@ function New-HtmlReportContent {
         $html = $html -replace '{{CSS_STYLES}}', $Templates.CSS
         
         # Generate dashboard metrics section
-        $dashboardSection = New-DashboardSection -ProcessedData $ProcessedData -Templates $Templates
+        $dashboardSection = New-DashboardSection -ProcessedData $ProcessedData
         $html = $html -replace '{{DASHBOARD_SECTION}}', $dashboardSection
         
         # Generate module sections
@@ -874,10 +874,7 @@ function New-DashboardSection {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$ProcessedData,
-        
-        [Parameter(Mandatory)]
-        [hashtable]$Templates
+        [hashtable]$ProcessedData
     )
     
     # Safely access nested properties with null checks

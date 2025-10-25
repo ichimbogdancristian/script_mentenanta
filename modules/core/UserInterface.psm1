@@ -67,6 +67,7 @@ function Show-MainMenu {
     }
     catch {
         # CoreInfrastructure not available, continue with standard logging
+        Write-Host "Note: Extended logging unavailable for this session" -ForegroundColor Gray
     }
 
     # Initialize result object
@@ -180,7 +181,10 @@ function Show-MainMenu {
             SelectedTasks     = ($result.SelectedTasks -join ',')
         }
     }
-    catch {}
+    catch {
+        # Logging or performance tracking may not be available
+        Write-Verbose "Performance tracking completion failed - continuing"
+    }
 
     return $result
 }
@@ -312,10 +316,7 @@ function Show-ResultSummary {
         [string]$Title,
 
         [Parameter(Mandatory)]
-        [hashtable]$Results,
-
-        [Parameter()]
-        [switch]$ShowDetails
+        [hashtable]$Results
     )
 
     Write-Host "`n===================================================" -ForegroundColor Cyan

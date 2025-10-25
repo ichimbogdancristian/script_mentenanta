@@ -201,7 +201,9 @@ function Get-SystemOptimizationAnalysis {
         try {
             Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $auditResults.OptimizationOpportunities.Count
         }
-        catch {}
+        catch {
+            Write-Verbose "Performance tracking completion failed - continuing"
+        }
 
         return [PSCustomObject]$auditResults
 
@@ -214,7 +216,9 @@ function Get-SystemOptimizationAnalysis {
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPT-AUDIT' -Message $errorMsg -Data @{ Error = $_.Exception }
             Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
         }
-        catch {}
+        catch {
+            Write-Verbose "Performance tracking cleanup failed: $_"
+        }
         
         throw
     }

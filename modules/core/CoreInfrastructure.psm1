@@ -358,7 +358,10 @@ function Get-MainConfiguration {
         $oldPath = Join-Path $ConfigPath 'execution/main-config.json'
         
         $configFile = if (Test-Path $newPath) { $newPath } 
-        elseif (Test-Path $oldPath) { $oldPath }
+        elseif (Test-Path $oldPath) { 
+            Write-Warning "FIX #5: Deprecated config path detected 'execution/' - please migrate to 'settings/' (see docs/DELIVERABLES.md)"
+            $oldPath 
+        }
         else { $null }
         
         if (-not $configFile) {
@@ -404,7 +407,10 @@ function Get-BloatwareConfiguration {
         $oldPath = Join-Path $ConfigPath 'data/bloatware-list.json'
         
         $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { $oldPath }
+        elseif (Test-Path $oldPath) { 
+            Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
+            $oldPath 
+        }
         else { $null }
         
         if (-not $configFile) {
@@ -451,7 +457,10 @@ function Get-EssentialAppsConfiguration {
         $oldPath = Join-Path $ConfigPath 'data/essential-apps.json'
         
         $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { $oldPath }
+        elseif (Test-Path $oldPath) { 
+            Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
+            $oldPath 
+        }
         else { $null }
         
         if (-not $configFile) {
@@ -497,7 +506,10 @@ function Get-AppUpgradeConfiguration {
         $oldPath = Join-Path $ConfigPath 'data/app-upgrade-config.json'
         
         $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { $oldPath }
+        elseif (Test-Path $oldPath) { 
+            Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
+            $oldPath 
+        }
         else { $null }
         
         if (-not $configFile) {
@@ -539,7 +551,10 @@ function Get-LoggingConfiguration {
         $oldPath = Join-Path $ConfigPath 'execution/logging-config.json'
         
         $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { $oldPath }
+        elseif (Test-Path $oldPath) { 
+            Write-Warning "FIX #5: Deprecated config path detected 'execution/' - please migrate to 'settings/' (see docs/DELIVERABLES.md)"
+            $oldPath 
+        }
         else { $null }
         
         if (-not $configFile) {
@@ -724,9 +739,6 @@ New-Alias -Name 'Get-UnifiedEssentialAppsList' -Value 'Get-EssentialAppsConfigur
 function Initialize-LoggingSystem {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $false)]
-        [PSCustomObject]$LoggingConfig,
-        
         [Parameter(Mandatory = $false)]
         [string]$BaseLogPath = (Join-Path $env:MAINTENANCE_TEMP_ROOT 'logs\maintenance.log')
     )
@@ -1712,9 +1724,6 @@ function Compare-DetectedVsConfig {
         
         [Parameter(Mandatory = $true)]
         $ConfigData,
-        
-        [Parameter(Mandatory = $false)]
-        [string]$ConfigItemsPath = 'items',
         
         [Parameter(Mandatory = $false)]
         [string]$MatchField = 'Name'

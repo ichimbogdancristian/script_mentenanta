@@ -324,11 +324,11 @@ function Install-WindowsUpdate {
         # Summary output
         if ($results.UpdatesFound -eq 0) {
             Write-Information "  ✅ No updates available - system is up to date" -InformationAction Continue
-            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No updates available - system is up to date' } catch {}
+            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No updates available - system is up to date' } catch { Write-Verbose "Failed to write log entry: $_" }
         }
         elseif ($DryRun) {
             Write-Information "  📋 Found $($results.UpdatesFound) available updates ($($results.TotalSizeMB) MB total)" -InformationAction Continue
-            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Dry-run completed - updates would be installed' -Data @{ UpdatesFound = $results.UpdatesFound; TotalSizeMB = $results.TotalSizeMB } } catch {}
+            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Dry-run completed - updates would be installed' -Data @{ UpdatesFound = $results.UpdatesFound; TotalSizeMB = $results.TotalSizeMB } } catch { Write-Verbose "Failed to write log entry: $_" }
         }
         else {
             $statusIcon = if ($results.UpdatesFailed -eq 0) { "✅" } else { "⚠️" }

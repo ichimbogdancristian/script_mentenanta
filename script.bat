@@ -31,7 +31,13 @@ REM Format: [YYYY-MM-DD HH:MM:SS] [LEVEL] [COMPONENT] MESSAGE
 SET "LOG_ENTRY=[%DATESTAMP% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
 ECHO %LOG_ENTRY%
+
+REM FIX #1: Write to BOTH locations (dual logging for reliability)
+REM This ensures logs are NEVER lost even if one location becomes inaccessible
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
+IF DEFINED LOG_FILE_ROOT (
+    IF EXIST "%LOG_FILE_ROOT%" ECHO %LOG_ENTRY% >> "%LOG_FILE_ROOT%" 2>nul
+)
 EXIT /B
 
 :REFRESH_PATH_FROM_REGISTRY
@@ -361,28 +367,43 @@ IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
     MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
 )
 
-REM Move maintenance.log from root to temp_files/logs/ (preserving all bootstrap content)
-REM v3.0 FIX: Move from ORIGINAL location, not current WORKING_DIR
-IF EXIST "%LOG_FILE%" (
-    CALL :LOG_MESSAGE "Moving maintenance.log from repository root to temp_files/logs/" "INFO" "LAUNCHER"
-    MOVE /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Successfully moved maintenance.log to organized location" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to move maintenance.log - copying instead" "WARN" "LAUNCHER"
-        COPY /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            DEL /Q "%LOG_FILE%" >nul 2>&1
-        )
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "WARNING: Original maintenance.log file not found at %LOG_FILE%" "WARN" "LAUNCHER"
+REM FIX #1 v2.0: Dual Logging Strategy (CRITICAL)
+REM Purpose: Ensure logs are NEVER lost, even if orchestrator fails
+REM Implementation: Keep BOTH root backup AND organized copy during execution
+REM 
+REM Flow:
+REM 1. Bootstrap log already at %LOG_FILE% (repo root) from line 106
+REM 2. Copy to organized location (temp_files/logs/)
+REM 3. Keep BOTH active during orchestrator execution
+REM 4. If orchestrator fails, root copy still exists
+REM 5. If orchestrator succeeds, both are synchronized
+
+REM Ensure organized log directory exists
+IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
+    MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
+    CALL :LOG_MESSAGE "Created organized logs directory" "DEBUG" "LAUNCHER"
 )
 
-REM FIX #3: Update LOG_FILE and SCRIPT_LOG_FILE to new organized location
-REM This ensures PowerShell orchestrator writes to the correct log file
-SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
-SET "SCRIPT_LOG_FILE=%LOG_FILE%"
+REM Copy existing log to organized location (creating backup)
+IF EXIST "%LOG_FILE%" (
+    CALL :LOG_MESSAGE "Backing up maintenance.log to organized location (temp_files/logs/)" "INFO" "LAUNCHER"
+    COPY /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Successfully created backup copy in organized location" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Failed to create backup (continuing with root-only logging)" "WARN" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "Bootstrap log not found at root - continuing" "WARN" "LAUNCHER"
+)
+
+REM FIX #1 v2.0: Set BOTH log file paths for dual logging
+REM Primary: Root backup (always exists as fallback)
+REM Secondary: Organized copy (created at startup, updated by PowerShell)
+SET "LOG_FILE_ROOT=%ORIGINAL_SCRIPT_DIR%maintenance.log"
+SET "LOG_FILE_ORGANIZED=%WORKING_DIR%temp_files\logs\maintenance.log"
+SET "LOG_FILE=%LOG_FILE_ORGANIZED%"
+SET "SCRIPT_LOG_FILE=%LOG_FILE_ORGANIZED%"
 CALL :LOG_MESSAGE "Log file path updated to organized location: %LOG_FILE%" "DEBUG" "LAUNCHER"
 CALL :LOG_MESSAGE "SCRIPT_LOG_FILE environment variable set for PowerShell orchestrator: %SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
 

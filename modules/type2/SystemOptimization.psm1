@@ -71,7 +71,9 @@ function Invoke-SystemOptimization {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'SystemOptimization' -Component 'SYSTEM-OPTIMIZATION'
     }
-    catch { }
+    catch {
+        Write-Verbose "Performance tracking initialization failed - continuing without it"
+    }
     
     try {
         # Track execution duration for v3.0 compliance

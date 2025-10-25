@@ -261,7 +261,9 @@ function Get-EssentialAppsAnalysis {
         try {
             Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $auditResults.Summary.TotalScanned
         }
-        catch {}
+        catch {
+            Write-Verbose "Performance tracking completion failed - continuing"
+        }
 
         return [PSCustomObject]$auditResults
 
@@ -274,7 +276,9 @@ function Get-EssentialAppsAnalysis {
             Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS-AUDIT' -Message $errorMsg -Data @{ Error = $_.Exception }
             Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
         }
-        catch {}
+        catch {
+            Write-Verbose "Performance tracking cleanup failed: $_"
+        }
         
         throw
     }

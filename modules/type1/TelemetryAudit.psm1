@@ -181,7 +181,9 @@ function Get-TelemetryAnalysis {
         try {
             Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $auditResults.PrivacyIssues.Count
         }
-        catch {}
+        catch {
+            Write-Verbose "Performance tracking completion failed - continuing"
+        }
 
         return [PSCustomObject]$auditResults
 
@@ -194,7 +196,9 @@ function Get-TelemetryAnalysis {
             Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-AUDIT' -Message $errorMsg -Data @{ Error = $_.Exception }
             Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
         }
-        catch {}
+        catch {
+            Write-Verbose "Performance tracking cleanup failed: $_"
+        }
         
         throw
     }

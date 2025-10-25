@@ -63,9 +63,7 @@ function Invoke-CacheOperation {
         
         [string]$Key,
         
-        [object]$Value,
-        
-        [switch]$Force
+        [object]$Value
     )
     
     Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Cache operation: $Operation on $CacheType"
@@ -2194,7 +2192,7 @@ function Get-ModuleExecutionDataFromJson {
     param(
         [Parameter(Mandatory)]
         [ValidateSet('BloatwareRemoval', 'EssentialApps', 'SystemOptimization', 'TelemetryDisable', 'WindowsUpdates', 'AppUpgrade', 'SystemInventory', 
-                     'bloatware-removal', 'essential-apps', 'system-optimization', 'telemetry-disable', 'windows-updates', 'app-upgrade', 'system-inventory')]
+            'bloatware-removal', 'essential-apps', 'system-optimization', 'telemetry-disable', 'windows-updates', 'app-upgrade', 'system-inventory')]
         [string]$ModuleName
     )
     
@@ -2216,11 +2214,11 @@ function Get-ModuleExecutionDataFromJson {
         if (-not (Test-Path $logsPath)) {
             Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Module logs directory not found: $logsPath"
             return @{
-                Summary = $null
-                LogEntries = @()
+                Summary           = $null
+                LogEntries        = @()
                 HasStructuredData = $false
-                ModuleName = $ModuleName
-                Error = "Logs directory not found"
+                ModuleName        = $ModuleName
+                Error             = "Logs directory not found"
             }
         }
         
@@ -2234,7 +2232,8 @@ function Get-ModuleExecutionDataFromJson {
                 Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to parse summary JSON: $($_.Exception.Message)"
                 $null
             }
-        } else {
+        }
+        else {
             Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "No execution summary found for $ModuleName"
             $null
         }
@@ -2247,7 +2246,8 @@ function Get-ModuleExecutionDataFromJson {
                 # Ensure it's an array
                 if ($jsonContent -is [System.Collections.IEnumerable] -and $jsonContent -isnot [string]) {
                     @($jsonContent)
-                } else {
+                }
+                else {
                     @($jsonContent)
                 }
             }
@@ -2255,29 +2255,30 @@ function Get-ModuleExecutionDataFromJson {
                 Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to parse execution log JSON: $($_.Exception.Message)"
                 @()
             }
-        } else {
+        }
+        else {
             Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "No JSON execution log found for $ModuleName"
             @()
         }
         
         return @{
-            Summary = $summary
-            LogEntries = $logEntries
+            Summary           = $summary
+            LogEntries        = $logEntries
             HasStructuredData = ($null -ne $summary -and $logEntries.Count -gt 0)
-            ModuleName = $ModuleName
-            LogsPath = $logsPath
-            SummaryPath = $summaryPath
-            JsonLogPath = $jsonLogPath
+            ModuleName        = $ModuleName
+            LogsPath          = $logsPath
+            SummaryPath       = $summaryPath
+            JsonLogPath       = $jsonLogPath
         }
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to load JSON data for ${ModuleName}: $($_.Exception.Message)"
         return @{
-            Summary = $null
-            LogEntries = @()
+            Summary           = $null
+            LogEntries        = @()
             HasStructuredData = $false
-            ModuleName = $ModuleName
-            Error = $_.Exception.Message
+            ModuleName        = $ModuleName
+            Error             = $_.Exception.Message
         }
     }
 }

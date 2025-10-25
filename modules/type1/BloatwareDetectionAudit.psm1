@@ -285,7 +285,6 @@ function Find-InstalledBloatware {
             $allBloatware = $null
         }
         $installedPrograms = $null
-        $systemInventory = $null
             
         return @()
     }
