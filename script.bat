@@ -181,10 +181,18 @@ CALL :LOG_MESSAGE "Checking for pending restart due to Windows Updates..." "INFO
 SET "RESTART_NEEDED=NO"
 
 REM Prefer PSWindowsUpdate if available for accurate detection
-powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
-IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
-IF !ERRORLEVEL! EQU 2 (
+FOR /F "delims=" %%i IN ('powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates ^| Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES' } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES' } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE' } } catch { Write-Host 'UPDATE_CHECK_FAILED' }" 2^>^&1') DO SET "PS_OUTPUT=%%i"
+
+IF /I "%PS_OUTPUT%"=="RESTART_REQUIRED_UPDATES" (
+    SET "RESTART_NEEDED=YES"
+) ELSE IF /I "%PS_OUTPUT%"=="PSWINDOWSUPDATE_NOT_AVAILABLE" (
     CALL :LOG_MESSAGE "PSWindowsUpdate not available. Falling back to registry reboot flags." "INFO" "LAUNCHER"
+    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+) ELSE IF /I "%PS_OUTPUT%"=="UPDATE_CHECK_FAILED" (
+    CALL :LOG_MESSAGE "PowerShell update check failed. Falling back to registry reboot flags." "WARN" "LAUNCHER"
     REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
     REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
@@ -830,15 +838,21 @@ IF "%PS7_FOUND%"=="NO" (
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Module Dependencies (PSWindowsUpdate for Windows Update management)
-REM -----------------------------------------------------------------------------
+REM Try to check for PSWindowsUpdate - fallback to powershell.exe if pwsh.exe not available
+REM First try pwsh.exe (PowerShell 7+), then fallback to powershell.exe (PowerShell 5.1)
 CALL :LOG_MESSAGE "Checking PSWindowsUpdate module availability..." "INFO" "LAUNCHER"
-pwsh.exe -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Write-Host 'PSWINDOWSUPDATE_AVAILABLE' } else { Write-Host 'PSWINDOWSUPDATE_MISSING' }" >nul 2>&1
+SET "PSWINDOWSUPDATE_CHECK_CMD=powershell"
+WHERE pwsh.exe >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
+    SET "PSWINDOWSUPDATE_CHECK_CMD=pwsh.exe"
+)
+FOR /F "delims=" %%i IN ('%PSWINDOWSUPDATE_CHECK_CMD% -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Write-Host 'PSWINDOWSUPDATE_AVAILABLE' } else { Write-Host 'PSWINDOWSUPDATE_MISSING' }" 2^>^&1') DO SET "PS_MODULE_CHECK=%%i"
+IF /I "%PS_MODULE_CHECK%"=="PSWINDOWSUPDATE_AVAILABLE" (
     CALL :LOG_MESSAGE "PSWindowsUpdate module is already installed" "SUCCESS" "LAUNCHER"
 ) ELSE (
     CALL :LOG_MESSAGE "PSWindowsUpdate module not found. Installing..." "INFO" "LAUNCHER"
-    pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Repository PSGallery; Write-Host 'PSWINDOWSUPDATE_INSTALLED' } catch { Write-Host 'PSWINDOWSUPDATE_INSTALL_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
-    IF !ERRORLEVEL! EQU 0 (
+    FOR /F "delims=" %%i IN ('%PSWINDOWSUPDATE_CHECK_CMD% -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser 2^>$null ^| Out-Null; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue; Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Repository PSGallery -ErrorAction SilentlyContinue; Write-Host 'PSWINDOWSUPDATE_INSTALLED' } catch { Write-Host 'PSWINDOWSUPDATE_INSTALL_FAILED'; Write-Host $_.Exception.Message; exit 1 }" 2^>^&1') DO SET "PS_INSTALL_OUTPUT=%%i"
+    IF /I "%PS_INSTALL_OUTPUT%"=="PSWINDOWSUPDATE_INSTALLED" (
         CALL :LOG_MESSAGE "PSWindowsUpdate module installed successfully" "SUCCESS" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed - Windows Updates task will not be available" "WARN" "LAUNCHER"
