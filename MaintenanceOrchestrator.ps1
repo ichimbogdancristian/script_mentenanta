@@ -437,24 +437,51 @@ function Test-ConfigurationJsonValidity {
 
 try {
     # FIX #8: Validate all critical configuration files
+    # FIX #9: Support both old (data/execution) and new (lists/settings) directory structures
     Write-Information "  Validating configuration file syntax and structure..." -InformationAction Continue
     
-    # Settings files (execution configuration)
+    # Helper function to find config file in either old or new location
+    function Find-ConfigFilePath {
+        param(
+            [string]$FileName,
+            [string]$NewSubDir,
+            [string]$OldSubDir
+        )
+        
+        # Try new path first
+        $newPath = Join-Path $ConfigPath $NewSubDir $FileName
+        if (Test-Path $newPath) {
+            return $newPath
+        }
+        
+        # Try old path for backward compatibility
+        $oldPath = Join-Path $ConfigPath $OldSubDir $FileName
+        if (Test-Path $oldPath) {
+            return $oldPath
+        }
+        
+        return $null
+    }
+    
+    # Settings files (execution configuration) - try settings/ first, then execution/
     $settingsFiles = @(
-        @{ Name = 'main-config.json'; SubDir = 'settings' },
-        @{ Name = 'logging-config.json'; SubDir = 'settings' }
+        @{ Name = 'main-config.json'; NewSubDir = 'settings'; OldSubDir = 'execution' },
+        @{ Name = 'logging-config.json'; NewSubDir = 'settings'; OldSubDir = 'execution' }
     )
     
-    # Lists files (data configuration)
+    # Lists files (data configuration) - try lists/ first, then data/
     $listFiles = @(
-        @{ Name = 'bloatware-list.json'; SubDir = 'lists' },
-        @{ Name = 'essential-apps.json'; SubDir = 'lists' },
-        @{ Name = 'app-upgrade-config.json'; SubDir = 'lists' }
+        @{ Name = 'bloatware-list.json'; NewSubDir = 'lists'; OldSubDir = 'data' },
+        @{ Name = 'essential-apps.json'; NewSubDir = 'lists'; OldSubDir = 'data' },
+        @{ Name = 'app-upgrade-config.json'; NewSubDir = 'lists'; OldSubDir = 'data' }
     )
     
     # Validate all settings files
     foreach ($file in $settingsFiles) {
-        $filePath = Join-Path $ConfigPath $file.SubDir $file.Name
+        $filePath = Find-ConfigFilePath -FileName $file.Name -NewSubDir $file.NewSubDir -OldSubDir $file.OldSubDir
+        if (-not $filePath) {
+            throw "Required configuration file not found: $($file.Name) (searched in $($file.NewSubDir)/ and $($file.OldSubDir)/)"
+        }
         try {
             Test-ConfigurationJsonValidity -FilePath $filePath -FileName $file.Name
             Write-Information "    ✓ $($file.Name) validated" -InformationAction Continue
@@ -467,8 +494,8 @@ try {
     
     # Validate all list files
     foreach ($file in $listFiles) {
-        $filePath = Join-Path $ConfigPath $file.SubDir $file.Name
-        if (Test-Path $filePath) {
+        $filePath = Find-ConfigFilePath -FileName $file.Name -NewSubDir $file.NewSubDir -OldSubDir $file.OldSubDir
+        if ($filePath) {
             try {
                 Test-ConfigurationJsonValidity -FilePath $filePath -FileName $file.Name
                 Write-Information "    ✓ $($file.Name) validated" -InformationAction Continue
@@ -487,11 +514,15 @@ try {
 
     try {
         # Validate configuration directory structure
-        $requiredConfigFiles = @('main-config.json', 'logging-config.json')
-        foreach ($configFile in $requiredConfigFiles) {
-            $configFilePath = Join-Path $ConfigPath $configFile
-            if (-not (Test-Path $configFilePath)) {
-                throw "Required configuration file not found: $configFilePath"
+        # FIX #9: Support both old and new path structures
+        $requiredConfigFiles = @(
+            @{ Name = 'main-config.json'; NewSubDir = 'settings'; OldSubDir = 'execution' },
+            @{ Name = 'logging-config.json'; NewSubDir = 'settings'; OldSubDir = 'execution' }
+        )
+        foreach ($file in $requiredConfigFiles) {
+            $configFilePath = Find-ConfigFilePath -FileName $file.Name -NewSubDir $file.NewSubDir -OldSubDir $file.OldSubDir
+            if (-not $configFilePath) {
+                throw "Required configuration file not found: $($file.Name)"
             }
         
             # Validate JSON syntax
@@ -499,7 +530,7 @@ try {
                 $null = Get-Content $configFilePath | ConvertFrom-Json -ErrorAction Stop
             }
             catch {
-                throw "Invalid JSON syntax in configuration file $configFile`: $($_.Exception.Message)"
+                throw "Invalid JSON syntax in configuration file $($file.Name): $($_.Exception.Message)"
             }
         }
     
