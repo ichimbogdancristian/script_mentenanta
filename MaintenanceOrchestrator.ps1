@@ -1652,25 +1652,31 @@ try {
             }
         }
     }
+}
+catch {
+    Write-Error "Fatal error in maintenance orchestration: $($_.Exception.Message)"
+    Write-Information "  Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
+    exit 1
+}
 
-    if ($finalReports.Count -gt 0) {
-        Write-Information "" -InformationAction Continue
-        Write-Information "📋 Final reports available in parent directory:" -InformationAction Continue
-        Write-Information "  📁 Location: $ParentDir" -InformationAction Continue
-        foreach ($report in $finalReports) {
-            Write-Information "  • $(Split-Path $report -Leaf)" -InformationAction Continue
-        }
+if ($finalReports.Count -gt 0) {
+    Write-Information "" -InformationAction Continue
+    Write-Information "📋 Final reports available in parent directory:" -InformationAction Continue
+    Write-Information "  📁 Location: $ParentDir" -InformationAction Continue
+    foreach ($report in $finalReports) {
+        Write-Information "  • $(Split-Path $report -Leaf)" -InformationAction Continue
     }
+}
 
-    if ($failedTasks -gt 0) {
-        Write-Information "" -InformationAction Continue
-        Write-Information "⚠️  Some tasks failed. Check the logs for detailed error information." -InformationAction Continue
-        exit 1
-    }
-    else {
-        Write-Information "" -InformationAction Continue
-        Write-Information "🎉 All tasks completed successfully!" -InformationAction Continue
-        exit 0
-    }
+if ($failedTasks -gt 0) {
+    Write-Information "" -InformationAction Continue
+    Write-Information "⚠️  Some tasks failed. Check the logs for detailed error information." -InformationAction Continue
+    exit 1
+}
+else {
+    Write-Information "" -InformationAction Continue
+    Write-Information "🎉 All tasks completed successfully!" -InformationAction Continue
+    exit 0
+}
 
-    #endregion
+#endregion
