@@ -327,6 +327,17 @@ catch {
     exit 1
 }
 #endregion
+#region Initialize Global Path Discovery System
+Write-Information "`n🔍 Initializing global path discovery..." -InformationAction Continue
+try {
+    Initialize-GlobalPathDiscovery -HintPath $ScriptRoot -Force
+    Write-Information "  ✓ Global path discovery initialized successfully" -InformationAction Continue
+}
+catch {
+    Write-Error "Failed to initialize global path discovery: $($_.Exception.Message)"
+    exit 1
+}
+#endregion
 # Ensure Write-LogEntry is available after module loading (modules may have overridden it)
 if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     function global:Write-LogEntry {
