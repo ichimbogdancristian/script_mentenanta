@@ -93,11 +93,11 @@ REM v3.0 FIX: Use ORIGINAL_SCRIPT_DIR to ensure log is created in correct locati
 SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
 
 REM FIX #1: Initialize the log file immediately on startup (don't wait for first LOG_MESSAGE call)
+REM Get current date/time for banner using more reliable methods (ALWAYS, not just on first run)
+FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
+FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
+
 IF NOT EXIST "%LOG_FILE%" (
-    REM Get current date/time for banner using more reliable methods
-    FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
-    FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
-    
     (
         ECHO ================================================
         ECHO  Windows Maintenance Automation Launcher v2.0
@@ -464,18 +464,6 @@ IF EXIST "%WORKING_DIR%modules" (
     
     IF EXIST "%WORKING_DIR%modules\core" (
         CALL :LOG_MESSAGE "  ✓ Core modules directory present" "SUCCESS" "LAUNCHER"
-        
-        IF EXIST "%WORKING_DIR%modules\core\ConfigManager.psm1" (
-            CALL :LOG_MESSAGE "    ✓ ConfigManager.psm1 present" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "    ✗ ConfigManager.psm1 missing" "WARN" "LAUNCHER"
-        )
-        
-        IF EXIST "%WORKING_DIR%modules\core\MenuSystem.psm1" (
-            CALL :LOG_MESSAGE "    ✓ MenuSystem.psm1 present" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "    ✗ MenuSystem.psm1 missing" "WARN" "LAUNCHER"
-        )
     ) ELSE (
         CALL :LOG_MESSAGE "  ✗ Core modules directory missing" "WARN" "LAUNCHER"
     )
@@ -748,15 +736,19 @@ IF "%PS7_FOUND%"=="NO" (
                 CALL :LOG_MESSAGE "Chocolatey failed to install PowerShell 7" "WARN" "LAUNCHER"
             )
         ) ELSE (
-            CALL :LOG_MESSAGE "Chocolatey not available - installing Chocolatey first..." "INFO" "LAUNCHER"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_FAILED'; exit 1 }"
+            CALL :LOG_MESSAGE "Chocolatey not available - attempting Chocolatey installation..." "INFO" "LAUNCHER"
+            
+            REM Try installing Chocolatey from official installer
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_FAILED'; exit 1 }" >nul 2>&1
+            
             IF !ERRORLEVEL! EQU 0 (
-                CALL :LOG_MESSAGE "Chocolatey installed successfully - now installing PowerShell 7..." "SUCCESS" "LAUNCHER"
+                CALL :LOG_MESSAGE "Chocolatey installed successfully" "SUCCESS" "LAUNCHER"
                 TIMEOUT /T 2 >nul 2>&1
                 
                 REM Update Chocolatey path after installation
                 IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
                 
+                CALL :LOG_MESSAGE "Installing PowerShell 7 via newly installed Chocolatey..." "INFO" "LAUNCHER"
                 "%CHOCO_EXE%" install powershell-core -y --no-progress
                 IF !ERRORLEVEL! EQU 0 (
                     CALL :LOG_MESSAGE "PowerShell 7 installed successfully via newly installed Chocolatey" "SUCCESS" "LAUNCHER"
@@ -770,28 +762,28 @@ IF "%PS7_FOUND%"=="NO" (
                     CALL :LOG_MESSAGE "PowerShell 7 installation failed even with fresh Chocolatey" "WARN" "LAUNCHER"
                 )
             ) ELSE (
-                CALL :LOG_MESSAGE "Chocolatey installation failed - proceeding to MSI fallback" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "Chocolatey installation failed - proceeding to MSI fallback for PowerShell 7" "WARN" "LAUNCHER"
             )
         )
     )
 
-    REM 3) MSI fallback from GitHub Releases (latest stable)
+    REM 3) MSI fallback from GitHub Releases (latest stable PowerShell)
     IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
-        CALL :LOG_MESSAGE "Attempting MSI fallback from GitHub Releases (latest stable)..." "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Attempting PowerShell 7 MSI fallback from GitHub Releases..." "INFO" "LAUNCHER"
         DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
         powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "PowerShell MSI downloaded. Installing silently..." "INFO" "LAUNCHER"
+            CALL :LOG_MESSAGE "PowerShell 7 MSI downloaded. Installing silently..." "INFO" "LAUNCHER"
             msiexec /i "%WORKING_DIR%pwsh.msi" /qn ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 >nul 2>&1
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "PowerShell 7 installed successfully via MSI" "SUCCESS" "LAUNCHER"
                 SET "INSTALL_STATUS=SUCCESS"
                 SET "PS7_FOUND=YES"
             ) ELSE (
-                CALL :LOG_MESSAGE "MSI installation failed" "ERROR" "LAUNCHER"
+                CALL :LOG_MESSAGE "PowerShell 7 MSI installation failed" "ERROR" "LAUNCHER"
             )
         ) ELSE (
-            CALL :LOG_MESSAGE "Failed to download PowerShell MSI from GitHub (network or API blocked)" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "Failed to download PowerShell 7 MSI from GitHub (network or API blocked)" "WARN" "LAUNCHER"
         )
     )
 
