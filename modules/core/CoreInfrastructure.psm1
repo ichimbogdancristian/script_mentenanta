@@ -319,6 +319,70 @@ function Get-MaintenancePath {
 .OUTPUTS
     PSCustomObject with validation results
 #>
+<#
+.SYNOPSIS
+    Gets the full path for a session directory or file
+
+.DESCRIPTION
+    Builds paths for session-based storage (temp_files directory structure)
+
+.PARAMETER Category
+    Category of path (data, logs, reports, temp, inventory)
+
+.PARAMETER SubCategory
+    Optional subdirectory under category (e.g., module name for logs)
+
+.PARAMETER FileName
+    Optional filename for the full path
+
+.OUTPUTS
+    System.String - Full path to the requested location
+
+.EXAMPLE
+    Get-SessionPath -Category 'data' -FileName 'essential-apps-results.json'
+#>
+function Get-SessionPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('data', 'logs', 'reports', 'temp', 'inventory')]
+        [string]$Category,
+        
+        [Parameter()]
+        [string]$SubCategory,
+        
+        [Parameter()]
+        [string]$FileName
+    )
+    
+    $tempRoot = Get-MaintenancePath 'TempRoot'
+    
+    if ([string]::IsNullOrEmpty($tempRoot)) {
+        Write-Error "TempRoot path is not available"
+        return $null
+    }
+    
+    # Build the base path
+    $basePath = Join-Path $tempRoot $Category
+    
+    # Add subcategory if provided
+    if (-not [string]::IsNullOrEmpty($SubCategory)) {
+        $basePath = Join-Path $basePath $SubCategory
+    }
+    
+    # Ensure directory exists
+    if (-not (Test-Path $basePath)) {
+        New-Item -Path $basePath -ItemType Directory -Force | Out-Null
+    }
+    
+    # Add filename if provided
+    if (-not [string]::IsNullOrEmpty($FileName)) {
+        return Join-Path $basePath $FileName
+    }
+    
+    return $basePath
+}
+
 function Test-MaintenancePathsIntegrity {
     [CmdletBinding()]
     param()
@@ -986,35 +1050,209 @@ function Complete-PerformanceTracking {
 function Write-OperationStart {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [string]$Operation,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [string]$Target,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [string]$Component = 'OPERATION',
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [string]$LogPath,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [hashtable]$AdditionalInfo,
+        
+        # Legacy parameter support
+        [Parameter(Mandatory = $false, ParameterSetName = 'Legacy')]
         [string]$OperationName,
         
-        [Parameter(Mandatory = $false)]
-        [string]$Component = 'OPERATION'
+        [Parameter(Mandatory = $false, ParameterSetName = 'Legacy')]
+        [string]$ComponentName = 'OPERATION'
     )
     
-    Write-ModuleLogEntry -Level 'INFO' -Component $Component -Message "Starting: $OperationName"
+    if ($PSCmdlet.ParameterSetName -eq 'Legacy') {
+        Write-ModuleLogEntry -Level 'INFO' -Component $ComponentName -Message "Starting: $OperationName"
+    }
+    else {
+        $message = "Starting: $Operation"
+        if (-not [string]::IsNullOrEmpty($Target)) {
+            $message += " - Target: $Target"
+        }
+        
+        if (-not [string]::IsNullOrEmpty($LogPath)) {
+            Write-StructuredLogEntry -Level 'INFO' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Metadata $AdditionalInfo
+        }
+        else {
+            Write-ModuleLogEntry -Level 'INFO' -Component $Component -Message $message
+        }
+    }
 }
+
+#endregion
+
+#region Enhanced Operation Logging - Modern Signatures
 
 <#
 .SYNOPSIS
     Write operation success message
-
 .DESCRIPTION
     Logs successful completion of an operation
 #>
 function Write-OperationSuccess {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [string]$Operation,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [string]$Target,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [string]$Component = 'OPERATION',
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [string]$LogPath,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
+        [hashtable]$Metrics,
+        
+        # Legacy parameter support
+        [Parameter(Mandatory = $false, ParameterSetName = 'Legacy')]
+        [string]$OperationName,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'Legacy')]
+        [string]$ComponentName = 'OPERATION'
+    )
+    
+    if ($PSCmdlet.ParameterSetName -eq 'Legacy') {
+        Write-ModuleLogEntry -Level 'SUCCESS' -Component $ComponentName -Message "Completed: $OperationName"
+    }
+    else {
+        $message = "Completed: $Operation"
+        if (-not [string]::IsNullOrEmpty($Target)) {
+            $message += " - Target: $Target"
+        }
+        
+        if (-not [string]::IsNullOrEmpty($LogPath)) {
+            Write-StructuredLogEntry -Level 'SUCCESS' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Result 'Success' -Metadata $Metrics
+        }
+        else {
+            Write-ModuleLogEntry -Level 'SUCCESS' -Component $Component -Message $message
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Write operation failure message
+.DESCRIPTION
+    Logs failed operation
+#>
+function Write-OperationFailure {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$Operation,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Target,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Component = 'OPERATION',
+        
+        [Parameter(Mandatory = $false)]
+        [string]$LogPath,
+        
+        [Parameter(Mandatory = $false)]
+        [object]$Error,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$AdditionalInfo,
+        
+        # Legacy parameters
+        [Parameter(Mandatory = $false)]
         [string]$OperationName,
         
         [Parameter(Mandatory = $false)]
-        [string]$Component = 'OPERATION'
+        [string]$ComponentName = 'OPERATION'
     )
     
-    Write-ModuleLogEntry -Level 'SUCCESS' -Component $Component -Message "Completed: $OperationName"
+    try {
+        if (-not [string]::IsNullOrEmpty($OperationName)) {
+            # Legacy usage
+            Write-ModuleLogEntry -Level 'ERROR' -Component $ComponentName -Message "Failed: $OperationName"
+        }
+        else {
+            # Modern usage
+            $message = "Failed: $Operation"
+            if (-not [string]::IsNullOrEmpty($Target)) {
+                $message += " - Target: $Target"
+            }
+            if ($Error) {
+                $message += " - Error: $($Error.ToString())"
+            }
+            
+            if (-not [string]::IsNullOrEmpty($LogPath)) {
+                Write-StructuredLogEntry -Level 'ERROR' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Result 'Failed' -Metadata $AdditionalInfo
+            }
+            else {
+                Write-ModuleLogEntry -Level 'ERROR' -Component $Component -Message $message
+            }
+        }
+    }
+    catch {
+        Write-ModuleLogEntry -Level 'ERROR' -Component $Component -Message "Error in Write-OperationFailure: $_"
+    }
 }
+
+<#
+.SYNOPSIS
+    Write operation skipped message
+.DESCRIPTION
+    Logs skipped operation
+#>
+function Write-OperationSkipped {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$Operation,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Target,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Component = 'OPERATION',
+        
+        [Parameter(Mandatory = $false)]
+        [string]$LogPath,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Reason,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$AdditionalInfo
+    )
+    
+    $message = "Skipped: $Operation"
+    if (-not [string]::IsNullOrEmpty($Target)) {
+        $message += " - Target: $Target"
+    }
+    if (-not [string]::IsNullOrEmpty($Reason)) {
+        $message += " - Reason: $Reason"
+    }
+    
+    if (-not [string]::IsNullOrEmpty($LogPath)) {
+        Write-StructuredLogEntry -Level 'WARN' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Result 'Skipped' -Metadata $AdditionalInfo
+    }
+    else {
+        Write-ModuleLogEntry -Level 'WARN' -Component $Component -Message $message
+    }
+}
+
+#region Old/Deprecated
 
 <#
 .SYNOPSIS
@@ -1023,7 +1261,7 @@ function Write-OperationSuccess {
 .DESCRIPTION
     Logs failed operation
 #>
-function Write-OperationFailure {
+function Write-OperationFailure-Old {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]

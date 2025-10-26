@@ -77,7 +77,7 @@ function Invoke-WindowsUpdates {
         }
         
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
-        $analysisResults = Get-WindowsUpdatesAnalysis -Config $Config
+        $analysisResults = Get-WindowsUpdatesAnalysis
         
         if (-not $analysisResults -or $analysisResults.PendingUpdatesCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No pending Windows updates detected'

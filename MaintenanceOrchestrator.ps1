@@ -1,4 +1,4 @@
-# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
+﻿# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
 # The launcher ensures a compatible pwsh.exe is available before invoking this orchestrator.
 using namespace System.Collections.Generic
 <#
@@ -55,11 +55,11 @@ $WorkingDirectory = if ($env:WORKING_DIRECTORY) { $env:WORKING_DIRECTORY } else 
 Write-Information "Windows Maintenance Automation - Central Orchestrator v2.0.0" -InformationAction Continue
 Write-Information "Working Directory: $WorkingDirectory" -InformationAction Continue
 Write-Information "Script Root: $ScriptRoot" -InformationAction Continue
-# 🛡️ Administrator Privilege Verification (Critical for service operations)
-Write-Information "`n🛡️ Verifying administrator privileges..." -InformationAction Continue
+#  Administrator Privilege Verification (Critical for service operations)
+Write-Information "[INFO] Verifying administrator privileges..." -InformationAction Continue
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Error @"
-❌ ADMINISTRATOR PRIVILEGES REQUIRED
+ ADMINISTRATOR PRIVILEGES REQUIRED
 This script requires Administrator privileges to:
 • Query all system services (including protected services like McpManagementService)
 • Modify system configurations and registry settings
@@ -73,20 +73,20 @@ Please run this script as Administrator:
 "@
     exit 1
 }
-Write-Information "  ✅ Administrator privileges confirmed" -InformationAction Continue
-# 🎯 Initialize Global Path Discovery System
-Write-Information "`n🔍 Initializing global path discovery..." -InformationAction Continue
+Write-Information "  [OK] Administrator privileges confirmed" -InformationAction Continue
+# Initialize Global Path Discovery System
+Write-Information "[INFO] Initializing global path discovery..." -InformationAction Continue
 $env:MAINTENANCE_PROJECT_ROOT = $ScriptRoot
 $env:MAINTENANCE_CONFIG_ROOT = Join-Path $ScriptRoot 'config'
 $env:MAINTENANCE_MODULES_ROOT = Join-Path $ScriptRoot 'modules'
 $env:MAINTENANCE_TEMP_ROOT = Join-Path $ScriptRoot 'temp_files'
 $env:MAINTENANCE_REPORTS_ROOT = $ScriptRoot
-Write-Information "  ✅ Global environment variables set:" -InformationAction Continue
-Write-Information "     🎯 PROJECT_ROOT: $env:MAINTENANCE_PROJECT_ROOT" -InformationAction Continue
-Write-Information "     ⚙️  CONFIG_ROOT: $env:MAINTENANCE_CONFIG_ROOT" -InformationAction Continue
-Write-Information "     🧩 MODULES_ROOT: $env:MAINTENANCE_MODULES_ROOT" -InformationAction Continue
-Write-Information "     📂 TEMP_ROOT: $env:MAINTENANCE_TEMP_ROOT" -InformationAction Continue
-Write-Information "     📊 REPORTS_ROOT: $env:MAINTENANCE_REPORTS_ROOT" -InformationAction Continue
+Write-Information "   Global environment variables set:" -InformationAction Continue
+Write-Information "      PROJECT_ROOT: $env:MAINTENANCE_PROJECT_ROOT" -InformationAction Continue
+Write-Information "       CONFIG_ROOT: $env:MAINTENANCE_CONFIG_ROOT" -InformationAction Continue
+Write-Information "      MODULES_ROOT: $env:MAINTENANCE_MODULES_ROOT" -InformationAction Continue
+Write-Information "      TEMP_ROOT: $env:MAINTENANCE_TEMP_ROOT" -InformationAction Continue
+Write-Information "      REPORTS_ROOT: $env:MAINTENANCE_REPORTS_ROOT" -InformationAction Continue
 # Detect configuration path (always relative to script location)
 if (-not $ConfigPath) {
     $ConfigPath = Join-Path $ScriptRoot 'config'
@@ -137,14 +137,14 @@ if ($recentInventory) {
     $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
     if ($cacheAge.TotalMinutes -le $CacheTimeoutMinutes) {
         $UseInventoryCache = $true
-        Write-Information "  🗂️  Recent inventory data found (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes) - caching enabled" -InformationAction Continue
+        Write-Information "    Recent inventory data found (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes) - caching enabled" -InformationAction Continue
     }
     else {
-        Write-Information "  🔄 Inventory data is $([math]::Round($cacheAge.TotalMinutes, 1)) minutes old - will refresh" -InformationAction Continue
+        Write-Information "   Inventory data is $([math]::Round($cacheAge.TotalMinutes, 1)) minutes old - will refresh" -InformationAction Continue
     }
 }
 else {
-    Write-Information "  📋 No cached inventory data found - will collect fresh data" -InformationAction Continue
+    Write-Information "   No cached inventory data found - will collect fresh data" -InformationAction Continue
 }
 # Set up log file
 if (-not $LogFilePath) {
@@ -196,7 +196,7 @@ foreach ($moduleName in $CoreModules) {
         }
         # Import PowerShell script module directly (no manifest validation needed for .psm1 files)
         Import-Module $modulePath -Force -Global -ErrorAction Stop
-        Write-Information "  ✓ Loaded: $moduleName" -InformationAction Continue
+        Write-Information "   Loaded: $moduleName" -InformationAction Continue
         # Verify module loaded successfully
         $loadedModule = Get-Module -Name $moduleName -ErrorAction SilentlyContinue
         if (-not $loadedModule) {
@@ -205,25 +205,25 @@ foreach ($moduleName in $CoreModules) {
     }
     catch [System.UnauthorizedAccessException] {
         Write-Error "Access denied loading module $moduleName. Ensure you have administrator privileges and the file is not blocked."
-        Write-Information "  ℹ️ Try running: Unblock-File '$modulePath'" -InformationAction Continue
+        Write-Information "  ℹ Try running: Unblock-File '$modulePath'" -InformationAction Continue
         exit 1
     }
     catch [System.Security.SecurityException] {
         Write-Error "Security error loading module $moduleName. Check execution policy and file permissions."
-        Write-Information "  ℹ️ Current execution policy: $(Get-ExecutionPolicy)" -InformationAction Continue
+        Write-Information "  ℹ Current execution policy: $(Get-ExecutionPolicy)" -InformationAction Continue
         exit 1
     }
     catch [System.IO.FileNotFoundException] {
         Write-Error "Module file not found: $modulePath"
-        Write-Information "  ℹ️ Ensure all module files are present in the modules/core directory" -InformationAction Continue
+        Write-Information "  ℹ Ensure all module files are present in the modules/core directory" -InformationAction Continue
         exit 1
     }
     catch {
         Write-Error "Failed to load core module $moduleName`: $_"
-        Write-Information "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
-        Write-Information "  ℹ️ Error Details: $($_.Exception.Message)" -InformationAction Continue
+        Write-Information "  ℹ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
+        Write-Information "  ℹ Error Details: $($_.Exception.Message)" -InformationAction Continue
         if ($_.ScriptStackTrace) {
-            Write-Information "  ℹ️ Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
+            Write-Information "  ℹ Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
         }
         exit 1
     }
@@ -238,40 +238,40 @@ foreach ($moduleName in $Type2Modules) {
             continue
         }
         Import-Module $modulePath -Force -Global -ErrorAction Stop
-        Write-Information "  ✓ Loaded: $moduleName (Type2 - self-contained)" -InformationAction Continue
+        Write-Information "   Loaded: $moduleName (Type2 - self-contained)" -InformationAction Continue
         # Verify the standardized Invoke-[ModuleName] function is available
         $invokeFunction = "Invoke-$moduleName"
         if (Get-Command -Name $invokeFunction -ErrorAction SilentlyContinue) {
-            Write-Information "    ✓ $invokeFunction function available" -InformationAction Continue
+            Write-Information "     $invokeFunction function available" -InformationAction Continue
         }
         else {
-            Write-Warning "    ⚠️ $invokeFunction function not found - module may not be v3.0 compliant"
+            Write-Warning "     $invokeFunction function not found - module may not be v3.0 compliant"
         }
     }
     catch {
         Write-Warning "Failed to load Type2 module $moduleName`: $($_.Exception.Message)"
-        Write-Information "  ℹ️ This module will be skipped during execution" -InformationAction Continue
+        Write-Information "  ℹ This module will be skipped during execution" -InformationAction Continue
         # Additional diagnostic information
         if ($_.Exception.InnerException) {
-            Write-Information "  🔍 Inner exception: $($_.Exception.InnerException.Message)" -InformationAction Continue
+            Write-Information "   Inner exception: $($_.Exception.InnerException.Message)" -InformationAction Continue
         }
         if ($_.ScriptStackTrace) {
-            Write-Information "  📍 Stack trace: $((($_.ScriptStackTrace -split "`n") | Select-Object -First 2) -join '; ')" -InformationAction Continue
+            Write-Information "   Stack trace: $((($_.ScriptStackTrace -split "`n") | Select-Object -First 2) -join '; ')" -InformationAction Continue
         }
         # Check common issues
         if ($_.Exception.Message -like "*access*denied*" -or $_.Exception.Message -like "*unauthorized*") {
-            Write-Information "  💡 Suggestion: Run as Administrator or unblock files with Unblock-File '$modulePath'" -InformationAction Continue
+            Write-Information "  [HINT] Suggestion: Run as Administrator or unblock files with Unblock-File '$modulePath'" -InformationAction Continue
         }
         elseif ($_.Exception.Message -like "*execution*policy*") {
-            Write-Information "  💡 Suggestion: Check PowerShell execution policy with Get-ExecutionPolicy" -InformationAction Continue
+            Write-Information "   Suggestion: Check PowerShell execution policy with Get-ExecutionPolicy" -InformationAction Continue
         }
         elseif ($_.Exception.Message -like "*dependency*" -or $_.Exception.Message -like "*import*") {
-            Write-Information "  💡 Suggestion: Check module dependencies and verify all required modules are available" -InformationAction Continue
+            Write-Information "   Suggestion: Check module dependencies and verify all required modules are available" -InformationAction Continue
         }
     }
 }
 #region FIX #1: Create Unified Global Path Object
-Write-Information "`n🔧 Creating unified global path object..." -InformationAction Continue
+Write-Information "`n Creating unified global path object..." -InformationAction Continue
 try {
     $Global:ProjectPaths = @{
         ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
@@ -292,7 +292,7 @@ try {
             throw "Required path not found: $pathKey = $($Global:ProjectPaths[$pathKey])"
         }
     }
-    Write-Information "  ✓ Global project paths initialized:" -InformationAction Continue
+    Write-Information "   Global project paths initialized:" -InformationAction Continue
     Write-Information "    - TempFiles: $($Global:ProjectPaths.TempFiles)" -InformationAction Continue
     Write-Information "    - Config: $($Global:ProjectPaths.Config)" -InformationAction Continue
     Write-Information "    - Logs: $($Global:ProjectPaths.Logs)" -InformationAction Continue
@@ -320,7 +320,7 @@ try {
     if ($missingFunctions.Count -gt 0) {
         throw "CoreInfrastructure missing required functions: $($missingFunctions -join ', ')"
     }
-    Write-Information "  ✓ CoreInfrastructure validation passed" -InformationAction Continue
+    Write-Information "   CoreInfrastructure validation passed" -InformationAction Continue
 }
 catch {
     Write-Error "CoreInfrastructure validation failed: $($_.Exception.Message)"
@@ -328,10 +328,10 @@ catch {
 }
 #endregion
 #region Initialize Global Path Discovery System
-Write-Information "`n🔍 Initializing global path discovery..." -InformationAction Continue
+Write-Information "`n Initializing global path discovery..." -InformationAction Continue
 try {
     Initialize-GlobalPathDiscovery -HintPath $ScriptRoot -Force
-    Write-Information "  ✓ Global path discovery initialized successfully" -InformationAction Continue
+    Write-Information "   Global path discovery initialized successfully" -InformationAction Continue
 }
 catch {
     Write-Error "Failed to initialize global path discovery: $($_.Exception.Message)"
@@ -344,42 +344,42 @@ if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
         param($Level, $Component, $Message, $Data)
         Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
     }
-    Write-Information "  ⚠️ Write-LogEntry function was lost during module loading, reinstated fallback" -InformationAction Continue
+    Write-Information "   Write-LogEntry function was lost during module loading, reinstated fallback" -InformationAction Continue
 }
 else {
     $logFunction = Get-Command -Name 'Write-LogEntry'
-    Write-Information "  ✓ Write-LogEntry available from: $($logFunction.Source)" -InformationAction Continue
+    Write-Information "   Write-LogEntry available from: $($logFunction.Source)" -InformationAction Continue
 }
-# 🔍 System Access Verification
-Write-Information "`n🔍 Verifying system access permissions..." -InformationAction Continue
+#  System Access Verification
+Write-Information "`n Verifying system access permissions..." -InformationAction Continue
 try {
     # Test service enumeration capability
     $testServiceCount = (Get-Service -ErrorAction SilentlyContinue | Measure-Object).Count
-    Write-Information "  ✓ Service enumeration: $testServiceCount services accessible" -InformationAction Continue
+    Write-Information "   Service enumeration: $testServiceCount services accessible" -InformationAction Continue
     # Test registry access
     try {
         $testRegRead = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion" -Name "ProductName" -ErrorAction SilentlyContinue
         if ($testRegRead) {
-            Write-Information "  ✓ Registry access: HKLM accessible" -InformationAction Continue
+            Write-Information "   Registry access: HKLM accessible" -InformationAction Continue
         }
     }
     catch {
-        Write-Warning "  ⚠️ Limited registry access detected"
+        Write-Warning "   Limited registry access detected"
     }
     # Test WMI access
     try {
         $testWmi = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue
         if ($testWmi) {
-            Write-Information "  ✓ WMI access: System information accessible" -InformationAction Continue
+            Write-Information "   WMI access: System information accessible" -InformationAction Continue
         }
     }
     catch {
-        Write-Warning "  ⚠️ Limited WMI access detected"
+        Write-Warning "   Limited WMI access detected"
     }
 }
 catch {
-    Write-Warning "  ⚠️ System access verification encountered issues: $($_.Exception.Message)"
-    Write-Information "  ℹ️ Some operations may have limited functionality" -InformationAction Continue
+    Write-Warning "   System access verification encountered issues: $($_.Exception.Message)"
+    Write-Information "  ℹ Some operations may have limited functionality" -InformationAction Continue
 }
 #endregion
 #region Configuration Loading
@@ -418,7 +418,7 @@ function Test-ConfigurationJsonValidity {
         if (-not $jsonObject) {
             throw "Configuration file is empty: $FileName"
         }
-        Write-Verbose "✓ JSON syntax valid for $FileName"
+        Write-Verbose " JSON syntax valid for $FileName"
         return $true
     }
     catch {
@@ -468,7 +468,7 @@ try {
         }
         try {
             Test-ConfigurationJsonValidity -FilePath $filePath -FileName $file.Name
-            Write-Information "    ✓ $($file.Name) validated" -InformationAction Continue
+            Write-Information "     $($file.Name) validated" -InformationAction Continue
         }
         catch {
             Write-Error "Configuration validation error: $_"
@@ -481,7 +481,7 @@ try {
         if ($filePath) {
             try {
                 Test-ConfigurationJsonValidity -FilePath $filePath -FileName $file.Name
-                Write-Information "    ✓ $($file.Name) validated" -InformationAction Continue
+                Write-Information "     $($file.Name) validated" -InformationAction Continue
             }
             catch {
                 Write-Error "Configuration validation error: $_"
@@ -489,10 +489,10 @@ try {
             }
         }
         else {
-            Write-Information "    ⚠ Optional file not found: $($file.Name)" -InformationAction Continue
+            Write-Information "     Optional file not found: $($file.Name)" -InformationAction Continue
         }
     }
-    Write-Information "  ✓ All configuration files validated successfully" -InformationAction Continue
+    Write-Information "   All configuration files validated successfully" -InformationAction Continue
     try {
         # Validate configuration directory structure
         # FIX #9: Support both old and new path structures
@@ -522,7 +522,7 @@ try {
                 Write-Information "  CoreInfrastructure module not found, attempting to re-import..." -InformationAction Continue
                 $coreModulePath = Join-Path $CoreModulesPath "CoreInfrastructure.psm1"
                 Import-Module $coreModulePath -Force -Global -ErrorAction Stop
-                Write-Information "  ✓ CoreInfrastructure module re-imported" -InformationAction Continue
+                Write-Information "   CoreInfrastructure module re-imported" -InformationAction Continue
             }
             else {
                 Write-Information "  CoreInfrastructure module is loaded (Version: $($coreModule.Version))" -InformationAction Continue
@@ -547,7 +547,7 @@ try {
             }
             Write-Information "  Found Initialize-ConfigurationSystem (Source: $($configFunction.Source)), calling with path: $ConfigPath" -InformationAction Continue
             Initialize-ConfigurationSystem -ConfigRootPath $ConfigPath -ErrorAction Stop
-            Write-Information "  ✓ Configuration system initialized" -InformationAction Continue
+            Write-Information "   Configuration system initialized" -InformationAction Continue
         }
         catch {
             throw "Failed to initialize configuration system: $($_.Exception.Message)"
@@ -559,7 +559,7 @@ try {
             if (-not $MainConfig) {
                 throw "Main configuration is null or empty"
             }
-            Write-Information "  ✓ Main configuration loaded (converted to hashtable)" -InformationAction Continue
+            Write-Information "   Main configuration loaded (converted to hashtable)" -InformationAction Continue
         }
         catch {
             throw "Failed to load main configuration: $($_.Exception.Message)"
@@ -569,7 +569,7 @@ try {
             if (-not $LoggingConfig) {
                 throw "Logging configuration is null or empty"
             }
-            Write-Information "  ✓ Logging configuration loaded" -InformationAction Continue
+            Write-Information "   Logging configuration loaded" -InformationAction Continue
         }
         catch {
             throw "Failed to load logging configuration: $($_.Exception.Message)"
@@ -578,15 +578,15 @@ try {
         try {
             $fileOrgResult = Initialize-SessionFileOrganization -SessionRoot $TempRoot -ErrorAction Stop
             if ($fileOrgResult) {
-                Write-Information "  ✓ File organization system initialized" -InformationAction Continue
+                Write-Information "   File organization system initialized" -InformationAction Continue
             }
             else {
                 throw "File organization initialization returned false"
             }
         }
         catch {
-            Write-Information "  ⚠️ File organization system failed to initialize: $($_.Exception.Message)" -InformationAction Continue
-            Write-Information "  ℹ️ Continuing with basic file operations - some features may be limited" -InformationAction Continue
+            Write-Information "   File organization system failed to initialize: $($_.Exception.Message)" -InformationAction Continue
+            Write-Information "  ℹ Continuing with basic file operations - some features may be limited" -InformationAction Continue
             # Don't exit here as this is not critical for basic operation
         }
         # Initialize temp_files directory structure (v3.0 requirement for Type1/Type2 module flow)
@@ -594,21 +594,21 @@ try {
             Write-Information "  Initializing temp_files directory structure..." -InformationAction Continue
             $tempStructureValid = Initialize-SessionFileOrganization -SessionRoot $TempRoot
             if ($tempStructureValid) {
-                Write-Information "  ✓ Temp files directory structure validated/created" -InformationAction Continue
+                Write-Information "   Temp files directory structure validated/created" -InformationAction Continue
             }
             else {
-                Write-Information "  ⚠️ Some temp files directories could not be created - continuing with available structure" -InformationAction Continue
+                Write-Information "   Some temp files directories could not be created - continuing with available structure" -InformationAction Continue
             }
         }
         catch {
-            Write-Information "  ⚠️ Temp files structure validation failed: $($_.Exception.Message)" -InformationAction Continue
-            Write-Information "  ℹ️ Modules will attempt to create directories as needed" -InformationAction Continue
+            Write-Information "   Temp files structure validation failed: $($_.Exception.Message)" -InformationAction Continue
+            Write-Information "  ℹ Modules will attempt to create directories as needed" -InformationAction Continue
         }
         # Initialize logging system (depends on file organization)
         try {
             $loggingInitResult = Initialize-LoggingSystem -BaseLogPath $MainLogFile -ErrorAction Stop
             if ($loggingInitResult) {
-                Write-Information "  ✓ Logging system initialized" -InformationAction Continue
+                Write-Information "   Logging system initialized" -InformationAction Continue
                 # LoggingManager functions are now available
             }
             else {
@@ -616,8 +616,8 @@ try {
             }
         }
         catch {
-            Write-Information "  ⚠️ Logging system failed to initialize: $($_.Exception.Message)" -InformationAction Continue
-            Write-Information "  ℹ️ Continuing without enhanced logging - basic console output only" -InformationAction Continue
+            Write-Information "   Logging system failed to initialize: $($_.Exception.Message)" -InformationAction Continue
+            Write-Information "  ℹ Continuing without enhanced logging - basic console output only" -InformationAction Continue
         }
         # Ensure Write-LogEntry is always available (fallback if LoggingManager failed)
         if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
@@ -625,31 +625,31 @@ try {
                 param($Level, $Component, $Message, $Data)
                 Write-Information "[$Level] [$Component] $Message" -InformationAction Continue
             }
-            Write-Information "  ⚠️ Using fallback Write-LogEntry function" -InformationAction Continue
+            Write-Information "   Using fallback Write-LogEntry function" -InformationAction Continue
         }
         else {
-            Write-Information "  ✓ Write-LogEntry function available from LoggingManager" -InformationAction Continue
+            Write-Information "   Write-LogEntry function available from LoggingManager" -InformationAction Continue
         }
     }
     catch [System.IO.DirectoryNotFoundException] {
         Write-Error "Configuration directory not found: $ConfigPath"
-        Write-Information "  ℹ️ Ensure the 'config' directory exists and contains required configuration files" -InformationAction Continue
+        Write-Information "  ℹ Ensure the 'config' directory exists and contains required configuration files" -InformationAction Continue
         exit 1
     }
     catch [System.IO.FileNotFoundException] {
         Write-Error "Required configuration file not found: $($_.Exception.Message)"
-        Write-Information "  ℹ️ Ensure all required configuration files are present in: $ConfigPath" -InformationAction Continue
+        Write-Information "  ℹ Ensure all required configuration files are present in: $ConfigPath" -InformationAction Continue
         exit 1
     }
     catch [System.Management.Automation.RuntimeException] {
         Write-Error "Configuration system error: $($_.Exception.Message)"
-        Write-Information "  ℹ️ Check configuration file syntax and module dependencies" -InformationAction Continue
+        Write-Information "  ℹ Check configuration file syntax and module dependencies" -InformationAction Continue
         exit 1
     }
     catch {
         Write-Error "Failed to initialize configuration: $($_.Exception.Message)"
-        Write-Information "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
-        Write-Information "  ℹ️ This may indicate missing dependencies or corrupted configuration files" -InformationAction Continue
+        Write-Information "  ℹ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
+        Write-Information "  ℹ This may indicate missing dependencies or corrupted configuration files" -InformationAction Continue
         exit 1
     }
     # Load app configurations with comprehensive error handling
@@ -661,12 +661,12 @@ try {
                 Write-Warning "Bloatware configuration is empty or null - bloatware removal tasks may be limited"
             }
             else {
-                Write-Information "  ✓ Bloatware configuration loaded" -InformationAction Continue
+                Write-Information "   Bloatware configuration loaded" -InformationAction Continue
             }
         }
         catch {
-            Write-Information "  ⚠️ Failed to load bloatware configuration: $($_.Exception.Message)" -InformationAction Continue
-            Write-Information "  ℹ️ Bloatware removal tasks will be skipped" -InformationAction Continue
+            Write-Information "   Failed to load bloatware configuration: $($_.Exception.Message)" -InformationAction Continue
+            Write-Information "  ℹ Bloatware removal tasks will be skipped" -InformationAction Continue
             $BloatwareLists = @()
         }
         try {
@@ -675,41 +675,41 @@ try {
                 Write-Warning "Essential apps configuration is empty or null - app installation tasks may be limited"
             }
             else {
-                Write-Information "  ✓ Essential apps configuration loaded" -InformationAction Continue
+                Write-Information "   Essential apps configuration loaded" -InformationAction Continue
             }
         }
         catch {
-            Write-Information "  ⚠️ Failed to load essential apps configuration: $($_.Exception.Message)" -InformationAction Continue
-            Write-Information "  ℹ️ Essential app installation tasks will be skipped" -InformationAction Continue
+            Write-Information "   Failed to load essential apps configuration: $($_.Exception.Message)" -InformationAction Continue
+            Write-Information "  ℹ Essential app installation tasks will be skipped" -InformationAction Continue
             $EssentialApps = @()
         }
         # Calculate configuration statistics with error handling
         try {
             $totalBloatware = if ($BloatwareLists -and $BloatwareLists.ContainsKey('all')) { $BloatwareLists['all'].Count } else { 0 }
             $totalEssentialApps = if ($EssentialApps -and $EssentialApps.ContainsKey('all')) { $EssentialApps['all'].Count } else { 0 }
-            Write-Information "  ✓ Bloatware list: $totalBloatware total entries" -InformationAction Continue
-            Write-Information "  ✓ Essential apps: $totalEssentialApps total entries" -InformationAction Continue
+            Write-Information "   Bloatware list: $totalBloatware total entries" -InformationAction Continue
+            Write-Information "   Essential apps: $totalEssentialApps total entries" -InformationAction Continue
         }
         catch {
-            Write-Information "  ⚠️ Error calculating configuration statistics: $($_.Exception.Message)" -InformationAction Continue
+            Write-Information "   Error calculating configuration statistics: $($_.Exception.Message)" -InformationAction Continue
             $totalBloatware = 0
             $totalEssentialApps = 0
         }
     }
     catch [System.IO.FileNotFoundException] {
         Write-Error "App configuration file not found: $($_.Exception.Message)"
-        Write-Information "  ℹ️ Ensure bloatware-list.json and essential-apps.json exist in: $ConfigPath" -InformationAction Continue
+        Write-Information "  ℹ Ensure bloatware-list.json and essential-apps.json exist in: $ConfigPath" -InformationAction Continue
         exit 1
     }
     catch [System.ArgumentException] {
         Write-Error "Invalid app configuration format: $($_.Exception.Message)"
-        Write-Information "  ℹ️ Check JSON syntax and structure in app configuration files" -InformationAction Continue
+        Write-Information "  ℹ Check JSON syntax and structure in app configuration files" -InformationAction Continue
         exit 1
     }
     catch {
         Write-Error "Failed to load app configurations: $($_.Exception.Message)"
-        Write-Information "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
-        Write-Information "  ℹ️ Check app configuration files in: $ConfigPath" -InformationAction Continue
+        Write-Information "  ℹ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
+        Write-Information "  ℹ Check app configuration files in: $ConfigPath" -InformationAction Continue
         exit 1
     }
     #endregion
@@ -800,7 +800,7 @@ try {
     function Get-ComprehensiveLogCollection {
         [CmdletBinding()]
         param()
-        Write-Information "  📋 Collecting comprehensive log data..." -InformationAction Continue
+        Write-Information "   Collecting comprehensive log data..." -InformationAction Continue
         try {
             $logCollection = @{
                 Type1AuditData      = @{}
@@ -817,10 +817,10 @@ try {
                         $moduleName = $file.BaseName -replace '-results$', ''
                         $auditData = Get-Content $file.FullName | ConvertFrom-Json
                         $logCollection.Type1AuditData[$moduleName] = $auditData
-                        Write-Information "    ✓ Collected Type1 data: $($file.Name)" -InformationAction Continue
+                        Write-Information "     Collected Type1 data: $($file.Name)" -InformationAction Continue
                     }
                     catch {
-                        Write-Warning "    ⚠️ Failed to parse audit data: $($file.Name) - $($_.Exception.Message)"
+                        Write-Warning "     Failed to parse audit data: $($file.Name) - $($_.Exception.Message)"
                     }
                 }
             }
@@ -834,17 +834,17 @@ try {
                         try {
                             $logContent = Get-Content $executionLogPath -Raw
                             $logCollection.Type2ExecutionLogs[$dir.Name] = $logContent
-                            Write-Information "    ✓ Collected Type2 logs: $($dir.Name)" -InformationAction Continue
+                            Write-Information "     Collected Type2 logs: $($dir.Name)" -InformationAction Continue
                         }
                         catch {
-                            Write-Warning "    ⚠️ Failed to read execution log: $($dir.Name) - $($_.Exception.Message)"
+                            Write-Warning "     Failed to read execution log: $($dir.Name) - $($_.Exception.Message)"
                         }
                     }
                 }
             }
             $auditDataCount = $logCollection.Type1AuditData.Keys.Count
             $executionLogsCount = $logCollection.Type2ExecutionLogs.Keys.Count
-            Write-Information "  📊 Log collection summary: $auditDataCount Type1 modules, $executionLogsCount Type2 modules" -InformationAction Continue
+            Write-Information "   Log collection summary: $auditDataCount Type1 modules, $executionLogsCount Type2 modules" -InformationAction Continue
             Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Comprehensive log collection completed" -Data @{
                 Type1ModulesCollected = $auditDataCount
                 Type2ModulesCollected = $executionLogsCount
@@ -958,15 +958,17 @@ try {
                     else { 0 }
                 }
             }
-            # Save session manifest to temp_files/data/
+            # Save session manifest to temp_files/data/ with formatted date naming
             $dataPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'data'
             if (-not (Test-Path $dataPath)) {
                 New-Item -Path $dataPath -ItemType Directory -Force | Out-Null
             }
-            $manifestPath = Join-Path $dataPath "session-$SessionId.json"
+            # Format: session-YYYY-MM-DD-HHmmss.json
+            $sessionDateFormat = $ExecutionStartTime.ToString('yyyy-MM-dd-HHmmss')
+            $manifestPath = Join-Path $dataPath "session-$sessionDateFormat.json"
             $sessionManifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath -Encoding UTF8 -Force
-            Write-Information "  ✓ Session manifest created: $manifestPath" -InformationAction Continue
-            Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Session manifest created: session-$SessionId.json" -Data @{
+            Write-Information "   Session manifest created: $manifestPath" -InformationAction Continue
+            Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Session manifest created: session-$sessionDateFormat.json" -Data @{
                 SessionId         = $SessionId
                 ExecutionMode     = $ExecutionMode
                 TotalDuration     = $totalDuration
@@ -1058,17 +1060,17 @@ try {
             # Verify the standardized Invoke-[ModuleName] function is available
             if (Get-Command -Name $task.Function -ErrorAction SilentlyContinue) {
                 $AvailableTasks += $task
-                Write-Information "  ✓ Available: $($task.Name) - $($task.Function)" -InformationAction Continue
+                Write-Information "   Available: $($task.Name) - $($task.Function)" -InformationAction Continue
             }
             else {
-                Write-Warning "  ⚠️ Skipped: $($task.Name) - function $($task.Function) not available (module may not be v3.0 compliant)"
+                Write-Warning "   Skipped: $($task.Name) - function $($task.Function) not available (module may not be v3.0 compliant)"
             }
         }
         else {
             Write-Information "  ⊝ Disabled: $($task.Name) (disabled in configuration)" -InformationAction Continue
         }
     }
-    Write-Information "  ✓ Registered $($AvailableTasks.Count) available tasks" -InformationAction Continue
+    Write-Information "   Registered $($AvailableTasks.Count) available tasks" -InformationAction Continue
     #endregion
     #region Execution Mode Selection
     $ExecutionParams = @{
@@ -1090,7 +1092,7 @@ try {
                     $ExecutionParams.SelectedTasks += $AvailableTasks[$taskIndex - 1]
                 }
             }
-            Write-Information "  ✓ Menu selections applied:" -InformationAction Continue
+            Write-Information "   Menu selections applied:" -InformationAction Continue
             Write-Information "    - Execution mode: $(if ($ExecutionParams.DryRun) { 'DRY-RUN' } else { 'NORMAL' })" -InformationAction Continue
             Write-Information "    - Selected tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
         }
@@ -1099,7 +1101,7 @@ try {
         Write-Information "`nNon-interactive mode enabled" -InformationAction Continue
         if ($DryRun) {
             $ExecutionParams.DryRun = $true
-            Write-Information "  ✓ Dry-run mode enabled" -InformationAction Continue
+            Write-Information "   Dry-run mode enabled" -InformationAction Continue
         }
     }
     # Handle TaskNumbers parameter
@@ -1116,7 +1118,7 @@ try {
                 }
             }
             $ExecutionParams.SelectedTasks = $selectedTasks
-            Write-Information "  ✓ Task selection: $($taskNumbersArray -join ', ')" -InformationAction Continue
+            Write-Information "   Task selection: $($taskNumbersArray -join ', ')" -InformationAction Continue
         }
         catch {
             Write-Error "Invalid TaskNumbers parameter format: $TaskNumbers"
@@ -1154,7 +1156,7 @@ try {
     $TaskResults = @()
     $StartTime = Get-Date
     Write-Information "`nExecuting tasks..." -InformationAction Continue
-    Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
     for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
         $task = $ExecutionParams.SelectedTasks[$i]
         $taskNumber = $i + 1
@@ -1198,11 +1200,11 @@ try {
             $result = $null
             try {
                 if ($ExecutionParams.DryRun) {
-                    Write-Information "  ▶ Simulating: $($task.Function)" -InformationAction Continue
+                    Write-Information "   Simulating: $($task.Function)" -InformationAction Continue
                     $result = & $task.Function -Config $MainConfig -DryRun
                 }
                 else {
-                    Write-Information "  ▶ Executing: $($task.Function)" -InformationAction Continue
+                    Write-Information "   Executing: $($task.Function)" -InformationAction Continue
                     $result = & $task.Function -Config $MainConfig
                 }
                 # Validate standardized return structure (support both hashtable and PSCustomObject)
@@ -1216,11 +1218,11 @@ try {
                     }
                 }
                 if ($hasValidStructure) {
-                    Write-Information "  ✓ v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
+                    Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
                 }
                 else {
                     $resultType = if ($result) { $result.GetType().Name } else { 'null' }
-                    Write-Warning "  ⚠️ Non-standard result format from $($task.Function) - Result type: $resultType, may not be v3.0 compliant"
+                    Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, may not be v3.0 compliant"
                 }
             }
             catch {
@@ -1241,7 +1243,7 @@ try {
             }
             $taskResult.Success = $true
             $taskResult.Output = $result
-            Write-Information "  ✓ Completed successfully" -InformationAction Continue
+            Write-Information "   Completed successfully" -InformationAction Continue
             # Log task success with detailed metrics
             Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
                 Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
@@ -1252,7 +1254,7 @@ try {
         catch [System.OperationCanceledException] {
             $taskResult.Success = $false
             $taskResult.Error = "Task was cancelled by user or system"
-            Write-Information "  ⏸️ Cancelled: Task was cancelled" -InformationAction Continue
+            Write-Information "  ⏸ Cancelled: Task was cancelled" -InformationAction Continue
             Write-LogEntry -Level 'WARNING' -Component 'ORCHESTRATOR' -Message "Task cancelled: $($task.Name)" -Data @{
                 Duration = ((Get-Date) - $taskStartTime).TotalSeconds
             }
@@ -1260,7 +1262,7 @@ try {
         catch [System.TimeoutException] {
             $taskResult.Success = $false
             $taskResult.Error = "Task timed out: $($_.Exception.Message)"
-            Write-Information "  ⏱️ Timeout: $($_.Exception.Message)" -InformationAction Continue
+            Write-Information "  ⏱ Timeout: $($_.Exception.Message)" -InformationAction Continue
             Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task timeout: $($task.Name)" -Data @{
                 Error    = $_.Exception.Message
                 Duration = ((Get-Date) - $taskStartTime).TotalSeconds
@@ -1269,7 +1271,7 @@ try {
         catch [System.OutOfMemoryException] {
             $taskResult.Success = $false
             $taskResult.Error = "Out of memory error during task execution"
-            Write-Information "  💾 Memory Error: Insufficient memory to complete task" -InformationAction Continue
+            Write-Information "   Memory Error: Insufficient memory to complete task" -InformationAction Continue
             Write-LogEntry -Level 'CRITICAL' -Component 'ORCHESTRATOR' -Message "Out of memory error: $($task.Name)" -Data @{
                 Duration    = ((Get-Date) - $taskStartTime).TotalSeconds
                 MemoryUsage = [System.GC]::GetTotalMemory($false)
@@ -1281,7 +1283,7 @@ try {
         catch {
             $taskResult.Success = $false
             $taskResult.Error = $_.Exception.Message
-            Write-Information "  ✗ Failed: $($_.Exception.Message)" -InformationAction Continue
+            Write-Information "   Failed: $($_.Exception.Message)" -InformationAction Continue
             # Enhanced error logging with full context
             $errorContext = @{
                 Error        = $_.Exception.Message
@@ -1295,9 +1297,9 @@ try {
             }
             Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data $errorContext
             # Additional troubleshooting information
-            Write-Information "  ℹ️ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
+            Write-Information "  ℹ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
             if ($_.InvocationInfo.ScriptLineNumber) {
-                Write-Information "  ℹ️ Error at line: $($_.InvocationInfo.ScriptLineNumber)" -InformationAction Continue
+                Write-Information "  ℹ Error at line: $($_.InvocationInfo.ScriptLineNumber)" -InformationAction Continue
             }
             if ($_.ScriptStackTrace) {
                 Write-Verbose "Full stack trace: $($_.ScriptStackTrace)"
@@ -1313,42 +1315,42 @@ try {
     #region Log Collection (v3.0 Architecture)
     # Collect comprehensive logs from Type1 audit results and Type2 execution logs
     Write-Information "" -InformationAction Continue
-    Write-Information "📋 Collecting comprehensive log data..." -InformationAction Continue
+    Write-Information " Collecting comprehensive log data..." -InformationAction Continue
     $comprehensiveLogCollection = Get-ComprehensiveLogCollection
     # Use the collection (write a short summary) so static analysis doesn't flag it as unused
     if ($comprehensiveLogCollection -is [System.Collections.IEnumerable]) {
         $count = ($comprehensiveLogCollection | Measure-Object).Count
-        Write-Information "  📦 Collected $count log items for report generation" -InformationAction Continue
+        Write-Information "   Collected $count log items for report generation" -InformationAction Continue
     }
     else {
-        Write-Information "  📦 Collected comprehensive log data" -InformationAction Continue
+        Write-Information "   Collected comprehensive log data" -InformationAction Continue
     }
     #endregion
     #region Report Generation (v3.0 Architecture - Preserved)
     # Generate comprehensive reports using v3.0 split architecture: LogProcessor → ReportGenerator
     Write-Information "" -InformationAction Continue
-    Write-Information "📋 Generating maintenance reports..." -InformationAction Continue
+    Write-Information " Generating maintenance reports..." -InformationAction Continue
     try {
         # SystemAnalysis module is optional in v3.0 - not loaded by default for performance
         # All necessary data comes from Type1/Type2 module logs processed by LogProcessor
         # If needed in future, add SystemAnalysis to core modules list and use inventory here
         # v3.0 Split Architecture: LogProcessor → ReportGenerator pipeline
-        Write-Information "📊 Processing logs and generating reports using split architecture..." -InformationAction Continue
+        Write-Information " Processing logs and generating reports using split architecture..." -InformationAction Continue
         try {
             # Step 1: Process logs using LogProcessor module
             if (Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue) {
-                Write-Information "  📋 Step 1: Processing logs with LogProcessor..." -InformationAction Continue
+                Write-Information "   Step 1: Processing logs with LogProcessor..." -InformationAction Continue
                 # LogProcessor reads directly from temp_files/data and temp_files/logs
                 # It does not accept TaskResults, SystemInventory, or Configuration parameters
                 Invoke-LogProcessing
-                Write-Information "  ✓ Log processing completed successfully" -InformationAction Continue
+                Write-Information "   Log processing completed successfully" -InformationAction Continue
             }
             else {
                 throw "LogProcessor module (Invoke-LogProcessing) not available"
             }
             # Step 2: Generate reports using ReportGenerator module
             if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
-                Write-Information "  📄 Step 2: Generating reports with ReportGenerator..." -InformationAction Continue
+                Write-Information "   Step 2: Generating reports with ReportGenerator..." -InformationAction Continue
                 # Create reports directory
                 $reportsDir = Join-Path $Global:ProjectPaths.TempFiles "reports"
                 New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
@@ -1356,7 +1358,7 @@ try {
                 # Generate report using processed data (with fallback capability)
                 $reportResult = New-MaintenanceReport -OutputPath $reportBasePath -EnableFallback
                 if ($reportResult -and $reportResult.Success) {
-                    Write-Information "  ✓ Reports generated successfully using split architecture" -InformationAction Continue
+                    Write-Information "   Reports generated successfully using split architecture" -InformationAction Continue
                     if ($reportResult.ReportPaths) {
                         foreach ($reportPath in $reportResult.ReportPaths) {
                             Write-Information "    • $reportPath" -InformationAction Continue
@@ -1367,19 +1369,19 @@ try {
                         try {
                             $parentHtmlPath = Join-Path $Global:ProjectPaths.ParentDir (Split-Path -Leaf $reportResult.HtmlReport)
                             Copy-Item -Path $reportResult.HtmlReport -Destination $parentHtmlPath -Force
-                            Write-Information "  ✓ HTML report copied to: $parentHtmlPath" -InformationAction Continue
+                            Write-Information "   HTML report copied to: $parentHtmlPath" -InformationAction Continue
                             # Update result to include parent copy location
                             if (-not $reportResult.ParentCopy) {
                                 $reportResult | Add-Member -NotePropertyName 'ParentCopy' -NotePropertyValue $parentHtmlPath -Force
                             }
                         }
                         catch {
-                            Write-Warning "  ⚠️ Failed to copy HTML report to parent directory: $($_.Exception.Message)"
+                            Write-Warning "   Failed to copy HTML report to parent directory: $($_.Exception.Message)"
                         }
                     }
                 }
                 else {
-                    throw "ReportGenerator failed: $($reportResult.Error ?? 'Unknown error')"
+                    throw "ReportGenerator failed: $(if ($reportResult.Error) { $reportResult.Error } else { 'Unknown error' })"
                 }
             }
             else {
@@ -1387,8 +1389,8 @@ try {
             }
         }
         catch {
-            Write-Warning "  ⚠️ Split architecture report generation failed: $($_.Exception.Message)"
-            Write-Information "  📋 Attempting fallback report generation..." -InformationAction Continue
+            Write-Warning "   Split architecture report generation failed: $($_.Exception.Message)"
+            Write-Information "   Attempting fallback report generation..." -InformationAction Continue
             # Fallback: Try to generate basic report with available data
             if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
                 try {
@@ -1397,24 +1399,24 @@ try {
                     $fallbackReportPath = Join-Path $reportsDir "MaintenanceReport_Fallback_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
                     $fallbackResult = New-MaintenanceReport -OutputPath $fallbackReportPath -EnableFallback
                     if ($fallbackResult -and $fallbackResult.Success) {
-                        Write-Information "  ✓ Fallback report generated successfully" -InformationAction Continue
+                        Write-Information "   Fallback report generated successfully" -InformationAction Continue
                     }
                 }
                 catch {
-                    Write-Warning "  ⚠️ Both split architecture and fallback report generation failed"
+                    Write-Warning "   Both split architecture and fallback report generation failed"
                 }
             }
         }
     }
     catch {
-        Write-Warning "  ⚠️ Error during report generation: $($_.Exception.Message)"
+        Write-Warning "   Error during report generation: $($_.Exception.Message)"
     }
     #endregion
     #region Execution Summary
     Write-Information "" -InformationAction Continue
-    Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
     Write-Information "    EXECUTION SUMMARY" -InformationAction Continue
-    Write-Information "═══════════════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
     $totalDuration = ((Get-Date) - $StartTime).TotalSeconds
     $successfulTasks = ($TaskResults | Where-Object { $_.Success }).Count
     $failedTasks = ($TaskResults | Where-Object { -not $_.Success }).Count
@@ -1427,9 +1429,9 @@ try {
     Write-Information "Failed: $failedTasks" -InformationAction Continue
     Write-Information "" -InformationAction Continue
     Write-Information "Task Results:" -InformationAction Continue
-    Write-Information "─────────────────────────────────────────────────────────────" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
     foreach ($result in $TaskResults) {
-        $status = if ($result.Success) { '✓' } else { '✗' }
+        $status = if ($result.Success) { '' } else { '' }
         $statusColor = if ($result.Success) { 'Green' } else { 'Red' }
         $durationText = "$([math]::Round($result.Duration, 2))s"
         # Use colored output for better visual feedback
@@ -1458,24 +1460,24 @@ try {
     Write-Information "Execution summary saved to: $summaryPath" -InformationAction Continue
     # FIX #9: Create session manifest with complete execution metadata
     Write-Information "" -InformationAction Continue
-    Write-Information "📋 Creating session manifest..." -InformationAction Continue
+    Write-Information " Creating session manifest..." -InformationAction Continue
     $manifestPath = New-SessionManifest -SessionId $Global:MaintenanceSessionId `
         -ExecutionMode $executionMode `
         -ModuleResults $TaskResults `
         -ExecutionStartTime $StartTime `
         -IsDryRun:($executionMode -eq 'DryRun')
     if ($manifestPath -and (Test-Path $manifestPath)) {
-        Write-Information "  ✓ Session manifest successfully created" -InformationAction Continue
+        Write-Information "   Session manifest successfully created" -InformationAction Continue
     }
     else {
-        Write-Information "  ⚠️ Session manifest creation encountered issues" -InformationAction Continue
+        Write-Information "   Session manifest creation encountered issues" -InformationAction Continue
     }
     # Copy final reports to parent directory (same level as repo folder)
     Write-Information "" -InformationAction Continue
-    Write-Information "📄 Copying final reports to parent directory..." -InformationAction Continue
+    Write-Information " Copying final reports to parent directory..." -InformationAction Continue
     # Get parent directory of the script root (one level up from repo folder)
     $ParentDir = Split-Path $ScriptRoot -Parent
-    Write-Information "  📁 Target directory: $ParentDir" -InformationAction Continue
+    Write-Information "   Target directory: $ParentDir" -InformationAction Continue
     $finalReports = @()
     $reportsToMove = @(
         @{ Pattern = "maintenance-report-$Global:MaintenanceSessionTimestamp.html"; Description = "HTML maintenance report" }
@@ -1501,15 +1503,15 @@ try {
             try {
                 # Ensure parent directory is accessible
                 if (-not (Test-Path $ParentDir)) {
-                    Write-Information "  ⚠️ Parent directory not accessible: $ParentDir" -InformationAction Continue
+                    Write-Information "   Parent directory not accessible: $ParentDir" -InformationAction Continue
                     continue
                 }
                 Copy-Item -Path $sourceFile -Destination $destPath -Force
-                Write-Information "  ✓ Copied $description to: $destPath" -InformationAction Continue
+                Write-Information "   Copied $description to: $destPath" -InformationAction Continue
                 $finalReports += $destPath
             }
             catch {
-                Write-Information "  ⚠️ Failed to copy $description`: $_" -InformationAction Continue
+                Write-Information "   Failed to copy $description`: $_" -InformationAction Continue
             }
         }
     }
@@ -1521,20 +1523,20 @@ catch {
 }
 if ($finalReports.Count -gt 0) {
     Write-Information "" -InformationAction Continue
-    Write-Information "📋 Final reports available in parent directory:" -InformationAction Continue
-    Write-Information "  📁 Location: $ParentDir" -InformationAction Continue
+    Write-Information " Final reports available in parent directory:" -InformationAction Continue
+    Write-Information "   Location: $ParentDir" -InformationAction Continue
     foreach ($report in $finalReports) {
         Write-Information "  • $(Split-Path $report -Leaf)" -InformationAction Continue
     }
 }
 if ($failedTasks -gt 0) {
     Write-Information "" -InformationAction Continue
-    Write-Information "⚠️  Some tasks failed. Check the logs for detailed error information." -InformationAction Continue
+    Write-Information "  Some tasks failed. Check the logs for detailed error information." -InformationAction Continue
     exit 1
 }
 else {
     Write-Information "" -InformationAction Continue
-    Write-Information "🎉 All tasks completed successfully!" -InformationAction Continue
+    Write-Information " All tasks completed successfully!" -InformationAction Continue
     exit 0
 }
 #endregion
