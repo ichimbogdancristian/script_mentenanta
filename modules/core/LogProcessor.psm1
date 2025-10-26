@@ -99,6 +99,110 @@ else {
     throw "CoreInfrastructure module not found at: $CoreInfraPath - v3.0 requires proper module dependencies"
 }
 
+# Ensure path discovery is initialized (if not already done by orchestrator)
+# This handles the case where LogProcessor is called in a new scope
+if (-not (Get-MaintenancePaths -ErrorAction SilentlyContinue)) {
+    try {
+        # Try to initialize from environment variables set by orchestrator
+        $projectRoot = $env:MAINTENANCE_PROJECT_ROOT
+        if ($projectRoot -and (Test-Path $projectRoot)) {
+            Initialize-GlobalPathDiscovery -HintPath $projectRoot -Force
+        }
+    }
+    catch {
+        # If initialization fails, it will be caught when functions try to access paths
+    }
+}
+
+#region Maintenance Log Organization
+
+<#
+.SYNOPSIS
+    Moves maintenance.log from repository root to organized temp_files/logs location
+
+.DESCRIPTION
+    Handles moving bootstrap maintenance.log from script root to the organized logs directory.
+    This is called by LogProcessor on first invocation to organize logs that were written
+    during the bootstrap phase. LogProcessor is aware of the project root and temp paths
+    through the Initialize-GlobalPathDiscovery system.
+    
+    - Source: $ProjectRoot/maintenance.log (from bootstrap phase)
+    - Target: $ProjectRoot/temp_files/logs/maintenance.log
+    
+    Uses atomic MOVE when possible, falls back to COPY+DELETE for compatibility.
+    Idempotent: Safe to call multiple times, only moves if source exists and target doesn't.
+
+.OUTPUTS
+    Boolean - $true if moved/already organized, $false if not found or error
+#>
+function Move-MaintenanceLogToOrganized {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+    
+    try {
+        # Get paths from initialized path discovery system
+        $projectRoot = (Get-MaintenancePaths).ProjectRoot
+        $tempRoot = (Get-MaintenancePaths).TempRoot
+        
+        if (-not $projectRoot -or -not $tempRoot) {
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message 'Path discovery not fully initialized, cannot organize maintenance.log'
+            return $false
+        }
+        
+        $sourceLog = Join-Path $projectRoot 'maintenance.log'
+        $targetLog = Join-Path $tempRoot 'logs\maintenance.log'
+        
+        # Check if source exists
+        if (-not (Test-Path $sourceLog)) {
+            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "Bootstrap maintenance.log not found at root (already organized or first run): $sourceLog"
+            return $true
+        }
+        
+        # Check if already organized
+        if (Test-Path $targetLog) {
+            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "maintenance.log already at organized location: $targetLog"
+            return $true
+        }
+        
+        # Ensure target directory exists
+        $targetDir = Split-Path -Parent $targetLog
+        if (-not (Test-Path $targetDir)) {
+            New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
+        }
+        
+        Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Organizing maintenance.log from bootstrap location to: $targetLog"
+        
+        # Try atomic MOVE first (preferred)
+        try {
+            Move-Item -Path $sourceLog -Destination $targetLog -Force -ErrorAction Stop
+            Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message "Successfully moved maintenance.log to organized location"
+            return $true
+        }
+        catch {
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "MOVE operation failed, attempting COPY+DELETE: $($_.Exception.Message)"
+            
+            # Fallback: COPY then DELETE
+            try {
+                Copy-Item -Path $sourceLog -Destination $targetLog -Force -ErrorAction Stop
+                Remove-Item -Path $sourceLog -Force -ErrorAction SilentlyContinue
+                Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message "Successfully organized maintenance.log via COPY+DELETE fallback"
+                return $true
+            }
+            catch {
+                Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to organize maintenance.log: $($_.Exception.Message)"
+                return $false
+            }
+        }
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Error organizing maintenance.log: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+#endregion
+
 #region Performance Optimization and Caching
 
 # Module-level cache for frequently accessed log data
@@ -1743,6 +1847,12 @@ function Invoke-LogProcessing {
     )
     
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Starting comprehensive log processing pipeline'
+    
+    # FIRST: Organize bootstrap maintenance.log to proper location if needed
+    $logOrganized = Move-MaintenanceLogToOrganized
+    if (-not $logOrganized) {
+        Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message 'Failed to organize bootstrap maintenance.log, continuing with processing'
+    }
     
     try {
         # Initialize processed data paths

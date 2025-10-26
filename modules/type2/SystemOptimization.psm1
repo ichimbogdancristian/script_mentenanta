@@ -411,7 +411,7 @@ function Optimize-SystemPerformance {
             Write-Information "    💾 Disk space freed: ${spaceFreedMB} MB" -InformationAction Continue
         }
 
-        $success = $results.Failed -eq 0 && $results.Successful -gt 0
+        $success = $results.Failed -eq 0 -and $results.Successful -gt 0
         if (-not $success) {
             Write-Information "    ❌ Some optimizations failed. Check logs for details." -InformationAction Continue
         }

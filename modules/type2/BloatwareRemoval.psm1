@@ -83,7 +83,7 @@ if (-not (Get-Command -Name 'Find-InstalledBloatware' -ErrorAction SilentlyConti
 function Invoke-BloatwareRemoval {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [hashtable]$Config,
         
         [Parameter()]
@@ -478,7 +478,7 @@ ITEMS BY SOURCE:
         Write-Information "    📊 Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
         Write-Information "    📄 Files created: JSON diff, TXT summary" -InformationAction Continue
 
-        $success = $results.Failed -eq 0 && $results.Successful -gt 0
+        $success = $results.Failed -eq 0 -and $results.Successful -gt 0
         if (-not $success) {
             Write-Information "    ❌ Some items could not be removed. Check logs for details." -InformationAction Continue
         }

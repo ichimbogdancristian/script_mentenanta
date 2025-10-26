@@ -14,21 +14,15 @@ REM Enhanced Logging System
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
 :LOG_MESSAGE
-REM Convert timestamp to ISO 8601 format: YYYY-MM-DD HH:MM:SS
-REM Extract components from DATE (example: Fri 10/25/2025)
-FOR /F "tokens=2 delims= " %%A IN ("%DATE%") DO (
-    FOR /F "tokens=1-3 delims=/" %%B IN ("%%A") DO (
-        SET "DATESTAMP=20%%D-%%B-%%C"
-    )
-)
+REM Simple time format: HH:MM:SS
 SET "LOG_TIMESTAMP=%TIME:~0,8%"
 SET "LEVEL=%~2"
 IF "%LEVEL%"=="" SET "LEVEL=INFO"
 SET "COMPONENT=%~3"
 IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 
-REM Format: [YYYY-MM-DD HH:MM:SS] [LEVEL] [COMPONENT] MESSAGE
-SET "LOG_ENTRY=[%DATESTAMP% %LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
+REM Format: [HH:MM:SS] [LEVEL] MESSAGE
+SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] %~1"
 
 ECHO %LOG_ENTRY%
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
@@ -100,10 +94,24 @@ SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
 
 REM FIX #1: Initialize the log file immediately on startup (don't wait for first LOG_MESSAGE call)
 IF NOT EXIST "%LOG_FILE%" (
+    REM Get current date/time for banner
+    FOR /F "tokens=2 delims= " %%A IN ("%DATE%") DO (
+        FOR /F "tokens=1-3 delims=/" %%B IN ("%%A") DO (
+            SET "BANNER_DATE=20%%D-%%B-%%C"
+        )
+    )
+    SET "BANNER_TIME=%TIME:~0,8%"
+    
     (
         ECHO ================================================
         ECHO  Windows Maintenance Automation Launcher v2.0
-        ECHO  Initial bootstrap started
+        ECHO ================================================
+        ECHO.
+        ECHO  Computer: %COMPUTERNAME%
+        ECHO  User: %USERNAME%
+        ECHO  Date: %BANNER_DATE%
+        ECHO  Time: %BANNER_TIME%
+        ECHO.
         ECHO ================================================
         ECHO.
     ) > "%LOG_FILE%"
@@ -227,7 +235,7 @@ IF EXIST "%WORKING_DIR%restart_flag.tmp" (
 
 REM Create/Verify monthly maintenance scheduled task before continuing
 SET "TASK_NAME=WindowsMaintenanceAutomation"
-CALL :LOG_MESSAGE "Ensuring monthly maintenance task exists (1st day 01:00)..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Ensuring monthly maintenance task exists (20th day 01:00)..." "INFO" "LAUNCHER"
 
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
@@ -240,7 +248,7 @@ IF !ERRORLEVEL! EQU 0 (
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
-        /D 1 ^
+        /D 20 ^
         /TN "%TASK_NAME%" ^
         /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
         /ST 01:00 ^
@@ -324,6 +332,28 @@ SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
     
+    REM Replace script.bat with the one from extracted folder
+    IF EXIST "%EXTRACTED_PATH%\script.bat" (
+        CALL :LOG_MESSAGE "Updating script.bat from extracted repository" "INFO" "LAUNCHER"
+        
+        REM Backup original script.bat
+        SET "BACKUP_SCRIPT=%WORKING_DIR:~0,-1%.bat.backup"
+        IF EXIST "%SCRIPT_PATH%" (
+            COPY /Y "%SCRIPT_PATH%" "%BACKUP_SCRIPT%" >nul 2>&1
+            CALL :LOG_MESSAGE "Original script.bat backed up to: %BACKUP_SCRIPT%" "DEBUG" "LAUNCHER"
+        )
+        
+        REM Copy extracted script.bat to original location
+        COPY /Y "%EXTRACTED_PATH%\script.bat" "%SCRIPT_PATH%" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to replace script.bat - continuing with current version" "WARN" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "No script.bat found in extracted repository" "WARN" "LAUNCHER"
+    )
+    
     REM Update working directory to extracted folder for proper module loading
     SET "WORKING_DIR=%EXTRACTED_PATH%\"
     SET "WORKING_DIRECTORY=%WORKING_DIR%"
@@ -361,30 +391,16 @@ IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
     MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
 )
 
-REM Move maintenance.log from root to temp_files/logs/ (preserving all bootstrap content)
-REM v3.0 FIX: Move from ORIGINAL location, not current WORKING_DIR
-IF EXIST "%LOG_FILE%" (
-    CALL :LOG_MESSAGE "Moving maintenance.log from repository root to temp_files/logs/" "INFO" "LAUNCHER"
-    MOVE /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Successfully moved maintenance.log to organized location" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to move maintenance.log - copying instead" "WARN" "LAUNCHER"
-        COPY /Y "%LOG_FILE%" "%WORKING_DIR%temp_files\logs\maintenance.log" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            DEL /Q "%LOG_FILE%" >nul 2>&1
-        )
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "WARNING: Original maintenance.log file not found at %LOG_FILE%" "WARN" "LAUNCHER"
-)
+REM NOTE: maintenance.log will be organized by LogProcessor module
+REM The module will handle moving logs from root to temp_files/logs/ when it initializes
+CALL :LOG_MESSAGE "Log organization will be handled by LogProcessor module" "DEBUG" "LAUNCHER"
 
-REM FIX #3: Update LOG_FILE and SCRIPT_LOG_FILE to new organized location
-REM This ensures PowerShell orchestrator writes to the correct log file
-SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
-SET "SCRIPT_LOG_FILE=%LOG_FILE%"
-CALL :LOG_MESSAGE "Log file path updated to organized location: %LOG_FILE%" "DEBUG" "LAUNCHER"
-CALL :LOG_MESSAGE "SCRIPT_LOG_FILE environment variable set for PowerShell orchestrator: %SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
+REM Set environment variables so PowerShell can access bootstrap paths
+SET "ORIGINAL_LOG_FILE=%LOG_FILE%"
+CALL :LOG_MESSAGE "Original log file path (if exists): %ORIGINAL_LOG_FILE%" "DEBUG" "LAUNCHER"
+
+REM Continue with orchestrator invocation
+REM LogProcessor will organize logs when it runs
 
 REM -----------------------------------------------------------------------------
 REM Project Structure Discovery and Validation (Moved after extraction)

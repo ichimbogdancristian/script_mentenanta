@@ -117,7 +117,7 @@ function Invoke-AppUpgrade {
         
         # Save detection results to temp_files/data/
         $detectionDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\app-upgrade-results.json"
-        $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $detectionDataPath
+        $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $detectionDataPath | Out-Null
         Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detection complete: $($detectionResults.Count) upgrades available"
 
         # STEP 2: Load module configuration
@@ -140,7 +140,7 @@ function Invoke-AppUpgrade {
         
         # Save diff list
         $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\app-upgrade-diff.json"
-        $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath
+        $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath | Out-Null
         Write-Information "    ✓ $($diffList.Count) upgrades after filtering (excluded $($detectionResults.Count - $diffList.Count))" -InformationAction Continue
 
         # STEP 4: Setup execution logging
@@ -257,7 +257,7 @@ function Invoke-AppUpgrade {
         }
         
         try {
-            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
+            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force | Out-Null
             Write-Verbose "Execution summary saved to: $summaryPath"
         }
         catch {

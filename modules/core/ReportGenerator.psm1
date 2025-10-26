@@ -102,6 +102,21 @@ else {
     throw "CoreInfrastructure module not found at: $CoreInfraPath - v3.0 requires proper module dependencies"
 }
 
+# Ensure path discovery is initialized (if not already done by orchestrator)
+# This handles the case where ReportGenerator is called in a new scope
+if (-not (Get-MaintenancePaths -ErrorAction SilentlyContinue)) {
+    try {
+        # Try to initialize from environment variables set by orchestrator
+        $projectRoot = $env:MAINTENANCE_PROJECT_ROOT
+        if ($projectRoot -and (Test-Path $projectRoot)) {
+            Initialize-GlobalPathDiscovery -HintPath $projectRoot -Force
+        }
+    }
+    catch {
+        # If initialization fails, it will be caught when functions try to access paths
+    }
+}
+
 #region Configuration and Template Management
 
 <#

@@ -448,7 +448,7 @@ function Install-EssentialApplication {
         Write-Information "  $statusIcon Essential apps installation completed in $([math]::Round($duration, 2))s" -InformationAction Continue
         Write-Information "    📊 Total: $($results.TotalApps), Installed: $($results.Installed), Skipped: $($results.Skipped), Failed: $($results.Failed)" -InformationAction Continue
 
-        $success = $results.Failed -eq 0 && $results.Installed -gt 0
+        $success = $results.Failed -eq 0 -and $results.Installed -gt 0
         
         # Complete performance tracking and structured logging
         try {

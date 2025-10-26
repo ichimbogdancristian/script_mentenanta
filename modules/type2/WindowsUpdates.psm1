@@ -57,7 +57,13 @@ if (-not (Get-Command -Name 'Get-WindowsUpdatesAnalysis' -ErrorAction SilentlyCo
 
 function Invoke-WindowsUpdates {
     [CmdletBinding(SupportsShouldProcess)]
-    param([Parameter()][switch]$DryRun)
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Config,
+        
+        [Parameter()]
+        [switch]$DryRun
+    )
     
     $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES' } catch { }
     
@@ -71,7 +77,7 @@ function Invoke-WindowsUpdates {
         }
         
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
-        $analysisResults = Get-WindowsUpdatesAnalysis
+        $analysisResults = Get-WindowsUpdatesAnalysis -Config $Config
         
         if (-not $analysisResults -or $analysisResults.PendingUpdatesCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No pending Windows updates detected'
@@ -345,7 +351,7 @@ function Install-WindowsUpdate {
             }
         }
 
-        $success = $results.UpdatesFailed -eq 0 && ($results.UpdatesInstalled -gt 0 || $results.UpdatesFound -eq 0)
+        $success = $results.UpdatesFailed -eq 0 -and ($results.UpdatesInstalled -gt 0 -or $results.UpdatesFound -eq 0)
         
         # Complete performance tracking and structured logging
         try {
