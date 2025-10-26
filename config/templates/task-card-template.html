@@ -1,42 +1,52 @@
-<!-- Module Report Template - Beautiful Card with Flexbox Layout -->
+<!-- Enhanced Module Report Card Template with Detailed Logs -->
 <div class="card module-report">
     <div class="card-header">
         <h3>{{MODULE_ICON}} {{MODULE_NAME}}</h3>
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-            <span class="status {{MODULE_STATUS_CLASS}}">{{MODULE_STATUS}}</span>
+            <span class="module-status-badge {{MODULE_STATUS_CLASS}}">{{MODULE_STATUS}}</span>
             <span class="execution-time">⏱️ {{EXECUTION_DURATION}}</span>
         </div>
     </div>
     <div class="card-body">
         <!-- Module Description -->
-        <div style="margin-bottom: 24px; padding: 16px; background: rgba(0, 120, 212, 0.05); border-radius: 8px; border-left: 4px solid var(--primary-color);">
-            <p style="margin: 0; color: var(--text-secondary); font-size: 0.95em; line-height: 1.5;">
-                {{MODULE_DESCRIPTION}}
+        <div style="margin-bottom: 24px; padding: 18px; background: rgba(0, 120, 212, 0.05); border-radius: 10px; border-left: 4px solid var(--primary-color);">
+            <p style="margin: 0; color: var(--text-secondary); font-size: 1em; line-height: 1.6;">
+                <strong>📌 Description:</strong> {{MODULE_DESCRIPTION}}
             </p>
         </div>
 
-        <!-- Summary Metrics with Flexbox -->
+        <!-- Summary Metrics with Enhanced Design -->
         <div class="module-summary">
-            <h4 style="margin-bottom: 16px; color: var(--primary-color); font-size: 1.1em;">📊 Summary Metrics</h4>
+            <h4 style="margin-bottom: 18px; color: var(--primary-color); font-size: 1.2em; display: flex; align-items: center; gap: 8px;">
+                <span>📊</span>
+                <span>Summary Metrics</span>
+            </h4>
             <div class="metric-row">
                 <div class="metric-item">
-                    <span class="metric-label">Detected:</span>
+                    <span class="metric-label">🔍 Detected:</span>
                     <span class="metric-value">{{ITEMS_DETECTED}}</span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Processed:</span>
+                    <span class="metric-label">⚙️ Processed:</span>
                     <span class="metric-value {{PROCESSED_CLASS}}">{{ITEMS_PROCESSED}}</span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Success Rate:</span>
+                    <span class="metric-label">✅ Success Rate:</span>
                     <span class="metric-value success">{{MODULE_SUCCESS_RATE}}%</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">⏱️ Duration:</span>
+                    <span class="metric-value">{{EXECUTION_DURATION}}</span>
                 </div>
             </div>
         </div>
 
         <!-- Before/After Comparison -->
-        <div class="before-after-section">
-            <h4>📋 Before & After Comparison</h4>
+        <div class="before-after-section" style="margin-top: 28px;">
+            <h4 style="margin-bottom: 18px; color: var(--text-color); font-size: 1.2em; display: flex; align-items: center; gap: 8px;">
+                <span>📊</span>
+                <span>Before & After Comparison</span>
+            </h4>
             <div class="comparison-grid">
                 <div class="before-section">
                     <h4 class="section-title">📋 {{BEFORE_TITLE}}</h4>
@@ -55,29 +65,37 @@
 
         <!-- Detailed Results Table (if available) -->
         {{#if HAS_DETAILED_RESULTS}}
-        <div class="detailed-results" style="margin-bottom: 28px;">
-            <h4 style="margin-bottom: 16px; color: var(--text-color); font-size: 1.1em; font-weight: 600;">📊 Detailed Results</h4>
-            <table class="results-table">
-                <thead>
-                    <tr>
-                        <th>Item</th>
-                        <th>Type</th>
-                        <th>Before Status</th>
-                        <th>Action Taken</th>
-                        <th>After Status</th>
-                        <th>Result</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{DETAILED_RESULTS_ROWS}}
-                </tbody>
-            </table>
+        <div class="detailed-results" style="margin-top: 28px;">
+            <h4 style="margin-bottom: 16px; color: var(--text-color); font-size: 1.1em; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                <span>📊</span>
+                <span>Detailed Results</span>
+            </h4>
+            <div class="operation-table-container">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Type</th>
+                            <th>Before Status</th>
+                            <th>Action Taken</th>
+                            <th>After Status</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{DETAILED_RESULTS_ROWS}}
+                    </tbody>
+                </table>
+            </div>
         </div>
         {{/if}}
 
         <!-- Changes Summary Grid -->
-        <div class="changes-summary">
-            <h4>📝 Changes Summary</h4>
+        <div class="changes-summary" style="margin-top: 28px;">
+            <h4 style="margin-bottom: 18px; color: var(--text-color); font-size: 1.2em; display: flex; align-items: center; gap: 8px;">
+                <span>📝</span>
+                <span>Changes Summary</span>
+            </h4>
             <div class="changes-grid">
                 {{#if ITEMS_ADDED}}
                 <div class="change-category">
@@ -109,10 +127,55 @@
             </div>
         </div>
 
+        <!-- Module Execution Logs -->
+        <div class="operation-logs-section" style="margin-top: 28px;">
+            <h4 style="color: var(--primary-color); margin-bottom: 15px; font-size: 1.2em; display: flex; align-items: center; gap: 8px;">
+                <span>📋</span>
+                <span>Operation Logs</span>
+            </h4>
+            <div class="log-summary">
+                <div class="log-stat success">
+                    <span>✅ Successful:</span>
+                    <strong>{{LOGS_SUCCESS_COUNT}}</strong>
+                </div>
+                <div class="log-stat error">
+                    <span>❌ Failed:</span>
+                    <strong>{{LOGS_ERROR_COUNT}}</strong>
+                </div>
+                <div class="log-stat warning">
+                    <span>⚠️ Warnings:</span>
+                    <strong>{{LOGS_WARNING_COUNT}}</strong>
+                </div>
+                <div class="log-stat">
+                    <span>ℹ️ Info:</span>
+                    <strong>{{LOGS_INFO_COUNT}}</strong>
+                </div>
+            </div>
+            <div class="operation-table-container">
+                <table class="operation-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Operation</th>
+                            <th>Target</th>
+                            <th>Result</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{OPERATION_LOG_ROWS}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Errors and Warnings (if any) -->
         {{#if HAS_ERRORS}}
-        <div class="error-section">
-            <h4 class="error-title">⚠️ Errors & Warnings</h4>
+        <div class="error-section" style="margin-top: 28px;">
+            <h4 class="error-title">
+                <span>⚠️</span>
+                <span>Errors & Warnings</span>
+            </h4>
             <div class="error-list">
                 {{ERROR_ITEMS_LIST}}
             </div>
@@ -121,12 +184,41 @@
 
         <!-- Recommendations (if any) -->
         {{#if HAS_RECOMMENDATIONS}}
-        <div class="recommendations-section">
-            <h4 class="recommendations-title">💡 Recommendations</h4>
+        <div class="recommendations-section" style="margin-top: 28px;">
+            <h4 class="recommendations-title">
+                <span>💡</span>
+                <span>Recommendations</span>
+            </h4>
             <div class="recommendations-list">
                 {{RECOMMENDATIONS_LIST}}
             </div>
         </div>
         {{/if}}
+
+        <!-- Module Performance Stats -->
+        <div style="margin-top: 28px; padding: 18px; background: var(--bg-color); border-radius: 10px; border: 2px solid var(--border-color);">
+            <h4 style="margin-bottom: 15px; color: var(--text-color); font-size: 1.1em; display: flex; align-items: center; gap: 8px;">
+                <span>⚡</span>
+                <span>Performance Statistics</span>
+            </h4>
+            <div class="metric-row">
+                <div class="metric-item">
+                    <span class="metric-label">⏱️ Start Time:</span>
+                    <span class="metric-value">{{START_TIME}}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">🏁 End Time:</span>
+                    <span class="metric-value">{{END_TIME}}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">⚡ Total Duration:</span>
+                    <span class="metric-value">{{EXECUTION_DURATION}}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">💾 Memory Used:</span>
+                    <span class="metric-value">{{MEMORY_USED}}</span>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
