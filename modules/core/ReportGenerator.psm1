@@ -943,9 +943,27 @@ function New-HtmlReportContent {
         $html = $html -replace '{{SYSTEM_HEALTH_SCORE}}', $systemHealthScore
         $html = $html -replace '{{AVG_MODULE_TIME}}', $avgModuleTime
         
-        # System information placeholders
-        $html = $html -replace '{{PROCESSOR_NAME}}', (Get-WmiObject Win32_Processor | Select-Object -First 1).Name
-        $html = $html -replace '{{TOTAL_MEMORY}}', [math]::Round((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+        # System information placeholders - using Get-CimInstance instead of Get-WmiObject for better compatibility
+        $processorName = 'Unknown Processor'
+        $totalMemory = '0 GB'
+        try {
+            $processor = Get-CimInstance -ClassName Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($processor) { $processorName = $processor.Name }
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to get processor info: $($_.Exception.Message)"
+        }
+        
+        try {
+            $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue
+            if ($computerSystem) { $totalMemory = [math]::Round($computerSystem.TotalPhysicalMemory / 1GB, 2) }
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to get computer system info: $($_.Exception.Message)"
+        }
+        
+        $html = $html -replace '{{PROCESSOR_NAME}}', $processorName
+        $html = $html -replace '{{TOTAL_MEMORY}}', $totalMemory
         $html = $html -replace '{{STORAGE_INFO}}', 'Multiple Drives'
         $html = $html -replace '{{OS_VERSION_DETAILED}}', [System.Environment]::OSVersion.VersionString
         $html = $html -replace '{{BUILD_NUMBER}}', [System.Environment]::OSVersion.Version.Build
