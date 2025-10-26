@@ -94,13 +94,9 @@ SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
 
 REM FIX #1: Initialize the log file immediately on startup (don't wait for first LOG_MESSAGE call)
 IF NOT EXIST "%LOG_FILE%" (
-    REM Get current date/time for banner
-    FOR /F "tokens=2 delims= " %%A IN ("%DATE%") DO (
-        FOR /F "tokens=1-3 delims=/" %%B IN ("%%A") DO (
-            SET "BANNER_DATE=20%%D-%%B-%%C"
-        )
-    )
-    SET "BANNER_TIME=%TIME:~0,8%"
+    REM Get current date/time for banner using more reliable methods
+    FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
+    FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
     
     (
         ECHO ================================================
