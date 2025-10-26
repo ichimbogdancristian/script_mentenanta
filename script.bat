@@ -336,19 +336,21 @@ IF EXIST "%EXTRACTED_PATH%" (
     IF EXIST "%EXTRACTED_PATH%\script.bat" (
         CALL :LOG_MESSAGE "Updating script.bat from extracted repository" "INFO" "LAUNCHER"
         
-        REM Backup original script.bat
-        SET "BACKUP_SCRIPT=%WORKING_DIR:~0,-1%.bat.backup"
-        IF EXIST "%SCRIPT_PATH%" (
-            COPY /Y "%SCRIPT_PATH%" "%BACKUP_SCRIPT%" >nul 2>&1
+        REM Use ORIGINAL_SCRIPT_DIR to ensure we overwrite the correct script.bat location
+        SET "ORIGINAL_SCRIPT_BAT=%ORIGINAL_SCRIPT_DIR%script.bat"
+        SET "BACKUP_SCRIPT=%ORIGINAL_SCRIPT_DIR:~0,-1%.bat.backup"
+        
+        IF EXIST "%ORIGINAL_SCRIPT_BAT%" (
+            COPY /Y "%ORIGINAL_SCRIPT_BAT%" "%BACKUP_SCRIPT%" >nul 2>&1
             CALL :LOG_MESSAGE "Original script.bat backed up to: %BACKUP_SCRIPT%" "DEBUG" "LAUNCHER"
         )
         
         REM Copy extracted script.bat to original location
-        COPY /Y "%EXTRACTED_PATH%\script.bat" "%SCRIPT_PATH%" >nul 2>&1
+        COPY /Y "%EXTRACTED_PATH%\script.bat" "%ORIGINAL_SCRIPT_BAT%" >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository at: %ORIGINAL_SCRIPT_BAT%" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "Failed to replace script.bat - continuing with current version" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "Failed to replace script.bat at %ORIGINAL_SCRIPT_BAT% - continuing with current version" "WARN" "LAUNCHER"
         )
     ) ELSE (
         CALL :LOG_MESSAGE "No script.bat found in extracted repository" "WARN" "LAUNCHER"
