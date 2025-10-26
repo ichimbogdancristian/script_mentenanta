@@ -951,6 +951,9 @@ function Write-ModuleLogEntry {
     Write-Information $logEntry -InformationAction Continue
 }
 
+# Backward compatibility alias
+New-Alias -Name 'Write-LogEntry' -Value 'Write-ModuleLogEntry' -Force
+
 <#
 .SYNOPSIS
     Starts performance tracking for an operation
@@ -1386,7 +1389,7 @@ function Test-TempFilesStructure {
         
         # Ensure root temp directory exists
         if (-not (Test-Path $TempRoot)) {
-            Write-LogEntry -Level 'WARN' -Component 'FILE-ORG' -Message "Creating missing TempRoot directory: $TempRoot"
+            Write-LogEntry -Level 'WARNING' -Component 'FILE-ORG' -Message "Creating missing TempRoot directory: $TempRoot"
             New-Item -Path $TempRoot -ItemType Directory -Force -ErrorAction Stop | Out-Null
         }
         
@@ -1398,7 +1401,7 @@ function Test-TempFilesStructure {
             $fullPath = Join-Path $TempRoot $dir
             if (-not (Test-Path $fullPath)) {
                 $missingDirs += $dir
-                Write-LogEntry -Level 'WARN' -Component 'FILE-ORG' -Message "Creating missing subdirectory: $fullPath"
+                Write-LogEntry -Level 'WARNING' -Component 'FILE-ORG' -Message "Creating missing subdirectory: $fullPath"
                 New-Item -Path $fullPath -ItemType Directory -Force -ErrorAction Stop | Out-Null
             }
         }
@@ -2190,7 +2193,7 @@ Export-ModuleMember -Function @(
     'Initialize-MaintenanceInfrastructure', 'Get-InfrastructureStatus',
     'Get-AuditResultsPath', 'Save-DiffResults',
     'New-ModuleExecutionResult', 'Write-StructuredLogEntry', 'Compare-DetectedVsConfig'
-) -Alias @('Initialize-ConfigSystem', 'Get-MainConfig', 'Get-BloatwareList', 'Get-UnifiedEssentialAppsList')
+) -Alias @('Initialize-ConfigSystem', 'Get-MainConfig', 'Get-BloatwareList', 'Get-UnifiedEssentialAppsList', 'Write-LogEntry')
 
 #endregion
 

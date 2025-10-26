@@ -874,6 +874,7 @@ New-Alias -Name 'Find-InstalledBloatware' -Value 'Get-BloatwareAnalysis'
 Export-ModuleMember -Function @(
     'Get-BloatwareAnalysis',  #  v3.0 PRIMARY function
     'Get-BloatwareStatistic',
-    'Test-BloatwareDetection'
-) -Alias @('Find-InstalledBloatware')  # Backward compatibility
+    'Test-BloatwareDetection',
+    'Find-InstalledBloatware'  # Public function for Type2 modules
+)
 

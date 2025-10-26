@@ -220,14 +220,15 @@ function Invoke-BloatwareRemoval {
     }
     catch {
         $errorMsg = "Failed to execute bloatware removal: $($_.Exception.Message)"
-        Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-REMOVAL' -Message $errorMsg -Data @{ Error = $_.Exception }
+        Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-REMOVAL' -Message $errorMsg -Data @{ Error = $_.Exception };
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
+        $itemsDetected = if ($detectionResults) { $detectionResults.Count } else { 0 }
         return New-ModuleExecutionResult `
             -Success $false `
-            -ItemsDetected (if ($detectionResults) { $detectionResults.Count } else { 0 }) `
+            -ItemsDetected $itemsDetected `
             -ItemsProcessed 0 `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
             -LogPath $executionLogPath `

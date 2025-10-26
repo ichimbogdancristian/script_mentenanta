@@ -6,12 +6,30 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Windows Maintenance Report</title>
     <link rel="stylesheet" href="report-styles.css">
+    <style>
+        /* Quick scroll bar styling for better appearance */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #0078d4;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #106ebe;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <!-- Header Section -->
         <div class="header">
-            <h1>🛠️ {{REPORT_TITLE}}</h1>
+            <h1>{{REPORT_TITLE}}</h1>
             <div class="subtitle">{{REPORT_SUBTITLE}}</div>
             <div class="meta">
                 <div><strong>Generated:</strong> {{GENERATION_TIME}}</div>
@@ -22,7 +40,7 @@
             </div>
         </div>
 
-        <!-- Executive Summary -->
+        <!-- Executive Summary Section -->
         <div class="card">
             <div class="card-header">
                 <h2>📋 Executive Summary</h2>
@@ -82,34 +100,45 @@
             </div>
         </div>
 
-        <!-- Module Reports -->
-        {{MODULE_REPORTS}}
+        <!-- Module Reports Section -->
+        <div style="margin-top: 40px;">
+            <h2 style="font-size: 2em; color: #2d2d2d; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 3px solid #0078d4; display: flex; align-items: center; gap: 12px;">
+                🔧 Detailed Module Reports
+            </h2>
+            {{MODULE_REPORTS}}
+        </div>
 
-        <!-- System Information -->
-        <div class="card">
+        <!-- System Information Section -->
+        <div class="card" style="margin-top: 40px;">
             <div class="card-header">
                 <h2>💻 System Information</h2>
             </div>
             <div class="card-body">
                 <div class="system-info-grid">
                     <div>
-                        <h4>Hardware</h4>
+                        <h4>🖥️ Hardware Configuration</h4>
                         <table class="info-table">
-                            <tr><td>Processor:</td><td>{{PROCESSOR_NAME}}</td></tr>
-                            <tr><td>Memory:</td><td>{{TOTAL_MEMORY}} GB</td></tr>
-                            <tr><td>Storage:</td><td>{{STORAGE_INFO}}</td></tr>
+                            <tr><td><strong>Processor:</strong></td><td>{{PROCESSOR_NAME}}</td></tr>
+                            <tr><td><strong>Memory:</strong></td><td>{{TOTAL_MEMORY}} GB</td></tr>
+                            <tr><td><strong>Storage:</strong></td><td>{{STORAGE_INFO}}</td></tr>
                         </table>
                     </div>
                     <div>
-                        <h4>Operating System</h4>
+                        <h4>🖨️ Operating System Details</h4>
                         <table class="info-table">
-                            <tr><td>OS Version:</td><td>{{OS_VERSION_DETAILED}}</td></tr>
-                            <tr><td>Build Number:</td><td>{{BUILD_NUMBER}}</td></tr>
-                            <tr><td>Last Boot:</td><td>{{LAST_BOOT_TIME}}</td></tr>
+                            <tr><td><strong>OS Version:</strong></td><td>{{OS_VERSION_DETAILED}}</td></tr>
+                            <tr><td><strong>Build Number:</strong></td><td>{{BUILD_NUMBER}}</td></tr>
+                            <tr><td><strong>Last Boot:</strong></td><td>{{LAST_BOOT_TIME}}</td></tr>
                         </table>
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 50px; padding: 30px 0; color: #999; border-top: 2px solid #e0e0e0; font-size: 0.9em;">
+            <p>📄 Windows Maintenance Report Generated on {{GENERATION_TIME}}</p>
+            <p style="margin-top: 8px; opacity: 0.7;">This report contains maintenance operations and system optimization results.</p>
         </div>
     </div>
 </body>
