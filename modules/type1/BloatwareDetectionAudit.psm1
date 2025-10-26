@@ -867,9 +867,6 @@ function Get-BloatwareAnalysis {
     }
 }
 
-# Backward compatibility alias
-New-Alias -Name 'Find-InstalledBloatware' -Value 'Get-BloatwareAnalysis'
-
 # Export module functions
 Export-ModuleMember -Function @(
     'Get-BloatwareAnalysis',  #  v3.0 PRIMARY function

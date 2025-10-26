@@ -121,7 +121,7 @@ function Invoke-EssentialApps {
         # FIX #7: Use configuration manager instead of direct path (now in config/lists/)
         $configData = Get-EssentialAppsConfiguration
         if (-not $configData) {
-            Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Essential apps configuration not available"
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Essential apps configuration not available"
             return @{ Success = $false; ItemsDetected = 0; ItemsProcessed = 0; Message = 'Configuration not available' }
         }
         
@@ -228,9 +228,15 @@ function Invoke-EssentialApps {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
         
+        # Calculate items detected
+        $itemsDetected = 0
+        if ($detectionResults.Summary -and $detectionResults.Summary.TotalScanned) {
+            $itemsDetected = $detectionResults.Summary.TotalScanned
+        }
+        
         return New-ModuleExecutionResult `
             -Success $true `
-            -ItemsDetected (if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }) `
+            -ItemsDetected $itemsDetected `
             -ItemsProcessed $processedCount `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
             -LogPath $executionLogPath `
@@ -239,7 +245,7 @@ function Invoke-EssentialApps {
     }
     catch {
         $errorMsg = "Failed to execute essential apps installation: $($_.Exception.Message)"
-        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg
+        Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg
         
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
         
@@ -317,7 +323,7 @@ function Install-EssentialApplication {
     
     # Initialize structured logging and performance tracking
     try {
-        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential applications installation' -Data @{
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential applications installation' -Data @{
             Categories       = $Categories
             CustomAppsCount  = $CustomApps.Count
             SkipDuplicates   = $SkipDuplicates.IsPresent
@@ -463,7 +469,7 @@ function Install-EssentialApplication {
                 ChocolateyApps = ($chocoApps | Measure-Object).Count
                 ManualApps     = ($manualApps | Measure-Object).Count
             }
-            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation completed' -Data $results
+            Write-StructuredLogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation completed' -Data $results
         }
         catch {
             # LoggingManager not available, continue with standard logging
@@ -483,7 +489,7 @@ function Install-EssentialApplication {
         # Complete performance tracking for failed operation
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
-            Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
         }
         catch {
             # LoggingManager not available, continue with standard logging
@@ -914,7 +920,7 @@ function Install-AppViaWinget {
 
     # Start structured logging for Winget installation batch
     try {
-        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Winget batch installation' -Data @{ AppCount = $Apps.Count; ParallelCount = $ParallelCount; DryRun = $DryRun.IsPresent }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Winget batch installation' -Data @{ AppCount = $Apps.Count; ParallelCount = $ParallelCount; DryRun = $DryRun.IsPresent }
     }
     catch {
         # LoggingManager not available, continue with standard logging
@@ -985,7 +991,7 @@ function Install-AppViaWinget {
 
                     if ($process.ExitCode -eq 0) {
                         # Post-installation verification
-                        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Message 'Verifying Winget package installation'
+                        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Message 'Verifying Winget package installation'
                         
                         $verifyOutput = & winget @wingetListArgs 2>&1 | Out-String
                         $verifyInstalled = $LASTEXITCODE -eq 0 -and $verifyOutput -match $app.Winget
@@ -1088,7 +1094,7 @@ function Install-AppViaChocolatey {
 
     # Start structured logging for Chocolatey installation batch
     try {
-        Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Chocolatey batch installation' -Data @{ AppCount = $Apps.Count; DryRun = $DryRun.IsPresent }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Chocolatey batch installation' -Data @{ AppCount = $Apps.Count; DryRun = $DryRun.IsPresent }
     }
     catch {
         # LoggingManager not available, continue with standard logging
@@ -1157,7 +1163,7 @@ function Install-AppViaChocolatey {
 
                 if ($process.ExitCode -eq 0) {
                     # Post-installation verification
-                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Message 'Verifying Chocolatey package installation'
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Message 'Verifying Chocolatey package installation'
                     
                     $verifyOutput = & choco @chocoListArgs 2>&1
                     $verifyInstalled = $LASTEXITCODE -eq 0 -and $verifyOutput -match $app.Chocolatey
@@ -1449,17 +1455,17 @@ function Install-SingleApplication {
     # Validate required fields
     if (-not $source -or [string]::IsNullOrWhiteSpace($source)) {
         $errorMsg = "Installation source not specified for $appName"
-        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg -LogPath $ExecutionLogPath
+        Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg -LogPath $ExecutionLogPath
         return @{ Success = $false; Method = 'Unknown'; AppName = $appName; ErrorMessage = $errorMsg }
     }
     
     if (-not $appId -or [string]::IsNullOrWhiteSpace($appId)) {
         $errorMsg = "Application ID not specified for $appName"
-        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg -LogPath $ExecutionLogPath
+        Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message $errorMsg -LogPath $ExecutionLogPath
         return @{ Success = $false; Method = $source; AppName = $appName; ErrorMessage = $errorMsg }
     }
     
-    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Starting installation: $appName via $source" -LogPath $ExecutionLogPath
+    Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Starting installation: $appName via $source" -LogPath $ExecutionLogPath
     
     try {
         switch ($source.ToLower()) {
@@ -1467,11 +1473,11 @@ function Install-SingleApplication {
                 # Verify winget is available
                 $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
                 if (-not $wingetAvailable) {
-                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget not found in PATH - installation cannot proceed" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget not found in PATH - installation cannot proceed" -LogPath $ExecutionLogPath
                     return @{ Success = $false; Method = 'Winget'; AppName = $appName; ErrorMessage = "Winget not available" }
                 }
                 
-                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: winget install --id $appId --silent --accept-package-agreements --accept-source-agreements" -LogPath $ExecutionLogPath
+                Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: winget install --id $appId --silent --accept-package-agreements --accept-source-agreements" -LogPath $ExecutionLogPath
                 
                 # Capture stdout and stderr
                 $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -1489,17 +1495,17 @@ function Install-SingleApplication {
                 $stderr = $process.StandardError.ReadToEnd()
                 $process.WaitForExit()
                 
-                Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget output: $stdout" -LogPath $ExecutionLogPath
+                Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget output: $stdout" -LogPath $ExecutionLogPath
                 if ($stderr) {
-                    Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget errors: $stderr" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget errors: $stderr" -LogPath $ExecutionLogPath
                 }
                 
                 if ($process.ExitCode -eq 0) {
-                    Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Winget installation successful: $appName" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Winget installation successful: $appName" -LogPath $ExecutionLogPath
                     return @{ Success = $true; Method = 'Winget'; AppName = $appName }
                 }
                 else {
-                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget installation failed: $appName (Exit code: $($process.ExitCode))" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget installation failed: $appName (Exit code: $($process.ExitCode))" -LogPath $ExecutionLogPath
                     return @{ Success = $false; Method = 'Winget'; AppName = $appName; ErrorMessage = "Exit code: $($process.ExitCode), Stderr: $stderr" }
                 }
             }
@@ -1508,11 +1514,11 @@ function Install-SingleApplication {
                 # Verify chocolatey is available
                 $chocoAvailable = Get-Command choco -ErrorAction SilentlyContinue
                 if (-not $chocoAvailable) {
-                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey not found in PATH - installation cannot proceed" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey not found in PATH - installation cannot proceed" -LogPath $ExecutionLogPath
                     return @{ Success = $false; Method = 'Chocolatey'; AppName = $appName; ErrorMessage = "Chocolatey not available" }
                 }
                 
-                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: choco install $appName --force --yes" -LogPath $ExecutionLogPath
+                Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: choco install $appName --force --yes" -LogPath $ExecutionLogPath
                 
                 # Capture stdout and stderr
                 $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -1530,17 +1536,17 @@ function Install-SingleApplication {
                 $stderr = $process.StandardError.ReadToEnd()
                 $process.WaitForExit()
                 
-                Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco output: $stdout" -LogPath $ExecutionLogPath
+                Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco output: $stdout" -LogPath $ExecutionLogPath
                 if ($stderr) {
-                    Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco errors: $stderr" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco errors: $stderr" -LogPath $ExecutionLogPath
                 }
                 
                 if ($process.ExitCode -eq 0) {
-                    Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
                     return @{ Success = $true; Method = 'Chocolatey'; AppName = $appName }
                 }
                 else {
-                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation failed: $appName (Exit code: $($process.ExitCode))" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation failed: $appName (Exit code: $($process.ExitCode))" -LogPath $ExecutionLogPath
                     return @{ Success = $false; Method = 'Chocolatey'; AppName = $appName; ErrorMessage = "Exit code: $($process.ExitCode), Stderr: $stderr" }
                 }
             }
@@ -1549,17 +1555,17 @@ function Install-SingleApplication {
                 # Try Winget first if ID is available
                 if ($AppData.WingetId -or $appId) {
                     $wingetId = if ($AppData.WingetId) { $AppData.WingetId } else { $appId }
-                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Winget installation for $appName (ID: $wingetId)" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Winget installation for $appName (ID: $wingetId)" -LogPath $ExecutionLogPath
                     
                     $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
                     if ($wingetAvailable) {
                         # Verify winget is functional
                         try {
                             $wingetVersion = & winget --version 2>&1
-                            Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget version: $wingetVersion" -LogPath $ExecutionLogPath
+                            Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget version: $wingetVersion" -LogPath $ExecutionLogPath
                         }
                         catch {
-                            Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Winget command exists but failed version check: $($_.Exception.Message)" -LogPath $ExecutionLogPath
+                            Write-StructuredLogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Winget command exists but failed version check: $($_.Exception.Message)" -LogPath $ExecutionLogPath
                         }
                         
                         # Capture stdout and stderr for diagnostics
@@ -1568,7 +1574,7 @@ function Install-SingleApplication {
                         
                         try {
                             $installArgs = @('install', '--id', $wingetId, '--silent', '--accept-package-agreements', '--accept-source-agreements')
-                            Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Executing: winget $($installArgs -join ' ')" -LogPath $ExecutionLogPath
+                            Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Executing: winget $($installArgs -join ' ')" -LogPath $ExecutionLogPath
                             
                             $installProcess = Start-Process -FilePath 'winget' -ArgumentList $installArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput $tempStdOut -RedirectStandardError $tempStdErr
                             
@@ -1576,15 +1582,15 @@ function Install-SingleApplication {
                             $stderr = Get-Content $tempStdErr -Raw -ErrorAction SilentlyContinue
                             
                             if ($installProcess.ExitCode -eq 0) {
-                                Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget installation successful: $appName" -LogPath $ExecutionLogPath
-                                if ($stdout) { Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget output: $stdout" -LogPath $ExecutionLogPath }
+                                Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget installation successful: $appName" -LogPath $ExecutionLogPath
+                                if ($stdout) { Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget output: $stdout" -LogPath $ExecutionLogPath }
                                 return @{ Success = $true; Method = 'Manual-Winget'; AppName = $appName }
                             }
                             else {
                                 $errorDetail = "Exit code: $($installProcess.ExitCode)"
                                 if ($stderr) { $errorDetail += " | StdErr: $stderr" }
                                 if ($stdout) { $errorDetail += " | StdOut: $stdout" }
-                                Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget failed - $errorDetail. Trying Chocolatey..." -LogPath $ExecutionLogPath
+                                Write-StructuredLogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget failed - $errorDetail. Trying Chocolatey..." -LogPath $ExecutionLogPath
                             }
                         }
                         finally {
@@ -1592,14 +1598,14 @@ function Install-SingleApplication {
                         }
                     }
                     else {
-                        Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget command not found, trying Chocolatey..." -LogPath $ExecutionLogPath
+                        Write-StructuredLogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget command not found, trying Chocolatey..." -LogPath $ExecutionLogPath
                     }
                 }
                 
                 # Try Chocolatey as fallback
                 if ($AppData.ChocoId -or $appName) {
                     $chocoId = if ($AppData.ChocoId) { $AppData.ChocoId } else { $appName }
-                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Chocolatey installation for $appName (ID: $chocoId)" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Chocolatey installation for $appName (ID: $chocoId)" -LogPath $ExecutionLogPath
                     
                     $chocoAvailable = Get-Command choco -ErrorAction SilentlyContinue
                     if ($chocoAvailable) {
@@ -1609,7 +1615,7 @@ function Install-SingleApplication {
                         
                         try {
                             $installArgs = @('install', $chocoId, '--force', '--yes', '--no-progress')
-                            Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Executing: choco $($installArgs -join ' ')" -LogPath $ExecutionLogPath
+                            Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Executing: choco $($installArgs -join ' ')" -LogPath $ExecutionLogPath
                             
                             $installProcess = Start-Process -FilePath 'choco' -ArgumentList $installArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput $tempStdOut -RedirectStandardError $tempStdErr
                             
@@ -1617,15 +1623,15 @@ function Install-SingleApplication {
                             $stderr = Get-Content $tempStdErr -Raw -ErrorAction SilentlyContinue
                             
                             if ($installProcess.ExitCode -eq 0) {
-                                Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
-                                if ($stdout) { Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco output: $stdout" -LogPath $ExecutionLogPath }
+                                Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey installation successful: $appName" -LogPath $ExecutionLogPath
+                                if ($stdout) { Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Choco output: $stdout" -LogPath $ExecutionLogPath }
                                 return @{ Success = $true; Method = 'Manual-Chocolatey'; AppName = $appName }
                             }
                             else {
                                 $errorDetail = "Exit code: $($installProcess.ExitCode)"
                                 if ($stderr) { $errorDetail += " | StdErr: $stderr" }
                                 if ($stdout) { $errorDetail += " | StdOut: $stdout" }
-                                Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey failed - $errorDetail" -LogPath $ExecutionLogPath
+                                Write-StructuredLogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey failed - $errorDetail" -LogPath $ExecutionLogPath
                             }
                         }
                         finally {
@@ -1633,17 +1639,17 @@ function Install-SingleApplication {
                         }
                     }
                     else {
-                        Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey command not found" -LogPath $ExecutionLogPath
+                        Write-StructuredLogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey command not found" -LogPath $ExecutionLogPath
                     }
                 }
                 
-                Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Manual mode: All installation methods failed for $appName - Check logs for detailed error messages" -LogPath $ExecutionLogPath
+                Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Manual mode: All installation methods failed for $appName - Check logs for detailed error messages" -LogPath $ExecutionLogPath
                 return @{ Success = $false; Method = 'Manual'; AppName = $appName; ErrorMessage = "All installation methods exhausted - see logs for details" }
             }
             
             'direct' {
                 if ($AppData.DownloadUrl) {
-                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Direct download installation: $appName from $($AppData.DownloadUrl)" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Direct download installation: $appName from $($AppData.DownloadUrl)" -LogPath $ExecutionLogPath
                     $tempPath = Join-Path $env:TEMP "$appName-installer.exe"
                     
                     # Download installer
@@ -1657,28 +1663,28 @@ function Install-SingleApplication {
                     Remove-Item $tempPath -ErrorAction SilentlyContinue
                     
                     if ($installProcess.ExitCode -eq 0) {
-                        Write-LogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Direct installation successful: $appName" -LogPath $ExecutionLogPath
+                        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Direct installation successful: $appName" -LogPath $ExecutionLogPath
                         return @{ Success = $true; Method = 'Direct'; AppName = $appName }
                     }
                     else {
-                        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Direct installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
+                        Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Direct installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
                         return @{ Success = $false; Method = 'Direct'; AppName = $appName; ErrorMessage = "Exit code: $($installProcess.ExitCode)" }
                     }
                 }
                 else {
-                    Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Direct installation failed: No download URL provided for $appName" -LogPath $ExecutionLogPath
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Direct installation failed: No download URL provided for $appName" -LogPath $ExecutionLogPath
                     return @{ Success = $false; Method = 'Direct'; AppName = $appName; ErrorMessage = "No download URL provided" }
                 }
             }
             
             default {
-                Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Unknown installation source: $source for $appName" -LogPath $ExecutionLogPath
+                Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Unknown installation source: $source for $appName" -LogPath $ExecutionLogPath
                 return @{ Success = $false; Method = $source; AppName = $appName; ErrorMessage = "Unknown installation source: $source" }
             }
         }
     }
     catch {
-        Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Installation exception for $appName`: $($_.Exception.Message)" -LogPath $ExecutionLogPath
+        Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Installation exception for $appName`: $($_.Exception.Message)" -LogPath $ExecutionLogPath
         return @{ Success = $false; Method = $source; AppName = $appName; ErrorMessage = $_.Exception.Message }
     }
 }
@@ -1691,4 +1697,5 @@ Export-ModuleMember -Function @(
     # Note: Legacy functions (Install-EssentialApplication, Get-AppNotInstalled, Get-InstallationStatistic) 
     # are used internally but not exported to maintain clean module interface
 )
+
 

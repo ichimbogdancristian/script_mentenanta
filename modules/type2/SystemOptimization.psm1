@@ -827,7 +827,7 @@ function Optimize-UserInterface {
                     Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
                     
                     # Verification
-                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Message 'Verifying registry value change'
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Message 'Verifying registry value change'
                     
                     $newValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
                     $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
