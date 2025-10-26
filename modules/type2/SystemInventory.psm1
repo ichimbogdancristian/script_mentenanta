@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - SystemInventoryAudit.psm1 (Type1 - detection/analysis)
@@ -263,3 +263,4 @@ Collection completed successfully
 Export-ModuleMember -Function @(
     'Invoke-SystemInventory'
 )
+

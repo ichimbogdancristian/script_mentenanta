@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - TelemetryAudit.psm1 (Type1 - detection/analysis)
@@ -102,14 +102,14 @@ function Invoke-TelemetryDisable {
                             'ConsumerFeature' { $result = Disable-WindowsTelemetry -DisableConsumerFeatures }
                             'Cortana' { $result = Disable-WindowsTelemetry -DisableCortana }
                             'LocationTracking' { $result = Disable-WindowsTelemetry -DisableLocationTracking }
-                            default { Write-StructuredLogEntry -Level 'WARN' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Result 'Unknown' }
+                            default { Write-StructuredLogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Result 'Unknown' }
                         }
                         if ($result) { 
                             $processedCount++
                             Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Successfully disabled: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Success'
                         }
                         else {
-                            Write-StructuredLogEntry -Level 'WARN' -Component 'TELEMETRY-DISABLE' -Message "Failed to disable: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Failed'
+                            Write-StructuredLogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Failed to disable: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Failed'
                         }
                     }
                     catch {
@@ -360,7 +360,7 @@ function Disable-WindowsTelemetry {
                 NotificationOperations = $results.Categories.Notifications
                 FeatureOperations      = $results.Categories.Features
             }
-            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation completed' -Data $results
+            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation completed' -Data $results
         }
         catch {
             # LoggingManager not available, continue with standard logging
@@ -1306,3 +1306,4 @@ Export-ModuleMember -Function @(
     'Disable-WindowsTelemetry',
     'Test-PrivacySetting'
 )
+

@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - WindowsUpdatesAudit.psm1 (Type1 - detection/analysis)
@@ -363,7 +363,7 @@ function Install-WindowsUpdate {
                 RebootRequired   = $results.RebootRequired
                 Method           = $results.Method
             }
-            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation completed' -Data $results
+            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation completed' -Data $results
         }
         catch {
             # LoggingManager not available, continue with standard logging
@@ -716,7 +716,7 @@ function Install-UpdatesViaPSWindowsUpdate {
                 # Check if reboot is required
                 $results.RebootRequired = Test-PendingReboot
                 if ($results.RebootRequired) {
-                    Write-LogEntry -Level 'WARN' -Component 'WINDOWS-UPDATES' -Message 'System reboot required to complete installation'
+                    Write-LogEntry -Level 'WARNING' -Component 'WINDOWS-UPDATES' -Message 'System reboot required to complete installation'
                 }
 
             }
@@ -975,3 +975,4 @@ Export-ModuleMember -Function @(
     'Install-WindowsUpdate',
     'Get-WindowsUpdateStatus'
 )
+

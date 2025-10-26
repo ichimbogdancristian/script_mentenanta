@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - BloatwareDetectionAudit.psm1 (Type1 - detection/analysis)
@@ -1103,7 +1103,7 @@ function Remove-RegistryBloatware {
                         Write-Information "       Successfully uninstalled: $appName v$($preActionState.Version) (${operationDuration}s)" -InformationAction Continue
                     }
                     else {
-                        Write-LogEntry -Level 'WARN' -Component 'BLOATWARE-REMOVAL' -Message "Registry entry still exists after uninstall, but exit code was 0 - treating as success"
+                        Write-LogEntry -Level 'WARNING' -Component 'BLOATWARE-REMOVAL' -Message "Registry entry still exists after uninstall, but exit code was 0 - treating as success"
                         Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $appName -Metrics @{
                             Duration = $operationDuration
                             ExitCode = $process.ExitCode
@@ -1201,3 +1201,4 @@ Export-ModuleMember -Function @(
     # Note: Legacy functions (Remove-DetectedBloatware, Test-BloatwareRemoval) 
     # are used internally but not exported to maintain clean module interface
 )
+

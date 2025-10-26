@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - SystemOptimizationAudit.psm1 (Type1 - detection/analysis)
@@ -147,7 +147,7 @@ function Invoke-SystemOptimization {
                             'Disk' { $result = Optimize-SystemPerformance -OptimizeDisk }
                             'Network' { $result = Optimize-SystemPerformance -OptimizeNetwork }
                             default { 
-                                Write-StructuredLogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization group: $groupName" -LogPath $executionLogPath -Operation 'ProcessGroup' -Target $groupName -Result 'Unknown'
+                                Write-StructuredLogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization group: $groupName" -LogPath $executionLogPath -Operation 'ProcessGroup' -Target $groupName -Result 'Unknown'
                                 $result = $false 
                             }
                         }
@@ -156,7 +156,7 @@ function Invoke-SystemOptimization {
                             Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied optimization group: $groupName" -LogPath $executionLogPath -Operation 'Apply' -Target $groupName -Result 'Success'
                         }
                         else {
-                            Write-StructuredLogEntry -Level 'WARN' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to apply optimization group: $groupName" -LogPath $executionLogPath -Operation 'Apply' -Target $groupName -Result 'Failed'
+                            Write-StructuredLogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to apply optimization group: $groupName" -LogPath $executionLogPath -Operation 'Apply' -Target $groupName -Result 'Failed'
                         }
                     }
                     catch {
@@ -432,7 +432,7 @@ function Optimize-SystemPerformance {
                 DiskOptimizations     = $results.Categories.DiskOptimization
                 NetworkOptimizations  = $results.Categories.NetworkOptimization
             }
-            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation completed' -Data $results
+            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation completed' -Data $results
         }
         catch {
             # LoggingManager not available, continue with standard logging
@@ -1263,4 +1263,5 @@ Export-ModuleMember -Function @(
     'Optimize-SystemPerformance',
     'Get-SystemPerformanceMetric'
 )
+
 

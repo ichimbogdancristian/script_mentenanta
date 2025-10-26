@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - EssentialAppsAudit.psm1 (Type1 - detection/analysis)
@@ -463,7 +463,7 @@ function Install-EssentialApplication {
                 ChocolateyApps = ($chocoApps | Measure-Object).Count
                 ManualApps     = ($manualApps | Measure-Object).Count
             }
-            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARN' }) -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation completed' -Data $results
+            Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation completed' -Data $results
         }
         catch {
             # LoggingManager not available, continue with standard logging
@@ -1559,7 +1559,7 @@ function Install-SingleApplication {
                             Write-LogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget version: $wingetVersion" -LogPath $ExecutionLogPath
                         }
                         catch {
-                            Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Winget command exists but failed version check: $($_.Exception.Message)" -LogPath $ExecutionLogPath
+                            Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Winget command exists but failed version check: $($_.Exception.Message)" -LogPath $ExecutionLogPath
                         }
                         
                         # Capture stdout and stderr for diagnostics
@@ -1584,7 +1584,7 @@ function Install-SingleApplication {
                                 $errorDetail = "Exit code: $($installProcess.ExitCode)"
                                 if ($stderr) { $errorDetail += " | StdErr: $stderr" }
                                 if ($stdout) { $errorDetail += " | StdOut: $stdout" }
-                                Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget failed - $errorDetail. Trying Chocolatey..." -LogPath $ExecutionLogPath
+                                Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget failed - $errorDetail. Trying Chocolatey..." -LogPath $ExecutionLogPath
                             }
                         }
                         finally {
@@ -1592,7 +1592,7 @@ function Install-SingleApplication {
                         }
                     }
                     else {
-                        Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget command not found, trying Chocolatey..." -LogPath $ExecutionLogPath
+                        Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Winget command not found, trying Chocolatey..." -LogPath $ExecutionLogPath
                     }
                 }
                 
@@ -1625,7 +1625,7 @@ function Install-SingleApplication {
                                 $errorDetail = "Exit code: $($installProcess.ExitCode)"
                                 if ($stderr) { $errorDetail += " | StdErr: $stderr" }
                                 if ($stdout) { $errorDetail += " | StdOut: $stdout" }
-                                Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey failed - $errorDetail" -LogPath $ExecutionLogPath
+                                Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey failed - $errorDetail" -LogPath $ExecutionLogPath
                             }
                         }
                         finally {
@@ -1633,7 +1633,7 @@ function Install-SingleApplication {
                         }
                     }
                     else {
-                        Write-LogEntry -Level 'WARN' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey command not found" -LogPath $ExecutionLogPath
+                        Write-LogEntry -Level 'WARNING' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Chocolatey command not found" -LogPath $ExecutionLogPath
                     }
                 }
                 
@@ -1691,3 +1691,4 @@ Export-ModuleMember -Function @(
     # Note: Legacy functions (Install-EssentialApplication, Get-AppNotInstalled, Get-InstallationStatistic) 
     # are used internally but not exported to maintain clean module interface
 )
+

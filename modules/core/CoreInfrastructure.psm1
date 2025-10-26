@@ -1248,10 +1248,10 @@ function Write-OperationSkipped {
     }
     
     if (-not [string]::IsNullOrEmpty($LogPath)) {
-        Write-StructuredLogEntry -Level 'WARN' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Result 'Skipped' -Metadata $AdditionalInfo
+        Write-StructuredLogEntry -Level 'WARNING' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Result 'Skipped' -Metadata $AdditionalInfo
     }
     else {
-        Write-ModuleLogEntry -Level 'WARN' -Component $Component -Message $message
+        Write-ModuleLogEntry -Level 'WARNING' -Component $Component -Message $message
     }
 }
 
@@ -1982,7 +1982,7 @@ function Write-StructuredLogEntry {
     [OutputType([void])]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('DEBUG', 'INFO', 'WARN', 'SUCCESS', 'ERROR')]
+        [ValidateSet('DEBUG', 'INFO', 'WARNING', 'SUCCESS', 'ERROR')]
         [string]$Level,
         
         [Parameter(Mandatory = $true)]

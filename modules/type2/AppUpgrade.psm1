@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - AppUpgradeAudit.psm1 (Type1 - detection/analysis)
@@ -493,3 +493,4 @@ function Invoke-SingleUpgrade {
 
 # Export public function
 Export-ModuleMember -Function Invoke-AppUpgrade
+

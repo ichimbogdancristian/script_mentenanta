@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -203,7 +203,7 @@ function Get-HtmlTemplates {
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to load HTML templates: $($_.Exception.Message)"
-        Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message 'Attempting to use fallback templates for basic functionality'
+        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting to use fallback templates for basic functionality'
         
         try {
             return Get-FallbackTemplates
@@ -226,7 +226,7 @@ function Get-FallbackTemplates {
     [OutputType([hashtable])]
     param()
     
-    Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message 'Using fallback templates - limited styling and functionality'
+    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Using fallback templates - limited styling and functionality'
     
     $fallbackTemplates = @{
         Main     = @'
@@ -341,7 +341,7 @@ function Get-ProcessedLogData {
         if (-not (Test-Path $processedRoot)) {
             $errorMessage = "Processed data directory not found: $processedRoot"
             if ($FallbackToRawLogs) {
-                Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "$errorMessage - Attempting fallback to raw logs"
+                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "$errorMessage - Attempting fallback to raw logs"
                 return Get-FallbackRawLogData
             }
             else {
@@ -378,12 +378,12 @@ function Get-ProcessedLogData {
                     Write-Verbose "Loaded processed data: $($summaryFiles[$key])"
                 }
                 catch {
-                    Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Failed to parse $($summaryFiles[$key]): $($_.Exception.Message)"
+                    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to parse $($summaryFiles[$key]): $($_.Exception.Message)"
                     $processedData[$key] = @{}
                 }
             }
             else {
-                Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Processed data file not found: $($summaryFiles[$key])"
+                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Processed data file not found: $($summaryFiles[$key])"
             }
         }
         
@@ -412,7 +412,7 @@ function Get-ProcessedLogData {
                     Write-Verbose "Loaded module-specific data for: $moduleName"
                 }
                 catch {
-                    Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Failed to parse module data for ${moduleName}: $($_.Exception.Message)"
+                    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to parse module data for ${moduleName}: $($_.Exception.Message)"
                 }
             }
         }
@@ -420,12 +420,12 @@ function Get-ProcessedLogData {
         # Validate data integrity and provide warnings for missing components
         $dataValidation = Test-ProcessedDataIntegrity -ProcessedData $processedData
         if (-not $dataValidation.IsComplete) {
-            Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Processed data validation warnings: $($dataValidation.Warnings -join ', ')"
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Processed data validation warnings: $($dataValidation.Warnings -join ', ')"
             
             if ($dataValidation.CriticalIssues.Count -gt 0) {
                 Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Critical data issues found: $($dataValidation.CriticalIssues -join ', ')"
                 if ($FallbackToRawLogs) {
-                    Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message 'Attempting fallback to raw logs due to critical data issues'
+                    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting fallback to raw logs due to critical data issues'
                     return Get-FallbackRawLogData
                 }
             }
@@ -438,7 +438,7 @@ function Get-ProcessedLogData {
         Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to load processed data: $($_.Exception.Message)"
         
         if ($FallbackToRawLogs) {
-            Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message 'Attempting fallback to raw logs due to processing failure'
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting fallback to raw logs due to processing failure'
             try {
                 return Get-FallbackRawLogData
             }
@@ -515,7 +515,7 @@ function Get-FallbackRawLogData {
     [OutputType([hashtable])]
     param()
     
-    Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message 'Using fallback raw log data loading - functionality will be limited'
+    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Using fallback raw log data loading - functionality will be limited'
     
     try {
         $fallbackData = @{
@@ -568,13 +568,13 @@ function Get-FallbackRawLogData {
                         }
                     }
                     catch {
-                        Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Could not read fallback log for module ${moduleName}: $($_.Exception.Message)"
+                        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Could not read fallback log for module ${moduleName}: $($_.Exception.Message)"
                     }
                 }
             }
         }
         
-        Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Fallback data loaded with limited functionality for $($fallbackData.ModuleResults.Keys.Count) modules"
+        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Fallback data loaded with limited functionality for $($fallbackData.ModuleResults.Keys.Count) modules"
         return $fallbackData
     }
     catch {
@@ -628,13 +628,13 @@ function Get-ParsedOperationLogs {
         }
         
         if (-not (Test-Path $executionLogPath)) {
-            Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "No execution log found for $ModuleName at: $executionLogPath"
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "No execution log found for $ModuleName at: $executionLogPath"
             return $result
         }
         
         $logContent = Get-Content $executionLogPath -ErrorAction Stop
         if ($logContent.Count -eq 0) {
-            Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Empty execution log for $ModuleName"
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Empty execution log for $ModuleName"
             return $result
         }
         
@@ -1218,7 +1218,7 @@ function New-MaintenanceLogSection {
     }
     
     if (-not $maintenanceLog -or -not $maintenanceLog.Available) {
-        Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message 'Maintenance log not available for report'
+        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Maintenance log not available for report'
         return ""
     }
     
@@ -2266,7 +2266,7 @@ function Invoke-ReportMemoryManagement {
                 $result.Details = $stats
                 
                 if ($currentMemory -gt $script:ReportGeneratorMemory.MemorySettings.MemoryCleanupThreshold) {
-                    Write-LogEntry -Level 'WARN' -Component 'MEMORY-MGR' -Message "Memory usage high: $(($currentMemory / 1MB).ToString('F1'))MB - consider cleanup"
+                    Write-LogEntry -Level 'WARNING' -Component 'MEMORY-MGR' -Message "Memory usage high: $(($currentMemory / 1MB).ToString('F1'))MB - consider cleanup"
                 }
                 else {
                     Write-LogEntry -Level 'DEBUG' -Component 'MEMORY-MGR' -Message "Memory usage normal: $(($currentMemory / 1MB).ToString('F1'))MB"
