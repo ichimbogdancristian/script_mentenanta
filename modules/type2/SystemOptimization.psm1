@@ -79,6 +79,11 @@ function Invoke-SystemOptimization {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
         
+        # Validate temp_files structure (FIX #12)
+        if (-not (Test-TempFilesStructure)) {
+            throw "Failed to initialize temp_files directory structure"
+        }
+        
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
         $analysisResults = Get-SystemOptimizationAnalysis
         
@@ -1193,6 +1198,38 @@ function Get-MemoryUsagePercent {
     }
 }
 
+<#
+.SYNOPSIS
+    Merges optimization results into consolidated results object
+
+.DESCRIPTION
+    Combines optimization results from a specific category into the main results object.
+    Aggregates counters (successful, failed operations), tracks space freed, and updates
+    category-specific statistics for performance analysis.
+
+.PARAMETER Results
+    Main results hashtable to merge into (contains aggregated totals and categories)
+
+.PARAMETER NewResults
+    New results from an optimization operation to add (contains success/failed counts, space freed)
+
+.PARAMETER Category
+    Name of the optimization category being processed (e.g., 'DiskCleanup', 'MemoryOptimization')
+
+.OUTPUTS
+    [hashtable] Modified Results object with updated statistics (passed by reference)
+
+.EXAMPLE
+    PS> $mainResults = @{ TotalOperations = 0; Successful = 0; Failed = 0; SpaceFreed = 0; Categories = @{} }
+    PS> $diskResults = @{ Success = 5; Failed = 1; SpaceFreed = 2GB }
+    PS> Merge-OptimizationResult -Results $mainResults -NewResults $diskResults -Category 'DiskCleanup'
+    
+    Adds disk cleanup results to main results, updating category-specific statistics.
+
+.NOTES
+    Used internally for aggregating results from multiple optimization categories.
+    Updates both global totals and per-category statistics in place.
+#>
 function Merge-OptimizationResult {
     [CmdletBinding()]
     [OutputType([hashtable])]

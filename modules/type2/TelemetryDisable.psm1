@@ -61,6 +61,11 @@ function Invoke-TelemetryDisable {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
         
+        # Validate temp_files structure (FIX #12)
+        if (-not (Test-TempFilesStructure)) {
+            throw "Failed to initialize temp_files directory structure"
+        }
+        
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry analysis'
         $analysisResults = Get-TelemetryAnalysis
         
@@ -1245,6 +1250,38 @@ function Test-LocationServiceEnabled {
 }
 
 # Helper function to merge operation results
+<#
+.SYNOPSIS
+    Merges telemetry disabling results into consolidated results object
+
+.DESCRIPTION
+    Combines telemetry disabling results from a specific category into the main results object.
+    Aggregates counters (applied, disabled, failed operations) and updates category-specific
+    statistics for privacy setting analysis.
+
+.PARAMETER Results
+    Main results hashtable to merge into (contains aggregated totals and categories)
+
+.PARAMETER NewResults
+    New results from a telemetry disabling operation to add (contains applied/disabled/failed counts)
+
+.PARAMETER Category
+    Name of the telemetry category being processed (e.g., 'Services', 'Registry', 'Tracking')
+
+.OUTPUTS
+    [void] Modified Results object in place with updated statistics
+
+.EXAMPLE
+    PS> $mainResults = @{ TotalOperations = 0; Successful = 0; Failed = 0; Categories = @{} }
+    PS> $serviceResults = @{ Applied = 3; Disabled = 2; Failed = 0 }
+    PS> Merge-Result -Results $mainResults -NewResults $serviceResults -Category 'Services'
+    
+    Adds service-level telemetry results to main results, updating category statistics.
+
+.NOTES
+    Used internally for aggregating results from multiple telemetry categories.
+    Updates both global totals and per-category statistics by reference.
+#>
 function Merge-Result {
     param($Results, $NewResults, $Category)
 

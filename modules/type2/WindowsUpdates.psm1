@@ -65,6 +65,11 @@ function Invoke-WindowsUpdates {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
         
+        # Validate temp_files structure (FIX #12)
+        if (-not (Test-TempFilesStructure)) {
+            throw "Failed to initialize temp_files directory structure"
+        }
+        
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
         $analysisResults = Get-WindowsUpdatesAnalysis
         

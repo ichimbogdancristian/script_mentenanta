@@ -101,6 +101,11 @@ function Invoke-SystemInventory {
     try {
         Write-Information "📊 Collecting system inventory..." -InformationAction Continue
         
+        # Validate temp_files structure (FIX #12)
+        if (-not (Test-TempFilesStructure)) {
+            throw "Failed to initialize temp_files directory structure"
+        }
+        
         # STEP 1: Run Type1 detection (inventory collection)
         $inventoryData = Get-SystemInventoryAnalysis -Config $Config
         

@@ -104,6 +104,11 @@ function Invoke-EssentialApps {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
         
+        # Validate temp_files structure (FIX #12)
+        if (-not (Test-TempFilesStructure)) {
+            throw "Failed to initialize temp_files directory structure"
+        }
+        
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\essential-apps"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
@@ -1277,6 +1282,40 @@ function Test-PackageManagerAvailable {
 .EXAMPLE
     $chunks = Split-ArrayIntoBatch -Array @(1..10) -BatchSize 4
     Creates batches: @(1,2,3,4), @(5,6,7,8), @(9,10)
+#>
+<#
+.SYNOPSIS
+    Splits array into equal-sized batches
+
+.DESCRIPTION
+    Divides an input array into multiple smaller arrays (batches) of specified size.
+    Last batch may be smaller if array size is not evenly divisible by batch size.
+    Useful for processing large lists in manageable chunks or throttling operations.
+
+.PARAMETER Array
+    The array to split into batches
+
+.PARAMETER BatchSize
+    The maximum size of each batch (positive integer)
+
+.OUTPUTS
+    [array] Array of arrays, where each inner array contains up to BatchSize elements
+
+.EXAMPLE
+    PS> $items = 1..25
+    PS> $batches = Split-ArrayIntoBatch -Array $items -BatchSize 10
+    PS> $batches.Count
+    3
+    PS> $batches[0].Count
+    10
+    PS> $batches[2].Count
+    5
+    
+    Splits 25 items into 3 batches (10, 10, 5)
+
+.NOTES
+    Used internally for batch processing installations and other bulk operations.
+    Preserves order of items within each batch.
 #>
 function Split-ArrayIntoBatch {
     [CmdletBinding()]

@@ -98,6 +98,11 @@ function Invoke-AppUpgrade {
     Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message 'Starting application upgrade execution'
 
     try {
+        # Validate temp_files structure (FIX #12)
+        if (-not (Test-TempFilesStructure)) {
+            throw "Failed to initialize temp_files directory structure"
+        }
+        
         # STEP 1: Run Type1 detection
         Write-Information "  🔍 Running upgrade detection..." -InformationAction Continue
         $detectionResults = Get-AppUpgradeAnalysis -Config $Config

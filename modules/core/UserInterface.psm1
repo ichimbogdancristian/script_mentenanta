@@ -2,18 +2,72 @@
 
 <#
 .SYNOPSIS
-    User Interface Module - Interactive Menus and User Input
+    User Interface Module v3.0 - Interactive Execution Control
 
 .DESCRIPTION
     Provides countdown-based interactive menus with automatic fallback to default options.
-    Supports unattended execution, dry-run modes, and task selection capabilities.
-    Consolidated from MenuSystem module focusing on user interaction.
+    Manages user input collection, task selection, progress tracking, and result presentation.
+    Supports unattended execution, dry-run modes, and comprehensive user feedback.
+    Consolidated from MenuSystem module focusing on user interaction in v3.0 refactoring.
+
+.MODULE ARCHITECTURE
+    Purpose:
+        Serve as the user-facing interaction layer for the maintenance automation system.
+        Provides interactive menu flows when user attendance is available, with graceful
+        fallback to automated defaults in unattended scenarios (CI/CD, scheduled tasks).
+    
+    Dependencies:
+        • CoreInfrastructure.psm1 - For logging (Write-LogEntry)
+    
+    Exports:
+        • Show-MainMenu - Entry point for interactive execution menu
+        • Show-ConfirmationDialog - Prompt user for yes/no decisions
+        • Show-Progress - Real-time progress display with task tracking
+        • Show-ResultSummary - Display final results and statistics
+        • ConvertFrom-TaskNumbers - Parse user input into task number array
+        • Show-ProgressBar - Visual progress indicator
+    
+    Import Pattern:
+        Import-Module UserInterface.psm1 -Force
+        # Functions available for use in MaintenanceOrchestrator context
+
+    Used By:
+        - MaintenanceOrchestrator.ps1 (primary consumer)
+        - No other modules depend on this
+
+.EXECUTION FLOW
+    1. MaintenanceOrchestrator detects execution context (interactive vs. unattended)
+    2. If interactive: Calls Show-MainMenu to prompt user for execution mode and task selection
+    3. If unattended: Uses default parameters (all tasks, normal run mode)
+    4. During execution: Calls Show-Progress to update user on completion status
+    5. After execution: Calls Show-ResultSummary to display final statistics
+    6. User can interrupt with Ctrl+C at menu prompts; confirmed selections proceed
+
+.DATA ORGANIZATION
+    Input:
+        • User selections from countdown-based prompts
+        • Available task list passed from MaintenanceOrchestrator
+    
+    Output:
+        • Hashtable with execution parameters: @{ DryRun = bool; SelectedTasks = array }
+        • Progress updates written to console with Write-LogEntry calls
+        • Final summary table with module results
+    
+    Session State:
+        • Uses CoreInfrastructure logging for all output
+        • No permanent data storage (UI-only module)
 
 .NOTES
-    Module Type: Core Infrastructure (Consolidated)
-    Dependencies: CoreInfrastructure for logging
-    Author: Windows Maintenance Automation Project
-    Version: 2.0.0 (Consolidated)
+    Module Type: Core Infrastructure - User Interface Layer (v3.0)
+    Architecture: v3.0 - Split with Consolidated Core
+    Line Count: 517 lines
+    Version: 3.0.0 (Refactored - Interactive Control)
+    
+    Key Design Patterns:
+    - Countdown timers: 20 seconds default (configurable) for unattended scenarios
+    - Graceful degradation: Falls back to defaults when no user response
+    - Comprehensive logging: All user interactions logged for audit trail
+    - Cross-platform compatible: Works on Windows, Linux, macOS
 #>
 
 using namespace System.Collections.Generic

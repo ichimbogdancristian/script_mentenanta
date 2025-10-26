@@ -84,10 +84,30 @@ Write-Verbose "CoreInfrastructure: Consolidated module loading (Path B refactori
 
 <#
 .SYNOPSIS
-    Converts PSCustomObject to Hashtable
+    Converts PSCustomObject to Hashtable recursively
 
 .DESCRIPTION
     Recursively converts PSCustomObject instances to Hashtable for compatibility
+    with functions expecting hashtable parameters. Handles nested PSCustomObjects
+    by recursively converting child objects.
+
+.PARAMETER InputObject
+    The PSCustomObject to convert. Accepts pipeline input via filter pattern.
+
+.OUTPUTS
+    [hashtable] Converted object, or [object] if input is not a PSCustomObject
+
+.EXAMPLE
+    PS> $obj = @{ Name = 'Test'; Nested = @{ Value = 42 } } | ConvertTo-Json | ConvertFrom-Json
+    PS> $hash = $obj | ConvertTo-Hashtable
+    PS> $hash['Name']
+    Test
+    
+    Converts JSON-parsed PSCustomObject to nested hashtable structure.
+
+.NOTES
+    Used internally for configuration loading and data transformation.
+    Preserves all property values during conversion.
 #>
 filter ConvertTo-Hashtable {
     $obj = $_
@@ -582,6 +602,31 @@ function Get-LoggingConfiguration {
 .DESCRIPTION
     Retrieves cached configuration data
 #>
+<#
+.SYNOPSIS
+    Retrieves cached configuration values
+
+.DESCRIPTION
+    Accesses module-level configuration cache for previously loaded configuration data.
+    Supports fast retrieval of frequently accessed settings without reloading from disk.
+
+.PARAMETER ConfigKey
+    The configuration key to retrieve (e.g., 'main-config', 'logging-config', 'bloatware-list')
+
+.OUTPUTS
+    [hashtable] Configuration data if cached, empty hashtable if not found
+
+.EXAMPLE
+    PS> $config = Get-CachedConfiguration -ConfigKey 'main-config'
+    PS> $config['ExecutionMode']
+    Interactive
+    
+    Retrieves previously loaded main configuration from cache
+
+.NOTES
+    Used internally by configuration loading system.
+    Reduces I/O overhead for repeated access to same configuration files.
+#>
 function Get-CachedConfiguration {
     [CmdletBinding()]
     param(
@@ -1027,6 +1072,89 @@ function Initialize-SessionFileOrganization {
     }
     catch {
         Write-Error "Failed to initialize session file organization: $_"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Validates temp_files directory structure
+
+.DESCRIPTION
+    Verifies that the complete temp_files directory structure exists and is accessible.
+    Creates missing directories if necessary. Required by Type2 modules to ensure
+    proper data organization before execution.
+
+.PARAMETER TempRoot
+    Root path of temp_files directory (defaults to MAINTENANCE_TEMP_ROOT environment variable)
+
+.OUTPUTS
+    [bool] $true if structure is valid and accessible, $false otherwise
+
+.EXAMPLE
+    PS> Test-TempFilesStructure
+    
+    Verifies standard temp_files structure exists (data/, temp/, logs/, reports/)
+
+.NOTES
+    Called automatically by each Type2 module at execution start.
+    Creates any missing subdirectories to prevent runtime failures.
+#>
+function Test-TempFilesStructure {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$TempRoot = $env:MAINTENANCE_TEMP_ROOT
+    )
+    
+    try {
+        if (-not $TempRoot) {
+            Write-LogEntry -Level 'ERROR' -Component 'FILE-ORG' -Message 'TempRoot path not set (MAINTENANCE_TEMP_ROOT environment variable missing)'
+            return $false
+        }
+        
+        # Ensure root temp directory exists
+        if (-not (Test-Path $TempRoot)) {
+            Write-LogEntry -Level 'WARN' -Component 'FILE-ORG' -Message "Creating missing TempRoot directory: $TempRoot"
+            New-Item -Path $TempRoot -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        }
+        
+        # Required subdirectories for v3.0 architecture
+        $requiredDirs = @('data', 'temp', 'logs', 'reports')
+        $missingDirs = @()
+        
+        foreach ($dir in $requiredDirs) {
+            $fullPath = Join-Path $TempRoot $dir
+            if (-not (Test-Path $fullPath)) {
+                $missingDirs += $dir
+                Write-LogEntry -Level 'WARN' -Component 'FILE-ORG' -Message "Creating missing subdirectory: $fullPath"
+                New-Item -Path $fullPath -ItemType Directory -Force -ErrorAction Stop | Out-Null
+            }
+        }
+        
+        # Verify write access
+        $testFile = Join-Path $TempRoot '.test-access'
+        try {
+            'test' | Set-Content $testFile -Force -ErrorAction Stop
+            Remove-Item $testFile -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+            Write-LogEntry -Level 'ERROR' -Component 'FILE-ORG' -Message "No write access to TempRoot: $TempRoot"
+            return $false
+        }
+        
+        if ($missingDirs.Count -gt 0) {
+            Write-LogEntry -Level 'INFO' -Component 'FILE-ORG' -Message "Temp structure validated and repaired (created: $($missingDirs -join ', '))"
+        }
+        else {
+            Write-LogEntry -Level 'DEBUG' -Component 'FILE-ORG' -Message "Temp structure validated - all required directories present"
+        }
+        
+        return $true
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'FILE-ORG' -Message "Failed to validate temp_files structure: $($_.Exception.Message)"
         return $false
     }
 }
@@ -1786,7 +1914,7 @@ Export-ModuleMember -Function @(
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
     'Write-DetectionLog',
     'Start-PerformanceTracking', 'Complete-PerformanceTracking', 'Set-LoggingVerbosity', 'Set-LoggingEnabled',
-    'Initialize-SessionFileOrganization', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
+    'Initialize-SessionFileOrganization', 'Test-TempFilesStructure', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
     'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',
     'Initialize-MaintenanceInfrastructure', 'Get-InfrastructureStatus',
     'Get-AuditResultsPath', 'Save-DiffResults',

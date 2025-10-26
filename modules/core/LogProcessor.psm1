@@ -2,20 +2,89 @@
 
 <#
 .SYNOPSIS
-    Log Processing Module - Type 1 (Data Processing)
+    Log Processor Module v3.0 - Type 1 Data Processing Pipeline
 
 .DESCRIPTION
     Specialized module for processing raw maintenance logs from temp_files/data/ and 
     temp_files/logs/ into standardized, structured data for report generation.
-    Part of the v3.0 split architecture that separates log processing from report rendering.
+    Part of the v3.0 split architecture that separates log processing (Type 1) from 
+    report rendering (Report Generation). Handles data aggregation, normalization, 
+    and caching with performance optimization.
+
+.MODULE ARCHITECTURE
+    Purpose:
+        Serve as the data processing layer between execution logs and report generation.
+        Aggregates Type1 audit results and Type2 execution logs into unified structured data.
+        Provides caching layer to optimize repeated queries during report generation.
+    
+    Dependencies:
+        • CoreInfrastructure.psm1 - For path management and logging
+    
+    Exports:
+        • Get-AuditDataByModule - Retrieve aggregated Type1 audit results
+        • Get-ExecutionLogsByModule - Retrieve Type2 execution logs and diffs
+        • Get-MaintenanceLogContent - Load maintenance.log with parsing
+        • Invoke-LogProcessing - Full pipeline: load → parse → normalize → cache
+        • Clear-LogProcessorCache - Flush cached data
+        • Get-ProcessedDataPath - Get standardized processed data paths
+    
+    Import Pattern:
+        Import-Module LogProcessor.psm1 -Force
+        # Functions available in MaintenanceOrchestrator context
+
+    Used By:
+        - ReportGenerator.psm1 (loads processed data for rendering)
+        - MaintenanceOrchestrator.ps1 (invokes full processing pipeline)
+
+.EXECUTION FLOW
+    1. MaintenanceOrchestrator completes all Type1 and Type2 module execution
+    2. Calls Invoke-LogProcessing to begin data processing phase
+    3. Pipeline loads raw logs from temp_files/logs/[module]/ and temp_files/data/
+    4. Parses and normalizes each log entry into structured format
+    5. Aggregates by module and execution type (audit vs. execution)
+    6. Caches processed data in memory for subsequent operations
+    7. Writes final processed data to temp_files/processed/ for ReportGenerator
+    8. ReportGenerator queries Get-AuditDataByModule and Get-ExecutionLogsByModule
+
+.DATA ORGANIZATION
+    Input Sources:
+        • temp_files/data/[module]-results.json - Type1 audit result snapshots
+        • temp_files/logs/[module]/execution.log - Type2 detailed execution logs
+        • temp_files/logs/maintenance.log - Central execution log with all operations
+    
+    Processing Cache (In-Memory):
+        • $script:LogProcessorCache['AuditData'] - Aggregated audit results by module
+        • $script:LogProcessorCache['ExecutionLogs'] - Execution logs by module
+        • $script:LogProcessorCache['ProcessedFiles'] - Metadata of processed files
+        • Cache Settings: 30-minute TTL, 100MB size limit, batch processing (50 items)
+    
+    Output:
+        • temp_files/processed/[module]-audit.json - Standardized Type1 data
+        • temp_files/processed/[module]-execution.json - Standardized Type2 data
+        • temp_files/processed/session-summary.json - Overall session statistics
+
+.PERFORMANCE OPTIMIZATION
+    • Module-level caching with automatic TTL-based invalidation
+    • Batch processing: Processes logs in 50-item batches to limit memory usage
+    • Lazy loading: Only loads requested modules' data
+    • Cache size enforcement: Monitors 100MB limit per session
+    • Async-friendly: Can be called repeatedly without re-reading files
 
 .NOTES
-    Module Type: Type 1 (Data Processing)  
-    Dependencies: CoreInfrastructure.psm1
-    Author: Windows Maintenance Automation Project
-    Version: 3.0.0 - Split from monolithic ReportGeneration.psm1
+    Module Type: Type 1 (Data Processing - Read-Only)
+    Architecture: v3.0 - Split from monolithic ReportGeneration.psm1
+    Line Count: 2,314 lines
+    Version: 3.0.0 (Refactored - Split Architecture)
     
-    Architecture: LogProcessor → temp_files/processed/ → ReportGenerator
+    Key Design Patterns:
+    - Pipeline architecture: Load → Parse → Normalize → Aggregate → Cache
+    - Modular data extraction: Each module's data processed independently
+    - Cache invalidation: TTL-based (30 minutes) or manual via Clear-LogProcessorCache
+    - Error resilience: Non-critical parsing failures logged but don't stop pipeline
+    
+    Related Modules in v3.0 Architecture:
+    - CoreInfrastructure.psm1 → Path management, logging infrastructure
+    - ReportGenerator.psm1 → Consumes processed data for rendering
 #>
 
 using namespace System.Collections.Generic
@@ -49,6 +118,59 @@ $script:LogProcessorCache = @{
 <#
 .SYNOPSIS
     Manages cache operations for LogProcessor performance optimization
+
+.DESCRIPTION
+    Provides unified interface for cache management including get, set, remove, clear, and cleanup operations.
+    Implements TTL-based expiration (30-minute default), size tracking, and automatic cleanup of expired entries.
+    Supports three cache types: AuditData, ExecutionLogs, and ProcessedFiles.
+
+.PARAMETER Operation
+    Type of cache operation to perform:
+    - 'Get': Retrieve cached value if still valid (TTL check)
+    - 'Set': Store value in cache with timestamp
+    - 'Remove': Delete specific cache entry
+    - 'Clear': Empty entire cache type
+    - 'Cleanup': Remove expired entries
+
+.PARAMETER CacheType
+    The cache collection to operate on:
+    - 'AuditData': Type1 audit results cache
+    - 'ExecutionLogs': Type2 execution logs cache
+    - 'ProcessedFiles': Processed file metadata cache
+
+.PARAMETER Key
+    Identifier for cache entry (required for Get, Set, Remove)
+
+.PARAMETER Value
+    Data to store in cache (required for Set operation)
+
+.OUTPUTS
+    [object] For Get operation: cached value if valid, null if expired or not found
+    [void] For other operations
+
+.EXAMPLE
+    PS> Invoke-CacheOperation -Operation 'Set' -CacheType 'AuditData' -Key 'module1-results' -Value $auditData
+    
+    Stores audit data in cache with current timestamp
+
+.EXAMPLE
+    PS> $data = Invoke-CacheOperation -Operation 'Get' -CacheType 'AuditData' -Key 'module1-results'
+    
+    Retrieves cached data if still valid (within 30-minute TTL)
+
+.EXAMPLE
+    PS> Invoke-CacheOperation -Operation 'Cleanup' -CacheType 'ExecutionLogs'
+    
+    Removes all expired execution log cache entries
+
+.NOTES
+    Cache Settings (configurable):
+    - MaxCacheAge: 30 minutes (TTL for entries)
+    - MaxCacheSize: 100MB (total cache limit)
+    - BatchSize: 50 items (for processing operations)
+    - EnableCaching: $true (can be disabled)
+    
+    Used internally by LogProcessor for performance optimization during report generation.
 #>
 function Invoke-CacheOperation {
     [CmdletBinding()]

@@ -2,20 +2,92 @@
 
 <#
 .SYNOPSIS
-    Report Generator Module - Type 1 (Report Generation)
+    Report Generator Module v3.0 - Report Rendering Engine
 
 .DESCRIPTION
     Specialized module for generating maintenance reports from processed log data.
     Focuses purely on presentation layer - loading templates, rendering HTML/text reports,
-    and creating interactive visualizations. Part of the v3.0 split architecture.
+    and creating interactive visualizations. Part of the v3.0 split architecture that
+    separates data processing (LogProcessor) from report rendering. Handles template
+    management, styling, and multi-format output generation.
+
+.MODULE ARCHITECTURE
+    Purpose:
+        Serve as the report rendering layer consuming processed data from LogProcessor.
+        Transforms standardized structured data into human-readable HTML and text reports.
+        Manages templates, CSS styling, and report sections for each module.
+    
+    Dependencies:
+        • CoreInfrastructure.psm1 - For path management and logging
+        • LogProcessor.psm1 - For processed data consumption (data flow, not direct import)
+    
+    Exports:
+        • New-MaintenanceReport - Primary function: Generate full report
+        • Test-ReportGenerationCapability - Verify report system is functional
+        • Load-ProcessedData - Load aggregated data from LogProcessor
+        • Build-ReportSection - Create individual module report section
+        • Format-HtmlReport - Apply styling and formatting
+        • Export-Report - Save report to disk (HTML/text)
+    
+    Import Pattern:
+        Import-Module ReportGenerator.psm1 -Force
+        # Functions available in MaintenanceOrchestrator context
+
+    Used By:
+        - MaintenanceOrchestrator.ps1 (final phase: generates all reports)
+        - No other modules depend on this (terminal module in pipeline)
+
+.EXECUTION FLOW
+    1. LogProcessor completes data processing and writes to temp_files/processed/
+    2. MaintenanceOrchestrator calls New-MaintenanceReport
+    3. Load-ProcessedData retrieves aggregated data from temp_files/processed/
+    4. Get-HtmlTemplates loads template files from config/templates/
+    5. For each module: Build-ReportSection creates HTML section with results
+    6. Format-HtmlReport applies CSS styling and consolidates all sections
+    7. Export-Report writes final reports to temp_files/reports/
+    8. Report opens in default browser or displays path for user access
+
+.DATA ORGANIZATION
+    Template Sources:
+        • config/templates/report-template.html - Main report structure
+        • config/templates/report-template.css - CSS styling (fallback: config/report-styles.css)
+        • config/templates/report-templates-config.json - Template configuration
+    
+    Input Data (from LogProcessor):
+        • temp_files/processed/[module]-audit.json - Type1 results per module
+        • temp_files/processed/[module]-execution.json - Type2 execution per module
+        • temp_files/processed/session-summary.json - Overall session metrics
+    
+    Output Reports:
+        • temp_files/reports/Maintenance_Report_[timestamp].html - Full interactive HTML
+        • temp_files/reports/Maintenance_Report_[timestamp].txt - Text-only summary
+        • temp_files/reports/Report_Index.html - Navigation index of all reports
+
+.REPORT STRUCTURE
+    • Executive Summary: Key metrics, totals, pass/fail status
+    • Type 1 (Detection) Results: Per-module audit findings
+    • Type 2 (Execution) Results: Per-module execution logs and changes applied
+    • Module Details: Expandable sections with full data for each module
+    • Appendix: Performance metrics, cache statistics, execution timeline
 
 .NOTES
-    Module Type: Type 1 (Report Generation)
-    Dependencies: CoreInfrastructure.psm1, LogProcessor.psm1 (for processed data)
-    Author: Windows Maintenance Automation Project
-    Version: 3.0.0 - Split from monolithic ReportGeneration.psm1
+    Module Type: Type 1 (Report Generation - Read-Only)
+    Architecture: v3.0 - Split from monolithic ReportGeneration.psm1
+    Line Count: 2,394 lines
+    Version: 3.0.0 (Refactored - Split Architecture)
     
-    Architecture: LogProcessor → temp_files/processed/ → ReportGenerator
+    Key Design Patterns:
+    - Template-driven rendering: Separates data from presentation
+    - CSS-based styling: Consistent formatting across modules
+    - Section building: Modular HTML generation (one function per report section)
+    - Backward compatibility: Handles both old and new template locations
+    - Performance: Lazy loads templates only when needed
+    
+    Related Modules in v3.0 Architecture:
+    - CoreInfrastructure.psm1 → Path management, logging infrastructure
+    - LogProcessor.psm1 → Produces processed data consumed by reports
+    - All Type 1 modules → Data sources (via LogProcessor aggregation)
+    - All Type 2 modules → Data sources (via LogProcessor aggregation)
 #>
 
 using namespace System.Collections.Generic
@@ -2216,6 +2288,29 @@ function Invoke-ReportMemoryManagement {
 <#
 .SYNOPSIS
     Clears all ReportGenerator caches and temporary data
+#>
+<#
+.SYNOPSIS
+    Clears all ReportGenerator in-memory caches
+
+.DESCRIPTION
+    Flushes three primary caches maintained by ReportGenerator module:
+    - TemplateCache: Loaded HTML/CSS templates
+    - ProcessedDataCache: Aggregated report data
+    - ReportOutputCache: Generated HTML/text output
+    Useful for memory management or forcing fresh data load.
+
+.OUTPUTS
+    [void] Caches cleared in place
+
+.EXAMPLE
+    PS> Clear-ReportGeneratorCache
+    
+    Flushes all report generator caches before next report generation
+
+.NOTES
+    Called internally after report generation completion.
+    Can be called manually to reduce memory usage in long-running sessions.
 #>
 function Clear-ReportGeneratorCache {
     [CmdletBinding()]
