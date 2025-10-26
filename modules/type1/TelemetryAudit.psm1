@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -81,7 +81,7 @@ function Get-TelemetryAnalysis {
         [switch]$UseCache
     )
 
-    Write-Information "🔍 Starting telemetry and privacy audit..." -InformationAction Continue
+    Write-Information " Starting telemetry and privacy audit..." -InformationAction Continue
     
     # Start performance tracking
     $perfContext = $null
@@ -129,26 +129,26 @@ function Get-TelemetryAnalysis {
 
         # Audit different categories
         if ($IncludeServices) {
-            Write-Information "  🔧 Auditing telemetry services..." -InformationAction Continue
+            Write-Information "   Auditing telemetry services..." -InformationAction Continue
             $auditResults.ServicesAudit = Get-TelemetryServicesAudit
             $auditResults.PrivacyIssues += $auditResults.ServicesAudit.Issues
             $auditResults.ActiveServices += $auditResults.ServicesAudit.ActiveServices
         }
 
         if ($IncludeRegistry) {
-            Write-Information "  📝 Auditing privacy registry settings..." -InformationAction Continue
+            Write-Information "   Auditing privacy registry settings..." -InformationAction Continue
             $auditResults.RegistryAudit = Get-PrivacyRegistryAudit
             $auditResults.PrivacyIssues += $auditResults.RegistryAudit.Issues
         }
 
         if ($IncludeFeatures) {
-            Write-Information "  ✨ Auditing consumer features..." -InformationAction Continue
+            Write-Information "   Auditing consumer features..." -InformationAction Continue
             $auditResults.FeaturesAudit = Get-ConsumerFeaturesAudit
             $auditResults.PrivacyIssues += $auditResults.FeaturesAudit.Issues
         }
 
         if ($IncludeApps) {
-            Write-Information "  📱 Auditing built-in apps..." -InformationAction Continue
+            Write-Information "   Auditing built-in apps..." -InformationAction Continue
             $auditResults.AppsAudit = Get-BuiltInAppsAudit
             $auditResults.PrivacyIssues += $auditResults.AppsAudit.Issues
         }
@@ -157,7 +157,7 @@ function Get-TelemetryAnalysis {
         $auditResults.PrivacyScore = Get-PrivacyScore -AuditResults $auditResults
         $auditResults.Recommendations = New-PrivacyRecommendations -AuditResults $auditResults
 
-        Write-Information "✓ Telemetry audit completed. Privacy Score: $($auditResults.PrivacyScore.Overall)/100" -InformationAction Continue
+        Write-Information " Telemetry audit completed. Privacy Score: $($auditResults.PrivacyScore.Overall)/100" -InformationAction Continue
 
         # FIX #5: Save results using standardized Get-AuditResultsPath function
         try {
@@ -650,27 +650,27 @@ function New-PrivacyRecommendations {
     $lowImpact = $AuditResults.PrivacyIssues | Where-Object { $_.Impact -eq 'Low' }
 
     if ($highImpact.Count -gt 0) {
-        $recommendations += "🔴 Critical: Address $($highImpact.Count) high-impact privacy issues immediately"
+        $recommendations += " Critical: Address $($highImpact.Count) high-impact privacy issues immediately"
         $recommendations += "   Focus on telemetry services, data collection settings, and consumer features"
     }
 
     if ($mediumImpact.Count -gt 0) {
-        $recommendations += "🟡 Important: Fix $($mediumImpact.Count) medium-impact privacy settings"
+        $recommendations += " Important: Fix $($mediumImpact.Count) medium-impact privacy settings"
         $recommendations += "   Review advertising settings, app permissions, and feature configurations"
     }
 
     if ($lowImpact.Count -gt 0) {
-        $recommendations += "🟢 Optional: Optimize $($lowImpact.Count) low-impact settings for enhanced privacy"
+        $recommendations += " Optional: Optimize $($lowImpact.Count) low-impact settings for enhanced privacy"
     }
 
     # Specific recommendations based on active services
     if ($AuditResults.ActiveServices.Count -gt 0) {
-        $recommendations += "🔧 Services: Consider disabling $($AuditResults.ActiveServices.Count) telemetry services"
+        $recommendations += " Services: Consider disabling $($AuditResults.ActiveServices.Count) telemetry services"
     }
 
     if ($AuditResults.PrivacyIssues.Count -eq 0) {
-        $recommendations += "✅ Excellent! Your system has strong privacy protections in place"
-        $recommendations += "💡 Continue monitoring and reviewing new Windows updates for privacy changes"
+        $recommendations += " Excellent! Your system has strong privacy protections in place"
+        $recommendations += " Continue monitoring and reviewing new Windows updates for privacy changes"
     }
 
     return $recommendations
@@ -701,5 +701,5 @@ New-Alias -Name 'Get-TelemetryAudit' -Value 'Get-TelemetryAnalysis'
 
 # Export public functions
 Export-ModuleMember -Function @(
-    'Get-TelemetryAnalysis'  # ✅ v3.0 PRIMARY function
+    'Get-TelemetryAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-TelemetryAudit')  # Backward compatibility

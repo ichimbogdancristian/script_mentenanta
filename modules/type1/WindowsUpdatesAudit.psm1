@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -81,7 +81,7 @@ function Get-WindowsUpdatesAnalysis {
         [switch]$UseCache
     )
 
-    Write-Information "🔍 Starting Windows Updates audit..." -InformationAction Continue
+    Write-Information " Starting Windows Updates audit..." -InformationAction Continue
     
     # Start performance tracking
     $perfContext = $null
@@ -129,25 +129,25 @@ function Get-WindowsUpdatesAnalysis {
 
         # Audit different categories
         if ($IncludePending) {
-            Write-Information "  📦 Auditing pending updates..." -InformationAction Continue
+            Write-Information "   Auditing pending updates..." -InformationAction Continue
             $auditResults.PendingAudit = Get-PendingUpdatesAudit
             $auditResults.UpdateIssues += $auditResults.PendingAudit.Issues
         }
 
         if ($IncludeHistory) {
-            Write-Information "  📜 Auditing update history..." -InformationAction Continue
+            Write-Information "   Auditing update history..." -InformationAction Continue
             $auditResults.HistoryAudit = Get-UpdateHistoryAudit
             $auditResults.UpdateIssues += $auditResults.HistoryAudit.Issues
         }
 
         if ($IncludeConfiguration) {
-            Write-Information "  ⚙️ Auditing update configuration..." -InformationAction Continue
+            Write-Information "   Auditing update configuration..." -InformationAction Continue
             $auditResults.ConfigurationAudit = Get-UpdateConfigurationAudit
             $auditResults.UpdateIssues += $auditResults.ConfigurationAudit.Issues
         }
 
         if ($IncludeSecurityAnalysis) {
-            Write-Information "  🔒 Performing security analysis..." -InformationAction Continue
+            Write-Information "   Performing security analysis..." -InformationAction Continue
             $auditResults.SecurityAudit = Get-UpdateSecurityAudit
             $auditResults.SecurityFindings += $auditResults.SecurityAudit.Findings
         }
@@ -156,7 +156,7 @@ function Get-WindowsUpdatesAnalysis {
         $auditResults.UpdateScore = Get-UpdateHealthScore -AuditResults $auditResults
         $auditResults.Recommendations = New-UpdateRecommendations -AuditResults $auditResults
 
-        Write-Information "✓ Windows Updates audit completed. Health Score: $($auditResults.UpdateScore.Overall)/100" -InformationAction Continue
+        Write-Information " Windows Updates audit completed. Health Score: $($auditResults.UpdateScore.Overall)/100" -InformationAction Continue
 
         # FIX #5: Save results using standardized Get-AuditResultsPath function
         try {
@@ -747,32 +747,32 @@ function New-UpdateRecommendations {
     $securityIssues = $AuditResults.SecurityFindings
 
     if ($highImpact.Count -gt 0) {
-        $recommendations += "🔴 Critical: Address $($highImpact.Count) high-impact update issues immediately"
+        $recommendations += " Critical: Address $($highImpact.Count) high-impact update issues immediately"
         $recommendations += "   Priority: Security updates, service configuration, and failed installations"
     }
 
     if ($securityIssues.Count -gt 0) {
-        $recommendations += "🔒 Security: $($securityIssues.Count) security-related findings require attention"
+        $recommendations += " Security: $($securityIssues.Count) security-related findings require attention"
         $recommendations += "   Focus on OS support status and missing security patches"
     }
 
     if ($mediumImpact.Count -gt 0) {
-        $recommendations += "🟡 Important: Resolve $($mediumImpact.Count) medium-impact update issues"
+        $recommendations += " Important: Resolve $($mediumImpact.Count) medium-impact update issues"
         $recommendations += "   Review update policies and installation schedules"
     }
 
     # Specific recommendations
     if ($AuditResults.PendingAudit -and $AuditResults.PendingAudit.SecurityUpdates -gt 0) {
-        $recommendations += "📦 Action: Install $($AuditResults.PendingAudit.SecurityUpdates) pending security updates"
+        $recommendations += " Action: Install $($AuditResults.PendingAudit.SecurityUpdates) pending security updates"
     }
 
     if ($AuditResults.UpdateStatus -and $AuditResults.UpdateStatus.RebootPending) {
-        $recommendations += "🔄 Action: System reboot required to complete previous updates"
+        $recommendations += " Action: System reboot required to complete previous updates"
     }
 
     if (($AuditResults.UpdateIssues + $AuditResults.SecurityFindings).Count -eq 0) {
-        $recommendations += "✅ Excellent! Windows Update system is healthy and current"
-        $recommendations += "💡 Continue monitoring for new updates and maintain regular update schedule"
+        $recommendations += " Excellent! Windows Update system is healthy and current"
+        $recommendations += " Continue monitoring for new updates and maintain regular update schedule"
     }
 
     return $recommendations
@@ -803,5 +803,5 @@ New-Alias -Name 'Get-WindowsUpdatesAudit' -Value 'Get-WindowsUpdatesAnalysis'
 
 # Export public functions
 Export-ModuleMember -Function @(
-    'Get-WindowsUpdatesAnalysis'  # ✅ v3.0 PRIMARY function
+    'Get-WindowsUpdatesAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-WindowsUpdatesAudit')  # Backward compatibility

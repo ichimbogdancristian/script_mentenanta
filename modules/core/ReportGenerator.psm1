@@ -288,11 +288,11 @@ footer { margin-top: 40px; text-align: center; color: #666; }
         
         Config   = @{
             moduleIcons  = @{
-                BloatwareRemoval   = '🗑️'
-                EssentialApps      = '📦'
-                SystemOptimization = '⚡'
-                TelemetryDisable   = '🔒'
-                WindowsUpdates     = '🔄'
+                BloatwareRemoval   = ''
+                EssentialApps      = ''
+                SystemOptimization = ''
+                TelemetryDisable   = ''
+                WindowsUpdates     = ''
             }
             statusColors = @{
                 success = '#107c10'
@@ -732,7 +732,7 @@ function New-OperationLogTable {
     if (-not $ParsedLogs.Available -or $ParsedLogs.Summary.Total -eq 0) {
         return @"
 <div class="operation-logs-section">
-    <h4>📋 Operation Logs</h4>
+    <h4> Operation Logs</h4>
     <p class="no-data">No operation logs available for this module.</p>
 </div>
 "@
@@ -742,7 +742,7 @@ function New-OperationLogTable {
     
     $html.AppendLine(@"
 <div class="operation-logs-section">
-    <h4>📋 Operation Logs - $ModuleName</h4>
+    <h4> Operation Logs - $ModuleName</h4>
     <div class="log-summary">
         <span class="log-stat">Total: <strong>$($ParsedLogs.Summary.Total)</strong></span>
         <span class="log-stat success">Success: <strong>$($ParsedLogs.Summary.Success)</strong></span>
@@ -837,7 +837,7 @@ function New-MaintenanceReport {
         $startTime = Get-Date
         
         # Load processed data with enhanced parameters
-        Write-Information "📊 Loading processed log data..." -InformationAction Continue
+        Write-Information " Loading processed log data..." -InformationAction Continue
         $processedDataParams = @{}
         if ($ProcessedDataPath) { $processedDataParams.ProcessedDataPath = $ProcessedDataPath }
         if ($EnableFallback) { $processedDataParams.FallbackToRawLogs = $true }
@@ -845,29 +845,29 @@ function New-MaintenanceReport {
         $processedData = Get-ProcessedLogData @processedDataParams
         
         # Load HTML templates
-        Write-Information "🎨 Loading report templates..." -InformationAction Continue
+        Write-Information " Loading report templates..." -InformationAction Continue
         $templates = Get-HtmlTemplates
         
         # Generate report content using templates and processed data
-        Write-Information "📝 Generating HTML report content..." -InformationAction Continue
+        Write-Information " Generating HTML report content..." -InformationAction Continue
         $reportContent = New-HtmlReportContent -ProcessedData $processedData -Templates $templates
         
         # Save HTML report
-        Write-Information "📄 Generating HTML report..." -InformationAction Continue
+        Write-Information " Generating HTML report..." -InformationAction Continue
         $reportContent | Out-File -FilePath $OutputPath -Encoding UTF8 -Force
         
         # Generate additional formats using processed data
-        Write-Information "📄 Generating text report..." -InformationAction Continue
+        Write-Information " Generating text report..." -InformationAction Continue
         $textPath = $OutputPath -replace '\.html$', '.txt'
         $textContent = New-TextReportContent -ProcessedData $processedData
         $textContent | Out-File -FilePath $textPath -Encoding UTF8 -Force
         
-        Write-Information "📊 Generating JSON export..." -InformationAction Continue
+        Write-Information " Generating JSON export..." -InformationAction Continue
         $jsonPath = $OutputPath -replace '\.html$', '.json'
         $jsonContent = New-JsonExportContent -ProcessedData $processedData
         $jsonContent | Out-File -FilePath $jsonPath -Encoding UTF8 -Force
         
-        Write-Information "📋 Generating summary report..." -InformationAction Continue
+        Write-Information " Generating summary report..." -InformationAction Continue
         $summaryPath = $OutputPath -replace '\.html$', '_summary.txt'
         $summaryContent = New-SummaryReportContent -ProcessedData $processedData
         $summaryContent | Out-File -FilePath $summaryPath -Encoding UTF8 -Force
@@ -883,7 +883,7 @@ function New-MaintenanceReport {
             Duration      = $duration
         }
         
-        Write-Information "✅ Report generation completed in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
+        Write-Information " Report generation completed in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'Report generation completed successfully' -Data $result
         
         return $result
@@ -981,7 +981,7 @@ function New-DashboardSection {
     $html.AppendLine(@"
 <div class="dashboard-section">
     <div class="dashboard-header">
-        <h2>📊 System Health Dashboard</h2>
+        <h2> System Health Dashboard</h2>
         <p class="dashboard-subtitle">Real-time maintenance metrics and system status</p>
     </div>
     
@@ -993,7 +993,7 @@ function New-DashboardSection {
     $successClass = if ($successRate -ge 90) { 'success' } elseif ($successRate -ge 70) { 'warning' } else { 'error' }
     $html.AppendLine(@"
         <div class="dashboard-card $successClass">
-            <div class="card-icon">✅</div>
+            <div class="card-icon"></div>
             <h3>Success Rate</h3>
             <div class="card-value">$($successRate)%</div>
             <p class="card-description">Tasks completed successfully</p>
@@ -1004,7 +1004,7 @@ function New-DashboardSection {
     $totalTasks = $metricsData.TotalTasks ?? 0
     $html.AppendLine(@"
         <div class="dashboard-card">
-            <div class="card-icon">📋</div>
+            <div class="card-icon"></div>
             <h3>Total Tasks</h3>
             <div class="card-value">$totalTasks</div>
             <p class="card-description">Maintenance tasks executed</p>
@@ -1016,7 +1016,7 @@ function New-DashboardSection {
     $healthClass = if ($healthScore -ge 85) { 'success' } elseif ($healthScore -ge 70) { 'warning' } else { 'error' }
     $html.AppendLine(@"
         <div class="dashboard-card $healthClass">
-            <div class="card-icon">❤️</div>
+            <div class="card-icon"></div>
             <h3>System Health</h3>
             <div class="card-value">$healthScore</div>
             <p class="card-description">Overall system health score</p>
@@ -1028,7 +1028,7 @@ function New-DashboardSection {
     $securityClass = if ($securityScore -ge 85) { 'success' } elseif ($securityScore -ge 70) { 'warning' } else { 'error' }
     $html.AppendLine(@"
         <div class="dashboard-card $securityClass">
-            <div class="card-icon">🔒</div>
+            <div class="card-icon"></div>
             <h3>Security Score</h3>
             <div class="card-value">$securityScore</div>
             <p class="card-description">Privacy and security status</p>
@@ -1068,18 +1068,18 @@ function New-ModuleSections {
     $html.AppendLine(@"
 <div class="modules-section">
     <div class="section-header">
-        <h2>🔧 Module Execution Details</h2>
+        <h2> Module Execution Details</h2>
         <p class="section-subtitle">Detailed results for each maintenance module</p>
     </div>
 "@)
     
     # Generate sections for each module
     $moduleNames = @(
-        @{ Name = 'BloatwareRemoval'; DisplayName = 'Bloatware Removal'; Icon = '🗑️' }
-        @{ Name = 'EssentialApps'; DisplayName = 'Essential Applications'; Icon = '📦' }
-        @{ Name = 'SystemOptimization'; DisplayName = 'System Optimization'; Icon = '⚡' }
-        @{ Name = 'TelemetryDisable'; DisplayName = 'Telemetry & Privacy'; Icon = '🔒' }
-        @{ Name = 'WindowsUpdates'; DisplayName = 'Windows Updates'; Icon = '🔄' }
+        @{ Name = 'BloatwareRemoval'; DisplayName = 'Bloatware Removal'; Icon = '' }
+        @{ Name = 'EssentialApps'; DisplayName = 'Essential Applications'; Icon = '' }
+        @{ Name = 'SystemOptimization'; DisplayName = 'System Optimization'; Icon = '' }
+        @{ Name = 'TelemetryDisable'; DisplayName = 'Telemetry & Privacy'; Icon = '' }
+        @{ Name = 'WindowsUpdates'; DisplayName = 'Windows Updates'; Icon = '' }
     )
     
     foreach ($module in $moduleNames) {
@@ -1164,7 +1164,7 @@ function New-SummarySection {
     $html.AppendLine(@"
 <div class="summary-section">
     <div class="section-header">
-        <h2>📋 Execution Summary</h2>
+        <h2> Execution Summary</h2>
     </div>
     
     <div class="summary-content">
@@ -1239,23 +1239,23 @@ function New-MaintenanceLogSection {
                 <h4>$($logConfig.beforeTitle)</h4>
                 <div class="changes-summary">
                     <div class="change-stat">
-                        <span class="change-label">📁 Log File:</span>
+                        <span class="change-label"> Log File:</span>
                         <span class="change-value">$([System.IO.Path]::GetFileName($maintenanceLog.LogFile))</span>
                     </div>
                     <div class="change-stat">
-                        <span class="change-label">📏 Total Lines:</span>
+                        <span class="change-label"> Total Lines:</span>
                         <span class="change-value">$($maintenanceLog.LineCount)</span>
                     </div>
                     <div class="change-stat">
-                        <span class="change-label">💾 File Size:</span>
+                        <span class="change-label"> File Size:</span>
                         <span class="change-value">$([math]::Round($maintenanceLog.Size / 1KB, 2)) KB</span>
                     </div>
                     <div class="change-stat">
-                        <span class="change-label">🕐 Last Modified:</span>
+                        <span class="change-label"> Last Modified:</span>
                         <span class="change-value">$($maintenanceLog.LastModified.ToString('yyyy-MM-dd HH:mm:ss'))</span>
                     </div>
                     <div class="change-stat">
-                        <span class="change-label">📊 Total Entries:</span>
+                        <span class="change-label"> Total Entries:</span>
                         <span class="change-value">$($parsed.TotalEntries)</span>
                     </div>
                 </div>
@@ -1266,7 +1266,7 @@ function New-MaintenanceLogSection {
                 <h4>$($logConfig.afterTitle)</h4>
                 <div class="changes-list">
                     <div class="change-category">
-                        <h5 class="info">ℹ️ $($logConfig.changeCategories.info) ($($parsed.InfoMessages.Count))</h5>
+                        <h5 class="info">ℹ $($logConfig.changeCategories.info) ($($parsed.InfoMessages.Count))</h5>
                         <div class="change-items">
 "@)
     
@@ -1285,7 +1285,7 @@ function New-MaintenanceLogSection {
                     </div>
                     
                     <div class="change-category">
-                        <h5 class="success">✅ $($logConfig.changeCategories.success) ($($parsed.SuccessMessages.Count))</h5>
+                        <h5 class="success"> $($logConfig.changeCategories.success) ($($parsed.SuccessMessages.Count))</h5>
                         <div class="change-items">
 "@)
     
@@ -1304,7 +1304,7 @@ function New-MaintenanceLogSection {
                     </div>
                     
                     <div class="change-category">
-                        <h5 class="warning">⚠️ $($logConfig.changeCategories.warning) ($($parsed.WarningMessages.Count))</h5>
+                        <h5 class="warning"> $($logConfig.changeCategories.warning) ($($parsed.WarningMessages.Count))</h5>
                         <div class="change-items">
 "@)
     
@@ -1322,7 +1322,7 @@ function New-MaintenanceLogSection {
                     </div>
                     
                     <div class="change-category">
-                        <h5 class="error">❌ $($logConfig.changeCategories.error) ($($parsed.ErrorMessages.Count))</h5>
+                        <h5 class="error"> $($logConfig.changeCategories.error) ($($parsed.ErrorMessages.Count))</h5>
                         <div class="change-items">
 "@)
     
@@ -1583,12 +1583,12 @@ function New-SummaryReportContent {
         }
         
         # Compact summary format
-        $summary.AppendLine("🔧 WINDOWS MAINTENANCE SUMMARY")
+        $summary.AppendLine(" WINDOWS MAINTENANCE SUMMARY")
         $summary.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
         $summary.AppendLine("")
         
         # Key metrics in compact format
-        $summary.AppendLine("📊 RESULTS:")
+        $summary.AppendLine(" RESULTS:")
         $summary.AppendLine("   Tasks: $($executionSummary.SuccessfulTasks ?? 0)/$($executionSummary.TotalTasks ?? 0) successful ($($dashboardMetrics.SuccessRate ?? 0)%)")
         $summary.AppendLine("   Duration: $([math]::Round(($executionSummary.TotalDuration ?? 0), 1))s")
         $summary.AppendLine("   Health: $($dashboardMetrics.SystemHealthScore ?? 0)/100")
@@ -1596,12 +1596,12 @@ function New-SummaryReportContent {
         
         if ($errorsData -and $errorsData.ErrorSummary -and $errorsData.ErrorSummary.TotalErrors -gt 0) {
             $summary.AppendLine("")
-            $summary.AppendLine("⚠️  ISSUES:")
+            $summary.AppendLine("  ISSUES:")
             $summary.AppendLine("   Errors: $($errorsData.ErrorSummary.TotalErrors) ($($errorsData.ErrorSummary.HighSeverity) high severity)")
         }
         
         $summary.AppendLine("")
-        $summary.AppendLine("✅ System maintenance completed - v3.0 Split Architecture")
+        $summary.AppendLine(" System maintenance completed - v3.0 Split Architecture")
         
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'Summary report content generated successfully'
         return $summary.ToString()
@@ -1955,7 +1955,7 @@ function Test-ConfigTemplateIntegration {
     
     try {
         # Test 1: Normal template loading
-        Write-Information "📋 Testing normal template loading..." -InformationAction Continue
+        Write-Information " Testing normal template loading..." -InformationAction Continue
         
         try {
             $templates = Get-HtmlTemplates -ErrorAction Stop
@@ -1969,7 +1969,7 @@ function Test-ConfigTemplateIntegration {
                         Length = if ($templates[$templateName] -is [string]) { $templates[$templateName].Length } else { 'Object' }
                         Type   = $templates[$templateName].GetType().Name
                     }
-                    Write-Verbose "✓ Template '$templateName' loaded successfully"
+                    Write-Verbose " Template '$templateName' loaded successfully"
                 }
                 else {
                     $testResults.TemplateLoadResults[$templateName] = @{
@@ -1992,17 +1992,17 @@ function Test-ConfigTemplateIntegration {
                 }
             }
             
-            Write-Information "  ✓ Template loading test completed" -InformationAction Continue
+            Write-Information "   Template loading test completed" -InformationAction Continue
         }
         catch {
             $testResults.Success = $false
             $testResults.ValidationErrors += "Template loading failed: $($_.Exception.Message)"
-            Write-Warning "  ✗ Template loading failed: $($_.Exception.Message)"
+            Write-Warning "   Template loading failed: $($_.Exception.Message)"
         }
         
         # Test 2: Fallback mechanisms (if requested)
         if ($TestFallbacks) {
-            Write-Information "📋 Testing fallback template mechanisms..." -InformationAction Continue
+            Write-Information " Testing fallback template mechanisms..." -InformationAction Continue
             
             try {
                 $fallbackTemplates = Get-FallbackTemplates -ErrorAction Stop
@@ -2014,7 +2014,7 @@ function Test-ConfigTemplateIntegration {
                             Status = 'Success'
                             Length = if ($fallbackTemplates[$templateName] -is [string]) { $fallbackTemplates[$templateName].Length } else { 'Object' }
                         }
-                        Write-Verbose "✓ Fallback template '$templateName' available"
+                        Write-Verbose " Fallback template '$templateName' available"
                     }
                     else {
                         $testResults.FallbackResults[$templateName] = @{
@@ -2026,12 +2026,12 @@ function Test-ConfigTemplateIntegration {
                     }
                 }
                 
-                Write-Information "  ✓ Fallback template test completed" -InformationAction Continue
+                Write-Information "   Fallback template test completed" -InformationAction Continue
             }
             catch {
                 $testResults.Success = $false
                 $testResults.ValidationErrors += "Fallback template loading failed: $($_.Exception.Message)"
-                Write-Warning "  ✗ Fallback template loading failed: $($_.Exception.Message)"
+                Write-Warning "   Fallback template loading failed: $($_.Exception.Message)"
             }
         }
         
@@ -2080,7 +2080,7 @@ function Test-ProcessedDataIntegration {
     
     try {
         # Test 1: Normal data loading
-        Write-Information "📊 Testing processed data loading..." -InformationAction Continue
+        Write-Information " Testing processed data loading..." -InformationAction Continue
         
         $loadParams = @{}
         if ($ProcessedDataPath) { $loadParams.ProcessedDataPath = $ProcessedDataPath }
@@ -2098,7 +2098,7 @@ function Test-ProcessedDataIntegration {
                         HasData = ($processedData[$component] -and $processedData[$component].Count -gt 0)
                         Type    = $processedData[$component].GetType().Name
                     }
-                    Write-Verbose "✓ Data component '$component' loaded"
+                    Write-Verbose " Data component '$component' loaded"
                 }
                 else {
                     $testResults.DataLoadResults[$component] = @{
@@ -2118,12 +2118,12 @@ function Test-ProcessedDataIntegration {
                 $testResults.ValidationErrors += $validation.CriticalIssues
             }
             
-            Write-Information "  ✓ Processed data loading test completed" -InformationAction Continue
+            Write-Information "   Processed data loading test completed" -InformationAction Continue
         }
         catch {
             $testResults.Success = $false
             $testResults.ValidationErrors += "Processed data loading failed: $($_.Exception.Message)"
-            Write-Warning "  ✗ Processed data loading failed: $($_.Exception.Message)"
+            Write-Warning "   Processed data loading failed: $($_.Exception.Message)"
         }
         
         # Summary

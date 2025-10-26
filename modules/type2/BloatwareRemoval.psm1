@@ -146,7 +146,7 @@ function Invoke-BloatwareRemoval {
         }
         
         if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "🧪 DRY-RUN: Would process $($diffList.Count) bloatware items" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
+            Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message " DRY-RUN: Would process $($diffList.Count) bloatware items" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
             $processedCount = 0
         }
         else {
@@ -290,7 +290,7 @@ function Remove-DetectedBloatware {
         [string]$LogPath  # v3.0 specific log file path
     )
 
-    Write-Information "🗑️  Starting bloatware removal process..." -InformationAction Continue
+    Write-Information "  Starting bloatware removal process..." -InformationAction Continue
     $startTime = Get-Date
     
     # Check for administrator privileges before proceeding
@@ -319,14 +319,14 @@ function Remove-DetectedBloatware {
     }
 
     if (-not $BloatwareList) {
-        Write-Information "  🔍 No bloatware list provided, detecting automatically..." -InformationAction Continue
+        Write-Information "   No bloatware list provided, detecting automatically..." -InformationAction Continue
         $params = @{ Categories = $Categories }
         if ($UseCache) { $params.UseCache = $true }
         $BloatwareList = Find-InstalledBloatware @params
     }
 
     if (-not $BloatwareList -or $BloatwareList.Count -eq 0) {
-        Write-Information "  ✅ No bloatware detected for removal" -InformationAction Continue
+        Write-Information "   No bloatware detected for removal" -InformationAction Continue
 
         # Create empty analysis using organized file system
         $emptyAnalysis = @{
@@ -339,7 +339,7 @@ function Remove-DetectedBloatware {
 
         $emptyDiffPath = Save-OrganizedFile -Data $emptyAnalysis -FileType 'Data' -Category 'apps' -FileName 'bloatware-analysis' -Format 'JSON'
         if ($emptyDiffPath) {
-            Write-Information "  📄 Empty bloatware analysis saved: $emptyDiffPath" -InformationAction Continue
+            Write-Information "   Empty bloatware analysis saved: $emptyDiffPath" -InformationAction Continue
         }
 
         return @{
@@ -352,7 +352,7 @@ function Remove-DetectedBloatware {
         }
     }
 
-    Write-Information "  📋 Found $($BloatwareList.Count) bloatware items for removal" -InformationAction Continue
+    Write-Information "   Found $($BloatwareList.Count) bloatware items for removal" -InformationAction Continue
 
     try {
         $ErrorActionPreference = 'Stop' 
@@ -370,7 +370,7 @@ function Remove-DetectedBloatware {
         # Persist analysis using organized file system
         $analysisPath = Save-OrganizedFile -Data $bloatwareAnalysis -FileType 'Data' -Category 'apps' -FileName 'bloatware-analysis' -Format 'JSON'
         if ($analysisPath) {
-            Write-Information "  📄 Bloatware analysis saved: $analysisPath" -InformationAction Continue
+            Write-Information "   Bloatware analysis saved: $analysisPath" -InformationAction Continue
         }
 
         # Create comprehensive diff data
@@ -388,7 +388,7 @@ function Remove-DetectedBloatware {
         # Save diff via organized file system
         $diffFilePath = Save-OrganizedFile -Data $diffData -FileType 'Data' -Category 'apps' -FileName 'bloatware-diff' -Format 'JSON'
         if ($diffFilePath) {
-            Write-Information "  📄 Diff file created: $diffFilePath" -InformationAction Continue
+            Write-Information "   Diff file created: $diffFilePath" -InformationAction Continue
         }
 
         # Create human-readable summary in organized file system
@@ -414,10 +414,10 @@ ITEMS BY SOURCE:
         }
 
         $summaryContent | Out-File -FilePath $summaryPath -Encoding UTF8
-        Write-Information "  📝 Summary file created: $summaryPath" -InformationAction Continue
+        Write-Information "   Summary file created: $summaryPath" -InformationAction Continue
 
         if ($DryRun) {
-            Write-Information "  🧪 DRY RUN MODE - No changes will be made" -InformationAction Continue
+            Write-Information "   DRY RUN MODE - No changes will be made" -InformationAction Continue
         }
 
         # Initialize results tracking
@@ -440,7 +440,7 @@ ITEMS BY SOURCE:
             $source = $sourceGroup.Name
             $items = $sourceGroup.Group
 
-            Write-Information "  🔧 Processing $($items.Count) items from $source..." -InformationAction Continue
+            Write-Information "   Processing $($items.Count) items from $source..." -InformationAction Continue
 
             $sourceResults = switch ($source) {
                 'AppX' { Remove-AppXBloatware -Items $items -DryRun:$DryRun }
@@ -470,17 +470,17 @@ ITEMS BY SOURCE:
         $diffData.Results = $results
         $diffData.Duration = $duration
         $diffData | ConvertTo-Json -Depth 4 | Set-Content -Path $diffFilePath -Encoding UTF8
-        Write-Information "  📄 Updated diff file with results: $diffFilePath" -InformationAction Continue
+        Write-Information "   Updated diff file with results: $diffFilePath" -InformationAction Continue
 
         # Summary output
-        $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
+        $statusIcon = if ($results.Failed -eq 0) { "" } else { "" }
         Write-Information "  $statusIcon Bloatware removal completed in $([math]::Round($duration, 2))s" -InformationAction Continue
-        Write-Information "    📊 Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
-        Write-Information "    📄 Files created: JSON diff, TXT summary" -InformationAction Continue
+        Write-Information "     Processed: $($results.TotalProcessed), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
+        Write-Information "     Files created: JSON diff, TXT summary" -InformationAction Continue
 
         $success = $results.Failed -eq 0 -and $results.Successful -gt 0
         if (-not $success) {
-            Write-Information "    ❌ Some items could not be removed. Check logs for details." -InformationAction Continue
+            Write-Information "     Some items could not be removed. Check logs for details." -InformationAction Continue
         }
 
         # Complete performance tracking and log success
@@ -525,7 +525,7 @@ ITEMS BY SOURCE:
             # LoggingManager not available, continue
         }
         
-        $errorMessage = "❌ Bloatware removal failed: $($_.Exception.Message)"
+        $errorMessage = " Bloatware removal failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
         
@@ -561,7 +561,7 @@ function Test-BloatwareRemoval {
         [Array]$BloatwareList
     )
 
-    Write-Information "🧪 Testing bloatware removal capabilities..." -InformationAction Continue
+    Write-Information " Testing bloatware removal capabilities..." -InformationAction Continue
 
     $testResults = @{
         TotalItems        = $BloatwareList.Count
@@ -596,10 +596,10 @@ function Test-BloatwareRemoval {
         }
 
         $testResults.BySource[$source] = $sourceTest
-        Write-Information "  📦 $source`: $($sourceTest.Removable)/$($sourceTest.Total) removable" -InformationAction Continue
+        Write-Information "   $source`: $($sourceTest.Removable)/$($sourceTest.Total) removable" -InformationAction Continue
     }
 
-    Write-Information "  📊 Overall: $($testResults.RemovableItems)/$($testResults.TotalItems) items can be removed" -InformationAction Continue
+    Write-Information "   Overall: $($testResults.RemovableItems)/$($testResults.TotalItems) items can be removed" -InformationAction Continue
 
     return $testResults
 }
@@ -668,7 +668,7 @@ function Remove-AppXBloatware {
                 $result.Success = $true
             }
             else {
-                Write-Information "    🗑️ Removing AppX package: $packageName" -InformationAction Continue
+                Write-Information "     Removing AppX package: $packageName" -InformationAction Continue
 
                 # Try to remove for all users first
                 if ($package) {
@@ -707,7 +707,7 @@ function Remove-AppXBloatware {
                         ProvisionedRemoved = ($null -ne $provisionedPackage)
                     }
                     $result.Success = $true
-                    Write-Information "      ✅ Successfully removed AppX package: $packageName (${operationDuration}s)" -InformationAction Continue
+                    Write-Information "       Successfully removed AppX package: $packageName (${operationDuration}s)" -InformationAction Continue
                 }
                 else {
                     # Log failed verification
@@ -791,7 +791,7 @@ function Remove-WingetBloatware {
                 $result.Success = $true
             }
             else {
-                Write-Information "    🗑️ Uninstalling Winget package: $packageName" -InformationAction Continue
+                Write-Information "     Uninstalling Winget package: $packageName" -InformationAction Continue
 
                 $wingetArgs = @(
                     'uninstall',
@@ -827,7 +827,7 @@ function Remove-WingetBloatware {
                             Verified = $true
                         }
                         $result.Success = $true
-                        Write-Information "      ✅ Successfully uninstalled Winget package: $packageName (${operationDuration}s)" -InformationAction Continue
+                        Write-Information "       Successfully uninstalled Winget package: $packageName (${operationDuration}s)" -InformationAction Continue
                     }
                     else {
                         # Log failed verification
@@ -921,7 +921,7 @@ function Remove-ChocolateyBloatware {
                 $result.Success = $true
             }
             else {
-                Write-Information "    🗑️ Uninstalling Chocolatey package: $packageName" -InformationAction Continue
+                Write-Information "     Uninstalling Chocolatey package: $packageName" -InformationAction Continue
 
                 $chocoArgs = @(
                     'uninstall',
@@ -958,7 +958,7 @@ function Remove-ChocolateyBloatware {
                             Verified        = $true
                         }
                         $result.Success = $true
-                        Write-Information "      ✅ Successfully uninstalled Chocolatey package: $packageName v$installedVersion (${operationDuration}s)" -InformationAction Continue
+                        Write-Information "       Successfully uninstalled Chocolatey package: $packageName v$installedVersion (${operationDuration}s)" -InformationAction Continue
                     }
                     else {
                         # Log failed verification
@@ -1049,7 +1049,7 @@ function Remove-RegistryBloatware {
                 $result.Success = $true
             }
             else {
-                Write-Information "    🗑️ Executing uninstaller: $appName" -InformationAction Continue
+                Write-Information "     Executing uninstaller: $appName" -InformationAction Continue
 
                 # Parse uninstall string to extract executable and arguments
                 if ($uninstallString -match '^"([^"]+)"(.*)') {
@@ -1099,7 +1099,7 @@ function Remove-RegistryBloatware {
                             Verified        = $true
                         }
                         $result.Success = $true
-                        Write-Information "      ✅ Successfully uninstalled: $appName v$($preActionState.Version) (${operationDuration}s)" -InformationAction Continue
+                        Write-Information "       Successfully uninstalled: $appName v$($preActionState.Version) (${operationDuration}s)" -InformationAction Continue
                     }
                     else {
                         Write-LogEntry -Level 'WARN' -Component 'BLOATWARE-REMOVAL' -Message "Registry entry still exists after uninstall, but exit code was 0 - treating as success"

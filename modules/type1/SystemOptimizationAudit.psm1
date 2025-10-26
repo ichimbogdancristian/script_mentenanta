@@ -87,7 +87,7 @@ function Get-SystemOptimizationAnalysis {
         [switch]$UseCache
     )
 
-    Write-Information "🔍 Starting system optimization audit..." -InformationAction Continue
+    Write-Information " Starting system optimization audit..." -InformationAction Continue
     
     # Start performance tracking
     $perfContext = $null
@@ -135,31 +135,31 @@ function Get-SystemOptimizationAnalysis {
 
         # Audit different categories
         if ($IncludeStartup) {
-            Write-Information "  📋 Auditing startup programs and services..." -InformationAction Continue
+            Write-Information "   Auditing startup programs and services..." -InformationAction Continue
             $auditResults.StartupAudit = Get-StartupOptimizationAudit
             $auditResults.OptimizationOpportunities += $auditResults.StartupAudit.Opportunities
         }
 
         if ($IncludeUI) {
-            Write-Information "  🎨 Auditing UI and visual effects..." -InformationAction Continue
+            Write-Information "   Auditing UI and visual effects..." -InformationAction Continue
             $auditResults.UIAudit = Get-UIOptimizationAudit
             $auditResults.OptimizationOpportunities += $auditResults.UIAudit.Opportunities
         }
 
         if ($IncludeRegistry) {
-            Write-Information "  📝 Auditing registry health..." -InformationAction Continue
+            Write-Information "   Auditing registry health..." -InformationAction Continue
             $auditResults.RegistryAudit = Get-RegistryOptimizationAudit
             $auditResults.OptimizationOpportunities += $auditResults.RegistryAudit.Opportunities
         }
 
         if ($IncludeDisk) {
-            Write-Information "  💾 Auditing disk usage and performance..." -InformationAction Continue
+            Write-Information "   Auditing disk usage and performance..." -InformationAction Continue
             $auditResults.DiskAudit = Get-DiskOptimizationAudit
             $auditResults.OptimizationOpportunities += $auditResults.DiskAudit.Opportunities
         }
 
         if ($IncludeNetwork) {
-            Write-Information "  🌐 Auditing network configuration..." -InformationAction Continue
+            Write-Information "   Auditing network configuration..." -InformationAction Continue
             $auditResults.NetworkAudit = Get-NetworkOptimizationAudit
             $auditResults.OptimizationOpportunities += $auditResults.NetworkAudit.Opportunities
         }
@@ -168,7 +168,7 @@ function Get-SystemOptimizationAnalysis {
         $auditResults.OptimizationScore = Get-OptimizationScore -AuditResults $auditResults
         $auditResults.Recommendations = New-OptimizationRecommendations -AuditResults $auditResults
 
-        Write-Information "✓ System optimization audit completed. Score: $($auditResults.OptimizationScore.Overall)/100" -InformationAction Continue
+        Write-Information " System optimization audit completed. Score: $($auditResults.OptimizationScore.Overall)/100" -InformationAction Continue
 
         # FIX #5: Save results using standardized Get-AuditResultsPath function
         try {
@@ -720,5 +720,5 @@ New-Alias -Name 'Get-SystemOptimizationAudit' -Value 'Get-SystemOptimizationAnal
 
 # Export public functions
 Export-ModuleMember -Function @(
-    'Get-SystemOptimizationAnalysis'  # ✅ v3.0 PRIMARY function
+    'Get-SystemOptimizationAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-SystemOptimizationAudit')  # Backward compatibility

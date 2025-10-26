@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - SystemOptimizationAudit.psm1 (Type1 - detection/analysis)
@@ -103,7 +103,7 @@ function Invoke-SystemOptimization {
         Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ OpportunityCount = $optimizationCount }
         
         if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message '🧪 DRY-RUN: Simulating system optimization' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $optimizationCount }
+            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message ' DRY-RUN: Simulating system optimization' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $optimizationCount }
             $results = @{ ProcessedCount = $optimizationCount; Simulated = $true }
             [void]$results
             $processedCount = $optimizationCount
@@ -305,7 +305,7 @@ function Optimize-SystemPerformance {
         [switch]$DryRun
     )
 
-    Write-Information "⚡ Starting comprehensive system optimization..." -InformationAction Continue
+    Write-Information " Starting comprehensive system optimization..." -InformationAction Continue
     $startTime = Get-Date
     
     # Initialize structured logging and performance tracking
@@ -335,7 +335,7 @@ function Optimize-SystemPerformance {
     }
 
     if ($DryRun) {
-        Write-Information "  🧪 DRY RUN MODE - No changes will be applied" -InformationAction Continue
+        Write-Information "   DRY RUN MODE - No changes will be applied" -InformationAction Continue
     }
 
     # Initialize results tracking
@@ -359,42 +359,42 @@ function Optimize-SystemPerformance {
     try {
         # Temporary files cleanup (default: enabled)
         if ($CleanupTemp -or (-not $PSBoundParameters.ContainsKey('CleanupTemp'))) {
-            Write-Information "  🧹 Cleaning temporary files..." -InformationAction Continue
+            Write-Information "   Cleaning temporary files..." -InformationAction Continue
             $tempResults = Clear-TemporaryFile -DryRun:$DryRun
             Merge-OptimizationResult -Results $results -NewResults $tempResults -Category 'TempCleanup'
         }
 
         # Startup optimization (default: enabled)
         if ($OptimizeStartup -or (-not $PSBoundParameters.ContainsKey('OptimizeStartup'))) {
-            Write-Information "  🚀 Optimizing startup programs..." -InformationAction Continue
+            Write-Information "   Optimizing startup programs..." -InformationAction Continue
             $startupResults = Optimize-StartupProgram -DryRun:$DryRun
             Merge-OptimizationResult -Results $results -NewResults $startupResults -Category 'StartupOptimization'
         }
 
         # UI optimization (default: enabled)
         if ($OptimizeUI -or (-not $PSBoundParameters.ContainsKey('OptimizeUI'))) {
-            Write-Information "  🎨 Optimizing user interface..." -InformationAction Continue
+            Write-Information "   Optimizing user interface..." -InformationAction Continue
             $uiResults = Optimize-UserInterface -DryRun:$DryRun
             Merge-OptimizationResult -Results $results -NewResults $uiResults -Category 'UIOptimization'
         }
 
         # Registry optimization (default: disabled)
         if ($OptimizeRegistry) {
-            Write-Information "  📋 Optimizing registry..." -InformationAction Continue
+            Write-Information "   Optimizing registry..." -InformationAction Continue
             $registryResults = Optimize-WindowsRegistry -DryRun:$DryRun
             Merge-OptimizationResult -Results $results -NewResults $registryResults -Category 'RegistryOptimization'
         }
 
         # Disk optimization (default: enabled)
         if ($OptimizeDisk -or (-not $PSBoundParameters.ContainsKey('OptimizeDisk'))) {
-            Write-Information "  💽 Optimizing disk performance..." -InformationAction Continue
+            Write-Information "   Optimizing disk performance..." -InformationAction Continue
             $diskResults = Optimize-DiskPerformance -DryRun:$DryRun
             Merge-OptimizationResult -Results $results -NewResults $diskResults -Category 'DiskOptimization'
         }
 
         # Network optimization (default: disabled)
         if ($OptimizeNetwork) {
-            Write-Information "  🌐 Optimizing network settings..." -InformationAction Continue
+            Write-Information "   Optimizing network settings..." -InformationAction Continue
             $networkResults = Optimize-NetworkSetting -DryRun:$DryRun
             Merge-OptimizationResult -Results $results -NewResults $networkResults -Category 'NetworkOptimization'
         }
@@ -403,17 +403,17 @@ function Optimize-SystemPerformance {
         $spaceFreedMB = [math]::Round($results.SpaceFreed / 1MB, 2)
 
         # Summary output
-        $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
+        $statusIcon = if ($results.Failed -eq 0) { "" } else { "" }
         Write-Information "  $statusIcon System optimization completed in $([math]::Round($duration, 2))s" -InformationAction Continue
-        Write-Information "    📊 Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
+        Write-Information "     Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
 
         if ($results.SpaceFreed -gt 0) {
-            Write-Information "    💾 Disk space freed: ${spaceFreedMB} MB" -InformationAction Continue
+            Write-Information "     Disk space freed: ${spaceFreedMB} MB" -InformationAction Continue
         }
 
         $success = $results.Failed -eq 0 -and $results.Successful -gt 0
         if (-not $success) {
-            Write-Information "    ❌ Some optimizations failed. Check logs for details." -InformationAction Continue
+            Write-Information "     Some optimizations failed. Check logs for details." -InformationAction Continue
         }
 
         # Complete performance tracking and structured logging
@@ -445,7 +445,7 @@ function Optimize-SystemPerformance {
         return $success
     }
     catch {
-        $errorMessage = "❌ System optimization failed: $($_.Exception.Message)"
+        $errorMessage = " System optimization failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
         
@@ -475,10 +475,10 @@ function Optimize-SystemPerformance {
     Evaluates current system performance and identifies optimization opportunities.
 
 .EXAMPLE
-    Write-Information "  💽 Disk Usage: $($metrics.DiskUsage.UsedPercentage)%" -InformationAction Continue
-    Write-Information "  🚀 Startup Programs: $($metrics.StartupPrograms)" -InformationAction Continue
-    Write-Information "  🗂️  Temporary Files: $([math]::Round($metrics.TemporaryFiles/1MB)) MB" -InformationAction Continue
-    Write-Information "  💡 Recommendations: $($metrics.Recommendations.Count)" -InformationAction Continue
+    Write-Information "   Disk Usage: $($metrics.DiskUsage.UsedPercentage)%" -InformationAction Continue
+    Write-Information "   Startup Programs: $($metrics.StartupPrograms)" -InformationAction Continue
+    Write-Information "    Temporary Files: $([math]::Round($metrics.TemporaryFiles/1MB)) MB" -InformationAction Continue
+    Write-Information "   Recommendations: $($metrics.Recommendations.Count)" -InformationAction Continue
 
     return $metrics
 }
@@ -575,7 +575,7 @@ function Clear-TemporaryFile {
                 $cleanupResult.Success = $true
 
                 if ($cleanupResult.SpaceFreed -gt 0) {
-                    Write-Information "    🧹 Cleaned $($target.Name): $([math]::Round($cleanupResult.SpaceFreed/1MB, 2)) MB" -InformationAction Continue
+                    Write-Information "     Cleaned $($target.Name): $([math]::Round($cleanupResult.SpaceFreed/1MB, 2)) MB" -InformationAction Continue
                 }
             }
 
@@ -703,7 +703,7 @@ function Optimize-StartupProgram {
                                             Verified = $true
                                         }
                                         $optimizationResult.Success = $true
-                                        Write-Information "    🚀 Disabled startup item: $itemName (${operationDuration}s)" -InformationAction Continue
+                                        Write-Information "     Disabled startup item: $itemName (${operationDuration}s)" -InformationAction Continue
                                     }
                                     else {
                                         throw "Verification failed: Item still exists after removal"
@@ -848,7 +848,7 @@ function Optimize-UserInterface {
                             Verified = $true
                         }
                         $settingResult.Success = $true
-                        Write-Information "    🎨 Applied UI optimization: $($setting.Key) (${operationDuration}s)" -InformationAction Continue
+                        Write-Information "     Applied UI optimization: $($setting.Key) (${operationDuration}s)" -InformationAction Continue
                     }
                     else {
                         # Log failed verification
@@ -935,7 +935,7 @@ function Optimize-WindowsRegistry {
                     }
 
                     $optimizationResult.Success = $true
-                    Write-Information "    📋 $($optimization.Description)" -InformationAction Continue
+                    Write-Information "     $($optimization.Description)" -InformationAction Continue
                 }
 
                 $results.Success++
@@ -1000,17 +1000,17 @@ function Optimize-DiskPerformance {
                 switch ($task.Action) {
                     'DisableIndexing' {
                         # This is a placeholder - actual implementation would be more complex
-                        Write-Information "    💽 $($task.Name) (placeholder)" -InformationAction Continue
+                        Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
                         $taskResult.Success = $true
                     }
                     'OptimizePageFile' {
                         # This is a placeholder - actual implementation would be more complex
-                        Write-Information "    💽 $($task.Name) (placeholder)" -InformationAction Continue
+                        Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
                         $taskResult.Success = $true
                     }
                     'EnableWriteCache' {
                         # This is a placeholder - actual implementation would be more complex
-                        Write-Information "    💽 $($task.Name) (placeholder)" -InformationAction Continue
+                        Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
                         $taskResult.Success = $true
                     }
                 }
@@ -1083,7 +1083,7 @@ function Optimize-NetworkSetting {
 
                     Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
                     $settingResult.Success = $true
-                    Write-Information "    🌐 Applied network optimization: $($setting.Key)" -InformationAction Continue
+                    Write-Information "     Applied network optimization: $($setting.Key)" -InformationAction Continue
                 }
 
                 $results.Success++

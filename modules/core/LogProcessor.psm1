@@ -577,7 +577,7 @@ function Get-Type1AuditData {
             if ($content) {
                 # Cache individual file data
                 Invoke-CacheOperation -Operation 'Set' -CacheType 'AuditData' -Key $fileCacheKey -Value $content
-                Write-Verbose "✓ Loaded and cached audit data for module: $moduleName"
+                Write-Verbose " Loaded and cached audit data for module: $moduleName"
                 return @{ ModuleName = $moduleName; Data = $content }
             }
             else {
@@ -707,7 +707,7 @@ function Get-Type2ExecutionLogs {
         foreach ($result in $batchResults) {
             if ($result -and $result.Success) {
                 $executionLogs[$result.ModuleName] = $result.Data
-                $status = if ($result.FallbackUsed) { "✓ (fallback)" } else { "✓" }
+                $status = if ($result.FallbackUsed) { " (fallback)" } else { "" }
                 Write-Verbose "$status Loaded execution log for module: $($result.ModuleName)"
             }
             elseif ($result) {
@@ -1862,7 +1862,7 @@ function Invoke-LogProcessing {
         $processedRoot = Initialize-ProcessedDataPaths
         
         # Collect raw data with defensive error handling
-        Write-Information "📊 Collecting raw log data..." -InformationAction Continue
+        Write-Information " Collecting raw log data..." -InformationAction Continue
         
         $type1AuditData = @{}
         try {
@@ -1899,7 +1899,7 @@ function Invoke-LogProcessing {
         }
         
         # Process logs and generate standardized data files
-        Write-Information "🔍 Analyzing logs and calculating metrics..." -InformationAction Continue
+        Write-Information " Analyzing logs and calculating metrics..." -InformationAction Continue
         
         # Generate comprehensive log analysis with error handling
         $comprehensiveAnalysis = $null
@@ -1991,7 +1991,7 @@ function Invoke-LogProcessing {
         }
         
         # Save processed data to standardized JSON files (with defensive error handling)
-        Write-Information "💾 Saving processed data files..." -InformationAction Continue
+        Write-Information " Saving processed data files..." -InformationAction Continue
         
         # Main metrics summary
         try {
@@ -2009,7 +2009,7 @@ function Invoke-LogProcessing {
                 ComprehensiveAnalysis = if ($comprehensiveAnalysis) { $comprehensiveAnalysis } else { @{} }
             }
             $metricsSummary | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'metrics-summary.json')
-            Write-Information "  ✓ Metrics summary saved" -InformationAction Continue
+            Write-Information "   Metrics summary saved" -InformationAction Continue
         }
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save metrics-summary.json: $($_.Exception.Message)"
@@ -2024,7 +2024,7 @@ function Invoke-LogProcessing {
                 PerformanceData        = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.PerformanceData) { $comprehensiveAnalysis.PerformanceData } else { @{} }
             }
             $moduleResults | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'module-results.json')
-            Write-Information "  ✓ Module results saved" -InformationAction Continue
+            Write-Information "   Module results saved" -InformationAction Continue
         }
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save module-results.json: $($_.Exception.Message)"
@@ -2034,10 +2034,10 @@ function Invoke-LogProcessing {
         try {
             if ($maintenanceLog -and $maintenanceLog.Available) {
                 $maintenanceLog | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'maintenance-log.json')
-                Write-Information "  ✓ Maintenance log data saved" -InformationAction Continue
+                Write-Information "   Maintenance log data saved" -InformationAction Continue
             }
             else {
-                Write-Information "  ⚠ No maintenance log data available" -InformationAction Continue
+                Write-Information "   No maintenance log data available" -InformationAction Continue
             }
         }
         catch {
@@ -2057,7 +2057,7 @@ function Invoke-LogProcessing {
                 }
             }
             $errorsData | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'errors-analysis.json')
-            Write-Information "  ✓ Errors analysis saved" -InformationAction Continue
+            Write-Information "   Errors analysis saved" -InformationAction Continue
         }
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save errors-analysis.json: $($_.Exception.Message)"
@@ -2072,7 +2072,7 @@ function Invoke-LogProcessing {
                 ModuleHealthMetrics = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.HealthMetrics) { $comprehensiveAnalysis.HealthMetrics } else { @{} }
             }
             $healthScores | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'health-scores.json')
-            Write-Information "  ✓ Health scores saved" -InformationAction Continue
+            Write-Information "   Health scores saved" -InformationAction Continue
         }
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save health-scores.json: $($_.Exception.Message)"
@@ -2096,14 +2096,14 @@ function Invoke-LogProcessing {
                         Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to save module-specific data for ${moduleName}: $($_.Exception.Message)"
                     }
                 }
-                Write-Information "  ✓ Module-specific data files saved" -InformationAction Continue
+                Write-Information "   Module-specific data files saved" -InformationAction Continue
             }
         }
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save module-specific data: $($_.Exception.Message)"
         }
         
-        Write-Information "📋 Log processing completed successfully" -InformationAction Continue
+        Write-Information " Log processing completed successfully" -InformationAction Continue
         Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message 'Log processing pipeline completed' -Data @{
             Type1Modules      = $type1AuditData.Keys.Count
             Type2Modules      = $type2ExecutionLogs.Keys.Count
@@ -2177,7 +2177,7 @@ function Invoke-SafeLogOperation {
         Write-Verbose "Executing operation: $OperationName"
         $result.Data = & $Operation @Parameters
         $result.Success = $true
-        Write-Verbose "✓ Operation '$OperationName' completed successfully"
+        Write-Verbose " Operation '$OperationName' completed successfully"
     }
     catch {
         $result.Error = $_.Exception.Message

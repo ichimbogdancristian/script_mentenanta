@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - SystemInventoryAudit.psm1 (Type1 - detection/analysis)
@@ -99,7 +99,7 @@ function Invoke-SystemInventory {
     }
     
     try {
-        Write-Information "📊 Collecting system inventory..." -InformationAction Continue
+        Write-Information " Collecting system inventory..." -InformationAction Continue
         
         # Validate temp_files structure (FIX #12)
         if (-not (Test-TempFilesStructure)) {
@@ -112,7 +112,7 @@ function Invoke-SystemInventory {
         # STEP 2: Save inventory data to temp_files/data/
         $inventoryDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "system-inventory.json"
         $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8 -ErrorAction Stop | Out-Null
-        Write-Information "  ✓ System inventory saved to data folder" -InformationAction Continue
+        Write-Information "   System inventory saved to data folder" -InformationAction Continue
         
         # STEP 3: Setup logging (information gathering, minimal logging needed)
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\system-inventory"
@@ -164,7 +164,7 @@ Collection completed successfully
         
         Add-Content -Path $executionLogPath -Value $logSummary -Encoding UTF8 | Out-Null
         
-        Write-Information "  ✓ Inventory collection complete" -InformationAction Continue
+        Write-Information "   Inventory collection complete" -InformationAction Continue
         
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"

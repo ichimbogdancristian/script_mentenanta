@@ -63,7 +63,7 @@ function Get-AppUpgradeAnalysis {
         [hashtable]$Config
     )
 
-    Write-Information "🔍 Analyzing available application upgrades..." -InformationAction Continue
+    Write-Information " Analyzing available application upgrades..." -InformationAction Continue
     $startTime = Get-Date
     
     # Start performance tracking
@@ -82,33 +82,33 @@ function Get-AppUpgradeAnalysis {
         $allUpgrades = [List[PSCustomObject]]::new()
         
         # Scan winget for upgrades
-        Write-Information "  📦 Scanning winget for upgrades..." -InformationAction Continue
+        Write-Information "   Scanning winget for upgrades..." -InformationAction Continue
         $wingetUpgrades = Get-WingetUpgrades
         if ($wingetUpgrades -and $wingetUpgrades.Count -gt 0) {
             foreach ($item in $wingetUpgrades) {
                 if ($null -ne $item) { $allUpgrades.Add($item) }
             }
-            Write-Information "    ✓ Found $($wingetUpgrades.Count) winget upgrades" -InformationAction Continue
+            Write-Information "     Found $($wingetUpgrades.Count) winget upgrades" -InformationAction Continue
         }
         else {
-            Write-Information "    ℹ️  No winget upgrades available" -InformationAction Continue
+            Write-Information "    ℹ  No winget upgrades available" -InformationAction Continue
         }
 
         # Scan Chocolatey for upgrades
-        Write-Information "  🍫 Scanning Chocolatey for upgrades..." -InformationAction Continue
+        Write-Information "   Scanning Chocolatey for upgrades..." -InformationAction Continue
         $chocoUpgrades = Get-ChocolateyUpgrades
         if ($chocoUpgrades -and $chocoUpgrades.Count -gt 0) {
             foreach ($item in $chocoUpgrades) {
                 if ($null -ne $item) { $allUpgrades.Add($item) }
             }
-            Write-Information "    ✓ Found $($chocoUpgrades.Count) Chocolatey upgrades" -InformationAction Continue
+            Write-Information "     Found $($chocoUpgrades.Count) Chocolatey upgrades" -InformationAction Continue
         }
         else {
-            Write-Information "    ℹ️  No Chocolatey upgrades available" -InformationAction Continue
+            Write-Information "    ℹ  No Chocolatey upgrades available" -InformationAction Continue
         }
 
         $duration = (Get-Date) - $startTime
-        Write-Information "  ✅ Found $($allUpgrades.Count) total upgrades in $([math]::Round($duration.TotalSeconds, 2))s" -InformationAction Continue
+        Write-Information "   Found $($allUpgrades.Count) total upgrades in $([math]::Round($duration.TotalSeconds, 2))s" -InformationAction Continue
 
         # Convert to array for return
         $resultArray = [Array]$allUpgrades

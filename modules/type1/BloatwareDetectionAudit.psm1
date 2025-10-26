@@ -77,7 +77,7 @@ function Find-InstalledBloatware {
         [string]$Context = "Bloatware Detection"
     )
 
-    Write-Information "🔍 Scanning for installed bloatware..." -InformationAction Continue
+    Write-Information " Scanning for installed bloatware..." -InformationAction Continue
     $startTime = Get-Date
     
     # Start performance tracking and centralized logging
@@ -123,7 +123,7 @@ function Find-InstalledBloatware {
             return @()
         }
 
-        Write-Information "  📋 Loaded $($bloatwareList.Count) bloatware patterns from $($Categories.Count) categories" -InformationAction Continue
+        Write-Information "   Loaded $($bloatwareList.Count) bloatware patterns from $($Categories.Count) categories" -InformationAction Continue
 
         # Initialize results collection with explicit capacity for better memory management
         $allBloatware = [List[PSCustomObject]]::new(200)  # Pre-allocate capacity to reduce reallocations
@@ -132,7 +132,7 @@ function Find-InstalledBloatware {
         $installedPrograms = $null
         
         # Collect installed programs directly from registry (SystemAnalysis only provides summary metrics)
-        Write-Information "  📊 Collecting installed programs from registry..." -InformationAction Continue
+        Write-Information "   Collecting installed programs from registry..." -InformationAction Continue
         try {
             $programs = @()
             $registryPaths = @(
@@ -153,7 +153,7 @@ function Find-InstalledBloatware {
             }
 
             $installedPrograms = $programs
-            Write-Information "  ✓ Found $($installedPrograms.Count) installed programs" -InformationAction Continue
+            Write-Information "   Found $($installedPrograms.Count) installed programs" -InformationAction Continue
         }
         catch {
             Write-Warning "Failed to collect installed programs: $($_.Exception.Message)"
@@ -166,7 +166,7 @@ function Find-InstalledBloatware {
         }
 
         # Scan AppX packages
-        Write-Information "  📱 Scanning AppX packages..." -InformationAction Continue
+        Write-Information "   Scanning AppX packages..." -InformationAction Continue
         $appxBloatware = Get-AppXBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($appxBloatware -and $appxBloatware.Count -gt 0) { 
             # Ensure we have an array and add each item individually
@@ -177,7 +177,7 @@ function Find-InstalledBloatware {
         }
 
         # Scan Winget packages
-        Write-Information "  📦 Scanning Winget packages..." -InformationAction Continue
+        Write-Information "   Scanning Winget packages..." -InformationAction Continue
         $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($wingetBloatware -and $wingetBloatware.Count -gt 0) { 
             $wingetArray = @($wingetBloatware)
@@ -187,7 +187,7 @@ function Find-InstalledBloatware {
         }
 
         # Scan Chocolatey packages
-        Write-Information "  🍫 Scanning Chocolatey packages..." -InformationAction Continue
+        Write-Information "   Scanning Chocolatey packages..." -InformationAction Continue
         $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($chocoBloatware -and $chocoBloatware.Count -gt 0) { 
             $chocoArray = @($chocoBloatware)
@@ -197,7 +197,7 @@ function Find-InstalledBloatware {
         }
 
         # Scan Registry entries
-        Write-Information "  📋 Scanning Registry entries..." -InformationAction Continue
+        Write-Information "   Scanning Registry entries..." -InformationAction Continue
         $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
         if ($registryBloatware -and $registryBloatware.Count -gt 0) { 
             $registryArray = @($registryBloatware)
@@ -223,8 +223,8 @@ function Find-InstalledBloatware {
             @("No sources")
         }
 
-        Write-Information "  ✅ Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -InformationAction Continue
-        Write-Information "  📊 Sources: $($sourceStats -join ', ')" -InformationAction Continue
+        Write-Information "   Found $($uniqueBloatware.Count) unique bloatware items in $([math]::Round($duration, 2))s" -InformationAction Continue
+        Write-Information "   Sources: $($sourceStats -join ', ')" -InformationAction Continue
 
         # Create final result array to return
         $resultArray = [Array]$uniqueBloatware
@@ -872,7 +872,7 @@ New-Alias -Name 'Find-InstalledBloatware' -Value 'Get-BloatwareAnalysis'
 
 # Export module functions
 Export-ModuleMember -Function @(
-    'Get-BloatwareAnalysis',  # ✅ v3.0 PRIMARY function
+    'Get-BloatwareAnalysis',  #  v3.0 PRIMARY function
     'Get-BloatwareStatistic',
     'Test-BloatwareDetection'
 ) -Alias @('Find-InstalledBloatware')  # Backward compatibility

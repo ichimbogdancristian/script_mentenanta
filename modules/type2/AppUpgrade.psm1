@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - AppUpgradeAudit.psm1 (Type1 - detection/analysis)
@@ -89,7 +89,7 @@ function Invoke-AppUpgrade {
         [switch]$DryRun
     )
 
-    Write-Information "🔄 Starting Application Upgrade Module..." -InformationAction Continue
+    Write-Information " Starting Application Upgrade Module..." -InformationAction Continue
     $startTime = Get-Date
     $itemsProcessed = 0
 
@@ -104,7 +104,7 @@ function Invoke-AppUpgrade {
         }
         
         # STEP 1: Run Type1 detection
-        Write-Information "  🔍 Running upgrade detection..." -InformationAction Continue
+        Write-Information "   Running upgrade detection..." -InformationAction Continue
         $detectionResults = Get-AppUpgradeAnalysis -Config $Config
         
         # Null safety: ensure detectionResults is an array
@@ -140,13 +140,13 @@ function Invoke-AppUpgrade {
         }
 
         # STEP 3: Filter detection results (create diff list)
-        Write-Information "  📋 Filtering upgrades against exclude patterns..." -InformationAction Continue
+        Write-Information "   Filtering upgrades against exclude patterns..." -InformationAction Continue
         $diffList = Get-FilteredUpgradeList -DetectionResults $detectionResults -ModuleConfig $moduleConfig
         
         # Save diff list
         $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\app-upgrade-diff.json"
         $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath | Out-Null
-        Write-Information "    ✓ $($diffList.Count) upgrades after filtering (excluded $($detectionResults.Count - $diffList.Count))" -InformationAction Continue
+        Write-Information "     $($diffList.Count) upgrades after filtering (excluded $($detectionResults.Count - $diffList.Count))" -InformationAction Continue
 
         # STEP 4: Setup execution logging
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\app-upgrade"
@@ -161,12 +161,12 @@ function Invoke-AppUpgrade {
 
         # STEP 5: Process upgrades (with DryRun check)
         if ($diffList.Count -eq 0) {
-            Write-Information "  ℹ️  No upgrades to process" -InformationAction Continue
+            Write-Information "  ℹ  No upgrades to process" -InformationAction Continue
             Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "No upgrades required - all applications up to date" -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
         }
         elseif ($DryRun) {
-            Write-Information "  🧪 DRY-RUN MODE: Simulating upgrades..." -InformationAction Continue
-            Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "🧪 DRY-RUN: Simulating upgrades" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
+            Write-Information "   DRY-RUN MODE: Simulating upgrades..." -InformationAction Continue
+            Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message " DRY-RUN: Simulating upgrades" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
             
             foreach ($upgrade in $diffList) {
                 Write-Information "    [DRY-RUN] Would upgrade: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion))" -InformationAction Continue
@@ -187,7 +187,7 @@ function Invoke-AppUpgrade {
             }
         }
         else {
-            Write-Information "  🚀 Executing upgrades..." -InformationAction Continue
+            Write-Information "   Executing upgrades..." -InformationAction Continue
             Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "LIVE EXECUTION: Processing $($diffList.Count) upgrades" -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $diffList.Count }
             
             foreach ($upgrade in $diffList) {
@@ -203,7 +203,7 @@ function Invoke-AppUpgrade {
                 
                 if ($upgradeResult.Success) {
                     $itemsProcessed++
-                    Write-Information "    ✅ Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion)) in $([math]::Round($upgradeResult.Duration / 1000, 2))s" -InformationAction Continue
+                    Write-Information "     Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion)) in $([math]::Round($upgradeResult.Duration / 1000, 2))s" -InformationAction Continue
                     
                     # Log summary success
                     Write-StructuredLogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message "Upgrade completed successfully: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Result 'Success' -Metadata @{
@@ -276,7 +276,7 @@ function Invoke-AppUpgrade {
             ExecutionTime  = [math]::Round($duration.TotalSeconds, 2)
         }
 
-        Write-Information "  ✅ Upgrade execution complete: $itemsProcessed processed" -InformationAction Continue
+        Write-Information "   Upgrade execution complete: $itemsProcessed processed" -InformationAction Continue
 
         return New-ModuleExecutionResult `
             -Success $true `

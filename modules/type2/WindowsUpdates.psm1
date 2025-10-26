@@ -95,7 +95,7 @@ function Invoke-WindowsUpdates {
         Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ UpdateCount = $updatesCount }
         
         if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message '🧪 DRY-RUN: Simulating Windows updates installation' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; UpdateCount = $updatesCount }
+            Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message ' DRY-RUN: Simulating Windows updates installation' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; UpdateCount = $updatesCount }
             $results = @{ ProcessedCount = $updatesCount; Simulated = $true }; $processedCount = $updatesCount
         }
         else {
@@ -258,7 +258,7 @@ function Install-WindowsUpdate {
         [string]$ExecutionLogPath
     )
 
-    Write-Information "🔄 Starting Windows Updates check and installation..." -InformationAction Continue
+    Write-Information " Starting Windows Updates check and installation..." -InformationAction Continue
     $startTime = Get-Date
     
     # Initialize structured logging and performance tracking
@@ -299,7 +299,7 @@ function Install-WindowsUpdate {
     try {
         # Try PSWindowsUpdate module first
         if (Test-PSWindowsUpdateAvailable) {
-            Write-Information "  📦 Using PSWindowsUpdate module..." -InformationAction Continue
+            Write-Information "   Using PSWindowsUpdate module..." -InformationAction Continue
             try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using PSWindowsUpdate module for update installation' } catch {}
             
             # Create parameters for PSWindowsUpdate (remove ExecutionLogPath since it doesn't support it)
@@ -313,7 +313,7 @@ function Install-WindowsUpdate {
         }
         # Fallback to native Windows Update API
         elseif (Test-NativeWindowsUpdateAvailable) {
-            Write-Information "  🪟 Using native Windows Update API..." -InformationAction Continue
+            Write-Information "   Using native Windows Update API..." -InformationAction Continue
             try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using native Windows Update API for update installation' } catch {}
             # Remove ExecutionLogPath from parameters as native API doesn't support it
             $nativeApiParams = @{}
@@ -326,7 +326,7 @@ function Install-WindowsUpdate {
         }
         # Final fallback to basic checks
         else {
-            Write-Warning "  ⚠️  Limited Windows Update capability available"
+            Write-Warning "    Limited Windows Update capability available"
             $results = Get-WindowsUpdateBasicStatus
         }
 
@@ -334,20 +334,20 @@ function Install-WindowsUpdate {
 
         # Summary output
         if ($results.UpdatesFound -eq 0) {
-            Write-Information "  ✅ No updates available - system is up to date" -InformationAction Continue
+            Write-Information "   No updates available - system is up to date" -InformationAction Continue
             try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No updates available - system is up to date' } catch { Write-Verbose "Failed to write log entry: $_" }
         }
         elseif ($DryRun) {
-            Write-Information "  📋 Found $($results.UpdatesFound) available updates ($($results.TotalSizeMB) MB total)" -InformationAction Continue
+            Write-Information "   Found $($results.UpdatesFound) available updates ($($results.TotalSizeMB) MB total)" -InformationAction Continue
             try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Dry-run completed - updates would be installed' -Data @{ UpdatesFound = $results.UpdatesFound; TotalSizeMB = $results.TotalSizeMB } } catch { Write-Verbose "Failed to write log entry: $_" }
         }
         else {
-            $statusIcon = if ($results.UpdatesFailed -eq 0) { "✅" } else { "⚠️" }
+            $statusIcon = if ($results.UpdatesFailed -eq 0) { "" } else { "" }
             Write-Information "  $statusIcon Updates completed in $([math]::Round($duration, 2))s" -InformationAction Continue
-            Write-Information "    📊 Found: $($results.UpdatesFound), Installed: $($results.UpdatesInstalled), Failed: $($results.UpdatesFailed)" -InformationAction Continue
+            Write-Information "     Found: $($results.UpdatesFound), Installed: $($results.UpdatesInstalled), Failed: $($results.UpdatesFailed)" -InformationAction Continue
 
             if ($results.RebootRequired) {
-                Write-Warning "    🔄 System restart required to complete installation"
+                Write-Warning "     System restart required to complete installation"
             }
         }
 
@@ -376,7 +376,7 @@ function Install-WindowsUpdate {
         return $success
     }
     catch {
-        $errorMessage = "❌ Windows Updates operation failed: $($_.Exception.Message)"
+        $errorMessage = " Windows Updates operation failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
         
@@ -431,7 +431,7 @@ function Get-WindowsUpdateStatus {
     [OutputType([hashtable])]
     param()
 
-    Write-Information "📊 Checking Windows Update status..." -InformationAction Continue
+    Write-Information " Checking Windows Update status..." -InformationAction Continue
     
     # Start structured logging for status check
     try {
@@ -469,9 +469,9 @@ function Get-WindowsUpdateStatus {
             $status.UpdatesAvailable = ($availableUpdates | Measure-Object).Count
         }
 
-        Write-Information "  📋 Status: $($status.UpdatesAvailable) updates available" -InformationAction Continue
-        Write-Information "  🔄 Pending reboot: $($status.PendingReboot)" -InformationAction Continue
-        Write-Information "  ⚙️ Auto-update: $($status.AutoUpdateEnabled)" -InformationAction Continue
+        Write-Information "   Status: $($status.UpdatesAvailable) updates available" -InformationAction Continue
+        Write-Information "   Pending reboot: $($status.PendingReboot)" -InformationAction Continue
+        Write-Information "   Auto-update: $($status.AutoUpdateEnabled)" -InformationAction Continue
         
         # Complete structured logging
         try {
@@ -567,7 +567,7 @@ function Install-UpdatesViaPSWindowsUpdate {
         }
 
         # Get available updates
-        Write-Information "    🔍 Scanning for available updates..." -InformationAction Continue
+        Write-Information "     Scanning for available updates..." -InformationAction Continue
 
         $scanParams = @{
             MicrosoftUpdate = $true
@@ -577,7 +577,7 @@ function Install-UpdatesViaPSWindowsUpdate {
         $availableUpdates = Get-WindowsUpdate @scanParams
 
         if (-not $availableUpdates) {
-            Write-Information "    ✅ No updates found" -InformationAction Continue
+            Write-Information "     No updates found" -InformationAction Continue
             return $results
         }
 
@@ -637,7 +637,7 @@ function Install-UpdatesViaPSWindowsUpdate {
         }
 
         if ($DryRun) {
-            Write-Information "    📋 [DRY RUN] Would install $($results.UpdatesFound) updates ($($results.TotalSizeMB) MB)" -InformationAction Continue
+            Write-Information "     [DRY RUN] Would install $($results.UpdatesFound) updates ($($results.TotalSizeMB) MB)" -InformationAction Continue
 
             foreach ($update in $filteredUpdates) {
                 $results.Details.Add([PSCustomObject]@{
@@ -654,7 +654,7 @@ function Install-UpdatesViaPSWindowsUpdate {
 
         # Install updates
         if ($filteredUpdates.Count -gt 0) {
-            Write-Information "    📥 Installing $($filteredUpdates.Count) updates ($($results.TotalSizeMB) MB)..." -InformationAction Continue
+            Write-Information "     Installing $($filteredUpdates.Count) updates ($($results.TotalSizeMB) MB)..." -InformationAction Continue
 
             $installParams = @{
                 MicrosoftUpdate = $true
@@ -684,7 +684,7 @@ function Install-UpdatesViaPSWindowsUpdate {
                             Title    = $result.Title
                             Category = ($result.Categories -join ', ')
                         }
-                        Write-Information "      ✅ Installed: $kbNumber - $($result.Title) ($([math]::Round($result.Size / 1MB, 2)) MB)" -InformationAction Continue
+                        Write-Information "       Installed: $kbNumber - $($result.Title) ($([math]::Round($result.Size / 1MB, 2)) MB)" -InformationAction Continue
                     }
                     else {
                         Write-OperationFailure -Component 'WINDOWS-UPDATES' -Operation 'Install' -Target $kbNumber -Error ([System.Management.Automation.ErrorRecord]::new(
@@ -693,7 +693,7 @@ function Install-UpdatesViaPSWindowsUpdate {
                                 [System.Management.Automation.ErrorCategory]::NotSpecified,
                                 $result
                             ))
-                        Write-Warning "      ❌ Failed: $kbNumber - $($result.Title)"
+                        Write-Warning "       Failed: $kbNumber - $($result.Title)"
                     }
 
                     $results.Details.Add([PSCustomObject]@{
@@ -761,21 +761,21 @@ function Install-UpdatesViaNativeAPI {
     }
 
     try {
-        Write-Information "    🔍 Using Windows Update COM API..." -InformationAction Continue
+        Write-Information "     Using Windows Update COM API..." -InformationAction Continue
 
         # Create Windows Update session
         $updateSession = New-Object -ComObject Microsoft.Update.Session
         $updateSearcher = $updateSession.CreateUpdateSearcher()
 
         # Search for updates
-        Write-Information "    🔎 Searching for available updates..." -InformationAction Continue
+        Write-Information "     Searching for available updates..." -InformationAction Continue
         $searchResult = $updateSearcher.Search("IsInstalled=0 and Type='Software'")
 
         $availableUpdates = @($searchResult.Updates)
         $results.UpdatesFound = $availableUpdates.Count
 
         if ($results.UpdatesFound -eq 0) {
-            Write-Information "    ✅ No updates found via native API" -InformationAction Continue
+            Write-Information "     No updates found via native API" -InformationAction Continue
             return $results
         }
 
@@ -784,7 +784,7 @@ function Install-UpdatesViaNativeAPI {
         $results.TotalSizeMB = [math]::Round($totalSize / 1MB, 2)
 
         if ($DryRun) {
-            Write-Information "    📋 [DRY RUN] Found $($results.UpdatesFound) updates ($($results.TotalSizeMB) MB)" -InformationAction Continue
+            Write-Information "     [DRY RUN] Found $($results.UpdatesFound) updates ($($results.TotalSizeMB) MB)" -InformationAction Continue
 
             foreach ($update in $availableUpdates) {
                 $results.Details.Add([PSCustomObject]@{
@@ -799,7 +799,7 @@ function Install-UpdatesViaNativeAPI {
         }
 
         # Download and install updates
-        Write-Information "    📥 Downloading and installing updates..." -InformationAction Continue
+        Write-Information "     Downloading and installing updates..." -InformationAction Continue
 
         $updatesToInstall = New-Object -ComObject Microsoft.Update.UpdateColl
         foreach ($update in $availableUpdates) {

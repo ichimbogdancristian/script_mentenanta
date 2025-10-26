@@ -146,7 +146,7 @@ function Invoke-EssentialApps {
         }
         
         if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "🧪 DRY-RUN: Would install $($diffList.Count) missing apps" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
+            Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message " DRY-RUN: Would install $($diffList.Count) missing apps" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
             $processedCount = 0
         }
         else {
@@ -312,7 +312,7 @@ function Install-EssentialApplication {
         [int]$ParallelInstalls = 3
     )
 
-    Write-Information "📦 Starting essential applications installation..." -InformationAction Continue
+    Write-Information " Starting essential applications installation..." -InformationAction Continue
     $startTime = Get-Date
     
     # Initialize structured logging and performance tracking
@@ -370,10 +370,10 @@ function Install-EssentialApplication {
             }
         }
 
-        Write-Information "  📋 Found $($essentialApps.Count) essential apps across $($Categories.Count) categories" -InformationAction Continue
+        Write-Information "   Found $($essentialApps.Count) essential apps across $($Categories.Count) categories" -InformationAction Continue
 
         if ($DryRun) {
-            Write-Information "  🧪 DRY RUN MODE - No installations will be performed" -InformationAction Continue
+            Write-Information "   DRY RUN MODE - No installations will be performed" -InformationAction Continue
         }
 
         # Filter out duplicates by default (skip duplicates unless explicitly disabled)
@@ -385,7 +385,7 @@ function Install-EssentialApplication {
         }
 
         if ($appsToInstall.Count -eq 0) {
-            Write-Information "  ✅ All essential apps are already installed" -InformationAction Continue
+            Write-Information "   All essential apps are already installed" -InformationAction Continue
             return @{
                 TotalApps        = $essentialApps.Count
                 Installed        = 0
@@ -395,7 +395,7 @@ function Install-EssentialApplication {
             }
         }
 
-        Write-Information "  🎯 Installing $($appsToInstall.Count) applications (skipped $($essentialApps.Count - $appsToInstall.Count) duplicates)" -InformationAction Continue
+        Write-Information "   Installing $($appsToInstall.Count) applications (skipped $($essentialApps.Count - $appsToInstall.Count) duplicates)" -InformationAction Continue
 
         # Initialize results tracking
         $results = @{
@@ -415,21 +415,21 @@ function Install-EssentialApplication {
 
         # Install apps using preferred package managers
         if ($wingetApps.Count -gt 0) {
-            Write-Information "  🔹 Installing $($wingetApps.Count) apps via Winget..." -InformationAction Continue
+            Write-Information "   Installing $($wingetApps.Count) apps via Winget..." -InformationAction Continue
             $wingetResults = Install-AppViaWinget -Apps $wingetApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
             Merge-InstallationResult -Results $results -NewResults $wingetResults -PackageManager 'Winget'
         }
 
         if ($chocoApps.Count -gt 0) {
-            Write-Information "  🍫 Installing $($chocoApps.Count) apps via Chocolatey..." -InformationAction Continue
+            Write-Information "   Installing $($chocoApps.Count) apps via Chocolatey..." -InformationAction Continue
             $chocoResults = Install-AppViaChocolatey -Apps $chocoApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
             Merge-InstallationResult -Results $results -NewResults $chocoResults -PackageManager 'Chocolatey'
         }
 
         if ($manualApps.Count -gt 0) {
-            Write-Information "  ⚠️  $($manualApps.Count) apps require manual installation (no package manager available)" -InformationAction Continue
+            Write-Information "    $($manualApps.Count) apps require manual installation (no package manager available)" -InformationAction Continue
             foreach ($app in $manualApps) {
-                Write-Information "    📌 Manual installation needed: $($app.Name) - $($app.Description)" -InformationAction Continue
+                Write-Information "     Manual installation needed: $($app.Name) - $($app.Description)" -InformationAction Continue
                 $results.Details.Add([PSCustomObject]@{
                         Name           = $app.Name
                         Category       = $app.Category
@@ -444,9 +444,9 @@ function Install-EssentialApplication {
         $duration = ((Get-Date) - $startTime).TotalSeconds
 
         # Summary output
-        $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
+        $statusIcon = if ($results.Failed -eq 0) { "" } else { "" }
         Write-Information "  $statusIcon Essential apps installation completed in $([math]::Round($duration, 2))s" -InformationAction Continue
-        Write-Information "    📊 Total: $($results.TotalApps), Installed: $($results.Installed), Skipped: $($results.Skipped), Failed: $($results.Failed)" -InformationAction Continue
+        Write-Information "     Total: $($results.TotalApps), Installed: $($results.Installed), Skipped: $($results.Skipped), Failed: $($results.Failed)" -InformationAction Continue
 
         $success = $results.Failed -eq 0 -and $results.Installed -gt 0
         
@@ -476,7 +476,7 @@ function Install-EssentialApplication {
         return $success
     }
     catch {
-        $errorMessage = "❌ Essential applications installation failed: $($_.Exception.Message)"
+        $errorMessage = " Essential applications installation failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
         
@@ -557,7 +557,7 @@ function Get-AppNotInstalled {
 
         # Special logic for LibreOffice: Skip if Microsoft Office is installed
         if ($app.Name -like "*LibreOffice*" -and $hasMicrosoftOffice) {
-            Write-Information "    🏢 Skipping LibreOffice: Microsoft Office detected" -InformationAction Continue
+            Write-Information "     Skipping LibreOffice: Microsoft Office detected" -InformationAction Continue
             continue
         }
 
@@ -711,23 +711,23 @@ function Save-AppDiffList {
 
         # Save outputs
         $diffPath = Save-OrganizedFile -Data $diffAnalysis -FileType 'Data' -Category 'apps' -FileName 'essential-apps-analysis' -Format 'JSON'
-        if ($diffPath) { Write-Information "  📋 App diff analysis saved to: $diffPath" -InformationAction Continue }
+        if ($diffPath) { Write-Information "   App diff analysis saved to: $diffPath" -InformationAction Continue }
 
         $missingAppsPath = $null
         $installDataPath = $null
         if ($MissingApps.Count -gt 0) {
             $missingAppsPath = Save-OrganizedFile -Data $MissingApps -FileType 'Data' -Category 'apps' -FileName 'missing-apps' -Format 'JSON'
-            if ($missingAppsPath) { Write-Information "  ❌ Missing apps list saved to: $missingAppsPath" -InformationAction Continue }
+            if ($missingAppsPath) { Write-Information "   Missing apps list saved to: $missingAppsPath" -InformationAction Continue }
 
             $installationData = @{ Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"); TotalMissingApps = $MissingApps.Count; InstallationMethods = @{ Winget = @{ Count = $wingetApps.Count; Apps = $wingetPkgArr }; Chocolatey = @{ Count = $chocoApps.Count; Apps = $chocoPkgArr }; Manual = @{ Count = $manualApps.Count; Apps = $manualPkgArr } } }
             $installDataPath = Save-OrganizedFile -Data $installationData -FileType 'Data' -Category 'apps' -FileName 'installation-methods' -Format 'JSON'
-            if ($installDataPath) { Write-Information "  🔧 Installation methods data saved to: $installDataPath" -InformationAction Continue }
+            if ($installDataPath) { Write-Information "   Installation methods data saved to: $installDataPath" -InformationAction Continue }
         }
 
         $installedAppsPath = $null
         if ($InstalledApps.Count -gt 0) {
             $installedAppsPath = Save-OrganizedFile -Data $InstalledApps -FileType 'Data' -Category 'apps' -FileName 'installed-essential-apps' -Format 'JSON'
-            if ($installedAppsPath) { Write-Information "  ✅ Installed essential apps list saved to: $installedAppsPath" -InformationAction Continue }
+            if ($installedAppsPath) { Write-Information "   Installed essential apps list saved to: $installedAppsPath" -InformationAction Continue }
         }
 
         return @{ DiffPath = $diffPath; MissingAppsPath = $missingAppsPath; InstallDataPath = $installDataPath; InstalledAppsPath = $installedAppsPath }
@@ -957,10 +957,10 @@ function Install-AppViaWinget {
                 $alreadyInstalled = $LASTEXITCODE -eq 0 -and $listOutput -match $app.Winget
                 
                 # Log operation start with pre-check state
-                Write-Information "    📦 [WINGET] Processing: $($app.Name) (ID: $($app.Winget)) - Already installed: $alreadyInstalled" -InformationAction Continue
+                Write-Information "     [WINGET] Processing: $($app.Name) (ID: $($app.Winget)) - Already installed: $alreadyInstalled" -InformationAction Continue
                 
                 if ($alreadyInstalled -and -not $isDryRun) {
-                    Write-Information "      ℹ️  App already installed, skipping: $($app.Name)" -InformationAction Continue
+                    Write-Information "      ℹ  App already installed, skipping: $($app.Name)" -InformationAction Continue
                     $result.Status = 'AlreadyInstalled'
                 }
                 elseif ($isDryRun) {
@@ -968,7 +968,7 @@ function Install-AppViaWinget {
                     $result.Status = 'Simulated'
                 }
                 else {
-                    Write-Information "    📦 Installing: $($app.Name)..." -InformationAction Continue
+                    Write-Information "     Installing: $($app.Name)..." -InformationAction Continue
 
                     $wingetArgs = @(
                         'install',
@@ -979,7 +979,7 @@ function Install-AppViaWinget {
                     )
                     
                     # Log the exact command being executed
-                    Write-Information "      🔧 Executing: winget $($wingetArgs -join ' ')" -InformationAction Continue
+                    Write-Information "       Executing: winget $($wingetArgs -join ' ')" -InformationAction Continue
 
                     $process = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
 
@@ -1009,13 +1009,13 @@ function Install-AppViaWinget {
                             }
                             
                             $result.Status = 'Installed'
-                            Write-Information "      ✅ Successfully installed: $($app.Name) (Duration: ${operationDuration}s, Verified: True)" -InformationAction Continue
+                            Write-Information "       Successfully installed: $($app.Name) (Duration: ${operationDuration}s, Verified: True)" -InformationAction Continue
                         }
                         else {
                             # Log failed verification
                             Write-OperationFailure -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Error (New-Object Exception("Package not found after installation (exit code 0)"))
                             
-                            Write-Information "      ⚠️  Installation exit code 0, but verification failed: $($app.Name)" -InformationAction Continue
+                            Write-Information "        Installation exit code 0, but verification failed: $($app.Name)" -InformationAction Continue
                             $result.Status = 'Installed'  # Trust exit code
                         }
                     }
@@ -1125,13 +1125,13 @@ function Install-AppViaChocolatey {
             $installedVersion = if ($alreadyInstalled -and $listOutput -match "$($app.Chocolatey)\|(.+)") { $matches[1] } else { 'N/A' }
             
             # Log operation start with pre-check state
-            Write-Information "    🍫 [CHOCO] Processing: $($app.Name) (ID: $($app.Chocolatey)) - Already installed: $alreadyInstalled" -InformationAction Continue
+            Write-Information "     [CHOCO] Processing: $($app.Name) (ID: $($app.Chocolatey)) - Already installed: $alreadyInstalled" -InformationAction Continue
             if ($alreadyInstalled) {
-                Write-Information "      ℹ️  Current version: $installedVersion" -InformationAction Continue
+                Write-Information "      ℹ  Current version: $installedVersion" -InformationAction Continue
             }
             
             if ($alreadyInstalled -and -not $DryRun) {
-                Write-Information "      ℹ️  App already installed, skipping: $($app.Name)" -InformationAction Continue
+                Write-Information "      ℹ  App already installed, skipping: $($app.Name)" -InformationAction Continue
                 $result.Status = 'AlreadyInstalled'
                 $results.Installed++
             }
@@ -1141,7 +1141,7 @@ function Install-AppViaChocolatey {
                 $results.Installed++
             }
             else {
-                Write-Information "    🍫 Installing: $($app.Name)..." -InformationAction Continue
+                Write-Information "     Installing: $($app.Name)..." -InformationAction Continue
 
                 $chocoArgs = @(
                     'install',
@@ -1151,7 +1151,7 @@ function Install-AppViaChocolatey {
                 )
                 
                 # Log the exact command being executed
-                Write-Information "      🔧 Executing: choco $($chocoArgs -join ' ')" -InformationAction Continue
+                Write-Information "       Executing: choco $($chocoArgs -join ' ')" -InformationAction Continue
 
                 $process = Start-Process -FilePath 'choco' -ArgumentList $chocoArgs -Wait -PassThru -NoNewWindow
 
@@ -1184,13 +1184,13 @@ function Install-AppViaChocolatey {
                         }
                         
                         $result.Status = 'Installed'
-                        Write-Information "      ✅ Successfully installed: $($app.Name) v$newVersion (Duration: ${operationDuration}s, Verified: True)" -InformationAction Continue
+                        Write-Information "       Successfully installed: $($app.Name) v$newVersion (Duration: ${operationDuration}s, Verified: True)" -InformationAction Continue
                     }
                     else {
                         # Log failed verification
                         Write-OperationFailure -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Error (New-Object Exception("Package not found after installation (exit code 0)"))
                         
-                        Write-Information "      ⚠️  Installation exit code 0, but verification failed: $($app.Name)" -InformationAction Continue
+                        Write-Information "        Installation exit code 0, but verification failed: $($app.Name)" -InformationAction Continue
                         $result.Status = 'Installed'  # Trust exit code
                     }
                     $results.Installed++

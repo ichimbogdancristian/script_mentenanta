@@ -84,7 +84,7 @@ function Get-EssentialAppsAnalysis {
         [switch]$UseCache
     )
 
-    Write-Information "🔍 Starting essential applications audit..." -InformationAction Continue
+    Write-Information " Starting essential applications audit..." -InformationAction Continue
     
     # Start performance tracking
     $perfContext = $null
@@ -228,7 +228,7 @@ function Get-EssentialAppsAnalysis {
             }
         }
 
-        Write-Information "✓ Essential apps audit completed: $($auditResults.Summary.InstalledCount) installed, $($auditResults.Summary.MissingCount) missing" -InformationAction Continue
+        Write-Information " Essential apps audit completed: $($auditResults.Summary.InstalledCount) installed, $($auditResults.Summary.MissingCount) missing" -InformationAction Continue
 
         # FIX #5: Save results using standardized Get-AuditResultsPath function
         try {
@@ -470,5 +470,5 @@ New-Alias -Name 'Get-EssentialAppsAudit' -Value 'Get-EssentialAppsAnalysis'
 
 # Export public functions
 Export-ModuleMember -Function @(
-    'Get-EssentialAppsAnalysis'  # ✅ v3.0 PRIMARY function
+    'Get-EssentialAppsAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-EssentialAppsAudit')  # Backward compatibility

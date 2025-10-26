@@ -85,7 +85,7 @@ function Invoke-TelemetryDisable {
         Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ TelemetryCount = $telemetryCount }
         
         if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message '🧪 DRY-RUN: Simulating telemetry disable' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $telemetryCount }
+            Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message ' DRY-RUN: Simulating telemetry disable' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $telemetryCount }
             $processedCount = $telemetryCount
         }
         else {
@@ -246,7 +246,7 @@ function Disable-WindowsTelemetry {
         [switch]$DryRun
     )
 
-    Write-Information "🔒 Starting Windows telemetry and privacy hardening..." -InformationAction Continue
+    Write-Information " Starting Windows telemetry and privacy hardening..." -InformationAction Continue
     $startTime = Get-Date
     
     # Initialize structured logging and performance tracking
@@ -275,7 +275,7 @@ function Disable-WindowsTelemetry {
     }
 
     if ($DryRun) {
-        Write-Information "  🧪 DRY RUN MODE - No changes will be applied" -InformationAction Continue
+        Write-Information "   DRY RUN MODE - No changes will be applied" -InformationAction Continue
     }
 
     # Initialize results tracking
@@ -296,41 +296,41 @@ function Disable-WindowsTelemetry {
 
     try {
         # Apply core telemetry registry settings
-        Write-Information "  📝 Configuring telemetry registry settings..." -InformationAction Continue
+        Write-Information "   Configuring telemetry registry settings..." -InformationAction Continue
         $regResults = Set-TelemetryRegistrySetting -DryRun:$DryRun
         Merge-Result -Results $results -NewResults $regResults -Category 'Registry'
 
         # Disable telemetry services
         if ($DisableServices) {
-            Write-Information "  🛑 Disabling telemetry services..." -InformationAction Continue
+            Write-Information "   Disabling telemetry services..." -InformationAction Continue
             $serviceResults = Disable-TelemetryService -DryRun:$DryRun
             Merge-Result -Results $results -NewResults $serviceResults -Category 'Services'
         }
 
         # Disable notifications and suggestions
         if ($DisableNotifications) {
-            Write-Information "  🔕 Disabling notifications and suggestions..." -InformationAction Continue
+            Write-Information "   Disabling notifications and suggestions..." -InformationAction Continue
             $notifyResults = Disable-WindowsNotification -DryRun:$DryRun
             Merge-Result -Results $results -NewResults $notifyResults -Category 'Notifications'
         }
 
         # Disable consumer features
         if ($DisableConsumerFeatures) {
-            Write-Information "  🛒 Disabling consumer features..." -InformationAction Continue
+            Write-Information "   Disabling consumer features..." -InformationAction Continue
             $consumerResults = Disable-ConsumerFeature -DryRun:$DryRun
             Merge-Result -Results $results -NewResults $consumerResults -Category 'Features'
         }
 
         # Disable Cortana if requested
         if ($DisableCortana) {
-            Write-Information "  🎤 Disabling Cortana..." -InformationAction Continue
+            Write-Information "   Disabling Cortana..." -InformationAction Continue
             $cortanaResults = Disable-CortanaFeature -DryRun:$DryRun
             Merge-Result -Results $results -NewResults $cortanaResults -Category 'Features'
         }
 
         # Disable location tracking if requested
         if ($DisableLocationTracking) {
-            Write-Information "  📍 Disabling location tracking..." -InformationAction Continue
+            Write-Information "   Disabling location tracking..." -InformationAction Continue
             $locationResults = Disable-LocationService -DryRun:$DryRun
             Merge-Result -Results $results -NewResults $locationResults -Category 'Features'
         }
@@ -338,13 +338,13 @@ function Disable-WindowsTelemetry {
         $duration = ((Get-Date) - $startTime).TotalSeconds
 
         # Summary output
-        $statusIcon = if ($results.Failed -eq 0) { "✅" } else { "⚠️" }
+        $statusIcon = if ($results.Failed -eq 0) { "" } else { "" }
         Write-Information "  $statusIcon Privacy hardening completed in $([math]::Round($duration, 2))s" -InformationAction Continue
-        Write-Information "    📊 Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
+        Write-Information "     Operations: $($results.TotalOperations), Successful: $($results.Successful), Failed: $($results.Failed)" -InformationAction Continue
 
         $success = $results.Failed -eq 0
         if (-not $success) {
-            Write-Warning "    ❌ Some operations failed. Check logs for details."
+            Write-Warning "     Some operations failed. Check logs for details."
         }
 
         # Complete performance tracking and structured logging
@@ -373,7 +373,7 @@ function Disable-WindowsTelemetry {
         return $success
     }
     catch {
-        $errorMessage = "❌ Privacy hardening failed: $($_.Exception.Message)"
+        $errorMessage = " Privacy hardening failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
         
@@ -439,7 +439,7 @@ function Test-PrivacySetting {
     [OutputType([hashtable])]
     param()
 
-    Write-Information "🔍 Analyzing current privacy and telemetry settings..." -InformationAction Continue
+    Write-Information " Analyzing current privacy and telemetry settings..." -InformationAction Continue
 
     $analysis = @{
         TelemetryLevel          = Get-TelemetryLevel
@@ -468,9 +468,9 @@ function Test-PrivacySetting {
         $analysis.Recommendations.Add("Disable Windows consumer features")
     }
 
-    Write-Information "  📊 Telemetry Level: $($analysis.TelemetryLevel)" -InformationAction Continue
-    Write-Information "  🛑 Telemetry Services Running: $($analysis.ServicesRunning)" -InformationAction Continue
-    Write-Information "  💡 Recommendations: $($analysis.Recommendations.Count)" -InformationAction Continue
+    Write-Information "   Telemetry Level: $($analysis.TelemetryLevel)" -InformationAction Continue
+    Write-Information "   Telemetry Services Running: $($analysis.ServicesRunning)" -InformationAction Continue
+    Write-Information "   Recommendations: $($analysis.Recommendations.Count)" -InformationAction Continue
 
     return $analysis
 }
@@ -711,12 +711,12 @@ function Disable-TelemetryService {
             if (-not $service) {
                 $serviceResult.Action = 'Not Found'
                 $serviceResult.Success = $true
-                Write-Information "    ℹ️  Service $serviceName not found on this system" -InformationAction Continue
+                Write-Information "    ℹ  Service $serviceName not found on this system" -InformationAction Continue
             }
             elseif ($service.StartType -eq 'Disabled') {
                 $serviceResult.Action = 'Already Disabled'
                 $serviceResult.Success = $true
-                Write-Information "    ✅ Service $serviceName already disabled" -InformationAction Continue
+                Write-Information "     Service $serviceName already disabled" -InformationAction Continue
             }
             else {
                 # Enhanced logging: Pre-action state
@@ -769,7 +769,7 @@ function Disable-TelemetryService {
                             }
                             $serviceResult.Action = 'Disabled'
                             $serviceResult.Success = $true
-                            Write-Information "    🛑 Disabled service: $serviceName (${operationDuration}s)" -InformationAction Continue
+                            Write-Information "     Disabled service: $serviceName (${operationDuration}s)" -InformationAction Continue
                         }
                         else {
                             # Log failed verification
@@ -879,7 +879,7 @@ function Disable-WindowsNotification {
                 else {
                     if ($PSCmdlet.ShouldProcess("$notificationPath\$($setting.Key)", "Disable notification setting")) {
                         Set-ItemProperty -Path $notificationPath -Name $setting.Key -Value $setting.Value -Force
-                        Write-Information "    🔕 Disabled notification setting: $($setting.Key)" -InformationAction Continue
+                        Write-Information "     Disabled notification setting: $($setting.Key)" -InformationAction Continue
                     }
                 }
 

@@ -1331,7 +1331,7 @@ function Initialize-SessionFileOrganization {
     )
     
     try {
-        $directories = @('data', 'logs', 'reports', 'temp')
+        $directories = @('data', 'logs', 'reports', 'temp', 'inventory')
         foreach ($dir in $directories) {
             $path = Join-Path $SessionRoot $dir
             if (-not (Test-Path $path)) {
@@ -1391,7 +1391,7 @@ function Test-TempFilesStructure {
         }
         
         # Required subdirectories for v3.0 architecture
-        $requiredDirs = @('data', 'temp', 'logs', 'reports')
+        $requiredDirs = @('data', 'temp', 'logs', 'reports', 'inventory')
         $missingDirs = @()
         
         foreach ($dir in $requiredDirs) {
