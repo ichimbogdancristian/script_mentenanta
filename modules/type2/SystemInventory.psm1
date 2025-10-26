@@ -111,7 +111,7 @@ function Invoke-SystemInventory {
         
         # STEP 2: Save inventory data to temp_files/data/
         $inventoryDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "system-inventory.json"
-        $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8
+        $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8 -ErrorAction Stop | Out-Null
         Write-Information "  ✓ System inventory saved to data folder" -InformationAction Continue
         
         # STEP 3: Setup logging (information gathering, minimal logging needed)
@@ -162,7 +162,7 @@ Collection completed successfully
 ========================================
 "@
         
-        Add-Content -Path $executionLogPath -Value $logSummary -Encoding UTF8
+        Add-Content -Path $executionLogPath -Value $logSummary -Encoding UTF8 | Out-Null
         
         Write-Information "  ✓ Inventory collection complete" -InformationAction Continue
         
@@ -204,7 +204,7 @@ Collection completed successfully
         }
         
         try {
-            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
+            $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force | Out-Null
             Write-Verbose "Execution summary saved to: $summaryPath"
         }
         catch {
