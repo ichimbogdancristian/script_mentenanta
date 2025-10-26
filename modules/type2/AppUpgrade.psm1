@@ -121,7 +121,12 @@ function Invoke-AppUpgrade {
         Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detection complete: $($detectionResults.Count) upgrades available"
 
         # STEP 2: Load module configuration
-        $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "app-upgrade-config.json"
+        $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\app-upgrade-config.json"
+        if (-not (Test-Path $moduleConfigPath)) {
+            # Fallback to data folder for backward compatibility
+            $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "data\app-upgrade-config.json"
+        }
+        
         if (-not (Test-Path $moduleConfigPath)) {
             Write-Warning "Module configuration not found at: $moduleConfigPath"
             $moduleConfig = @{
