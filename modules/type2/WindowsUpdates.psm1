@@ -59,7 +59,7 @@ function Invoke-WindowsUpdates {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
-        [PSCustomObject]$Config,
+        [hashtable]$Config,
         
         [Parameter()]
         [switch]$DryRun

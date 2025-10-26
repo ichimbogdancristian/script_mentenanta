@@ -825,7 +825,7 @@ function Get-BloatwareAnalysis {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [PSCustomObject]$Config
+        [hashtable]$Config
     )
     
     Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting bloatware analysis for Type2 module'
