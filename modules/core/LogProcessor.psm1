@@ -101,9 +101,12 @@ else {
 
 # Ensure path discovery is initialized (if not already done by orchestrator)
 # This handles the case where LogProcessor is called in a new scope
-if (-not (Get-MaintenancePaths -ErrorAction SilentlyContinue)) {
+try {
+    Get-MaintenancePaths -ErrorAction Stop | Out-Null
+}
+catch {
+    # Path discovery not yet initialized, try to initialize from environment variables
     try {
-        # Try to initialize from environment variables set by orchestrator
         $projectRoot = $env:MAINTENANCE_PROJECT_ROOT
         if ($projectRoot -and (Test-Path $projectRoot)) {
             Initialize-GlobalPathDiscovery -HintPath $projectRoot -Force

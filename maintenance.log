@@ -1,0 +1,17 @@
+================================================
+ Windows Maintenance Automation Launcher v2.0
+================================================
+
+ Computer: LAPTOP-BOGDAN
+ User: Bogdan
+ Date: 
+ Time: 
+
+================================================
+
+[ 9:04:17] [DEBUG] Maintenance log file initialized at repository root: C:\Users\Bogdan\OneDrive\Desktop\Projects\script_mentenanta\maintenance.log 
+[ 9:04:17] [SUCCESS] Self-discovery environment initialized 
+[ 9:04:17] [INFO] Verifying administrator privileges... 
+[ 9:04:17] [DEBUG] Admin check results: NET=2, PS=False 
+[ 9:04:17] [WARN] Administrator privileges required. Attempting elevation... 
+[ 9:04:20] [ERROR] Elevation failed or was cancelled by user 
