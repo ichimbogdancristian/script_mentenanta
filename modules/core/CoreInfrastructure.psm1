@@ -1698,8 +1698,16 @@ function Get-AuditResultsPath {
         # Get base data directory path
         $dataDir = Get-SessionDirectoryPath -Type 'data'
         
-        # Standardize module name format: convert to lowercase with hyphens
-        $normalizedName = ($ModuleName -replace 'Detection|Audit', '' -replace '(?<=[a-z])(?=[A-Z])', '-').ToLower()
+        # Standardize module name format: convert CamelCase to kebab-case
+        # Step 1: Remove 'Detection' or 'Audit' suffixes
+        $cleanName = $ModuleName -replace 'Detection$|Audit$', ''
+        
+        # Step 2: Convert CamelCase to kebab-case using proper regex
+        # Insert hyphen before each uppercase letter (except the first character)
+        $normalizedName = [System.Text.RegularExpressions.Regex]::Replace($cleanName, '([A-Z])', '-$1')
+        
+        # Step 3: Remove leading hyphen if present, then convert to lowercase
+        $normalizedName = $normalizedName.TrimStart('-').ToLower()
         
         # Build standardized path: temp_files/data/[module-name]-results.json
         $resultFileName = "$normalizedName-results.json"
