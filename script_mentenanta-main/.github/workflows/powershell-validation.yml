@@ -1,0 +1,113 @@
+name: PowerShell Validation & Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  validate-powershell:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+        
+    - name: Install PSScriptAnalyzer
+      shell: pwsh
+      run: |
+        Set-PSRepository PSGallery -InstallationPolicy Trusted
+        Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+        
+    - name: Validate PowerShell Syntax
+      shell: pwsh
+      run: |
+        Write-Host "Validating PowerShell files..." -ForegroundColor Cyan
+        $psFiles = Get-ChildItem -Path . -Filter *.ps1 -Recurse | Where-Object { $_.FullName -notmatch '\\archive\\' }
+        $psmFiles = Get-ChildItem -Path . -Filter *.psm1 -Recurse
+        
+        $allFiles = @($psFiles) + @($psmFiles)
+        $errors = @()
+        
+        foreach ($file in $allFiles) {
+          Write-Host "Checking: $($file.Name)"
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$parseErrors)
+          if ($parseErrors) {
+            $errors += $parseErrors
+            Write-Error "Syntax errors in $($file.Name)"
+          }
+        }
+        
+        if ($errors.Count -gt 0) {
+          exit 1
+        }
+        Write-Host "✓ All files have valid PowerShell syntax" -ForegroundColor Green
+        
+    - name: Run PSScriptAnalyzer
+      shell: pwsh
+      run: |
+        Write-Host "Running PSScriptAnalyzer..." -ForegroundColor Cyan
+        $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning -ExcludeRule PSAvoidUsingWriteHost
+        
+        if ($results) {
+          $results | Format-Table -AutoSize
+          Write-Error "PSScriptAnalyzer found issues"
+          exit 1
+        }
+        Write-Host "✓ PSScriptAnalyzer validation passed" -ForegroundColor Green
+        
+    - name: Validate Module Structure
+      shell: pwsh
+      run: |
+        Write-Host "Validating module structure..." -ForegroundColor Cyan
+        
+        # Check required directories
+        $requiredDirs = @('config', 'modules', 'modules/core', 'modules/type1', 'modules/type2', '.github')
+        foreach ($dir in $requiredDirs) {
+          if (-not (Test-Path $dir)) {
+            Write-Error "Missing required directory: $dir"
+            exit 1
+          }
+        }
+        
+        # Check required files
+        $requiredFiles = @(
+          'MaintenanceOrchestrator.ps1',
+          'script.bat',
+          'config/main-config.json',
+          'config/logging-config.json',
+          'modules/core/CoreInfrastructure.psm1',
+          'modules/core/UserInterface.psm1',
+          'modules/core/ReportGenerator.psm1'
+        )
+        
+        foreach ($file in $requiredFiles) {
+          if (-not (Test-Path $file)) {
+            Write-Error "Missing required file: $file"
+            exit 1
+          }
+        }
+        
+        Write-Host "✓ Module structure validated" -ForegroundColor Green
+        
+    - name: Validate JSON Configuration Files
+      shell: pwsh
+      run: |
+        Write-Host "Validating JSON configuration files..." -ForegroundColor Cyan
+        $jsonFiles = Get-ChildItem -Path config -Filter *.json
+        
+        foreach ($file in $jsonFiles) {
+          try {
+            $content = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            Write-Host "✓ Valid: $($file.Name)" -ForegroundColor Green
+          }
+          catch {
+            Write-Error "Invalid JSON in $($file.Name): $_"
+            exit 1
+          }
+        }
+        
+        Write-Host "✓ All JSON files are valid" -ForegroundColor Green

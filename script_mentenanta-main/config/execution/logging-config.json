@@ -1,0 +1,175 @@
+{
+  "logging": {
+    "logLevel": "INFO",
+    "enableConsoleOutput": true,
+    "enableFileOutput": true,
+    "enableProgressBars": true,
+    "coloredOutput": true,
+    "maxLogSizeMB": 10,
+    "logRotation": true,
+    "keepLogFiles": 10,
+    "enablePerformanceTracking": true,
+    "enableStructuredLogging": true,
+    "logBufferSize": 1000,
+    "flushInterval": 30,
+    "enableModuleSpecificLogs": true,
+    "moduleLogComponents": [
+      "BLOATWARE",
+      "APPS",
+      "UPDATES",
+      "OPTIMIZATION",
+      "TELEMETRY"
+    ],
+    "operationVerbosity": "Debug"
+  },
+  "verbosity": {
+    "description": "Controls the level of detail in operation logging (Type1 detection and Type2 execution)",
+    "currentLevel": "Debug",
+    "levels": {
+      "Minimal": {
+        "description": "Only log operation start/end and final results",
+        "logOperationStart": false,
+        "logOperationSuccess": true,
+        "logOperationFailure": true,
+        "logOperationSkipped": false,
+        "logDetectionResults": false,
+        "logPreChecks": false,
+        "logVerification": false,
+        "logMetrics": true,
+        "logAdditionalInfo": false,
+        "logCommands": false
+      },
+      "Normal": {
+        "description": "Log important operations and results (recommended for production)",
+        "logOperationStart": true,
+        "logOperationSuccess": true,
+        "logOperationFailure": true,
+        "logOperationSkipped": true,
+        "logDetectionResults": true,
+        "logPreChecks": false,
+        "logVerification": false,
+        "logMetrics": true,
+        "logAdditionalInfo": false,
+        "logCommands": false
+      },
+      "Detailed": {
+        "description": "Log all operations with full context (recommended for troubleshooting)",
+        "logOperationStart": true,
+        "logOperationSuccess": true,
+        "logOperationFailure": true,
+        "logOperationSkipped": true,
+        "logDetectionResults": true,
+        "logPreChecks": true,
+        "logVerification": true,
+        "logMetrics": true,
+        "logAdditionalInfo": true,
+        "logCommands": true
+      },
+      "Debug": {
+        "description": "Log everything including internal state and verbose debugging",
+        "logOperationStart": true,
+        "logOperationSuccess": true,
+        "logOperationFailure": true,
+        "logOperationSkipped": true,
+        "logDetectionResults": true,
+        "logPreChecks": true,
+        "logVerification": true,
+        "logMetrics": true,
+        "logAdditionalInfo": true,
+        "logCommands": true,
+        "logInternalState": true,
+        "logStackTraces": true
+      }
+    }
+  },
+  "formatting": {
+    "dateTimeFormat": "yyyy-MM-dd HH:mm:ss.fff",
+    "messageFormat": "[{timestamp}] [{level}] [{component}] {message}",
+    "progressBarStyle": "detailed",
+    "includeThreadId": true,
+    "includeSessionId": true
+  },
+  "levels": {
+    "DEBUG": {
+      "enabled": false,
+      "color": "Gray",
+      "fileOutput": true,
+      "consoleOutput": false
+    },
+    "INFO": {
+      "enabled": true,
+      "color": "White",
+      "fileOutput": true,
+      "consoleOutput": true
+    },
+    "SUCCESS": {
+      "enabled": true,
+      "color": "Green",
+      "fileOutput": true,
+      "consoleOutput": true
+    },
+    "WARN": {
+      "enabled": true,
+      "color": "Yellow",
+      "fileOutput": true,
+      "consoleOutput": true
+    },
+    "ERROR": {
+      "enabled": true,
+      "color": "Red",
+      "fileOutput": true,
+      "consoleOutput": true
+    },
+    "CRITICAL": {
+      "enabled": true,
+      "color": "Magenta",
+      "fileOutput": true,
+      "consoleOutput": true
+    }
+  },
+  "components": {
+    "BAT": "Batch Launcher",
+    "ORCHESTRATOR": "Main Orchestrator",
+    "TYPE1": "Inventory/Reporting",
+    "TYPE2": "System Modification",
+    "CONFIG": "Configuration Manager",
+    "MENU": "Interactive Menu",
+    "LOGGING": "Logging Manager",
+    "SECURITY": "Security Audit",
+    "INVENTORY": "System Inventory",
+    "BLOATWARE": "Bloatware Management",
+    "APPS": "Essential Apps",
+    "UPDATES": "Windows Updates",
+    "OPTIMIZATION": "System Optimization",
+    "TELEMETRY": "Telemetry Management",
+    "DEPENDENCIES": "Dependency Manager",
+    "SCHEDULER": "Task Scheduler",
+    "REPORTING": "Report Generation"
+  },
+  "reporting": {
+    "enableLogExport": true,
+    "exportFormats": [
+      "JSON",
+      "CSV",
+      "XML"
+    ],
+    "includePerformanceMetrics": true,
+    "enableDashboardReports": true,
+    "autoGenerateReports": true,
+    "reportOutputPath": "temp_files/reports"
+  },
+  "performance": {
+    "trackOperationTiming": true,
+    "trackMemoryUsage": false,
+    "trackCPUUsage": false,
+    "enableAlertThresholds": true,
+    "slowOperationThreshold": 30.0,
+    "criticalOperationThreshold": 60.0
+  },
+  "alerts": {
+    "enableEmailAlerts": false,
+    "enableConsoleAlerts": true,
+    "criticalErrorThreshold": 3,
+    "warningAccumulationThreshold": 10
+  }
+}

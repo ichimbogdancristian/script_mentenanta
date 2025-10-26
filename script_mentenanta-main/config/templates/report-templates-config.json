@@ -1,0 +1,110 @@
+{
+  "reportConfiguration": {
+    "title": "Windows Maintenance Report",
+    "subtitle": "Comprehensive System Maintenance Results",
+    "moduleReports": {
+      "BloatwareRemoval": {
+        "displayName": "Bloatware Removal",
+        "icon": "🗑️",
+        "description": "Remove unwanted pre-installed applications and system bloatware",
+        "beforeTitle": "Detected Bloatware",
+        "afterTitle": "Removal Actions",
+        "changeCategories": {
+          "removed": "Uninstalled Applications",
+          "failed": "Failed Removals",
+          "skipped": "Skipped Items"
+        }
+      },
+      "EssentialApps": {
+        "displayName": "Essential Applications",
+        "icon": "📦",
+        "description": "Install missing essential applications and tools",
+        "beforeTitle": "Missing Applications",
+        "afterTitle": "Installation Actions",
+        "changeCategories": {
+          "added": "Installed Applications",
+          "failed": "Failed Installations",
+          "updated": "Updated Applications"
+        }
+      },
+      "SystemOptimization": {
+        "displayName": "System Optimization",
+        "icon": "⚡",
+        "description": "Apply system performance and configuration optimizations",
+        "beforeTitle": "Optimization Opportunities",
+        "afterTitle": "Applied Optimizations",
+        "changeCategories": {
+          "modified": "Registry Changes",
+          "added": "New Settings",
+          "removed": "Disabled Features"
+        }
+      },
+      "TelemetryDisable": {
+        "displayName": "Privacy & Telemetry",
+        "icon": "🔒",
+        "description": "Disable data collection and privacy-invasive features",
+        "beforeTitle": "Active Telemetry",
+        "afterTitle": "Privacy Actions",
+        "changeCategories": {
+          "modified": "Modified Settings",
+          "removed": "Disabled Services",
+          "added": "Privacy Protections"
+        }
+      },
+      "WindowsUpdates": {
+        "displayName": "Windows Updates",
+        "icon": "🔄",
+        "description": "Install available Windows updates and security patches",
+        "beforeTitle": "Available Updates",
+        "afterTitle": "Update Actions",
+        "changeCategories": {
+          "added": "Installed Updates",
+          "modified": "Update Settings",
+          "failed": "Failed Updates"
+        }
+      },
+      "AppUpgrade": {
+        "displayName": "Application Updates",
+        "icon": "🔄",
+        "description": "Automated application upgrades via Winget and Chocolatey package managers",
+        "beforeTitle": "Available Upgrades",
+        "afterTitle": "Upgrade Actions",
+        "changeCategories": {
+          "added": "Upgraded Applications",
+          "modified": "Version Changes",
+          "failed": "Failed Upgrades",
+          "skipped": "Excluded Applications"
+        }
+      },
+      "MaintenanceLog": {
+        "displayName": "System Maintenance Log",
+        "icon": "📋",
+        "description": "Complete orchestrator execution log with all operations and system messages",
+        "beforeTitle": "Log Statistics",
+        "afterTitle": "Log Entries",
+        "changeCategories": {
+          "info": "Information Messages",
+          "success": "Success Messages",
+          "warning": "Warning Messages",
+          "error": "Error Messages",
+          "debug": "Debug Messages"
+        }
+      }
+    },
+    "statusClasses": {
+      "success": "success",
+      "completed": "success",
+      "warning": "warning",
+      "partial": "warning",
+      "error": "error",
+      "failed": "error",
+      "info": "info",
+      "skipped": "info"
+    },
+    "templates": {
+      "mainTemplate": "report-template.html",
+      "moduleTemplate": "task-card-template.html",
+      "styleSheet": "report-styles.css"
+    }
+  }
+}
