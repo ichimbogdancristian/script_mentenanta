@@ -100,12 +100,16 @@ function Find-InstalledBloatware {
         try {
             # Handle multiple categories by combining results
             if ($Categories.Count -eq 1 -and $Categories[0] -eq 'all') {
-                $bloatwareList = Get-BloatwareList -Category 'all'
+                $bloatwareConfig = Get-BloatwareConfiguration
+                $bloatwareList = if ($bloatwareConfig.all) { $bloatwareConfig.all } else { @() }
             }
             else {
                 $bloatwareList = @()
+                $bloatwareConfig = Get-BloatwareConfiguration
                 foreach ($category in $Categories) {
-                    $bloatwareList += Get-BloatwareList -Category $category
+                    if ($bloatwareConfig.$category) {
+                        $bloatwareList += $bloatwareConfig.$category
+                    }
                 }
             }
         }

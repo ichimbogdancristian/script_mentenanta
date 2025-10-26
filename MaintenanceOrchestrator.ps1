@@ -606,7 +606,7 @@ try {
         }
         # Initialize logging system (depends on file organization)
         try {
-            $loggingInitResult = Initialize-LoggingSystem -LoggingConfig $LoggingConfig -BaseLogPath $MainLogFile -ErrorAction Stop
+            $loggingInitResult = Initialize-LoggingSystem -BaseLogPath $MainLogFile -ErrorAction Stop
             if ($loggingInitResult) {
                 Write-Information "  ✓ Logging system initialized" -InformationAction Continue
                 # LoggingManager functions are now available
@@ -748,41 +748,42 @@ try {
         param(
             [string]$TaskName,
             [string]$FunctionName,
+            [hashtable]$Config,
             [switch]$DryRun
         )
         # Prepare task-specific parameters for Type2 modules
         switch ($TaskName) {
             'EssentialApps' {
-                $params = @{}
+                $params = @{ Config = $Config }
                 if ($DryRun) { $params.DryRun = $true }
                 return & $FunctionName @params
             }
             'BloatwareRemoval' {
-                $params = @{}
+                $params = @{ Config = $Config }
                 if ($DryRun) { $params.DryRun = $true }
                 if ($UseInventoryCache) { $params.UseCache = $true }
                 return & $FunctionName @params
             }
             'TelemetryDisable' {
-                $params = @{}
+                $params = @{ Config = $Config }
                 if ($DryRun) { $params.DryRun = $true }
                 return & $FunctionName @params
             }
             'BloatwareDetection' {
                 # Call with intelligent caching
-                $params = @{}
+                $params = @{ Config = $Config }
                 if ($UseInventoryCache) { $params.UseCache = $true }
                 return & $FunctionName @params
             }
             'SystemInventory' {
                 # Call with detailed information and caching
-                $params = @{ IncludeDetailed = $true }
+                $params = @{ Config = $Config; IncludeDetailed = $true }
                 if ($UseInventoryCache) { $params.UseCache = $true }
                 return & $FunctionName @params
             }
             default {
-                # For other tasks, call without parameters
-                return & $FunctionName
+                # For other tasks, call with Config parameter
+                return & $FunctionName -Config $Config
             }
         }
     }

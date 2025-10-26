@@ -401,6 +401,38 @@ function Get-MainConfiguration {
     }
 }
 
+#region Privilege and Security Validation
+
+<#
+.SYNOPSIS
+    Asserts that the current process has administrator privileges
+
+.DESCRIPTION
+    Verifies that the script is running with administrator privileges.
+    If not, throws an exception with the provided operation description.
+
+.PARAMETER Operation
+    Description of the operation requiring admin privileges (for error message)
+
+.EXAMPLE
+    Assert-AdminPrivilege -Operation "Windows service modification"
+#>
+function Assert-AdminPrivilege {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Operation
+    )
+    
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    
+    if (-not $isAdmin) {
+        throw "Administrator privileges are required for: $Operation"
+    }
+}
+
+#endregion
+
 <#
 .SYNOPSIS
     Gets bloatware configuration list
@@ -1423,7 +1455,7 @@ function Get-AuditResultsPath {
     
     try {
         # Get base data directory path
-        $dataDir = Get-SessionDirectoryPath -Category 'data'
+        $dataDir = Get-SessionDirectoryPath -Type 'data'
         
         # Standardize module name format: convert to lowercase with hyphens
         $normalizedName = $ModuleName -replace 'Detection|Audit', '' -replace '(?<=[a-z])(?=[A-Z])', '-' | ForEach-Object { $_.ToLower() }
@@ -1486,7 +1518,7 @@ function Save-DiffResults {
     
     try {
         # Get base temp directory path for diff storage
-        $tempDir = Get-SessionDirectoryPath -Category 'temp'
+        $tempDir = Get-SessionDirectoryPath -Type 'temp'
         
         # Standardize module name format: convert to lowercase with hyphens
         $normalizedName = $ModuleName -replace 'Type2|Module|Removal|Disable|Optimization', '' -replace '(?<=[a-z])(?=[A-Z])', '-' | ForEach-Object { $_.ToLower() }
@@ -1913,6 +1945,7 @@ Export-ModuleMember -Function @(
     'Get-CachedConfiguration', 'Test-ConfigurationIntegrity',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
     'Write-DetectionLog',
+    'Assert-AdminPrivilege',
     'Start-PerformanceTracking', 'Complete-PerformanceTracking', 'Set-LoggingVerbosity', 'Set-LoggingEnabled',
     'Initialize-SessionFileOrganization', 'Test-TempFilesStructure', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
     'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',
