@@ -421,16 +421,37 @@ function Start-CountdownMenu {
         [array]$ValidOptions
     )
 
-    $timeLeft = $CountdownSeconds
     $selection = $null
+    $lastDisplayedTime = -1
 
     Write-Host "Auto-selecting option [$DefaultOption] in " -ForegroundColor Gray -NoNewline
 
-    while ($timeLeft -gt 0 -and $null -eq $selection) {
-        Write-Host "$timeLeft" -ForegroundColor Yellow -NoNewline
-        Write-Host "... " -ForegroundColor Gray -NoNewline
+    $startTime = Get-Date
+    
+    while ($true) {
+        $elapsed = ((Get-Date) - $startTime).TotalSeconds
+        $timeLeft = [math]::Max(0, $CountdownSeconds - [int]$elapsed)
+        
+        # Update display only when time changes
+        if ($timeLeft -ne $lastDisplayedTime) {
+            if ($lastDisplayedTime -ge 0) {
+                # Clear previous display
+                $clearLength = $lastDisplayedTime.ToString().Length + 4
+                Write-Host ("`b" * $clearLength) -NoNewline
+                Write-Host (" " * $clearLength) -NoNewline
+                Write-Host ("`b" * $clearLength) -NoNewline
+            }
+            Write-Host "$timeLeft" -ForegroundColor Yellow -NoNewline
+            Write-Host "... " -ForegroundColor Gray -NoNewline
+            $lastDisplayedTime = $timeLeft
+        }
+        
+        # Check if countdown expired
+        if ($timeLeft -le 0) {
+            break
+        }
 
-        # Check for user input
+        # Check for user input (check multiple times per second for responsiveness)
         if ([Console]::KeyAvailable) {
             $key = [Console]::ReadKey($true)
             $userInput = $key.KeyChar.ToString()
@@ -440,16 +461,15 @@ function Start-CountdownMenu {
                 if ($inputNum -in $ValidOptions) {
                     $selection = $inputNum
                     Write-Host "`nSelected: $selection" -ForegroundColor Green
-                    break
+                    return $selection
                 }
             }
         }
 
-        Start-Sleep -Seconds 1
-        $timeLeft--
-        Write-Host "`b`b`b`b`b    `b`b`b`b`b" -NoNewline  # Clear the previous number
+        Start-Sleep -Milliseconds 100
     }
 
+    # Countdown expired - use default
     if ($null -eq $selection) {
         $selection = $DefaultOption
         Write-Host "`nAuto-selected: $selection" -ForegroundColor Cyan
@@ -474,14 +494,36 @@ function Start-CountdownInput {
 
     $timeLeft = $CountdownSeconds
     $userInput = ""
+    $lastDisplayedTime = -1
 
     Write-Host "Auto-selecting '$DefaultValue' in " -ForegroundColor Gray -NoNewline
 
-    while ($timeLeft -gt 0) {
-        Write-Host "$timeLeft" -ForegroundColor Yellow -NoNewline
-        Write-Host "... " -ForegroundColor Gray -NoNewline
+    $startTime = Get-Date
+    
+    while ($true) {
+        $elapsed = ((Get-Date) - $startTime).TotalSeconds
+        $timeLeft = [math]::Max(0, $CountdownSeconds - [int]$elapsed)
+        
+        # Update display only when time changes
+        if ($timeLeft -ne $lastDisplayedTime) {
+            if ($lastDisplayedTime -ge 0) {
+                # Clear previous display
+                $clearLength = $lastDisplayedTime.ToString().Length + 4
+                Write-Host ("`b" * $clearLength) -NoNewline
+                Write-Host (" " * $clearLength) -NoNewline
+                Write-Host ("`b" * $clearLength) -NoNewline
+            }
+            Write-Host "$timeLeft" -ForegroundColor Yellow -NoNewline
+            Write-Host "... " -ForegroundColor Gray -NoNewline
+            $lastDisplayedTime = $timeLeft
+        }
+        
+        # Check if countdown expired
+        if ($timeLeft -le 0) {
+            break
+        }
 
-        # Check for user input
+        # Check for user input (check multiple times per second for responsiveness)
         if ([Console]::KeyAvailable) {
             $key = [Console]::ReadKey($true)
             
@@ -502,18 +544,16 @@ function Start-CountdownInput {
             }
         }
 
-        Start-Sleep -Milliseconds 500
-        $timeLeft--
-        
-        # Clear countdown display
-        $backspaces = "`b" * ($timeLeft.ToString().Length + 4)
-        $spaces = " " * ($timeLeft.ToString().Length + 4)
-        Write-Host "$backspaces$spaces$backspaces" -NoNewline
+        Start-Sleep -Milliseconds 100
     }
 
+    # Countdown expired - use default value
     if ([string]::IsNullOrWhiteSpace($userInput)) {
         $userInput = $DefaultValue
         Write-Host "`nAuto-selected: $userInput" -ForegroundColor Cyan
+    }
+    else {
+        Write-Host "`nSelected: $userInput" -ForegroundColor Green
     }
 
     return $userInput
