@@ -1092,7 +1092,7 @@ function New-ModuleSections {
         }
         
         # Parse operation logs for this module (convert PascalCase to kebab-case for directory name)
-        $moduleLogDir = $module.Name -creplace '([A-Z])', '-$1' -replace '^-', '' | ForEach-Object { $_.ToLower() }
+        $moduleLogDir = ($module.Name -creplace '([A-Z])', '-$1' -replace '^-', '').ToLower()
         $parsedLogs = Get-ParsedOperationLogs -ModuleName $moduleLogDir
         
         # Generate operation log table HTML

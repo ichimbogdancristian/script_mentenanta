@@ -1458,7 +1458,7 @@ function Get-AuditResultsPath {
         $dataDir = Get-SessionDirectoryPath -Type 'data'
         
         # Standardize module name format: convert to lowercase with hyphens
-        $normalizedName = $ModuleName -replace 'Detection|Audit', '' -replace '(?<=[a-z])(?=[A-Z])', '-' | ForEach-Object { $_.ToLower() }
+        $normalizedName = ($ModuleName -replace 'Detection|Audit', '' -replace '(?<=[a-z])(?=[A-Z])', '-').ToLower()
         
         # Build standardized path: temp_files/data/[module-name]-results.json
         $resultFileName = "$normalizedName-results.json"
@@ -1521,7 +1521,7 @@ function Save-DiffResults {
         $tempDir = Get-SessionDirectoryPath -Type 'temp'
         
         # Standardize module name format: convert to lowercase with hyphens
-        $normalizedName = $ModuleName -replace 'Type2|Module|Removal|Disable|Optimization', '' -replace '(?<=[a-z])(?=[A-Z])', '-' | ForEach-Object { $_.ToLower() }
+        $normalizedName = ($ModuleName -replace 'Type2|Module|Removal|Disable|Optimization', '' -replace '(?<=[a-z])(?=[A-Z])', '-').ToLower()
         
         # Build standardized path: temp_files/temp/[module-name]-diff.json
         $diffFileName = "$normalizedName-diff.json"
