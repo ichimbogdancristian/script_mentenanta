@@ -928,6 +928,51 @@ function New-HtmlReportContent {
         $html = $html -replace '{{GENERATION_DATE}}', $currentDate
         $html = $html -replace '{{CSS_STYLES}}', $Templates.CSS
         
+        # Patch 6: Enhanced variable binding from aggregated results
+        Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Applying enhanced variable bindings'
+        
+        try {
+            # Build comprehensive variable replacement dictionary from aggregated results
+            $placeholderValues = @{
+                '{{OVERALL_STATUS}}'      = if ($ProcessedData.Summary -and $ProcessedData.Summary.SuccessfulModules -eq $ProcessedData.Summary.TotalModules) { 'Success' } else { 'Partial Success' }
+                '{{TASKS_COMPLETED}}'     = $ProcessedData.Summary.SuccessfulModules
+                '{{TOTAL_TASKS}}'         = $ProcessedData.Summary.TotalModules
+                '{{SUCCESS_RATE}}'        = if ($ProcessedData.Summary) { [math]::Round(($ProcessedData.Summary.SuccessfulModules / [math]::Max($ProcessedData.Summary.TotalModules, 1)) * 100, 1) } else { 0 }
+                '{{FAILED_TASKS}}'        = $ProcessedData.Summary.FailedModules
+                '{{TOTAL_DURATION}}'      = if ($ProcessedData.DashboardMetrics) { $ProcessedData.DashboardMetrics.TotalExecutionDuration } else { '0:00:00' }
+                '{{EXECUTION_TIMESTAMP}}' = $currentDate
+                '{{COMPUTER_NAME}}'       = $env:COMPUTERNAME
+                '{{USERNAME}}'            = $env:USERNAME
+                '{{OS_VERSION}}'          = [System.Environment]::OSVersion.VersionString
+                '{{REPORT_STATUS}}'       = 'Generated'
+            }
+            
+            # Apply aggregated result variables if available
+            if ($ProcessedData.ExecutionMetrics) {
+                $metrics = $ProcessedData.ExecutionMetrics
+                $placeholderValues['{{BLOATWARE_DETECTED}}'] = $metrics.BloatwareDetected -as [int]
+                $placeholderValues['{{BLOATWARE_REMOVED}}'] = $metrics.BloatwareRemoved -as [int]
+                $placeholderValues['{{ESSENTIAL_MISSING}}'] = $metrics.EssentialAppsMissing -as [int]
+                $placeholderValues['{{ESSENTIAL_INSTALLED}}'] = $metrics.EssentialAppsInstalled -as [int]
+                $placeholderValues['{{OPTIMIZATIONS_APPLIED}}'] = $metrics.OptimizationsApplied -as [int]
+                $placeholderValues['{{REGISTRY_CHANGES}}'] = $metrics.RegistryChanges -as [int]
+                $placeholderValues['{{TELEMETRY_DISABLED}}'] = $metrics.TelemetryTasksDisabled -as [int]
+                $placeholderValues['{{WINDOWS_UPDATES}}'] = $metrics.WindowsUpdatesInstalled -as [int]
+                $placeholderValues['{{APPS_UPGRADED}}'] = $metrics.ApplicationsUpgraded -as [int]
+            }
+            
+            # Apply replacements to HTML
+            foreach ($placeholder in $placeholderValues.Keys) {
+                $value = if ($null -eq $placeholderValues[$placeholder]) { 'N/A' } else { $placeholderValues[$placeholder] }
+                $html = $html -replace [regex]::Escape($placeholder), [string]$value
+            }
+            
+            Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Applied $($placeholderValues.Count) variable bindings"
+        }
+        catch {
+            Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Enhanced variable binding failed, continuing with basic replacements: $($_.Exception.Message)"
+        }
+        
         # Generate dashboard metrics section
         $dashboardSection = New-DashboardSection -ProcessedData $ProcessedData
         $html = $html -replace '{{DASHBOARD_SECTION}}', $dashboardSection

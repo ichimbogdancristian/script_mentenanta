@@ -1857,6 +1857,26 @@ function Invoke-LogProcessing {
         Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message 'Failed to organize bootstrap maintenance.log, continuing with processing'
     }
     
+    # Patch 5: Load aggregated results from LogAggregator
+    Write-Information " Loading pre-aggregated results from LogAggregator..." -InformationAction Continue
+    $aggregatedResults = $null
+    $aggregatedResultsPath = Join-Path (Join-Path $env:MAINTENANCE_TEMP_ROOT 'processed') 'aggregated-results.json'
+    
+    if (Test-Path $aggregatedResultsPath) {
+        try {
+            $aggregatedResults = Get-Content -Path $aggregatedResultsPath -Raw | ConvertFrom-Json
+            Write-Information "  [OK] Loaded aggregated results from: $aggregatedResultsPath" -InformationAction Continue
+            Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Loaded pre-aggregated results containing $($aggregatedResults.ModuleResults.Count) module results"
+        }
+        catch {
+            Write-Warning "  Failed to load aggregated results: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARN' -Component 'LOG-PROCESSOR' -Message "Failed to parse aggregated results: $($_.Exception.Message)"
+        }
+    }
+    else {
+        Write-Information "  [INFO] No pre-aggregated results found - will use traditional log parsing" -InformationAction Continue
+    }
+    
     try {
         # Initialize processed data paths
         $processedRoot = Initialize-ProcessedDataPaths

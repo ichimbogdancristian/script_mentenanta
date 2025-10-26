@@ -157,6 +157,31 @@ if (-not $LogFilePath) {
 }
 Write-Information "Log File: $LogFilePath" -InformationAction Continue
 #endregion
+
+#region Patch 2: Initialize Result Collection (v3.0)
+Write-Information "`nInitializing session result collection..." -InformationAction Continue
+$ProcessedDataPath = Join-Path $TempRoot 'processed'
+if (-not (Test-Path $ProcessedDataPath)) {
+    New-Item -Path $ProcessedDataPath -ItemType Directory -Force | Out-Null
+}
+
+$Global:ResultCollectionEnabled = $false
+try {
+    if (Get-Command -Name 'Start-ResultCollection' -ErrorAction SilentlyContinue) {
+        Start-ResultCollection -SessionId $Global:MaintenanceSessionId -CachePath $ProcessedDataPath
+        $Global:ResultCollectionEnabled = $true
+        Write-Information "  [OK] Result collection initialized successfully" -InformationAction Continue
+    }
+    else {
+        Write-Information "  [INFO] LogAggregator result collection not available - using fallback session tracking" -InformationAction Continue
+    }
+}
+catch {
+    Write-Warning "Failed to initialize result collection: $($_.Exception.Message) - Using fallback session tracking"
+    $Global:ResultCollectionEnabled = $false
+}
+#endregion
+
 #region Module Loading
 Write-Information "`nLoading modules..." -InformationAction Continue
 # Import core modules (always relative to script location)
@@ -270,8 +295,27 @@ foreach ($moduleName in $Type2Modules) {
         }
     }
 }
+
+# ============================================
+# Patch 1: Import LogAggregator for result collection
+# ============================================
+Write-Information "`nLoading LogAggregator module..." -InformationAction Continue
+$LogAggregatorPath = Join-Path $CoreModulesPath 'LogAggregator.psm1'
+if (Test-Path $LogAggregatorPath) {
+    try {
+        Import-Module $LogAggregatorPath -Force -Global -ErrorAction Stop
+        Write-Information "  [OK] LogAggregator module loaded successfully" -InformationAction Continue
+    }
+    catch {
+        Write-Warning "Failed to load LogAggregator module: $($_.Exception.Message) - Enhanced reporting will be limited"
+    }
+}
+else {
+    Write-Warning "LogAggregator module not found at: $LogAggregatorPath - Enhanced reporting disabled"
+}
+
 #region FIX #1: Create Unified Global Path Object
-Write-Information "`n Creating unified global path object..." -InformationAction Continue
+Write-Information "`nCreating unified global path object..." -InformationAction Continue
 try {
     $Global:ProjectPaths = @{
         ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
@@ -1219,6 +1263,25 @@ try {
                 }
                 if ($hasValidStructure) {
                     Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
+                    
+                    # Patch 3: Collect module result for aggregation
+                    if ($Global:ResultCollectionEnabled) {
+                        try {
+                            $moduleDuration = ((Get-Date) - $taskStartTime).TotalSeconds
+                            $moduleStatus = if ($result.Success) { 'Success' } else { 'Failed' }
+                            $moduleResultObj = New-ModuleResult `
+                                -ModuleName $task.Name `
+                                -Status $moduleStatus `
+                                -ItemsDetected $($result.ItemsDetected -as [int]) `
+                                -ItemsProcessed $($result.ItemsProcessed -as [int]) `
+                                -DurationSeconds $moduleDuration
+                            Add-ModuleResult -Result $moduleResultObj
+                            Write-Information "     [Aggregation] Module result collected for reporting" -InformationAction Continue
+                        }
+                        catch {
+                            Write-Warning "     [Aggregation] Failed to collect module result: $($_.Exception.Message)"
+                        }
+                    }
                 }
                 else {
                     $resultType = if ($result) { $result.GetType().Name } else { 'null' }
@@ -1335,22 +1398,42 @@ try {
         # All necessary data comes from Type1/Type2 module logs processed by LogProcessor
         # If needed in future, add SystemAnalysis to core modules list and use inventory here
         # v3.0 Split Architecture: LogProcessor → ReportGenerator pipeline
-        Write-Information " Processing logs and generating reports using split architecture..." -InformationAction Continue
+        Write-Information "`nProcessing logs and generating reports using split architecture..." -InformationAction Continue
+        
+        # Patch 4: Finalize and export aggregated results
+        if ($Global:ResultCollectionEnabled) {
+            Write-Information "`n  Finalizing session result collection..." -InformationAction Continue
+            try {
+                $aggregatedResultsPath = Join-Path $ProcessedDataPath 'aggregated-results.json'
+                $aggregatedResults = Complete-ResultCollection -ExportPath $aggregatedResultsPath
+                if ($aggregatedResults) {
+                    Write-Information "    [OK] Result collection finalized" -InformationAction Continue
+                    Write-Information "    [INFO] Summary: Total modules=$($aggregatedResults.Summary.TotalModules), Success=$($aggregatedResults.Summary.SuccessfulModules), Failed=$($aggregatedResults.Summary.FailedModules)" -InformationAction Continue
+                    Write-Information "    [INFO] Aggregated results exported to: $aggregatedResultsPath" -InformationAction Continue
+                    $Global:MaintenanceSessionData.AggregatedResults = $aggregatedResults
+                    $Global:MaintenanceSessionData.Summary = $aggregatedResults.Summary
+                }
+            }
+            catch {
+                Write-Warning "  Failed to finalize result collection: $($_.Exception.Message)"
+            }
+        }
+        
         try {
             # Step 1: Process logs using LogProcessor module
             if (Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue) {
-                Write-Information "   Step 1: Processing logs with LogProcessor..." -InformationAction Continue
+                Write-Information "  Step 1: Processing logs with LogProcessor..." -InformationAction Continue
                 # LogProcessor reads directly from temp_files/data and temp_files/logs
                 # It does not accept TaskResults, SystemInventory, or Configuration parameters
                 Invoke-LogProcessing
-                Write-Information "   Log processing completed successfully" -InformationAction Continue
+                Write-Information "  Log processing completed successfully" -InformationAction Continue
             }
             else {
                 throw "LogProcessor module (Invoke-LogProcessing) not available"
             }
             # Step 2: Generate reports using ReportGenerator module
             if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
-                Write-Information "   Step 2: Generating reports with ReportGenerator..." -InformationAction Continue
+                Write-Information "  Step 2: Generating reports with ReportGenerator..." -InformationAction Continue
                 # Create reports directory
                 $reportsDir = Join-Path $Global:ProjectPaths.TempFiles "reports"
                 New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
