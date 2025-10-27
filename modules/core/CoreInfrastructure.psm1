@@ -2637,8 +2637,22 @@ function Test-SystemRequirements {
     
     # Check 6: System Protection Enabled (for restore points)
     try {
-        $systemProtection = Get-ComputerRestorePoint -ErrorAction Stop | Select-Object -First 1
-        $spEnabled = $null -ne $systemProtection
+        $spEnabled = $false
+        
+        # Try WMI first (more reliable across PS versions)
+        try {
+            $spService = Get-CimInstance -ClassName Win32_SystemRestore -ErrorAction SilentlyContinue
+            $spEnabled = $null -ne $spService
+        }
+        catch {
+            # Fallback: Check registry for System Protection
+            $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
+            if (Test-Path $regPath) {
+                $spReg = Get-ItemProperty $regPath -Name 'DisableSR' -ErrorAction SilentlyContinue
+                # DisableSR = 0 means enabled, 1 means disabled
+                $spEnabled = $null -eq $spReg -or $spReg.DisableSR -eq 0
+            }
+        }
         
         $spCheck = @{
             Name     = 'System Protection'
