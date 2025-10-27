@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>Windows Maintenance Report - Enhanced</title>
+    <meta name="description" content="Windows Maintenance Report - System analysis and optimization results">
+    <meta name="theme-color" content="#0078d4">
+    <title>⚙️ Windows Maintenance Report</title>
     <link rel="stylesheet" href="report-styles.css">
     <style>
         /* Inline critical CSS */
@@ -26,33 +28,104 @@
     </style>
 </head>
 <body>
-    <!-- Dark Mode Toggle -->
-    <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle" title="Toggle Dark/Light Mode">
-        <span class="icon" id="themeIcon">🌙</span>
+    <!-- Navigation Skip Link (Accessibility) -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- Dark Mode Toggle with Enhanced Accessibility -->
+    <button 
+        class="theme-toggle" 
+        onclick="toggleTheme()" 
+        id="themeToggle" 
+        title="Toggle Dark/Light Mode"
+        aria-label="Toggle between light and dark mode"
+        aria-pressed="false">
+        <span class="icon" id="themeIcon" aria-hidden="true">🌙</span>
         <span id="themeText">Dark Mode</span>
     </button>
 
-    <div class="container">
-        <!-- Header Section -->
-        <div class="header">
-            <h1>⚙️ Windows Maintenance Report</h1>
-            <div class="subtitle">{{REPORT_SUBTITLE}}</div>
-            <div class="meta">
-                <div><strong>📅 Generated:</strong> {{GENERATION_TIME}}</div>
-                <div><strong>💻 Computer:</strong> {{COMPUTER_NAME}}</div>
-                <div><strong>👤 User:</strong> {{USER_NAME}}</div>
-                <div><strong>🖥️ OS:</strong> {{OS_VERSION}}</div>
-                <div><strong>▶️ Execution Mode:</strong> {{EXECUTION_MODE}}</div>
+    <!-- Print and Export Buttons -->
+    <div class="report-controls">
+        <button class="control-btn" onclick="printReport()" title="Print report (Ctrl+P)" aria-label="Print this report">
+            <span>🖨️</span> Print
+        </button>
+        <button class="control-btn" onclick="exportToPDF()" title="Export as PDF" aria-label="Export report as PDF">
+            <span>📄</span> PDF
+        </button>
+        <button class="control-btn" onclick="scrollToTop()" title="Go to top (Home key)" aria-label="Scroll back to top of report">
+            <span>⬆️</span> Top
+        </button>
+    </div>
+
+    <main id="main-content" class="container">
+        <!-- Header Section with Hero Design -->
+        <header class="header">
+            <div class="header-content">
+                <h1>⚙️ Windows Maintenance Report</h1>
+                <p class="subtitle">{{REPORT_SUBTITLE}}</p>
+                <nav class="breadcrumb" aria-label="Breadcrumb">
+                    <a href="#executive-summary">Summary</a>
+                    <a href="#metrics">Metrics</a>
+                    <a href="#modules">Modules</a>
+                    <a href="#logs">Logs</a>
+                    <a href="#system-info">System</a>
+                </nav>
             </div>
-        </div>
+            <div class="header-meta">
+                <dl class="meta-list">
+                    <div class="meta-item">
+                        <dt>📅 Generated</dt>
+                        <dd>{{GENERATION_TIME}}</dd>
+                    </div>
+                    <div class="meta-item">
+                        <dt>💻 Computer</dt>
+                        <dd>{{COMPUTER_NAME}}</dd>
+                    </div>
+                    <div class="meta-item">
+                        <dt>👤 User</dt>
+                        <dd>{{USER_NAME}}</dd>
+                    </div>
+                    <div class="meta-item">
+                        <dt>🖥️ OS</dt>
+                        <dd>{{OS_VERSION}}</dd>
+                    </div>
+                    <div class="meta-item">
+                        <dt>▶️ Mode</dt>
+                        <dd>{{EXECUTION_MODE}}</dd>
+                    </div>
+                </dl>
+            </div>
+        </header>
 
         <!-- Executive Summary Section -->
-        <div class="card">
-            <div class="card-header">
+        <section id="executive-summary" class="card card-executive">
+            <header class="card-header">
                 <h2>📋 Executive Summary</h2>
                 <span class="status {{OVERALL_STATUS_CLASS}}">{{OVERALL_STATUS}}</span>
-            </div>
+            </header>
             <div class="card-body">
+                <!-- Quick Links to Sections -->
+                <nav class="quick-links" aria-label="Quick navigation to report sections">
+                    <a href="#metrics" class="quick-link" title="Jump to metrics">
+                        <span class="icon">📊</span>
+                        <span>Performance Metrics</span>
+                    </a>
+                    <a href="#modules" class="quick-link" title="Jump to module reports">
+                        <span class="icon">🔧</span>
+                        <span>Module Details</span>
+                    </a>
+                    <a href="#timeline" class="quick-link" title="Jump to execution timeline">
+                        <span class="icon">📅</span>
+                        <span>Timeline</span>
+                    </a>
+                    <a href="#logs" class="quick-link" title="Jump to logs">
+                        <span class="icon">📝</span>
+                        <span>Logs</span>
+                    </a>
+                    <a href="#actions" class="quick-link" title="Jump to action items">
+                        <span class="icon">✅</span>
+                        <span>Actions</span>
+                    </a>
+                </nav>
                 <!-- Performance Metrics -->
                 <div class="metrics-grid">
                     <div class="metric-card">
