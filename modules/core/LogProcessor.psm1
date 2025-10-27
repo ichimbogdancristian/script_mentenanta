@@ -2546,6 +2546,7 @@ function Get-ModuleExecutionDataFromJson {
 Export-ModuleMember -Function @(
     'Invoke-LogProcessing',
     'Initialize-ProcessedDataPaths',
+    'Move-MaintenanceLogToOrganized',
     'Get-Type1AuditData', 
     'Get-Type2ExecutionLogs',
     'Get-MaintenanceLog',

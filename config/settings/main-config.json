@@ -4,7 +4,8 @@
     "countdownSeconds": 20,
     "enableDryRun": true,
     "autoSelectDefault": true,
-    "showProgressBars": true
+    "showProgressBars": true,
+    "taskTimeoutSeconds": 600
   },
   "modules": {
     "skipBloatwareRemoval": false,

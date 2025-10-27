@@ -1016,7 +1016,7 @@ function New-HtmlReportContent {
             Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Applied $($placeholderValues.Count) variable bindings"
         }
         catch {
-            Write-LogEntry -Level 'WARN' -Component 'REPORT-GENERATOR' -Message "Enhanced variable binding failed, continuing with basic replacements: $($_.Exception.Message)"
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced variable binding failed, continuing with basic replacements: $($_.Exception.Message)"
         }
         
         # Generate dashboard metrics section
@@ -2610,9 +2610,340 @@ function Optimize-ReportDataStructures {
 
 #endregion
 
-# Export main functions for ReportGenerator module - placed at end after all function definitions
+#region Report Index Generation
+
+<#
+.SYNOPSIS
+    Generates an HTML index of all reports for easy navigation
+
+.DESCRIPTION
+    Creates an index.html file in the reports directory that lists all available
+    reports with metadata (timestamp, size, status). Provides clickable links for
+    quick access to recent reports and helps users navigate the report archive.
+
+.PARAMETER ReportsPath
+    Path to the reports directory containing maintenance reports
+
+.PARAMETER OutputFileName
+    Name of the index file to create (default: 'index.html')
+
+.EXAMPLE
+    New-ReportIndex -ReportsPath 'C:\Projects\temp_files\reports'
+
+.EXAMPLE
+    New-ReportIndex -ReportsPath $reportPath -OutputFileName 'report-index.html'
+
+.OUTPUTS
+    [hashtable] Result with Success, IndexPath, ReportCount, TotalSize, and Errors
+#>
+function New-ReportIndex {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ReportsPath,
+
+        [Parameter(Mandatory = $false)]
+        [string]$OutputFileName = 'index.html'
+    )
+
+    $result = @{
+        Success     = $false
+        IndexPath   = $null
+        ReportCount = 0
+        TotalSize   = 0
+        Errors      = @()
+        Details     = @()
+    }
+
+    try {
+        # Validate reports directory exists
+        if (-not (Test-Path -Path $ReportsPath -PathType Container)) {
+            $result.Errors += "Reports directory not found: $ReportsPath"
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-INDEX' -Message "Reports directory not found" -Data @{Path = $ReportsPath }
+            return $result
+        }
+
+        # Collect all reports
+        $reports = @(Get-ChildItem -Path $ReportsPath -Filter '*.html' -File | Where-Object {
+                $_.Name -ne $OutputFileName
+            } | Sort-Object -Property LastWriteTime -Descending)
+
+        Write-LogEntry -Level 'INFO' -Component 'REPORT-INDEX' `
+            -Message "Generating report index" -Data @{ReportCount = $reports.Count; ReportsPath = $ReportsPath }
+
+        # Build report metadata
+        $reportMetadata = @()
+        $totalSize = 0
+
+        foreach ($report in $reports) {
+            $size = $report.Length
+            $totalSize += $size
+            $sizeKb = [math]::Round($size / 1024, 2)
+            $timestamp = $report.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')
+            
+            # Extract report type from filename
+            $reportType = if ($report.Name -like '*MaintenanceReport*') { 'Full Report' } `
+                elseif ($report.Name -like '*Summary*') { 'Summary Report' } `
+                else { 'Report' }
+
+            $reportMetadata += @{
+                Name       = $report.Name
+                FileName   = $report.Name
+                Timestamp  = $timestamp
+                Size       = $sizeKb
+                SizeBytes  = $size
+                FullPath   = $report.FullName
+                ReportType = $reportType
+                DateObj    = $report.LastWriteTime
+            }
+        }
+
+        $result.ReportCount = $reports.Count
+        $result.TotalSize = $totalSize
+
+        # Generate HTML index
+        $htmlContent = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintenance Reports Index</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+        }
+        .stat {
+            text-align: center;
+            padding: 10px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .content {
+            padding: 20px;
+        }
+        .no-reports {
+            text-align: center;
+            color: #999;
+            padding: 40px 20px;
+        }
+        .reports-list {
+            list-style: none;
+        }
+        .report-item {
+            background: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .report-item:hover {
+            background: #f0f0f0;
+            border-color: #667eea;
+            transform: translateX(5px);
+        }
+        .report-info {
+            flex: 1;
+        }
+        .report-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .report-meta {
+            font-size: 12px;
+            color: #999;
+        }
+        .report-type {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-right: 10px;
+        }
+        .report-timestamp {
+            display: inline-block;
+            margin-right: 15px;
+        }
+        .report-size {
+            display: inline-block;
+            color: #999;
+        }
+        .report-link {
+            background: #667eea;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background 0.3s;
+            white-space: nowrap;
+            margin-left: 10px;
+        }
+        .report-link:hover {
+            background: #764ba2;
+        }
+        .footer {
+            padding: 15px 20px;
+            background: #f5f5f5;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #999;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Maintenance Reports</h1>
+            <p>Windows Maintenance Automation System - Report Archive</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">$($result.ReportCount)</div>
+                <div class="stat-label">Total Reports</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">`$([math]::Round($totalSize / 1024 / 1024, 2))</div>
+                <div class="stat-label">Total Size (MB)</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">$(Get-Date -Format 'yyyy-MM-dd')</div>
+                <div class="stat-label">Generated</div>
+            </div>
+        </div>
+
+        <div class="content">
+"@
+
+        if ($reportMetadata.Count -eq 0) {
+            $htmlContent += @"
+            <div class="no-reports">
+                <p>No reports found in this directory.</p>
+                <p style="margin-top: 10px; font-size: 12px;">Run the maintenance system to generate reports.</p>
+            </div>
+"@
+        }
+        else {
+            $htmlContent += "            <ul class=`"reports-list`">`n"
+            
+            foreach ($report in $reportMetadata) {
+                $htmlContent += @"
+            <li class="report-item">
+                <div class="report-info">
+                    <div class="report-name">$($report.Name)</div>
+                    <div class="report-meta">
+                        <span class="report-type">$($report.ReportType)</span>
+                        <span class="report-timestamp">📅 $($report.Timestamp)</span>
+                        <span class="report-size">📦 $($report.Size) KB</span>
+                    </div>
+                </div>
+                <a href="$(Split-Path -Leaf $report.FileName)" class="report-link">View Report →</a>
+            </li>
+"@
+            }
+            
+            $htmlContent += "            </ul>`n"
+        }
+
+        $htmlContent += @"
+        </div>
+
+        <div class="footer">
+            <p>Maintenance Report Index — Windows Maintenance Automation v3.1</p>
+            <p style="margin-top: 5px;">Generated on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
+        </div>
+    </div>
+</body>
+</html>
+"@
+
+        # Write index file
+        $indexPath = Join-Path $ReportsPath $OutputFileName
+        $htmlContent | Out-File -FilePath $indexPath -Encoding UTF8 -Force
+
+        $result.Success = $true
+        $result.IndexPath = $indexPath
+        $result.Details += "Report index created successfully"
+        $result.Details += "Total reports indexed: $($result.ReportCount)"
+        $result.Details += "Index file: $indexPath"
+
+        Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-INDEX' `
+            -Message "Report index generated successfully" `
+            -Data @{
+            ReportCount = $result.ReportCount
+            TotalSize   = "$([math]::Round($totalSize / 1024 / 1024, 2)) MB"
+            IndexPath   = $indexPath
+        }
+
+        return $result
+    }
+    catch {
+        $result.Errors += "Failed to generate report index: $($_.Exception.Message)"
+        Write-LogEntry -Level 'ERROR' -Component 'REPORT-INDEX' `
+            -Message "Report index generation failed" -Data @{Error = $_.Exception.Message }
+        return $result
+    }
+}
+
+#endregion
+
+#region Module Exports
 Export-ModuleMember -Function @(
     'New-MaintenanceReport',
+    'New-ReportIndex',
     'Get-HtmlTemplates',
     'Get-FallbackTemplates',
     'Get-ProcessedLogData',

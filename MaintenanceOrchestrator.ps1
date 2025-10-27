@@ -158,7 +158,7 @@ if (-not $LogFilePath) {
 Write-Information "Log File: $LogFilePath" -InformationAction Continue
 #endregion
 
-#region Patch 2: Initialize Result Collection (v3.0)
+#region Patch 2: Initialize Result Collection (v3.1)
 Write-Information "`nInitializing session result collection..." -InformationAction Continue
 $ProcessedDataPath = Join-Path $TempRoot 'processed'
 if (-not (Test-Path $ProcessedDataPath)) {
@@ -195,9 +195,10 @@ if (-not (Test-Path $ModulesPath)) {
 }
 $CoreModulesPath = Join-Path $ModulesPath 'core'
 Write-Information "Modules Path: $ModulesPath" -InformationAction Continue
-# v3.0 Split Architecture: Load essential core modules + split report architecture
+# v3.1 Split Architecture: Load essential core modules + split report architecture
 $CoreModules = @(
     'CoreInfrastructure',
+    'LogAggregator',       # v3.1: Moved earlier to prevent race conditions
     'UserInterface',
     'LogProcessor',
     'ReportGenerator'
@@ -296,24 +297,6 @@ foreach ($moduleName in $Type2Modules) {
     }
 }
 
-# ============================================
-# Patch 1: Import LogAggregator for result collection
-# ============================================
-Write-Information "`nLoading LogAggregator module..." -InformationAction Continue
-$LogAggregatorPath = Join-Path $CoreModulesPath 'LogAggregator.psm1'
-if (Test-Path $LogAggregatorPath) {
-    try {
-        Import-Module $LogAggregatorPath -Force -Global -ErrorAction Stop
-        Write-Information "  [OK] LogAggregator module loaded successfully" -InformationAction Continue
-    }
-    catch {
-        Write-Warning "Failed to load LogAggregator module: $($_.Exception.Message) - Enhanced reporting will be limited"
-    }
-}
-else {
-    Write-Warning "LogAggregator module not found at: $LogAggregatorPath - Enhanced reporting disabled"
-}
-
 #region FIX #1: Create Unified Global Path Object
 Write-Information "`nCreating unified global path object..." -InformationAction Continue
 try {
@@ -382,6 +365,30 @@ catch {
     exit 1
 }
 #endregion
+
+#region System Readiness Validation
+Write-Information "`nPerforming system readiness check..." -InformationAction Continue
+try {
+    # Check if Test-SystemReadiness function is available
+    if (Get-Command -Name 'Test-SystemReadiness' -ErrorAction SilentlyContinue) {
+        $systemReady = Test-SystemReadiness
+        
+        if (-not $systemReady) {
+            Write-Warning "System requirements not fully met. Continuing with caution..."
+            Write-Information "Press Ctrl+C within 10 seconds to abort, or wait to continue..." -InformationAction Continue
+            Start-Sleep -Seconds 10
+        }
+    }
+    else {
+        Write-Information "   System readiness check not available (continuing without validation)" -InformationAction Continue
+    }
+}
+catch {
+    Write-Warning "System readiness check failed: $($_.Exception.Message)"
+    Write-Information "   Continuing with maintenance execution..." -InformationAction Continue
+}
+#endregion
+
 # Ensure Write-LogEntry is available after module loading (modules may have overridden it)
 if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     function global:Write-LogEntry {
@@ -618,6 +625,41 @@ try {
         catch {
             throw "Failed to load logging configuration: $($_.Exception.Message)"
         }
+        
+        # v3.1: Comprehensive schema validation beyond JSON syntax
+        Write-Information "  Validating configuration schemas..." -InformationAction Continue
+        try {
+            if (Get-Command -Name 'Test-ConfigurationSchema' -ErrorAction SilentlyContinue) {
+                # Validate main configuration
+                $mainConfigValid = Test-ConfigurationSchema -ConfigObject $MainConfig -ConfigName 'main-config.json'
+                if ($mainConfigValid) {
+                    Write-Information "     main-config.json schema validated" -InformationAction Continue
+                }
+                else {
+                    Write-Warning "     main-config.json has schema issues (see warnings above)"
+                }
+                
+                # Validate logging configuration
+                $loggingConfigValid = Test-ConfigurationSchema -ConfigObject $LoggingConfig -ConfigName 'logging-config.json'
+                if ($loggingConfigValid) {
+                    Write-Information "     logging-config.json schema validated" -InformationAction Continue
+                }
+                else {
+                    Write-Warning "     logging-config.json has schema issues (see warnings above)"
+                }
+                
+                # Optionally validate data lists if needed
+                # (bloatware-list.json, essential-apps.json validated on first use)
+            }
+            else {
+                Write-Information "     Schema validation function not available (using basic validation only)" -InformationAction Continue
+            }
+        }
+        catch {
+            Write-Warning "  Configuration schema validation error: $($_.Exception.Message)"
+            Write-Information "  ℹ Continuing with basic validation - some configuration issues may cause runtime errors" -InformationAction Continue
+        }
+        
         # Initialize file organization system first (required by logging system)
         try {
             $fileOrgResult = Initialize-SessionFileOrganization -SessionRoot $TempRoot -ErrorAction Stop
@@ -1029,6 +1071,32 @@ try {
         }
     }
     #endregion
+    
+    #region Maintenance Log Organization (v3.1 - Early organization)
+    # NEW v3.1: Organize bootstrap maintenance.log to temp_files/logs/ early
+    # This ensures logs are properly organized even if execution fails later
+    Write-Information "`nOrganizing maintenance logs..." -InformationAction Continue
+    
+    if (Get-Command -Name 'Move-MaintenanceLogToOrganized' -ErrorAction SilentlyContinue) {
+        try {
+            $logOrganized = Move-MaintenanceLogToOrganized
+            if ($logOrganized) {
+                Write-Information "   [OK] Maintenance log organized successfully" -InformationAction Continue
+            }
+            else {
+                Write-Information "   [INFO] Maintenance log already organized or not found at root" -InformationAction Continue
+            }
+        }
+        catch {
+            Write-Warning "   Failed to organize maintenance log: $($_.Exception.Message)"
+            Write-Information "   [INFO] Continuing execution (non-critical)" -InformationAction Continue
+        }
+    }
+    else {
+        Write-Information "   [INFO] Log organization function not available (continuing)" -InformationAction Continue
+    }
+    #endregion
+    
     #region Task Definitions
     Write-Information "`nRegistering maintenance tasks..." -InformationAction Continue
     # v3.0 Architecture: Define standardized maintenance tasks using Invoke-[ModuleName] pattern
@@ -1234,7 +1302,7 @@ try {
                 TaskCategory = $task.Category
                 Function     = $task.Function
                 DryRun       = $ExecutionParams.DryRun
-                Architecture = 'v3.0'
+                Architecture = 'v3.1'
             }
             # Verify function is available (already checked during module loading)
             if (-not (Get-Command -Name $task.Function -ErrorAction SilentlyContinue)) {
@@ -1375,7 +1443,7 @@ try {
         }
     }
     #endregion
-    #region Log Collection (v3.0 Architecture)
+    #region Log Collection (v3.1 Architecture)
     # Collect comprehensive logs from Type1 audit results and Type2 execution logs
     Write-Information "" -InformationAction Continue
     Write-Information " Collecting comprehensive log data..." -InformationAction Continue
@@ -1389,7 +1457,7 @@ try {
         Write-Information "   Collected comprehensive log data" -InformationAction Continue
     }
     #endregion
-    #region Report Generation (v3.0 Architecture - Preserved)
+    #region Report Generation (v3.1 Architecture - Enhanced)
     # Generate comprehensive reports using v3.0 split architecture: LogProcessor → ReportGenerator
     Write-Information "" -InformationAction Continue
     Write-Information " Generating maintenance reports..." -InformationAction Continue
@@ -1495,6 +1563,28 @@ try {
         Write-Warning "   Error during report generation: $($_.Exception.Message)"
     }
     #endregion
+
+    #region Report Index Generation
+    Write-Information "" -InformationAction Continue
+    Write-Information " Generating report index..." -InformationAction Continue
+    try {
+        $reportsDir = Join-Path $Global:ProjectPaths.TempFiles "reports"
+        if ((Get-Command -Name 'New-ReportIndex' -ErrorAction SilentlyContinue) -and (Test-Path $reportsDir)) {
+            $indexResult = New-ReportIndex -ReportsPath $reportsDir
+            if ($indexResult.Success) {
+                Write-Information "  Report index generated: $($indexResult.IndexPath)" -InformationAction Continue
+                Write-Information "  Indexed $($indexResult.ReportCount) reports" -InformationAction Continue
+            }
+            else {
+                Write-Warning "  Failed to generate report index: $($indexResult.Errors -join '; ')"
+            }
+        }
+    }
+    catch {
+        Write-Warning "  Error generating report index: $($_.Exception.Message)"
+    }
+    #endregion
+
     #region Execution Summary
     Write-Information "" -InformationAction Continue
     Write-Information "" -InformationAction Continue

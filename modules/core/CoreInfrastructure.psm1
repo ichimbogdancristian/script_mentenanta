@@ -792,6 +792,253 @@ function Test-ConfigurationIntegrity {
     }
 }
 
+<#
+.SYNOPSIS
+    Helper function to get nested properties from objects using dot notation
+
+.DESCRIPTION
+    Retrieves nested property values from hashtables or PSCustomObjects using
+    dot notation paths (e.g., "execution.countdownSeconds")
+
+.PARAMETER Object
+    The object to query (hashtable or PSCustomObject)
+
+.PARAMETER PropertyPath
+    Dot-notation path to the property (e.g., "execution.countdownSeconds")
+
+.OUTPUTS
+    The property value, or $null if not found
+
+.EXAMPLE
+    $value = Get-NestedProperty -Object $config -PropertyPath "execution.countdownSeconds"
+#>
+function Get-NestedProperty {
+    [CmdletBinding()]
+    [OutputType([object])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Object,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$PropertyPath
+    )
+    
+    try {
+        $parts = $PropertyPath -split '\.'
+        $current = $Object
+        
+        foreach ($part in $parts) {
+            if ($null -eq $current) {
+                return $null
+            }
+            
+            if ($current -is [hashtable]) {
+                $current = $current[$part]
+            }
+            elseif ($current.PSObject.Properties[$part]) {
+                $current = $current.PSObject.Properties[$part].Value
+            }
+            else {
+                return $null
+            }
+        }
+        
+        return $current
+    }
+    catch {
+        Write-Verbose "Failed to get nested property '$PropertyPath': $($_.Exception.Message)"
+        return $null
+    }
+}
+
+<#
+.SYNOPSIS
+    Validates configuration against schema definitions
+
+.DESCRIPTION
+    v3.1: Comprehensive configuration schema validation beyond JSON syntax checking.
+    Validates required fields, data types, value ranges, and enumerations.
+
+.PARAMETER ConfigObject
+    The configuration object to validate (hashtable or PSCustomObject)
+
+.PARAMETER ConfigName
+    Name of the configuration file (e.g., "main-config.json")
+
+.PARAMETER ThrowOnError
+    If specified, throws an exception on validation failure instead of returning false
+
+.OUTPUTS
+    Boolean indicating validation success, or throws exception if ThrowOnError is set
+
+.EXAMPLE
+    $valid = Test-ConfigurationSchema -ConfigObject $config -ConfigName "main-config.json"
+    
+.EXAMPLE
+    Test-ConfigurationSchema -ConfigObject $config -ConfigName "main-config.json" -ThrowOnError
+#>
+function Test-ConfigurationSchema {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$ConfigObject,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigName,
+        
+        [switch]$ThrowOnError
+    )
+    
+    # Define configuration schemas (v3.1)
+    $schemas = @{
+        'main-config.json'    = @{
+            'execution.countdownSeconds'      = @{ Type = 'int'; Min = 5; Max = 300; Required = $true; Description = 'Menu countdown duration in seconds' }
+            'execution.defaultMode'           = @{ Type = 'string'; Enum = @('unattended', 'interactive', 'dryrun'); Required = $false; Description = 'Default execution mode' }
+            'execution.enableDryRun'          = @{ Type = 'bool'; Required = $false; Description = 'Enable dry-run mode by default' }
+            'modules.skipBloatwareRemoval'    = @{ Type = 'bool'; Required = $false; Description = 'Skip bloatware removal module' }
+            'modules.skipEssentialApps'       = @{ Type = 'bool'; Required = $false; Description = 'Skip essential apps module' }
+            'modules.skipWindowsUpdates'      = @{ Type = 'bool'; Required = $false; Description = 'Skip Windows updates module' }
+            'system.createSystemRestorePoint' = @{ Type = 'bool'; Required = $false; Description = 'Create restore point before changes' }
+            'system.maxLogSizeMB'             = @{ Type = 'int'; Min = 1; Max = 100; Required = $false; Description = 'Maximum log file size in MB' }
+            'reporting.enableHtmlReport'      = @{ Type = 'bool'; Required = $false; Description = 'Generate HTML reports' }
+            'paths.tempFolder'                = @{ Type = 'string'; Required = $false; Description = 'Temporary files directory' }
+        }
+        
+        'logging-config.json' = @{
+            'logging.level'        = @{ Type = 'string'; Enum = @('DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL'); Required = $false; Description = 'Default logging level' }
+            'logging.maxLogSizeKB' = @{ Type = 'int'; Min = 100; Max = 102400; Required = $false; Description = 'Maximum log size in KB' }
+        }
+        
+        'bloatware-list.json' = @{
+            '_type'        = 'object'
+            '_description' = 'Bloatware configuration with whitelist'
+            'bloatware'    = @{ Type = 'array'; Required = $false; Description = 'List of bloatware definitions' }
+            'whitelist'    = @{ Type = 'array'; Required = $false; Description = 'Apps to never remove' }
+        }
+        
+        'essential-apps.json' = @{
+            '_type'         = 'object'
+            '_description'  = 'Essential applications configuration'
+            'essentialApps' = @{ Type = 'array'; Required = $false; Description = 'List of essential applications' }
+        }
+    }
+    
+    # Get schema for this config
+    $schema = $schemas[$ConfigName]
+    if (-not $schema) {
+        Write-Verbose "No schema defined for configuration: $ConfigName (skipping validation)"
+        return $true
+    }
+    
+    $errors = @()
+    
+    try {
+        # Validate each field in the schema
+        foreach ($fieldPath in $schema.Keys) {
+            # Skip metadata fields
+            if ($fieldPath -like '_*') {
+                continue
+            }
+            
+            $fieldSchema = $schema[$fieldPath]
+            $value = Get-NestedProperty -Object $ConfigObject -PropertyPath $fieldPath
+            
+            # Check required fields
+            if ($fieldSchema.Required -and $null -eq $value) {
+                $errors += "Required field missing: $fieldPath ($($fieldSchema.Description))"
+                continue
+            }
+            
+            # Skip validation if field is optional and not present
+            if ($null -eq $value -and -not $fieldSchema.Required) {
+                continue
+            }
+            
+            # Type validation
+            $expectedType = $fieldSchema.Type
+            $actualValue = $value
+            
+            switch ($expectedType) {
+                'int' {
+                    if ($actualValue -isnot [int] -and $actualValue -isnot [int32] -and $actualValue -isnot [int64]) {
+                        try {
+                            $actualValue = [int]$actualValue
+                        }
+                        catch {
+                            $errors += "Field '$fieldPath' must be an integer (got: $($value.GetType().Name))"
+                            continue
+                        }
+                    }
+                    
+                    # Range validation
+                    if ($fieldSchema.Min -and $actualValue -lt $fieldSchema.Min) {
+                        $errors += "Field '$fieldPath' value $actualValue is below minimum $($fieldSchema.Min)"
+                    }
+                    if ($fieldSchema.Max -and $actualValue -gt $fieldSchema.Max) {
+                        $errors += "Field '$fieldPath' value $actualValue exceeds maximum $($fieldSchema.Max)"
+                    }
+                }
+                
+                'bool' {
+                    if ($actualValue -isnot [bool]) {
+                        $errors += "Field '$fieldPath' must be a boolean (got: $($value.GetType().Name))"
+                    }
+                }
+                
+                'string' {
+                    if ($actualValue -isnot [string]) {
+                        $errors += "Field '$fieldPath' must be a string (got: $($value.GetType().Name))"
+                        continue
+                    }
+                    
+                    # Enum validation
+                    if ($fieldSchema.Enum -and $actualValue -notin $fieldSchema.Enum) {
+                        $errors += "Field '$fieldPath' value '$actualValue' not in allowed values: $($fieldSchema.Enum -join ', ')"
+                    }
+                }
+                
+                'array' {
+                    if ($actualValue -isnot [array] -and $actualValue -isnot [System.Collections.IEnumerable]) {
+                        $errors += "Field '$fieldPath' must be an array (got: $($value.GetType().Name))"
+                    }
+                }
+                
+                'object' {
+                    if ($actualValue -isnot [hashtable] -and $actualValue -isnot [PSCustomObject]) {
+                        $errors += "Field '$fieldPath' must be an object (got: $($value.GetType().Name))"
+                    }
+                }
+            }
+        }
+        
+        # Report results
+        if ($errors.Count -gt 0) {
+            $errorMessage = "Configuration validation failed for $ConfigName`:`n  • " + ($errors -join "`n  • ")
+            
+            if ($ThrowOnError) {
+                throw $errorMessage
+            }
+            else {
+                Write-Warning $errorMessage
+                return $false
+            }
+        }
+        
+        Write-Verbose "Configuration schema validation passed for: $ConfigName"
+        return $true
+    }
+    catch {
+        if ($ThrowOnError) {
+            throw
+        }
+        else {
+            Write-Warning "Configuration validation error for $ConfigName`: $($_.Exception.Message)"
+            return $false
+        }
+    }
+}
+
 #endregion Configuration Management System
 
 <#
@@ -857,6 +1104,57 @@ New-Alias -Name 'Get-UnifiedEssentialAppsList' -Value 'Get-EssentialAppsConfigur
 #endregion
 
 #region Logging System
+
+# Logging standards for unified format across all components
+$script:LoggingStandards = @{
+    TimestampFormat = 'yyyy-MM-ddTHH:mm:ss.fffK'  # ISO 8601 with timezone
+    EntryFormat     = '[{0}] [{1}] [{2}] {3}'      # [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
+    Levels          = @('DEBUG', 'INFO', 'WARNING', 'SUCCESS', 'ERROR')
+    Components      = @('LAUNCHER', 'ORCHESTRATOR', 'CORE', 'TYPE1', 'TYPE2', 'REPORTER')
+}
+
+<#
+.SYNOPSIS
+    Creates a standardized log entry string
+
+.DESCRIPTION
+    Generates log entry following unified format: [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
+    Uses ISO 8601 timestamp format for consistency across all system components
+
+.PARAMETER Level
+    Log level (DEBUG, INFO, WARNING, SUCCESS, ERROR)
+
+.PARAMETER Component
+    Component identifier (e.g., LAUNCHER, ORCHESTRATOR, module name)
+
+.PARAMETER Message
+    Log message content
+
+.OUTPUTS
+    Formatted log entry string
+
+.EXAMPLE
+    New-StandardLogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message 'Starting maintenance'
+    # Returns: [2025-10-27T14:30:15.123+00:00] [INFO] [ORCHESTRATOR] Starting maintenance
+#>
+function New-StandardLogEntry {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('DEBUG', 'INFO', 'WARNING', 'SUCCESS', 'ERROR')]
+        [string]$Level,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Component,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+    
+    $timestamp = Get-Date -Format $script:LoggingStandards.TimestampFormat
+    return $script:LoggingStandards.EntryFormat -f $timestamp, $Level, $Component, $Message
+}
 
 <#
 .SYNOPSIS
@@ -941,8 +1239,8 @@ function Write-ModuleLogEntry {
         [hashtable]$Data = @{}
     )
     
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $logEntry = "[$timestamp] [$Level] [$Component] $Message"
+    # Use standardized log entry format
+    $logEntry = New-StandardLogEntry -Level $Level -Component $Component -Message $Message
     
     if ($Data.Count -gt 0) {
         $logEntry += " | Data: $(($Data.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ')"
@@ -1255,30 +1553,7 @@ function Write-OperationSkipped {
     }
 }
 
-#region Old/Deprecated
-
-<#
-.SYNOPSIS
-    Write operation failure message
-
-.DESCRIPTION
-    Logs failed operation
-#>
-function Write-OperationFailure-Old {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$OperationName,
-        
-        [Parameter(Mandatory = $false)]
-        [string]$Component = 'OPERATION',
-        
-        [Parameter(Mandatory = $false)]
-        [string]$ErrorMessage = ''
-    )
-    
-    Write-ModuleLogEntry -Level 'ERROR' -Component $Component -Message "Failed: $OperationName $ErrorMessage"
-}
+#region Logging Control
 
 <#
 .SYNOPSIS
@@ -1286,6 +1561,10 @@ function Write-OperationFailure-Old {
 
 .DESCRIPTION
     Controls how much detail is logged
+    
+.NOTES
+    DEPRECATED: Write-OperationFailure-Old removed in v3.1
+    Use Write-StructuredLogEntry with -Level 'ERROR' instead
 #>
 function Set-LoggingVerbosity {
     [CmdletBinding()]
@@ -1439,8 +1718,27 @@ function Test-TempFilesStructure {
 .DESCRIPTION
     Returns path for a session file
 #>
+<#
+.SYNOPSIS
+    Get session file path (DEPRECATED)
+
+.DESCRIPTION
+    DEPRECATED in v3.1: Use Get-SessionPath instead for better flexibility
+    This function redirects to Get-SessionPath for backward compatibility
+    
+.PARAMETER FileName
+    Name of the file
+    
+.PARAMETER Type
+    Type of directory (data, logs, reports, temp)
+    
+.NOTES
+    Deprecated: Use Get-SessionPath -Category $Type -FileName $FileName
+    Will be removed in v4.0
+#>
 function Get-SessionFilePath {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingDeprecatedCommand', '')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$FileName,
@@ -1450,7 +1748,8 @@ function Get-SessionFilePath {
         [string]$Type = 'temp'
     )
     
-    return Join-Path $env:MAINTENANCE_TEMP_ROOT "$Type\$FileName"
+    Write-Warning "Get-SessionFilePath is deprecated. Use Get-SessionPath -Category '$Type' -FileName '$FileName' instead."
+    return Get-SessionPath -Category $Type -FileName $FileName
 }
 
 <#
@@ -2015,23 +2314,23 @@ function Write-StructuredLogEntry {
         [hashtable]$Metadata = @{}
     )
     
-    # Build log message
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $logMessage = "[$timestamp] [$Level] [$Component]"
+    # Build enhanced message with operation details
+    $enhancedMessage = $Message
     
     if ($Operation) {
-        $logMessage += " [$Operation]"
+        $enhancedMessage = "[$Operation] $enhancedMessage"
     }
     
     if ($Target) {
-        $logMessage += " TARGET: $Target"
+        $enhancedMessage += " | Target: $Target"
     }
-    
-    $logMessage += " $Message"
     
     if ($Result) {
-        $logMessage += " | Result: $Result"
+        $enhancedMessage += " | Result: $Result"
     }
+    
+    # Use standardized log entry format
+    $logMessage = New-StandardLogEntry -Level $Level -Component $Component -Message $enhancedMessage
     
     # Write to console
     Write-Information $logMessage -InformationAction Continue
@@ -2065,9 +2364,10 @@ function Write-StructuredLogEntry {
                 New-Item -Path $jsonLogDir -ItemType Directory -Force | Out-Null
             }
             
-            # Create JSON entry
+            # Create JSON entry with ISO 8601 timestamp
+            $isoTimestamp = Get-Date -Format $script:LoggingStandards.TimestampFormat
             $jsonEntry = @{
-                timestamp  = $timestamp
+                timestamp  = $isoTimestamp
                 level      = $Level
                 component  = $Component
                 message    = $Message
@@ -2075,7 +2375,7 @@ function Write-StructuredLogEntry {
                 target     = $Target
                 result     = $Result
                 metadata   = $Metadata
-                entry_time = Get-Date -Format 'o'
+                entry_time = Get-Date -Format 'o'  # Keep for backward compatibility
             }
             
             # Append to JSON structured log
@@ -2185,13 +2485,736 @@ function Compare-DetectedVsConfig {
 
 #endregion
 
+#region System Requirements Validation
+
+<#
+.SYNOPSIS
+    Tests system requirements for maintenance execution
+
+.DESCRIPTION
+    Validates that the system meets all prerequisites for safe maintenance execution:
+    - PowerShell 7+ installed
+    - Administrator privileges
+    - Sufficient disk space (minimum 1GB free)
+    - Adequate available memory (minimum 2GB)
+    - System not in pending reboot state
+
+.OUTPUTS
+    [hashtable] Requirements check results with detailed status
+    
+.EXAMPLE
+    $requirements = Test-SystemRequirements
+    if (-not $requirements.AllMet) {
+        Write-Host "System requirements not met:"
+        $requirements.Failed | ForEach-Object { Write-Host "  - $_" }
+    }
+#>
+function Test-SystemRequirements {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+    
+    $results = @{
+        AllMet   = $true
+        Checks   = @()
+        Failed   = @()
+        Warnings = @()
+    }
+    
+    # Check 1: PowerShell Version
+    $psCheck = @{
+        Name     = 'PowerShell Version'
+        Required = '7.0'
+        Actual   = $PSVersionTable.PSVersion.ToString()
+        Met      = $PSVersionTable.PSVersion.Major -ge 7
+    }
+    $results.Checks += $psCheck
+    if (-not $psCheck.Met) {
+        $results.AllMet = $false
+        $results.Failed += "PowerShell 7+ required (found $($psCheck.Actual))"
+    }
+    
+    # Check 2: Administrator Privileges
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $adminCheck = @{
+        Name     = 'Administrator Privileges'
+        Required = 'Administrator'
+        Actual   = if ($isAdmin) { 'Administrator' } else { 'User' }
+        Met      = $isAdmin
+    }
+    $results.Checks += $adminCheck
+    if (-not $adminCheck.Met) {
+        $results.AllMet = $false
+        $results.Failed += "Administrator privileges required"
+    }
+    
+    # Check 3: Disk Space (minimum 1GB free on system drive)
+    try {
+        $systemDrive = $env:SystemDrive
+        $drive = Get-PSDrive -Name $systemDrive.TrimEnd(':') -PSProvider FileSystem -ErrorAction Stop
+        $freeSpaceGB = [math]::Round($drive.Free / 1GB, 2)
+        $minSpaceGB = 1
+        
+        $diskCheck = @{
+            Name     = 'Disk Space'
+            Required = "$minSpaceGB GB free"
+            Actual   = "$freeSpaceGB GB free"
+            Met      = $freeSpaceGB -ge $minSpaceGB
+        }
+        $results.Checks += $diskCheck
+        
+        if (-not $diskCheck.Met) {
+            $results.AllMet = $false
+            $results.Failed += "Insufficient disk space (need $minSpaceGB GB, have $freeSpaceGB GB)"
+        }
+        elseif ($freeSpaceGB -lt 5) {
+            $results.Warnings += "Low disk space warning: $freeSpaceGB GB free"
+        }
+    }
+    catch {
+        $results.Warnings += "Could not check disk space: $($_.Exception.Message)"
+    }
+    
+    # Check 4: Available Memory (minimum 2GB free)
+    try {
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        $freeMemoryMB = [math]::Round($os.FreePhysicalMemory / 1KB, 0)
+        $freeMemoryGB = [math]::Round($freeMemoryMB / 1024, 2)
+        $minMemoryGB = 2
+        
+        $memoryCheck = @{
+            Name     = 'Available Memory'
+            Required = "$minMemoryGB GB free"
+            Actual   = "$freeMemoryGB GB free"
+            Met      = $freeMemoryGB -ge $minMemoryGB
+        }
+        $results.Checks += $memoryCheck
+        
+        if (-not $memoryCheck.Met) {
+            $results.AllMet = $false
+            $results.Failed += "Insufficient available memory (need $minMemoryGB GB, have $freeMemoryGB GB)"
+        }
+    }
+    catch {
+        $results.Warnings += "Could not check available memory: $($_.Exception.Message)"
+    }
+    
+    # Check 5: Pending Reboot
+    try {
+        $rebootPending = $false
+        
+        # Check Component Based Servicing
+        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') {
+            $rebootPending = $true
+        }
+        
+        # Check Windows Update
+        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') {
+            $rebootPending = $true
+        }
+        
+        # Check Pending File Rename Operations
+        $pendingFileRename = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue
+        if ($pendingFileRename) {
+            $rebootPending = $true
+        }
+        
+        $rebootCheck = @{
+            Name     = 'System Reboot Status'
+            Required = 'No pending reboot'
+            Actual   = if ($rebootPending) { 'Reboot pending' } else { 'No reboot pending' }
+            Met      = -not $rebootPending
+        }
+        $results.Checks += $rebootCheck
+        
+        if ($rebootPending) {
+            $results.Warnings += "System has pending reboot - some operations may fail"
+        }
+    }
+    catch {
+        $results.Warnings += "Could not check reboot status: $($_.Exception.Message)"
+    }
+    
+    # Check 6: System Protection Enabled (for restore points)
+    try {
+        $systemProtection = Get-ComputerRestorePoint -ErrorAction Stop | Select-Object -First 1
+        $spEnabled = $null -ne $systemProtection
+        
+        $spCheck = @{
+            Name     = 'System Protection'
+            Required = 'Enabled'
+            Actual   = if ($spEnabled) { 'Enabled' } else { 'Disabled' }
+            Met      = $spEnabled
+        }
+        $results.Checks += $spCheck
+        
+        if (-not $spEnabled) {
+            $results.Warnings += "System Protection disabled - cannot create restore points"
+        }
+    }
+    catch {
+        $results.Warnings += "Could not verify System Protection status: $($_.Exception.Message)"
+    }
+    
+    return $results
+}
+
+<#
+.SYNOPSIS
+    Displays system readiness check results
+
+.DESCRIPTION
+    Performs comprehensive system requirements validation and displays results
+    in a user-friendly format. Returns exit code indicating readiness.
+
+.PARAMETER StopOnFailure
+    If specified, throws an error and stops execution if requirements not met
+
+.OUTPUTS
+    [bool] True if all requirements met, False otherwise
+    
+.EXAMPLE
+    if (-not (Test-SystemReadiness)) {
+        Write-Host "System not ready for maintenance"
+        exit 1
+    }
+    
+.EXAMPLE
+    Test-SystemReadiness -StopOnFailure
+    # Throws error if requirements not met
+#>
+function Test-SystemReadiness {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [switch]$StopOnFailure
+    )
+    
+    Write-Host "`n=== System Readiness Check ===" -ForegroundColor Cyan
+    Write-Host "Validating system requirements for maintenance execution...`n"
+    
+    $requirements = Test-SystemRequirements
+    
+    # Display all checks
+    foreach ($check in $requirements.Checks) {
+        $status = if ($check.Met) { 
+            "[OK]" 
+        }
+        else { 
+            "[FAIL]" 
+        }
+        $color = if ($check.Met) { 'Green' } else { 'Red' }
+        
+        Write-Host "$status $($check.Name): " -ForegroundColor $color -NoNewline
+        Write-Host "$($check.Actual)" -ForegroundColor Gray
+    }
+    
+    # Display warnings
+    if ($requirements.Warnings.Count -gt 0) {
+        Write-Host "`nWarnings:" -ForegroundColor Yellow
+        foreach ($warning in $requirements.Warnings) {
+            Write-Host "  ⚠ $warning" -ForegroundColor Yellow
+        }
+    }
+    
+    # Display results
+    Write-Host ""
+    if ($requirements.AllMet) {
+        Write-Host "✓ System ready for maintenance execution" -ForegroundColor Green
+        Write-Host ""
+        return $true
+    }
+    else {
+        Write-Host "✗ System requirements not met:" -ForegroundColor Red
+        foreach ($failure in $requirements.Failed) {
+            Write-Host "  • $failure" -ForegroundColor Red
+        }
+        Write-Host ""
+        
+        if ($StopOnFailure) {
+            throw "System requirements validation failed. Please resolve the issues above before continuing."
+        }
+        
+        return $false
+    }
+}
+
+#endregion
+
+#region Operation Timeout Mechanism
+
+<#
+.SYNOPSIS
+    Executes a PowerShell script block with a configurable timeout
+
+.DESCRIPTION
+    Runs code in an isolated runspace with a specified timeout. If execution
+    exceeds the timeout, the runspace is stopped and an error is raised.
+    Useful for preventing hung tasks from blocking maintenance execution.
+
+.PARAMETER ScriptBlock
+    The code block to execute
+
+.PARAMETER TimeoutSeconds
+    Maximum execution time in seconds (default: 600 = 10 minutes)
+
+.PARAMETER ArgumentList
+    Arguments to pass to the script block
+
+.OUTPUTS
+    [object] Output from the script block, or $null if timeout occurred
+
+.EXAMPLE
+    $result = Invoke-WithTimeout { Get-Process } -TimeoutSeconds 30
+    
+.EXAMPLE
+    $result = Invoke-WithTimeout { 
+        Start-Sleep -Seconds 60
+        return "Done"
+    } -TimeoutSeconds 10
+    # This will timeout after 10 seconds
+#>    
+function Invoke-WithTimeout {
+    [CmdletBinding()]
+    [OutputType([object])]    
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$ScriptBlock,
+        
+        [Parameter(Mandatory = $false)]
+        [int]$TimeoutSeconds = 600,
+        
+        [Parameter(Mandatory = $false)]
+        [object[]]$ArgumentList = @()
+    )
+    
+    # Create a new runspace
+    $runspace = [runspacefactory]::CreateRunspace()
+    $runspace.Open()
+    
+    # Create PowerShell instance in the runspace
+    $ps = [powershell]::Create()
+    $ps.Runspace = $runspace
+    
+    # Add the script block and arguments
+    $ps.AddScript($ScriptBlock) | Out-Null
+    foreach ($arg in $ArgumentList) {
+        $ps.AddArgument($arg) | Out-Null
+    }
+    
+    # Start asynchronous execution
+    $handle = $ps.BeginInvoke()
+    
+    # Wait for completion or timeout
+    $completed = $handle.AsyncWaitHandle.WaitOne([timespan]::FromSeconds($TimeoutSeconds))
+    
+    if ($completed) {
+        # Task completed within timeout
+        try {
+            $result = $ps.EndInvoke($handle)
+            return $result
+        }
+        catch {
+            Write-Error "Error during script execution: $($_.Exception.Message)"
+            return $null
+        }
+    }
+    else {
+        # Timeout occurred
+        $ps.Stop()
+        $ps.Dispose()
+        $runspace.Close()
+        $runspace.Dispose()
+        
+        throw [System.TimeoutException]"Script execution exceeded timeout of $TimeoutSeconds seconds"
+    }
+    
+    # Cleanup
+    $ps.Dispose()
+    $runspace.Close()
+    $runspace.Dispose()
+}
+
+<#
+.SYNOPSIS
+    Wraps a module function call with timeout protection
+
+.DESCRIPTION
+    Executes a Type2 module's Invoke-* function with automatic timeout handling.
+    Logs timeout events and handles exceptions gracefully.
+
+.PARAMETER ModuleName
+    Name of the module to execute (e.g., 'BloatwareRemoval')
+
+.PARAMETER Config
+    Configuration hashtable to pass to the module
+
+.PARAMETER DryRun
+    Whether to execute in dry-run mode
+
+.PARAMETER TimeoutSeconds
+    Maximum execution time (uses config default if not specified)
+
+.OUTPUTS
+    [hashtable] Module execution result with timeout status
+
+.EXAMPLE
+    $result = Invoke-ModuleWithTimeout -ModuleName 'BloatwareRemoval' -Config $config -TimeoutSeconds 300
+#>
+function Invoke-ModuleWithTimeout {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ModuleName,
+        
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Config,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$DryRun,
+        
+        [Parameter(Mandatory = $false)]
+        [int]$TimeoutSeconds = 600
+    )
+    
+    $functionName = "Invoke-$ModuleName"
+    $startTime = Get-Date
+    
+    # Verify function exists
+    if (-not (Get-Command -Name $functionName -ErrorAction SilentlyContinue)) {
+        return @{
+            Success       = $false
+            ModuleName    = $ModuleName
+            Errors        = @("Function $functionName not found")
+            ExecutionTime = 0
+            TimedOut      = $false
+        }
+    }
+    
+    try {
+        # Execute with timeout
+        $scriptBlock = if ($DryRun) {
+            { & $functionName -Config $args[0] -DryRun }
+        }
+        else {
+            { & $functionName -Config $args[0] }
+        }
+        
+        $result = Invoke-WithTimeout -ScriptBlock $scriptBlock -TimeoutSeconds $TimeoutSeconds -ArgumentList @($Config)
+        
+        # Ensure result is a hashtable
+        if ($result -is [hashtable]) {
+            $result.ExecutionTime = ([DateTime]::Now - $startTime).TotalSeconds
+            $result.TimedOut = $false
+            return $result
+        }
+        else {
+            return @{
+                Success       = $true
+                ModuleName    = $ModuleName
+                ExecutionTime = ([DateTime]::Now - $startTime).TotalSeconds
+                TimedOut      = $false
+                Output        = $result
+            }
+        }
+    }
+    catch [System.TimeoutException] {
+        $executionTime = ([DateTime]::Now - $startTime).TotalSeconds
+        Write-LogEntry -Level 'ERROR' -Component $ModuleName -Message "Module execution timeout after $executionTime seconds"
+        
+        return @{
+            Success       = $false
+            ModuleName    = $ModuleName
+            Errors        = @("Execution timeout after $TimeoutSeconds seconds")
+            ExecutionTime = $executionTime
+            TimedOut      = $true
+        }
+    }
+    catch {
+        $executionTime = ([DateTime]::Now - $startTime).TotalSeconds
+        Write-LogEntry -Level 'ERROR' -Component $ModuleName -Message "Module execution failed: $($_.Exception.Message)"
+        
+        return @{
+            Success       = $false
+            ModuleName    = $ModuleName
+            Errors        = @($_.Exception.Message)
+            ExecutionTime = $executionTime
+            TimedOut      = $false
+        }
+    }
+}
+
+#endregion
+
+#region Change Tracking & Rollback Mechanism
+
+<#
+.SYNOPSIS
+    Tracks system changes for potential rollback
+
+.DESCRIPTION
+    Internal script variable that maintains a log of all system changes
+    performed during execution. Used by Undo-AllChanges to revert changes
+    if needed. Each entry contains: ChangeType, Target, Description, UndoCommand, Timestamp
+#>
+$script:ChangeLog = @()
+
+<#
+.SYNOPSIS
+    Registers a system change for potential rollback
+
+.DESCRIPTION
+    Records a change that was made to the system. The change is added to the
+    internal ChangeLog and can later be undone using Undo-AllChanges.
+    Multiple undo commands can be provided for complex operations.
+
+.PARAMETER ChangeType
+    Type of change: 'FileOperation', 'RegistryOperation', 'ServiceOperation', 'AppOperation', 'ConfigOperation'
+
+.PARAMETER Target
+    What was changed (e.g., file path, registry key, app name, service name)
+
+.PARAMETER Description
+    Human-readable description of the change
+
+.PARAMETER UndoCommands
+    String array of PowerShell commands to execute to undo this change.
+    Commands will be executed in order when rollback is requested.
+
+.EXAMPLE
+    Register-SystemChange -ChangeType 'FileOperation' -Target 'C:\Temp\config.json' `
+        -Description 'Modified configuration file' `
+        -UndoCommands @('Copy-Item -Path "C:\Temp\config.json.bak" -Destination "C:\Temp\config.json" -Force')
+
+.EXAMPLE
+    Register-SystemChange -ChangeType 'AppOperation' -Target 'Bloatware.App' `
+        -Description 'Removed bloatware application' `
+        -UndoCommands @('winget install --id Bloatware.App --accept-package-agreements --accept-source-agreements')
+
+.OUTPUTS
+    [void] Change is recorded in internal ChangeLog
+#>
+function Register-SystemChange {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('FileOperation', 'RegistryOperation', 'ServiceOperation', 'AppOperation', 'ConfigOperation')]
+        [string]$ChangeType,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Target,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$Description,
+        
+        [Parameter(Mandatory = $true)]
+        [string[]]$UndoCommands
+    )
+    
+    $changeEntry = @{
+        ChangeType   = $ChangeType
+        Target       = $Target
+        Description  = $Description
+        UndoCommands = $UndoCommands
+        Timestamp    = [DateTime]::UtcNow.ToString('o')
+        SessionId    = $env:MAINTENANCE_SESSION_ID
+    }
+    
+    $script:ChangeLog += $changeEntry
+    
+    Write-LogEntry -Level 'DEBUG' -Component 'ChangeTracking' `
+        -Message "Registered $ChangeType`: $Target - $Description" `
+        -Data @{UndoCommandCount = $UndoCommands.Count }
+}
+
+<#
+.SYNOPSIS
+    Undoes all recorded system changes in reverse order
+
+.DESCRIPTION
+    Executes undo commands for all changes recorded during this session,
+    in reverse chronological order (LIFO - Last In, First Out). This helps
+    restore the system to a known good state if operations fail partway through.
+    
+    Changes are only undone for the current session (matching $env:MAINTENANCE_SESSION_ID).
+
+.PARAMETER ConfirmPrompt
+    If $true, displays confirmation dialog before rolling back each change.
+    Allows user to skip specific changes if desired.
+
+.PARAMETER StopOnError
+    If $true, stops rollback if any undo command fails.
+    If $false, continues rolling back remaining changes despite errors.
+
+.OUTPUTS
+    [hashtable] Results of rollback operation:
+    - Success: $true if all rollbacks succeeded
+    - RolledBackCount: Number of changes successfully undone
+    - FailedCount: Number of changes that failed to rollback
+    - Errors: Array of error messages
+    - Details: Array of rollback operation details
+
+.EXAMPLE
+    $result = Undo-AllChanges
+    if ($result.Success) { Write-Host "All changes rolled back successfully" }
+
+.EXAMPLE
+    $result = Undo-AllChanges -ConfirmPrompt -StopOnError
+    # Prompts user before each rollback, stops on first error
+#>
+function Undo-AllChanges {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [switch]$ConfirmPrompt,
+        [switch]$StopOnError
+    )
+    
+    $result = @{
+        Success         = $true
+        RolledBackCount = 0
+        FailedCount     = 0
+        Errors          = @()
+        Details         = @()
+    }
+    
+    if ($script:ChangeLog.Count -eq 0) {
+        Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' -Message "No changes recorded for rollback"
+        return $result
+    }
+    
+    Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' `
+        -Message "Beginning rollback of $($script:ChangeLog.Count) changes" `
+        -Data @{ReverseOrder = $true }
+    
+    # Process changes in reverse order (LIFO)
+    $reversedLog = @($script:ChangeLog) | Where-Object { $_.SessionId -eq $env:MAINTENANCE_SESSION_ID } | Sort-Object -Descending { [DateTime]::Parse($_.Timestamp) }
+    
+    foreach ($change in $reversedLog) {
+        $changeDescription = "$($change.ChangeType): $($change.Target) - $($change.Description)"
+        
+        if ($ConfirmPrompt) {
+            $confirmation = Read-Host "Undo $changeDescription`? [Y/n]"
+            if ($confirmation -eq 'n') {
+                Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' `
+                    -Message "Skipped rollback for: $changeDescription"
+                $result.Details += "SKIPPED: $changeDescription"
+                continue
+            }
+        }
+        
+        Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' `
+            -Message "Rolling back: $changeDescription" `
+            -Data @{UndoCommandCount = $change.UndoCommands.Count }
+        
+        try {
+            foreach ($undoCommand in $change.UndoCommands) {
+                Write-LogEntry -Level 'DEBUG' -Component 'ChangeTracking' `
+                    -Message "Executing undo command" -Data @{Command = $undoCommand }
+                
+                # Execute undo command in current scope
+                Invoke-Expression -Command $undoCommand -ErrorAction Stop
+            }
+            
+            $result.RolledBackCount += 1
+            $result.Details += "SUCCESS: $changeDescription"
+            Write-LogEntry -Level 'SUCCESS' -Component 'ChangeTracking' `
+                -Message "Successfully rolled back: $changeDescription"
+        }
+        catch {
+            $errorMsg = "Failed to rollback $changeDescription`:`n$($_.Exception.Message)"
+            $result.FailedCount += 1
+            $result.Errors += $errorMsg
+            $result.Details += "FAILED: $changeDescription - $($_.Exception.Message)"
+            
+            Write-LogEntry -Level 'ERROR' -Component 'ChangeTracking' `
+                -Message "Failed to rollback: $changeDescription" `
+                -Data @{Error = $_.Exception.Message }
+            
+            if ($StopOnError) {
+                $result.Success = $false
+                break
+            }
+        }
+    }
+    
+    # Update overall success status
+    if ($result.FailedCount -gt 0) {
+        $result.Success = $false
+    }
+    
+    Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' `
+        -Message "Rollback complete: $($result.RolledBackCount) succeeded, $($result.FailedCount) failed" `
+        -Data $result
+    
+    return $result
+}
+
+<#
+.SYNOPSIS
+    Clears the recorded change log
+
+.DESCRIPTION
+    Removes all entries from the change log. Typically called after successful
+    operations or after rollback completes.
+
+.EXAMPLE
+    Clear-ChangeLog
+#>
+function Clear-ChangeLog {
+    [CmdletBinding()]
+    param()
+    
+    $count = $script:ChangeLog.Count
+    $script:ChangeLog = @()
+    
+    Write-LogEntry -Level 'DEBUG' -Component 'ChangeTracking' `
+        -Message "Cleared change log" -Data @{ClearedEntries = $count }
+}
+
+<#
+.SYNOPSIS
+    Gets the current change log
+
+.DESCRIPTION
+    Returns all changes recorded for the current session for inspection or reporting.
+
+.PARAMETER SessionOnly
+    If $true, only returns changes from current session.
+    If $false, returns all recorded changes.
+
+.OUTPUTS
+    [array] Array of change entries
+
+.EXAMPLE
+    $changes = Get-ChangeLog
+    $changes | Format-Table ChangeType, Target, Timestamp
+#>
+function Get-ChangeLog {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param(
+        [switch]$SessionOnly
+    )
+    
+    if ($SessionOnly) {
+        return @($script:ChangeLog | Where-Object { $_.SessionId -eq $env:MAINTENANCE_SESSION_ID })
+    }
+    else {
+        return @($script:ChangeLog)
+    }
+}
+
+#endregion
+
 #region Module Exports
 
 Export-ModuleMember -Function @(
     'Initialize-GlobalPathDiscovery', 'Get-MaintenancePaths', 'Get-MaintenancePath', 'Test-MaintenancePathsIntegrity',
     'Initialize-ConfigurationSystem', 'Get-ConfigFilePath', 'Get-MainConfiguration', 'Get-LoggingConfiguration',
     'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-ReportTemplatesConfiguration',
-    'Get-CachedConfiguration', 'Test-ConfigurationIntegrity',
+    'Get-CachedConfiguration', 'Test-ConfigurationIntegrity', 'Test-ConfigurationSchema', 'Get-NestedProperty',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
     'Write-DetectionLog',
     'Assert-AdminPrivilege',
@@ -2200,7 +3223,11 @@ Export-ModuleMember -Function @(
     'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',
     'Initialize-MaintenanceInfrastructure', 'Get-InfrastructureStatus',
     'Get-AuditResultsPath', 'Save-DiffResults',
-    'New-ModuleExecutionResult', 'Write-StructuredLogEntry', 'Compare-DetectedVsConfig'
+    'New-ModuleExecutionResult', 'Write-StructuredLogEntry', 'Compare-DetectedVsConfig',
+    'New-StandardLogEntry',
+    'Test-SystemRequirements', 'Test-SystemReadiness',
+    'Invoke-WithTimeout', 'Invoke-ModuleWithTimeout',
+    'Register-SystemChange', 'Undo-AllChanges', 'Clear-ChangeLog', 'Get-ChangeLog'
 ) -Alias @('Initialize-ConfigSystem', 'Get-MainConfig', 'Get-BloatwareList', 'Get-UnifiedEssentialAppsList', 'Write-LogEntry')
 
 #endregion

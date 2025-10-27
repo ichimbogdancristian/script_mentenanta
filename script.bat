@@ -14,15 +14,23 @@ REM Enhanced Logging System
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
 :LOG_MESSAGE
-REM Simple time format: HH:MM:SS
-SET "LOG_TIMESTAMP=%TIME:~0,8%"
+REM ISO 8601 timestamp format for consistency with PowerShell modules
+REM Format: YYYY-MM-DDTHH:MM:SS+TZ (simplified for batch - no milliseconds)
+FOR /F "tokens=1-4 delims=/. " %%a IN ("%DATE%") DO (
+    SET "LOG_DATE=%%d-%%b-%%c"
+)
+FOR /F "tokens=1-3 delims=:. " %%a IN ("%TIME%") DO (
+    SET "LOG_TIME=%%a:%%b:%%c"
+)
+SET "LOG_TIMESTAMP=%LOG_DATE%T%LOG_TIME%"
+
 SET "LEVEL=%~2"
 IF "%LEVEL%"=="" SET "LEVEL=INFO"
 SET "COMPONENT=%~3"
 IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 
-REM Format: [HH:MM:SS] [LEVEL] MESSAGE
-SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] %~1"
+REM Unified format: [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
+SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
 ECHO %LOG_ENTRY%
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
@@ -60,7 +68,7 @@ SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 
-REM v3.0 FIX: Store original script directory BEFORE any updates (used for log file location)
+REM v3.1 FIX: Store original script directory BEFORE any updates (used for log file location)
 SET "ORIGINAL_SCRIPT_DIR=%SCRIPT_DIR%"
 CALL :LOG_MESSAGE "Original script directory stored: %ORIGINAL_SCRIPT_DIR%" "DEBUG" "LAUNCHER"
 
@@ -89,7 +97,7 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
 )
 
 REM Setup logging - Create maintenance.log at repository root initially
-REM v3.0 FIX: Use ORIGINAL_SCRIPT_DIR to ensure log is created in correct location
+REM v3.1 FIX: Use ORIGINAL_SCRIPT_DIR to ensure log is created in correct location
 SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
 
 REM FIX #1: Initialize the log file immediately on startup (don't wait for first LOG_MESSAGE call)
@@ -1421,6 +1429,30 @@ REM ----------------------------------------------------------------------------
 REM Post-Execution Cleanup and Reporting
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "PowerShell orchestrator final execution completed with exit code: %FINAL_EXIT_CODE%" "INFO" "LAUNCHER"
+
+REM v3.1: Ensure bootstrap maintenance.log is organized to temp_files/logs/
+REM This is a safety fallback in case PowerShell organization failed
+SET "BOOTSTRAP_LOG=%ORIGINAL_SCRIPT_DIR%maintenance.log"
+SET "ORGANIZED_LOG=%WORKING_DIR%temp_files\logs\maintenance.log"
+
+IF EXIST "%BOOTSTRAP_LOG%" (
+    IF EXIST "%ORGANIZED_LOG%" (
+        REM Log already organized by PowerShell, append bootstrap content and delete source
+        CALL :LOG_MESSAGE "Appending remaining bootstrap logs to organized location" "DEBUG" "LAUNCHER"
+        TYPE "%BOOTSTRAP_LOG%" >> "%ORGANIZED_LOG%" 2>nul
+        DEL /Q "%BOOTSTRAP_LOG%" >nul 2>&1
+    ) ELSE (
+        REM Log not yet organized, move it now
+        CALL :LOG_MESSAGE "Organizing bootstrap maintenance.log to temp_files/logs/" "INFO" "LAUNCHER"
+        IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
+        MOVE /Y "%BOOTSTRAP_LOG%" "%ORGANIZED_LOG%" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Bootstrap log organized successfully" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to organize bootstrap log (non-critical)" "WARN" "LAUNCHER"
+        )
+    )
+)
 
 IF %FINAL_EXIT_CODE% EQU 0 (
     CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"
