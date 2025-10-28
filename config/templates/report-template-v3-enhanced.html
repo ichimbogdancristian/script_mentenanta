@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="Windows Maintenance Report - Comprehensive system analysis and optimization results">
+    <meta name="theme-color" content="#0078d4">
+    <title>⚙️ Windows Maintenance Report - {{GENERATION_TIME}}</title>
+    <link rel="stylesheet" href="report-styles-enhanced.css">
+    <style>
+        /* Critical inline CSS for above-the-fold content */
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color, #f5f5f5);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary-color, #0078d4);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-dark, #106ebe);
+        }
+        
+        /* Loading animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        body {
+            animation: fadeIn 0.6s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <!-- Skip Link for Accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- Top Controls Bar -->
+    <div class="top-controls-bar">
+        <!-- Dark Mode Toggle -->
+        <button 
+            class="theme-toggle" 
+            onclick="toggleTheme()" 
+            id="themeToggle" 
+            title="Toggle Dark/Light Mode"
+            aria-label="Toggle between light and dark mode"
+            aria-pressed="false">
+            <span class="icon" id="themeIcon" aria-hidden="true">🌙</span>
+            <span id="themeText">Dark Mode</span>
+        </button>
+
+        <!-- Report Controls -->
+        <div class="report-controls">
+            <button class="control-btn" onclick="printReport()" title="Print report (Ctrl+P)" aria-label="Print this report">
+                <span class="btn-icon">🖨️</span>
+                <span class="btn-text">Print</span>
+            </button>
+            <button class="control-btn" onclick="exportToJSON()" title="Export as JSON" aria-label="Export report data as JSON">
+                <span class="btn-icon">📄</span>
+                <span class="btn-text">Export JSON</span>
+            </button>
+            <button class="control-btn" onclick="scrollToTop()" title="Go to top (Home key)" aria-label="Scroll back to top of report">
+                <span class="btn-icon">⬆️</span>
+                <span class="btn-text">Top</span>
+            </button>
+        </div>
+    </div>
+
+    <main id="main-content" class="container">
+        <!-- Header Section with Hero Design -->
+        <header class="report-header">
+            <div class="header-content">
+                <h1>
+                    <span class="header-icon">⚙️</span>
+                    Windows Maintenance Report
+                </h1>
+                <p class="header-subtitle">{{REPORT_SUBTITLE}}</p>
+                
+                <!-- Quick Navigation -->
+                <nav class="header-nav" aria-label="Quick navigation to report sections">
+                    <a href="#executive-dashboard" class="nav-link">📊 Dashboard</a>
+                    <a href="#modules" class="nav-link">🔧 Modules</a>
+                    <a href="#errors" class="nav-link">⚠️ Issues</a>
+                    <a href="#logs" class="nav-link">📝 Logs</a>
+                    <a href="#actions" class="nav-link">✅ Actions</a>
+                    <a href="#system-info" class="nav-link">💻 System</a>
+                </nav>
+            </div>
+            
+            <div class="header-metadata">
+                <div class="metadata-grid">
+                    <div class="metadata-item">
+                        <div class="metadata-icon">📅</div>
+                        <div class="metadata-content">
+                            <strong>Generated</strong>
+                            <p>{{GENERATION_TIME}}</p>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">💻</div>
+                        <div class="metadata-content">
+                            <strong>Computer</strong>
+                            <p>{{COMPUTER_NAME}}</p>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">👤</div>
+                        <div class="metadata-content">
+                            <strong>User</strong>
+                            <p>{{USER_NAME}}</p>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">🖥️</div>
+                        <div class="metadata-content">
+                            <strong>OS Version</strong>
+                            <p>{{OS_VERSION}}</p>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">▶️</div>
+                        <div class="metadata-content">
+                            <strong>Execution Mode</strong>
+                            <p>{{EXECUTION_MODE}}</p>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">⏱️</div>
+                        <div class="metadata-content">
+                            <strong>Duration</strong>
+                            <p>{{TOTAL_DURATION}}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Executive Dashboard Section -->
+        <section id="executive-dashboard" class="executive-dashboard">
+            <h2 class="section-title">
+                <span class="title-icon">📊</span>
+                Executive Dashboard
+            </h2>
+
+            <!-- Hero Metrics -->
+            <div class="hero-metrics">
+                <div class="hero-metric {{OVERALL_STATUS_CLASS}}">
+                    <div class="metric-icon-large">{{STATUS_ICON}}</div>
+                    <div class="metric-value">{{SUCCESS_RATE}}%</div>
+                    <div class="metric-label">Success Rate</div>
+                    <div class="metric-trend {{TREND_CLASS}}">{{SUCCESS_TREND}}</div>
+                    <div class="metric-subtext">{{TASKS_COMPLETED}}/{{TOTAL_TASKS}} tasks completed</div>
+                </div>
+
+                <div class="hero-metric">
+                    <div class="metric-icon-large">⏱️</div>
+                    <div class="metric-value">{{TOTAL_DURATION}}</div>
+                    <div class="metric-label">Total Duration</div>
+                    <div class="metric-trend">Average: {{AVG_MODULE_TIME}}</div>
+                    <div class="metric-subtext">{{LONGEST_MODULE}} was longest</div>
+                </div>
+
+                <div class="hero-metric {{ITEMS_PROCESSED_CLASS}}">
+                    <div class="metric-icon-large">✅</div>
+                    <div class="metric-value">{{ITEMS_PROCESSED}}</div>
+                    <div class="metric-label">Items Processed</div>
+                    <div class="metric-trend">{{ITEMS_DETECTED}} detected</div>
+                    <div class="metric-subtext">{{ITEMS_SKIPPED}} skipped</div>
+                </div>
+
+                <div class="hero-metric {{ISSUES_CLASS}}">
+                    <div class="metric-icon-large">{{ISSUES_ICON}}</div>
+                    <div class="metric-value">{{ERROR_COUNT}}</div>
+                    <div class="metric-label">Issues Found</div>
+                    <div class="metric-trend warning">{{WARNING_COUNT}} warnings</div>
+                    <div class="metric-subtext">{{CRITICAL_COUNT}} critical</div>
+                </div>
+            </div>
+
+            <!-- Key Findings Box -->
+            <div class="findings-box">
+                <div class="findings-header">
+                    <h3>
+                        <span class="findings-icon">🔍</span>
+                        Key Findings
+                    </h3>
+                    <span class="findings-badge">Top {{KEY_FINDINGS_COUNT}} items</span>
+                </div>
+                <div class="findings-list">
+                    {{KEY_FINDINGS}}
+                </div>
+            </div>
+
+            <!-- Action Items Summary -->
+            <div class="action-items-summary">
+                <div class="action-header">
+                    <h3>
+                        <span class="action-icon">⚡</span>
+                        Immediate Actions Required
+                    </h3>
+                    <span class="action-count-badge">{{ACTION_ITEMS_COUNT}} items</span>
+                </div>
+                <div class="action-list">
+                    {{ACTION_ITEMS_SUMMARY}}
+                </div>
+            </div>
+
+            <!-- Progress Overview -->
+            <div class="progress-overview">
+                <div class="progress-item">
+                    <div class="progress-header">
+                        <span class="progress-label">
+                            <strong>Task Completion</strong>
+                            <span class="progress-description">Overall maintenance progress</span>
+                        </span>
+                        <span class="progress-value">{{TASKS_COMPLETED}} / {{TOTAL_TASKS}}</span>
+                    </div>
+                    <div class="progress-bar-wrapper">
+                        <div class="progress-bar success" style="width: {{TASK_COMPLETION_PERCENT}}%">
+                            <span class="progress-bar-label">{{TASK_COMPLETION_PERCENT}}%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress-item">
+                    <div class="progress-header">
+                        <span class="progress-label">
+                            <strong>System Health</strong>
+                            <span class="progress-description">Based on successful operations</span>
+                        </span>
+                        <span class="progress-value">{{SYSTEM_HEALTH_SCORE}}%</span>
+                    </div>
+                    <div class="progress-bar-wrapper">
+                        <div class="progress-bar {{HEALTH_BAR_CLASS}}" style="width: {{SYSTEM_HEALTH_SCORE}}%">
+                            <span class="progress-bar-label">{{SYSTEM_HEALTH_SCORE}}%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Module Reports Section -->
+        <section id="modules" class="modules-section">
+            <h2 class="section-title">
+                <span class="title-icon">🔧</span>
+                Detailed Module Reports
+            </h2>
+
+            <div class="modules-filter-bar">
+                <div class="filter-group">
+                    <button class="filter-btn active" data-filter="all" onclick="filterModules('all')">
+                        All Modules ({{TOTAL_MODULES}})
+                    </button>
+                    <button class="filter-btn" data-filter="success" onclick="filterModules('success')">
+                        <span class="filter-icon">✓</span> Success ({{SUCCESS_MODULES}})
+                    </button>
+                    <button class="filter-btn" data-filter="warning" onclick="filterModules('warning')">
+                        <span class="filter-icon">⚠</span> Warnings ({{WARNING_MODULES}})
+                    </button>
+                    <button class="filter-btn" data-filter="error" onclick="filterModules('error')">
+                        <span class="filter-icon">✗</span> Errors ({{ERROR_MODULES}})
+                    </button>
+                </div>
+            </div>
+
+            <div class="modules-container">
+                {{MODULE_REPORTS}}
+            </div>
+        </section>
+
+        <!-- Error Analysis Section -->
+        <section id="errors" class="error-analysis-section" style="display: {{ERRORS_DISPLAY}};">
+            <h2 class="section-title error">
+                <span class="title-icon">⚠️</span>
+                Issues Detected
+            </h2>
+
+            <div class="error-summary-bar">
+                <div class="error-stat critical">
+                    <span class="stat-value">{{CRITICAL_COUNT}}</span>
+                    <span class="stat-label">Critical</span>
+                </div>
+                <div class="error-stat error">
+                    <span class="stat-value">{{ERROR_COUNT}}</span>
+                    <span class="stat-label">Errors</span>
+                </div>
+                <div class="error-stat warning">
+                    <span class="stat-value">{{WARNING_COUNT}}</span>
+                    <span class="stat-label">Warnings</span>
+                </div>
+            </div>
+
+            <div class="error-categories">
+                {{ERROR_ANALYSIS}}
+            </div>
+        </section>
+
+        <!-- Detailed Logs Section -->
+        <section id="logs" class="logs-section">
+            <div class="collapsible-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <div class="collapsible-title">
+                        <span class="title-icon">📝</span>
+                        <span>Detailed Execution Logs</span>
+                    </div>
+                    <div class="collapsible-badge">{{LOG_ENTRIES_COUNT}} entries</div>
+                    <div class="toggle-icon">▼</div>
+                </div>
+                <div class="collapsible-content">
+                    <div class="log-viewer-container">
+                        <div class="log-viewer-header">
+                            <div class="log-viewer-title">
+                                <span class="log-icon">📋</span>
+                                <span>Module Execution Logs</span>
+                            </div>
+                            <div class="log-filter-controls">
+                                <button class="log-filter-btn active" onclick="filterLogs('all')">All</button>
+                                <button class="log-filter-btn" onclick="filterLogs('error')">Errors</button>
+                                <button class="log-filter-btn" onclick="filterLogs('warning')">Warnings</button>
+                                <button class="log-filter-btn" onclick="filterLogs('success')">Success</button>
+                                <button class="log-filter-btn" onclick="filterLogs('info')">Info</button>
+                            </div>
+                        </div>
+                        <div class="log-entries" id="logEntries">
+                            {{DETAILED_LOGS}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Action Items Section -->
+        <section id="actions" class="action-items-section">
+            <div class="collapsible-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <div class="collapsible-title">
+                        <span class="title-icon">✅</span>
+                        <span>Recommended Action Items</span>
+                    </div>
+                    <div class="collapsible-badge">{{ACTION_ITEMS_COUNT}} items</div>
+                    <div class="toggle-icon">▼</div>
+                </div>
+                <div class="collapsible-content">
+                    <div class="action-items-container">
+                        <div class="action-items-header">
+                            <span class="action-header-icon">💡</span>
+                            <span>Items Requiring Attention</span>
+                        </div>
+                        <div class="action-items-list">
+                            {{ACTION_ITEMS}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Execution Timeline Section -->
+        <section id="timeline" class="timeline-section">
+            <div class="collapsible-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <div class="collapsible-title">
+                        <span class="title-icon">📅</span>
+                        <span>Execution Timeline</span>
+                    </div>
+                    <div class="collapsible-badge">{{MODULE_COUNT}} modules</div>
+                    <div class="toggle-icon">▼</div>
+                </div>
+                <div class="collapsible-content">
+                    <div class="timeline-container">
+                        {{EXECUTION_TIMELINE}}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- System Information Section -->
+        <section id="system-info" class="system-info-section">
+            <h2 class="section-title">
+                <span class="title-icon">💻</span>
+                System Information
+            </h2>
+
+            <div class="system-info-grid">
+                <div class="info-card">
+                    <div class="info-card-header">
+                        <h3>
+                            <span class="info-icon">🖥️</span>
+                            Hardware Configuration
+                        </h3>
+                    </div>
+                    <div class="info-card-body">
+                        <table class="info-table">
+                            <tr>
+                                <td class="info-label">Processor:</td>
+                                <td class="info-value">{{PROCESSOR_NAME}}</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Cores:</td>
+                                <td class="info-value">{{PROCESSOR_CORES}}</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Memory:</td>
+                                <td class="info-value">{{TOTAL_MEMORY}} GB</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Storage:</td>
+                                <td class="info-value">{{STORAGE_INFO}}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="info-card">
+                    <div class="info-card-header">
+                        <h3>
+                            <span class="info-icon">🖨️</span>
+                            Operating System
+                        </h3>
+                    </div>
+                    <div class="info-card-body">
+                        <table class="info-table">
+                            <tr>
+                                <td class="info-label">OS Version:</td>
+                                <td class="info-value">{{OS_VERSION_DETAILED}}</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Build Number:</td>
+                                <td class="info-value">{{BUILD_NUMBER}}</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Last Boot:</td>
+                                <td class="info-value">{{LAST_BOOT_TIME}}</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Uptime:</td>
+                                <td class="info-value">{{SYSTEM_UPTIME}}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="report-footer">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>About This Report</h4>
+                    <p>Generated by Windows Maintenance Automation v3.0</p>
+                    <p>Session ID: {{SESSION_ID}}</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul class="footer-links">
+                        <li><a href="#top">Back to Top</a></li>
+                        <li><a href="javascript:printReport()">Print Report</a></li>
+                        <li><a href="javascript:exportToJSON()">Export Data</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Generated</h4>
+                    <p>{{GENERATION_TIME}}</p>
+                    <p>{{COMPUTER_NAME}}</p>
+                </div>
+            </div>
+            <div class="footer-copyright">
+                <p>⚡ Powered by Windows Maintenance Automation v3.0 | Enhanced Reporting System</p>
+            </div>
+        </footer>
+    </main>
+
+    <script>
+        // ============================================================================
+        // Theme Management
+        // ============================================================================
+        
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            
+            const icon = document.getElementById('themeIcon');
+            const text = document.getElementById('themeText');
+            const toggle = document.getElementById('themeToggle');
+            
+            if (newTheme === 'dark') {
+                icon.textContent = '☀️';
+                text.textContent = 'Light Mode';
+                toggle.setAttribute('aria-pressed', 'true');
+            } else {
+                icon.textContent = '🌙';
+                text.textContent = 'Dark Mode';
+                toggle.setAttribute('aria-pressed', 'false');
+            }
+        }
+
+        // Load saved theme on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            
+            if (savedTheme === 'dark') {
+                document.getElementById('themeIcon').textContent = '☀️';
+                document.getElementById('themeText').textContent = 'Light Mode';
+                document.getElementById('themeToggle').setAttribute('aria-pressed', 'true');
+            }
+        });
+
+        // ============================================================================
+        // Collapsible Sections
+        // ============================================================================
+        
+        function toggleCollapsible(header) {
+            header.classList.toggle('active');
+            const content = header.nextElementSibling;
+            const icon = header.querySelector('.toggle-icon');
+            
+            if (content.classList.contains('active')) {
+                content.classList.remove('active');
+                icon.textContent = '▼';
+                header.setAttribute('aria-expanded', 'false');
+            } else {
+                content.classList.add('active');
+                icon.textContent = '▲';
+                header.setAttribute('aria-expanded', 'true');
+            }
+        }
+
+        // ============================================================================
+        // Module Details Toggle
+        // ============================================================================
+        
+        function toggleModuleDetails(button) {
+            const detailsSection = button.closest('.module-card').querySelector('.module-details');
+            const icon = button.querySelector('.details-icon') || button;
+            
+            if (detailsSection.style.display === 'none' || detailsSection.style.display === '') {
+                detailsSection.style.display = 'block';
+                button.textContent = 'Hide Details ▲';
+                button.classList.add('active');
+            } else {
+                detailsSection.style.display = 'none';
+                button.textContent = 'Show Details ▼';
+                button.classList.remove('active');
+            }
+        }
+
+        // ============================================================================
+        // Log Filtering
+        // ============================================================================
+        
+        function filterLogs(level) {
+            const entries = document.querySelectorAll('.log-entry');
+            const buttons = document.querySelectorAll('.log-filter-btn');
+            
+            // Update active button
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Filter entries
+            entries.forEach(entry => {
+                if (level === 'all' || entry.classList.contains(level)) {
+                    entry.style.display = 'flex';
+                } else {
+                    entry.style.display = 'none';
+                }
+            });
+        }
+
+        // ============================================================================
+        // Module Filtering
+        // ============================================================================
+        
+        function filterModules(status) {
+            const modules = document.querySelectorAll('.module-card');
+            const buttons = document.querySelectorAll('.filter-btn');
+            
+            // Update active button
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Filter modules
+            modules.forEach(module => {
+                if (status === 'all' || module.classList.contains(`status-${status}`)) {
+                    module.style.display = 'block';
+                } else {
+                    module.style.display = 'none';
+                }
+            });
+        }
+
+        // ============================================================================
+        // Smooth Scrolling
+        // ============================================================================
+        
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    
+                    // Update URL without jumping
+                    history.pushState(null, null, this.getAttribute('href'));
+                }
+            });
+        });
+
+        // ============================================================================
+        // Scroll to Top
+        // ============================================================================
+        
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Show/hide scroll-to-top button based on scroll position
+        window.addEventListener('scroll', () => {
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            // Can add a floating button here if needed
+        });
+
+        // ============================================================================
+        // Print Functionality
+        // ============================================================================
+        
+        function printReport() {
+            // Expand all collapsible sections before printing
+            const collapsibleHeaders = document.querySelectorAll('.collapsible-header:not(.active)');
+            collapsibleHeaders.forEach(header => {
+                toggleCollapsible(header);
+            });
+            
+            // Wait for content to expand, then print
+            setTimeout(() => {
+                window.print();
+            }, 300);
+        }
+
+        // ============================================================================
+        // Export to JSON
+        // ============================================================================
+        
+        function exportToJSON() {
+            // This would export the report data as JSON
+            // Implementation depends on how data is stored
+            alert('JSON export functionality - to be implemented based on data structure');
+            // const reportData = { /* collect data */ };
+            // const dataStr = JSON.stringify(reportData, null, 2);
+            // const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            // const url = URL.createObjectURL(dataBlob);
+            // const link = document.createElement('a');
+            // link.href = url;
+            // link.download = 'maintenance-report.json';
+            // link.click();
+        }
+
+        // ============================================================================
+        // Keyboard Shortcuts
+        // ============================================================================
+        
+        document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + P: Print
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                e.preventDefault();
+                printReport();
+            }
+            
+            // Home key: Scroll to top
+            if (e.key === 'Home' && !e.shiftKey && !e.ctrlKey) {
+                e.preventDefault();
+                scrollToTop();
+            }
+            
+            // Ctrl/Cmd + D: Toggle dark mode
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                e.preventDefault();
+                toggleTheme();
+            }
+        });
+
+        // ============================================================================
+        // Initialize on Load
+        // ============================================================================
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('Windows Maintenance Report loaded successfully');
+            
+            // Add animation classes to elements as they come into view
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                    }
+                });
+            }, observerOptions);
+            
+            // Observe all cards and sections
+            document.querySelectorAll('.card, .module-card, .hero-metric').forEach(el => {
+                observer.observe(el);
+            });
+        });
+    </script>
+</body>
+</html>

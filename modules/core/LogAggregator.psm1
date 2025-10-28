@@ -294,7 +294,20 @@ function New-ModuleResult {
         [array]$Errors = @(),
 
         [Parameter()]
-        [array]$Warnings = @()
+        [array]$Warnings = @(),
+
+        # Enhanced reporting parameters
+        [Parameter()]
+        [string]$Summary = '',
+
+        [Parameter()]
+        [hashtable]$ExecutionPhases = @{},
+
+        [Parameter()]
+        [array]$Recommendations = @(),
+
+        [Parameter()]
+        [string]$Icon = '⚙️'
     )
 
     if ($null -eq $StartTime) { $StartTime = Get-Date }
@@ -322,6 +335,12 @@ function New-ModuleResult {
         Warnings          = @($Warnings)
         LogPath           = $LogPath
         Timestamp         = Get-Date
+        
+        # Enhanced reporting fields
+        Summary           = $Summary
+        ExecutionPhases   = $ExecutionPhases
+        Recommendations   = @($Recommendations)
+        Icon              = $Icon
     }
 
     return $moduleResult
