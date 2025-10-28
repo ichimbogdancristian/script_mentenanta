@@ -49,9 +49,11 @@
 
 .DATA ORGANIZATION
     Template Sources:
-        • config/templates/report-template.html - Main report structure
-        • config/templates/report-template.css - CSS styling (fallback: config/report-styles.css)
-        • config/templates/report-templates-config.json - Template configuration
+        • config/templates/report-template-v4-enhanced.html - Modern dashboard template
+        • config/templates/report-styles-v4-enhanced.css - Modern CSS framework
+        • config/templates/components/executive-dashboard.html - Dashboard component
+        • config/templates/components/module-card-enhanced.html - Module card component
+        • config/templates/assets/dashboard.js - Interactive JavaScript
     
     Input Data (from LogProcessor):
         • temp_files/processed/[module]-audit.json - Type1 results per module
@@ -166,18 +168,19 @@ function Get-HtmlTemplates {
         
         # Determine template filenames based on enhanced mode
         if ($UseEnhanced) {
-            $mainTemplateFile = 'report-template-v3-enhanced.html'
-            $moduleCardFile = 'module-card-template-enhanced.html'
-            $cssFile = 'report-styles-enhanced.css'
+            $mainTemplateFile = 'report-template-v4-enhanced.html'
+            $moduleCardFile = 'components/module-card-enhanced.html'
+            $cssFile = 'report-styles-v4-enhanced.css'
             
-            Write-Verbose "Using enhanced templates (v3.0)"
+            Write-Verbose "Using enhanced templates (v4.0 - Modern Dashboard)"
         }
         else {
-            $mainTemplateFile = 'report-template.html'
-            $moduleCardFile = 'task-card-template.html'
-            $cssFile = 'report-styles.css'
+            # Fallback to v4 enhanced (old templates moved to archive)
+            $mainTemplateFile = 'report-template-v4-enhanced.html'
+            $moduleCardFile = 'components/module-card-enhanced.html'
+            $cssFile = 'report-styles-v4-enhanced.css'
             
-            Write-Verbose "Using standard templates"
+            Write-Verbose "Using v4 enhanced templates (legacy mode disabled)"
         }
         
         # Load main report template
@@ -217,8 +220,8 @@ function Get-HtmlTemplates {
         }
         else {
             if ($UseEnhanced) {
-                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced CSS not found, falling back to standard CSS"
-                $cssPath = Find-ConfigTemplate 'report-styles.css'
+                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced CSS not found, using v4 enhanced CSS as fallback"
+                $cssPath = Find-ConfigTemplate 'report-styles-v4-enhanced.css'
                 if (Test-Path $cssPath) {
                     $templates.CSS = Get-Content $cssPath -Raw
                 }
@@ -978,6 +981,27 @@ function New-MaintenanceReport {
             
             Write-Information "✓ Saving enhanced HTML report..." -InformationAction Continue
             $reportHtml | Out-File -FilePath $OutputPath -Encoding UTF8 -Force
+            
+            # Copy JavaScript assets for enhanced reports
+            if ($UseEnhanced) {
+                Write-Information "✓ Copying dashboard assets..." -InformationAction Continue
+                $reportDir = Split-Path $OutputPath -Parent
+                $assetsDir = Join-Path $reportDir "assets"
+                
+                if (-not (Test-Path $assetsDir)) {
+                    New-Item -Path $assetsDir -ItemType Directory -Force | Out-Null
+                }
+                
+                $jsSourcePath = Find-ConfigTemplate "assets/dashboard.js"
+                if (Test-Path $jsSourcePath) {
+                    $jsDestPath = Join-Path $assetsDir "dashboard.js"
+                    Copy-Item -Path $jsSourcePath -Destination $jsDestPath -Force
+                    Write-Verbose "Copied dashboard.js to report assets directory"
+                }
+                else {
+                    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Dashboard JavaScript not found: $jsSourcePath"
+                }
+            }
         }
         
         # Generate additional formats using processed data (both standard and enhanced)

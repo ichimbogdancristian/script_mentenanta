@@ -1,0 +1,395 @@
+<!-- Executive Dashboard Component -->
+<!-- This template provides the main dashboard overview with key metrics and system health -->
+
+<section id="executive-dashboard" class="mb-8">
+    <!-- Executive Summary Card -->
+    <div class="card card-executive mb-6">
+        <div class="card-header">
+            <h2 class="card-title">
+                <span class="header-icon">📊</span>
+                Executive Summary
+            </h2>
+            <div class="status-badge neutral">
+                <span class="status-dot neutral"></span>
+                {{EXECUTION_MODE}}
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="two-column-grid">
+                <div>
+                    <h3 class="text-xl font-semibold mb-4">Maintenance Overview</h3>
+                    <p class="text-base opacity-90 mb-4">
+                        Completed system maintenance on {{COMPUTER_NAME}} with {{TOTAL_MODULES}} modules processed.
+                        {{#if SUCCESSFUL_MODULES}}
+                        Successfully completed {{SUCCESSFUL_MODULES}} modules with {{SUCCESS_RATE}}% success rate.
+                        {{/if}}
+                    </p>
+                    <div class="progress-bar progress-lg">
+                        <div class="progress-fill" style="width: {{SUCCESS_RATE}}%"></div>
+                    </div>
+                    <div class="progress-text text-white opacity-90">
+                        Overall completion: {{SUCCESS_RATE}}% ({{SUCCESSFUL_MODULES}}/{{TOTAL_MODULES}} modules)
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold mb-4">Quick Actions</h3>
+                    <div class="control-group">
+                        <button class="control-btn" onclick="scrollToSection('modules')" style="background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.3); color: white;">
+                            🔧 View Modules
+                        </button>
+                        <button class="control-btn" onclick="scrollToSection('errors')" style="background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.3); color: white;">
+                            ⚠️ View Issues
+                        </button>
+                        <button class="control-btn" onclick="printReport()" style="background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.3); color: white;">
+                            🖨️ Print Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Metrics Grid -->
+    <div class="metrics-grid">
+        <!-- Total Modules Metric -->
+        <div class="metric-card info">
+            <div class="metric-icon">🔧</div>
+            <div class="metric-value">{{TOTAL_MODULES}}</div>
+            <div class="metric-label">Total Modules</div>
+            <div class="metric-trend">
+                <span>{{TOTAL_DURATION_FORMATTED}} execution time</span>
+            </div>
+        </div>
+
+        <!-- Successful Modules Metric -->
+        <div class="metric-card success">
+            <div class="metric-icon">✅</div>
+            <div class="metric-value">{{SUCCESSFUL_MODULES}}</div>
+            <div class="metric-label">Successful</div>
+            <div class="metric-trend up">
+                <span>▲ {{SUCCESS_RATE}}% success rate</span>
+            </div>
+        </div>
+
+        <!-- Failed Modules Metric -->
+        <div class="metric-card {{#if FAILED_MODULES}}error{{else}}neutral{{/if}}">
+            <div class="metric-icon">{{#if FAILED_MODULES}}❌{{else}}✨{{/if}}</div>
+            <div class="metric-value">{{FAILED_MODULES}}</div>
+            <div class="metric-label">Failed</div>
+            <div class="metric-trend {{#if FAILED_MODULES}}down{{else}}neutral{{/if}}">
+                {{#if FAILED_MODULES}}
+                <span>⚠️ Requires attention</span>
+                {{else}}
+                <span>🎉 All modules successful</span>
+                {{/if}}
+            </div>
+        </div>
+
+        <!-- Items Processed Metric -->
+        <div class="metric-card info">
+            <div class="metric-icon">⚡</div>
+            <div class="metric-value">{{TOTAL_ITEMS_PROCESSED}}</div>
+            <div class="metric-label">Items Processed</div>
+            <div class="metric-trend">
+                <span>{{TOTAL_ITEMS_DETECTED}} detected total</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Health Overview -->
+    <div class="dashboard-grid">
+        <!-- System Information -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    💻 System Information
+                </h3>
+                <div class="status-badge success">
+                    <span class="status-dot success"></span>
+                    Healthy
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="module-details-grid">
+                    <div class="module-detail-item">
+                        <div class="module-detail-label">Computer</div>
+                        <div class="module-detail-value">{{COMPUTER_NAME}}</div>
+                    </div>
+                    <div class="module-detail-item">
+                        <div class="module-detail-label">User</div>
+                        <div class="module-detail-value">{{USER_NAME}}</div>
+                    </div>
+                    <div class="module-detail-item">
+                        <div class="module-detail-label">OS Version</div>
+                        <div class="module-detail-value">{{OS_VERSION}}</div>
+                    </div>
+                    <div class="module-detail-item">
+                        <div class="module-detail-label">PowerShell</div>
+                        <div class="module-detail-value">{{POWERSHELL_VERSION}}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Execution Timeline -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    ⏱️ Execution Timeline
+                </h3>
+                <div class="status-badge info">
+                    <span class="status-dot info"></span>
+                    {{TOTAL_DURATION_FORMATTED}}
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="module-details-grid">
+                    <div class="module-detail-item">
+                        <div class="module-detail-label">Started</div>
+                        <div class="module-detail-value">{{START_TIME}}</div>
+                    </div>
+                    <div class="module-detail-item">
+                        <div class="module-detail-label">Completed</div>
+                        <div class="module-detail-value">{{END_TIME}}</div>
+                    </div>
+                    <div class="module-detail-item">
+                        <div class="module-detail-label">Duration</div>
+                        <div class="module-detail-value">{{TOTAL_DURATION_FORMATTED}}</div>
+                    </div>
+                    <div class="module-detail-item">
+                        <div class="module-detail-label">Mode</div>
+                        <div class="module-detail-value">{{EXECUTION_MODE}}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Critical Issues Alert (Only show if there are errors) -->
+    {{#if TOTAL_ERRORS}}
+    <div class="card" style="border-left: 4px solid var(--error-500); background: var(--error-50);">
+        <div class="card-header">
+            <h3 class="card-title text-error">
+                ⚠️ Critical Issues Detected
+            </h3>
+            <div class="status-badge error">
+                <span class="status-dot error"></span>
+                {{TOTAL_ERRORS}} Error{{#if TOTAL_ERRORS_PLURAL}}s{{/if}}
+            </div>
+        </div>
+        <div class="card-body">
+            <p class="text-sm text-gray-700 mb-4">
+                {{TOTAL_ERRORS}} error{{#if TOTAL_ERRORS_PLURAL}}s{{/if}} detected during maintenance execution. 
+                Review the detailed logs below for specific resolution steps.
+            </p>
+            <div class="control-group">
+                <button class="control-btn error" onclick="scrollToSection('errors')">
+                    ⚠️ View Error Details
+                </button>
+                <button class="control-btn" onclick="scrollToSection('modules')">
+                    🔧 Check Module Status
+                </button>
+            </div>
+        </div>
+    </div>
+    {{/if}}
+
+    <!-- Performance Summary -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                📈 Performance Summary
+            </h3>
+            <div class="status-badge {{#if PERFORMANCE_GOOD}}success{{else}}warning{{/if}}">
+                <span class="status-dot {{#if PERFORMANCE_GOOD}}success{{else}}warning{{/if}}"></span>
+                {{PERFORMANCE_RATING}}
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="dashboard-grid">
+                <div>
+                    <h4 class="font-semibold mb-3">Execution Statistics</h4>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Average Module Time:</span>
+                            <span class="font-medium">{{AVERAGE_MODULE_DURATION}}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Processing Rate:</span>
+                            <span class="font-medium">{{PROCESSING_RATE}} items/min</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Memory Usage:</span>
+                            <span class="font-medium">{{MEMORY_USAGE_MB}} MB</span>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-3">Module Performance</h4>
+                    <div class="space-y-2">
+                        {{#each FASTEST_MODULES}}
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="text-success">⚡ {{name}}</span>
+                            <span class="font-medium">{{duration}}s</span>
+                        </div>
+                        {{/each}}
+                        {{#each SLOWEST_MODULES}}
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="text-warning">🐌 {{name}}</span>
+                            <span class="font-medium">{{duration}}s</span>
+                        </div>
+                        {{/each}}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Module Status Overview (Compact) -->
+<section id="module-overview" class="mb-8">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                🎯 Module Status Overview
+            </h3>
+            <div class="control-group">
+                <button class="control-btn" onclick="filterModules('all')">All</button>
+                <button class="control-btn success" onclick="filterModules('success')">✅ Success</button>
+                <button class="control-btn warning" onclick="filterModules('warning')">⚠️ Warning</button>
+                <button class="control-btn error" onclick="filterModules('error')">❌ Error</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="dashboard-grid">
+                {{#each MODULE_STATUS_SUMMARY}}
+                <div class="module-summary-item" data-status="{{status}}">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl">{{icon}}</span>
+                            <span class="font-semibold">{{name}}</span>
+                        </div>
+                        <div class="status-badge {{status}}">
+                            <span class="status-dot {{status}}"></span>
+                            {{statusText}}
+                        </div>
+                    </div>
+                    <div class="progress-bar progress-sm">
+                        <div class="progress-fill" style="width: {{completionPercentage}}%"></div>
+                    </div>
+                    <div class="flex justify-between items-center mt-2 text-xs text-gray-600">
+                        <span>{{itemsProcessed}}/{{itemsDetected}} items</span>
+                        <span>{{duration}}s</span>
+                    </div>
+                </div>
+                {{/each}}
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+/* Executive Dashboard Specific Styles */
+.module-summary-item {
+    padding: var(--space-4);
+    background: var(--gray-50);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--gray-200);
+    transition: all var(--transition-fast);
+}
+
+.module-summary-item:hover {
+    background: white;
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+
+.space-y-2 > * + * {
+    margin-top: var(--space-2);
+}
+
+.space-y-3 > * + * {
+    margin-top: var(--space-3);
+}
+
+.flex {
+    display: flex;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.gap-2 {
+    gap: var(--space-2);
+}
+
+/* Responsive adjustments for executive dashboard */
+@media (max-width: 768px) {
+    .two-column-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-4);
+    }
+    
+    .module-summary-item {
+        padding: var(--space-3);
+    }
+}
+</style>
+
+<script>
+// Executive Dashboard JavaScript Functions
+function scrollToSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (section) {
+        section.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start' 
+        });
+    }
+}
+
+function filterModules(status) {
+    const items = document.querySelectorAll('.module-summary-item');
+    const buttons = document.querySelectorAll('.control-group button');
+    
+    // Update button states
+    buttons.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Filter items
+    items.forEach(item => {
+        const itemStatus = item.dataset.status;
+        if (status === 'all' || itemStatus === status) {
+            item.style.display = 'block';
+            item.style.animation = 'fadeIn 0.3s ease-out';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+// Initialize dashboard when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Add animation to metric cards
+    const metricCards = document.querySelectorAll('.metric-card');
+    metricCards.forEach((card, index) => {
+        card.style.animationDelay = `${index * 0.1}s`;
+        card.classList.add('animate-fade-in');
+    });
+    
+    // Initialize progress bars animation
+    const progressBars = document.querySelectorAll('.progress-fill');
+    progressBars.forEach(bar => {
+        const width = bar.style.width;
+        bar.style.width = '0%';
+        setTimeout(() => {
+            bar.style.width = width;
+        }, 500);
+    });
+});
+</script>
