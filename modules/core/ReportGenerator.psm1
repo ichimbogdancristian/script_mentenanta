@@ -3071,7 +3071,7 @@ function New-ReportIndex {
 .SYNOPSIS
     Calculates overall success rate from aggregated results
 #>
-function Calculate-SuccessRate {
+function Get-SuccessRate {
     [CmdletBinding()]
     [OutputType([string])]
     param(
@@ -3107,7 +3107,7 @@ function Calculate-SuccessRate {
 .SYNOPSIS
     Calculates total execution duration
 #>
-function Calculate-TotalDuration {
+function Get-TotalDuration {
     [CmdletBinding()]
     [OutputType([string])]
     param(
@@ -3151,7 +3151,7 @@ function Calculate-TotalDuration {
 .SYNOPSIS
     Calculates system health score based on execution results
 #>
-function Calculate-SystemHealthScore {
+function Get-SystemHealthScore {
     [CmdletBinding()]
     [OutputType([int])]
     param(
@@ -3177,8 +3177,8 @@ function Calculate-SystemHealthScore {
             # Count errors and warnings
             if ($moduleResult.Errors) {
                 $errors += $moduleResult.Errors.Count
-                foreach ($error in $moduleResult.Errors) {
-                    $severity = Determine-ErrorSeverity -Error $error
+                foreach ($errorItem in $moduleResult.Errors) {
+                    $severity = Get-ErrorSeverity -ErrorData $errorItem
                     if ($severity -eq 'Critical') {
                         $criticalErrors++
                     }
@@ -3214,7 +3214,7 @@ function Calculate-SystemHealthScore {
 .SYNOPSIS
     Sums all items processed across modules
 #>
-function Sum-ItemsProcessed {
+function Get-ItemsProcessedTotal {
     [CmdletBinding()]
     [OutputType([int])]
     param(
@@ -3246,7 +3246,7 @@ function Sum-ItemsProcessed {
 .SYNOPSIS
     Counts total errors across all modules
 #>
-function Count-Errors {
+function Get-ErrorCount {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param(
@@ -3263,8 +3263,8 @@ function Count-Errors {
         
         foreach ($moduleResult in $Results.ModuleResults.Values) {
             if ($moduleResult.Errors) {
-                foreach ($error in $moduleResult.Errors) {
-                    $severity = Determine-ErrorSeverity -Error $error
+                foreach ($errorItem in $moduleResult.Errors) {
+                    $severity = Get-ErrorSeverity -ErrorData $errorItem
                     $counts[$severity]++
                 }
             }
@@ -3286,22 +3286,22 @@ function Count-Errors {
 .SYNOPSIS
     Determines error severity based on error object
 #>
-function Determine-ErrorSeverity {
+function Get-ErrorSeverity {
     [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
-        $Error
+        $ErrorData
     )
     
     try {
         # Check if error has explicit severity
-        if ($Error.Severity) {
-            return $Error.Severity
+        if ($ErrorData.Severity) {
+            return $ErrorData.Severity
         }
         
         # Check error message for severity indicators
-        $errorText = if ($Error.Message) { $Error.Message } elseif ($Error -is [string]) { $Error } else { $Error.ToString() }
+        $errorText = if ($ErrorData.Message) { $ErrorData.Message } elseif ($ErrorData -is [string]) { $ErrorData } else { $ErrorData.ToString() }
         
         $criticalKeywords = @('critical', 'fatal', 'corrupt', 'system failure', 'boot')
         $errorKeywords = @('failed', 'error', 'exception', 'cannot', 'unable')
@@ -3329,7 +3329,7 @@ function Determine-ErrorSeverity {
 .SYNOPSIS
     Generates a one-line summary for a module result
 #>
-function Generate-ModuleSummary {
+function New-ModuleSummary {
     [CmdletBinding()]
     [OutputType([string])]
     param(
@@ -3344,11 +3344,9 @@ function Generate-ModuleSummary {
         }
         
         # Generate summary based on module data
-        $name = $ModuleResult.ModuleName
         $status = $ModuleResult.Status
         
         if ($ModuleResult.Metrics) {
-            $detected = $ModuleResult.Metrics.ItemsDetected
             $processed = $ModuleResult.Metrics.ItemsProcessed
             $skipped = $ModuleResult.Metrics.ItemsSkipped
             $failed = $ModuleResult.Metrics.ItemsFailed
@@ -3483,8 +3481,8 @@ function Build-ModuleErrors {
         $html = ""
         
         if ($ModuleResult.Errors -and $ModuleResult.Errors.Count -gt 0) {
-            foreach ($error in $ModuleResult.Errors) {
-                $errorMessage = if ($error.Message) { $error.Message } else { $error.ToString() }
+            foreach ($errorItem in $ModuleResult.Errors) {
+                $errorMessage = if ($errorItem.Message) { $errorItem.Message } else { $errorItem.ToString() }
                 $escapedMessage = [System.Web.HttpUtility]::HtmlEncode($errorMessage)
                 
                 $html += @"
@@ -3560,7 +3558,7 @@ function Build-ExecutionTimeline {
                 <div class="timeline-content">
                     <div class="timeline-time">$startTime</div>
                     <div class="timeline-title">$statusIcon $moduleName</div>
-                    <div class="timeline-description">$(Generate-ModuleSummary -ModuleResult $moduleResult)</div>
+                    <div class="timeline-description">$(New-ModuleSummary -ModuleResult $moduleResult)</div>
                 </div>
             </div>
 
@@ -3704,10 +3702,10 @@ function Build-ExecutiveDashboard {
         Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Building executive dashboard'
         
         # Calculate hero metrics
-        $successRate = Calculate-SuccessRate -Results $AggregatedResults
-        $totalDuration = Calculate-TotalDuration -Results $AggregatedResults
-        $itemsProcessed = Sum-ItemsProcessed -Results $AggregatedResults
-        $errorCounts = Count-Errors -Results $AggregatedResults
+        $successRate = Get-SuccessRate -Results $AggregatedResults
+        $totalDuration = Get-TotalDuration -Results $AggregatedResults
+        $itemsProcessed = Get-ItemsProcessedTotal -Results $AggregatedResults
+        $errorCounts = Get-ErrorCount -Results $AggregatedResults
         
         # Calculate task completion
         $totalTasks = $AggregatedResults.ModuleResults.Count
@@ -3719,10 +3717,11 @@ function Build-ExecutiveDashboard {
         }
         $taskCompletionPercent = if ($totalTasks -gt 0) { 
             [Math]::Round(($completedTasks / $totalTasks) * 100, 1) 
-        } else { 0 }
+        }
+        else { 0 }
         
         # Calculate system health score
-        $systemHealthScore = Calculate-SystemHealthScore -Results $AggregatedResults
+        $systemHealthScore = Get-SystemHealthScore -Results $AggregatedResults
         
         # Generate key findings HTML
         $keyFindingsHtml = Build-KeyFindings -Results $AggregatedResults -Limit 5
@@ -3732,18 +3731,18 @@ function Build-ExecutiveDashboard {
         
         # Return hashtable with all dashboard tokens
         $dashboard = @{
-            SUCCESS_RATE = $successRate
-            TOTAL_DURATION = $totalDuration
-            ITEMS_PROCESSED = $itemsProcessed
-            ERROR_COUNT = $errorCounts.Error
-            WARNING_COUNT = $errorCounts.Warning
-            CRITICAL_COUNT = $errorCounts.Critical
-            TASKS_COMPLETED = $completedTasks
-            TOTAL_TASKS = $totalTasks
+            SUCCESS_RATE            = $successRate
+            TOTAL_DURATION          = $totalDuration
+            ITEMS_PROCESSED         = $itemsProcessed
+            ERROR_COUNT             = $errorCounts.Error
+            WARNING_COUNT           = $errorCounts.Warning
+            CRITICAL_COUNT          = $errorCounts.Critical
+            TASKS_COMPLETED         = $completedTasks
+            TOTAL_TASKS             = $totalTasks
             TASK_COMPLETION_PERCENT = $taskCompletionPercent
-            SYSTEM_HEALTH_SCORE = $systemHealthScore
-            KEY_FINDINGS = $keyFindingsHtml
-            ACTION_ITEMS_SUMMARY = $actionItemsSummaryHtml
+            SYSTEM_HEALTH_SCORE     = $systemHealthScore
+            KEY_FINDINGS            = $keyFindingsHtml
+            ACTION_ITEMS_SUMMARY    = $actionItemsSummaryHtml
         }
         
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Executive dashboard built successfully"
@@ -3753,18 +3752,18 @@ function Build-ExecutiveDashboard {
         Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to build executive dashboard: $($_.Exception.Message)"
         # Return minimal dashboard on error
         return @{
-            SUCCESS_RATE = "N/A"
-            TOTAL_DURATION = "N/A"
-            ITEMS_PROCESSED = 0
-            ERROR_COUNT = 0
-            WARNING_COUNT = 0
-            CRITICAL_COUNT = 0
-            TASKS_COMPLETED = 0
-            TOTAL_TASKS = 0
+            SUCCESS_RATE            = "N/A"
+            TOTAL_DURATION          = "N/A"
+            ITEMS_PROCESSED         = 0
+            ERROR_COUNT             = 0
+            WARNING_COUNT           = 0
+            CRITICAL_COUNT          = 0
+            TASKS_COMPLETED         = 0
+            TOTAL_TASKS             = 0
             TASK_COMPLETION_PERCENT = 0
-            SYSTEM_HEALTH_SCORE = 0
-            KEY_FINDINGS = "<div class='no-data'>Dashboard data unavailable</div>"
-            ACTION_ITEMS_SUMMARY = "<div class='no-data'>Action items unavailable</div>"
+            SYSTEM_HEALTH_SCORE     = 0
+            KEY_FINDINGS            = "<div class='no-data'>Dashboard data unavailable</div>"
+            ACTION_ITEMS_SUMMARY    = "<div class='no-data'>Action items unavailable</div>"
         }
     }
 }
@@ -3794,7 +3793,8 @@ function Build-ModuleCard {
         $moduleName = $ModuleResult.ModuleName
         $displayName = if ($moduleName -match '([A-Z][a-z]+)') { 
             $moduleName -creplace '([A-Z])', ' $1' 
-        } else { 
+        }
+        else { 
             $moduleName 
         }
         $displayName = $displayName.Trim()
@@ -3810,12 +3810,13 @@ function Build-ModuleCard {
         $failed = if ($metrics.ItemsFailed) { $metrics.ItemsFailed } else { 0 }
         $duration = if ($metrics.DurationSeconds) { 
             "$([Math]::Round($metrics.DurationSeconds, 1))s" 
-        } else { 
+        }
+        else { 
             "N/A" 
         }
         
         # Generate summary
-        $summary = Generate-ModuleSummary -ModuleResult $ModuleResult
+        $summary = New-ModuleSummary -ModuleResult $ModuleResult
         
         # Build detail sections
         $resultsHtml = ""
@@ -3917,13 +3918,13 @@ function Build-ErrorAnalysis {
             
             # Process errors
             if ($moduleResult.Errors -and $moduleResult.Errors.Count -gt 0) {
-                foreach ($error in $moduleResult.Errors) {
-                    $severity = Determine-ErrorSeverity -Error $error
-                    $errorMessage = if ($error.Message) { $error.Message } elseif ($error -is [string]) { $error } else { $error.ToString() }
+                foreach ($errorItem in $moduleResult.Errors) {
+                    $severity = Get-ErrorSeverity -ErrorData $errorItem
+                    $errorMessage = if ($errorItem.Message) { $errorItem.Message } elseif ($errorItem -is [string]) { $errorItem } else { $errorItem.ToString() }
                     
                     $errorItem = @{
-                        Module = $moduleName
-                        Message = $errorMessage
+                        Module   = $moduleName
+                        Message  = $errorMessage
                         Severity = $severity
                     }
                     
@@ -3941,8 +3942,8 @@ function Build-ErrorAnalysis {
                     $warningMessage = if ($warning.Message) { $warning.Message } elseif ($warning -is [string]) { $warning } else { $warning.ToString() }
                     
                     $warnings += @{
-                        Module = $moduleName
-                        Message = $warningMessage
+                        Module   = $moduleName
+                        Message  = $warningMessage
                         Severity = 'Warning'
                     }
                 }
@@ -4077,11 +4078,11 @@ function Build-KeyFindings {
                 
                 $processed = $moduleResult.Metrics.ItemsProcessed
                 $findings += @{
-                    Type = 'success'
-                    Icon = '✓'
+                    Type     = 'success'
+                    Icon     = '✓'
                     Priority = if ($processed -gt 10) { 1 } elseif ($processed -gt 5) { 2 } else { 3 }
-                    Text = "$moduleName completed successfully - $processed items processed"
-                    Module = $moduleName
+                    Text     = "$moduleName completed successfully - $processed items processed"
+                    Module   = $moduleName
                 }
             }
             
@@ -4089,11 +4090,11 @@ function Build-KeyFindings {
             if ($moduleResult.Errors -and $moduleResult.Errors.Count -gt 0) {
                 $errorCount = $moduleResult.Errors.Count
                 $findings += @{
-                    Type = 'error'
-                    Icon = '✗'
+                    Type     = 'error'
+                    Icon     = '✗'
                     Priority = 0  # Highest priority
-                    Text = "$moduleName encountered $errorCount error(s)"
-                    Module = $moduleName
+                    Text     = "$moduleName encountered $errorCount error(s)"
+                    Module   = $moduleName
                 }
             }
             
@@ -4101,11 +4102,11 @@ function Build-KeyFindings {
             if ($moduleResult.Warnings -and $moduleResult.Warnings.Count -gt 0) {
                 $warningCount = $moduleResult.Warnings.Count
                 $findings += @{
-                    Type = 'warning'
-                    Icon = '⚠'
+                    Type     = 'warning'
+                    Icon     = '⚠'
                     Priority = 1
-                    Text = "$moduleName reported $warningCount warning(s)"
-                    Module = $moduleName
+                    Text     = "$moduleName reported $warningCount warning(s)"
+                    Module   = $moduleName
                 }
             }
             
@@ -4115,11 +4116,11 @@ function Build-KeyFindings {
                     $value = $moduleResult.Results[$key]
                     if ($value -is [array] -and $value.Count -gt 5) {
                         $findings += @{
-                            Type = 'info'
-                            Icon = '📊'
+                            Type     = 'info'
+                            Icon     = '📊'
                             Priority = 2
-                            Text = "$moduleName: Found $($value.Count) $key"
-                            Module = $moduleName
+                            Text     = "${moduleName}: Found $($value.Count) $key"
+                            Module   = $moduleName
                         }
                     }
                 }
@@ -4194,13 +4195,13 @@ Export-ModuleMember -Function @(
     'Get-ReportMemoryStatistics',
     'Optimize-ReportDataStructures',
     # Enhanced Reporting Functions v3.0
-    'Calculate-SuccessRate',
-    'Calculate-TotalDuration',
-    'Calculate-SystemHealthScore',
-    'Sum-ItemsProcessed',
-    'Count-Errors',
-    'Determine-ErrorSeverity',
-    'Generate-ModuleSummary',
+    'Get-SuccessRate',
+    'Get-TotalDuration',
+    'Get-SystemHealthScore',
+    'Get-ItemsProcessedTotal',
+    'Get-ErrorCount',
+    'Get-ErrorSeverity',
+    'New-ModuleSummary',
     'Build-ModuleLogEntries',
     'Build-PerformancePhases',
     'Build-ModuleErrors',
