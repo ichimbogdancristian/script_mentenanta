@@ -102,13 +102,15 @@
 
 using namespace System.Collections.Generic
 
-# Import core infrastructure for path management and logging
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force -WarningAction SilentlyContinue
-}
-else {
-    Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
+# Import core infrastructure for path management and logging (if not already loaded globally)
+if (-not (Get-Module -Name CoreInfrastructure)) {
+    $CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+    if (Test-Path $CoreInfraPath) {
+        Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
+    }
+    else {
+        Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
+    }
 }
 
 #region Module State

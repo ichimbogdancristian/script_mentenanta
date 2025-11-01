@@ -90,13 +90,15 @@
 using namespace System.Collections.Generic
 using namespace System.Text
 
-# Import core infrastructure for path management and logging
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force
-}
-else {
-    throw "CoreInfrastructure module not found at: $CoreInfraPath - v3.0 requires proper module dependencies"
+# Import core infrastructure for path management and logging (if not already loaded globally)
+if (-not (Get-Module -Name CoreInfrastructure)) {
+    $CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CoreInfrastructure.psm1'
+    if (Test-Path $CoreInfraPath) {
+        Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
+    }
+    else {
+        throw "CoreInfrastructure module not found at: $CoreInfraPath - v3.0 requires proper module dependencies"
+    }
 }
 
 # Ensure path discovery is initialized (if not already done by orchestrator)
