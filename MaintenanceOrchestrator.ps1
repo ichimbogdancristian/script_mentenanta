@@ -387,6 +387,35 @@ catch {
     Write-Warning "System readiness check failed: $($_.Exception.Message)"
     Write-Information "   Continuing with maintenance execution..." -InformationAction Continue
 }
+
+# Enable System Protection and create restore point if needed
+Write-Information "`nEnsuring System Protection is enabled..." -InformationAction Continue
+try {
+    if (Get-Command -Name 'Enable-SystemProtectionAndRestorePoint' -ErrorAction SilentlyContinue) {
+        $spResult = Enable-SystemProtectionAndRestorePoint
+
+        if ($spResult.Success) {
+            Write-Information "   ✓ System Protection enabled" -InformationAction Continue
+
+            if ($spResult.RestorePointCreated) {
+                Write-Information "   ✓ Restore point created successfully" -InformationAction Continue
+            }
+            else {
+                Write-Information "   ⚠ Could not create restore point: $($spResult.Message)" -InformationAction Continue
+            }
+
+            Write-Information "   Enable method: $($spResult.ProtectionEnableMethod)" -InformationAction Continue
+        }
+        else {
+            Write-Warning "   Could not enable System Protection: $($spResult.Message)"
+            Write-Information "   Continuing with maintenance (restore point unavailable)..." -InformationAction Continue
+        }
+    }
+}
+catch {
+    Write-Warning "System Protection enabling failed: $($_.Exception.Message)"
+    Write-Information "   Continuing with maintenance execution..." -InformationAction Continue
+}
 #endregion
 
 # Ensure Write-LogEntry is available after module loading (modules may have overridden it)

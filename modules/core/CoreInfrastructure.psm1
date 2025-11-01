@@ -3222,6 +3222,163 @@ function Get-ChangeLog {
 
 #endregion
 
+#region System Protection & Restore Points
+
+<#
+.SYNOPSIS
+    Enables System Protection and creates a restore point
+
+.DESCRIPTION
+    Verifies if System Protection is enabled on the system drive.
+    If not enabled, attempts to enable it via multiple methods.
+    Creates a restore point for maintenance safety.
+
+.PARAMETER Force
+    Force enable System Protection even if already enabled
+
+.OUTPUTS
+    [hashtable] Result with Success, IsEnabled, RestorePointCreated, RestorePointId, Message
+
+.EXAMPLE
+    $result = Enable-SystemProtectionAndRestorePoint
+    if ($result.RestorePointCreated) {
+        Write-Host "Restore point created successfully"
+    }
+#>
+function Enable-SystemProtectionAndRestorePoint {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [switch]$Force
+    )
+
+    $result = @{
+        Success                = $false
+        IsEnabled              = $false
+        RestorePointCreated    = $false
+        RestorePointId         = $null
+        Message                = ""
+        ProtectionEnableMethod = "None"
+    }
+
+    try {
+        Write-Verbose "Checking System Protection status..."
+
+        # Step 1: Check current System Protection status
+        $spEnabled = $false
+        try {
+            $spService = Get-CimInstance -ClassName Win32_SystemRestore -ErrorAction SilentlyContinue
+            $spEnabled = $null -ne $spService
+        }
+        catch {
+            # Fallback: Check registry
+            $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
+            if (Test-Path $regPath) {
+                $spReg = Get-ItemProperty $regPath -Name 'DisableSR' -ErrorAction SilentlyContinue
+                $spEnabled = $null -eq $spReg -or $spReg.DisableSR -eq 0
+            }
+        }
+
+        $result.IsEnabled = $spEnabled
+
+        # Step 2: If not enabled, attempt to enable it
+        if (-not $spEnabled -or $Force) {
+            Write-Verbose "System Protection is disabled. Attempting to enable..."
+
+            # Method 1: Try PowerShell Enable-ComputerRestore
+            try {
+                Enable-ComputerRestore -Drive "$env:SystemDrive\" -Confirm:$false -ErrorAction Stop
+                $result.ProtectionEnableMethod = "PowerShell-EnableComputerRestore"
+                $result.IsEnabled = $true
+                Write-Verbose "System Protection enabled via Enable-ComputerRestore"
+            }
+            catch {
+                Write-Verbose "Enable-ComputerRestore failed: $($_.Exception.Message)"
+
+                # Method 2: Try via Volume Shadow Copy Service
+                try {
+                    # Ensure VSS service is running
+                    $vss = Get-Service -Name VSS -ErrorAction SilentlyContinue
+                    if ($vss -and $vss.Status -ne 'Running') {
+                        Start-Service -Name VSS -ErrorAction SilentlyContinue
+                        Write-Verbose "Started VSS service"
+                    }
+
+                    # Try registry configuration
+                    $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
+                    if (Test-Path $regPath) {
+                        Set-ItemProperty -Path $regPath -Name 'DisableSR' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+                        $result.ProtectionEnableMethod = "Registry-DisableSR"
+                        $result.IsEnabled = $true
+                        Write-Verbose "System Protection enabled via registry configuration"
+                    }
+                }
+                catch {
+                    Write-Verbose "VSS/Registry method failed: $($_.Exception.Message)"
+                }
+            }
+        }
+
+        # Step 3: Create restore point
+        if ($result.IsEnabled) {
+            try {
+                Write-Verbose "Creating restore point..."
+
+                # Method 1: Try native PowerShell COM object
+                try {
+                    $restorePoint = New-Object -ComObject 'System.Restoration.SystemRestore'
+                    $restorePoint.CreateRestorePoint(
+                        "WindowsMaintenance-$(Get-Date -Format 'yyyyMMdd-HHmmss')",
+                        1,
+                        100
+                    )
+                    $result.RestorePointCreated = $true
+                    $result.Message = "Restore point created successfully via COM"
+                    Write-Verbose "Restore point created via COM object"
+                }
+                catch {
+                    Write-Verbose "COM method failed: $($_.Exception.Message)"
+
+                    # Method 2: Try via WMIC
+                    try {
+                        $output = cmd.exe /c "wmic.exe os call CreateRestorePoint `"WindowsMaintenance-$(Get-Date -Format 'yyyyMMdd-HHmmss')`", 100, 7" 2>&1
+                        if ($output -match 'successfully|ReturnValue = 0|Method execution successful') {
+                            $result.RestorePointCreated = $true
+                            $result.Message = "Restore point created successfully via WMIC"
+                            Write-Verbose "Restore point created via WMIC"
+                        }
+                        else {
+                            $result.Message = "Could not verify restore point creation"
+                        }
+                    }
+                    catch {
+                        $result.Message = "Failed to create restore point: $($_.Exception.Message)"
+                        Write-Verbose "WMIC method failed: $($_.Exception.Message)"
+                    }
+                }
+            }
+            catch {
+                $result.Message = "Error creating restore point: $($_.Exception.Message)"
+                Write-Verbose "Restore point creation error: $($_.Exception.Message)"
+            }
+        }
+        else {
+            $result.Message = "Could not enable System Protection - restore point not created"
+        }
+
+        $result.Success = $result.IsEnabled
+
+        return $result
+    }
+    catch {
+        $result.Message = "Critical error: $($_.Exception.Message)"
+        Write-Verbose "Critical error in Enable-SystemProtectionAndRestorePoint: $($_.Exception.Message)"
+        return $result
+    }
+}
+
+#endregion
+
 #region Module Exports
 
 Export-ModuleMember -Function @(
@@ -3239,7 +3396,7 @@ Export-ModuleMember -Function @(
     'Get-AuditResultsPath', 'Save-DiffResults',
     'New-ModuleExecutionResult', 'Write-StructuredLogEntry', 'Compare-DetectedVsConfig',
     'New-StandardLogEntry',
-    'Test-SystemRequirements', 'Test-SystemReadiness',
+    'Test-SystemRequirements', 'Test-SystemReadiness', 'Enable-SystemProtectionAndRestorePoint',
     'Invoke-WithTimeout', 'Invoke-ModuleWithTimeout',
     'Register-SystemChange', 'Undo-AllChanges', 'Clear-ChangeLog', 'Get-ChangeLog'
 ) -Alias @('Initialize-ConfigSystem', 'Get-MainConfig', 'Get-BloatwareList', 'Get-UnifiedEssentialAppsList', 'Write-LogEntry')
