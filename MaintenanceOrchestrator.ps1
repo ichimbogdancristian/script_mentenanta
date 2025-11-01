@@ -1,4 +1,4 @@
-﻿# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
+# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
 # The launcher ensures a compatible pwsh.exe is available before invoking this orchestrator.
 using namespace System.Collections.Generic
 <#
@@ -372,7 +372,7 @@ try {
     # Check if Test-SystemReadiness function is available
     if (Get-Command -Name 'Test-SystemReadiness' -ErrorAction SilentlyContinue) {
         $systemReady = Test-SystemReadiness
-        
+
         if (-not $systemReady) {
             Write-Warning "System requirements not fully met. Continuing with caution..."
             Write-Information "Press Ctrl+C within 10 seconds to abort, or wait to continue..." -InformationAction Continue
@@ -625,7 +625,7 @@ try {
         catch {
             throw "Failed to load logging configuration: $($_.Exception.Message)"
         }
-        
+
         # v3.1: Comprehensive schema validation beyond JSON syntax
         Write-Information "  Validating configuration schemas..." -InformationAction Continue
         try {
@@ -638,7 +638,7 @@ try {
                 else {
                     Write-Warning "     main-config.json has schema issues (see warnings above)"
                 }
-                
+
                 # Validate logging configuration
                 $loggingConfigValid = Test-ConfigurationSchema -ConfigObject $LoggingConfig -ConfigName 'logging-config.json'
                 if ($loggingConfigValid) {
@@ -647,7 +647,7 @@ try {
                 else {
                     Write-Warning "     logging-config.json has schema issues (see warnings above)"
                 }
-                
+
                 # Optionally validate data lists if needed
                 # (bloatware-list.json, essential-apps.json validated on first use)
             }
@@ -659,7 +659,7 @@ try {
             Write-Warning "  Configuration schema validation error: $($_.Exception.Message)"
             Write-Information "  ℹ Continuing with basic validation - some configuration issues may cause runtime errors" -InformationAction Continue
         }
-        
+
         # Initialize file organization system first (required by logging system)
         try {
             $fileOrgResult = Initialize-SessionFileOrganization -SessionRoot $TempRoot -ErrorAction Stop
@@ -1071,12 +1071,12 @@ try {
         }
     }
     #endregion
-    
+
     #region Maintenance Log Organization (v3.1 - Early organization)
     # NEW v3.1: Organize bootstrap maintenance.log to temp_files/logs/ early
     # This ensures logs are properly organized even if execution fails later
     Write-Information "`nOrganizing maintenance logs..." -InformationAction Continue
-    
+
     if (Get-Command -Name 'Move-MaintenanceLogToOrganized' -ErrorAction SilentlyContinue) {
         try {
             $logOrganized = Move-MaintenanceLogToOrganized
@@ -1096,7 +1096,7 @@ try {
         Write-Information "   [INFO] Log organization function not available (continuing)" -InformationAction Continue
     }
     #endregion
-    
+
     #region Task Definitions
     Write-Information "`nRegistering maintenance tasks..." -InformationAction Continue
     # v3.0 Architecture: Define standardized maintenance tasks using Invoke-[ModuleName] pattern
@@ -1331,7 +1331,7 @@ try {
                 }
                 if ($hasValidStructure) {
                     Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
-                    
+
                     # Patch 3: Collect module result for aggregation
                     if ($Global:ResultCollectionEnabled) {
                         try {
@@ -1467,7 +1467,7 @@ try {
         # If needed in future, add SystemAnalysis to core modules list and use inventory here
         # v3.0 Split Architecture: LogProcessor → ReportGenerator pipeline
         Write-Information "`nProcessing logs and generating reports using split architecture..." -InformationAction Continue
-        
+
         # Patch 4: Finalize and export aggregated results
         if ($Global:ResultCollectionEnabled) {
             Write-Information "`n  Finalizing session result collection..." -InformationAction Continue
@@ -1486,7 +1486,7 @@ try {
                 Write-Warning "  Failed to finalize result collection: $($_.Exception.Message)"
             }
         }
-        
+
         try {
             # Step 1: Process logs using LogProcessor module
             if (Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue) {

@@ -26,14 +26,7 @@ using namespace System.Collections.Generic
 
 #region Module Imports
 
-# Import CoreInfrastructure with -Global flag (CRITICAL for v3.0 architecture)
-$CoreInfraPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'modules\core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
-}
-else {
-    Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
-}
+# CoreInfrastructure is already loaded globally by orchestrator, no need to reimport
 
 # Import Type1 module (self-contained pattern)
 $Type1ModulePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\AppUpgradeAudit.psm1'
@@ -102,11 +95,11 @@ function Invoke-AppUpgrade {
         if (-not (Test-TempFilesStructure)) {
             throw "Failed to initialize temp_files directory structure"
         }
-        
+
         # STEP 1: Run Type1 detection
         Write-Information "   Running upgrade detection..." -InformationAction Continue
         $detectionResults = Get-AppUpgradeAnalysis -Config $Config
-        
+
         # Null safety: ensure detectionResults is an array
         if ($null -eq $detectionResults) {
             $detectionResults = @()
@@ -114,7 +107,7 @@ function Invoke-AppUpgrade {
         elseif ($detectionResults -isnot [Array]) {
             $detectionResults = @($detectionResults)
         }
-        
+
         # Save detection results to temp_files/data/
         $detectionDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\app-upgrade-results.json"
         $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $detectionDataPath | Out-Null
@@ -126,7 +119,7 @@ function Invoke-AppUpgrade {
             # Fallback to data folder for backward compatibility
             $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "data\app-upgrade-config.json"
         }
-        
+
         if (-not (Test-Path $moduleConfigPath)) {
             Write-Warning "Module configuration not found at: $moduleConfigPath"
             $moduleConfig = @{
@@ -142,7 +135,7 @@ function Invoke-AppUpgrade {
         # STEP 3: Filter detection results (create diff list)
         Write-Information "   Filtering upgrades against exclude patterns..." -InformationAction Continue
         $diffList = Get-FilteredUpgradeList -DetectionResults $detectionResults -ModuleConfig $moduleConfig
-        
+
         # Save diff list
         $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\app-upgrade-diff.json"
         $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath | Out-Null
@@ -152,7 +145,7 @@ function Invoke-AppUpgrade {
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\app-upgrade"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
+
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== Application Upgrade Execution ===" -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DetectedCount = $detectionResults.Count; FilteredCount = $diffList.Count; DryRun = $DryRun.IsPresent }
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detected: $($detectionResults.Count) upgrades available" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ Count = $detectionResults.Count }
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Filtered: $($diffList.Count) upgrades to process" -LogPath $executionLogPath -Operation 'Filter' -Metadata @{ FilteredCount = $diffList.Count; ExcludedCount = ($detectionResults.Count - $diffList.Count) }
@@ -167,10 +160,10 @@ function Invoke-AppUpgrade {
         elseif ($DryRun) {
             Write-Information "   DRY-RUN MODE: Simulating upgrades..." -InformationAction Continue
             Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message " DRY-RUN: Simulating upgrades" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
-            
+
             foreach ($upgrade in $diffList) {
                 Write-Information "    [DRY-RUN] Would upgrade: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion))" -InformationAction Continue
-                
+
                 # Use standardized DryRun logging
                 Write-OperationSkipped -Operation 'Upgrade' -Target $upgrade.Name -Component 'APP-UPGRADE' -Reason 'DryRun mode enabled' -LogPath $executionLogPath -AdditionalInfo @{
                     CurrentVersion   = $upgrade.CurrentVersion
@@ -189,7 +182,7 @@ function Invoke-AppUpgrade {
         else {
             Write-Information "   Executing upgrades..." -InformationAction Continue
             Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "LIVE EXECUTION: Processing $($diffList.Count) upgrades" -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $diffList.Count }
-            
+
             foreach ($upgrade in $diffList) {
                 # Log upgrade attempt with full details
                 Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Starting upgrade: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Metadata @{
@@ -198,13 +191,13 @@ function Invoke-AppUpgrade {
                     Source         = $upgrade.Source
                     Id             = $upgrade.Id
                 }
-                
+
                 $upgradeResult = Invoke-SingleUpgrade -Upgrade $upgrade -ExecutionLogPath $executionLogPath
-                
+
                 if ($upgradeResult.Success) {
                     $itemsProcessed++
                     Write-Information "     Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion)) in $([math]::Round($upgradeResult.Duration / 1000, 2))s" -InformationAction Continue
-                    
+
                     # Log summary success
                     Write-StructuredLogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message "Upgrade completed successfully: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Result 'Success' -Metadata @{
                         From     = $upgrade.CurrentVersion
@@ -215,7 +208,7 @@ function Invoke-AppUpgrade {
                 }
                 else {
                     Write-Warning "Failed to upgrade: $($upgrade.Name) - $($upgradeResult.Error)"
-                    
+
                     # Log summary failure
                     Write-StructuredLogEntry -Level 'ERROR' -Component 'APP-UPGRADE' -Message "Upgrade failed: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Result 'Failed' -Metadata @{
                         CurrentVersion = $upgrade.CurrentVersion
@@ -260,7 +253,7 @@ function Invoke-AppUpgrade {
                 PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
         }
-        
+
         try {
             $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force | Out-Null
             Write-Verbose "Execution summary saved to: $summaryPath"
@@ -428,7 +421,7 @@ function Invoke-SingleUpgrade {
 
         # Execute upgrade
         $process = Start-Process -FilePath $upgradeCommand -ArgumentList $upgradeArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stdout.txt") -RedirectStandardError (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stderr.txt")
-        
+
         $stdout = Get-Content (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stdout.txt") -Raw -ErrorAction SilentlyContinue
         $stderr = Get-Content (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stderr.txt") -Raw -ErrorAction SilentlyContinue
 
@@ -450,7 +443,7 @@ function Invoke-SingleUpgrade {
                 Command      = $commandString
                 Verification = $verificationResult
             }
-            
+
             # Log detailed output if available
             if (-not [string]::IsNullOrWhiteSpace($stdout)) {
                 Write-LogEntry -Level 'DEBUG' -Component 'APP-UPGRADE-EXEC' -Message "Command output: $stdout" -LogPath $ExecutionLogPath

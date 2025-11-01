@@ -25,17 +25,11 @@ using namespace System.Collections.Generic
 
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Step 1: Import core infrastructure FIRST (REQUIRED) - Global scope for Type1 access
+# CoreInfrastructure is already loaded globally by orchestrator, no need to reimport
+# Calculate module paths for Type1 imports
 $ModuleRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
-$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
-}
-else {
-    Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
-}
 
-# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
+# Import corresponding Type 1 module (REQUIRED)
 $Type1ModulePath = Join-Path $ModuleRoot 'type1\SystemInventoryAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force -WarningAction SilentlyContinue
@@ -83,11 +77,11 @@ function Invoke-SystemInventory {
     param(
         [Parameter(Mandatory = $true)]
         [PSCustomObject]$Config,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$DryRun
     )
-    
+
     # Start performance tracking
     $startTime = Get-Date
     $perfContext = $null
@@ -97,30 +91,30 @@ function Invoke-SystemInventory {
     catch {
         # Performance tracking is optional
     }
-    
+
     try {
         Write-Information " Collecting system inventory..." -InformationAction Continue
-        
+
         # Validate temp_files structure (FIX #12)
         if (-not (Test-TempFilesStructure)) {
             throw "Failed to initialize temp_files directory structure"
         }
-        
+
         # STEP 1: Run Type1 detection (inventory collection)
         $inventoryData = Get-SystemInventoryAnalysis -Config $Config
-        
+
         # STEP 2: Save inventory data to temp_files/data/
         $inventoryDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "system-inventory.json"
         $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8 -ErrorAction Stop | Out-Null
         Write-Information "   System inventory saved to data folder" -InformationAction Continue
-        
+
         # STEP 3: Setup logging (information gathering, minimal logging needed)
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\system-inventory"
         if (-not (Test-Path $executionLogDir)) {
             New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         }
         $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
+
         # Log inventory summary
         $logSummary = @"
 ========================================
@@ -161,11 +155,11 @@ PERFORMANCE:
 Collection completed successfully
 ========================================
 "@
-        
+
         Add-Content -Path $executionLogPath -Value $logSummary -Encoding UTF8 | Out-Null
-        
+
         Write-Information "   Inventory collection complete" -InformationAction Continue
-        
+
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $startTime
@@ -202,7 +196,7 @@ Collection completed successfully
                 InstalledApps = $inventoryData.Software.InstalledApplications
             }
         }
-        
+
         try {
             $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force | Out-Null
             Write-Verbose "Execution summary saved to: $summaryPath"
@@ -210,7 +204,7 @@ Collection completed successfully
         catch {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
-        
+
         # Complete performance tracking
         if ($perfContext) {
             try {
@@ -220,7 +214,7 @@ Collection completed successfully
                 # Performance tracking is optional
             }
         }
-        
+
         # STEP 4: Return standardized result
         return New-ModuleExecutionResult `
             -Success $true `
@@ -234,7 +228,7 @@ Collection completed successfully
     catch {
         $errorMsg = "System inventory collection failed: $($_.Exception.Message)"
         Write-Error $errorMsg
-        
+
         # Complete performance tracking with failure
         if ($perfContext) {
             try {
@@ -244,7 +238,7 @@ Collection completed successfully
                 # Performance tracking is optional
             }
         }
-        
+
         # Return failure result
         return New-ModuleExecutionResult `
             -Success $false `

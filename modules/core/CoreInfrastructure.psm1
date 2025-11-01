@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -12,23 +12,23 @@
     - Audit path standardization (Type1 results, Type2 diffs)
 
 .MODULE ARCHITECTURE
-    Purpose: 
+    Purpose:
         Serve as the single point of entry for all core infrastructure functions.
         All modules import this with -Global flag to make functions available to all dependencies.
-    
+
     Dependencies:
         None - this is the foundation module
-    
+
     Exports:
         • Get-InfrastructureStatus - Check infrastructure health
         • Initialize-MaintenanceInfrastructure - Initialize all systems
         • Get-AuditResultsPath - Standard Type1 audit result paths (FIX #4)
         • Save-DiffResults - Standard Type2 diff persistence (FIX #6)
-    
+
     Import Pattern:
         Import-Module CoreInfrastructure.psm1 -Force -Global
         # Makes all functions available to importing module and its dependencies
-    
+
     Used By:
         - UserInterface.psm1
         - LogProcessor.psm1
@@ -102,7 +102,7 @@ Write-Verbose "CoreInfrastructure: Consolidated module loading (Path B refactori
     PS> $hash = $obj | ConvertTo-Hashtable
     PS> $hash['Name']
     Test
-    
+
     Converts JSON-parsed PSCustomObject to nested hashtable structure.
 
 .NOTES
@@ -168,23 +168,23 @@ function Initialize-GlobalPathDiscovery {
     param(
         [Parameter(Mandatory = $false)]
         [string]$HintPath,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$Force
     )
-    
+
     # Acquire write lock for thread-safe initialization
     $script:MaintenanceProjectPaths.InitLock.EnterWriteLock()
-    
+
     try {
         # Early return if already initialized and not forcing
         if ($script:MaintenanceProjectPaths.Initialized -and -not $Force) {
             $script:MaintenanceProjectPaths.InitLock.ExitWriteLock()
             return $true
         }
-        
+
         Write-Verbose "Initializing global path discovery system"
-        
+
         # Method 1: Use environment variables set by orchestrator
         if ($env:MAINTENANCE_PROJECT_ROOT) {
             $script:MaintenanceProjectPaths.ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
@@ -199,8 +199,8 @@ function Initialize-GlobalPathDiscovery {
         elseif ($PSScriptRoot) {
             $testPath = $PSScriptRoot
             while ($testPath -and $testPath -ne (Split-Path $testPath -Parent)) {
-                if ((Test-Path (Join-Path $testPath 'config')) -and 
-                    (Test-Path (Join-Path $testPath 'modules')) -and 
+                if ((Test-Path (Join-Path $testPath 'config')) -and
+                    (Test-Path (Join-Path $testPath 'modules')) -and
                     (Test-Path (Join-Path $testPath 'MaintenanceOrchestrator.ps1'))) {
                     $script:MaintenanceProjectPaths.ProjectRoot = $testPath
                     Write-Verbose "  Auto-detected project root"
@@ -209,32 +209,32 @@ function Initialize-GlobalPathDiscovery {
                 $testPath = Split-Path $testPath -Parent
             }
         }
-        
+
         # If still not found, use current location as fallback
         if (-not $script:MaintenanceProjectPaths.ProjectRoot) {
             $script:MaintenanceProjectPaths.ProjectRoot = Get-Location
             Write-Verbose "  Using current location as fallback"
         }
-        
+
         # Initialize related paths
         $script:MaintenanceProjectPaths.ConfigRoot = Join-Path $script:MaintenanceProjectPaths.ProjectRoot 'config'
         $script:MaintenanceProjectPaths.ModulesRoot = Join-Path $script:MaintenanceProjectPaths.ProjectRoot 'modules'
         $script:MaintenanceProjectPaths.TempRoot = Join-Path $script:MaintenanceProjectPaths.ProjectRoot 'temp_files'
         $script:MaintenanceProjectPaths.ParentDir = Split-Path -Parent $script:MaintenanceProjectPaths.ProjectRoot
-        
+
         # Set environment variables for all modules
         $env:MAINTENANCE_PROJECT_ROOT = $script:MaintenanceProjectPaths.ProjectRoot
         $env:MAINTENANCE_CONFIG_ROOT = $script:MaintenanceProjectPaths.ConfigRoot
         $env:MAINTENANCE_MODULES_ROOT = $script:MaintenanceProjectPaths.ModulesRoot
         $env:MAINTENANCE_TEMP_ROOT = $script:MaintenanceProjectPaths.TempRoot
         $env:MAINTENANCE_PARENT_DIR = $script:MaintenanceProjectPaths.ParentDir
-        
+
         # Generate and set session ID if not already set
         if (-not $env:MAINTENANCE_SESSION_ID) {
             $sessionId = [guid]::NewGuid().ToString()
             $env:MAINTENANCE_SESSION_ID = $sessionId
         }
-        
+
         # Make paths available globally to Type2 modules (v3.0 requirement)
         # Type2 modules reference $Global:ProjectPaths.TempFiles, $Global:ProjectPaths.Config, etc.
         $Global:ProjectPaths = @{
@@ -246,9 +246,9 @@ function Initialize-GlobalPathDiscovery {
             Config      = $script:MaintenanceProjectPaths.ConfigRoot  # Alias
             Modules     = $script:MaintenanceProjectPaths.ModulesRoot # Alias
         }
-        
+
         Write-Verbose "Global ProjectPaths initialized: $($Global:ProjectPaths | ConvertTo-Json)"
-        
+
         $script:MaintenanceProjectPaths.Initialized = $true
         Write-Verbose "Path discovery completed successfully"
         return $true
@@ -268,14 +268,14 @@ function Initialize-GlobalPathDiscovery {
 function Get-MaintenancePaths {
     [CmdletBinding()]
     param()
-    
+
     $script:MaintenanceProjectPaths.InitLock.EnterReadLock()
-    
+
     try {
         if (-not $script:MaintenanceProjectPaths.Initialized) {
             throw "Path discovery not initialized - call Initialize-GlobalPathDiscovery first"
         }
-        
+
         return @{
             ProjectRoot = $script:MaintenanceProjectPaths.ProjectRoot
             ConfigRoot  = $script:MaintenanceProjectPaths.ConfigRoot
@@ -307,7 +307,7 @@ function Get-MaintenancePath {
         [ValidateSet('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot', 'ParentDir')]
         [string]$PathKey
     )
-    
+
     $paths = Get-MaintenancePaths
     return $paths[$PathKey]
 }
@@ -347,65 +347,65 @@ function Get-SessionPath {
         [Parameter(Mandatory = $true)]
         [ValidateSet('data', 'logs', 'reports', 'temp', 'inventory')]
         [string]$Category,
-        
+
         [Parameter()]
         [string]$SubCategory,
-        
+
         [Parameter()]
         [string]$FileName
     )
-    
+
     $tempRoot = Get-MaintenancePath 'TempRoot'
-    
+
     if ([string]::IsNullOrEmpty($tempRoot)) {
         Write-Error "TempRoot path is not available"
         return $null
     }
-    
+
     # Build the base path
     $basePath = Join-Path $tempRoot $Category
-    
+
     # Add subcategory if provided
     if (-not [string]::IsNullOrEmpty($SubCategory)) {
         $basePath = Join-Path $basePath $SubCategory
     }
-    
+
     # Ensure directory exists
     if (-not (Test-Path $basePath)) {
         New-Item -Path $basePath -ItemType Directory -Force | Out-Null
     }
-    
+
     # Add filename if provided
     if (-not [string]::IsNullOrEmpty($FileName)) {
         return Join-Path $basePath $FileName
     }
-    
+
     return $basePath
 }
 
 function Test-MaintenancePathsIntegrity {
     [CmdletBinding()]
     param()
-    
+
     $paths = Get-MaintenancePaths
     $result = @{
         IsValid = $true
         Errors  = @()
     }
-    
+
     $pathsToCheck = @(
         @{ Key = 'ProjectRoot'; Name = 'Project Root' }
         @{ Key = 'ConfigRoot'; Name = 'Config Root' }
         @{ Key = 'ModulesRoot'; Name = 'Modules Root' }
     )
-    
+
     foreach ($pathCheck in $pathsToCheck) {
         if (-not (Test-Path $paths[$pathCheck.Key])) {
             $result.IsValid = $false
             $result.Errors += "Missing: $($pathCheck.Name)"
         }
     }
-    
+
     return [PSCustomObject]$result
 }
 
@@ -436,27 +436,27 @@ function Get-MainConfiguration {
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
-    
+
     try {
         # Try new path first
         $newPath = Join-Path $ConfigPath 'settings/main-config.json'
         $oldPath = Join-Path $ConfigPath 'execution/main-config.json'
-        
-        $configFile = if (Test-Path $newPath) { $newPath } 
-        elseif (Test-Path $oldPath) { 
+
+        $configFile = if (Test-Path $newPath) { $newPath }
+        elseif (Test-Path $oldPath) {
             Write-Warning "FIX #5: Deprecated config path detected 'execution/' - please migrate to 'settings/' (see docs/DELIVERABLES.md)"
-            $oldPath 
+            $oldPath
         }
         else { $null }
-        
+
         if (-not $configFile) {
             throw "main-config.json not found in $ConfigPath (tried settings/ and execution/)"
         }
-        
+
         Write-Verbose "Loading configuration from: $configFile"
         $configContent = Get-Content $configFile -Raw
         $config = $configContent | ConvertFrom-Json
-        
+
         # Convert to hashtable for v3.0 compatibility
         return $config | ConvertTo-Hashtable
     }
@@ -487,9 +487,9 @@ function Assert-AdminPrivilege {
         [Parameter(Mandatory = $true)]
         [string]$Operation
     )
-    
+
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    
+
     if (-not $isAdmin) {
         throw "Administrator privileges are required for: $Operation"
     }
@@ -518,27 +518,27 @@ function Get-BloatwareConfiguration {
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
-    
+
     try {
         $newPath = Join-Path $ConfigPath 'lists/bloatware-list.json'
         $oldPath = Join-Path $ConfigPath 'data/bloatware-list.json'
-        
+
         $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { 
+        elseif (Test-Path $oldPath) {
             Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
-            $oldPath 
+            $oldPath
         }
         else { $null }
-        
+
         if (-not $configFile) {
             Write-Verbose "Bloatware configuration not found"
             return @{ all = @() }
         }
-        
+
         Write-Verbose "Loading bloatware configuration from: $configFile"
         $content = Get-Content $configFile -Raw
         $config = $content | ConvertFrom-Json
-        
+
         return $config | ConvertTo-Hashtable
     }
     catch {
@@ -568,27 +568,27 @@ function Get-EssentialAppsConfiguration {
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
-    
+
     try {
         $newPath = Join-Path $ConfigPath 'lists/essential-apps.json'
         $oldPath = Join-Path $ConfigPath 'data/essential-apps.json'
-        
+
         $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { 
+        elseif (Test-Path $oldPath) {
             Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
-            $oldPath 
+            $oldPath
         }
         else { $null }
-        
+
         if (-not $configFile) {
             Write-Verbose "Essential apps configuration not found"
             return @{ all = @() }
         }
-        
+
         Write-Verbose "Loading essential apps configuration from: $configFile"
         $content = Get-Content $configFile -Raw
         $config = $content | ConvertFrom-Json
-        
+
         return $config | ConvertTo-Hashtable
     }
     catch {
@@ -617,27 +617,27 @@ function Get-AppUpgradeConfiguration {
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
-    
+
     try {
         $newPath = Join-Path $ConfigPath 'lists/app-upgrade-config.json'
         $oldPath = Join-Path $ConfigPath 'data/app-upgrade-config.json'
-        
+
         $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { 
+        elseif (Test-Path $oldPath) {
             Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
-            $oldPath 
+            $oldPath
         }
         else { $null }
-        
+
         if (-not $configFile) {
             Write-Verbose "App upgrade configuration not found"
             return @{ all = @() }
         }
-        
+
         Write-Verbose "Loading app upgrade configuration from: $configFile"
         $content = Get-Content $configFile -Raw
         $config = $content | ConvertFrom-Json
-        
+
         return $config | ConvertTo-Hashtable
     }
     catch {
@@ -662,27 +662,27 @@ function Get-LoggingConfiguration {
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
-    
+
     try {
         $newPath = Join-Path $ConfigPath 'settings/logging-config.json'
         $oldPath = Join-Path $ConfigPath 'execution/logging-config.json'
-        
+
         $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { 
+        elseif (Test-Path $oldPath) {
             Write-Warning "FIX #5: Deprecated config path detected 'execution/' - please migrate to 'settings/' (see docs/DELIVERABLES.md)"
-            $oldPath 
+            $oldPath
         }
         else { $null }
-        
+
         if (-not $configFile) {
             Write-Verbose "Logging configuration not found"
             return @{ levels = @('INFO', 'WARNING', 'ERROR') }
         }
-        
+
         Write-Verbose "Loading logging configuration from: $configFile"
         $content = Get-Content $configFile -Raw
         $config = $content | ConvertFrom-Json
-        
+
         return $config | ConvertTo-Hashtable
     }
     catch {
@@ -716,7 +716,7 @@ function Get-LoggingConfiguration {
     PS> $config = Get-CachedConfiguration -ConfigKey 'main-config'
     PS> $config['ExecutionMode']
     Interactive
-    
+
     Retrieves previously loaded main configuration from cache
 
 .NOTES
@@ -729,7 +729,7 @@ function Get-CachedConfiguration {
         [Parameter(Mandatory = $true)]
         [string]$ConfigKey
     )
-    
+
     Write-Verbose "Getting cached configuration for: $ConfigKey"
     return @{}
 }
@@ -747,10 +747,10 @@ function Get-ConfigFilePath {
         [Parameter(Mandatory = $true)]
         [string]$ConfigName
     )
-    
+
     $newPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "settings/$ConfigName"
     $oldPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "execution/$ConfigName"
-    
+
     if (Test-Path $newPath) { return $newPath }
     if (Test-Path $oldPath) { return $oldPath }
     return $newPath  # Return new path as default even if not exists
@@ -766,7 +766,7 @@ function Get-ConfigFilePath {
 function Get-ReportTemplatesConfiguration {
     [CmdletBinding()]
     param()
-    
+
     return @{ templates = @('default', 'executive', 'detailed') }
 }
 
@@ -780,7 +780,7 @@ function Get-ReportTemplatesConfiguration {
 function Test-ConfigurationIntegrity {
     [CmdletBinding()]
     param()
-    
+
     try {
         Get-MainConfiguration | Out-Null
         Get-LoggingConfiguration | Out-Null
@@ -818,20 +818,20 @@ function Get-NestedProperty {
     param(
         [Parameter(Mandatory = $true)]
         [object]$Object,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$PropertyPath
     )
-    
+
     try {
         $parts = $PropertyPath -split '\.'
         $current = $Object
-        
+
         foreach ($part in $parts) {
             if ($null -eq $current) {
                 return $null
             }
-            
+
             if ($current -is [hashtable]) {
                 $current = $current[$part]
             }
@@ -842,7 +842,7 @@ function Get-NestedProperty {
                 return $null
             }
         }
-        
+
         return $current
     }
     catch {
@@ -873,7 +873,7 @@ function Get-NestedProperty {
 
 .EXAMPLE
     $valid = Test-ConfigurationSchema -ConfigObject $config -ConfigName "main-config.json"
-    
+
 .EXAMPLE
     Test-ConfigurationSchema -ConfigObject $config -ConfigName "main-config.json" -ThrowOnError
 #>
@@ -883,13 +883,13 @@ function Test-ConfigurationSchema {
     param(
         [Parameter(Mandatory = $true)]
         [object]$ConfigObject,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$ConfigName,
-        
+
         [switch]$ThrowOnError
     )
-    
+
     # Define configuration schemas (v3.1)
     $schemas = @{
         'main-config.json'    = @{
@@ -904,35 +904,35 @@ function Test-ConfigurationSchema {
             'reporting.enableHtmlReport'      = @{ Type = 'bool'; Required = $false; Description = 'Generate HTML reports' }
             'paths.tempFolder'                = @{ Type = 'string'; Required = $false; Description = 'Temporary files directory' }
         }
-        
+
         'logging-config.json' = @{
             'logging.level'        = @{ Type = 'string'; Enum = @('DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL'); Required = $false; Description = 'Default logging level' }
             'logging.maxLogSizeKB' = @{ Type = 'int'; Min = 100; Max = 102400; Required = $false; Description = 'Maximum log size in KB' }
         }
-        
+
         'bloatware-list.json' = @{
             '_type'        = 'object'
             '_description' = 'Bloatware configuration with whitelist'
             'bloatware'    = @{ Type = 'array'; Required = $false; Description = 'List of bloatware definitions' }
             'whitelist'    = @{ Type = 'array'; Required = $false; Description = 'Apps to never remove' }
         }
-        
+
         'essential-apps.json' = @{
             '_type'         = 'object'
             '_description'  = 'Essential applications configuration'
             'essentialApps' = @{ Type = 'array'; Required = $false; Description = 'List of essential applications' }
         }
     }
-    
+
     # Get schema for this config
     $schema = $schemas[$ConfigName]
     if (-not $schema) {
         Write-Verbose "No schema defined for configuration: $ConfigName (skipping validation)"
         return $true
     }
-    
+
     $errors = @()
-    
+
     try {
         # Validate each field in the schema
         foreach ($fieldPath in $schema.Keys) {
@@ -940,25 +940,25 @@ function Test-ConfigurationSchema {
             if ($fieldPath -like '_*') {
                 continue
             }
-            
+
             $fieldSchema = $schema[$fieldPath]
             $value = Get-NestedProperty -Object $ConfigObject -PropertyPath $fieldPath
-            
+
             # Check required fields
             if ($fieldSchema.Required -and $null -eq $value) {
                 $errors += "Required field missing: $fieldPath ($($fieldSchema.Description))"
                 continue
             }
-            
+
             # Skip validation if field is optional and not present
             if ($null -eq $value -and -not $fieldSchema.Required) {
                 continue
             }
-            
+
             # Type validation
             $expectedType = $fieldSchema.Type
             $actualValue = $value
-            
+
             switch ($expectedType) {
                 'int' {
                     if ($actualValue -isnot [int] -and $actualValue -isnot [int32] -and $actualValue -isnot [int64]) {
@@ -970,7 +970,7 @@ function Test-ConfigurationSchema {
                             continue
                         }
                     }
-                    
+
                     # Range validation
                     if ($fieldSchema.Min -and $actualValue -lt $fieldSchema.Min) {
                         $errors += "Field '$fieldPath' value $actualValue is below minimum $($fieldSchema.Min)"
@@ -979,31 +979,31 @@ function Test-ConfigurationSchema {
                         $errors += "Field '$fieldPath' value $actualValue exceeds maximum $($fieldSchema.Max)"
                     }
                 }
-                
+
                 'bool' {
                     if ($actualValue -isnot [bool]) {
                         $errors += "Field '$fieldPath' must be a boolean (got: $($value.GetType().Name))"
                     }
                 }
-                
+
                 'string' {
                     if ($actualValue -isnot [string]) {
                         $errors += "Field '$fieldPath' must be a string (got: $($value.GetType().Name))"
                         continue
                     }
-                    
+
                     # Enum validation
                     if ($fieldSchema.Enum -and $actualValue -notin $fieldSchema.Enum) {
                         $errors += "Field '$fieldPath' value '$actualValue' not in allowed values: $($fieldSchema.Enum -join ', ')"
                     }
                 }
-                
+
                 'array' {
                     if ($actualValue -isnot [array] -and $actualValue -isnot [System.Collections.IEnumerable]) {
                         $errors += "Field '$fieldPath' must be an array (got: $($value.GetType().Name))"
                     }
                 }
-                
+
                 'object' {
                     if ($actualValue -isnot [hashtable] -and $actualValue -isnot [PSCustomObject]) {
                         $errors += "Field '$fieldPath' must be an object (got: $($value.GetType().Name))"
@@ -1011,11 +1011,11 @@ function Test-ConfigurationSchema {
                 }
             }
         }
-        
+
         # Report results
         if ($errors.Count -gt 0) {
             $errorMessage = "Configuration validation failed for $ConfigName`:`n  • " + ($errors -join "`n  • ")
-            
+
             if ($ThrowOnError) {
                 throw $errorMessage
             }
@@ -1024,7 +1024,7 @@ function Test-ConfigurationSchema {
                 return $false
             }
         }
-        
+
         Write-Verbose "Configuration schema validation passed for: $ConfigName"
         return $true
     }
@@ -1064,25 +1064,25 @@ function Initialize-ConfigurationSystem {
         [Parameter(Mandatory = $true)]
         [string]$ConfigRootPath
     )
-    
+
     Write-Verbose "Initializing configuration system at: $ConfigRootPath"
-    
+
     try {
         # Validate required configuration files
         $requiredFiles = @(
             @{ Name = 'main-config.json'; NewPath = 'settings'; OldPath = 'execution' },
             @{ Name = 'logging-config.json'; NewPath = 'settings'; OldPath = 'execution' }
         )
-        
+
         foreach ($file in $requiredFiles) {
             $newPath = Join-Path $ConfigRootPath "$($file.NewPath)/$($file.Name)"
             $oldPath = Join-Path $ConfigRootPath "$($file.OldPath)/$($file.Name)"
-            
+
             if (-not ((Test-Path $newPath) -or (Test-Path $oldPath))) {
                 throw "Required configuration file not found: $($file.Name)"
             }
         }
-        
+
         Write-Verbose "Configuration system initialized successfully"
         return $true
     }
@@ -1144,14 +1144,14 @@ function New-StandardLogEntry {
         [Parameter(Mandatory = $true)]
         [ValidateSet('DEBUG', 'INFO', 'WARNING', 'SUCCESS', 'ERROR')]
         [string]$Level,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Component,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Message
     )
-    
+
     $timestamp = Get-Date -Format $script:LoggingStandards.TimestampFormat
     return $script:LoggingStandards.EntryFormat -f $timestamp, $Level, $Component, $Message
 }
@@ -1182,14 +1182,14 @@ function Initialize-LoggingSystem {
         [Parameter(Mandatory = $false)]
         [string]$BaseLogPath = (Join-Path $env:MAINTENANCE_TEMP_ROOT 'logs\maintenance.log')
     )
-    
+
     try {
         # Create log directory
         $logDir = Split-Path -Parent $BaseLogPath
         if (-not (Test-Path $logDir)) {
             New-Item -Path $logDir -ItemType Directory -Force | Out-Null
         }
-        
+
         Write-Verbose "Logging system initialized at: $BaseLogPath"
         return $true
     }
@@ -1228,24 +1228,24 @@ function Write-ModuleLogEntry {
         [Parameter(Mandatory = $true)]
         [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS', 'DEBUG')]
         [string]$Level,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Component,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory = $false)]
         [hashtable]$Data = @{}
     )
-    
+
     # Use standardized log entry format
     $logEntry = New-StandardLogEntry -Level $Level -Component $Component -Message $Message
-    
+
     if ($Data.Count -gt 0) {
         $logEntry += " | Data: $(($Data.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ')"
     }
-    
+
     Write-Information $logEntry -InformationAction Continue
 }
 
@@ -1277,11 +1277,11 @@ function Start-PerformanceTracking {
     param(
         [Parameter(Mandatory = $true)]
         [string]$OperationName,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Component = 'UNKNOWN'
     )
-    
+
     return @{
         OperationName = $OperationName
         Component     = $Component
@@ -1314,27 +1314,27 @@ function Complete-PerformanceTracking {
     param(
         [Parameter(Mandatory = $true)]
         [hashtable]$Context,
-        
+
         [Parameter(Mandatory = $false)]
         [ValidateSet('Success', 'Failed', 'Cancelled')]
         [string]$Status = 'Success',
-        
+
         [Parameter(Mandatory = $false)]
         [string]$ErrorMessage = ''
     )
-    
+
     $endTime = Get-Date
     $duration = ($endTime - $Context.StartTime).TotalMilliseconds
-    
+
     $message = "[$($Context.Component)] $($Context.OperationName): $Status (${duration}ms)"
     if ($ErrorMessage) {
         $message += " | Error: $ErrorMessage"
     }
-    
+
     Write-ModuleLogEntry -Level $(if ($Status -eq 'Success') { 'SUCCESS' } else { 'ERROR' }) `
         -Component $Context.Component `
         -Message $message
-    
+
     return @{
         Duration = $duration
         Status   = $Status
@@ -1353,27 +1353,27 @@ function Write-OperationStart {
     param(
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$Operation,
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$Target,
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$Component = 'OPERATION',
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$LogPath,
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [hashtable]$AdditionalInfo,
-        
+
         # Legacy parameter support
         [Parameter(Mandatory = $false, ParameterSetName = 'Legacy')]
         [string]$OperationName,
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Legacy')]
         [string]$ComponentName = 'OPERATION'
     )
-    
+
     if ($PSCmdlet.ParameterSetName -eq 'Legacy') {
         Write-ModuleLogEntry -Level 'INFO' -Component $ComponentName -Message "Starting: $OperationName"
     }
@@ -1382,7 +1382,7 @@ function Write-OperationStart {
         if (-not [string]::IsNullOrEmpty($Target)) {
             $message += " - Target: $Target"
         }
-        
+
         if (-not [string]::IsNullOrEmpty($LogPath)) {
             Write-StructuredLogEntry -Level 'INFO' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Metadata $AdditionalInfo
         }
@@ -1407,27 +1407,27 @@ function Write-OperationSuccess {
     param(
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$Operation,
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$Target,
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$Component = 'OPERATION',
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$LogPath,
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [hashtable]$Metrics,
-        
+
         # Legacy parameter support
         [Parameter(Mandatory = $false, ParameterSetName = 'Legacy')]
         [string]$OperationName,
-        
+
         [Parameter(Mandatory = $false, ParameterSetName = 'Legacy')]
         [string]$ComponentName = 'OPERATION'
     )
-    
+
     if ($PSCmdlet.ParameterSetName -eq 'Legacy') {
         Write-ModuleLogEntry -Level 'SUCCESS' -Component $ComponentName -Message "Completed: $OperationName"
     }
@@ -1436,7 +1436,7 @@ function Write-OperationSuccess {
         if (-not [string]::IsNullOrEmpty($Target)) {
             $message += " - Target: $Target"
         }
-        
+
         if (-not [string]::IsNullOrEmpty($LogPath)) {
             Write-StructuredLogEntry -Level 'SUCCESS' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Result 'Success' -Metadata $Metrics
         }
@@ -1457,30 +1457,30 @@ function Write-OperationFailure {
     param(
         [Parameter(Mandatory = $false)]
         [string]$Operation,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Target,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Component = 'OPERATION',
-        
+
         [Parameter(Mandatory = $false)]
         [string]$LogPath,
-        
+
         [Parameter(Mandatory = $false)]
         [object]$Error,
-        
+
         [Parameter(Mandatory = $false)]
         [hashtable]$AdditionalInfo,
-        
+
         # Legacy parameters
         [Parameter(Mandatory = $false)]
         [string]$OperationName,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$ComponentName = 'OPERATION'
     )
-    
+
     try {
         if (-not [string]::IsNullOrEmpty($OperationName)) {
             # Legacy usage
@@ -1495,7 +1495,7 @@ function Write-OperationFailure {
             if ($Error) {
                 $message += " - Error: $($Error.ToString())"
             }
-            
+
             if (-not [string]::IsNullOrEmpty($LogPath)) {
                 Write-StructuredLogEntry -Level 'ERROR' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Result 'Failed' -Metadata $AdditionalInfo
             }
@@ -1520,23 +1520,23 @@ function Write-OperationSkipped {
     param(
         [Parameter(Mandatory = $false)]
         [string]$Operation,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Target,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Component = 'OPERATION',
-        
+
         [Parameter(Mandatory = $false)]
         [string]$LogPath,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Reason,
-        
+
         [Parameter(Mandatory = $false)]
         [hashtable]$AdditionalInfo
     )
-    
+
     $message = "Skipped: $Operation"
     if (-not [string]::IsNullOrEmpty($Target)) {
         $message += " - Target: $Target"
@@ -1544,7 +1544,7 @@ function Write-OperationSkipped {
     if (-not [string]::IsNullOrEmpty($Reason)) {
         $message += " - Reason: $Reason"
     }
-    
+
     if (-not [string]::IsNullOrEmpty($LogPath)) {
         Write-StructuredLogEntry -Level 'WARNING' -Component $Component -Message $message -LogPath $LogPath -Operation $Operation -Target $Target -Result 'Skipped' -Metadata $AdditionalInfo
     }
@@ -1561,7 +1561,7 @@ function Write-OperationSkipped {
 
 .DESCRIPTION
     Controls how much detail is logged
-    
+
 .NOTES
     DEPRECATED: Write-OperationFailure-Old removed in v3.1
     Use Write-StructuredLogEntry with -Level 'ERROR' instead
@@ -1573,7 +1573,7 @@ function Set-LoggingVerbosity {
         [ValidateSet('Silent', 'Quiet', 'Normal', 'Verbose')]
         [string]$Level
     )
-    
+
     Write-Verbose "Logging verbosity set to: $Level"
 }
 
@@ -1590,7 +1590,7 @@ function Set-LoggingEnabled {
         [Parameter(Mandatory = $true)]
         [bool]$Enabled
     )
-    
+
     Write-Verbose "Logging enabled: $Enabled"
 }
 
@@ -1611,7 +1611,7 @@ function Initialize-SessionFileOrganization {
         [Parameter(Mandatory = $false)]
         [string]$SessionRoot = $env:MAINTENANCE_TEMP_ROOT
     )
-    
+
     try {
         $directories = @('data', 'logs', 'reports', 'temp', 'inventory')
         foreach ($dir in $directories) {
@@ -1645,7 +1645,7 @@ function Initialize-SessionFileOrganization {
 
 .EXAMPLE
     PS> Test-TempFilesStructure
-    
+
     Verifies standard temp_files structure exists (data/, temp/, logs/, reports/)
 
 .NOTES
@@ -1659,23 +1659,23 @@ function Test-TempFilesStructure {
         [Parameter(Mandatory = $false)]
         [string]$TempRoot = $env:MAINTENANCE_TEMP_ROOT
     )
-    
+
     try {
         if (-not $TempRoot) {
             Write-LogEntry -Level 'ERROR' -Component 'FILE-ORG' -Message 'TempRoot path not set (MAINTENANCE_TEMP_ROOT environment variable missing)'
             return $false
         }
-        
+
         # Ensure root temp directory exists
         if (-not (Test-Path $TempRoot)) {
             Write-LogEntry -Level 'WARNING' -Component 'FILE-ORG' -Message "Creating missing TempRoot directory: $TempRoot"
             New-Item -Path $TempRoot -ItemType Directory -Force -ErrorAction Stop | Out-Null
         }
-        
+
         # Required subdirectories for v3.0 architecture
         $requiredDirs = @('data', 'temp', 'logs', 'reports', 'inventory')
         $missingDirs = @()
-        
+
         foreach ($dir in $requiredDirs) {
             $fullPath = Join-Path $TempRoot $dir
             if (-not (Test-Path $fullPath)) {
@@ -1684,7 +1684,7 @@ function Test-TempFilesStructure {
                 New-Item -Path $fullPath -ItemType Directory -Force -ErrorAction Stop | Out-Null
             }
         }
-        
+
         # Verify write access
         $testFile = Join-Path $TempRoot '.test-access'
         try {
@@ -1695,14 +1695,14 @@ function Test-TempFilesStructure {
             Write-LogEntry -Level 'ERROR' -Component 'FILE-ORG' -Message "No write access to TempRoot: $TempRoot"
             return $false
         }
-        
+
         if ($missingDirs.Count -gt 0) {
             Write-LogEntry -Level 'INFO' -Component 'FILE-ORG' -Message "Temp structure validated and repaired (created: $($missingDirs -join ', '))"
         }
         else {
             Write-LogEntry -Level 'DEBUG' -Component 'FILE-ORG' -Message "Temp structure validated - all required directories present"
         }
-        
+
         return $true
     }
     catch {
@@ -1725,13 +1725,13 @@ function Test-TempFilesStructure {
 .DESCRIPTION
     DEPRECATED in v3.1: Use Get-SessionPath instead for better flexibility
     This function redirects to Get-SessionPath for backward compatibility
-    
+
 .PARAMETER FileName
     Name of the file
-    
+
 .PARAMETER Type
     Type of directory (data, logs, reports, temp)
-    
+
 .NOTES
     Deprecated: Use Get-SessionPath -Category $Type -FileName $FileName
     Will be removed in v4.0
@@ -1742,12 +1742,12 @@ function Get-SessionFilePath {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FileName,
-        
+
         [Parameter(Mandatory = $false)]
         [ValidateSet('data', 'logs', 'reports', 'temp')]
         [string]$Type = 'temp'
     )
-    
+
     Write-Warning "Get-SessionFilePath is deprecated. Use Get-SessionPath -Category '$Type' -FileName '$FileName' instead."
     return Get-SessionPath -Category $Type -FileName $FileName
 }
@@ -1766,7 +1766,7 @@ function Get-SessionDirectoryPath {
         [ValidateSet('data', 'logs', 'reports', 'temp')]
         [string]$Type = 'temp'
     )
-    
+
     return Join-Path $env:MAINTENANCE_TEMP_ROOT $Type
 }
 
@@ -1782,14 +1782,14 @@ function Save-SessionData {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FileName,
-        
+
         [Parameter(Mandatory = $true)]
         [object]$Data,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Type = 'data'
     )
-    
+
     $path = Get-SessionFilePath -FileName $FileName -Type $Type
     $Data | ConvertTo-Json | Set-Content -Path $path -Encoding UTF8
 }
@@ -1806,11 +1806,11 @@ function Get-SessionData {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FileName,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Type = 'data'
     )
-    
+
     $path = Get-SessionFilePath -FileName $FileName -Type $Type
     if (Test-Path $path) {
         Get-Content -Path $path -Raw | ConvertFrom-Json
@@ -1827,7 +1827,7 @@ function Get-SessionData {
 function Clear-SessionTemporaryFiles {
     [CmdletBinding()]
     param()
-    
+
     $tempPath = Get-SessionDirectoryPath -Type 'temp'
     if (Test-Path $tempPath) {
         Get-ChildItem -Path $tempPath -File | Remove-Item -Force -ErrorAction SilentlyContinue
@@ -1844,7 +1844,7 @@ function Clear-SessionTemporaryFiles {
 function Get-SessionStatistics {
     [CmdletBinding()]
     param()
-    
+
     return @{
         TotalFiles  = (Get-ChildItem -Path $env:MAINTENANCE_TEMP_ROOT -Recurse -File | Measure-Object).Count
         DataFiles   = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'data') -File -ErrorAction SilentlyContinue | Measure-Object).Count
@@ -1864,7 +1864,7 @@ function Get-SessionStatistics {
 .DESCRIPTION
     Validates that all core infrastructure systems are properly initialized.
     Tests path integrity, configuration loading, and session setup.
-    
+
     This function is called during initialization to verify that CoreInfrastructure
     has successfully loaded all dependencies and is ready for use by other modules.
 
@@ -1886,10 +1886,10 @@ function Get-SessionStatistics {
 function Get-InfrastructureStatus {
     [CmdletBinding()]
     param()
-    
+
     $pathsTest = Test-MaintenancePathsIntegrity
     $configTest = Test-ConfigurationIntegrity
-    
+
     return [PSCustomObject]@{
         PathsInitialized = $pathsTest.IsValid
         PathErrors       = $pathsTest.Errors
@@ -1910,7 +1910,7 @@ function Get-InfrastructureStatus {
     2. Configuration system (load and validate all configs)
     3. Logging system (initialize structured logging)
     4. File organization (create session directories)
-    
+
     Called once during MaintenanceOrchestrator initialization.
     All functions become available globally after this completes.
 
@@ -1945,9 +1945,9 @@ function Initialize-MaintenanceInfrastructure {
         [Parameter(Mandatory = $false)]
         [string]$TempRootPath
     )
-    
+
     Write-Verbose "Initializing Maintenance Infrastructure..."
-    
+
     try {
         Initialize-GlobalPathDiscovery -HintPath $ProjectRootPath -Force
         $paths = Get-MaintenancePaths
@@ -1992,26 +1992,26 @@ function Get-AuditResultsPath {
         [ValidateNotNullOrEmpty()]
         [string]$ModuleName
     )
-    
+
     try {
         # Get base data directory path
         $dataDir = Get-SessionDirectoryPath -Type 'data'
-        
+
         # Standardize module name format: convert CamelCase to kebab-case
         # Step 1: Remove 'Detection' or 'Audit' suffixes
         $cleanName = $ModuleName -replace 'Detection$|Audit$', ''
-        
+
         # Step 2: Convert CamelCase to kebab-case using proper regex
         # Insert hyphen before each uppercase letter (except the first character)
         $normalizedName = [System.Text.RegularExpressions.Regex]::Replace($cleanName, '([A-Z])', '-$1')
-        
+
         # Step 3: Remove leading hyphen if present, then convert to lowercase
         $normalizedName = $normalizedName.TrimStart('-').ToLower()
-        
+
         # Build standardized path: temp_files/data/[module-name]-results.json
         $resultFileName = "$normalizedName-results.json"
         $fullPath = Join-Path $dataDir $resultFileName
-        
+
         return $fullPath
     }
     catch {
@@ -2055,37 +2055,37 @@ function Save-DiffResults {
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
         [string]$ModuleName,
-        
+
         [Parameter(Mandatory = $true)]
         [AllowEmptyCollection()]
         [array]$DiffData,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Component = 'CORE'
     )
-    
+
     try {
         # Get base temp directory path for diff storage
         $tempDir = Get-SessionDirectoryPath -Type 'temp'
-        
+
         # Standardize module name format: convert to lowercase with hyphens
         $normalizedName = ($ModuleName -replace 'Type2|Module|Removal|Disable|Optimization', '' -replace '(?<=[a-z])(?=[A-Z])', '-').ToLower()
-        
+
         # Build standardized path: temp_files/temp/[module-name]-diff.json
         $diffFileName = "$normalizedName-diff.json"
         $diffPath = Join-Path $tempDir $diffFileName
-        
+
         # Ensure temp directory exists
         if (-not (Test-Path $tempDir)) {
             New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
         }
-        
+
         # Save diff data as JSON
         $DiffData | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath -Encoding UTF8 -Force
-        
+
         # Log the operation
         Write-ModuleLogEntry -Level 'DEBUG' -Component $Component -Message "Saved diff list for $ModuleName`: $($DiffData.Count) items to $diffPath"
-        
+
         return $diffPath
     }
     catch {
@@ -2146,32 +2146,32 @@ function New-ModuleExecutionResult {
     param(
         [Parameter(Mandatory = $true)]
         [bool]$Success,
-        
+
         [Parameter(Mandatory = $true)]
         [int]$ItemsDetected,
-        
+
         [Parameter(Mandatory = $true)]
         [int]$ItemsProcessed,
-        
+
         [Parameter(Mandatory = $true)]
         [double]$DurationMilliseconds,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$LogPath,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$ModuleName,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$ErrorMessage,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$DryRun,
-        
+
         [Parameter(Mandatory = $false)]
         [hashtable]$AdditionalData = @{}
     )
-    
+
     # Build standardized result object
     $result = @{
         Success            = [bool]$Success
@@ -2185,7 +2185,7 @@ function New-ModuleExecutionResult {
         ExecutionTimestamp = Get-Date -Format 'o'
         AdditionalData     = $AdditionalData
     }
-    
+
     return $result
 }
 
@@ -2202,7 +2202,7 @@ function New-ModuleExecutionResult {
     - Console (for user visibility)
     - Text log file (for easy review)
     - JSON log file (for programmatic analysis)
-    
+
     Ensures consistent logging across all modules.
 
 .PARAMETER Level
@@ -2269,17 +2269,17 @@ function Write-DetectionLog {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Operation,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Target,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Component,
-        
+
         [Parameter(Mandatory = $false)]
         [hashtable]$AdditionalInfo = @{}
     )
-    
+
     $message = "$Operation : $Target"
     Write-LogEntry -Level 'INFO' -Component $Component -Message $message -Data $AdditionalInfo
 }
@@ -2291,50 +2291,50 @@ function Write-StructuredLogEntry {
         [Parameter(Mandatory = $true)]
         [ValidateSet('DEBUG', 'INFO', 'WARNING', 'SUCCESS', 'ERROR')]
         [string]$Level,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Component,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$LogPath,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Operation,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Target,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$Result,
-        
+
         [Parameter(Mandatory = $false)]
         [hashtable]$Metadata = @{}
     )
-    
+
     # Build enhanced message with operation details
     $enhancedMessage = $Message
-    
+
     if ($Operation) {
         $enhancedMessage = "[$Operation] $enhancedMessage"
     }
-    
+
     if ($Target) {
         $enhancedMessage += " | Target: $Target"
     }
-    
+
     if ($Result) {
         $enhancedMessage += " | Result: $Result"
     }
-    
+
     # Use standardized log entry format
     $logMessage = New-StandardLogEntry -Level $Level -Component $Component -Message $enhancedMessage
-    
+
     # Write to console
     Write-Information $logMessage -InformationAction Continue
-    
+
     # Write to text log file if path specified
     if ($LogPath) {
         try {
@@ -2343,7 +2343,7 @@ function Write-StructuredLogEntry {
             if (-not (Test-Path $logDir)) {
                 New-Item -Path $logDir -ItemType Directory -Force | Out-Null
             }
-            
+
             # Append to log file
             Add-Content -Path $LogPath -Value $logMessage -Encoding UTF8 -ErrorAction SilentlyContinue
         }
@@ -2352,18 +2352,18 @@ function Write-StructuredLogEntry {
             Write-Debug "Failed to write to log file: $_"
         }
     }
-    
+
     # Write to JSON structured log if text log specified
     if ($LogPath) {
         try {
             $jsonLogPath = $LogPath -replace '\.log$', '-structured.json'
-            
+
             # Ensure JSON log directory exists
             $jsonLogDir = Split-Path $jsonLogPath -Parent
             if (-not (Test-Path $jsonLogDir)) {
                 New-Item -Path $jsonLogDir -ItemType Directory -Force | Out-Null
             }
-            
+
             # Create JSON entry with ISO 8601 timestamp
             $isoTimestamp = Get-Date -Format $script:LoggingStandards.TimestampFormat
             $jsonEntry = @{
@@ -2377,7 +2377,7 @@ function Write-StructuredLogEntry {
                 metadata   = $Metadata
                 entry_time = Get-Date -Format 'o'  # Keep for backward compatibility
             }
-            
+
             # Append to JSON structured log
             $jsonLine = $jsonEntry | ConvertTo-Json -Compress
             Add-Content -Path $jsonLogPath -Value $jsonLine -Encoding UTF8 -ErrorAction SilentlyContinue
@@ -2402,7 +2402,7 @@ function Write-StructuredLogEntry {
     Only items that are:
     1. Detected on the system (Type1 output)
     2. AND configured to be processed (config file)
-    
+
     Are included in the diff list.
 
 .PARAMETER DetectionResults
@@ -2431,16 +2431,16 @@ function Compare-DetectedVsConfig {
     param(
         [Parameter(Mandatory = $true)]
         [array]$DetectionResults,
-        
+
         [Parameter(Mandatory = $true)]
         $ConfigData,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$MatchField = 'Name'
     )
-    
+
     $diffList = @()
-    
+
     # Extract items from config data
     $configItems = @()
     if ($ConfigData -is [hashtable]) {
@@ -2460,7 +2460,7 @@ function Compare-DetectedVsConfig {
         # Config data is not usable
         return @()
     }
-    
+
     # Ensure we have arrays
     if (-not $configItems) {
         $configItems = @()
@@ -2468,18 +2468,18 @@ function Compare-DetectedVsConfig {
     if (-not $DetectionResults) {
         $DetectionResults = @()
     }
-    
+
     # Compare: only include items found in BOTH lists
     foreach ($detected in $DetectionResults) {
         # Look for this item in config
         $configMatch = $configItems | Where-Object { $_.$MatchField -eq $detected.$MatchField } | Select-Object -First 1
-        
+
         if ($configMatch) {
             # Item is in both detected and config, include in diff
             $diffList += $detected
         }
     }
-    
+
     return @($diffList)
 }
 
@@ -2501,7 +2501,7 @@ function Compare-DetectedVsConfig {
 
 .OUTPUTS
     [hashtable] Requirements check results with detailed status
-    
+
 .EXAMPLE
     $requirements = Test-SystemRequirements
     if (-not $requirements.AllMet) {
@@ -2513,14 +2513,14 @@ function Test-SystemRequirements {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param()
-    
+
     $results = @{
         AllMet   = $true
         Checks   = @()
         Failed   = @()
         Warnings = @()
     }
-    
+
     # Check 1: PowerShell Version
     $psCheck = @{
         Name     = 'PowerShell Version'
@@ -2533,7 +2533,7 @@ function Test-SystemRequirements {
         $results.AllMet = $false
         $results.Failed += "PowerShell 7+ required (found $($psCheck.Actual))"
     }
-    
+
     # Check 2: Administrator Privileges
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $adminCheck = @{
@@ -2547,14 +2547,14 @@ function Test-SystemRequirements {
         $results.AllMet = $false
         $results.Failed += "Administrator privileges required"
     }
-    
+
     # Check 3: Disk Space (minimum 1GB free on system drive)
     try {
         $systemDrive = $env:SystemDrive
         $drive = Get-PSDrive -Name $systemDrive.TrimEnd(':') -PSProvider FileSystem -ErrorAction Stop
         $freeSpaceGB = [math]::Round($drive.Free / 1GB, 2)
         $minSpaceGB = 1
-        
+
         $diskCheck = @{
             Name     = 'Disk Space'
             Required = "$minSpaceGB GB free"
@@ -2562,7 +2562,7 @@ function Test-SystemRequirements {
             Met      = $freeSpaceGB -ge $minSpaceGB
         }
         $results.Checks += $diskCheck
-        
+
         if (-not $diskCheck.Met) {
             $results.AllMet = $false
             $results.Failed += "Insufficient disk space (need $minSpaceGB GB, have $freeSpaceGB GB)"
@@ -2574,14 +2574,14 @@ function Test-SystemRequirements {
     catch {
         $results.Warnings += "Could not check disk space: $($_.Exception.Message)"
     }
-    
+
     # Check 4: Available Memory (minimum 2GB free)
     try {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
         $freeMemoryMB = [math]::Round($os.FreePhysicalMemory / 1KB, 0)
         $freeMemoryGB = [math]::Round($freeMemoryMB / 1024, 2)
         $minMemoryGB = 2
-        
+
         $memoryCheck = @{
             Name     = 'Available Memory'
             Required = "$minMemoryGB GB free"
@@ -2589,7 +2589,7 @@ function Test-SystemRequirements {
             Met      = $freeMemoryGB -ge $minMemoryGB
         }
         $results.Checks += $memoryCheck
-        
+
         if (-not $memoryCheck.Met) {
             $results.AllMet = $false
             $results.Failed += "Insufficient available memory (need $minMemoryGB GB, have $freeMemoryGB GB)"
@@ -2598,27 +2598,27 @@ function Test-SystemRequirements {
     catch {
         $results.Warnings += "Could not check available memory: $($_.Exception.Message)"
     }
-    
+
     # Check 5: Pending Reboot
     try {
         $rebootPending = $false
-        
+
         # Check Component Based Servicing
         if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') {
             $rebootPending = $true
         }
-        
+
         # Check Windows Update
         if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') {
             $rebootPending = $true
         }
-        
+
         # Check Pending File Rename Operations
         $pendingFileRename = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name 'PendingFileRenameOperations' -ErrorAction SilentlyContinue
         if ($pendingFileRename) {
             $rebootPending = $true
         }
-        
+
         $rebootCheck = @{
             Name     = 'System Reboot Status'
             Required = 'No pending reboot'
@@ -2626,7 +2626,7 @@ function Test-SystemRequirements {
             Met      = -not $rebootPending
         }
         $results.Checks += $rebootCheck
-        
+
         if ($rebootPending) {
             $results.Warnings += "System has pending reboot - some operations may fail"
         }
@@ -2634,11 +2634,11 @@ function Test-SystemRequirements {
     catch {
         $results.Warnings += "Could not check reboot status: $($_.Exception.Message)"
     }
-    
+
     # Check 6: System Protection Enabled (for restore points)
     try {
         $spEnabled = $false
-        
+
         # Try WMI first (more reliable across PS versions)
         try {
             $spService = Get-CimInstance -ClassName Win32_SystemRestore -ErrorAction SilentlyContinue
@@ -2653,7 +2653,7 @@ function Test-SystemRequirements {
                 $spEnabled = $null -eq $spReg -or $spReg.DisableSR -eq 0
             }
         }
-        
+
         $spCheck = @{
             Name     = 'System Protection'
             Required = 'Enabled'
@@ -2661,7 +2661,7 @@ function Test-SystemRequirements {
             Met      = $spEnabled
         }
         $results.Checks += $spCheck
-        
+
         if (-not $spEnabled) {
             $results.Warnings += "System Protection disabled - cannot create restore points"
         }
@@ -2669,7 +2669,7 @@ function Test-SystemRequirements {
     catch {
         $results.Warnings += "Could not verify System Protection status: $($_.Exception.Message)"
     }
-    
+
     return $results
 }
 
@@ -2686,13 +2686,13 @@ function Test-SystemRequirements {
 
 .OUTPUTS
     [bool] True if all requirements met, False otherwise
-    
+
 .EXAMPLE
     if (-not (Test-SystemReadiness)) {
         Write-Host "System not ready for maintenance"
         exit 1
     }
-    
+
 .EXAMPLE
     Test-SystemReadiness -StopOnFailure
     # Throws error if requirements not met
@@ -2703,26 +2703,26 @@ function Test-SystemReadiness {
     param(
         [switch]$StopOnFailure
     )
-    
+
     Write-Host "`n=== System Readiness Check ===" -ForegroundColor Cyan
     Write-Host "Validating system requirements for maintenance execution...`n"
-    
+
     $requirements = Test-SystemRequirements
-    
+
     # Display all checks
     foreach ($check in $requirements.Checks) {
-        $status = if ($check.Met) { 
-            "[OK]" 
+        $status = if ($check.Met) {
+            "[OK]"
         }
-        else { 
-            "[FAIL]" 
+        else {
+            "[FAIL]"
         }
         $color = if ($check.Met) { 'Green' } else { 'Red' }
-        
+
         Write-Host "$status $($check.Name): " -ForegroundColor $color -NoNewline
         Write-Host "$($check.Actual)" -ForegroundColor Gray
     }
-    
+
     # Display warnings
     if ($requirements.Warnings.Count -gt 0) {
         Write-Host "`nWarnings:" -ForegroundColor Yellow
@@ -2730,7 +2730,7 @@ function Test-SystemReadiness {
             Write-Host "  ⚠ $warning" -ForegroundColor Yellow
         }
     }
-    
+
     # Display results
     Write-Host ""
     if ($requirements.AllMet) {
@@ -2744,11 +2744,11 @@ function Test-SystemReadiness {
             Write-Host "  • $failure" -ForegroundColor Red
         }
         Write-Host ""
-        
+
         if ($StopOnFailure) {
             throw "System requirements validation failed. Please resolve the issues above before continuing."
         }
-        
+
         return $false
     }
 }
@@ -2780,48 +2780,48 @@ function Test-SystemReadiness {
 
 .EXAMPLE
     $result = Invoke-WithTimeout { Get-Process } -TimeoutSeconds 30
-    
+
 .EXAMPLE
-    $result = Invoke-WithTimeout { 
+    $result = Invoke-WithTimeout {
         Start-Sleep -Seconds 60
         return "Done"
     } -TimeoutSeconds 10
     # This will timeout after 10 seconds
-#>    
+#>
 function Invoke-WithTimeout {
     [CmdletBinding()]
-    [OutputType([object])]    
+    [OutputType([object])]
     param(
         [Parameter(Mandatory = $true)]
         [scriptblock]$ScriptBlock,
-        
+
         [Parameter(Mandatory = $false)]
         [int]$TimeoutSeconds = 600,
-        
+
         [Parameter(Mandatory = $false)]
         [object[]]$ArgumentList = @()
     )
-    
+
     # Create a new runspace
     $runspace = [runspacefactory]::CreateRunspace()
     $runspace.Open()
-    
+
     # Create PowerShell instance in the runspace
     $ps = [powershell]::Create()
     $ps.Runspace = $runspace
-    
+
     # Add the script block and arguments
     $ps.AddScript($ScriptBlock) | Out-Null
     foreach ($arg in $ArgumentList) {
         $ps.AddArgument($arg) | Out-Null
     }
-    
+
     # Start asynchronous execution
     $handle = $ps.BeginInvoke()
-    
+
     # Wait for completion or timeout
     $completed = $handle.AsyncWaitHandle.WaitOne([timespan]::FromSeconds($TimeoutSeconds))
-    
+
     if ($completed) {
         # Task completed within timeout
         try {
@@ -2839,10 +2839,10 @@ function Invoke-WithTimeout {
         $ps.Dispose()
         $runspace.Close()
         $runspace.Dispose()
-        
+
         throw [System.TimeoutException]"Script execution exceeded timeout of $TimeoutSeconds seconds"
     }
-    
+
     # Cleanup
     $ps.Dispose()
     $runspace.Close()
@@ -2881,20 +2881,20 @@ function Invoke-ModuleWithTimeout {
     param(
         [Parameter(Mandatory = $true)]
         [string]$ModuleName,
-        
+
         [Parameter(Mandatory = $true)]
         [hashtable]$Config,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$DryRun,
-        
+
         [Parameter(Mandatory = $false)]
         [int]$TimeoutSeconds = 600
     )
-    
+
     $functionName = "Invoke-$ModuleName"
     $startTime = Get-Date
-    
+
     # Verify function exists
     if (-not (Get-Command -Name $functionName -ErrorAction SilentlyContinue)) {
         return @{
@@ -2905,7 +2905,7 @@ function Invoke-ModuleWithTimeout {
             TimedOut      = $false
         }
     }
-    
+
     try {
         # Execute with timeout
         $scriptBlock = if ($DryRun) {
@@ -2914,9 +2914,9 @@ function Invoke-ModuleWithTimeout {
         else {
             { & $functionName -Config $args[0] }
         }
-        
+
         $result = Invoke-WithTimeout -ScriptBlock $scriptBlock -TimeoutSeconds $TimeoutSeconds -ArgumentList @($Config)
-        
+
         # Ensure result is a hashtable
         if ($result -is [hashtable]) {
             $result.ExecutionTime = ([DateTime]::Now - $startTime).TotalSeconds
@@ -2936,7 +2936,7 @@ function Invoke-ModuleWithTimeout {
     catch [System.TimeoutException] {
         $executionTime = ([DateTime]::Now - $startTime).TotalSeconds
         Write-LogEntry -Level 'ERROR' -Component $ModuleName -Message "Module execution timeout after $executionTime seconds"
-        
+
         return @{
             Success       = $false
             ModuleName    = $ModuleName
@@ -2948,7 +2948,7 @@ function Invoke-ModuleWithTimeout {
     catch {
         $executionTime = ([DateTime]::Now - $startTime).TotalSeconds
         Write-LogEntry -Level 'ERROR' -Component $ModuleName -Message "Module execution failed: $($_.Exception.Message)"
-        
+
         return @{
             Success       = $false
             ModuleName    = $ModuleName
@@ -3015,17 +3015,17 @@ function Register-SystemChange {
         [Parameter(Mandatory = $true)]
         [ValidateSet('FileOperation', 'RegistryOperation', 'ServiceOperation', 'AppOperation', 'ConfigOperation')]
         [string]$ChangeType,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Target,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$Description,
-        
+
         [Parameter(Mandatory = $true)]
         [string[]]$UndoCommands
     )
-    
+
     $changeEntry = @{
         ChangeType   = $ChangeType
         Target       = $Target
@@ -3034,9 +3034,9 @@ function Register-SystemChange {
         Timestamp    = [DateTime]::UtcNow.ToString('o')
         SessionId    = $env:MAINTENANCE_SESSION_ID
     }
-    
+
     $script:ChangeLog += $changeEntry
-    
+
     Write-LogEntry -Level 'DEBUG' -Component 'ChangeTracking' `
         -Message "Registered $ChangeType`: $Target - $Description" `
         -Data @{UndoCommandCount = $UndoCommands.Count }
@@ -3050,7 +3050,7 @@ function Register-SystemChange {
     Executes undo commands for all changes recorded during this session,
     in reverse chronological order (LIFO - Last In, First Out). This helps
     restore the system to a known good state if operations fail partway through.
-    
+
     Changes are only undone for the current session (matching $env:MAINTENANCE_SESSION_ID).
 
 .PARAMETER ConfirmPrompt
@@ -3084,7 +3084,7 @@ function Undo-AllChanges {
         [switch]$ConfirmPrompt,
         [switch]$StopOnError
     )
-    
+
     $result = @{
         Success         = $true
         RolledBackCount = 0
@@ -3092,22 +3092,22 @@ function Undo-AllChanges {
         Errors          = @()
         Details         = @()
     }
-    
+
     if ($script:ChangeLog.Count -eq 0) {
         Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' -Message "No changes recorded for rollback"
         return $result
     }
-    
+
     Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' `
         -Message "Beginning rollback of $($script:ChangeLog.Count) changes" `
         -Data @{ReverseOrder = $true }
-    
+
     # Process changes in reverse order (LIFO)
     $reversedLog = @($script:ChangeLog) | Where-Object { $_.SessionId -eq $env:MAINTENANCE_SESSION_ID } | Sort-Object -Descending { [DateTime]::Parse($_.Timestamp) }
-    
+
     foreach ($change in $reversedLog) {
         $changeDescription = "$($change.ChangeType): $($change.Target) - $($change.Description)"
-        
+
         if ($ConfirmPrompt) {
             $confirmation = Read-Host "Undo $changeDescription`? [Y/n]"
             if ($confirmation -eq 'n') {
@@ -3117,20 +3117,20 @@ function Undo-AllChanges {
                 continue
             }
         }
-        
+
         Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' `
             -Message "Rolling back: $changeDescription" `
             -Data @{UndoCommandCount = $change.UndoCommands.Count }
-        
+
         try {
             foreach ($undoCommand in $change.UndoCommands) {
                 Write-LogEntry -Level 'DEBUG' -Component 'ChangeTracking' `
                     -Message "Executing undo command" -Data @{Command = $undoCommand }
-                
+
                 # Execute undo command in current scope
                 Invoke-Expression -Command $undoCommand -ErrorAction Stop
             }
-            
+
             $result.RolledBackCount += 1
             $result.Details += "SUCCESS: $changeDescription"
             Write-LogEntry -Level 'SUCCESS' -Component 'ChangeTracking' `
@@ -3141,27 +3141,27 @@ function Undo-AllChanges {
             $result.FailedCount += 1
             $result.Errors += $errorMsg
             $result.Details += "FAILED: $changeDescription - $($_.Exception.Message)"
-            
+
             Write-LogEntry -Level 'ERROR' -Component 'ChangeTracking' `
                 -Message "Failed to rollback: $changeDescription" `
                 -Data @{Error = $_.Exception.Message }
-            
+
             if ($StopOnError) {
                 $result.Success = $false
                 break
             }
         }
     }
-    
+
     # Update overall success status
     if ($result.FailedCount -gt 0) {
         $result.Success = $false
     }
-    
+
     Write-LogEntry -Level 'INFO' -Component 'ChangeTracking' `
         -Message "Rollback complete: $($result.RolledBackCount) succeeded, $($result.FailedCount) failed" `
         -Data $result
-    
+
     return $result
 }
 
@@ -3179,10 +3179,10 @@ function Undo-AllChanges {
 function Clear-ChangeLog {
     [CmdletBinding()]
     param()
-    
+
     $count = $script:ChangeLog.Count
     $script:ChangeLog = @()
-    
+
     Write-LogEntry -Level 'DEBUG' -Component 'ChangeTracking' `
         -Message "Cleared change log" -Data @{ClearedEntries = $count }
 }
@@ -3211,7 +3211,7 @@ function Get-ChangeLog {
     param(
         [switch]$SessionOnly
     )
-    
+
     if ($SessionOnly) {
         return @($script:ChangeLog | Where-Object { $_.SessionId -eq $env:MAINTENANCE_SESSION_ID })
     }

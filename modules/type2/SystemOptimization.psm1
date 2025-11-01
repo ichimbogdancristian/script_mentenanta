@@ -25,17 +25,11 @@ using namespace System.Collections.Generic
 
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Step 1: Import core infrastructure FIRST (REQUIRED) - Global scope for Type1 access
+# CoreInfrastructure is already loaded globally by orchestrator, no need to reimport
+# Calculate module paths for Type1 imports
 $ModuleRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
-$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
-if (Test-Path $CoreInfraPath) {
-    Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
-}
-else {
-    throw "CoreInfrastructure module not found at: $CoreInfraPath - v3.0 requires proper module loading order"
-}
 
-# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
+# Import corresponding Type 1 module (REQUIRED)
 $Type1ModulePath = Join-Path $ModuleRoot 'type1\SystemOptimizationAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force
@@ -66,7 +60,7 @@ function Invoke-SystemOptimization {
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $perfContext = $null
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'SystemOptimization' -Component 'SYSTEM-OPTIMIZATION'
@@ -74,34 +68,34 @@ function Invoke-SystemOptimization {
     catch {
         Write-Verbose "Performance tracking initialization failed - continuing without it"
     }
-    
+
     try {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
-        
+
         # Validate temp_files structure (FIX #12)
         if (-not (Test-TempFilesStructure)) {
             throw "Failed to initialize temp_files directory structure"
         }
-        
+
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
         $analysisResults = Get-SystemOptimizationAnalysis
-        
+
         if (-not $analysisResults -or $analysisResults.OptimizationCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'No optimization opportunities detected'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
             $executionTime = (Get-Date) - $executionStartTime
             return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; Duration = $executionTime.TotalMilliseconds }
         }
-        
+
         # STEP 3: Setup execution logging directory
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\system-optimization"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
+
         $optimizationCount = $analysisResults.OptimizationCount
         Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ OpportunityCount = $optimizationCount }
-        
+
         if ($DryRun) {
             Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message ' DRY-RUN: Simulating system optimization' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $optimizationCount }
             $results = @{ ProcessedCount = $optimizationCount; Simulated = $true }
@@ -122,7 +116,7 @@ function Invoke-SystemOptimization {
                     'Disk'     = @('DefragmentDisk')
                     'Network'  = @('EnableRSS', 'OptimizeDNS')
                 }
-                
+
                 # Track which optimization groups need to be executed
                 $executeGroups = @{}
                 foreach ($opportunity in $analysisResults.OptimizationOpportunities) {
@@ -133,7 +127,7 @@ function Invoke-SystemOptimization {
                         }
                     }
                 }
-                
+
                 # Execute each optimization group once
                 foreach ($groupName in $executeGroups.Keys) {
                     Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing optimization group: $groupName" -LogPath $executionLogPath -Operation 'ProcessGroup' -Target $groupName
@@ -146,12 +140,12 @@ function Invoke-SystemOptimization {
                             'Cleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
                             'Disk' { $result = Optimize-SystemPerformance -OptimizeDisk }
                             'Network' { $result = Optimize-SystemPerformance -OptimizeNetwork }
-                            default { 
+                            default {
                                 Write-StructuredLogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization group: $groupName" -LogPath $executionLogPath -Operation 'ProcessGroup' -Target $groupName -Result 'Unknown'
-                                $result = $false 
+                                $result = $false
                             }
                         }
-                        if ($result) { 
+                        if ($result) {
                             $processedCount++
                             Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied optimization group: $groupName" -LogPath $executionLogPath -Operation 'Apply' -Target $groupName -Result 'Success'
                         }
@@ -167,9 +161,9 @@ function Invoke-SystemOptimization {
             $results = @{ ProcessedCount = $processedCount; AppliedOptimizations = $processedCount }
             [void]$results
         }
-        
+
         Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed: $processedCount optimizations applied" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalOpportunities = $optimizationCount }
-        
+
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
@@ -200,7 +194,7 @@ function Invoke-SystemOptimization {
                 PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
         }
-        
+
         try {
             $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
             Write-Verbose "Execution summary saved to: $summaryPath"
@@ -208,7 +202,7 @@ function Invoke-SystemOptimization {
         catch {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
-        
+
         $returnData = New-ModuleExecutionResult `
             -Success $true `
             -ItemsDetected $optimizationCount `
@@ -217,17 +211,17 @@ function Invoke-SystemOptimization {
             -LogPath $executionLogPath `
             -ModuleName 'SystemOptimization' `
             -DryRun $DryRun.IsPresent
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed. Processed: $processedCount/$optimizationCount"
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
         return $returnData
-        
+
     }
     catch {
         $errorMsg = "Failed to execute system optimization: $($_.Exception.Message)"
         Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message $errorMsg -Data @{ Error = $_.Exception }
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
-        
+
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         return New-ModuleExecutionResult `
             -Success $false `
@@ -307,7 +301,7 @@ function Optimize-SystemPerformance {
 
     Write-Information " Starting comprehensive system optimization..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting comprehensive system optimization' -Data @{
@@ -324,7 +318,7 @@ function Optimize-SystemPerformance {
     catch {
         # LoggingManager not available, continue with standard logging
     }
-    
+
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "System performance optimization"
@@ -437,18 +431,18 @@ function Optimize-SystemPerformance {
         catch {
             # LoggingManager not available, continue with standard logging
         }
-        
+
         # Log detailed results for audit trails
         Write-Verbose "System optimization operation details: $(ConvertTo-Json $results -Depth 3)"
         Write-Verbose "System optimization completed successfully"
-        
+
         return $success
     }
     catch {
         $errorMessage = " System optimization failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
-        
+
         # Complete performance tracking for failed operation
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
@@ -457,7 +451,7 @@ function Optimize-SystemPerformance {
         catch {
             # LoggingManager not available, continue with standard logging
         }
-        
+
         # Type 2 module returns boolean for failure
         return $false
     }
@@ -672,7 +666,7 @@ function Optimize-StartupProgram {
                                     Value    = $itemValue
                                     Type     = 'StartupProgram'
                                 }
-                                
+
                                 if ($DryRun) {
                                     Write-Information "    [DRY RUN] Would disable startup item: $itemName" -InformationAction Continue
                                     Write-OperationSkipped -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Reason 'DryRun mode enabled'
@@ -690,11 +684,11 @@ function Optimize-StartupProgram {
                                     # Remove from startup
                                     Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Executing: Remove-ItemProperty -Path $location -Name $itemName"
                                     Remove-ItemProperty -Path $location -Name $itemName -Force
-                                    
+
                                     # Verification
                                     $stillExists = Get-ItemProperty -Path $location -Name $itemName -ErrorAction SilentlyContinue
                                     $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-                                    
+
                                     if (-not $stillExists) {
                                         Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Metrics @{
                                             Duration = $operationDuration
@@ -803,13 +797,13 @@ function Optimize-UserInterface {
                 if (Test-Path $registryPath) {
                     $oldValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
                 }
-                
+
                 Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -AdditionalInfo @{
                     OldValue = $oldValue
                     NewValue = $setting.Value
                     Type     = 'UIOptimization'
                 }
-                
+
                 if ($DryRun) {
                     Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -InformationAction Continue
                     Write-OperationSkipped -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -Reason 'DryRun mode enabled'
@@ -825,13 +819,13 @@ function Optimize-UserInterface {
                     # Set the value
                     Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Executing: Set-ItemProperty -Path $registryPath -Name $($setting.Key) -Value $($setting.Value)"
                     Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
-                    
+
                     # Verification
                     Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Message 'Verifying registry value change'
-                    
+
                     $newValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
                     $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-                    
+
                     if ($newValue -eq $setting.Value) {
                         # Log successful verification
                         Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Metrics @{
@@ -839,7 +833,7 @@ function Optimize-UserInterface {
                             ActualValue        = $newValue
                             VerificationPassed = $true
                         }
-                        
+
                         # Log successful modification
                         Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -Metrics @{
                             Duration = $operationDuration
@@ -1125,7 +1119,7 @@ function Get-StartupProgramCount {
     [CmdletBinding()]
     [OutputType([int])]
     param()
-    
+
     try {
         $count = 0
         $locations = @(
@@ -1155,7 +1149,7 @@ function Get-TemporaryFileSize {
     [CmdletBinding()]
     [OutputType([long])]
     param()
-    
+
     try {
         $tempPaths = @($env:TEMP, "$env:LOCALAPPDATA\Temp", "C:\Windows\Temp")
         $totalSize = 0
@@ -1179,7 +1173,7 @@ function Get-RegistrySize {
     [CmdletBinding()]
     [OutputType([long])]
     param()
-    
+
     # This is a placeholder - actual registry size calculation is complex
     return 0
 }
@@ -1188,7 +1182,7 @@ function Get-MemoryUsagePercent {
     [CmdletBinding()]
     [OutputType([double])]
     param()
-    
+
     try {
         $memory = Get-CimInstance -ClassName Win32_OperatingSystem
         return [math]::Round((($memory.TotalVisibleMemorySize - $memory.FreePhysicalMemory) / $memory.TotalVisibleMemorySize) * 100, 1)
@@ -1223,7 +1217,7 @@ function Get-MemoryUsagePercent {
     PS> $mainResults = @{ TotalOperations = 0; Successful = 0; Failed = 0; SpaceFreed = 0; Categories = @{} }
     PS> $diskResults = @{ Success = 5; Failed = 1; SpaceFreed = 2GB }
     PS> Merge-OptimizationResult -Results $mainResults -NewResults $diskResults -Category 'DiskCleanup'
-    
+
     Adds disk cleanup results to main results, updating category-specific statistics.
 
 .NOTES
@@ -1258,7 +1252,7 @@ function Merge-OptimizationResult {
 Export-ModuleMember -Function @(
     # v3.0 Standardized execution function (Primary)
     'Invoke-SystemOptimization',
-    
+
     # Legacy functions (Preserved for internal use)
     'Optimize-SystemPerformance',
     'Get-SystemPerformanceMetric'

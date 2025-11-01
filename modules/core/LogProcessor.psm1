@@ -5,10 +5,10 @@
     Log Processor Module v3.0 - Type 1 Data Processing Pipeline
 
 .DESCRIPTION
-    Specialized module for processing raw maintenance logs from temp_files/data/ and 
+    Specialized module for processing raw maintenance logs from temp_files/data/ and
     temp_files/logs/ into standardized, structured data for report generation.
-    Part of the v3.0 split architecture that separates log processing (Type 1) from 
-    report rendering (Report Generation). Handles data aggregation, normalization, 
+    Part of the v3.0 split architecture that separates log processing (Type 1) from
+    report rendering (Report Generation). Handles data aggregation, normalization,
     and caching with performance optimization.
 
 .MODULE ARCHITECTURE
@@ -16,10 +16,10 @@
         Serve as the data processing layer between execution logs and report generation.
         Aggregates Type1 audit results and Type2 execution logs into unified structured data.
         Provides caching layer to optimize repeated queries during report generation.
-    
+
     Dependencies:
         • CoreInfrastructure.psm1 - For path management and logging
-    
+
     Exports:
         • Get-AuditDataByModule - Retrieve aggregated Type1 audit results
         • Get-ExecutionLogsByModule - Retrieve Type2 execution logs and diffs
@@ -27,7 +27,7 @@
         • Invoke-LogProcessing - Full pipeline: load → parse → normalize → cache
         • Clear-LogProcessorCache - Flush cached data
         • Get-ProcessedDataPath - Get standardized processed data paths
-    
+
     Import Pattern:
         Import-Module LogProcessor.psm1 -Force
         # Functions available in MaintenanceOrchestrator context
@@ -51,13 +51,13 @@
         • temp_files/data/[module]-results.json - Type1 audit result snapshots
         • temp_files/logs/[module]/execution.log - Type2 detailed execution logs
         • temp_files/logs/maintenance.log - Central execution log with all operations
-    
+
     Processing Cache (In-Memory):
         • $script:LogProcessorCache['AuditData'] - Aggregated audit results by module
         • $script:LogProcessorCache['ExecutionLogs'] - Execution logs by module
         • $script:LogProcessorCache['ProcessedFiles'] - Metadata of processed files
         • Cache Settings: 30-minute TTL, 100MB size limit, batch processing (50 items)
-    
+
     Output:
         • temp_files/processed/[module]-audit.json - Standardized Type1 data
         • temp_files/processed/[module]-execution.json - Standardized Type2 data
@@ -75,13 +75,13 @@
     Architecture: v3.0 - Split from monolithic ReportGeneration.psm1
     Line Count: 2,314 lines
     Version: 3.0.0 (Refactored - Split Architecture)
-    
+
     Key Design Patterns:
     - Pipeline architecture: Load → Parse → Normalize → Aggregate → Cache
     - Modular data extraction: Each module's data processed independently
     - Cache invalidation: TTL-based (30 minutes) or manual via Clear-LogProcessorCache
     - Error resilience: Non-critical parsing failures logged but don't stop pipeline
-    
+
     Related Modules in v3.0 Architecture:
     - CoreInfrastructure.psm1 → Path management, logging infrastructure
     - ReportGenerator.psm1 → Consumes processed data for rendering
@@ -128,10 +128,10 @@ catch {
     This is called by LogProcessor on first invocation to organize logs that were written
     during the bootstrap phase. LogProcessor is aware of the project root and temp paths
     through the Initialize-GlobalPathDiscovery system.
-    
+
     - Source: $ProjectRoot/maintenance.log (from bootstrap phase)
     - Target: $ProjectRoot/temp_files/logs/maintenance.log
-    
+
     Uses atomic MOVE when possible, falls back to COPY+DELETE for compatibility.
     Idempotent: Safe to call multiple times, only moves if source exists and target doesn't.
 
@@ -142,40 +142,40 @@ function Move-MaintenanceLogToOrganized {
     [CmdletBinding()]
     [OutputType([bool])]
     param()
-    
+
     try {
         # Get paths from initialized path discovery system
         $projectRoot = (Get-MaintenancePaths).ProjectRoot
         $tempRoot = (Get-MaintenancePaths).TempRoot
-        
+
         if (-not $projectRoot -or -not $tempRoot) {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message 'Path discovery not fully initialized, cannot organize maintenance.log'
             return $false
         }
-        
+
         $sourceLog = Join-Path $projectRoot 'maintenance.log'
         $targetLog = Join-Path $tempRoot 'logs\maintenance.log'
-        
+
         # Check if source exists
         if (-not (Test-Path $sourceLog)) {
             Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "Bootstrap maintenance.log not found at root (already organized or first run): $sourceLog"
             return $true
         }
-        
+
         # Check if already organized
         if (Test-Path $targetLog) {
             Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "maintenance.log already at organized location: $targetLog"
             return $true
         }
-        
+
         # Ensure target directory exists
         $targetDir = Split-Path -Parent $targetLog
         if (-not (Test-Path $targetDir)) {
             New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
         }
-        
+
         Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Organizing maintenance.log from bootstrap location to: $targetLog"
-        
+
         # Try atomic MOVE first (preferred)
         try {
             Move-Item -Path $sourceLog -Destination $targetLog -Force -ErrorAction Stop
@@ -184,7 +184,7 @@ function Move-MaintenanceLogToOrganized {
         }
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "MOVE operation failed, attempting COPY+DELETE: $($_.Exception.Message)"
-            
+
             # Fallback: COPY then DELETE
             try {
                 Copy-Item -Path $sourceLog -Destination $targetLog -Force -ErrorAction Stop
@@ -257,17 +257,17 @@ $script:LogProcessorCache = @{
 
 .EXAMPLE
     PS> Invoke-CacheOperation -Operation 'Set' -CacheType 'AuditData' -Key 'module1-results' -Value $auditData
-    
+
     Stores audit data in cache with current timestamp
 
 .EXAMPLE
     PS> $data = Invoke-CacheOperation -Operation 'Get' -CacheType 'AuditData' -Key 'module1-results'
-    
+
     Retrieves cached data if still valid (within 30-minute TTL)
 
 .EXAMPLE
     PS> Invoke-CacheOperation -Operation 'Cleanup' -CacheType 'ExecutionLogs'
-    
+
     Removes all expired execution log cache entries
 
 .NOTES
@@ -276,7 +276,7 @@ $script:LogProcessorCache = @{
     - MaxCacheSize: 100MB (total cache limit)
     - BatchSize: 50 items (for processing operations)
     - EnableCaching: $true (can be disabled)
-    
+
     Used internally by LogProcessor for performance optimization during report generation.
 #>
 function Invoke-CacheOperation {
@@ -285,30 +285,30 @@ function Invoke-CacheOperation {
         [Parameter(Mandatory)]
         [ValidateSet('Get', 'Set', 'Remove', 'Clear', 'Cleanup')]
         [string]$Operation,
-        
+
         [Parameter(Mandatory)]
         [ValidateSet('AuditData', 'ExecutionLogs', 'ProcessedFiles')]
         [string]$CacheType,
-        
+
         [string]$Key,
-        
+
         [object]$Value
     )
-    
+
     Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Cache operation: $Operation on $CacheType"
-    
+
     if (-not $script:LogProcessorCache.CacheSettings.EnableCaching -and $Operation -ne 'Clear') {
         Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message 'Caching disabled, skipping operation'
         return $null
     }
-    
+
     try {
         switch ($Operation) {
             'Get' {
                 if ($script:LogProcessorCache[$CacheType].ContainsKey($Key)) {
                     $cacheEntry = $script:LogProcessorCache[$CacheType][$Key]
                     $age = (Get-Date) - $cacheEntry.Timestamp
-                    
+
                     if ($age -lt $script:LogProcessorCache.CacheSettings.MaxCacheAge) {
                         Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Cache hit for $Key (age: $($age.TotalMinutes.ToString('F1')) minutes)"
                         return $cacheEntry.Data
@@ -320,62 +320,62 @@ function Invoke-CacheOperation {
                 }
                 return $null
             }
-            
+
             'Set' {
                 $cacheEntry = @{
                     'Data'      = $Value
                     'Timestamp' = Get-Date
-                    'Size'      = if ($Value) { 
-                        try { [System.Text.Encoding]::UTF8.GetBytes(($Value | ConvertTo-Json -Depth 10)).Length } 
-                        catch { 1KB } 
+                    'Size'      = if ($Value) {
+                        try { [System.Text.Encoding]::UTF8.GetBytes(($Value | ConvertTo-Json -Depth 10)).Length }
+                        catch { 1KB }
                     }
                     else { 0 }
                 }
-                
+
                 $script:LogProcessorCache[$CacheType][$Key] = $cacheEntry
                 Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Cached $Key (size: $($cacheEntry.Size) bytes)"
             }
-            
+
             'Remove' {
                 if ($script:LogProcessorCache[$CacheType].ContainsKey($Key)) {
                     $script:LogProcessorCache[$CacheType].Remove($Key)
                     Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Removed cache entry for $Key"
                 }
             }
-            
+
             'Clear' {
                 $script:LogProcessorCache[$CacheType].Clear()
                 Write-LogEntry -Level 'INFO' -Component 'CACHE-MGR' -Message "Cleared all $CacheType cache entries"
             }
-            
+
             'Cleanup' {
                 $removed = 0
                 $totalSize = 0
                 $cutoffTime = (Get-Date) - $script:LogProcessorCache.CacheSettings.MaxCacheAge
-                
+
                 foreach ($cacheType in @('AuditData', 'ExecutionLogs', 'ProcessedFiles')) {
                     $keysToRemove = @()
                     foreach ($key in $script:LogProcessorCache[$cacheType].Keys) {
                         $entry = $script:LogProcessorCache[$cacheType][$key]
                         $totalSize += $entry.Size
-                        
+
                         if ($entry.Timestamp -lt $cutoffTime) {
                             $keysToRemove += $key
                         }
                     }
-                    
+
                     foreach ($key in $keysToRemove) {
                         $script:LogProcessorCache[$cacheType].Remove($key)
                         $removed++
                     }
                 }
-                
+
                 # Size-based cleanup if cache is too large
                 if ($totalSize -gt $script:LogProcessorCache.CacheSettings.MaxCacheSize) {
                     Write-LogEntry -Level 'WARNING' -Component 'CACHE-MGR' -Message "Cache size ($totalSize bytes) exceeds limit, performing aggressive cleanup"
                     Invoke-CacheOperation -Operation 'Clear' -CacheType 'ProcessedFiles'
                 }
-                
+
                 $script:LogProcessorCache.LastCacheCleanup = Get-Date
                 Write-LogEntry -Level 'INFO' -Component 'CACHE-MGR' -Message "Cache cleanup complete: removed $removed entries, total size: $totalSize bytes"
             }
@@ -396,32 +396,32 @@ function Invoke-BatchProcessing {
     param(
         [Parameter(Mandatory)]
         [array]$InputData,
-        
+
         [Parameter(Mandatory)]
         [scriptblock]$ProcessingScript,
-        
+
         [int]$BatchSize = $script:LogProcessorCache.CacheSettings.BatchSize,
-        
+
         [switch]$ContinueOnError,
-        
+
         [string]$OperationName = 'Batch Processing'
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'BATCH-PROC' -Message "Starting $OperationName`: $($InputData.Count) items in batches of ${BatchSize}"
-    
+
     $results = [List[object]]::new()
     $totalBatches = [Math]::Ceiling($InputData.Count / $BatchSize)
     $currentBatch = 0
     $processedItems = 0
     $errors = 0
-    
+
     try {
         for ($i = 0; $i -lt $InputData.Count; $i += $BatchSize) {
             $currentBatch++
             $batch = $InputData[$i..([Math]::Min($i + $BatchSize - 1, $InputData.Count - 1))]
-            
+
             Write-LogEntry -Level 'DEBUG' -Component 'BATCH-PROC' -Message "Processing batch $currentBatch of $totalBatches ($($batch.Count) items)"
-            
+
             try {
                 $batchResults = foreach ($item in $batch) {
                     try {
@@ -431,18 +431,18 @@ function Invoke-BatchProcessing {
                     catch {
                         $errors++
                         Write-LogEntry -Level 'ERROR' -Component 'BATCH-PROC' -Message "Item processing failed: $($_.Exception.Message)"
-                        
+
                         if (-not $ContinueOnError) {
                             throw
                         }
-                        
+
                         # Return error placeholder
                         @{ 'Error' = $_.Exception.Message; 'Item' = $item }
                     }
                 }
-                
+
                 $results.AddRange(@($batchResults))
-                
+
                 # Periodic cache cleanup during large operations
                 if ($currentBatch % 10 -eq 0) {
                     $timeSinceCleanup = (Get-Date) - $script:LogProcessorCache.LastCacheCleanup
@@ -454,13 +454,13 @@ function Invoke-BatchProcessing {
             catch {
                 $errors++
                 Write-LogEntry -Level 'ERROR' -Component 'BATCH-PROC' -Message "Batch $currentBatch processing failed: $($_.Exception.Message)"
-                
+
                 if (-not $ContinueOnError) {
                     throw
                 }
             }
         }
-        
+
         Write-LogEntry -Level 'INFO' -Component 'BATCH-PROC' -Message "$OperationName complete: $processedItems processed, $errors errors"
         return $results.ToArray()
     }
@@ -481,9 +481,9 @@ function Invoke-BatchProcessing {
 function Initialize-ProcessedDataPaths {
     [CmdletBinding()]
     param()
-    
+
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Initializing processed data directory structure'
-    
+
     try {
         # Ensure processed data directories exist
         $processedRoot = Join-Path (Get-MaintenancePath 'TempRoot') 'processed'
@@ -493,14 +493,14 @@ function Initialize-ProcessedDataPaths {
             (Join-Path $processedRoot 'charts-data'),
             (Join-Path $processedRoot 'analytics')
         )
-        
+
         foreach ($dir in $directories) {
             if (-not (Test-Path $dir)) {
                 New-Item -Path $dir -ItemType Directory -Force | Out-Null
                 Write-Verbose "Created directory: $dir"
             }
         }
-        
+
         return $processedRoot
     }
     catch {
@@ -522,9 +522,9 @@ function Get-Type1AuditData {
     param(
         [switch]$BypassCache
     )
-    
+
     $cacheKey = 'Type1-AuditData-All'
-    
+
     # Check cache first unless bypassed
     if (-not $BypassCache) {
         $cachedData = Invoke-CacheOperation -Operation 'Get' -CacheType 'AuditData' -Key $cacheKey
@@ -533,37 +533,37 @@ function Get-Type1AuditData {
             return $cachedData
         }
     }
-    
+
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Scanning Type1 audit data files (cache miss or bypassed)'
-    
+
     $auditData = @{}
     $dataPath = Join-Path (Get-MaintenancePath 'TempRoot') 'data'
-    
+
     if (-not (Test-Path $dataPath)) {
         Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Type1 audit data directory not found: $dataPath"
         return $auditData
     }
-    
+
     try {
         # Use safe directory scanning with error recovery
         $jsonFiles = Get-SafeDirectoryContents -DirectoryPath $dataPath -Filter '*.json' -FilesOnly
-        
+
         # Process files in batches for better performance with many modules
         $processingScript = {
             param($InputObject)
-            
+
             $file = $InputObject
             $moduleName = $file.BaseName -replace '-results$', ''
-            
+
             # Check individual file cache
             $fileCacheKey = "File-$($file.FullName)-$($file.LastWriteTime.Ticks)"
             $cachedFileData = Invoke-CacheOperation -Operation 'Get' -CacheType 'AuditData' -Key $fileCacheKey
-            
+
             if ($cachedFileData) {
                 Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "Using cached data for $moduleName"
                 return @{ ModuleName = $moduleName; Data = $cachedFileData }
             }
-            
+
             # Use safe JSON loading with validation
             $defaultData = @{
                 ModuleName       = $moduleName
@@ -571,9 +571,9 @@ function Get-Type1AuditData {
                 ItemsFound       = 0
                 ProcessingErrors = @("Failed to load audit data for $moduleName")
             }
-            
+
             $content = Import-SafeJsonData -JsonPath $file.FullName -DefaultData $defaultData -ContinueOnError
-            
+
             if ($content) {
                 # Cache individual file data
                 Invoke-CacheOperation -Operation 'Set' -CacheType 'AuditData' -Key $fileCacheKey -Value $content
@@ -585,20 +585,20 @@ function Get-Type1AuditData {
                 return @{ ModuleName = $moduleName; Data = $defaultData }
             }
         }
-        
+
         # Process in batches for performance
         $batchResults = Invoke-BatchProcessing -InputData $jsonFiles -ProcessingScript $processingScript -ContinueOnError -OperationName 'Type1 Audit Data Loading'
-        
+
         # Assemble final audit data structure
         foreach ($result in $batchResults) {
             if ($result -and $result.ModuleName -and $result.Data) {
                 $auditData[$result.ModuleName] = $result.Data
             }
         }
-        
+
         # Cache the complete audit data set
         Invoke-CacheOperation -Operation 'Set' -CacheType 'AuditData' -Key $cacheKey -Value $auditData
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message "Audit data loading completed: $($auditData.Keys.Count) modules processed and cached"
         return $auditData
     }
@@ -618,9 +618,9 @@ function Get-Type2ExecutionLogs {
     param(
         [switch]$BypassCache
     )
-    
+
     $cacheKey = 'Type2-ExecutionLogs-All'
-    
+
     # Check cache first unless bypassed
     if (-not $BypassCache) {
         $cachedData = Invoke-CacheOperation -Operation 'Get' -CacheType 'ExecutionLogs' -Key $cacheKey
@@ -629,69 +629,69 @@ function Get-Type2ExecutionLogs {
             return $cachedData
         }
     }
-    
+
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Scanning Type2 execution logs (cache miss or bypassed)'
-    
+
     $executionLogs = @{}
     $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') 'logs'
-    
+
     if (-not (Test-Path $logsPath)) {
         Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Type2 execution logs directory not found: $logsPath"
         return $executionLogs
     }
-    
+
     try {
         # Use safe directory scanning for module directories
         $moduleDirectories = Get-SafeDirectoryContents -DirectoryPath $logsPath -DirectoriesOnly
-        
+
         # Process directories in batches for performance
         $processingScript = {
             param($InputObject)
-            
+
             $moduleDir = $InputObject
             $moduleName = $moduleDir.Name
             $executionLogPath = Join-Path $moduleDir.FullName 'execution.log'
-            
+
             # Check individual log file cache
             if (Test-Path $executionLogPath) {
                 $logFile = Get-Item $executionLogPath
                 $fileCacheKey = "LogFile-$($logFile.FullName)-$($logFile.LastWriteTime.Ticks)"
                 $cachedLogData = Invoke-CacheOperation -Operation 'Get' -CacheType 'ExecutionLogs' -Key $fileCacheKey
-                
+
                 if ($cachedLogData) {
                     Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "Using cached log data for $moduleName"
                     return @{ ModuleName = $moduleName; Data = $cachedLogData; Success = $true; FallbackUsed = $false }
                 }
             }
-            
+
             # Use safe log file reading operation
             $logLoadOperation = {
                 param($ExecutionLogPath)
-                
+
                 if (-not (Test-Path $ExecutionLogPath)) {
                     throw "Execution log file not found: $ExecutionLogPath"
                 }
-                
+
                 return Get-Content $ExecutionLogPath -Raw -ErrorAction Stop
             }
-            
+
             $fallbackOperation = {
                 param($ExecutionLogPath, $ModuleName)
                 Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Using placeholder log content for module: $ModuleName"
                 return "# Execution log for $ModuleName - Content unavailable (file read error)`n# This is fallback content generated by LogProcessor error handling"
             }
-            
+
             $result = Invoke-SafeLogOperation -OperationName "Load execution log for $moduleName" -Operation $logLoadOperation -Parameters @{
                 ExecutionLogPath = $executionLogPath
             } -FallbackOperation $fallbackOperation -FallbackMessage "Using placeholder content for $moduleName execution log" -ContinueOnError
-            
+
             if ($result.Success -and (Test-Path $executionLogPath)) {
                 # Cache the log data
                 $logFile = Get-Item $executionLogPath
                 $fileCacheKey = "LogFile-$($logFile.FullName)-$($logFile.LastWriteTime.Ticks)"
                 Invoke-CacheOperation -Operation 'Set' -CacheType 'ExecutionLogs' -Key $fileCacheKey -Value $result.Data
             }
-            
+
             return @{
                 ModuleName   = $moduleName
                 Data         = $result.Data
@@ -699,10 +699,10 @@ function Get-Type2ExecutionLogs {
                 FallbackUsed = $result.FallbackUsed
             }
         }
-        
+
         # Process in batches for performance
         $batchResults = Invoke-BatchProcessing -InputData $moduleDirectories -ProcessingScript $processingScript -ContinueOnError -OperationName 'Type2 Execution Logs Loading'
-        
+
         # Assemble final execution logs structure
         foreach ($result in $batchResults) {
             if ($result -and $result.Success) {
@@ -714,10 +714,10 @@ function Get-Type2ExecutionLogs {
                 Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Skipped execution log for module: $($result.ModuleName) (no recovery possible)"
             }
         }
-        
+
         # Cache the complete execution logs set
         Invoke-CacheOperation -Operation 'Set' -CacheType 'ExecutionLogs' -Key $cacheKey -Value $executionLogs
-        
+
         Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Loaded execution logs for $($executionLogs.Keys.Count) modules and cached"
         return $executionLogs
     }
@@ -740,9 +740,9 @@ function Get-MaintenanceLog {
     param(
         [switch]$BypassCache
     )
-    
+
     $cacheKey = 'MaintenanceLog-Content'
-    
+
     # Check cache first unless bypassed
     if (-not $BypassCache) {
         $cachedData = Invoke-CacheOperation -Operation 'Get' -CacheType 'ExecutionLogs' -Key $cacheKey
@@ -751,9 +751,9 @@ function Get-MaintenanceLog {
             return $cachedData
         }
     }
-    
+
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Loading main maintenance.log file'
-    
+
     $maintenanceLogData = @{
         LogFile      = $null
         Content      = $null
@@ -770,21 +770,21 @@ function Get-MaintenanceLog {
         }
         Available    = $false
     }
-    
+
     try {
         # Try to locate maintenance.log in temp_files
         $mainLogPath = Join-Path (Get-MaintenancePath 'TempRoot') 'maintenance.log'
-        
+
         if (-not (Test-Path $mainLogPath)) {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Maintenance log not found at: $mainLogPath"
             return $maintenanceLogData
         }
-        
+
         $logFile = Get-Item $mainLogPath
         $maintenanceLogData.LogFile = $mainLogPath
         $maintenanceLogData.Size = $logFile.Length
         $maintenanceLogData.LastModified = $logFile.LastWriteTime
-        
+
         # Read log content with safe operation
         $logLoadOperation = {
             param($LogPath)
@@ -793,13 +793,13 @@ function Get-MaintenanceLog {
             }
             return Get-Content $LogPath -Raw -ErrorAction Stop
         }
-        
+
         $fallbackOperation = {
             param($LogPath)
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Using placeholder content for maintenance.log"
             return "# Maintenance log content unavailable (file read error)`n# This is fallback content generated by LogProcessor error handling"
         }
-        
+
         $result = Invoke-SafeLogOperation `
             -OperationName "Load maintenance.log" `
             -Operation $logLoadOperation `
@@ -807,24 +807,24 @@ function Get-MaintenanceLog {
             -FallbackOperation $fallbackOperation `
             -FallbackMessage "Using placeholder content for maintenance.log" `
             -ContinueOnError
-        
+
         if ($result.Success) {
             $maintenanceLogData.Content = $result.Data
             $maintenanceLogData.Available = $true
-            
+
             # Parse log entries by level
             $logLines = $result.Data -split "`r?`n"
             $maintenanceLogData.LineCount = $logLines.Count
-            
+
             foreach ($line in $logLines) {
                 # Null safety check
                 if ([string]::IsNullOrWhiteSpace($line)) {
                     continue
                 }
-                
+
                 if ($line -match '\[(INFO|WARN|ERROR|SUCCESS|DEBUG)\]') {
                     $level = $matches[1]
-                    
+
                     switch ($level) {
                         'INFO' { $maintenanceLogData.Parsed.InfoMessages += $line }
                         'WARN' { $maintenanceLogData.Parsed.WarningMessages += $line }
@@ -835,10 +835,10 @@ function Get-MaintenanceLog {
                     $maintenanceLogData.Parsed.TotalEntries++
                 }
             }
-            
+
             # Cache the loaded data
             Invoke-CacheOperation -Operation 'Set' -CacheType 'ExecutionLogs' -Key $cacheKey -Value $maintenanceLogData
-            
+
             Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message "Loaded maintenance.log: $($maintenanceLogData.LineCount) lines, $($maintenanceLogData.Parsed.TotalEntries) structured entries"
         }
         else {
@@ -846,7 +846,7 @@ function Get-MaintenanceLog {
             $maintenanceLogData.Available = $result.FallbackUsed
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Maintenance.log loaded with fallback content"
         }
-        
+
         return $maintenanceLogData
     }
     catch {
@@ -868,17 +868,17 @@ function Get-ModuleExecutionData {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param()
-    
+
     try {
         Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Collecting module execution data from v3.0 standardized paths'
-        
+
         $moduleData = @{
             Type1Results = @{}  # Audit/detection results from Type1 modules
-            Type2Results = @{}  # Execution results from Type2 modules  
+            Type2Results = @{}  # Execution results from Type2 modules
             LogPaths     = @{}      # Paths to module-specific log files
             DataPaths    = @{}     # Paths to module-specific data files
         }
-        
+
         # Define v3.0 module mapping (Type2 -> Type1)
         $moduleMapping = @{
             'BloatwareRemoval'   = 'BloatwareDetectionAudit'
@@ -887,20 +887,20 @@ function Get-ModuleExecutionData {
             'TelemetryDisable'   = 'TelemetryAudit'
             'WindowsUpdates'     = 'WindowsUpdatesAudit'
         }
-        
+
         foreach ($type2Module in $moduleMapping.Keys) {
             # Null safety check
             if ([string]::IsNullOrWhiteSpace($type2Module)) {
                 Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Skipping null or empty module name in mapping"
                 continue
             }
-            
+
             $type1Module = $moduleMapping[$type2Module]
             if ([string]::IsNullOrWhiteSpace($type1Module)) {
                 Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Skipping null Type1 module mapping for $type2Module"
                 continue
             }
-            
+
             # Collect Type1 audit data (detection/analysis results)
             try {
                 $auditDataPath = Get-SessionPath -Category 'data' -FileName "$($type2Module.ToLower())-results.json"
@@ -914,7 +914,7 @@ function Get-ModuleExecutionData {
             catch {
                 Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to load audit data for $type1Module : $($_.Exception.Message)"
             }
-            
+
             # Collect Type2 execution data and logs
             try {
                 $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory $type2Module.ToLower() -FileName 'execution.log'
@@ -934,14 +934,14 @@ function Get-ModuleExecutionData {
                 Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to load execution data for $type2Module : $($_.Exception.Message)"
             }
         }
-        
+
         Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Module data collection completed" -Data @{
             Type1ModulesFound = $moduleData.Type1Results.Count
             Type2ModulesFound = $moduleData.Type2Results.Count
             TotalLogPaths     = $moduleData.LogPaths.Count
             TotalDataPaths    = $moduleData.DataPaths.Count
         }
-        
+
         return $moduleData
     }
     catch {
@@ -966,11 +966,11 @@ function ConvertFrom-ModuleExecutionLog {
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
-        
+
         [Parameter(Mandatory)]
         [string]$LogContent
     )
-    
+
     $analysis = @{
         Metrics           = @{
             TotalOperations      = 0
@@ -988,37 +988,37 @@ function ConvertFrom-ModuleExecutionLog {
         Warnings          = @()
         SuccessOperations = @()
     }
-    
+
     if (-not $LogContent) {
         Write-Verbose "No log content for $ModuleName"
         return $analysis
     }
-    
+
     $logLines = $LogContent -split "`n"
-    
+
     foreach ($line in $logLines) {
         # Skip null or empty lines to avoid "cannot call method on null-valued expression" errors
-        if ($null -eq $line -or [string]::IsNullOrWhiteSpace($line)) { 
-            continue 
+        if ($null -eq $line -or [string]::IsNullOrWhiteSpace($line)) {
+            continue
         }
-        
+
         $line = $line.Trim()
-        
+
         # Parse structured log entries
         if ($line -match '^\[([^\]]+)\]\s+\[(INFO|SUCCESS|WARN|ERROR|FAILED)\]\s+\[([^\]]+)\]\s+(.+)$') {
             $timestamp = $matches[1]
             $level = $matches[2]
             $component = $matches[3]
             $message = $matches[4]
-            
+
             # Track timing
             if (-not $analysis.Metrics.StartTime) {
                 $analysis.Metrics.StartTime = $timestamp
             }
             $analysis.Metrics.EndTime = $timestamp
-            
+
             switch ($level) {
-                'SUCCESS' { 
+                'SUCCESS' {
                     $analysis.Metrics.SuccessfulOperations++
                     $analysis.SuccessOperations += @{
                         Timestamp = $timestamp
@@ -1027,7 +1027,7 @@ function ConvertFrom-ModuleExecutionLog {
                         Action    = Get-ActionFromMessage -Message $message
                     }
                 }
-                { $_ -in @('ERROR', 'FAILED') } { 
+                { $_ -in @('ERROR', 'FAILED') } {
                     $analysis.Metrics.FailedOperations++
                     $analysis.Errors += @{
                         Timestamp = $timestamp
@@ -1037,7 +1037,7 @@ function ConvertFrom-ModuleExecutionLog {
                         Severity  = 'High'
                     }
                 }
-                'WARN' { 
+                'WARN' {
                     $analysis.Metrics.WarningCount++
                     $analysis.Warnings += @{
                         Timestamp = $timestamp
@@ -1052,7 +1052,7 @@ function ConvertFrom-ModuleExecutionLog {
                     if ($modification) {
                         $analysis.Modifications += $modification
                     }
-                    
+
                     # Extract task details
                     $taskDetail = Get-TaskDetailFromMessage -Message $message -Timestamp $timestamp -Component $component
                     if ($taskDetail) {
@@ -1060,18 +1060,18 @@ function ConvertFrom-ModuleExecutionLog {
                     }
                 }
             }
-            
+
             $analysis.Metrics.TotalOperations++
         }
-        
+
         # Parse Write-LogEntry style entries
         elseif ($line -match 'Write-LogEntry:.*\[([^\]]+)\]\s+\[(ERROR|WARN|INFO|SUCCESS)\].*(.+)$') {
             $timestamp = $matches[1]
             $level = $matches[2]
             $message = $matches[3].Trim()
-            
+
             switch ($level) {
-                'ERROR' { 
+                'ERROR' {
                     $analysis.Metrics.FailedOperations++
                     $analysis.Errors += @{
                         Timestamp = $timestamp
@@ -1081,47 +1081,47 @@ function ConvertFrom-ModuleExecutionLog {
                         Severity  = 'High'
                     }
                 }
-                'WARN' { 
+                'WARN' {
                     $analysis.Metrics.WarningCount++
                 }
-                'SUCCESS' { 
+                'SUCCESS' {
                     $analysis.Metrics.SuccessfulOperations++
                 }
             }
         }
-        
+
         # Parse performance indicators
         elseif ($line -match 'Completed.*in\s+(\d+\.?\d*)(ms|s|seconds)' -or $line -match 'Duration[:\s]+(\d+\.?\d*)(ms|s)') {
             $duration = [double]$matches[1]
             $unit = $matches[2]
-            
+
             if ($unit -eq 'ms') {
                 $duration = $duration / 1000
             }
-            
+
             $analysis.Performance.ExecutionTime = $duration
             $analysis.Metrics.Duration = $duration
         }
-        
+
         # Parse specific operation counts
-        elseif ($line -match '(\d+)\s+(installed|removed|optimized|disabled|updated|processed|detected)' -or 
+        elseif ($line -match '(\d+)\s+(installed|removed|optimized|disabled|updated|processed|detected)' -or
             $line -match '(installed|removed|optimized|disabled|updated|processed)\s+(\d+)') {
             $count = if ($matches[1] -match '^\d+$') { [int]$matches[1] } else { [int]$matches[2] }
             $operation = if ($matches[1] -match '^\d+$') { $matches[2] } else { $matches[1] }
-            
+
             $analysis.Performance[$operation] = $count
         }
     }
-    
+
     # Calculate success rate
     if ($analysis.Metrics.TotalOperations -gt 0) {
         $analysis.Metrics.SuccessRate = [math]::Round(
             ($analysis.Metrics.SuccessfulOperations / $analysis.Metrics.TotalOperations) * 100, 1
         )
     }
-    
+
     Write-Verbose "$ModuleName analysis: $($analysis.Metrics.TotalOperations) total ops, $($analysis.Metrics.SuccessfulOperations) success, $($analysis.Errors.Count) errors"
-    
+
     return $analysis
 }
 
@@ -1132,7 +1132,7 @@ function ConvertFrom-ModuleExecutionLog {
 function Get-ActionFromMessage {
     [CmdletBinding()]
     param([string]$Message)
-    
+
     # Extract specific actions from log messages
     if ($Message -match '(Installing|Removing|Uninstalling|Optimizing|Disabling|Updating|Processing)\s+(.+)') {
         return @{
@@ -1140,7 +1140,7 @@ function Get-ActionFromMessage {
             Target = $matches[2]
         }
     }
-    
+
     if ($Message -match '(Installed|Removed|Uninstalled|Optimized|Disabled|Updated|Processed)\s+(.+)') {
         return @{
             Type      = $matches[1] -replace 'd$', 'ing'  # Convert past tense to present
@@ -1148,7 +1148,7 @@ function Get-ActionFromMessage {
             Completed = $true
         }
     }
-    
+
     return $null
 }
 
@@ -1163,10 +1163,10 @@ function Get-SystemModificationFromMessage {
         [string]$Timestamp,
         [string]$Component
     )
-    
+
     # Identify system modifications from log messages
     $modifications = @()
-    
+
     # Application installations/removals
     if ($Message -match '(Successfully installed|Successfully removed|Successfully uninstalled|Installed|Removed|Uninstalled)\s+(.+?)(\s+\(|\s*$)') {
         $modifications += @{
@@ -1178,7 +1178,7 @@ function Get-SystemModificationFromMessage {
             Category  = 'Software Management'
         }
     }
-    
+
     # Service modifications
     if ($Message -match '(Started|Stopped|Disabled|Enabled)\s+service[:\s]+(.+?)(\s+\(|\s*$)') {
         $modifications += @{
@@ -1190,7 +1190,7 @@ function Get-SystemModificationFromMessage {
             Category  = 'System Services'
         }
     }
-    
+
     # Registry modifications
     if ($Message -match '(Set|Modified|Created|Deleted)\s+(registry\s+)?(key|value)[:\s]+(.+?)(\s+\(|\s*$)') {
         $modifications += @{
@@ -1202,7 +1202,7 @@ function Get-SystemModificationFromMessage {
             Category  = 'System Configuration'
         }
     }
-    
+
     # System optimizations
     if ($Message -match '(Applied|Enabled|Disabled)\s+(optimization|setting)[:\s]+(.+?)(\s+\(|\s*$)') {
         $modifications += @{
@@ -1214,7 +1214,7 @@ function Get-SystemModificationFromMessage {
             Category  = 'Performance Tuning'
         }
     }
-    
+
     return $modifications
 }
 
@@ -1229,7 +1229,7 @@ function Get-TaskDetailFromMessage {
         [string]$Timestamp,
         [string]$Component
     )
-    
+
     # Extract task execution details
     if ($Message -match 'Starting\s+(.+?)(\s+analysis|\s+installation|\s+removal|\s+optimization|\s+processing)') {
         return @{
@@ -1239,7 +1239,7 @@ function Get-TaskDetailFromMessage {
             Component = $Component
         }
     }
-    
+
     if ($Message -match 'Completed\s+(.+?)(\s+in\s+[\d.]+\w+)') {
         return @{
             Type      = 'TaskComplete'
@@ -1249,7 +1249,7 @@ function Get-TaskDetailFromMessage {
             Component = $Component
         }
     }
-    
+
     if ($Message -match 'Processing\s+(\d+)\s+(.+?)(\s+items|\s+apps|\s+services)') {
         return @{
             Type      = 'TaskProgress'
@@ -1259,7 +1259,7 @@ function Get-TaskDetailFromMessage {
             Component = $Component
         }
     }
-    
+
     return $null
 }
 
@@ -1273,18 +1273,18 @@ function ConvertFrom-AuditData {
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
-        
+
         [Parameter(Mandatory)]
         $AuditData
     )
-    
+
     $analysis = @{
         DetectedCount = 0
         Details       = @()
         HealthScore   = 0
         Categories    = @{}
     }
-    
+
     # Handle different audit data structures
     if ($AuditData -is [array]) {
         $analysis.DetectedCount = $AuditData.Count
@@ -1295,11 +1295,11 @@ function ConvertFrom-AuditData {
         if ($AuditData.Summary) {
             $analysis.DetectedCount = $AuditData.Summary.TotalFound ?? $AuditData.Summary.TotalScanned ?? 0
         }
-        
+
         if ($AuditData.HealthScore) {
             $analysis.HealthScore = $AuditData.HealthScore
         }
-        
+
         # Extract categorized data
         foreach ($property in $AuditData.PSObject.Properties) {
             if ($property.Name -match '(Count|Found|Detected)$' -and $property.Value -is [int]) {
@@ -1308,9 +1308,9 @@ function ConvertFrom-AuditData {
             }
         }
     }
-    
+
     Write-Verbose "$ModuleName audit: $($analysis.DetectedCount) items detected, health score: $($analysis.HealthScore)"
-    
+
     return $analysis
 }
 
@@ -1329,9 +1329,9 @@ function Get-ComprehensiveLogAnalysis {
         [Parameter(Mandatory)]
         [hashtable]$ComprehensiveLogCollection
     )
-    
+
     Write-Verbose "Starting comprehensive log analysis for all report sections"
-    
+
     $logAnalysis = @{
         ExecutionMetrics     = @{}
         TaskDetails          = @{}
@@ -1343,16 +1343,16 @@ function Get-ComprehensiveLogAnalysis {
         Warnings             = @{}
         SuccessfulOperations = @{}
     }
-    
+
     # Process Type2 Execution Logs for detailed metrics
     if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
         foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
-            
+
             Write-Verbose "Processing $moduleName execution logs"
-            
+
             $moduleAnalysis = ConvertFrom-ModuleExecutionLog -ModuleName $moduleName -LogContent $logContent
-            
+
             # Store parsed data for different report sections
             $logAnalysis.ExecutionMetrics[$moduleName] = $moduleAnalysis.Metrics
             $logAnalysis.TaskDetails[$moduleName] = $moduleAnalysis.TaskDetails
@@ -1363,27 +1363,27 @@ function Get-ComprehensiveLogAnalysis {
             $logAnalysis.SuccessfulOperations[$moduleName] = $moduleAnalysis.SuccessOperations
         }
     }
-    
+
     # Process Type1 Audit Data for additional insights
     if ($ComprehensiveLogCollection.Type1AuditData) {
         foreach ($moduleName in $ComprehensiveLogCollection.Type1AuditData.Keys) {
             $auditData = $ComprehensiveLogCollection.Type1AuditData[$moduleName]
-            
+
             Write-Verbose "Processing $moduleName audit data"
-            
+
             $auditAnalysis = ConvertFrom-AuditData -ModuleName $moduleName -AuditData $auditData
-            
+
             # Merge audit insights with execution data
             if ($logAnalysis.ExecutionMetrics[$moduleName]) {
                 $logAnalysis.ExecutionMetrics[$moduleName].ItemsDetected = $auditAnalysis.DetectedCount
                 $logAnalysis.ExecutionMetrics[$moduleName].DetectionDetails = $auditAnalysis.Details
             }
-            
+
             # Add health metrics from audit data
             $logAnalysis.HealthMetrics[$moduleName] = $auditAnalysis.HealthScore
         }
     }
-    
+
     Write-Verbose "Comprehensive log analysis completed"
     return $logAnalysis
 }
@@ -1398,13 +1398,13 @@ function Get-ComprehensiveDashboardMetrics {
     param(
         [Parameter(Mandatory)]
         [hashtable]$ComprehensiveLogCollection,
-        
+
         [Parameter()]
         [array]$TaskResults = @()
     )
-    
+
     Write-Verbose "Analyzing logs for dashboard metrics"
-    
+
     $metrics = @{
         TotalTasks          = 0
         SuccessfulTasks     = 0
@@ -1419,29 +1419,29 @@ function Get-ComprehensiveDashboardMetrics {
         SystemHealthScore   = 0
         SecurityScore       = 0
     }
-    
+
     # Parse Type2 execution logs for detailed metrics
     if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
         $metrics.ModulesExecuted = $ComprehensiveLogCollection.Type2ExecutionLogs.Keys.Count
-        
+
         foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
-            
+
             if ($logContent) {
                 $logLines = $logContent -split "`n"
-                
+
                 # Count tasks from logs
                 $metrics.TotalTasks++
-                
+
                 # Extract success/failure from logs
                 $hasErrors = $false
                 $taskDuration = 0
                 $itemsDetected = 0
                 $itemsProcessed = 0
-                
+
                 foreach ($line in $logLines) {
                     $line = $line.Trim()
-                    
+
                     # Count errors and warnings
                     if ($line -match '\[(ERROR|FAILED)\]') {
                         $metrics.ErrorCount++
@@ -1450,12 +1450,12 @@ function Get-ComprehensiveDashboardMetrics {
                     elseif ($line -match '\[WARN\]') {
                         $metrics.WarningCount++
                     }
-                    
+
                     # Extract completion messages for success detection
                     if ($line -match 'completed.*successfully|SUCCESS.*processed|Installation.*complete') {
                         # This suggests successful completion
                     }
-                    
+
                     # Extract items detected/processed
                     if ($line -match 'detected.*(\d+).*items?|found.*(\d+).*items?') {
                         $itemsDetected = [int]($matches[1] -replace '\D', '')
@@ -1463,13 +1463,13 @@ function Get-ComprehensiveDashboardMetrics {
                     if ($line -match 'processed.*(\d+).*items?|installed.*(\d+).*apps?|removed.*(\d+).*items?') {
                         $itemsProcessed = [int]($matches[1] -replace '\D', '')
                     }
-                    
+
                     # Extract duration
                     if ($line -match 'Duration.*(\d+\.?\d*)\s*(seconds?|s\b)') {
                         $taskDuration = [double]$matches[1]
                     }
                 }
-                
+
                 # Determine success/failure
                 if (-not $hasErrors) {
                     $metrics.SuccessfulTasks++
@@ -1477,14 +1477,14 @@ function Get-ComprehensiveDashboardMetrics {
                 else {
                     $metrics.FailedTasks++
                 }
-                
+
                 $metrics.TotalDuration += $taskDuration
                 $metrics.TotalItemsDetected += $itemsDetected
                 $metrics.TotalItemsProcessed += $itemsProcessed
             }
         }
     }
-    
+
     # Use TaskResults if available for more accurate metrics
     if ($TaskResults -and $TaskResults.Count -gt 0) {
         $metrics.TotalTasks = $TaskResults.Count
@@ -1492,12 +1492,12 @@ function Get-ComprehensiveDashboardMetrics {
         $metrics.FailedTasks = $metrics.TotalTasks - $metrics.SuccessfulTasks
         $metrics.TotalDuration = ($TaskResults | Measure-Object Duration -Sum).Sum
     }
-    
+
     # Calculate success rate
     if ($metrics.TotalTasks -gt 0) {
         $metrics.SuccessRate = [math]::Round(($metrics.SuccessfulTasks / $metrics.TotalTasks) * 100, 1)
     }
-    
+
     # Calculate system health score based on various factors
     $healthFactors = @{
         SuccessRate          = if ($metrics.SuccessRate -ge 90) { 25 } elseif ($metrics.SuccessRate -ge 75) { 20 } elseif ($metrics.SuccessRate -ge 50) { 15 } else { 5 }
@@ -1505,13 +1505,13 @@ function Get-ComprehensiveDashboardMetrics {
         ProcessingEfficiency = if ($metrics.TotalItemsProcessed -ge $metrics.TotalItemsDetected * 0.9) { 25 } elseif ($metrics.TotalItemsProcessed -ge $metrics.TotalItemsDetected * 0.7) { 20 } else { 10 }
         ModuleCompletion     = if ($metrics.ModulesExecuted -ge 5) { 25 } elseif ($metrics.ModulesExecuted -ge 3) { 20 } else { 10 }
     }
-    
+
     $metrics.SystemHealthScore = $healthFactors.SuccessRate + $healthFactors.ErrorRate + $healthFactors.ProcessingEfficiency + $healthFactors.ModuleCompletion
-    
+
     # Calculate security score based on telemetry and privacy modules
     $securityModules = @('telemetry-disable', 'system-optimization')
     $securityScore = 50 # Base score
-    
+
     foreach ($secModule in $securityModules) {
         if ($ComprehensiveLogCollection -and $ComprehensiveLogCollection.Type2ExecutionLogs -and $ComprehensiveLogCollection.Type2ExecutionLogs.ContainsKey($secModule)) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$secModule]
@@ -1520,11 +1520,11 @@ function Get-ComprehensiveDashboardMetrics {
             }
         }
     }
-    
+
     $metrics.SecurityScore = [math]::Min($securityScore, 100)
-    
+
     Write-Verbose "Dashboard metrics calculated: $($metrics.SuccessfulTasks)/$($metrics.TotalTasks) tasks successful, $($metrics.ErrorCount) errors"
-    
+
     return $metrics
 }
 
@@ -1539,29 +1539,29 @@ function Get-ErrorsFromExecutionLogs {
         [Parameter(Mandatory)]
         [hashtable]$ComprehensiveLogCollection
     )
-    
+
     Write-Verbose "Parsing errors from Type2 execution logs"
-    
+
     $allErrors = @()
-    
+
     if ($ComprehensiveLogCollection.Type2ExecutionLogs) {
         foreach ($moduleName in $ComprehensiveLogCollection.Type2ExecutionLogs.Keys) {
             $logContent = $ComprehensiveLogCollection.Type2ExecutionLogs[$moduleName]
-            
+
             if ($logContent) {
                 # Parse log entries - look for ERROR and FAILED entries
                 $logLines = $logContent -split "`n"
-                
+
                 foreach ($line in $logLines) {
                     $line = $line.Trim()
-                    
+
                     # Match log entry patterns: [TIMESTAMP] [LEVEL] [COMPONENT] Message
                     if ($line -match '^\[([^\]]+)\]\s+\[(ERROR|FAILED|WARN)\]\s+\[([^\]]+)\]\s+(.+)$') {
                         $timestamp = $matches[1]
                         $level = $matches[2]
                         $component = $matches[3]
                         $message = $matches[4]
-                        
+
                         $allErrors += @{
                             Module    = $moduleName
                             Timestamp = $timestamp
@@ -1579,7 +1579,7 @@ function Get-ErrorsFromExecutionLogs {
                     # Also catch Write-LogEntry style ERROR messages
                     elseif ($line -match 'Write-LogEntry:.*\[ERROR\].*(.+)$') {
                         $message = $matches[1].Trim()
-                        
+
                         $allErrors += @{
                             Module    = $moduleName
                             Timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
@@ -1592,7 +1592,7 @@ function Get-ErrorsFromExecutionLogs {
                     # Catch generic error patterns
                     elseif ($line -match '(error|failed|exception).*:(.+)' -and $line -notmatch '^\s*#') {
                         $message = $line.Trim()
-                        
+
                         $allErrors += @{
                             Module    = $moduleName
                             Timestamp = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
@@ -1606,9 +1606,9 @@ function Get-ErrorsFromExecutionLogs {
             }
         }
     }
-    
+
     Write-Verbose "Found $($allErrors.Count) errors/warnings across all modules"
-    
+
     # Sort by severity and timestamp
     return $allErrors | Sort-Object @{Expression = {
             switch ($_.Severity) {
@@ -1658,13 +1658,13 @@ function Get-ExecutionSummary {
 function Get-SystemHealthAnalytic {
     [CmdletBinding()]
     param([hashtable]$SystemInventory)
-    
+
     if (-not $SystemInventory) { return @{} }
-    
+
     $healthFactors = @{}
     $totalScore = 0
     $maxScore = 0
-    
+
     # CPU Health (20 points)
     if ($SystemInventory.Hardware -and $SystemInventory.Hardware.Processor) {
         $cpuCores = $SystemInventory.Hardware.Processor.NumberOfCores
@@ -1673,7 +1673,7 @@ function Get-SystemHealthAnalytic {
         $totalScore += $cpuScore
     }
     $maxScore += 20
-    
+
     # Memory Health (25 points)
     if ($SystemInventory.SystemInfo -and $SystemInventory.SystemInfo.TotalPhysicalMemory) {
         $memoryGB = $SystemInventory.SystemInfo.TotalPhysicalMemory / 1GB
@@ -1682,7 +1682,7 @@ function Get-SystemHealthAnalytic {
         $totalScore += $memoryScore
     }
     $maxScore += 25
-    
+
     # Storage Health (20 points)
     if ($SystemInventory.Hardware -and $SystemInventory.Hardware.Storage) {
         $storageCount = $SystemInventory.Hardware.Storage.Count
@@ -1691,8 +1691,8 @@ function Get-SystemHealthAnalytic {
         $totalScore += $storageScore
     }
     $maxScore += 20
-    
-    # OS Health (20 points) 
+
+    # OS Health (20 points)
     if ($SystemInventory.OperatingSystem) {
         $osVersion = $SystemInventory.OperatingSystem.BuildNumber
         $osScore = if ($osVersion -ge 22000) { 20 } elseif ($osVersion -ge 19041) { 15 } else { 10 }
@@ -1700,7 +1700,7 @@ function Get-SystemHealthAnalytic {
         $totalScore += $osScore
     }
     $maxScore += 20
-    
+
     # Services Health (15 points)
     if ($SystemInventory.Services) {
         $runningServices = ($SystemInventory.Services | Where-Object { $_.Status -eq 'Running' }).Count
@@ -1709,9 +1709,9 @@ function Get-SystemHealthAnalytic {
         $totalScore += $serviceScore
     }
     $maxScore += 15
-    
+
     $overallScore = if ($maxScore -gt 0) { [math]::Round(($totalScore / $maxScore) * 100, 1) } else { 0 }
-    
+
     return @{
         OverallScore    = $overallScore
         HealthFactors   = $healthFactors
@@ -1727,14 +1727,14 @@ function Get-SystemHealthAnalytic {
 function Get-PerformanceAnalytic {
     [CmdletBinding()]
     param([Array]$TaskResults)
-    
+
     if (-not $TaskResults -or $TaskResults.Count -eq 0) { return @{} }
-    
+
     $durations = $TaskResults | Where-Object { $_.Duration } | ForEach-Object { $_.Duration }
     $avgDuration = if ($durations) { ($durations | Measure-Object -Average).Average } else { 0 }
     $maxDuration = if ($durations) { ($durations | Measure-Object -Maximum).Maximum } else { 0 }
     $minDuration = if ($durations) { ($durations | Measure-Object -Minimum).Minimum } else { 0 }
-    
+
     $typeAnalysis = $TaskResults | Group-Object Type | ForEach-Object {
         @{
             Type        = $_.Name
@@ -1743,7 +1743,7 @@ function Get-PerformanceAnalytic {
             AvgDuration = [math]::Round((($_.Group | Measure-Object Duration -Average).Average), 2)
         }
     }
-    
+
     return @{
         AverageDuration = [math]::Round($avgDuration, 2)
         MaxDuration     = [math]::Round($maxDuration, 2)
@@ -1761,26 +1761,26 @@ function Get-PerformanceAnalytic {
 function Get-SecurityAnalytic {
     [CmdletBinding()]
     param([hashtable]$SystemInventory)
-    
+
     if (-not $SystemInventory) { return @{} }
-    
+
     $securityScore = 85 # Base score
     $issues = @()
     $recommendations = @()
-    
+
     # Check Windows version for security
     if ($SystemInventory.OperatingSystem -and $SystemInventory.OperatingSystem.BuildNumber -lt 19041) {
         $securityScore -= 15
         $issues += "Outdated Windows version"
         $recommendations += "Update to Windows 10 version 2004 or later"
     }
-    
+
     # Check for potential security services
     if ($SystemInventory.Services) {
-        $securityServices = $SystemInventory.Services | Where-Object { 
-            $_.Name -like "*Defender*" -or $_.Name -like "*Security*" -or $_.Name -like "*Firewall*" 
+        $securityServices = $SystemInventory.Services | Where-Object {
+            $_.Name -like "*Defender*" -or $_.Name -like "*Security*" -or $_.Name -like "*Firewall*"
         }
-        
+
         $runningSecurityServices = ($securityServices | Where-Object { $_.Status -eq 'Running' }).Count
         if ($runningSecurityServices -lt 3) {
             $securityScore -= 10
@@ -1788,7 +1788,7 @@ function Get-SecurityAnalytic {
             $recommendations += "Verify Windows Defender and Firewall are active"
         }
     }
-    
+
     return @{
         SecurityScore   = $securityScore
         Issues          = $issues
@@ -1804,25 +1804,25 @@ function Get-SecurityAnalytic {
 function Get-HealthRecommendation {
     [CmdletBinding()]
     param([hashtable]$HealthFactors)
-    
+
     $recommendations = @()
-    
+
     if ($HealthFactors.CPU -and $HealthFactors.CPU.Score -lt 15) {
         $recommendations += "Consider upgrading CPU for better performance"
     }
-    
+
     if ($HealthFactors.Memory -and $HealthFactors.Memory.Score -lt 20) {
         $recommendations += "Consider adding more RAM for better system performance"
     }
-    
+
     if ($HealthFactors.Storage -and $HealthFactors.Storage.Score -lt 15) {
         $recommendations += "Consider adding additional storage or upgrading to SSD"
     }
-    
+
     if ($HealthFactors.OperatingSystem -and $HealthFactors.OperatingSystem.Score -lt 18) {
         $recommendations += "Update to the latest Windows version for security and performance"
     }
-    
+
     return $recommendations
 }
 
@@ -1836,7 +1836,7 @@ function Get-HealthRecommendation {
 .DESCRIPTION
     Orchestrates the complete log processing pipeline:
     1. Scan raw log files from temp_files/data/ and temp_files/logs/
-    2. Parse and analyze log content 
+    2. Parse and analyze log content
     3. Calculate metrics and analytics
     4. Generate standardized processed data files
 .PARAMETER Force
@@ -1848,20 +1848,20 @@ function Invoke-LogProcessing {
         [Parameter()]
         [switch]$Force
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Starting comprehensive log processing pipeline'
-    
+
     # FIRST: Organize bootstrap maintenance.log to proper location if needed
     $logOrganized = Move-MaintenanceLogToOrganized
     if (-not $logOrganized) {
         Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message 'Failed to organize bootstrap maintenance.log, continuing with processing'
     }
-    
+
     # Patch 5: Load aggregated results from LogAggregator
     Write-Information " Loading pre-aggregated results from LogAggregator..." -InformationAction Continue
     $aggregatedResults = $null
     $aggregatedResultsPath = Join-Path (Join-Path $env:MAINTENANCE_TEMP_ROOT 'processed') 'aggregated-results.json'
-    
+
     if (Test-Path $aggregatedResultsPath) {
         try {
             $aggregatedResults = Get-Content -Path $aggregatedResultsPath -Raw | ConvertFrom-Json
@@ -1876,14 +1876,14 @@ function Invoke-LogProcessing {
     else {
         Write-Information "  [INFO] No pre-aggregated results found - will use traditional log parsing" -InformationAction Continue
     }
-    
+
     try {
         # Initialize processed data paths
         $processedRoot = Initialize-ProcessedDataPaths
-        
+
         # Collect raw data with defensive error handling
         Write-Information " Collecting raw log data..." -InformationAction Continue
-        
+
         $type1AuditData = @{}
         try {
             $type1AuditData = Get-Type1AuditData
@@ -1891,7 +1891,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect Type1 audit data: $($_.Exception.Message)"
         }
-        
+
         $type2ExecutionLogs = @{}
         try {
             $type2ExecutionLogs = Get-Type2ExecutionLogs
@@ -1899,7 +1899,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect Type2 execution logs: $($_.Exception.Message)"
         }
-        
+
         $maintenanceLog = $null
         try {
             $maintenanceLog = Get-MaintenanceLog
@@ -1907,7 +1907,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect maintenance log: $($_.Exception.Message)"
         }
-        
+
         # Create comprehensive log collection
         $logCollection = @{
             Type1AuditData      = $type1AuditData
@@ -1917,10 +1917,10 @@ function Invoke-LogProcessing {
             CollectionTimestamp = Get-Date
             ProcessedAt         = Get-Date
         }
-        
+
         # Process logs and generate standardized data files
         Write-Information " Analyzing logs and calculating metrics..." -InformationAction Continue
-        
+
         # Generate comprehensive log analysis with error handling
         $comprehensiveAnalysis = $null
         try {
@@ -1939,7 +1939,7 @@ function Invoke-LogProcessing {
                 TaskDetails         = @{}
             }
         }
-        
+
         # Calculate dashboard metrics (mock TaskResults - in real implementation this would come from orchestrator)
         $mockTaskResults = @()
         foreach ($moduleName in $type2ExecutionLogs.Keys) {
@@ -1949,7 +1949,7 @@ function Invoke-LogProcessing {
                 Type     = $moduleName
             }
         }
-        
+
         $dashboardMetrics = @{}
         try {
             $dashboardMetrics = Get-ComprehensiveDashboardMetrics -ComprehensiveLogCollection $logCollection -TaskResults $mockTaskResults
@@ -1957,7 +1957,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to calculate dashboard metrics: $($_.Exception.Message)"
         }
-        
+
         # Extract errors analysis with error handling
         $errorsAnalysis = @()
         try {
@@ -1966,7 +1966,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to extract errors analysis: $($_.Exception.Message)"
         }
-        
+
         # Generate analytics (requires system inventory - mock for now)
         $mockSystemInventory = @{
             OperatingSystem = @{ BuildNumber = 22000 }
@@ -1977,7 +1977,7 @@ function Invoke-LogProcessing {
             SystemInfo      = @{ TotalPhysicalMemory = 16GB }
             Services        = @(@{ Status = 'Running' }, @{ Status = 'Running' }, @{ Status = 'Running' })
         }
-        
+
         $executionSummary = @{}
         try {
             $executionSummary = Get-ExecutionSummary -TaskResults $mockTaskResults
@@ -1985,7 +1985,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate execution summary: $($_.Exception.Message)"
         }
-        
+
         $systemHealthAnalytics = @{}
         try {
             $systemHealthAnalytics = Get-SystemHealthAnalytic -SystemInventory $mockSystemInventory
@@ -1993,7 +1993,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate system health analytics: $($_.Exception.Message)"
         }
-        
+
         $performanceAnalytics = @{}
         try {
             $performanceAnalytics = Get-PerformanceAnalytic -TaskResults $mockTaskResults
@@ -2001,7 +2001,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate performance analytics: $($_.Exception.Message)"
         }
-        
+
         $securityAnalytics = @{}
         try {
             $securityAnalytics = Get-SecurityAnalytic -SystemInventory $mockSystemInventory
@@ -2009,10 +2009,10 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate security analytics: $($_.Exception.Message)"
         }
-        
+
         # Save processed data to standardized JSON files (with defensive error handling)
         Write-Information " Saving processed data files..." -InformationAction Continue
-        
+
         # Main metrics summary
         try {
             $metricsSummary = @{
@@ -2034,7 +2034,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save metrics-summary.json: $($_.Exception.Message)"
         }
-        
+
         # Module-specific results
         try {
             $moduleResults = @{
@@ -2049,7 +2049,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save module-results.json: $($_.Exception.Message)"
         }
-        
+
         # Save maintenance log data separately for easy access
         try {
             if ($maintenanceLog -and $maintenanceLog.Available) {
@@ -2063,7 +2063,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save maintenance-log.json: $($_.Exception.Message)"
         }
-        
+
         # Errors and warnings analysis
         try {
             $errorsData = @{
@@ -2082,7 +2082,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save errors-analysis.json: $($_.Exception.Message)"
         }
-        
+
         # Health scores and analytics
         try {
             $healthScores = @{
@@ -2097,7 +2097,7 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save health-scores.json: $($_.Exception.Message)"
         }
-        
+
         # Save individual module data to module-specific subdirectory
         try {
             $moduleSpecificDir = Join-Path $processedRoot 'module-specific'
@@ -2122,14 +2122,14 @@ function Invoke-LogProcessing {
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Failed to save module-specific data: $($_.Exception.Message)"
         }
-        
+
         Write-Information " Log processing completed successfully" -InformationAction Continue
         Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message 'Log processing pipeline completed' -Data @{
             Type1Modules      = $type1AuditData.Keys.Count
             Type2Modules      = $type2ExecutionLogs.Keys.Count
             ProcessedDataPath = $processedRoot
         }
-        
+
         return @{
             Success           = $true
             ProcessedDataPath = $processedRoot
@@ -2168,23 +2168,23 @@ function Invoke-SafeLogOperation {
     param(
         [Parameter(Mandatory)]
         [string]$OperationName,
-        
+
         [Parameter(Mandatory)]
         [ScriptBlock]$Operation,
-        
+
         [Parameter()]
         [hashtable]$Parameters = @{},
-        
+
         [Parameter()]
         [ScriptBlock]$FallbackOperation,
-        
+
         [Parameter()]
         [string]$FallbackMessage,
-        
+
         [Parameter()]
         [switch]$ContinueOnError
     )
-    
+
     $result = @{
         Success       = $false
         Data          = $null
@@ -2192,7 +2192,7 @@ function Invoke-SafeLogOperation {
         OperationName = $OperationName
         FallbackUsed  = $false
     }
-    
+
     try {
         Write-Verbose "Executing operation: $OperationName"
         $result.Data = & $Operation @Parameters
@@ -2202,7 +2202,7 @@ function Invoke-SafeLogOperation {
     catch {
         $result.Error = $_.Exception.Message
         Write-LogEntry -Level 'ERROR' -Component 'LOG-PROCESSOR' -Message "Operation '$OperationName' failed: $($_.Exception.Message)"
-        
+
         # Try fallback if available
         if ($FallbackOperation) {
             try {
@@ -2210,7 +2210,7 @@ function Invoke-SafeLogOperation {
                 $result.Data = & $FallbackOperation @Parameters
                 $result.Success = $true
                 $result.FallbackUsed = $true
-                
+
                 if ($FallbackMessage) {
                     Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message $FallbackMessage
                 }
@@ -2226,7 +2226,7 @@ function Invoke-SafeLogOperation {
             throw
         }
     }
-    
+
     return $result
 }
 
@@ -2239,11 +2239,11 @@ function Test-JsonDataIntegrity {
     param(
         [Parameter(Mandatory)]
         [string]$JsonPath,
-        
+
         [Parameter()]
         [string[]]$RequiredProperties
     )
-    
+
     $validation = @{
         IsValid               = $false
         HasRequiredProperties = $false
@@ -2253,7 +2253,7 @@ function Test-JsonDataIntegrity {
         ValidationErrors      = @()
         Data                  = $null
     }
-    
+
     try {
         # Check file existence
         if (-not (Test-Path $JsonPath)) {
@@ -2261,7 +2261,7 @@ function Test-JsonDataIntegrity {
             return $validation
         }
         $validation.FileExists = $true
-        
+
         # Check file readability
         try {
             $content = Get-Content $JsonPath -Raw -ErrorAction Stop
@@ -2271,7 +2271,7 @@ function Test-JsonDataIntegrity {
             $validation.ValidationErrors += "File is not readable: $($_.Exception.Message)"
             return $validation
         }
-        
+
         # Check JSON validity
         try {
             $jsonData = $content | ConvertFrom-Json -ErrorAction Stop
@@ -2282,7 +2282,7 @@ function Test-JsonDataIntegrity {
             $validation.ValidationErrors += "Invalid JSON format: $($_.Exception.Message)"
             return $validation
         }
-        
+
         # Check required properties
         if ($RequiredProperties -and $RequiredProperties.Count -gt 0) {
             $missingProperties = @()
@@ -2295,7 +2295,7 @@ function Test-JsonDataIntegrity {
                     $missingProperties += $property
                 }
             }
-            
+
             if ($missingProperties.Count -eq 0) {
                 $validation.HasRequiredProperties = $true
             }
@@ -2306,10 +2306,10 @@ function Test-JsonDataIntegrity {
         else {
             $validation.HasRequiredProperties = $true  # No requirements specified
         }
-        
+
         # Overall validation
         $validation.IsValid = $validation.FileExists -and $validation.IsReadable -and $validation.IsValidJson -and $validation.HasRequiredProperties
-        
+
         return $validation
     }
     catch {
@@ -2327,23 +2327,23 @@ function Import-SafeJsonData {
     param(
         [Parameter(Mandatory)]
         [string]$JsonPath,
-        
+
         [Parameter()]
         [string[]]$RequiredProperties,
-        
+
         [Parameter()]
         [hashtable]$DefaultData = @{},
-        
+
         [Parameter()]
         [switch]$ContinueOnError
     )
-    
+
     $operation = {
         param($JsonPath, $RequiredProperties)
-        
+
         # Validate first
         $validation = Test-JsonDataIntegrity -JsonPath $JsonPath -RequiredProperties $RequiredProperties
-        
+
         if ($validation.IsValid) {
             return $validation.Data
         }
@@ -2351,18 +2351,18 @@ function Import-SafeJsonData {
             throw "JSON validation failed: $($validation.ValidationErrors -join '; ')"
         }
     }
-    
+
     $fallback = {
         param($JsonPath, $RequiredProperties, $DefaultData)
         Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Using default data for failed JSON load: $(Split-Path -Leaf $JsonPath)"
         return $DefaultData
     }
-    
+
     $result = Invoke-SafeLogOperation -OperationName "Import JSON: $(Split-Path -Leaf $JsonPath)" -Operation $operation -Parameters @{
         JsonPath           = $JsonPath
         RequiredProperties = $RequiredProperties
     } -FallbackOperation $fallback -FallbackMessage "Using default data due to JSON load failure" -ContinueOnError:$ContinueOnError
-    
+
     return $result.Data
 }
 
@@ -2375,48 +2375,48 @@ function Get-SafeDirectoryContents {
     param(
         [Parameter(Mandatory)]
         [string]$DirectoryPath,
-        
+
         [Parameter()]
         [string]$Filter = '*',
-        
+
         [Parameter()]
         [switch]$FilesOnly,
-        
+
         [Parameter()]
         [switch]$DirectoriesOnly
     )
-    
+
     $operation = {
         param($DirectoryPath, $Filter, $FilesOnly, $DirectoriesOnly)
-        
+
         if (-not (Test-Path $DirectoryPath -PathType Container)) {
             throw "Directory does not exist or is not accessible: $DirectoryPath"
         }
-        
+
         $getChildItemParams = @{
             Path        = $DirectoryPath
             Filter      = $Filter
             ErrorAction = 'Stop'
         }
-        
+
         if ($FilesOnly) { $getChildItemParams.File = $true }
         if ($DirectoriesOnly) { $getChildItemParams.Directory = $true }
-        
+
         return Get-ChildItem @getChildItemParams
     }
-    
+
     $fallback = {
         Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Directory scan failed, returning empty collection"
         return @()
     }
-    
+
     $result = Invoke-SafeLogOperation -OperationName "Scan Directory: $(Split-Path -Leaf $DirectoryPath)" -Operation $operation -Parameters @{
         DirectoryPath   = $DirectoryPath
         Filter          = $Filter
         FilesOnly       = $FilesOnly
         DirectoriesOnly = $DirectoriesOnly
     } -FallbackOperation $fallback -ContinueOnError
-    
+
     return $result.Data
 }
 
@@ -2446,11 +2446,11 @@ function Get-ModuleExecutionDataFromJson {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('BloatwareRemoval', 'EssentialApps', 'SystemOptimization', 'TelemetryDisable', 'WindowsUpdates', 'AppUpgrade', 'SystemInventory', 
+        [ValidateSet('BloatwareRemoval', 'EssentialApps', 'SystemOptimization', 'TelemetryDisable', 'WindowsUpdates', 'AppUpgrade', 'SystemInventory',
             'bloatware-removal', 'essential-apps', 'system-optimization', 'telemetry-disable', 'windows-updates', 'app-upgrade', 'system-inventory')]
         [string]$ModuleName
     )
-    
+
     try {
         # Normalize module name to directory format (lowercase with hyphens)
         $normalizedName = switch -Regex ($ModuleName) {
@@ -2463,9 +2463,9 @@ function Get-ModuleExecutionDataFromJson {
             '^SystemInventory$' { 'system-inventory' }
             default { $ModuleName.ToLower() }
         }
-        
+
         $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') "logs\$normalizedName"
-        
+
         if (-not (Test-Path $logsPath)) {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Module logs directory not found: $logsPath"
             return @{
@@ -2476,7 +2476,7 @@ function Get-ModuleExecutionDataFromJson {
                 Error             = "Logs directory not found"
             }
         }
-        
+
         # Load execution summary
         $summaryPath = Join-Path $logsPath 'execution-summary.json'
         $summary = if (Test-Path $summaryPath) {
@@ -2492,7 +2492,7 @@ function Get-ModuleExecutionDataFromJson {
             Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "No execution summary found for $ModuleName"
             $null
         }
-        
+
         # Load detailed log entries
         $jsonLogPath = Join-Path $logsPath 'execution-data.json'
         $logEntries = if (Test-Path $jsonLogPath) {
@@ -2515,7 +2515,7 @@ function Get-ModuleExecutionDataFromJson {
             Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "No JSON execution log found for $ModuleName"
             @()
         }
-        
+
         return @{
             Summary           = $summary
             LogEntries        = $logEntries
@@ -2547,7 +2547,7 @@ Export-ModuleMember -Function @(
     'Invoke-LogProcessing',
     'Initialize-ProcessedDataPaths',
     'Move-MaintenanceLogToOrganized',
-    'Get-Type1AuditData', 
+    'Get-Type1AuditData',
     'Get-Type2ExecutionLogs',
     'Get-MaintenanceLog',
     'Get-ModuleExecutionData',

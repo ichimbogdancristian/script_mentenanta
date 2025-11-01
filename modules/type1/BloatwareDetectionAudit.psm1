@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - ConfigManager.psm1 (for bloatware list configuration)
 #   - LoggingManager.psm1 (for structured logging)
@@ -79,7 +79,7 @@ function Find-InstalledBloatware {
 
     Write-Information " Scanning for installed bloatware..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     # Start performance tracking and centralized logging
     $perfContext = $null
     try {
@@ -117,7 +117,7 @@ function Find-InstalledBloatware {
             Write-Warning "Failed to get bloatware configuration: $_"
             return @()
         }
-        
+
         if ($null -eq $bloatwareList -or $bloatwareList.Count -eq 0) {
             Write-Warning "No bloatware patterns found in configuration"
             return @()
@@ -127,10 +127,10 @@ function Find-InstalledBloatware {
 
         # Initialize results collection with explicit capacity for better memory management
         $allBloatware = [List[PSCustomObject]]::new(200)  # Pre-allocate capacity to reduce reallocations
-        
+
         # Variables for cleanup tracking
         $installedPrograms = $null
-        
+
         # Collect installed programs directly from registry (SystemAnalysis only provides summary metrics)
         Write-Information "   Collecting installed programs from registry..." -InformationAction Continue
         try {
@@ -168,10 +168,10 @@ function Find-InstalledBloatware {
         # Scan AppX packages
         Write-Information "   Scanning AppX packages..." -InformationAction Continue
         $appxBloatware = Get-AppXBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
-        if ($appxBloatware -and $appxBloatware.Count -gt 0) { 
+        if ($appxBloatware -and $appxBloatware.Count -gt 0) {
             # Ensure we have an array and add each item individually
             $appxArray = @($appxBloatware)
-            foreach ($item in $appxArray) { 
+            foreach ($item in $appxArray) {
                 if ($null -ne $item) { $allBloatware.Add($item) }
             }
         }
@@ -179,9 +179,9 @@ function Find-InstalledBloatware {
         # Scan Winget packages
         Write-Information "   Scanning Winget packages..." -InformationAction Continue
         $wingetBloatware = Get-WingetBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
-        if ($wingetBloatware -and $wingetBloatware.Count -gt 0) { 
+        if ($wingetBloatware -and $wingetBloatware.Count -gt 0) {
             $wingetArray = @($wingetBloatware)
-            foreach ($item in $wingetArray) { 
+            foreach ($item in $wingetArray) {
                 if ($null -ne $item) { $allBloatware.Add($item) }
             }
         }
@@ -189,9 +189,9 @@ function Find-InstalledBloatware {
         # Scan Chocolatey packages
         Write-Information "   Scanning Chocolatey packages..." -InformationAction Continue
         $chocoBloatware = Get-ChocolateyBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
-        if ($chocoBloatware -and $chocoBloatware.Count -gt 0) { 
+        if ($chocoBloatware -and $chocoBloatware.Count -gt 0) {
             $chocoArray = @($chocoBloatware)
-            foreach ($item in $chocoArray) { 
+            foreach ($item in $chocoArray) {
                 if ($null -ne $item) { $allBloatware.Add($item) }
             }
         }
@@ -199,9 +199,9 @@ function Find-InstalledBloatware {
         # Scan Registry entries
         Write-Information "   Scanning Registry entries..." -InformationAction Continue
         $registryBloatware = Get-RegistryBloatware -BloatwarePatterns $bloatwareList -InstalledPrograms $installedPrograms -Context $Context
-        if ($registryBloatware -and $registryBloatware.Count -gt 0) { 
+        if ($registryBloatware -and $registryBloatware.Count -gt 0) {
             $registryArray = @($registryBloatware)
-            foreach ($item in $registryArray) { 
+            foreach ($item in $registryArray) {
                 if ($null -ne $item) { $allBloatware.Add($item) }
             }
         }
@@ -228,28 +228,28 @@ function Find-InstalledBloatware {
 
         # Create final result array to return
         $resultArray = [Array]$uniqueBloatware
-        
+
         # Explicit memory cleanup before return
         Write-Verbose "Performing memory cleanup for bloatware detection"
         $allBloatware.Clear()
         $allBloatware = $null
-        
+
         # Clear large variables
         $installedPrograms = $null
-        
+
         # Force garbage collection if collection was large
         if ($resultArray.Count -gt 50) {
             Write-Verbose "Large result set detected, triggering garbage collection"
             [System.GC]::Collect()
             [System.GC]::WaitForPendingFinalizers()
         }
-        
+
         # Complete performance tracking and log success
         try {
             if ($perfContext) {
                 Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true
             }
-            
+
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection completed successfully' -Data @{
                 BloatwareItemsFound = $resultArray.Count
                 ExecutionTime       = [math]::Round($duration, 2)
@@ -260,7 +260,7 @@ function Find-InstalledBloatware {
         catch {
             # LoggingManager not available, continue
         }
-        
+
         return $resultArray
     }
     catch {
@@ -269,7 +269,7 @@ function Find-InstalledBloatware {
             if ($perfContext) {
                 Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
             }
-                
+
             Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection failed' -Data @{
                 Error         = $_.Exception.Message
                 ExecutionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
@@ -279,17 +279,17 @@ function Find-InstalledBloatware {
         catch {
             # LoggingManager not available, continue
         }
-            
+
         Write-Error "Failed to detect bloatware: $_"
         Write-Warning "Returning empty array due to error"
-            
+
         # Cleanup on error
         if ($null -ne $allBloatware) {
             $allBloatware.Clear()
             $allBloatware = $null
         }
         $installedPrograms = $null
-            
+
         return @()
     }
     finally {
@@ -332,7 +332,7 @@ function Get-BloatwareStatistic {
 
     $bySource = @{}
     $byCategory = @{}
-    
+
     try {
         $sourceGroups = $BloatwareList | Where-Object { $null -ne $_ } | Group-Object Source
         foreach ($group in $sourceGroups) {
@@ -340,14 +340,14 @@ function Get-BloatwareStatistic {
                 $bySource[$group.Name] = $group.Count
             }
         }
-        
+
         $categoryGroups = $BloatwareList | Where-Object { $null -ne $_ } | Group-Object MatchedPattern
         foreach ($group in $categoryGroups) {
             if ($null -ne $group -and $null -ne $group.Name) {
                 $byCategory[$group.Name] = $group.Count
             }
         }
-        
+
         $mostCommonSource = ($BloatwareList | Where-Object { $null -ne $_ } | Group-Object Source | Sort-Object Count -Descending | Select-Object -First 1)?.Name
         $mostCommonPattern = ($BloatwareList | Where-Object { $null -ne $_ } | Group-Object MatchedPattern | Sort-Object Count -Descending | Select-Object -First 1)?.Name
     }
@@ -398,7 +398,7 @@ function Get-AppXBloatware {
         foreach ($app in $appXApps) {
             # Skip null apps to prevent null reference exceptions
             if ($null -eq $app) { continue }
-            
+
             foreach ($pattern in $BloatwarePatterns) {
                 $matched = $false
                 $matchType = ""
@@ -448,7 +448,7 @@ function Get-AppXBloatware {
                             default { 50 }
                         }
                     }
-                    
+
                     # Log detailed detection information
                     Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-APPX' -AdditionalInfo @{
                         PackageName    = $app.Name
@@ -467,7 +467,7 @@ function Get-AppXBloatware {
                             default { "Unknown match type" }
                         }
                     }
-                    
+
                     $found += $detectedItem
                     break  # Only match first pattern to avoid duplicates
                 }
@@ -515,7 +515,7 @@ function Get-WingetBloatware {
         foreach ($app in $wingetApps) {
             # Skip null apps to prevent null reference exceptions
             if ($null -eq $app) { continue }
-            
+
             foreach ($pattern in $BloatwarePatterns) {
                 $matched = $false
                 $matchType = ""
@@ -565,7 +565,7 @@ function Get-WingetBloatware {
                             default { 50 }
                         }
                     }
-                    
+
                     # Log detailed detection information
                     Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-WINGET' -AdditionalInfo @{
                         PackageName    = $app.Name
@@ -584,7 +584,7 @@ function Get-WingetBloatware {
                             default { "Unknown match type" }
                         }
                     }
-                    
+
                     $found += $detectedItem
                     break  # Only match first pattern to avoid duplicates
                 }
@@ -632,7 +632,7 @@ function Get-ChocolateyBloatware {
         foreach ($app in $chocoApps) {
             # Skip null apps to prevent null reference exceptions
             if ($null -eq $app) { continue }
-            
+
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
                     $detectedItem = [PSCustomObject]@{
@@ -646,7 +646,7 @@ function Get-ChocolateyBloatware {
                         Context        = $Context
                         RemovalMethod  = 'choco uninstall'
                     }
-                    
+
                     # Log detailed detection information
                     Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-CHOCO' -AdditionalInfo @{
                         PackageName    = $app.Name
@@ -658,7 +658,7 @@ function Get-ChocolateyBloatware {
                         RemovalMethod  = 'choco uninstall'
                         MatchReason    = "Name or DisplayName matches pattern '$pattern'"
                     }
-                    
+
                     $found += $detectedItem
                     break  # Only match first pattern to avoid duplicates
                 }
@@ -706,7 +706,7 @@ function Get-RegistryBloatware {
         foreach ($app in $registryApps) {
             # Skip null apps to prevent null reference exceptions
             if ($null -eq $app) { continue }
-            
+
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
                     $detectedItem = [PSCustomObject]@{
@@ -721,7 +721,7 @@ function Get-RegistryBloatware {
                         RemovalMethod   = 'Registry-based uninstall'
                         UninstallString = $app.UninstallString
                     }
-                    
+
                     # Log detailed detection information
                     Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-REGISTRY' -AdditionalInfo @{
                         PackageName     = $app.Name
@@ -734,7 +734,7 @@ function Get-RegistryBloatware {
                         UninstallString = $app.UninstallString
                         MatchReason     = "Name or DisplayName matches pattern '$pattern'"
                     }
-                    
+
                     $found += $detectedItem
                     break  # Only match first pattern to avoid duplicates
                 }
@@ -780,7 +780,7 @@ function Test-BloatwareDetection {
             $validationResults.InvalidItems++
             continue
         }
-        
+
         $isValid = $true
 
         foreach ($property in $requiredProperties) {
@@ -827,13 +827,13 @@ function Get-BloatwareAnalysis {
         [Parameter(Mandatory)]
         [hashtable]$Config
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting bloatware analysis for Type2 module'
-    
+
     try {
         # Perform the bloatware detection
         $detectionResults = Find-InstalledBloatware -Categories @('all')
-        
+
         # FIX #5: Use standardized Get-AuditResultsPath function for consistent path
         if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
             $dataPath = Get-AuditResultsPath -ModuleName 'BloatwareDetection'
@@ -842,7 +842,7 @@ function Get-BloatwareAnalysis {
             # Fallback to direct path construction if function not available
             $dataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\bloatware-results.json"
         }
-        
+
         # Save results to standardized temp_files/data/ location
         if ($dataPath) {
             # Ensure directory exists
@@ -850,7 +850,7 @@ function Get-BloatwareAnalysis {
             if (-not (Test-Path $dataDir)) {
                 New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
             }
-            
+
             # Save results as JSON with standardized format
             $detectionResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $dataPath -Encoding UTF8
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message "Saved $($detectionResults.Count) detection results to standardized path: $dataPath"
@@ -858,7 +858,7 @@ function Get-BloatwareAnalysis {
         else {
             Write-Warning "Could not determine audit results path - results not saved to file"
         }
-        
+
         return $detectionResults
     }
     catch {

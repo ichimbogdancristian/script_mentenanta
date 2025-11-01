@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (for logging and configuration)
 
@@ -65,7 +65,7 @@ function Get-AppUpgradeAnalysis {
 
     Write-Information " Analyzing available application upgrades..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     # Start performance tracking
     $perfContext = $null
     try {
@@ -80,7 +80,7 @@ function Get-AppUpgradeAnalysis {
     try {
         # Initialize results collection
         $allUpgrades = [List[PSCustomObject]]::new()
-        
+
         # Scan winget for upgrades
         Write-Information "   Scanning winget for upgrades..." -InformationAction Continue
         $wingetUpgrades = Get-WingetUpgrades
@@ -181,7 +181,7 @@ function Get-WingetUpgrades {
         # Parse winget output (skip header lines and separator lines)
         $lines = $wingetOutput -split "`n"
         $dataStarted = $false
-        
+
         foreach ($line in $lines) {
             # Skip null or whitespace lines
             if ($null -eq $line -or [string]::IsNullOrWhiteSpace($line)) {
@@ -206,7 +206,7 @@ function Get-WingetUpgrades {
                 # Try to parse the line (format varies, be flexible)
                 # Typical format: "AppName  PublisherId  1.0.0  2.0.0  winget"
                 $parts = $lineTrimmed -split '\s{2,}'  # Split on 2+ spaces
-                
+
                 if ($parts.Count -ge 4) {
                     $appName = $parts[0].Trim()
                     $appId = $parts[1].Trim()
@@ -228,7 +228,7 @@ function Get-WingetUpgrades {
                         SourceDetail     = $source
                         UpdateSize       = 'Unknown'
                     }
-                    
+
                     # Log detected upgrade opportunity
                     Write-DetectionLog -Operation 'Detect' -Target $appName -Component 'APP-UPGRADE-WINGET' -AdditionalInfo @{
                         ApplicationId    = $appId
@@ -240,7 +240,7 @@ function Get-WingetUpgrades {
                         UpgradeCommand   = "winget upgrade --id $appId"
                         Reason           = "Newer version available: $currentVersion → $availableVersion"
                     }
-                    
+
                     $upgrades += $upgradeItem
                 }
             }
@@ -287,7 +287,7 @@ function Get-ChocolateyUpgrades {
 
         # Parse choco output (pipe-delimited)
         $lines = $chocoOutput -split "`n"
-        
+
         foreach ($line in $lines) {
             # Skip null or empty lines
             if ($null -eq $line -or [string]::IsNullOrWhiteSpace($line)) {
@@ -303,7 +303,7 @@ function Get-ChocolateyUpgrades {
 
             # Parse pipe-delimited format: Name|Current|Available|Pinned
             $parts = $lineTrimmed -split '\|'
-            
+
             if ($parts.Count -ge 3) {
                 $packageName = $parts[0].Trim()
                 $currentVersion = $parts[1].Trim()
@@ -325,7 +325,7 @@ function Get-ChocolateyUpgrades {
                     SourceDetail     = 'chocolatey'
                     UpdateSize       = 'Unknown'
                 }
-                
+
                 # Log detected upgrade opportunity
                 Write-DetectionLog -Operation 'Detect' -Target $packageName -Component 'APP-UPGRADE-CHOCO' -AdditionalInfo @{
                     PackageName      = $packageName
@@ -336,7 +336,7 @@ function Get-ChocolateyUpgrades {
                     UpgradeCommand   = "choco upgrade $packageName -y"
                     Reason           = "Newer version available: $currentVersion → $availableVersion"
                 }
-                
+
                 $upgrades += $upgradeItem
             }
         }
