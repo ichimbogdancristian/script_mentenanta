@@ -114,6 +114,7 @@ catch {
     }
     catch {
         # If initialization fails, it will be caught when functions try to access paths
+        Write-Verbose "Path initialization failed: $($_.Exception.Message)"
     }
 }
 

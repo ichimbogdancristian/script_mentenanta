@@ -1,4 +1,7 @@
 {
+  "_comment": "Main configuration for Windows Maintenance Automation",
+  "version": "1.0.0",
+  "lastModified": "2025-11-01T08:00:00Z",
   "execution": {
     "defaultMode": "unattended",
     "countdownSeconds": 20,
