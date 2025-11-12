@@ -65,7 +65,8 @@ IF EXIST "%LOG_CONFIG%" (
 ) ELSE (
     CALL :LOG_MESSAGE "No logging.json found - using default configuration" "DEBUG" "BAT"
 )
-SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
+REM GitHub repository archive URL - downloads main branch as ZIP
+SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/main.zip"
 SET "ZIP_FILE=%WORKING_DIR%script_mentenanta-main.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-main"
 SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
