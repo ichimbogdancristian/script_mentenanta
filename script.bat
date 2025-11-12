@@ -651,7 +651,8 @@ IF DEFINED PS1_PATH (
     )
 )
 
-CALL :LOG_MESSAGE "Local script.ps1 not found - downloading repository from GitHub..." "INFO" "BAT"
+CALL :LOG_MESSAGE "Local script.ps1 not found - attempting repository download from GitHub..." "INFO" "BAT"
+CALL :LOG_MESSAGE "NOTE: Repository download requires the GitHub repository to be public and accessible" "WARN" "BAT"
 CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "BAT"
 CALL :LOG_MESSAGE "Checked for: %WORKING_DIR%script.ps1" "DEBUG" "BAT"
 CALL :LOG_MESSAGE "PS1_PATH variable: %PS1_PATH%" "DEBUG" "BAT"
@@ -678,7 +679,17 @@ CALL :LOG_MESSAGE "Saving to: %ZIP_FILE%" "INFO" "BAT"
 powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $webClient = New-Object System.Net.WebClient; $webClient.DownloadFile('%REPO_URL%', '%ZIP_FILE%'); Write-Host '[INFO] Repository downloaded successfully' } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
-    CALL :LOG_MESSAGE "Failed to download repository. Check internet connection." "ERROR" "BAT"
+    CALL :LOG_MESSAGE "Failed to download repository from GitHub." "ERROR" "BAT"
+    CALL :LOG_MESSAGE "Repository URL: %REPO_URL%" "ERROR" "BAT"
+    CALL :LOG_MESSAGE "" "INFO" "BAT"
+    CALL :LOG_MESSAGE "TROUBLESHOOTING:" "WARN" "BAT"
+    CALL :LOG_MESSAGE "1. The GitHub repository may not exist yet or is private" "WARN" "BAT"
+    CALL :LOG_MESSAGE "2. Check your internet connection" "WARN" "BAT"
+    CALL :LOG_MESSAGE "3. If running locally, ensure script.ps1 is in the same directory as script.bat" "WARN" "BAT"
+    CALL :LOG_MESSAGE "4. To create the repository: git init, git add ., git commit, git push to GitHub" "WARN" "BAT"
+    CALL :LOG_MESSAGE "" "INFO" "BAT"
+    CALL :LOG_MESSAGE "Current working directory: %WORKING_DIR%" "INFO" "BAT"
+    CALL :LOG_MESSAGE "Looking for: %WORKING_DIR%script.ps1" "INFO" "BAT"
     pause
     EXIT /B 3
 )
