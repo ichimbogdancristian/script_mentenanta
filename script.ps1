@@ -382,18 +382,15 @@ $global:ScriptTasks = @(
     # ============================================================
     @{ Name = 'SystemRestoreProtection'; Function = {
             Write-Log 'Starting System Restore Protection task.' 'INFO'
-            Write-Host 'Starting System Restore Protection task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipSystemRestore) {
                 Protect-SystemRestore
                 Write-Log 'Completed System Restore Protection task.' 'INFO'
-                Write-Host 'Completed System Restore Protection task.' -ForegroundColor Green
                 return $true
             } else {
                 Write-Log 'System Restore Protection skipped by configuration.' 'INFO'
-                Write-Host 'System Restore Protection skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Enable System Restore and create pre-maintenance checkpoint'
+        }; Description = 'Enable System Restore and create pre-maintenance checkpoint'; Importance = 'CRITICAL'
     },
 
     # ============================================================
@@ -406,12 +403,10 @@ $global:ScriptTasks = @(
     # ============================================================
     @{ Name = 'SystemInventory'; Function = {
             Write-Log 'Starting System Inventory task.' 'INFO'
-            Write-Host 'Starting System Inventory task.' -ForegroundColor Cyan
             Get-SystemInventory
             Write-Log 'Completed System Inventory task.' 'INFO'
-            Write-Host 'Completed System Inventory task.' -ForegroundColor Green
             return $true
-        }; Description = 'Collect comprehensive system information for analysis and reporting'
+        }; Description = 'Collect comprehensive system information for analysis and reporting'; Importance = 'CRITICAL'
     },
 
     # ============================================================
@@ -425,18 +420,15 @@ $global:ScriptTasks = @(
     # ============================================================
     @{ Name = 'RemoveBloatware'; Function = {
             Write-Log 'Starting Bloatware Removal task.' 'INFO'
-            Write-Host 'Starting Bloatware Removal task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipBloatwareRemoval) {
                 Remove-Bloatware
                 Write-Log 'Completed Bloatware Removal task.' 'INFO'
-                Write-Host 'Completed Bloatware Removal task.' -ForegroundColor Green
                 return $true
             } else {
                 Write-Log 'Bloatware removal skipped by configuration.' 'INFO'
-                Write-Host 'Bloatware removal skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities'
+        }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities'; Importance = 'HIGH'
     },
 
     # ============================================================
@@ -450,18 +442,15 @@ $global:ScriptTasks = @(
     # ============================================================
     @{ Name = 'InstallEssentialApps'; Function = {
             Write-Log 'Starting Essential Apps Installation task.' 'INFO'
-            Write-Host 'Starting Essential Apps Installation task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipEssentialApps) {
                 Install-EssentialApps
                 Write-Log 'Completed Essential Apps Installation task.' 'INFO'
-                Write-Host 'Completed Essential Apps Installation task.' -ForegroundColor Green
                 return $true
             } else {
                 Write-Log 'Essential apps installation skipped by configuration.' 'INFO'
-                Write-Host 'Essential apps installation skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Install curated essential applications via parallel processing'
+        }; Description = 'Install curated essential applications via parallel processing'; Importance = 'MEDIUM'
     },
 
     # ============================================================
@@ -475,18 +464,15 @@ $global:ScriptTasks = @(
     # ============================================================
     @{ Name = 'UpdateAllPackages'; Function = {
             Write-Log 'Starting Package Updates task.' 'INFO'
-            Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipPackageUpdates) {
                 Update-AllPackages
                 Write-Log 'Completed Package Updates task.' 'INFO'
-                Write-Host 'Completed Package Updates task.' -ForegroundColor Green
                 return $true
             } else {
                 Write-Log 'Package updates skipped by configuration.' 'INFO'
-                Write-Host 'Package updates skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers'
+        }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers'; Importance = 'MEDIUM'
     },
 
     # ============================================================
@@ -500,18 +486,15 @@ $global:ScriptTasks = @(
     # ============================================================
     @{ Name = 'WindowsUpdateCheck'; Function = {
             Write-Log 'Starting Windows Update Check task.' 'INFO'
-            Write-Host 'Starting Windows Update Check task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipWindowsUpdates) {
                 Install-WindowsUpdatesCompatible
                 Write-Log 'Completed Windows Update Check task.' 'INFO'
-                Write-Host 'Completed Windows Update Check task.' -ForegroundColor Green
                 return $true
             } else {
                 Write-Log 'Windows Update check skipped by configuration.' 'INFO'
-                Write-Host 'Windows Update check skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Check and install available Windows Updates with compatibility layer'
+        }; Description = 'Check and install available Windows Updates with compatibility layer'; Importance = 'HIGH'
     },
 
     # ============================================================
@@ -525,18 +508,15 @@ $global:ScriptTasks = @(
     # ============================================================
     @{ Name = 'DisableTelemetry'; Function = {
             Write-Log 'Starting Telemetry Disable task.' 'INFO'
-            Write-Host 'Starting Telemetry Disable task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipTelemetryDisable) {
                 Disable-Telemetry
                 Write-Log 'Completed Telemetry Disable task.' 'INFO'
-                Write-Host 'Completed Telemetry Disable task.' -ForegroundColor Green
                 return $true
             } else {
                 Write-Log 'Telemetry disable skipped by configuration.' 'INFO'
-                Write-Host 'Telemetry disable skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking'
+        }; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking'; Importance = 'MEDIUM'
     },
 
     # ============================================================
@@ -550,37 +530,30 @@ $global:ScriptTasks = @(
     # ============================================================
     @{ Name = 'TaskbarOptimization'; Function = {
             Write-Log 'Starting Taskbar and Desktop UI Optimization task.' 'INFO'
-            Write-Host 'Starting Taskbar and Desktop UI Optimization task.' -ForegroundColor Cyan
             Optimize-TaskbarAndDesktopUI
             Write-Log 'Completed Taskbar and Desktop UI Optimization task.' 'INFO'
-            Write-Host 'Completed Taskbar and Desktop UI Optimization task.' -ForegroundColor Green
             return $true
-        }; Description = 'Hide search box, disable Task View/Chat, remove Spotlight icons, optimize taskbar and desktop UI for Windows 10/11'
+        }; Description = 'Hide search box, disable Task View/Chat, remove Spotlight icons, optimize taskbar and desktop UI for Windows 10/11'; Importance = 'LOW'
     },
 
     @{ Name = 'DesktopBackground'; Function = {
             Write-Log 'Starting Desktop Background Configuration task.' 'INFO'
-            Write-Host 'Starting Desktop Background Configuration task.' -ForegroundColor Cyan
             Set-DesktopBackground
             Write-Log 'Completed Desktop Background Configuration task.' 'INFO'
-            Write-Host 'Completed Desktop Background Configuration task.' -ForegroundColor Green
             return $true
-        }; Description = 'Change desktop background from Windows Spotlight to personalized slideshow'
+        }; Description = 'Change desktop background from Windows Spotlight to personalized slideshow'; Importance = 'LOW'
     },
 
     @{ Name = 'SecurityHardening'; Function = {
             Write-Log 'Starting Security Hardening task.' 'INFO'
-            Write-Host 'Starting Security Hardening task.' -ForegroundColor Cyan
             Enable-SecurityHardening
             Write-Log 'Completed Security Hardening task.' 'INFO'
-            Write-Host 'Completed Security Hardening task.' -ForegroundColor Green
             return $true
-        }; Description = 'Apply security hardening configurations and policy improvements'
+        }; Description = 'Apply security hardening configurations and policy improvements'; Importance = 'HIGH'
     },
 
     @{ Name = 'CleanTempAndDisk'; Function = {
             Write-Log 'Starting Temporary Files and Disk Cleanup task.' 'INFO'
-            Write-Host 'Starting Temporary Files and Disk Cleanup task.' -ForegroundColor Cyan
             try {
                 Write-TaskProgress 'Starting disk cleanup' 20
                 $cleanupActions = @(
@@ -607,36 +580,30 @@ $global:ScriptTasks = @(
                 }
 
                 Write-TaskProgress 'Disk cleanup completed' 100
-                Write-Host "✓ Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" -ForegroundColor Green
                 Write-Log "Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" 'INFO'
                 return $true
             } catch {
                 Write-Log "Disk cleanup failed: $_" 'ERROR'
-                Write-Host "✗ Disk cleanup failed: $_" -ForegroundColor Red
                 return $false
             }
-        }; Description = 'Clean temporary files and perform disk space optimization'
+        }; Description = 'Clean temporary files and perform disk space optimization'; Importance = 'MEDIUM'
     },
 
     @{ Name = 'SystemHealthRepair'; Function = {
             Write-Log 'Starting System Health Check and Repair task.' 'INFO'
-            Write-Host 'Starting System Health Check and Repair task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipSystemHealthRepair) {
                 Start-SystemHealthRepair
                 Write-Log 'Completed System Health Check and Repair task.' 'INFO'
-                Write-Host 'Completed System Health Check and Repair task.' -ForegroundColor Green
                 return $true
             } else {
-                Write-Host 'System Health Check and Repair skipped by configuration.' -ForegroundColor Yellow
                 Write-Log 'System Health Check and Repair skipped by configuration.' 'INFO'
                 return $true
             }
-        }; Description = 'Automated DISM and SFC system file integrity check and repair'
+        }; Description = 'Automated DISM and SFC system file integrity check and repair'; Importance = 'HIGH'
     },
 
     @{ Name = 'PendingRestartCheck'; Function = {
             Write-Log 'Starting Pending Restart Check task.' 'INFO'
-            Write-Host 'Starting Pending Restart Check task.' -ForegroundColor Cyan
             if (-not $global:Config.SkipPendingRestartCheck) {
                 try {
                     $pendingRestart = $false
@@ -668,27 +635,21 @@ $global:ScriptTasks = @(
                     }
 
                     if ($pendingRestart) {
-                        Write-Host '⚠️  SYSTEM RESTART REQUIRED' -ForegroundColor Yellow
-                        Write-Host "Reason: $restartReason" -ForegroundColor Yellow
-                        Write-Host '📋 Restart will be handled at the end of the script.' -ForegroundColor Green
                         Write-Log "Restart requirement detected: $restartReason. Restart will be handled at script completion." 'INFO'
                         return $true
                     } else {
-                        Write-Host '✓ No pending restart required' -ForegroundColor Green
                         Write-Log 'No pending restart required.' 'INFO'
                         return $true
                     }
                 } catch {
                     Write-Log "Pending restart check failed: $_" 'ERROR'
-                    Write-Host "❌ Pending restart check failed: $_" -ForegroundColor Red
                     return $false
                 }
             } else {
                 Write-Log 'Pending restart check skipped by configuration.' 'INFO'
-                Write-Host 'Pending restart check skipped by configuration.' -ForegroundColor Yellow
                 return $false
             }
-        }; Description = 'Check for pending restart requirements without initiating restart (restart handled at script end)'
+        }; Description = 'Check for pending restart requirements without initiating restart (restart handled at script end)'; Importance = 'MEDIUM'
     }
 )
 
@@ -980,6 +941,12 @@ function Use-AllScriptTasks {
         $taskIndex++
         $taskName = $task.Name
         $desc = $task.Description
+
+        # Determine task importance level (extract from task metadata if available)
+        $importance = if ($task.Importance) { $task.Importance } else { 'MEDIUM' }
+
+        # Display visual task banner
+        Show-TaskBanner -TaskNumber $taskIndex -TotalTasks $totalTasks -TaskName $taskName -TaskDescription $desc -Importance $importance
 
         Write-ActionLog -Action 'Preparing task execution' -Details "$taskName ($taskIndex/$totalTasks) - $desc" -Category 'Task Execution' -Status 'START'
         Write-Log "[$taskIndex/$totalTasks] Executing task: $taskName - $desc" 'INFO'
@@ -1947,6 +1914,74 @@ function Get-RegistryUninstallBloatware {
 # ================================================================
 # Function: Test-CommandAvailable
 # ================================================================
+# ================================================================
+# Function: Show-TaskBanner
+# ================================================================
+# Purpose: Display a professional task banner in the console at task start
+#          with task info, importance level, and visual separation
+# Environment: Windows PowerShell console, supports colored output
+# Logic: Creates ASCII-art banner with task metadata, importance level,
+#        and description for clear visual task separation
+# Performance: Minimal overhead, console-only output
+# Dependencies: Write-Host, console capabilities
+# ================================================================
+function Show-TaskBanner {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$TaskNumber,
+
+        [Parameter(Mandatory = $true)]
+        [int]$TotalTasks,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TaskName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TaskDescription,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Importance
+    )
+
+    # Determine banner color based on importance
+    $bannerColor = switch ($Importance) {
+        'CRITICAL' { 'Red' }
+        'HIGH' { 'Yellow' }
+        'MEDIUM' { 'Cyan' }
+        'LOW' { 'Green' }
+        'OPTIONAL' { 'DarkCyan' }
+        default { 'White' }
+    }
+
+    # Importance symbol
+    $importanceSymbol = switch ($Importance) {
+        'CRITICAL' { '!!!' }
+        'HIGH' { '!!' }
+        'MEDIUM' { '**' }
+        'LOW' { '--' }
+        'OPTIONAL' { 'oo' }
+        default { 'XX' }
+    }
+
+    # Banner width
+    $bannerWidth = 80
+    $separator = '=' * $bannerWidth
+
+    # Calculate progress bar
+    $progressPercent = [math]::Round(($TaskNumber / $TotalTasks) * 100)
+    $progressFilled = [math]::Floor(($progressPercent / 100) * 15)
+    $progressEmpty = 15 - $progressFilled
+    $progressBar = '[' + ('#' * $progressFilled) + (' ' * $progressEmpty) + "] $progressPercent%"
+
+    # Print banner
+    Write-Host "`n╔$separator╗" -ForegroundColor $bannerColor
+    Write-Host "║ [$importanceSymbol] TASK $TaskNumber/$TotalTasks - $TaskName$(([string](' ' * ($bannerWidth - "[$importanceSymbol] TASK $TaskNumber/$TotalTasks - $TaskName".Length - 3))))" -ForegroundColor $bannerColor
+    Write-Host "║ Importance: $Importance$(([string](' ' * ($bannerWidth - "Importance: $Importance".Length - 2))))" -ForegroundColor $bannerColor
+    Write-Host "║ $TaskDescription$(([string](' ' * ($bannerWidth - $TaskDescription.Length - 2))))" -ForegroundColor White
+    Write-Host "║ Progress: $progressBar$(([string](' ' * ($bannerWidth - $progressBar.Length - 10))))" -ForegroundColor Cyan
+    Write-Host "╚$separator╝`n" -ForegroundColor $bannerColor
+}
+
 # Purpose: Test whether a named command/tool is available on PATH or
 #          as a PowerShell command (Get-Command). Used to decide
 #          whether to use winget/choco/appx paths or fallback logic.
