@@ -79,38 +79,30 @@ $PSVersion = $PSVersionTable.PSVersion.ToString()
 # Determine working directory - use batch script's working directory if available
 if ($env:WORKING_DIRECTORY) {
     $WorkingDirectory = $env:WORKING_DIRECTORY
-    Write-Host "[INFO] Using working directory from batch script: $WorkingDirectory" -ForegroundColor Green
 } else {
     # Fallback to script directory if no environment variable
     $WorkingDirectory = Split-Path -Parent $ScriptFullPath
-    Write-Host "[INFO] Using PowerShell script directory as working directory: $WorkingDirectory" -ForegroundColor Yellow
 }
 
 # Log file setup - prioritize parameter, then environment variable, then default
 if ($LogFilePath) {
-    $LogFile = $LogFilePath
-    Write-Host "[INFO] Using log file from parameter: $LogFile" -ForegroundColor Green
+    $resolvedLogFile = $LogFilePath
 } elseif ($env:SCRIPT_LOG_FILE) {
-    $LogFile = $env:SCRIPT_LOG_FILE
-    Write-Host "[INFO] Using batch script log file from environment: $LogFile" -ForegroundColor Green
+    $resolvedLogFile = $env:SCRIPT_LOG_FILE
 } else {
     $batchScriptDirectory = Split-Path $ScriptDir -Parent
-    $LogFile = Join-Path $batchScriptDirectory 'maintenance.log'
-    Write-Host "[INFO] Using default PowerShell log file (parent directory): $LogFile" -ForegroundColor Yellow
+    $resolvedLogFile = Join-Path $batchScriptDirectory 'maintenance.log'
 }
 
+$script:LogFile = $resolvedLogFile
+$global:LogFile = $resolvedLogFile
+
 # Ensure log file directory exists
-$logDir = Split-Path $LogFile -Parent
+$logDir = Split-Path $script:LogFile -Parent
 if (-not (Test-Path $logDir)) {
     New-Item -Path $logDir -ItemType Directory -Force | Out-Null
 }
 
-# Minimal safe Write-Log shim used during early initialization.
-# Purpose: The full logging system is defined later (Section 2), but the
-# script needs to emit a few startup messages (temp folder creation, etc.)
-# before the advanced logging functions are declared. This lightweight
-# shim ensures those early calls succeed in both interactive and
-# batch-launched environments.
 # ================================================================
 # LOGGING SYSTEM: Three-Tier Structured Logging
 # ================================================================
@@ -138,49 +130,8 @@ if (-not (Test-Path $logDir)) {
 #   ACTION  - High-level action boundaries
 #   COMMAND - External command execution
 #
-function Write-Log {
-    param(
-        [string]$Message,
-        [string]$Level = 'INFO'
-    )
-
-    # Generate timestamp for log entry (24-hour, ISO 8601 format)
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    
-    # Format log line with timestamp, level, and message content
-    # Pattern: [TIMESTAMP] [LEVEL] MESSAGE
-    $line = "[$ts] [$Level] $Message"
-
-    # Attempt to write to log file (inherited from batch launcher via $LogFile variable)
-    # Error action: SilentlyContinue to prevent script failure if logging unavailable
-    try {
-        if ($null -ne $LogFile -and $LogFile -ne '') {
-            Add-Content -Path $LogFile -Value $line -ErrorAction SilentlyContinue
-        }
-    } catch {
-        # Silently ignore logging failures during early initialization
-        # to prevent chicken-and-egg problems with logging not yet ready
-    }
-
-    # Print to console for interactive visibility and real-time feedback
-    # Color-coded based on severity level for visual distinction
-    try {
-        # Console colors mapped to severity:
-        $hostColor = switch ($Level) {
-            'ERROR' { 'Red' }
-            'WARN' { 'Yellow' }
-            'SUCCESS' { 'Green' }
-            'DEBUG' { 'Gray' }
-            'ACTION' { 'Cyan' }
-            'COMMAND' { 'Magenta' }
-            default { 'White' }
-        }
-        Write-Host $line -ForegroundColor $hostColor
-    } catch {
-        # Fallback to plain Write-Host if color is unavailable
-        Write-Host $line
-    }
-}
+# NOTE: The full implementation of Write-Log is defined in SECTION 2 below
+# with enhanced parameter validation and error handling.
 
 # ================================================================
 # GLOBAL CONFIGURATION & DEFAULTS
@@ -229,6 +180,7 @@ $global:Config = @{
     SkipDesktopBackground      = $false   # When $true, wallpaper changes skipped
     SkipPendingRestartCheck    = $false   # When $true, restart detection skipped
     SkipSystemHealthRepair     = $false   # When $true, DISM/SFC repair skipped
+    SkipWidgetsOnly            = $false   # When $true, skip widget/Spotlight cleanup tasks
 
     # Logging and Troubleshooting
     EnableVerboseLogging       = $false   # When $true, enables detailed debug output
@@ -248,6 +200,21 @@ $global:Config = @{
         'PimIndexMaintenanceSvc',      # Personal Information Management
         'MessagingService'             # Messaging Service
     )
+
+    # Behavioral toggles
+    AllowDisableWerSvc         = $false   # When $true, allows disabling Windows Error Reporting service
+    PromptForReboot            = $false   # When $true, prompt/countdown for restart is enabled
+    MinRestorePointsToKeep     = 5        # Minimum restore points retained during cleanup
+}
+
+function New-TaskSkipResult {
+    param([string]$Reason = 'Skipped by configuration')
+
+    return [ordered]@{
+        IsSuccessful = $true
+        Status       = $Reason
+        Payload      = $null
+    }
 }
 
 # ================================================================
@@ -372,187 +339,127 @@ Write-Log '=== END PATH DIAGNOSTICS ===' 'DEBUG'
 #   - System info available in $global:SystemInventory (lazy-loaded)
 #
 $global:ScriptTasks = @(
-    # ============================================================
-    # TASK 1: SYSTEM RESTORE PROTECTION
-    # ============================================================
-    # Purpose: Enable System Restore and create pre-maintenance checkpoint
-    # Importance: CRITICAL (allows rollback if needed)
-    # Skip Flag: $global:Config.SkipSystemRestore
-    # Rollback: Use System Restore to previous checkpoint if issues occur
-    # ============================================================
-    @{ Name = 'SystemRestoreProtection'; Function = {
-            Write-Log 'Starting System Restore Protection task.' 'INFO'
-            if (-not $global:Config.SkipSystemRestore) {
-                Protect-SystemRestore
-                Write-Log 'Completed System Restore Protection task.' 'INFO'
-                return $true
-            } else {
+    @{ Name = 'SystemRestoreProtection'; Description = 'Enable System Restore and create pre-maintenance checkpoint'; Importance = 'CRITICAL'; Function = {
+            if ($global:Config.SkipSystemRestore) {
                 Write-Log 'System Restore Protection skipped by configuration.' 'INFO'
-                return $false
+                return New-TaskSkipResult 'Skipped (config)'
             }
-        }; Description = 'Enable System Restore and create pre-maintenance checkpoint'; Importance = 'CRITICAL'
-    },
 
-    # ============================================================
-    # TASK 2: SYSTEM INVENTORY
-    # ============================================================
-    # Purpose: Collect comprehensive system information for analysis/reporting
-    # Importance: ALWAYS RUN (required for reporting, dependency for other tasks)
-    # Skip Flag: None (always executes)
-    # Caching: Results stored in $global:SystemInventory for later use
-    # ============================================================
-    @{ Name = 'SystemInventory'; Function = {
+            Write-Log 'Starting System Restore Protection task.' 'INFO'
+            Protect-SystemRestore
+        }
+    },
+    @{ Name = 'SystemInventory'; Description = 'Collect comprehensive system information for analysis and reporting'; Importance = 'CRITICAL'; Function = {
             Write-Log 'Starting System Inventory task.' 'INFO'
-            Get-SystemInventory
-            Write-Log 'Completed System Inventory task.' 'INFO'
-            return $true
-        }; Description = 'Collect comprehensive system information for analysis and reporting'; Importance = 'CRITICAL'
+            try {
+                return Get-OptimizedSystemInventory -UseCache -IncludeBloatwareDetection
+            } catch {
+                Write-Log "Optimized system inventory collection failed. Falling back to baseline inventory: $($_.Exception.Message)" 'WARN'
+                return Get-SystemInventory
+            }
+        }
     },
-
-    # ============================================================
-    # TASK 3: BLOATWARE REMOVAL
-    # ============================================================
-    # Purpose: Remove unwanted apps via 5 detection methods
-    # Importance: HIGH (reclaims disk space, removes tracking apps)
-    # Skip Flag: $global:Config.SkipBloatwareRemoval
-    # Detection: AppX, DISM Provisioned, Registry, Capabilities, Package Managers
-    # Customization: Add apps via $global:Config.CustomBloatwareList
-    # ============================================================
-    @{ Name = 'RemoveBloatware'; Function = {
-            Write-Log 'Starting Bloatware Removal task.' 'INFO'
-            if (-not $global:Config.SkipBloatwareRemoval) {
-                Remove-Bloatware
-                Write-Log 'Completed Bloatware Removal task.' 'INFO'
-                return $true
-            } else {
+    @{ Name = 'RemoveBloatware'; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities'; Importance = 'HIGH'; Function = {
+            if ($global:Config.SkipBloatwareRemoval) {
                 Write-Log 'Bloatware removal skipped by configuration.' 'INFO'
-                return $false
+                return New-TaskSkipResult 'Skipped (config)'
             }
-        }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities'; Importance = 'HIGH'
-    },
 
-    # ============================================================
-    # TASK 4: ESSENTIAL APPS INSTALLATION
-    # ============================================================
-    # Purpose: Install curated essential applications
-    # Importance: MEDIUM (improves system usability)
-    # Skip Flag: $global:Config.SkipEssentialApps
-    # Categories: Web Browsers, Document Tools, System Tools, Media, Productivity
-    # Package Managers: Winget (preferred) with Chocolatey fallback
-    # ============================================================
-    @{ Name = 'InstallEssentialApps'; Function = {
-            Write-Log 'Starting Essential Apps Installation task.' 'INFO'
-            if (-not $global:Config.SkipEssentialApps) {
-                Install-EssentialApps
-                Write-Log 'Completed Essential Apps Installation task.' 'INFO'
-                return $true
-            } else {
+            Write-Log 'Starting Bloatware Removal task.' 'INFO'
+            Remove-Bloatware
+        }
+    },
+    @{ Name = 'InstallEssentialApps'; Description = 'Install curated essential applications via parallel processing'; Importance = 'MEDIUM'; Function = {
+            if ($global:Config.SkipEssentialApps) {
                 Write-Log 'Essential apps installation skipped by configuration.' 'INFO'
-                return $false
+                return New-TaskSkipResult 'Skipped (config)'
             }
-        }; Description = 'Install curated essential applications via parallel processing'; Importance = 'MEDIUM'
-    },
 
-    # ============================================================
-    # TASK 5: PACKAGE UPDATES
-    # ============================================================
-    # Purpose: Update all installed packages and applications
-    # Importance: MEDIUM (keeps system secure and current)
-    # Skip Flag: $global:Config.SkipPackageUpdates
-    # Managers: Winget, Chocolatey, Windows Store (if available)
-    # Scope: All installed packages across all package managers
-    # ============================================================
-    @{ Name = 'UpdateAllPackages'; Function = {
-            Write-Log 'Starting Package Updates task.' 'INFO'
-            if (-not $global:Config.SkipPackageUpdates) {
-                Update-AllPackages
-                Write-Log 'Completed Package Updates task.' 'INFO'
-                return $true
-            } else {
+            Write-Log 'Starting Essential Apps Installation task.' 'INFO'
+            Install-EssentialApps
+        }
+    },
+    @{ Name = 'UpdateAllPackages'; Description = 'Update all installed packages via Winget, Chocolatey, and other package managers'; Importance = 'MEDIUM'; Function = {
+            if ($global:Config.SkipPackageUpdates) {
                 Write-Log 'Package updates skipped by configuration.' 'INFO'
-                return $false
+                return New-TaskSkipResult 'Skipped (config)'
             }
-        }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers'; Importance = 'MEDIUM'
-    },
 
-    # ============================================================
-    # TASK 6: WINDOWS UPDATE CHECK
-    # ============================================================
-    # Purpose: Check and install available Windows Updates
-    # Importance: HIGH (critical security/stability updates)
-    # Skip Flag: $global:Config.SkipWindowsUpdates
-    # Method: PSWindowsUpdate module (if available) or native COM
-    # Restart: Deferred until end of maintenance (if AutoRestart enabled)
-    # ============================================================
-    @{ Name = 'WindowsUpdateCheck'; Function = {
-            Write-Log 'Starting Windows Update Check task.' 'INFO'
-            if (-not $global:Config.SkipWindowsUpdates) {
-                Install-WindowsUpdatesCompatible
-                Write-Log 'Completed Windows Update Check task.' 'INFO'
-                return $true
-            } else {
+            Write-Log 'Starting Package Updates task.' 'INFO'
+            Update-AllPackages
+        }
+    },
+    @{ Name = 'WindowsUpdateCheck'; Description = 'Check and install available Windows Updates with compatibility layer'; Importance = 'HIGH'; Function = {
+            if ($global:Config.SkipWindowsUpdates) {
                 Write-Log 'Windows Update check skipped by configuration.' 'INFO'
-                return $false
+                return New-TaskSkipResult 'Skipped (config)'
             }
-        }; Description = 'Check and install available Windows Updates with compatibility layer'; Importance = 'HIGH'
-    },
 
-    # ============================================================
-    # TASK 7: TELEMETRY DISABLING
-    # ============================================================
-    # Purpose: Disable Windows telemetry, tracking, and privacy-invasive features
-    # Importance: MEDIUM (privacy hardening, reduces background traffic)
-    # Skip Flag: $global:Config.SkipTelemetryDisable
-    # Scope: Services, registry settings, scheduled tasks, Group Policy
-    # Services: DiagTrack, dmwappushservice, UserDataSvc, etc.
-    # ============================================================
-    @{ Name = 'DisableTelemetry'; Function = {
-            Write-Log 'Starting Telemetry Disable task.' 'INFO'
-            if (-not $global:Config.SkipTelemetryDisable) {
-                Disable-Telemetry
-                Write-Log 'Completed Telemetry Disable task.' 'INFO'
-                return $true
-            } else {
+            Write-Log 'Starting Windows Update Check task.' 'INFO'
+            Install-WindowsUpdatesCompatible
+        }
+    },
+    @{ Name = 'DisableTelemetry'; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking'; Importance = 'MEDIUM'; Function = {
+            if ($global:Config.SkipTelemetryDisable) {
                 Write-Log 'Telemetry disable skipped by configuration.' 'INFO'
-                return $false
+                return New-TaskSkipResult 'Skipped (config)'
             }
-        }; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking'; Importance = 'MEDIUM'
-    },
 
-    # ============================================================
-    # TASK 8: TASKBAR AND DESKTOP UI OPTIMIZATION
-    # ============================================================
-    # Purpose: Customize taskbar, remove widgets, optimize UI
-    # Importance: LOW (cosmetic improvements, user preference)
-    # Skip Flag: $global:Config.SkipTaskbarOptimization
-    # Customizations: Remove widgets, pin essential apps, hide search
-    # Reversible: All changes are reversible via Settings
-    # ============================================================
-    @{ Name = 'TaskbarOptimization'; Function = {
-            Write-Log 'Starting Taskbar and Desktop UI Optimization task.' 'INFO'
-            Optimize-TaskbarAndDesktopUI
-            Write-Log 'Completed Taskbar and Desktop UI Optimization task.' 'INFO'
-            return $true
-        }; Description = 'Hide search box, disable Task View/Chat, remove Spotlight icons, optimize taskbar and desktop UI for Windows 10/11'; Importance = 'LOW'
+            Write-Log 'Starting Telemetry Disable task.' 'INFO'
+            Disable-Telemetry
+        }
     },
+    @{ Name = 'SecurityHardening'; Description = 'Apply security hardening configurations and policy improvements'; Importance = 'HIGH'; Function = {
+            if ($global:Config.SkipSecurityHardening) {
+                Write-Log 'Security Hardening skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
 
-    @{ Name = 'DesktopBackground'; Function = {
-            Write-Log 'Starting Desktop Background Configuration task.' 'INFO'
-            Set-DesktopBackground
-            Write-Log 'Completed Desktop Background Configuration task.' 'INFO'
-            return $true
-        }; Description = 'Change desktop background from Windows Spotlight to personalized slideshow'; Importance = 'LOW'
-    },
-
-    @{ Name = 'SecurityHardening'; Function = {
             Write-Log 'Starting Security Hardening task.' 'INFO'
             Enable-SecurityHardening
-            Write-Log 'Completed Security Hardening task.' 'INFO'
-            return $true
-        }; Description = 'Apply security hardening configurations and policy improvements'; Importance = 'HIGH'
+        }
     },
+    @{ Name = 'AppBrowserControl'; Description = 'Enable Defender SmartScreen, Network Protection, and controlled folder access safeguards'; Importance = 'HIGH'; Function = {
+            if ($global:Config.SkipSecurityHardening) {
+                Write-Log 'App & Browser Control skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
 
-    @{ Name = 'CleanTempAndDisk'; Function = {
+            Write-Log 'Starting App & Browser Control task.' 'INFO'
+            Enable-AppBrowserControl
+        }
+    },
+    @{ Name = 'TaskbarOptimization'; Description = 'Hide search box, disable Task View/Chat, remove Spotlight icons, optimize taskbar and desktop UI for Windows 10/11'; Importance = 'LOW'; Function = {
+            if ($global:Config.SkipTaskbarOptimization) {
+                Write-Log 'Taskbar optimization skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
+
+            Write-Log 'Starting Taskbar and Desktop UI Optimization task.' 'INFO'
+            Optimize-TaskbarAndDesktopUI
+        }
+    },
+    @{ Name = 'SpotlightMeetNowNewsLocation'; Description = 'Disable Windows Spotlight, Meet Now, News/Interests, Widgets, and Location services'; Importance = 'LOW'; Function = {
+            if ($global:Config.SkipTaskbarOptimization -or $global:Config.SkipWidgetsOnly) {
+                Write-Log 'Spotlight/Widgets cleanup skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
+
+            Write-Log 'Starting Spotlight, Widgets, and Meet Now cleanup task.' 'INFO'
+            Disable-SpotlightMeetNowNewsLocation
+        }
+    },
+    @{ Name = 'DesktopBackground'; Description = 'Change desktop background from Windows Spotlight to personalized slideshow'; Importance = 'LOW'; Function = {
+            if ($global:Config.SkipDesktopBackground) {
+                Write-Log 'Desktop background configuration skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
+
+            Write-Log 'Starting Desktop Background Configuration task.' 'INFO'
+            Set-DesktopBackground
+        }
+    },
+    @{ Name = 'CleanTempAndDisk'; Description = 'Clean temporary files and perform disk space optimization'; Importance = 'MEDIUM'; Function = {
             Write-Log 'Starting Temporary Files and Disk Cleanup task.' 'INFO'
             try {
                 Write-TaskProgress 'Starting disk cleanup' 20
@@ -580,76 +487,118 @@ $global:ScriptTasks = @(
                 }
 
                 Write-TaskProgress 'Disk cleanup completed' 100
-                Write-Log "Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed" 'INFO'
-                return $true
+                $statusMessage = "Disk cleanup completed: $([math]::Round($totalCleaned/1MB, 2)) MB freed"
+                Write-Log $statusMessage 'INFO'
+
+                return [ordered]@{
+                    IsSuccessful = $true
+                    Status       = $statusMessage
+                    Payload      = @{ TotalBytesCleaned = $totalCleaned; Locations = $cleanupActions.Count }
+                }
             } catch {
                 Write-Log "Disk cleanup failed: $_" 'ERROR'
-                return $false
-            }
-        }; Description = 'Clean temporary files and perform disk space optimization'; Importance = 'MEDIUM'
-    },
-
-    @{ Name = 'SystemHealthRepair'; Function = {
-            Write-Log 'Starting System Health Check and Repair task.' 'INFO'
-            if (-not $global:Config.SkipSystemHealthRepair) {
-                Start-SystemHealthRepair
-                Write-Log 'Completed System Health Check and Repair task.' 'INFO'
-                return $true
-            } else {
-                Write-Log 'System Health Check and Repair skipped by configuration.' 'INFO'
-                return $true
-            }
-        }; Description = 'Automated DISM and SFC system file integrity check and repair'; Importance = 'HIGH'
-    },
-
-    @{ Name = 'PendingRestartCheck'; Function = {
-            Write-Log 'Starting Pending Restart Check task.' 'INFO'
-            if (-not $global:Config.SkipPendingRestartCheck) {
-                try {
-                    $pendingRestart = $false
-                    $restartReason = 'System maintenance operations'
-
-                    # Check global Windows Updates reboot requirement first
-                    if ($global:SystemSettings.Reboot.Required -eq $true) {
-                        $pendingRestart = $true
-                        $restartReason = "Windows Updates installation ($($global:SystemSettings.Reboot.Source))"
-                        Write-Log "Pending restart detected from Windows Updates at $($global:SystemSettings.Reboot.Timestamp)" 'INFO'
-                    }
-
-                    # Check multiple registry indicators for pending restart
-                    $registryKeys = @(
-                        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired',
-                        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
-                        'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations'
-                    )
-
-                    foreach ($key in $registryKeys) {
-                        if (Test-Path $key) {
-                            $pendingRestart = $true
-                            Write-Log "Pending restart detected: $key" 'INFO'
-                            if ($restartReason -eq 'System maintenance operations') {
-                                $restartReason = 'Registry pending operations'
-                            }
-                            break
-                        }
-                    }
-
-                    if ($pendingRestart) {
-                        Write-Log "Restart requirement detected: $restartReason. Restart will be handled at script completion." 'INFO'
-                        return $true
-                    } else {
-                        Write-Log 'No pending restart required.' 'INFO'
-                        return $true
-                    }
-                } catch {
-                    Write-Log "Pending restart check failed: $_" 'ERROR'
-                    return $false
+                return [ordered]@{
+                    IsSuccessful = $false
+                    Status       = 'Disk cleanup failed'
+                    Error        = $_.Exception.Message
                 }
-            } else {
-                Write-Log 'Pending restart check skipped by configuration.' 'INFO'
-                return $false
             }
-        }; Description = 'Check for pending restart requirements without initiating restart (restart handled at script end)'; Importance = 'MEDIUM'
+        }
+    },
+    @{ Name = 'TempCleanup'; Description = 'Comprehensive temporary file, cache, and recycle bin cleanup'; Importance = 'MEDIUM'; Function = {
+            Write-Log 'Starting comprehensive temporary files cleanup task.' 'INFO'
+            Clear-TempFiles
+        }
+    },
+    @{ Name = 'SystemHealthRepair'; Description = 'Automated DISM and SFC system file integrity check and repair'; Importance = 'HIGH'; Function = {
+            if ($global:Config.SkipSystemHealthRepair) {
+                Write-Log 'System Health Check and Repair skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
+
+            Write-Log 'Starting System Health Check and Repair task.' 'INFO'
+            Start-SystemHealthRepair
+        }
+    },
+    @{ Name = 'RestorePointCleanup'; Description = 'Clean old system restore points while keeping configured minimum recent points'; Importance = 'MEDIUM'; Function = {
+            if ($global:Config.SkipRestorePointCleanup -or $global:Config.SkipSystemRestore) {
+                Write-Log 'Restore point cleanup skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
+
+            Write-Log 'Starting Restore Point Cleanup task.' 'INFO'
+            Clear-OldRestorePoints
+        }
+    },
+    @{ Name = 'EventLogAnalysis'; Description = 'Analyze Event Viewer and CBS logs for recent system errors'; Importance = 'MEDIUM'; Function = {
+            if ($global:Config.SkipEventLogAnalysis) {
+                Write-Log 'Event log analysis skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
+
+            Write-Log 'Starting Event Log Analysis task.' 'INFO'
+            Get-EventLogAnalysis
+        }
+    },
+    @{ Name = 'PendingRestartCheck'; Description = 'Check for pending restart requirements without initiating restart (restart handled at script end)'; Importance = 'MEDIUM'; Function = {
+            if ($global:Config.SkipPendingRestartCheck) {
+                Write-Log 'Pending restart check skipped by configuration.' 'INFO'
+                return New-TaskSkipResult 'Skipped (config)'
+            }
+
+            Write-Log 'Starting Pending Restart Check task.' 'INFO'
+            try {
+                $pendingRestart = $false
+                $restartReason = 'System maintenance operations'
+
+                if ($global:SystemSettings.Reboot.Required -eq $true) {
+                    $pendingRestart = $true
+                    $restartReason = "Windows Updates installation ($($global:SystemSettings.Reboot.Source))"
+                    Write-Log "Pending restart detected from Windows Updates at $($global:SystemSettings.Reboot.Timestamp)" 'INFO'
+                }
+
+                $registryKeys = @(
+                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired',
+                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
+                    'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations'
+                )
+
+                foreach ($key in $registryKeys) {
+                    if (Test-Path $key) {
+                        $pendingRestart = $true
+                        Write-Log "Pending restart detected: $key" 'INFO'
+                        if ($restartReason -eq 'System maintenance operations') {
+                            $restartReason = 'Registry pending operations'
+                        }
+                        break
+                    }
+                }
+
+                if ($pendingRestart) {
+                    $status = "Restart required: $restartReason"
+                    Write-Log $status 'INFO'
+                    return [ordered]@{
+                        IsSuccessful = $true
+                        Status       = $status
+                        Payload      = @{ Pending = $true; Reason = $restartReason }
+                    }
+                }
+
+                Write-Log 'No pending restart required.' 'INFO'
+                return [ordered]@{
+                    IsSuccessful = $true
+                    Status       = 'No restart required'
+                    Payload      = @{ Pending = $false }
+                }
+            } catch {
+                Write-Log "Pending restart check failed: $_" 'ERROR'
+                return [ordered]@{
+                    IsSuccessful = $false
+                    Status       = 'Pending restart check failed'
+                    Error        = $_.Exception.Message
+                }
+            }
+        }
     }
 )
 
@@ -737,7 +686,6 @@ $global:EssentialCategories = @{
         @{ Name = '7-Zip'; Winget = '7zip.7zip'; Choco = '7zip'; Category = 'Compression' }
     )
     SystemTools   = @(
-        @{ Name = 'PowerShell 7'; Winget = 'Microsoft.Powershell'; Choco = 'powershell'; Category = 'System' },
         @{ Name = 'Windows Terminal'; Winget = 'Microsoft.WindowsTerminal'; Choco = 'microsoft-windows-terminal'; Category = 'System' },
         @{ Name = 'Java 8 Update'; Winget = 'Oracle.JavaRuntimeEnvironment'; Choco = 'javaruntime'; Category = 'Runtime' },
         @{ Name = 'Sysmon'; Winget = $null; Choco = $null; DownloadUrl = 'https://download.sysinternals.com/files/Sysmon.zip'; Category = 'Security' }
@@ -923,6 +871,14 @@ function Use-AllScriptTasks {
     $global:TaskResults = @{}
     $taskIndex = 0
     $totalTasks = $global:ScriptTasks.Count
+    $excludedTasks = @()
+
+    if ($global:Config.ExcludeTasks -and $global:Config.ExcludeTasks.Count -gt 0) {
+        $excludedTasks = $global:Config.ExcludeTasks | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ }
+        if ($excludedTasks.Count -gt 0) {
+            Write-ActionLog -Action 'Task exclusion configuration detected' -Details "Excluded tasks: $($excludedTasks -join ', ')" -Category 'Task Orchestration' -Status 'INFO'
+        }
+    }
 
     foreach ($task in $global:ScriptTasks) {
         # ================================================================
@@ -945,6 +901,23 @@ function Use-AllScriptTasks {
         # Determine task importance level (extract from task metadata if available)
         $importance = if ($task.Importance) { $task.Importance } else { 'MEDIUM' }
 
+        if ($excludedTasks -and ($excludedTasks -contains $taskName)) {
+            Write-ActionLog -Action 'Task skipped via ExcludeTasks' -Details "$taskName was excluded by configuration" -Category 'Task Execution' -Status 'INFO'
+            Write-Log "[$taskIndex/$totalTasks] Task $taskName skipped via ExcludeTasks configuration." 'INFO'
+            $global:TaskResults[$taskName] = [ordered]@{
+                IsSuccessful = $true
+                Status       = 'Skipped (ExcludeTasks)'
+                Duration     = 0
+                Started      = $null
+                Ended        = $null
+                Description  = $desc
+                Importance   = $importance
+                Payload      = $null
+                Error        = $null
+            }
+            continue
+        }
+
         # Display visual task banner
         Show-TaskBanner -TaskNumber $taskIndex -TotalTasks $totalTasks -TaskName $taskName -TaskDescription $desc -Importance $importance
 
@@ -954,23 +927,30 @@ function Use-AllScriptTasks {
         $startTime = Get-Date
         try {
             Write-ActionLog -Action 'Starting task function' -Details "$taskName | Function execution beginning" -Category 'Task Execution' -Status 'START'
-            $result = Invoke-Task $taskName $task.Function
-            $endTime = Get-Date
-            $duration = ($endTime - $startTime).TotalSeconds
+            $taskOutcome = Invoke-Task $taskName $task.Function
+            $endTime = $taskOutcome.Ended
+            $duration = $taskOutcome.Duration
+            $wasSuccessful = $taskOutcome.IsSuccessful
+            $statusMessage = if ($taskOutcome.Status) { $taskOutcome.Status } elseif ($wasSuccessful) { 'Completed' } else { 'Failed' }
 
-            if ($result) {
-                Write-ActionLog -Action 'Task completed successfully' -Details "$taskName | Duration: ${duration}s | Result: $result" -Category 'Task Execution' -Status 'SUCCESS'
+            if ($wasSuccessful) {
+                Write-ActionLog -Action 'Task completed successfully' -Details "$taskName | Duration: ${duration}s | Status: $statusMessage" -Category 'Task Execution' -Status 'SUCCESS'
+                Write-Log "[$taskIndex/$totalTasks] Task $taskName completed in $duration seconds - $statusMessage" 'SUCCESS'
             } else {
-                Write-ActionLog -Action 'Task completed with issues' -Details "$taskName | Duration: ${duration}s | Result: $result" -Category 'Task Execution' -Status 'FAILURE'
+                Write-ActionLog -Action 'Task completed with issues' -Details "$taskName | Duration: ${duration}s | Status: $statusMessage" -Category 'Task Execution' -Status 'FAILURE'
+                Write-Log "[$taskIndex/$totalTasks] Task $taskName failed after $duration seconds - $statusMessage" 'ERROR'
             }
 
-            Write-Log "[$taskIndex/$totalTasks] Task $taskName completed in $duration seconds - Result: $result" 'SUCCESS'
-            $global:TaskResults[$taskName] = @{
-                Success     = $result
-                Duration    = $duration
-                Started     = $startTime
-                Ended       = $endTime
-                Description = $desc
+            $global:TaskResults[$taskName] = [ordered]@{
+                IsSuccessful = $wasSuccessful
+                Status       = $statusMessage
+                Duration     = $duration
+                Started      = $taskOutcome.Started
+                Ended        = $endTime
+                Description  = $desc
+                Importance   = $importance
+                Payload      = $taskOutcome.Payload
+                Error        = $taskOutcome.Error
             }
         } catch {
             $endTime = Get-Date
@@ -978,13 +958,15 @@ function Use-AllScriptTasks {
 
             Write-ActionLog -Action 'Task execution failed with exception' -Details "$taskName | Duration: ${duration}s | Exception: $_.Exception.Message" -Category 'Task Execution' -Status 'FAILURE'
             Write-Log "[$taskIndex/$totalTasks] Task $taskName execution failed: $_" 'ERROR'
-            $global:TaskResults[$taskName] = @{
-                Success     = $false
-                Duration    = $duration
-                Started     = $startTime
-                Ended       = $endTime
-                Description = $desc
-                Error       = $_.Exception.Message
+            $global:TaskResults[$taskName] = [ordered]@{
+                IsSuccessful = $false
+                Status       = 'Error'
+                Duration     = $duration
+                Started      = $startTime
+                Ended        = $endTime
+                Description  = $desc
+                Importance   = $importance
+                Error        = $_.Exception.Message
             }
         }
 
@@ -994,7 +976,7 @@ function Use-AllScriptTasks {
     }
 
     # Final summary
-    $successfulTasks = ($global:TaskResults.Values | Where-Object { $_.Success -eq $true }).Count
+    $successfulTasks = ($global:TaskResults.Values | Where-Object { $_.IsSuccessful }).Count
     $failedTasks = $totalTasks - $successfulTasks
     $totalDuration = ($global:TaskResults.Values | Measure-Object -Property Duration -Sum).Sum
 
@@ -1045,16 +1027,20 @@ function Write-Log {
     $timestamp = Get-Date -Format 'HH:mm:ss'
     $logEntry = "[$timestamp] [$Level] [$Component] $Message"
 
+    $targetLogPath = if ($script:LogFile) { $script:LogFile } elseif ($global:LogFile) { $global:LogFile } else { $null }
+
     # Write to file with enhanced error handling
-    try {
-        Add-Content -Path $global:LogFile -Value $logEntry -ErrorAction SilentlyContinue -Encoding UTF8
-    } catch {
-        # If main log fails, try writing to backup location
+    if ($targetLogPath) {
         try {
-            $backupLog = Join-Path $global:TempFolder 'maintenance_backup.log'
-            Add-Content -Path $backupLog -Value $logEntry -ErrorAction SilentlyContinue -Encoding UTF8
+            Add-Content -Path $targetLogPath -Value $logEntry -ErrorAction SilentlyContinue -Encoding UTF8
         } catch {
-            # Silently continue if all logging fails
+            # If main log fails, try writing to backup location
+            try {
+                $backupLog = Join-Path $global:TempFolder 'maintenance_backup.log'
+                Add-Content -Path $backupLog -Value $logEntry -ErrorAction SilentlyContinue -Encoding UTF8
+            } catch {
+                # Silently continue if all logging fails
+            }
         }
     }
 
@@ -1648,28 +1634,56 @@ function Write-SystemSummaryHeader {
 }
 
 # ================================================================
+# Helper: Resolve-TaskOutcome
+# ================================================================
+# Purpose: Normalize arbitrary task return values into a consistent
+#          structure that captures success state, status text, and payload.
+# ================================================================
+function Resolve-TaskOutcome {
+    param(
+        [Parameter(ValueFromPipeline = $true)]
+        $Result
+    )
+
+    $outcome = [ordered]@{
+        IsSuccessful = $true
+        Status       = 'Completed'
+        Payload      = $Result
+    }
+
+    if ($null -eq $Result) {
+        return $outcome
+    }
+
+    if ($Result -is [bool]) {
+        $outcome.IsSuccessful = [bool]$Result
+        return $outcome
+    }
+
+    if ($Result -is [hashtable] -or $Result -is [psobject]) {
+        if ($Result.PSObject.Properties['IsSuccessful']) {
+            $outcome.IsSuccessful = [bool]$Result.IsSuccessful
+        }
+        if ($Result.PSObject.Properties['Status']) {
+            $outcome.Status = [string]$Result.Status
+        }
+        $outcome.Payload = $Result
+        return $outcome
+    }
+
+    if ($Result -is [System.Management.Automation.ErrorRecord]) {
+        $outcome.IsSuccessful = $false
+        $outcome.Status = 'Error'
+        return $outcome
+    }
+
+    return $outcome
+}
+
+# ================================================================
 # Function: Invoke-Task
 # ================================================================
 # Purpose: Enhanced wrapper function for individual task execution with comprehensive logging and timing
-# Environment: Windows 10/11, PowerShell 7+, supports any task type
-# Logic: Try/catch wrapper with detailed action logging, timing, and comprehensive error capture
-# Performance: Minimal overhead wrapper, comprehensive error capture, standardized execution with timing
-# Dependencies: Write-Log, Write-ActionLog functions, PowerShell execution environment
-# ================================================================
-# ================================================================
-# Function: Invoke-Task
-# ================================================================
-# Purpose: Execute a single maintenance task item from the task list.
-#          Wraps task execution with standardized logging, timing,
-#          error capture and result normalization so the coordinator
-#          can aggregate consistent results.
-# Environment: Called by Use-AllScriptTasks; assumes logging infra
-# Inputs: $Task (has Name, ScriptBlock or ScriptPath, Optional Args)
-# Outputs: Writes detailed logs and returns a result hashtable
-# Error modes: Captures non-terminating and terminating errors and
-#              returns a 'Success' boolean in the result object
-# Returns: Hashtable { Name, Success, Duration, Details }
-# Side-effects: May change system state depending on the task executed
 # ================================================================
 function Invoke-Task {
     param(
@@ -1681,18 +1695,37 @@ function Invoke-Task {
     Write-ActionLog -Action 'Starting task execution' -Details $TaskName -Category 'Task Management' -Status 'START'
 
     try {
-        $result = & $Action
+        $rawResult = & $Action
+        $outcome = Resolve-TaskOutcome -Result $rawResult
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
 
-        Write-ActionLog -Action 'Task completed successfully' -Details "$TaskName | Duration: ${duration}s" -Category 'Task Management' -Status 'SUCCESS'
-        return $result
+        $logStatus = if ($outcome.IsSuccessful) { 'SUCCESS' } else { 'FAILURE' }
+        Write-ActionLog -Action 'Task completion' -Details "$TaskName | Duration: ${duration}s | Status: $($outcome.Status)" -Category 'Task Management' -Status $logStatus
+
+        return [ordered]@{
+            IsSuccessful = $outcome.IsSuccessful
+            Status       = $outcome.Status
+            Payload      = $outcome.Payload
+            Started      = $startTime
+            Ended        = $endTime
+            Duration     = $duration
+            Error        = $null
+        }
     } catch {
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
-
         Write-ActionLog -Action 'Task execution failed' -Details "$TaskName | Duration: ${duration}s | Error: $_" -Category 'Task Management' -Status 'FAILURE'
-        return $false
+
+        return [ordered]@{
+            IsSuccessful = $false
+            Status       = 'Error'
+            Payload      = $null
+            Started      = $startTime
+            Ended        = $endTime
+            Duration     = $duration
+            Error        = $_.Exception.Message
+        }
     }
 }
 
@@ -9555,8 +9588,8 @@ function Write-UnifiedMaintenanceReport {
         }
         summary    = @{
             totalTasks      = if ($global:TaskResults) { $global:TaskResults.Count } else { 0 }
-            successfulTasks = if ($global:TaskResults) { ($global:TaskResults.Values | Where-Object { $_.Success }).Count } else { 0 }
-            failedTasks     = if ($global:TaskResults) { ($global:TaskResults.Values | Where-Object { -not $_.Success }).Count } else { 0 }
+            successfulTasks = if ($global:TaskResults) { ($global:TaskResults.Values | Where-Object { $_.IsSuccessful }).Count } else { 0 }
+            failedTasks     = if ($global:TaskResults) { ($global:TaskResults.Values | Where-Object { -not $_.IsSuccessful }).Count } else { 0 }
             successRate     = 0
             totalDuration   = 0
         }
@@ -9583,7 +9616,7 @@ function Write-UnifiedMaintenanceReport {
             $taskDetail = @{
                 name        = $taskName
                 description = if ($task) { $task.Description } else { 'Task description not available' }
-                success     = $result.Success
+                success     = $result.IsSuccessful
                 duration    = if ($result.Duration) { [math]::Round($result.Duration, 2) } else { 0 }
                 started     = if ($result.Started) { $result.Started.ToString('HH:mm:ss') } else { 'Unknown' }
                 ended       = if ($result.Ended) { $result.Ended.ToString('HH:mm:ss') } else { 'Unknown' }
@@ -10309,9 +10342,13 @@ function Write-UnifiedMaintenanceReport {
 # ================================================================
 
 # Global variables initialization
-$global:TempFolder = Join-Path $WorkingDirectory 'temp_files'
+if (-not $global:TempFolder) {
+    $global:TempFolder = Join-Path $WorkingDirectory 'temp_files'
+}
 $global:SystemInventory = $null
-$global:TaskResults = @{}
+if (-not $global:TaskResults) {
+    $global:TaskResults = @{}
+}
 
 # Create temp directory if it doesn't exist
 if (-not (Test-Path $global:TempFolder)) {
@@ -10320,40 +10357,42 @@ if (-not (Test-Path $global:TempFolder)) {
 
 # Configuration management with defaults
 $configPath = Join-Path $WorkingDirectory 'config.json'
-$global:Config = @{
-    SkipBloatwareRemoval    = $false
-    SkipEssentialApps       = $false
-    SkipWindowsUpdates      = $false
-    SkipPackageUpdates      = $false
-    SkipTelemetryDisable    = $false
-    SkipSystemRestore       = $false
-    SkipRestorePointCleanup = $false
-    SkipEventLogAnalysis    = $false
-    SkipSecurityHardening   = $false
-    SkipTaskbarOptimization = $false
-    SkipDesktopBackground   = $false
-    SkipPendingRestartCheck = $false
-    CustomEssentialApps     = @()
-    CustomBloatwareList     = @()
-    EnableVerboseLogging    = $false
+if (-not $global:Config) {
+    $global:Config = @{
+        SkipBloatwareRemoval    = $false
+        SkipEssentialApps       = $false
+        SkipWindowsUpdates      = $false
+        SkipPackageUpdates      = $false
+        SkipTelemetryDisable    = $false
+        SkipSystemRestore       = $false
+        SkipRestorePointCleanup = $false
+        SkipEventLogAnalysis    = $false
+        SkipSecurityHardening   = $false
+        SkipTaskbarOptimization = $false
+        SkipDesktopBackground   = $false
+        SkipPendingRestartCheck = $false
+        CustomEssentialApps     = @()
+        CustomBloatwareList     = @()
+        EnableVerboseLogging    = $false
+    }
 }
 
 # Granular defaults for maintenance behaviors
-$global:Config.TelemetryServicesToDisable = @(
-    'DiagTrack',
-    'dmwappushservice',
-    'UnistoreSvc',
-    'UserDataSvc',
-    'BrokerInfrastructure',
-    'PimIndexMaintenanceSvc',
-    'MessagingService'
-)
-$global:Config.MinRestorePointsToKeep = 5
-# Optional flags: control risky telemetry/service changes and widget-only behavior
-$global:Config.AllowDisableWerSvc = $false
-$global:Config.SkipWidgetsOnly = $false
-# Control whether the script should prompt to reboot after updates (default: do NOT prompt)
-$global:Config.PromptForReboot = $false
+if (-not $global:Config.TelemetryServicesToDisable) {
+    $global:Config.TelemetryServicesToDisable = @(
+        'DiagTrack',
+        'dmwappushservice',
+        'UnistoreSvc',
+        'UserDataSvc',
+        'BrokerInfrastructure',
+        'PimIndexMaintenanceSvc',
+        'MessagingService'
+    )
+}
+if (-not $global:Config.ContainsKey('MinRestorePointsToKeep')) { $global:Config.MinRestorePointsToKeep = 5 }
+if (-not $global:Config.ContainsKey('AllowDisableWerSvc')) { $global:Config.AllowDisableWerSvc = $false }
+if (-not $global:Config.ContainsKey('SkipWidgetsOnly')) { $global:Config.SkipWidgetsOnly = $false }
+if (-not $global:Config.ContainsKey('PromptForReboot')) { $global:Config.PromptForReboot = $false }
 
 # Load configuration from config.json if it exists
 if (Test-Path $configPath) {
@@ -10494,65 +10533,6 @@ Write-Log "Configuration initialized: Bloatware=$($global:BloatwareList.Count), 
 $essentialAppsListPath = Join-Path $global:TempFolder 'essential_apps.json'
 $global:EssentialApps | ConvertTo-Json -Depth 5 | Out-File $essentialAppsListPath -Encoding UTF8
 
-# Task definitions
-$global:ScriptTasks = @(
-    @{
-        Name        = 'SystemInventory';
-        Function    = { Get-OptimizedSystemInventory -UseCache -IncludeBloatwareDetection };
-        Description = 'Optimized system inventory with enhanced bloatware detection (60-80% faster)'
-    },
-    @{
-        Name        = 'BloatwareRemoval';
-        Function    = { if (-not $global:Config.SkipBloatwareRemoval) { Remove-Bloatware } else { Write-Log 'Bloatware removal skipped via config' 'INFO'; $true } };
-        Description = 'Remove bloatware applications using diff-based optimization'
-    },
-    @{
-        Name        = 'EssentialApps';
-        Function    = { if (-not $global:Config.SkipEssentialApps) { Install-EssentialApps } else { Write-Log 'Essential apps installation skipped via config' 'INFO'; $true } };
-        Description = 'Install essential applications with LibreOffice fallback'
-    },
-    @{
-        Name        = 'WindowsUpdates';
-        Function    = { if (-not $global:Config.SkipWindowsUpdates) { Install-WindowsUpdatesCompatible } else { Write-Log 'Windows updates skipped via config' 'INFO'; $true } };
-        Description = 'Install Windows updates using PSWindowsUpdate module'
-    },
-    @{
-        Name        = 'TelemetryDisable';
-        Function    = { if (-not $global:Config.SkipTelemetryDisable) { Disable-Telemetry } else { Write-Log 'Telemetry disable skipped via config' 'INFO'; $true } };
-        Description = 'Disable Windows telemetry and privacy features'
-    },
-    @{
-        Name        = 'SpotlightMeetNowNewsLocation';
-        Function    = { Disable-SpotlightMeetNowNewsLocation };
-        Description = 'Disable Windows Spotlight, Meet Now, News/Interests, Widgets, and Location services'
-    },
-    @{
-        Name        = 'AppBrowserControl';
-        Function    = { Enable-AppBrowserControl };
-        Description = 'Enable App & Browser Control (SmartScreen, Network Protection, Controlled Folder Access, Exploit Protection)'
-    },
-    @{
-        Name        = 'SystemRestore';
-        Function    = { if (-not $global:Config.SkipSystemRestore) { Protect-SystemRestore } else { Write-Log 'System restore skipped via config' 'INFO'; $true } };
-        Description = 'Create system restore point and enable protection'
-    },
-    @{
-        Name        = 'RestorePointCleanup';
-        Function    = { if (-not $global:Config.SkipRestorePointCleanup) { Clear-OldRestorePoints } else { Write-Log 'Restore point cleanup skipped via config' 'INFO'; $true } };
-        Description = 'Clean old system restore points while keeping minimum 5 recent points'
-    },
-    @{
-        Name        = 'EventLogAnalysis';
-        Function    = { if (-not $global:Config.SkipEventLogAnalysis) { Get-EventLogAnalysis } else { Write-Log 'Event log analysis skipped via config' 'INFO'; $true } };
-        Description = 'Analyze Event Viewer and CBS logs for system errors (last 96 hours)'
-    },
-    @{
-        Name        = 'TempCleanup';
-        Function    = { Clear-TempFiles };
-        Description = 'Clean temporary files and browser caches'
-    }
-)
-
 # ================================================================
 # MAIN EXECUTION LOGIC
 # ================================================================
@@ -10584,8 +10564,8 @@ Use-AllScriptTasks
 # ================================================================
 
 # Calculate summary statistics
-$successCount = ($global:TaskResults.Values | Where-Object { $_.Success }).Count
-$failCount = ($global:TaskResults.Values | Where-Object { -not $_.Success }).Count
+$successCount = ($global:TaskResults.Values | Where-Object { $_.IsSuccessful }).Count
+$failCount = ($global:TaskResults.Values | Where-Object { -not $_.IsSuccessful }).Count
 $totalCount = $global:TaskResults.Count
 
 # Log task execution summary
@@ -10597,13 +10577,13 @@ Write-Log "Total tasks: $totalCount | Success: $successCount | Failed: $failCoun
 foreach ($taskName in $global:TaskResults.Keys) {
     $result = $global:TaskResults[$taskName]
     $task = $global:ScriptTasks | Where-Object { $_.Name -eq $taskName }
-    $status = if ($result.Success) { 'SUCCESS' } else { 'FAILED' }
+    $status = if ($result.IsSuccessful) { 'SUCCESS' } else { 'FAILED' }
     $duration = if ($result.Duration) { [math]::Round($result.Duration, 2) } else { 0 }
     $started = if ($result.Started) { $result.Started.ToString('HH:mm:ss') } else { 'Unknown' }
     $ended = if ($result.Ended) { $result.Ended.ToString('HH:mm:ss') } else { 'Unknown' }
 
     Write-Log "Task: $taskName | $status | Duration: ${duration}s | ${started}-${ended}" 'INFO'
-    if (-not $result.Success -and $result.ContainsKey('Error') -and $result.Error) {
+    if (-not $result.IsSuccessful -and $result.ContainsKey('Error') -and $result.Error) {
         Write-Log "    Error: $($result.Error)" 'ERROR'
     }
 }
@@ -10965,7 +10945,6 @@ if ($Host.Name -eq 'ConsoleHost' -or $Host.Name -like '*Windows*') {
         Write-Host '🔗 Window will remain open for your review.' -ForegroundColor Cyan
         Write-Log '[EXECUTION] Terminal window kept open per user interaction' 'INFO'
         Read-Host -Prompt 'Press Enter to close this window...'
-        Write-Log '[EXECUTION] User manually closed terminal window' 'INFO'
     }
 
     Write-Log '[POST-EXECUTION] Post-execution cleanup and countdown sequence completed' 'INFO'
