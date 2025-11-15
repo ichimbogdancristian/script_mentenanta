@@ -6517,25 +6517,10 @@ function Install-EssentialApps {
 
     $appsToInstall = @()
     foreach ($essentialApp in $global:EssentialApps) {
-        # Check if this app should be processed based on diff analysis
-        $shouldProcess = $false
         $identifiersToCheck = @()
         if ($essentialApp.Winget) { $identifiersToCheck += $essentialApp.Winget.Trim() }
         if ($essentialApp.Choco) { $identifiersToCheck += $essentialApp.Choco.Trim() }
         if ($essentialApp.Name) { $identifiersToCheck += $essentialApp.Name.Trim() }
-
-        # Check if any identifier is in newly required apps
-        foreach ($identifier in $identifiersToCheck) {
-            if ($newlyRequiredApps.Contains($identifier)) {
-                $shouldProcess = $true
-                break
-            }
-        }
-
-        # Skip processing if not in diff list (already processed in previous run)
-        if (-not $shouldProcess) {
-            continue
-        }
 
         $found = $false
         $matchDetails = 'no match found'
