@@ -5940,6 +5940,172 @@ function Remove-Bloatware {
 }
 
 # ================================================================
+# Function: Get-SystemInventory
+# ================================================================
+# Purpose: Collect comprehensive system information for analysis and reporting
+# Environment: Windows 10/11, PowerShell 7+, Administrator context
+# Logic: Gathers hardware, software, OS, and performance metrics
+# Returns: Hashtable with system inventory data
+# Side-effects: None - read-only operations
+# ================================================================
+function Get-SystemInventory {
+    Write-Log '[START] Collecting comprehensive system inventory' 'INFO'
+    Write-ActionLog -Action 'System inventory collection' -Details 'Starting comprehensive system scan' -Category 'Task Execution' -Status 'START'
+    
+    try {
+        $inventory = @{
+            ComputerName      = $env:COMPUTERNAME
+            OSVersion         = [System.Environment]::OSVersion.VersionString
+            PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+            Administrator     = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            Timestamp         = Get-Date
+        }
+
+        # Get hardware information
+        try {
+            $computerSystem = Get-CimInstance Win32_ComputerSystem
+            $inventory.Processor = $computerSystem.Manufacturer
+            $inventory.SystemType = $computerSystem.SystemType
+            $inventory.TotalMemory = [math]::Round($computerSystem.TotalPhysicalMemory / 1GB, 2)
+        } catch {
+            Write-Log "Warning: Could not retrieve hardware info: $_" 'WARN'
+        }
+
+        # Get disk information
+        try {
+            $disks = Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 }
+            $inventory.Disks = $disks | ForEach-Object {
+                @{
+                    Drive = $_.DeviceID
+                    Size  = [math]::Round($_.Size / 1GB, 2)
+                    Free  = [math]::Round($_.FreeSpace / 1GB, 2)
+                    Used  = [math]::Round(($_.Size - $_.FreeSpace) / 1GB, 2)
+                }
+            }
+        } catch {
+            Write-Log "Warning: Could not retrieve disk info: $_" 'WARN'
+        }
+
+        Write-Log "System inventory collected: $($inventory.ComputerName) - $($inventory.OSVersion)" 'SUCCESS'
+        Write-ActionLog -Action 'System inventory collection' -Details 'Inventory collection completed successfully' -Category 'Task Execution' -Status 'SUCCESS'
+        
+        # Store in global for task use
+        $global:SystemInventory = $inventory
+        return $inventory
+    } catch {
+        Write-Log "System inventory collection failed: $_" 'ERROR'
+        Write-ActionLog -Action 'System inventory collection' -Details "Failed: $_" -Category 'Task Execution' -Status 'FAILURE'
+        return $false
+    }
+}
+
+# ================================================================
+# Function: Set-DesktopBackground
+# ================================================================
+# Purpose: Configure desktop background from Windows Spotlight to personalized slideshow
+# Environment: Windows 10/11, PowerShell 7+, Administrator context
+# Logic: Sets personalized background preferences and disables spotlight
+# Returns: $true on success, $false on failure
+# Side-effects: Modifies system registry and user preferences
+# ================================================================
+function Set-DesktopBackground {
+    Write-Log '[START] Configuring desktop background' 'INFO'
+    Write-ActionLog -Action 'Desktop background configuration' -Details 'Setting personalized background' -Category 'Task Execution' -Status 'START'
+    
+    try {
+        # Disable Windows Spotlight
+        $spotlightPath = 'HKCU:\Software\Policies\Microsoft\Windows\CloudContent'
+        if (-not (Test-Path $spotlightPath)) {
+            New-Item -Path $spotlightPath -Force | Out-Null
+        }
+        Set-ItemProperty -Path $spotlightPath -Name 'DisableWindowsSpotlightFeatures' -Value 1 -Type DWord -ErrorAction SilentlyContinue
+        Write-Log 'Windows Spotlight disabled' 'INFO'
+
+        # Set desktop background to use personalized slideshow
+        $desktopPath = 'HKCU:\Control Panel\Desktop'
+        Set-ItemProperty -Path $desktopPath -Name 'Wallpaper' -Value "$env:WINDIR\Web\Wallpaper\Windows\Default.jpg" -ErrorAction SilentlyContinue
+        Write-Log 'Desktop background set to default Windows wallpaper' 'INFO'
+
+        Write-Log 'Desktop background configuration completed successfully' 'SUCCESS'
+        Write-ActionLog -Action 'Desktop background configuration' -Details 'Configuration completed successfully' -Category 'Task Execution' -Status 'SUCCESS'
+        return $true
+    } catch {
+        Write-Log "Desktop background configuration failed: $_" 'ERROR'
+        Write-ActionLog -Action 'Desktop background configuration' -Details "Failed: $_" -Category 'Task Execution' -Status 'FAILURE'
+        return $false
+    }
+}
+
+# ================================================================
+# Function: Enable-SecurityHardening
+# ================================================================
+# Purpose: Apply security hardening configurations and policy improvements
+# Environment: Windows 10/11, PowerShell 7+, Administrator context
+# Logic: Enables various security features and policies
+# Returns: $true on success, $false on failure
+# Side-effects: Modifies system registry and security policies
+# ================================================================
+function Enable-SecurityHardening {
+    Write-Log '[START] Applying security hardening configurations' 'INFO'
+    Write-ActionLog -Action 'Security hardening' -Details 'Applying security configurations' -Category 'Task Execution' -Status 'START'
+    
+    try {
+        $hardeningActions = @(
+            @{
+                Name  = 'Enable Windows Defender Real-time Protection'
+                Path  = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender'
+                Value = 'DisableRealtimeMonitoring'
+                Data  = 0
+                Type  = 'DWord'
+            },
+            @{
+                Name  = 'Enable Windows Defender Automatic Scan'
+                Path  = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Scan'
+                Value = 'DisableArchiveScanning'
+                Data  = 0
+                Type  = 'DWord'
+            },
+            @{
+                Name  = 'Enable User Account Control'
+                Path  = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+                Value = 'EnableLUA'
+                Data  = 1
+                Type  = 'DWord'
+            },
+            @{
+                Name  = 'Enable Windows Firewall'
+                Path  = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile'
+                Value = 'EnableFirewall'
+                Data  = 1
+                Type  = 'DWord'
+            }
+        )
+
+        $successCount = 0
+        foreach ($action in $hardeningActions) {
+            try {
+                if (-not (Test-Path $action.Path)) {
+                    New-Item -Path $action.Path -Force | Out-Null
+                }
+                Set-ItemProperty -Path $action.Path -Name $action.Value -Value $action.Data -Type $action.Type -ErrorAction Stop
+                Write-Log "✓ $($action.Name)" 'SUCCESS'
+                $successCount++
+            } catch {
+                Write-Log "⚠ $($action.Name) - $_" 'WARN'
+            }
+        }
+
+        Write-Log "Security hardening completed: $successCount/$($hardeningActions.Count) settings applied" 'SUCCESS'
+        Write-ActionLog -Action 'Security hardening' -Details "Applied $successCount/$($hardeningActions.Count) security settings" -Category 'Task Execution' -Status 'SUCCESS'
+        return $true
+    } catch {
+        Write-Log "Security hardening failed: $_" 'ERROR'
+        Write-ActionLog -Action 'Security hardening' -Details "Failed: $_" -Category 'Task Execution' -Status 'FAILURE'
+        return $false
+    }
+}
+
+# ================================================================
 # Function: Install-EssentialApps
 # ================================================================
 # Purpose: Install a curated set of essential applications (and optional

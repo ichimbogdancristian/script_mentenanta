@@ -704,8 +704,24 @@ IF !ERRORLEVEL! NEQ 0 (
     EXIT /B 3
 )
 
-REM Clean up ZIP file
-DEL /F /Q "%ZIP_FILE%" >nul 2>&1
+REM Clean up ZIP file after successful extraction
+CALL :LOG_MESSAGE "Cleaning up repository archive..." "INFO" "BAT"
+IF EXIST "%ZIP_FILE%" (
+    DEL /F /Q "%ZIP_FILE%" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Repository archive removed successfully: %ZIP_FILE%" "INFO" "BAT"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Warning: Could not delete ZIP file, attempting force delete..." "WARN" "BAT"
+        powershell -ExecutionPolicy Bypass -Command "try { if(Test-Path '%ZIP_FILE%') { Remove-Item -Path '%ZIP_FILE%' -Force -ErrorAction Stop; Write-Host '[INFO] ZIP archive deleted via PowerShell' } } catch { Write-Host '[WARN] Could not force delete ZIP file: ' $_.Exception.Message }" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Repository archive removed successfully via PowerShell" "INFO" "BAT"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Warning: Repository archive could not be deleted (may be locked)" "WARN" "BAT"
+        )
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "ZIP file not found (already cleaned up)" "DEBUG" "BAT"
+)
 
 REM Verify extraction and update PowerShell script path
 CALL :LOG_MESSAGE "Verifying repository extraction..." "INFO" "BAT"
