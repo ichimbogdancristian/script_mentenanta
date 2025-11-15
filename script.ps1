@@ -844,15 +844,6 @@ $global:BloatwareDetectionCache = @{
 # ================================================================
 # Function: Use-AllScriptTasks
 # ================================================================
-# Purpose: Enhanced main task execution orchestrator with comprehensive logging and progress tracking
-# Environment: Windows 10/11, PowerShell 7+, Administrator context required
-# Logic: Sequential task execution with comprehensive error handling, progress tracking, and detailed performance analytics
-# Performance: Tracks execution time, success/failure rates, provides detailed console output, comprehensive task analytics
-# Dependencies: Global task array, Write-Log, Write-ActionLog functions, global config system, task result tracking
-# ================================================================
-# ================================================================
-# Function: Use-AllScriptTasks
-# ================================================================
 # Purpose: Iterate over and execute all tasks registered in the
 #          global $global:ScriptTasks array. This central coordinator
 #          drives the maintenance workflow, invoking each task in
@@ -986,15 +977,6 @@ function Use-AllScriptTasks {
 # ================================================================
 # Function: Write-Log
 # ================================================================
-# Purpose: Enhanced unified logging function with dual output (console + file) and comprehensive action tracking
-# Environment: Any PowerShell version, requires global $LogFile variable, console access
-# Logic: Timestamped entries with severity levels, file persistence, color-coded console display, enhanced action tracking
-# Performance: Minimal overhead, efficient string formatting, non-blocking operations, enhanced error handling
-# Dependencies: Global $LogFile variable, Windows console capabilities, file system access
-# ================================================================
-# ================================================================
-# Function: Write-Log
-# ================================================================
 # Purpose: Centralized logging function that writes timestamped entries
 #          to both the console and the persistent log file. Supports
 #          different log levels (INFO, WARN, ERROR, DEBUG, SUCCESS).
@@ -1068,15 +1050,6 @@ function Write-Log {
 # ================================================================
 # Function: Write-ActionLog
 # ================================================================
-# Purpose: Specialized logging for specific actions with detailed context and categorization
-# Environment: Windows 10/11, PowerShell 7+, supports action categorization and detailed tracking
-# Logic: Enhanced action logging with categorization, timing, and detailed context information
-# Performance: Optimized for action tracking, minimal overhead, comprehensive detail capture
-# Dependencies: Write-Log function, timing capabilities, process tracking
-# ================================================================
-# ================================================================
-# Function: Write-ActionLog
-# ================================================================
 # Purpose: Helper for logging long-running action entries. Formats
 #          action start/finish messages and emits progress-friendly
 #          lines to the console and the action log file.
@@ -1121,7 +1094,6 @@ function Write-ActionLog {
 # Logic: Logs command execution with full command line, arguments, exit codes, and execution timing
 # Performance: Minimal overhead wrapper for external commands, comprehensive execution tracking
 # Dependencies: Write-Log function, process execution capabilities, timing functions
-# ================================================================
 # ================================================================
 # Function: Write-CommandLog
 # ================================================================
@@ -1172,7 +1144,6 @@ function Write-CommandLog {
 # Performance: Lightweight progress tracking, non-blocking operations, visual feedback
 # Dependencies: Windows PowerShell console capabilities, Write-Progress cmdlet
 # ================================================================
-# ================================================================
 # Function: Write-TaskProgress
 # ================================================================
 # Purpose: Emit a compact progress line for a single high-level task.
@@ -1213,7 +1184,6 @@ function Write-TaskProgress {
 # Logic: Creates separate progress bars for each action type with automatic cleanup
 # Performance: Lightweight, non-blocking, visual feedback for granular operations
 # Dependencies: Write-Progress cmdlet, console capabilities
-# ================================================================
 # ================================================================
 # Function: Write-ActionProgress
 # ================================================================
@@ -1332,7 +1302,6 @@ function Write-CleanProgress {
 # Performance: Efficient progress management for sequential operations
 # Dependencies: Write-ActionProgress function
 # ================================================================
-# ================================================================
 # Function: Start-ActionProgressSequence
 # ================================================================
 # Purpose: Helper to initialize a multi-step action with timing and
@@ -1394,7 +1363,6 @@ function Start-ActionProgressSequence {
 # Dependencies: Get-ComputerInfo, Get-NetIPConfiguration, Resolve-DnsName, Invoke-RestMethod for external IP
 # Logic: Collects system identity, network configuration, user context, and connectivity information
 # Features: Comprehensive PC fingerprinting, network topology discovery, external IP detection, DNS configuration analysis
-# ================================================================
 # ================================================================
 # Function: Write-SystemSummaryHeader
 # ================================================================
@@ -1671,7 +1639,6 @@ function Invoke-Task {
 # Performance: Minimal overhead wrapper with detailed execution tracking and comprehensive error capture
 # Dependencies: Write-CommandLog, Write-ActionLog functions, Start-Process cmdlet, process monitoring
 # ================================================================
-# ================================================================
 # Function: Invoke-LoggedCommand
 # ================================================================
 # Purpose: Run an external command or scriptblock while capturing stdout/stderr
@@ -1683,7 +1650,6 @@ function Invoke-Task {
 # Dependencies: Write-CommandLog, Write-Log
 # Returns: Hashtable with keys: ExitCode, StdOut, StdErr, Duration
 # Side-effects: Writes log entries for command start, success/failure
-# ================================================================
 # ================================================================
 # Function: Invoke-LoggedCommand
 # ================================================================
@@ -1789,7 +1755,6 @@ function Invoke-LoggedCommand {
 # Logic: Scans HKLM uninstall keys, matches against bloatware patterns, returns standardized app objects
 # Features: Detects legacy/OEM/Win32 bloatware, logs all matches, supports integration with main detection pipeline
 # ================================================================
-# ================================================================
 # Function: Get-RegistryUninstallBloatware
 # ================================================================
 # Purpose: Enumerate uninstall registry keys and match installed apps
@@ -1800,7 +1765,6 @@ function Invoke-LoggedCommand {
 # Dependencies: None (uses native registry cmdlets), relies on $global:BloatwareList
 # Returns: Array of objects { Name, DisplayVersion, Publisher, UninstallString }
 # Side-effects: None (read-only enumeration)
-# ================================================================
 # ================================================================
 # Function: Get-RegistryUninstallBloatware
 # ================================================================
@@ -1868,7 +1832,6 @@ function Get-RegistryUninstallBloatware {
 # Logic: Uses Get-Command with error handling to detect command availability
 # Features: Cross-platform compatibility, error suppression, boolean result
 # ================================================================
-# ================================================================
 # Function: Test-CommandAvailable
 # ================================================================
 # Purpose: Determine whether a given executable or command is available in PATH
@@ -1877,9 +1840,7 @@ function Get-RegistryUninstallBloatware {
 # Returns: [bool] $true if available, otherwise $false
 # Side-effects: None
 # ================================================================
-# ================================================================
 # Function: Test-CommandAvailable
-# ================================================================
 # ================================================================
 # Function: Show-TaskBanner
 # ================================================================
@@ -1981,7 +1942,6 @@ function Test-CommandAvailable {
 # Logic: Attempts registry operations to validate permissions, provides detailed error information
 # Features: Permission validation, access diagnostics, fallback path suggestions
 # ================================================================
-# ================================================================
 # Function: Test-RegistryAccess
 # ================================================================
 # Purpose: Verify that the script can read and/or write to required registry
@@ -1990,7 +1950,6 @@ function Test-CommandAvailable {
 # Logic: Attempts a benign read (and optionally a write-test when allowed)
 # Returns: [bool] $true when required registry access is available
 # Side-effects: None (read-only by default)
-# ================================================================
 # ================================================================
 # Function: Test-RegistryAccess
 # ================================================================
@@ -2083,7 +2042,6 @@ function Test-RegistryAccess {
 # Logic: Pre-validates access, attempts registry modification, provides detailed error reporting
 # Features: Permission validation, multiple registry types, detailed error diagnostics, fallback suggestions
 # ================================================================
-# ================================================================
 # Function: Set-RegistryValueSafely
 # ================================================================
 # Purpose: Helper to set a registry value with comprehensive error handling
@@ -2091,7 +2049,6 @@ function Test-RegistryAccess {
 # Logic: Writes the specified registry value, logs the action and returns success
 # Returns: [bool] $true on success, $false on failure
 # Side-effects: Modifies registry keys/values
-# ================================================================
 # ================================================================
 # Function: Set-RegistryValueSafely
 # ================================================================
@@ -2179,7 +2136,6 @@ function Set-RegistryValueSafely {
 # Logic: Compares before/after app states, identifies new/removed/unchanged apps, generates diff reports
 # Features: Flexible comparison modes, detailed diff reporting, performance metrics, categorized results
 # ================================================================
-# ================================================================
 # Function: Compare-InstallationDiff
 # ================================================================
 # Purpose: Compare two application inventory lists and produce a diff of
@@ -2188,7 +2144,6 @@ function Set-RegistryValueSafely {
 # Logic: Accepts prior and current lists, computes Added/Removed/Unchanged
 # Returns: Hashtable { Added = @(), Removed = @(), Unchanged = @() }
 # Side-effects: None
-# ================================================================
 # ================================================================
 # Function: Compare-InstallationDiff
 # ================================================================
@@ -2280,7 +2235,6 @@ function Compare-InstallationDiff {
 # Logic: Collects apps from multiple sources, normalizes format, removes duplicates, provides unified view
 # Features: Multi-source collection, duplicate detection, standardized output format, error resilience
 # ================================================================
-# ================================================================
 # Function: Get-StandardizedAppInventory
 # ================================================================
 # Purpose: Collect installed applications from multiple sources (Appx, Winget,
@@ -2290,7 +2244,6 @@ function Compare-InstallationDiff {
 # Logic: Queries multiple sources, normalizes fields (Name, Version, Source)
 # Returns: Array of standardized application objects
 # Side-effects: None (read-only inventory collection)
-# ================================================================
 # ================================================================
 # Function: Get-StandardizedAppInventory
 # ================================================================
@@ -2473,7 +2426,6 @@ function Get-StandardizedAppInventory {
 # Logic: Detects available package managers, executes commands with timeout, provides unified result format
 # Features: Multi-manager support, timeout protection, standardized logging, error resilience, progress tracking
 # ================================================================
-# ================================================================
 # Function: Invoke-PackageManagerCommand
 # ================================================================
 # Purpose: Unified wrapper for invoking package manager commands (winget, choco)
@@ -2482,7 +2434,6 @@ function Get-StandardizedAppInventory {
 # Logic: Detects manager availability, runs the command, captures exit status
 # Returns: Hashtable { Success = $bool, Output = $string, Error = $string }
 # Side-effects: Installs/uninstalls/updates packages depending on arguments
-# ================================================================
 # ================================================================
 # Function: Invoke-PackageManagerCommand
 # ================================================================
@@ -2634,7 +2585,6 @@ function Invoke-PackageManagerCommand {
 # Logic: Wraps operations with progress tracking, handles errors gracefully, provides consistent UX
 # Features: Auto-cleanup progress bars, error handling, timing metrics, standardized progress display
 # ================================================================
-# ================================================================
 # Function: Start-ProgressTrackedOperation
 # ================================================================
 # Purpose: Template helper to run long-running operations with timing and
@@ -2643,7 +2593,6 @@ function Invoke-PackageManagerCommand {
 # Logic: Accepts a ScriptBlock and metadata, runs it while tracking duration
 # Returns: Hashtable { Success, Duration, Result }
 # Side-effects: Writes progress and logs
-# ================================================================
 # ================================================================
 # Function: Start-ProgressTrackedOperation
 # ================================================================
@@ -2729,7 +2678,6 @@ function Start-ProgressTrackedOperation {
 # Logic: Searches across all app sources using flexible pattern matching, returns standardized results
 # Features: Multi-source search, pattern matching, detailed app information, source identification
 # ================================================================
-# ================================================================
 # Function: Find-AppInstallations
 # ================================================================
 # Purpose: Locate installed applications on disk and in registries by pattern
@@ -2737,7 +2685,6 @@ function Start-ProgressTrackedOperation {
 # Logic: Uses pattern matching and known install paths to find executables
 # Returns: Array of installation objects (Path, Version, Publisher)
 # Side-effects: None (detection only)
-# ================================================================
 # ================================================================
 # Function: Find-AppInstallations
 # ================================================================
@@ -2824,7 +2771,6 @@ function Find-AppInstallations {
 # Logic: Finds matching apps, confirms removal safety, executes removal with progress tracking
 # Features: Safety checks, progress tracking, detailed logging, rollback on critical failures
 # ================================================================
-# ================================================================
 # Function: Remove-AppsByPattern
 # ================================================================
 # Purpose: Remove applications matching a set of patterns using configured
@@ -2833,7 +2779,6 @@ function Find-AppInstallations {
 # Logic: Matches patterns, chooses safest uninstall method, performs removal
 # Returns: Array of results for each uninstall attempt
 # Side-effects: Uninstalls applications; use with care
-# ================================================================
 # ================================================================
 # Function: Remove-AppsByPattern
 # ================================================================
@@ -2974,7 +2919,6 @@ function Remove-AppsByPattern {
 # Logic: Iterates over a category list, resolves conflicts, and installs
 # Returns: Summary object with successes/failures and timing
 # Side-effects: Installs software (may require reboots)
-# ================================================================
 # ================================================================
 # Function: Install-AppsByCategory
 # ================================================================
@@ -4355,7 +4299,6 @@ function Get-ExtensiveSystemInventory {
 # Returns: Array of feature objects
 # Side-effects: None (detection only)
 # ================================================================
-# ================================================================
 # REUSABLE UTILITY FUNCTIONS: Enhanced Bloatware Detection System
 # ================================================================
 
@@ -4449,7 +4392,6 @@ function Get-WindowsFeaturesBloatware {
 # Environment: Requires service-querying access
 # Returns: Array of service objects { Name, DisplayName, Path }
 # Side-effects: None (detection only)
-# ================================================================
 # ================================================================
 # Function: Get-ServicesBloatware
 # ================================================================
@@ -4548,7 +4490,6 @@ function Get-ServicesBloatware {
 # Environment: Windows Task Scheduler access
 # Returns: Array of scheduled task objects
 # Side-effects: None
-# ================================================================
 # ================================================================
 # Function: Get-ScheduledTasksBloatware
 # ================================================================
@@ -4649,7 +4590,6 @@ function Get-ScheduledTasksBloatware {
 # Environment: File-system access to Start Menu folders
 # Returns: Array of shortcut objects
 # Side-effects: None
-# ================================================================
 # ================================================================
 # Function: Get-StartMenuBloatware
 # ================================================================
