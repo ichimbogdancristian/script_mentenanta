@@ -8803,124 +8803,175 @@ function Install-WindowsUpdatesCompatible {
 function Install-WindowsUpdatesCompatible {
     Write-Log '[START] Windows Updates Installation (Enhanced Compatibility)' 'INFO'
 
-    # Check for Administrator privileges
-    if (-not $IsAdmin) {
-        Write-Log 'Administrator privileges required for Windows Updates. Skipping...' 'WARN'
-        return
-    }
-
-    # Enhanced PSWindowsUpdate module detection and installation
-    $moduleInstalled = $false
+    # Automatically answer "No" to any reboot/restart Read-Host prompts raised by PSWindowsUpdate
+    $readHostOverrideAdded = $false
+    $originalReadHostFunction = $null
     try {
-        $existingModule = Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue
-        if ($existingModule) {
-            Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
-            $moduleInstalled = $true
-            Write-Log 'PSWindowsUpdate module found and imported' 'INFO'
-        } else {
-            Write-Log 'PSWindowsUpdate module not found. Attempting installation...' 'INFO'
-
-            # Check if PackageProvider is available for module installation
-            try {
-                $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-                if (-not $nugetProvider) {
-                    Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -ErrorAction SilentlyContinue
-                }
-
-                Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -AllowClobber -ErrorAction Stop
-                Import-Module PSWindowsUpdate -Force -ErrorAction Stop
-                $moduleInstalled = $true
-                Write-Host '✓ PSWindowsUpdate module installed and imported' -ForegroundColor Green
-                Write-Log 'PSWindowsUpdate module successfully installed and imported' 'INFO'
-            } catch {
-                Write-Log "Failed to install PSWindowsUpdate module: $_" 'WARN'
-                $moduleInstalled = $false
-            }
+        $existingReadHostFunction = Get-Command -Name 'Read-Host' -CommandType Function -ErrorAction SilentlyContinue
+        if ($existingReadHostFunction) {
+            $originalReadHostFunction = $existingReadHostFunction.ScriptBlock
         }
+
+        $autoDeclineScriptBlock = {
+            param(
+                [string]$Prompt,
+                [switch]$AsSecureString,
+                [switch]$MaskInput
+            )
+
+            $promptText = if ($null -ne $Prompt) { $Prompt } else { '' }
+            if (-not $AsSecureString -and -not $MaskInput -and $promptText -match '(?i)(restart|reboot)') {
+                Write-Log "Auto-declining reboot prompt: '$promptText'" 'INFO'
+                return 'N'
+            }
+
+            if ($originalReadHostFunction) {
+                return & $originalReadHostFunction @PSBoundParameters
+            }
+
+            return Microsoft.PowerShell.Utility\Read-Host @PSBoundParameters
+        }
+
+        Set-Item -Path 'Function:\Read-Host' -Value $autoDeclineScriptBlock
+        $readHostOverrideAdded = $true
+        Write-Log 'Enabled temporary Read-Host override to auto-decline Windows Update reboot prompts' 'DEBUG'
     } catch {
-        Write-Log "Error with PSWindowsUpdate module: $_" 'WARN'
-        $moduleInstalled = $false
+        Write-Log "Failed to configure Read-Host override for reboot prompts: $_" 'WARN'
     }
 
-    if ($moduleInstalled) {
+    try {
+        # Check for Administrator privileges
+        if (-not $IsAdmin) {
+            Write-Log 'Administrator privileges required for Windows Updates. Skipping...' 'WARN'
+            return
+        }
+
+        # Enhanced PSWindowsUpdate module detection and installation
+        $moduleInstalled = $false
         try {
-            # Get available updates using PSWindowsUpdate
-            Write-Log 'Checking for available Windows updates...' 'INFO'
-            $availableUpdates = Get-WUList -ErrorAction SilentlyContinue
+            $existingModule = Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue
+            if ($existingModule) {
+                Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue
+                $moduleInstalled = $true
+                Write-Log 'PSWindowsUpdate module found and imported' 'INFO'
+            } else {
+                Write-Log 'PSWindowsUpdate module not found. Attempting installation...' 'INFO'
 
-            if ($availableUpdates -and $availableUpdates.Count -gt 0) {
-                Write-Log "Found $($availableUpdates.Count) available updates" 'INFO'
-                Write-Host "Installing $($availableUpdates.Count) Windows updates..." -ForegroundColor Cyan
-
-                # Set environment variables for suppression before installation
-                $env:PSWINDOWSUPDATE_REBOOT = 'Never'
-                $env:SUPPRESSPROMPTS = 'True'
-                $env:SUPPRESS_REBOOT_PROMPT = 'True'
-                $env:ACCEPT_EULA = 'True'
-                $env:NONINTERACTIVE = 'True'
-
-                # Install updates with comprehensive suppression
-                $installResult = Install-WindowsUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -ErrorAction SilentlyContinue
-
-                # Clean up environment variables immediately after
-                Remove-Item -Path 'env:PSWINDOWSUPDATE_REBOOT' -ErrorAction SilentlyContinue
-                Remove-Item -Path 'env:SUPPRESSPROMPTS' -ErrorAction SilentlyContinue
-                Remove-Item -Path 'env:SUPPRESS_REBOOT_PROMPT' -ErrorAction SilentlyContinue
-                Remove-Item -Path 'env:ACCEPT_EULA' -ErrorAction SilentlyContinue
-                Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
-
-                if ($installResult) {
-                    $successfulUpdates = $installResult | Where-Object { $_.Result -eq 'Installed' }
-                    $failedUpdates = $installResult | Where-Object { $_.Result -ne 'Installed' }
-
-                    Write-Host "✓ Successfully installed $($successfulUpdates.Count) updates" -ForegroundColor Green
-                    Write-Log "Windows updates installed: $($successfulUpdates.Count) successful, $($failedUpdates.Count) failed" 'INFO'
-
-                    if ($failedUpdates.Count -gt 0) {
-                        Write-Log 'Some updates failed to install. Check Windows Update logs for details.' 'WARN'
+                # Check if PackageProvider is available for module installation
+                try {
+                    $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+                    if (-not $nugetProvider) {
+                        Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -ErrorAction SilentlyContinue
                     }
 
-                    # Check if reboot is required
-                    $rebootRequired = Get-WURebootStatus -ErrorAction SilentlyContinue
-                    if ($rebootRequired) {
-                        Write-Host '⚠ System reboot required to complete updates' -ForegroundColor Yellow
-                        Write-Log 'System reboot required to complete Windows updates installation' 'WARN'
+                    Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -AllowClobber -ErrorAction Stop
+                    Import-Module PSWindowsUpdate -Force -ErrorAction Stop
+                    $moduleInstalled = $true
+                    Write-Host '✓ PSWindowsUpdate module installed and imported' -ForegroundColor Green
+                    Write-Log 'PSWindowsUpdate module successfully installed and imported' 'INFO'
+                } catch {
+                    Write-Log "Failed to install PSWindowsUpdate module: $_" 'WARN'
+                    $moduleInstalled = $false
+                }
+            }
+        } catch {
+            Write-Log "Error with PSWindowsUpdate module: $_" 'WARN'
+            $moduleInstalled = $false
+        }
+
+        if ($moduleInstalled) {
+            try {
+                # Get available updates using PSWindowsUpdate
+                Write-Log 'Checking for available Windows updates...' 'INFO'
+                $availableUpdates = Get-WUList -ErrorAction SilentlyContinue
+
+                if ($availableUpdates -and $availableUpdates.Count -gt 0) {
+                    Write-Log "Found $($availableUpdates.Count) available updates" 'INFO'
+                    Write-Host "Installing $($availableUpdates.Count) Windows updates..." -ForegroundColor Cyan
+
+                    # Set environment variables for suppression before installation
+                    $env:PSWINDOWSUPDATE_REBOOT = 'Never'
+                    $env:SUPPRESSPROMPTS = 'True'
+                    $env:SUPPRESS_REBOOT_PROMPT = 'True'
+                    $env:ACCEPT_EULA = 'True'
+                    $env:NONINTERACTIVE = 'True'
+
+                    # Install updates with comprehensive suppression
+                    $installResult = Install-WindowsUpdate -AcceptAll -AutoReboot:$false -Confirm:$false -IgnoreReboot -Silent -ForceInstall -ErrorAction SilentlyContinue
+
+                    # Clean up environment variables immediately after
+                    Remove-Item -Path 'env:PSWINDOWSUPDATE_REBOOT' -ErrorAction SilentlyContinue
+                    Remove-Item -Path 'env:SUPPRESSPROMPTS' -ErrorAction SilentlyContinue
+                    Remove-Item -Path 'env:SUPPRESS_REBOOT_PROMPT' -ErrorAction SilentlyContinue
+                    Remove-Item -Path 'env:ACCEPT_EULA' -ErrorAction SilentlyContinue
+                    Remove-Item -Path 'env:NONINTERACTIVE' -ErrorAction SilentlyContinue
+
+                    if ($installResult) {
+                        $successfulUpdates = $installResult | Where-Object { $_.Result -eq 'Installed' }
+                        $failedUpdates = $installResult | Where-Object { $_.Result -ne 'Installed' }
+
+                        Write-Host "✓ Successfully installed $($successfulUpdates.Count) updates" -ForegroundColor Green
+                        Write-Log "Windows updates installed: $($successfulUpdates.Count) successful, $($failedUpdates.Count) failed" 'INFO'
+
+                        if ($failedUpdates.Count -gt 0) {
+                            Write-Log 'Some updates failed to install. Check Windows Update logs for details.' 'WARN'
+                        }
+
+                        # Check if reboot is required
+                        $rebootRequired = Get-WURebootStatus -ErrorAction SilentlyContinue
+                        if ($rebootRequired) {
+                            Write-Host '⚠ System reboot required to complete updates' -ForegroundColor Yellow
+                            Write-Log 'System reboot required to complete Windows updates installation' 'WARN'
+                        }
+                    } else {
+                        Write-Log 'No updates were installed (may indicate no updates available or installation issues)' 'INFO'
                     }
                 } else {
-                    Write-Log 'No updates were installed (may indicate no updates available or installation issues)' 'INFO'
+                    Write-Host '✓ No Windows updates available' -ForegroundColor Green
+                    Write-Log 'No Windows updates available for installation' 'INFO'
                 }
-            } else {
-                Write-Host '✓ No Windows updates available' -ForegroundColor Green
-                Write-Log 'No Windows updates available for installation' 'INFO'
+            } catch {
+                Write-Log "Error during Windows updates installation: $_" 'ERROR'
+                Write-Host "✗ Error installing Windows updates: $_" -ForegroundColor Red
             }
-        } catch {
-            Write-Log "Error during Windows updates installation: $_" 'ERROR'
-            Write-Host "✗ Error installing Windows updates: $_" -ForegroundColor Red
-        }
-    } else {
-        # Fallback: Use Windows Update API or manual check
-        Write-Log 'Using fallback method for Windows updates check...' 'INFO'
-        try {
-            # Try using Windows Update COM object as fallback
-            $updateSession = New-Object -ComObject Microsoft.Update.Session
-            $updateSearcher = $updateSession.CreateUpdateSearcher()
-            $searchResult = $updateSearcher.Search('IsInstalled=0')
+        } else {
+            # Fallback: Use Windows Update API or manual check
+            Write-Log 'Using fallback method for Windows updates check...' 'INFO'
+            try {
+                # Try using Windows Update COM object as fallback
+                $updateSession = New-Object -ComObject Microsoft.Update.Session
+                $updateSearcher = $updateSession.CreateUpdateSearcher()
+                $searchResult = $updateSearcher.Search('IsInstalled=0')
 
-            if ($searchResult.Updates.Count -gt 0) {
-                Write-Host "Found $($searchResult.Updates.Count) updates via Windows Update API" -ForegroundColor Cyan
-                Write-Log "Found $($searchResult.Updates.Count) updates using Windows Update API fallback" 'INFO'
-                Write-Log 'Manual Windows Update installation recommended via Settings > Update & Security' 'INFO'
-            } else {
-                Write-Host '✓ No updates found via Windows Update API' -ForegroundColor Green
-                Write-Log 'No updates found using Windows Update API fallback' 'INFO'
+                if ($searchResult.Updates.Count -gt 0) {
+                    Write-Host "Found $($searchResult.Updates.Count) updates via Windows Update API" -ForegroundColor Cyan
+                    Write-Log "Found $($searchResult.Updates.Count) updates using Windows Update API fallback" 'INFO'
+                    Write-Log 'Manual Windows Update installation recommended via Settings > Update & Security' 'INFO'
+                } else {
+                    Write-Host '✓ No updates found via Windows Update API' -ForegroundColor Green
+                    Write-Log 'No updates found using Windows Update API fallback' 'INFO'
+                }
+            } catch {
+                Write-Log "Windows Update API fallback also failed: $_" 'WARN'
+                Write-Host '⚠ Unable to check for updates. Please check manually via Settings' -ForegroundColor Yellow
             }
-        } catch {
-            Write-Log "Windows Update API fallback also failed: $_" 'WARN'
-            Write-Host '⚠ Unable to check for updates. Please check manually via Settings' -ForegroundColor Yellow
+        }
+
+        Write-Log '[END] Windows Updates Installation' 'INFO'
+    } finally {
+        if ($readHostOverrideAdded) {
+            try {
+                if ($originalReadHostFunction) {
+                    Set-Item -Path 'Function:\Read-Host' -Value $originalReadHostFunction
+                } else {
+                    Remove-Item -Path 'Function:\Read-Host' -ErrorAction SilentlyContinue
+                }
+                Write-Log 'Restored original Read-Host behavior after Windows Update auto-decline override' 'DEBUG'
+            } catch {
+                Write-Log "Failed to restore original Read-Host behavior: $_" 'WARN'
+            }
         }
     }
-
-    Write-Log '[END] Windows Updates Installation' 'INFO'
 }
 
 # ================================================================
