@@ -179,16 +179,31 @@ $global:Config = @{
 $global:TaskResults = @{}
 $global:SystemInventory = $null
 $global:AppInventoryCache = $null
+# ================================================================
+# Path Resolution Diagnostics (Debug Information)
+# ================================================================
+Write-Log "=== PATH RESOLUTION DIAGNOSTICS ===" 'DEBUG'
+Write-Log "Script Full Path: $ScriptFullPath" 'DEBUG'
+Write-Log "Script Directory: $ScriptDir" 'DEBUG'
+Write-Log "Environment WORKING_DIRECTORY: $env:WORKING_DIRECTORY" 'DEBUG'
+Write-Log "PowerShell Working Directory: $WorkingDirectory" 'DEBUG'
+Write-Log "Drive Type: $DriveType" 'DEBUG'
+Write-Log "Is Network Path: $IsNetworkPath" 'DEBUG'
+Write-Log "UNC Path: $IsUNCPath" 'DEBUG'
+
 # Determine repository-based temp folder. Prefer $ScriptDir (script location) when available,
 # otherwise use the configured $WorkingDirectory. If creation fails, fallback to the system temp path.
 $repoTempBase = if ($ScriptDir) { $ScriptDir } else { $WorkingDirectory }
 $global:TempFolder = Join-Path $repoTempBase 'temp_files'
+Write-Log "Temp Folder Base Resolution: $repoTempBase" 'DEBUG'
+Write-Log "Temp Folder Path: $global:TempFolder" 'DEBUG'
 $global:BloatwareList = @()
 $global:EssentialApps = @()
 
 # Create temp directory if it doesn't exist (early initialization)
 if (-not (Test-Path $global:TempFolder)) {
     try {
+        Write-Log "Attempting to create temp folder: $global:TempFolder" 'DEBUG'
         New-Item -Path $global:TempFolder -ItemType Directory -Force | Out-Null
         Write-Log "Created temp folder: $global:TempFolder" 'INFO'
     } catch {
@@ -197,6 +212,21 @@ if (-not (Test-Path $global:TempFolder)) {
         Write-Log "Using system temp path: $global:TempFolder" 'INFO'
     }
 }
+
+# Validate write access to temp folder
+try {
+    Write-Log "Validating write access to temp folder: $global:TempFolder" 'DEBUG'
+    $testFile = Join-Path $global:TempFolder "test_$(Get-Random).tmp"
+    "test_write_validation" | Out-File $testFile -Force -ErrorAction Stop
+    Remove-Item $testFile -Force -ErrorAction SilentlyContinue | Out-Null
+    Write-Log "Write access verified for temp folder" 'DEBUG'
+} catch {
+    Write-Log "No write access to temp folder - $_" 'WARN'
+    Write-Log "Attempting fallback to system temp path" 'WARN'
+    $global:TempFolder = [System.IO.Path]::GetTempPath()
+    Write-Log "Using system temp path (fallback): $global:TempFolder" 'INFO'
+}
+Write-Log "=== END PATH DIAGNOSTICS ===" 'DEBUG'
 
 # ================================================================
 # Global Task Array - Centralized Task Definitions
