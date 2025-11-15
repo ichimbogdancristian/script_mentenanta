@@ -2427,14 +2427,30 @@ function Get-StandardizedAppInventory {
                 Write-Log 'Collecting Winget packages...' 'INFO'
                 $wingetResult = & winget list --accept-source-agreements 2>$null
                 if ($wingetResult) {
-                    $wingetApps = $wingetResult | Where-Object { $_ -match '^\S+\s+\S+' } | ForEach-Object {
-                        $parts = $_ -split '\s{2,}'
+                    $wingetApps = @()
+                    $wingetResult | Where-Object { $_ -and $_ -match '^\S+\s+.*\s+\d' } | ForEach-Object {
+                        # Robust parsing: split from right to get Version, then by first tab/spaces to get ID and Name
+                        $trimmed = $_.Trim()
+                        $parts = $trimmed -split '\s+'
+                        
                         if ($parts.Count -ge 2) {
-                            @{
-                                Name        = $parts[0].Trim()
-                                DisplayName = $parts[1].Trim()
-                                Version     = if ($parts.Count -ge 3) { $parts[2].Trim() } else { 'Unknown' }
+                            # Last part is typically version, second-to-last often has version info
+                            # First part is ID, rest is display name
+                            $id = $parts[0]
+                            $version = if ($parts.Count -ge 3) { $parts[-1] } else { 'Unknown' }
+                            # Everything between ID and version is the display name
+                            $displayName = if ($parts.Count -ge 3) {
+                                ($parts[1..($parts.Count - 2)] -join ' ').Trim()
+                            } else {
+                                $parts[1].Trim()
+                            }
+                            
+                            $wingetApps += @{
+                                Name        = $id.Trim()
+                                DisplayName = $displayName
+                                Version     = $version.Trim()
                                 Source      = 'Winget'
+                                Id          = $id.Trim()
                             }
                         }
                     }
@@ -2452,14 +2468,21 @@ function Get-StandardizedAppInventory {
                 Write-Log 'Collecting Chocolatey packages...' 'INFO'
                 $chocoResult = & choco list --local-only --limit-output 2>$null
                 if ($chocoResult) {
-                    $chocoApps = $chocoResult | ForEach-Object {
+                    $chocoApps = @()
+                    $chocoResult | Where-Object { $_ -and $_ -match '\|' } | ForEach-Object {
                         $parts = $_ -split '\|'
                         if ($parts.Count -ge 2) {
-                            @{
-                                Name        = $parts[0].Trim()
-                                DisplayName = $parts[0].Trim()
-                                Version     = $parts[1].Trim()
+                            $packageId = $parts[0].Trim()
+                            $version = $parts[1].Trim()
+                            # Try to get a readable display name from the package ID
+                            $displayName = ($packageId -replace '[\-_]', ' ') -replace '\.', ' '
+                            
+                            $chocoApps += @{
+                                Name        = $packageId
+                                DisplayName = $displayName
+                                Version     = $version
                                 Source      = 'Chocolatey'
+                                Id          = $packageId
                             }
                         }
                     }
@@ -6507,27 +6530,62 @@ function Install-EssentialApps {
 
     # Optimization: Build comprehensive hashtable of all installed app identifiers for O(1) lookup performance
     $installedLookup = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $installedRegistry = @{} # Parallel registry for detailed lookups
 
     # Data sources: Add AppX package names and IDs to lookup table
     $inventory.appx | ForEach-Object {
-        if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
-        if ($_.PackageFullName) { [void]$installedLookup.Add($_.PackageFullName.Trim()) }
+        if ($_.Name) { 
+            $name = $_.Name.Trim()
+            [void]$installedLookup.Add($name)
+            $installedRegistry[$name] = @{ Source = 'AppX'; Original = $_ }
+        }
+        if ($_.PackageFullName) { 
+            $fullName = $_.PackageFullName.Trim()
+            [void]$installedLookup.Add($fullName)
+            $installedRegistry[$fullName] = @{ Source = 'AppX'; Original = $_ }
+        }
     }
 
     # Data sources: Add Winget app names and IDs to lookup table
     $inventory.winget | ForEach-Object {
-        if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
-        if ($_.Id) { [void]$installedLookup.Add($_.Id.Trim()) }
+        if ($_.Name) { 
+            $name = $_.Name.Trim()
+            [void]$installedLookup.Add($name)
+            $installedRegistry[$name] = @{ Source = 'Winget'; Original = $_ }
+        }
+        if ($_.Id) { 
+            $id = $_.Id.Trim()
+            [void]$installedLookup.Add($id)
+            $installedRegistry[$id] = @{ Source = 'Winget'; Original = $_ }
+        }
     }
 
     # Data sources: Add Chocolatey app names to lookup table
     $inventory.choco | ForEach-Object {
-        if ($_.Name) { [void]$installedLookup.Add($_.Name.Trim()) }
+        if ($_.Name) { 
+            $name = $_.Name.Trim()
+            [void]$installedLookup.Add($name)
+            $installedRegistry[$name] = @{ Source = 'Chocolatey'; Original = $_ }
+        }
+        if ($_.Id) { 
+            $id = $_.Id.Trim()
+            [void]$installedLookup.Add($id)
+            $installedRegistry[$id] = @{ Source = 'Chocolatey'; Original = $_ }
+        }
     }
 
-    # Data sources: Add registry app display names to lookup table
+    # Data sources: Add registry app display names to lookup table with ALL variations
     $inventory.registry_uninstall | ForEach-Object {
-        if ($_.DisplayName) { [void]$installedLookup.Add($_.DisplayName.Trim()) }
+        if ($_.DisplayName) { 
+            $displayName = $_.DisplayName.Trim()
+            [void]$installedLookup.Add($displayName)
+            $installedRegistry[$displayName] = @{ Source = 'Registry'; Original = $_ }
+        }
+        if ($_.Name) { 
+            $name = $_.Name.Trim()
+            [void]$installedLookup.Add($name)
+            $installedRegistry[$name] = @{ Source = 'Registry'; Original = $_ }
+        }
     }
 
     Write-Log "DETECTION DATABASE: Built lookup table with $($installedLookup.Count) installed app identifiers" 'INFO'
@@ -6536,9 +6594,10 @@ function Install-EssentialApps {
     Write-Log "  - Chocolatey apps: $($inventory.choco.Count)" 'VERBOSE'
     Write-Log "  - Registry apps: $($inventory.registry_uninstall.Count)" 'VERBOSE'
 
-    # Log sample of installed apps for debugging (first 10)
-    $sampleApps = @($installedLookup) | Select-Object -First 10
+    # Log sample of installed apps for debugging (first 15 to catch more patterns)
+    $sampleApps = @($installedLookup) | Select-Object -First 15
     Write-Log "Sample installed apps: $($sampleApps -join ', ')" 'VERBOSE'
+    Write-Log "[DEBUG] Full installed lookup has $($installedLookup.Count) entries" 'DEBUG'
 
     # Clear any previous normalized lookup cache since we have new inventory
     $script:normalizedLookupCache = $null
@@ -6607,9 +6666,14 @@ function Install-EssentialApps {
         }
 
         if ($found) {
-            Write-Log "✅ DETECTED: $($essentialApp.Name) ($matchDetails)" 'INFO'
+            Write-Log "✅ DETECTED: $($essentialApp.Name) ($matchDetails)" 'DEBUG'
         } else {
-            Write-Log "⚪ NOT DETECTED: $($essentialApp.Name) - will install ($matchDetails, checked: $($identifiersToCheck -join ', '))" 'INFO'
+            Write-Log "⚪ NOT DETECTED: $($essentialApp.Name) - will install ($matchDetails, checked: $($identifiersToCheck -join ', '))" 'DEBUG'
+            # Log which identifiers were checked but NOT found in installed list
+            $missingIds = $identifiersToCheck | Where-Object { $_ -and -not $installedLookup.Contains($_) }
+            if ($missingIds) {
+                Write-Log "  → Missing identifiers: $($missingIds -join ', ')" 'VERBOSE'
+            }
             $appsToInstall += $essentialApp
         }
     }
