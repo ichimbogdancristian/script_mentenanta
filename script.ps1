@@ -3396,12 +3396,6 @@ function Get-AppXBloatware {
 # ================================================================
 # Function: Get-WingetBloatware
 # ================================================================
-# Purpose: Query winget/installed seeds to find apps matching bloatware patterns
-# Environment: Requires winget; degrades gracefully if absent
-# Returns: Array of candidate objects
-# Side-effects: None
-# ================================================================
-# ================================================================
 # Function: Get-WingetBloatware
 # ================================================================
 # Purpose: Discover bloatware in Winget packages
@@ -3502,14 +3496,6 @@ function Get-ChocolateyBloatware {
 # ================================================================
 # Function: Get-RegistryBloatware
 # ================================================================
-# Purpose: Cross-check registry-based installed apps against bloatware patterns
-# Environment: Windows registry access required
-# Returns: Array of candidate uninstall objects
-# Side-effects: None
-# ================================================================
-# ================================================================
-# Function: Get-RegistryBloatware
-# ================================================================
 # Purpose: Discover bloatware in Windows Registry uninstall keys
 # Environment: Windows, requires registry access
 # Performance: Fast, leverages existing registry scan logic
@@ -3594,14 +3580,6 @@ function Get-BrowserExtensionsBloatware {
     }
 }
 
-# ================================================================
-# Function: Get-ContextMenuBloatware
-# ================================================================
-# Purpose: Detect context menu shell extensions that match bloatware patterns
-# Environment: Windows registry and file-system access
-# Returns: Array of extension objects
-# Side-effects: None
-# ================================================================
 # ================================================================
 # Function: Get-ContextMenuBloatware
 # ================================================================
@@ -3693,14 +3671,6 @@ function Get-StartupProgramsBloatware {
     }
 }
 
-# ================================================================
-# Function: Get-ProvisionedAppxBloatware
-# ================================================================
-# Purpose: Identify provisioned Appx packages that are considered bloatware
-# Environment: DISM/Appx provisioning queries supported
-# Returns: Array of provisioned package objects
-# Side-effects: None
-# ================================================================
 # ================================================================
 # Function: Get-ProvisionedAppxBloatware
 # ================================================================
