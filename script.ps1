@@ -340,10 +340,8 @@ Write-Log '=== END PATH DIAGNOSTICS ===' 'DEBUG'
 #
 $global:ScriptTasks = @(
     @{ Name = 'SystemRestoreProtection'; Description = 'Enable System Restore and create pre-maintenance checkpoint'; Importance = 'CRITICAL'; Function = {
-            if ($global:Config.SkipSystemRestore) {
-                Write-Log 'System Restore Protection skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipSystemRestore' -TaskName 'System Restore Protection'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting System Restore Protection task.' 'INFO'
             Protect-SystemRestore
@@ -360,80 +358,64 @@ $global:ScriptTasks = @(
         }
     },
     @{ Name = 'RemoveBloatware'; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities'; Importance = 'HIGH'; Function = {
-            if ($global:Config.SkipBloatwareRemoval) {
-                Write-Log 'Bloatware removal skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipBloatwareRemoval' -TaskName 'Bloatware Removal'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Bloatware Removal task.' 'INFO'
             Remove-Bloatware
         }
     },
     @{ Name = 'InstallEssentialApps'; Description = 'Install curated essential applications via parallel processing'; Importance = 'MEDIUM'; Function = {
-            if ($global:Config.SkipEssentialApps) {
-                Write-Log 'Essential apps installation skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipEssentialApps' -TaskName 'Essential Apps Installation'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Essential Apps Installation task.' 'INFO'
             Install-EssentialApps
         }
     },
     @{ Name = 'UpdateAllPackages'; Description = 'Update all installed packages via Winget, Chocolatey, and other package managers'; Importance = 'MEDIUM'; Function = {
-            if ($global:Config.SkipPackageUpdates) {
-                Write-Log 'Package updates skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipPackageUpdates' -TaskName 'Package Updates'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Package Updates task.' 'INFO'
             Update-AllPackages
         }
     },
     @{ Name = 'WindowsUpdateCheck'; Description = 'Check and install available Windows Updates with compatibility layer'; Importance = 'HIGH'; Function = {
-            if ($global:Config.SkipWindowsUpdates) {
-                Write-Log 'Windows Update check skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipWindowsUpdates' -TaskName 'Windows Update Check'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Windows Update Check task.' 'INFO'
             Install-WindowsUpdatesCompatible
         }
     },
     @{ Name = 'DisableTelemetry'; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking'; Importance = 'MEDIUM'; Function = {
-            if ($global:Config.SkipTelemetryDisable) {
-                Write-Log 'Telemetry disable skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipTelemetryDisable' -TaskName 'Telemetry Disable'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Telemetry Disable task.' 'INFO'
             Disable-Telemetry
         }
     },
     @{ Name = 'SecurityHardening'; Description = 'Apply security hardening configurations and policy improvements'; Importance = 'HIGH'; Function = {
-            if ($global:Config.SkipSecurityHardening) {
-                Write-Log 'Security Hardening skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipSecurityHardening' -TaskName 'Security Hardening'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Security Hardening task.' 'INFO'
             Enable-SecurityHardening
         }
     },
     @{ Name = 'AppBrowserControl'; Description = 'Enable Defender SmartScreen, Network Protection, and controlled folder access safeguards'; Importance = 'HIGH'; Function = {
-            if ($global:Config.SkipSecurityHardening) {
-                Write-Log 'App & Browser Control skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipSecurityHardening' -TaskName 'App & Browser Control'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting App & Browser Control task.' 'INFO'
             Enable-AppBrowserControl
         }
     },
     @{ Name = 'TaskbarOptimization'; Description = 'Hide search box, disable Task View/Chat, remove Spotlight icons, optimize taskbar and desktop UI for Windows 10/11'; Importance = 'LOW'; Function = {
-            if ($global:Config.SkipTaskbarOptimization) {
-                Write-Log 'Taskbar optimization skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipTaskbarOptimization' -TaskName 'Taskbar Optimization'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Taskbar and Desktop UI Optimization task.' 'INFO'
             Optimize-TaskbarAndDesktopUI
@@ -450,10 +432,8 @@ $global:ScriptTasks = @(
         }
     },
     @{ Name = 'DesktopBackground'; Description = 'Change desktop background from Windows Spotlight to personalized slideshow'; Importance = 'LOW'; Function = {
-            if ($global:Config.SkipDesktopBackground) {
-                Write-Log 'Desktop background configuration skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipDesktopBackground' -TaskName 'Desktop Background'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Desktop Background Configuration task.' 'INFO'
             Set-DesktopBackground
@@ -511,40 +491,32 @@ $global:ScriptTasks = @(
         }
     },
     @{ Name = 'SystemHealthRepair'; Description = 'Automated DISM and SFC system file integrity check and repair'; Importance = 'HIGH'; Function = {
-            if ($global:Config.SkipSystemHealthRepair) {
-                Write-Log 'System Health Check and Repair skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipSystemHealthRepair' -TaskName 'System Health Check and Repair'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting System Health Check and Repair task.' 'INFO'
             Start-SystemHealthRepair
         }
     },
     @{ Name = 'RestorePointCleanup'; Description = 'Clean old system restore points while keeping configured minimum recent points'; Importance = 'MEDIUM'; Function = {
-            if ($global:Config.SkipRestorePointCleanup -or $global:Config.SkipSystemRestore) {
-                Write-Log 'Restore point cleanup skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName @('SkipRestorePointCleanup', 'SkipSystemRestore') -TaskName 'Restore point cleanup'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Restore Point Cleanup task.' 'INFO'
             Clear-OldRestorePoints
         }
     },
     @{ Name = 'EventLogAnalysis'; Description = 'Analyze Event Viewer and CBS logs for recent system errors'; Importance = 'MEDIUM'; Function = {
-            if ($global:Config.SkipEventLogAnalysis) {
-                Write-Log 'Event log analysis skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipEventLogAnalysis' -TaskName 'Event log analysis'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Event Log Analysis task.' 'INFO'
             Get-EventLogAnalysis
         }
     },
     @{ Name = 'PendingRestartCheck'; Description = 'Check for pending restart requirements without initiating restart (restart handled at script end)'; Importance = 'MEDIUM'; Function = {
-            if ($global:Config.SkipPendingRestartCheck) {
-                Write-Log 'Pending restart check skipped by configuration.' 'INFO'
-                return New-TaskSkipResult 'Skipped (config)'
-            }
+            $skipResult = Test-TaskShouldSkip -SkipFlagName 'SkipPendingRestartCheck' -TaskName 'Pending restart check'
+            if ($skipResult) { return $skipResult }
 
             Write-Log 'Starting Pending Restart Check task.' 'INFO'
             try {
@@ -1058,6 +1030,31 @@ function Write-Log {
 # Outputs: Console-friendly action messages and log file entries
 # Returns: None
 # Side-effects: None beyond logging
+# ================================================================
+
+# ================================================================
+# Function: Test-TaskShouldSkip
+# ================================================================
+# Purpose: Helper to consolidate skip flag checks for maintainability
+# Environment: Task context with $global:Config available
+# Inputs: $SkipFlagName (string or array for multi-flag checks)
+# Returns: Skip result object or $null (proceed normally)
+# ================================================================
+function Test-TaskShouldSkip {
+    param(
+        [Parameter(Mandatory=$true)][string[]]$SkipFlagName,
+        [Parameter(Mandatory=$true)][string]$TaskName
+    )
+    
+    foreach ($flag in $SkipFlagName) {
+        if ($global:Config.ContainsKey($flag) -and $global:Config[$flag]) {
+            Write-Log "$TaskName skipped by configuration ($flag)." 'INFO'
+            return (New-TaskSkipResult "Skipped (config: $flag)")
+        }
+    }
+    return $null
+}
+
 # ================================================================
 function Write-ActionLog {
     param(
