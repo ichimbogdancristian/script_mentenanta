@@ -111,78 +111,175 @@ if (-not (Test-Path $logDir)) {
 # before the advanced logging functions are declared. This lightweight
 # shim ensures those early calls succeed in both interactive and
 # batch-launched environments.
+# ================================================================
+# LOGGING SYSTEM: Three-Tier Structured Logging
+# ================================================================
+# Purpose: Provide unified logging across console and file output
+#          with support for multiple severity levels and filtering
+# 
+# Architecture:
+#   Tier 1: Write-Log (Basic logging - all messages)
+#   Tier 2: Write-ActionLog (Structured action tracking)
+#   Tier 3: Write-CommandLog (External process logging)
+#
+# Features:
+#   - Timestamp on every entry (YYYY-MM-DD HH:mm:ss format)
+#   - Configurable severity levels (DEBUG, INFO, WARN, ERROR, etc.)
+#   - Dual output: Console + File (inheritance from batch launcher)
+#   - Color-coded console output based on level
+#   - Error resilience (continues if logging fails)
+#
+# Log Levels:
+#   DEBUG   - Diagnostic information
+#   INFO    - Normal operational messages
+#   WARN    - Warning conditions
+#   ERROR   - Error conditions requiring attention
+#   SUCCESS - Successful completion indicators
+#   ACTION  - High-level action boundaries
+#   COMMAND - External command execution
+#
 function Write-Log {
     param(
         [string]$Message,
         [string]$Level = 'INFO'
     )
 
-    # Timestamped one-line entry
+    # Generate timestamp for log entry (24-hour, ISO 8601 format)
     $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    
+    # Format log line with timestamp, level, and message content
+    # Pattern: [TIMESTAMP] [LEVEL] MESSAGE
     $line = "[$ts] [$Level] $Message"
 
-    # Try to append to the configured log file when available
+    # Attempt to write to log file (inherited from batch launcher via $LogFile variable)
+    # Error action: SilentlyContinue to prevent script failure if logging unavailable
     try {
         if ($null -ne $LogFile -and $LogFile -ne '') {
             Add-Content -Path $LogFile -Value $line -ErrorAction SilentlyContinue
         }
     } catch {
-        # Ignore logging failures during early init
+        # Silently ignore logging failures during early initialization
+        # to prevent chicken-and-egg problems with logging not yet ready
     }
 
-    # Also print to host to aid interactive debugging
-    try { Write-Host $line } catch { }
+    # Print to console for interactive visibility and real-time feedback
+    # Color-coded based on severity level for visual distinction
+    try {
+        # Console colors mapped to severity:
+        $hostColor = switch ($Level) {
+            'ERROR' { 'Red' }
+            'WARN' { 'Yellow' }
+            'SUCCESS' { 'Green' }
+            'DEBUG' { 'Gray' }
+            'ACTION' { 'Cyan' }
+            'COMMAND' { 'Magenta' }
+            default { 'White' }
+        }
+        Write-Host $line -ForegroundColor $hostColor
+    } catch {
+        # Fallback to plain Write-Host if color is unavailable
+        Write-Host $line
+    }
 }
 
-# Global configuration object with defaults
+# ================================================================
+# GLOBAL CONFIGURATION & DEFAULTS
 # ================================================================
 # Purpose: Centralized, user-customizable configuration for the maintenance
-# script. These flags drive conditional execution of large features so the
-# operator can enable or disable behavior without editing other parts of
-# the script.
+#          script. These settings drive conditional execution of features,
+#          allowing users to enable/disable behavior without code editing.
+#
+# Architecture:
+#   - Boolean Skip* flags: Enable/disable major feature categories
+#   - Collection fields: Add custom apps, bloatware patterns, task exclusions
+#   - Service lists: Configure services to disable during maintenance
 #
 # Conventions:
-# - Boolean switches (Skip*) default to $false to run features unless
-#   explicitly skipped. Use explicit boolean values in configuration files
-#   or environment variables when invoking the script.
-# - Collections like CustomEssentialApps and CustomBloatwareList accept an
-#   array of strings (package IDs, application names or patterns) and are
-#   merged with the built-in lists during runtime.
-# - ExcludeTasks accepts an array of task names (matching entries in
-#   $global:ScriptTasks) to selectively skip by name.
+#   - Skip* booleans default to $false (features enabled by default)
+#     Set to $true to disable that feature
+#   - Collection fields accept arrays of strings (IDs, names, patterns)
+#     and are merged with built-in lists at runtime
+#   - ExcludeTasks accepts task names matching $global:ScriptTasks entries
 #
-# Usage examples:
-# - To skip bloatware removal: $global:Config.SkipBloatwareRemoval = $true
-# - To add an app to install: $global:Config.CustomEssentialApps += '7zip'
+# Usage Examples:
+#   # Disable bloatware removal:
+#   $global:Config.SkipBloatwareRemoval = $true
+#
+#   # Add custom applications to install:
+#   $global:Config.CustomEssentialApps += @('7zip.7zip', 'Notepad++.Notepad++')
+#
+#   # Add custom bloatware patterns to remove:
+#   $global:Config.CustomBloatwareList += @('MyBloatApp.*', 'OEMTool.*')
+#
+#   # Exclude specific tasks from execution:
+#   $global:Config.ExcludeTasks += @('DesktopBackground', 'TaskbarOptimization')
 #
 $global:Config = @{
-    # Skip* flags: set to $true to disable the corresponding feature.
-    SkipBloatwareRemoval    = $false   # When $true, Remove-Bloatware is not executed
-    SkipEssentialApps       = $false   # When $true, Install-EssentialApps is not executed
-    SkipWindowsUpdates      = $false   # When $true, Windows update tasks are skipped
-    SkipTelemetryDisable    = $false   # When $true, telemetry/diagnostics disabling is skipped
-    SkipSystemRestore       = $false   # When $true, System Restore protection tasks are skipped
-    SkipEventLogAnalysis    = $false   # When $true, event log analysis is skipped
-    SkipPendingRestartCheck = $false   # When $true, pending restart detection is skipped
-    SkipSystemHealthRepair  = $false   # When $true, health repair tasks are skipped
+    # Feature Control Flags (set to $true to disable each feature)
+    SkipBloatwareRemoval       = $false   # When $true, bloatware removal is skipped
+    SkipEssentialApps          = $false   # When $true, essential app installation skipped
+    SkipWindowsUpdates         = $false   # When $true, Windows Update tasks skipped
+    SkipPackageUpdates         = $false   # When $true, package manager updates skipped
+    SkipTelemetryDisable       = $false   # When $true, telemetry disabling skipped
+    SkipSystemRestore          = $false   # When $true, System Restore tasks skipped
+    SkipRestorePointCleanup    = $false   # When $true, old restore points not cleaned
+    SkipEventLogAnalysis       = $false   # When $true, event log analysis skipped
+    SkipSecurityHardening      = $false   # When $true, security hardening skipped
+    SkipTaskbarOptimization    = $false   # When $true, taskbar customization skipped
+    SkipDesktopBackground      = $false   # When $true, wallpaper changes skipped
+    SkipPendingRestartCheck    = $false   # When $true, restart detection skipped
+    SkipSystemHealthRepair     = $false   # When $true, DISM/SFC repair skipped
 
-    # Logging and customization
-    EnableVerboseLogging    = $false   # Enable more verbose logging output for troubleshooting
+    # Logging and Troubleshooting
+    EnableVerboseLogging       = $false   # When $true, enables detailed debug output
 
-    # Collections: arrays of strings; used for augmenting built-in lists
-    CustomEssentialApps     = @()      # Add package IDs or names to install
-    CustomBloatwareList     = @()      # Add patterns/names of apps to treat as bloatware
-    ExcludeTasks            = @()      # List of task names from $global:ScriptTasks to exclude
+    # Collections: Arrays for augmenting built-in lists
+    CustomEssentialApps        = @()      # Package IDs to install beyond defaults
+    CustomBloatwareList        = @()      # App patterns/names to treat as bloatware
+    ExcludeTasks               = @()      # Task names to exclude from execution
+
+    # Telemetry Services: Services to disable during privacy hardening
+    TelemetryServicesToDisable = @(
+        'DiagTrack',                   # Diagnostic Tracking Service
+        'dmwappushservice',            # Microsoft Account Sign-in Assistant
+        'UnistoreSvc',                 # User Data Storage Service
+        'UserDataSvc',                 # User Data Service
+        'BrokerInfrastructure',        # Background Tasks Infrastructure Service
+        'PimIndexMaintenanceSvc',      # Personal Information Management
+        'MessagingService'             # Messaging Service
+    )
 }
 
-# Global variables for task execution and results tracking
-$global:TaskResults = @{}
-$global:SystemInventory = $null
-$global:AppInventoryCache = $null
+# ================================================================
+# GLOBAL VARIABLES & STATE MANAGEMENT
+# ================================================================
+# Purpose: Track script execution state and maintain shared context
+#          across functions, tasks, and logging operations
+#
+# Variables:
+#   $global:TaskResults      - Execution results for all completed tasks
+#   $global:SystemInventory  - Cached system information (CPU, memory, OS)
+#   $global:AppInventoryCache - Cached application detection results
+#   $global:BloatwareList    - Merged bloatware patterns (built-in + custom)
+#   $global:EssentialApps    - Merged essential apps (built-in + custom)
+#   $global:TempFolder       - Temporary file directory for downloads/snapshots
+#   $global:AppCategories    - Built-in bloatware app categories
+#   $global:EssentialCategories - Built-in essential app categories
+#   $global:PackageManagers  - Package manager configurations (Winget, Choco)
+#   $global:SystemSettings   - System timeouts, paths, restart tracking
+#   $global:ScriptTasks      - Array of task definitions for orchestration
+#
+# Usage:
+#   All functions read/write to these globals to maintain state
+#   Results are aggregated for final reporting and HTML report generation
+#
+$global:TaskResults = @{}              # Dictionary of task execution results
+$global:SystemInventory = $null        # OS and hardware information (lazy-loaded)
+$global:AppInventoryCache = $null      # Detected applications (cached to avoid rescans)
 # ================================================================
 # Path Resolution Diagnostics (Debug Information)
 # ================================================================
-Write-Log "=== PATH RESOLUTION DIAGNOSTICS ===" 'DEBUG'
+Write-Log '=== PATH RESOLUTION DIAGNOSTICS ===' 'DEBUG'
 Write-Log "Script Full Path: $ScriptFullPath" 'DEBUG'
 Write-Log "Script Directory: $ScriptDir" 'DEBUG'
 Write-Log "Environment WORKING_DIRECTORY: $env:WORKING_DIRECTORY" 'DEBUG'
@@ -217,27 +314,72 @@ if (-not (Test-Path $global:TempFolder)) {
 try {
     Write-Log "Validating write access to temp folder: $global:TempFolder" 'DEBUG'
     $testFile = Join-Path $global:TempFolder "test_$(Get-Random).tmp"
-    "test_write_validation" | Out-File $testFile -Force -ErrorAction Stop
+    'test_write_validation' | Out-File $testFile -Force -ErrorAction Stop
     Remove-Item $testFile -Force -ErrorAction SilentlyContinue | Out-Null
-    Write-Log "Write access verified for temp folder" 'DEBUG'
+    Write-Log 'Write access verified for temp folder' 'DEBUG'
 } catch {
     Write-Log "No write access to temp folder - $_" 'WARN'
-    Write-Log "Attempting fallback to system temp path" 'WARN'
+    Write-Log 'Attempting fallback to system temp path' 'WARN'
     $global:TempFolder = [System.IO.Path]::GetTempPath()
     Write-Log "Using system temp path (fallback): $global:TempFolder" 'INFO'
 }
-Write-Log "=== END PATH DIAGNOSTICS ===" 'DEBUG'
+Write-Log '=== END PATH DIAGNOSTICS ===' 'DEBUG'
 
 # ================================================================
-# Global Task Array - Centralized Task Definitions
+# TASK ORCHESTRATION SYSTEM - Global Task Array
 # ================================================================
 # Purpose: Centralized maintenance task coordination with standardized metadata
-# Structure: Hash table array with Name, Function, Description for each maintenance task
-# Execution: Sequential processing via Use-AllScriptTasks(), config-driven skip logic
-# Dependencies: Global config system, Write-Log function, individual task functions
-# ================================================================
-
+#          for configuration-driven execution and comprehensive result tracking
+#
+# Architecture:
+#   Each task is a hashtable with three properties:
+#     - Name: Unique identifier (used for skip flags in $global:Config)
+#     - Function: ScriptBlock containing task logic and error handling
+#     - Description: Human-readable purpose statement for reporting
+#
+# Execution Model:
+#   Sequential execution via Use-AllScriptTasks() main orchestrator
+#   Config-driven skip logic: Check $global:Config.Skip{TaskName}
+#   Result tracking: Store results in $global:TaskResults[{TaskName}]
+#   Logging: All tasks follow standardized error handling patterns
+#
+# Adding New Tasks:
+#   1. Create task function (or inline scriptblock)
+#   2. Add entry to $global:ScriptTasks array with Name/Function/Description
+#   3. Add optional Skip flag to $global:Config section
+#   4. Task automatically included in orchestration
+#
+# Task Execution Order:
+#   1. SystemRestoreProtection   - Create restore point (critical)
+#   2. SystemInventory           - Collect system info (always run)
+#   3. RemoveBloatware           - Remove unwanted apps
+#   4. InstallEssentialApps      - Install important software
+#   5. UpdateAllPackages         - Update existing packages
+#   6. WindowsUpdateCheck        - Install Windows Updates
+#   7. DisableTelemetry          - Privacy hardening
+#   8. TaskbarOptimization       - UI customization
+#   9. DesktopBackground         - Wallpaper changes
+#  10. SecurityHardening         - Security improvements
+#  11. CleanTempAndDisk          - Temporary file cleanup
+#  12. SystemHealthRepair        - DISM/SFC repairs
+#  13. PendingRestartCheck       - Detect restart needs
+#  14. GenerateReports           - Final reporting
+#
+# Dependencies:
+#   - All tasks use $global:Config for skip flags
+#   - Task results aggregated in $global:TaskResults
+#   - Logging via Write-Log function (timestamped, level-based)
+#   - System info available in $global:SystemInventory (lazy-loaded)
+#
 $global:ScriptTasks = @(
+    # ============================================================
+    # TASK 1: SYSTEM RESTORE PROTECTION
+    # ============================================================
+    # Purpose: Enable System Restore and create pre-maintenance checkpoint
+    # Importance: CRITICAL (allows rollback if needed)
+    # Skip Flag: $global:Config.SkipSystemRestore
+    # Rollback: Use System Restore to previous checkpoint if issues occur
+    # ============================================================
     @{ Name = 'SystemRestoreProtection'; Function = {
             Write-Log 'Starting System Restore Protection task.' 'INFO'
             Write-Host 'Starting System Restore Protection task.' -ForegroundColor Cyan
@@ -254,6 +396,14 @@ $global:ScriptTasks = @(
         }; Description = 'Enable System Restore and create pre-maintenance checkpoint'
     },
 
+    # ============================================================
+    # TASK 2: SYSTEM INVENTORY
+    # ============================================================
+    # Purpose: Collect comprehensive system information for analysis/reporting
+    # Importance: ALWAYS RUN (required for reporting, dependency for other tasks)
+    # Skip Flag: None (always executes)
+    # Caching: Results stored in $global:SystemInventory for later use
+    # ============================================================
     @{ Name = 'SystemInventory'; Function = {
             Write-Log 'Starting System Inventory task.' 'INFO'
             Write-Host 'Starting System Inventory task.' -ForegroundColor Cyan
@@ -264,6 +414,15 @@ $global:ScriptTasks = @(
         }; Description = 'Collect comprehensive system information for analysis and reporting'
     },
 
+    # ============================================================
+    # TASK 3: BLOATWARE REMOVAL
+    # ============================================================
+    # Purpose: Remove unwanted apps via 5 detection methods
+    # Importance: HIGH (reclaims disk space, removes tracking apps)
+    # Skip Flag: $global:Config.SkipBloatwareRemoval
+    # Detection: AppX, DISM Provisioned, Registry, Capabilities, Package Managers
+    # Customization: Add apps via $global:Config.CustomBloatwareList
+    # ============================================================
     @{ Name = 'RemoveBloatware'; Function = {
             Write-Log 'Starting Bloatware Removal task.' 'INFO'
             Write-Host 'Starting Bloatware Removal task.' -ForegroundColor Cyan
@@ -280,6 +439,15 @@ $global:ScriptTasks = @(
         }; Description = 'Remove unwanted apps via AppX, DISM, Registry, and Windows Capabilities'
     },
 
+    # ============================================================
+    # TASK 4: ESSENTIAL APPS INSTALLATION
+    # ============================================================
+    # Purpose: Install curated essential applications
+    # Importance: MEDIUM (improves system usability)
+    # Skip Flag: $global:Config.SkipEssentialApps
+    # Categories: Web Browsers, Document Tools, System Tools, Media, Productivity
+    # Package Managers: Winget (preferred) with Chocolatey fallback
+    # ============================================================
     @{ Name = 'InstallEssentialApps'; Function = {
             Write-Log 'Starting Essential Apps Installation task.' 'INFO'
             Write-Host 'Starting Essential Apps Installation task.' -ForegroundColor Cyan
@@ -296,6 +464,15 @@ $global:ScriptTasks = @(
         }; Description = 'Install curated essential applications via parallel processing'
     },
 
+    # ============================================================
+    # TASK 5: PACKAGE UPDATES
+    # ============================================================
+    # Purpose: Update all installed packages and applications
+    # Importance: MEDIUM (keeps system secure and current)
+    # Skip Flag: $global:Config.SkipPackageUpdates
+    # Managers: Winget, Chocolatey, Windows Store (if available)
+    # Scope: All installed packages across all package managers
+    # ============================================================
     @{ Name = 'UpdateAllPackages'; Function = {
             Write-Log 'Starting Package Updates task.' 'INFO'
             Write-Host 'Starting Package Updates task.' -ForegroundColor Cyan
@@ -312,6 +489,15 @@ $global:ScriptTasks = @(
         }; Description = 'Update all installed packages via Winget, Chocolatey, and package managers'
     },
 
+    # ============================================================
+    # TASK 6: WINDOWS UPDATE CHECK
+    # ============================================================
+    # Purpose: Check and install available Windows Updates
+    # Importance: HIGH (critical security/stability updates)
+    # Skip Flag: $global:Config.SkipWindowsUpdates
+    # Method: PSWindowsUpdate module (if available) or native COM
+    # Restart: Deferred until end of maintenance (if AutoRestart enabled)
+    # ============================================================
     @{ Name = 'WindowsUpdateCheck'; Function = {
             Write-Log 'Starting Windows Update Check task.' 'INFO'
             Write-Host 'Starting Windows Update Check task.' -ForegroundColor Cyan
@@ -328,6 +514,15 @@ $global:ScriptTasks = @(
         }; Description = 'Check and install available Windows Updates with compatibility layer'
     },
 
+    # ============================================================
+    # TASK 7: TELEMETRY DISABLING
+    # ============================================================
+    # Purpose: Disable Windows telemetry, tracking, and privacy-invasive features
+    # Importance: MEDIUM (privacy hardening, reduces background traffic)
+    # Skip Flag: $global:Config.SkipTelemetryDisable
+    # Scope: Services, registry settings, scheduled tasks, Group Policy
+    # Services: DiagTrack, dmwappushservice, UserDataSvc, etc.
+    # ============================================================
     @{ Name = 'DisableTelemetry'; Function = {
             Write-Log 'Starting Telemetry Disable task.' 'INFO'
             Write-Host 'Starting Telemetry Disable task.' -ForegroundColor Cyan
@@ -344,6 +539,15 @@ $global:ScriptTasks = @(
         }; Description = 'Disable Windows telemetry, privacy invasive features, and browser tracking'
     },
 
+    # ============================================================
+    # TASK 8: TASKBAR AND DESKTOP UI OPTIMIZATION
+    # ============================================================
+    # Purpose: Customize taskbar, remove widgets, optimize UI
+    # Importance: LOW (cosmetic improvements, user preference)
+    # Skip Flag: $global:Config.SkipTaskbarOptimization
+    # Customizations: Remove widgets, pin essential apps, hide search
+    # Reversible: All changes are reversible via Settings
+    # ============================================================
     @{ Name = 'TaskbarOptimization'; Function = {
             Write-Log 'Starting Taskbar and Desktop UI Optimization task.' 'INFO'
             Write-Host 'Starting Taskbar and Desktop UI Optimization task.' -ForegroundColor Cyan
@@ -9134,901 +9338,6 @@ function Start-SystemHealthRepair {
     return $results.OverallSuccess
 }
 
-# ================================================================
-# Function: Start-DefenderFullScan
-# ================================================================
-# Purpose: Performs a comprehensive Windows Defender full system scan with automatic threat removal and extensive detailed logging
-# Environment: Windows 10/11, Administrator required, Windows Defender enabled, PowerShell 7+ optimized
-# Performance: Long-running operation (may take hours), progress tracking, comprehensive threat detection and cleanup
-# Dependencies: Windows Defender Antivirus, Get-MpComputerStatus, Start-MpScan, Get-MpThreat, Remove-MpThreat
-# Logic: Defender status verification, signature updates, full system scan, threat detection, automatic cleanup, extensive detailed reporting
-# Features: Real-time status monitoring, automatic threat removal, scan history tracking, comprehensive logging with detailed configuration analysis
-# ================================================================
-function Start-DefenderFullScan {
-    Write-Log '[START] Windows Defender Full System Scan with Automatic Threat Cleanup - Enhanced Logging Mode' 'INFO'
-
-    $scanStartTime = Get-Date
-    $scanSuccess = $false
-    $threatsFound = @()
-    $cleanupSuccess = $true
-    $detailedLogData = @{}
-
-    try {
-        # Progress: 3% - Collecting comprehensive Defender configuration
-        Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Defender Configuration' -PercentComplete 3 -Status 'Collecting comprehensive Defender configuration...'
-        Write-Log '[DefenderConfig] Collecting comprehensive Windows Defender configuration...' 'INFO'
-
-        try {
-            # Progress: 5% - Getting detailed Defender preferences
-            Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Defender Configuration' -PercentComplete 5 -Status 'Getting detailed Defender preferences...'
-            $defenderPrefs = Get-MpPreference
-            Write-Log '[DefenderConfig] Defender preferences collected successfully' 'INFO'
-            Write-Log "[DefenderConfig] Exclusion Paths: $($defenderPrefs.ExclusionPath.Count) paths configured" 'INFO'
-            Write-Log "[DefenderConfig] Exclusion Extensions: $($defenderPrefs.ExclusionExtension.Count) extensions configured" 'INFO'
-            Write-Log "[DefenderConfig] Exclusion Processes: $($defenderPrefs.ExclusionProcess.Count) processes configured" 'INFO'
-            Write-Log "[DefenderConfig] Real-time Scan Direction: $($defenderPrefs.RealTimeScanDirection)" 'INFO'
-            Write-Log "[DefenderConfig] Scan Archive Max Size: $($defenderPrefs.ScanArchiveMaxSize) MB" 'INFO'
-            Write-Log "[DefenderConfig] Scan Archive Max Depth: $($defenderPrefs.ScanArchiveMaxDepth)" 'INFO'
-            Write-Log "[DefenderConfig] Cloud Block Level: $($defenderPrefs.CloudBlockLevel)" 'INFO'
-            Write-Log "[DefenderConfig] Cloud Extended Timeout: $($defenderPrefs.CloudExtendedTimeout) seconds" 'INFO'
-            $detailedLogData.Preferences = $defenderPrefs
-        } catch {
-            Write-Log "[DefenderConfig] Warning: Could not retrieve Defender preferences - $_" 'WARN'
-        }
-
-        # Progress: 7% - Checking Defender status
-        Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Defender Status' -PercentComplete 7 -Status 'Checking comprehensive Defender status...'
-        Write-Log '[DefenderStatus] Performing comprehensive Windows Defender status analysis...' 'INFO'
-        try {
-            # Progress: 8% - Getting computer status
-            Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Defender Status' -PercentComplete 8 -Status 'Getting detailed computer status...'
-            $defenderStatus = Get-MpComputerStatus
-
-            # Enhanced status logging
-            Write-Log '[DefenderStatus] === COMPREHENSIVE DEFENDER STATUS ===' 'INFO'
-            Write-Log "[DefenderStatus] Antivirus Enabled: $($defenderStatus.AntivirusEnabled)" 'INFO'
-            Write-Log "[DefenderStatus] AMService Enabled: $($defenderStatus.AMServiceEnabled)" 'INFO'
-            Write-Log "[DefenderStatus] Antispyware Enabled: $($defenderStatus.AntispywareEnabled)" 'INFO'
-            Write-Log "[DefenderStatus] Real-time Protection Enabled: $($defenderStatus.RealTimeProtectionEnabled)" 'INFO'
-            Write-Log "[DefenderStatus] On Access Protection Enabled: $($defenderStatus.OnAccessProtectionEnabled)" 'INFO'
-            Write-Log "[DefenderStatus] IO AV Protection Enabled: $($defenderStatus.IoavProtectionEnabled)" 'INFO'
-            Write-Log "[DefenderStatus] Network Inspection System Enabled: $($defenderStatus.NISEnabled)" 'INFO'
-            Write-Log "[DefenderStatus] Behavior Monitor Enabled: $($defenderStatus.BehaviorMonitorEnabled)" 'INFO'
-            Write-Log "[DefenderStatus] Antivirus Signature Version: $($defenderStatus.AntivirusSignatureVersion)" 'INFO'
-            Write-Log "[DefenderStatus] Antivirus Signature Last Updated: $($defenderStatus.AntivirusSignatureLastUpdated)" 'INFO'
-            Write-Log "[DefenderStatus] Antispyware Signature Version: $($defenderStatus.AntispywareSignatureVersion)" 'INFO'
-            Write-Log "[DefenderStatus] Antispyware Signature Last Updated: $($defenderStatus.AntispywareSignatureLastUpdated)" 'INFO'
-            Write-Log "[DefenderStatus] NIS Signature Version: $($defenderStatus.NISSignatureVersion)" 'INFO'
-            Write-Log "[DefenderStatus] NIS Signature Last Updated: $($defenderStatus.NISSignatureLastUpdated)" 'INFO'
-            Write-Log "[DefenderStatus] Quick Scan Start Time: $($defenderStatus.QuickScanStartTime)" 'INFO'
-            Write-Log "[DefenderStatus] Quick Scan End Time: $($defenderStatus.QuickScanEndTime)" 'INFO'
-            Write-Log "[DefenderStatus] Full Scan Start Time: $($defenderStatus.FullScanStartTime)" 'INFO'
-            Write-Log "[DefenderStatus] Full Scan End Time: $($defenderStatus.FullScanEndTime)" 'INFO'
-            Write-Log "[DefenderStatus] Quick Scan Age: $($defenderStatus.QuickScanAge) days" 'INFO'
-            Write-Log "[DefenderStatus] Full Scan Age: $($defenderStatus.FullScanAge) days" 'INFO'
-            Write-Log "[DefenderStatus] Antivirus Signature Age: $($defenderStatus.AntivirusSignatureAge) days" 'INFO'
-            $detailedLogData.Status = $defenderStatus
-
-            # Progress: 10% - Validating antivirus status
-            Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Defender Status' -PercentComplete 10 -Status 'Validating comprehensive antivirus status...'
-            if (-not $defenderStatus.AntivirusEnabled) {
-                Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Defender Status' -PercentComplete 100 -Status 'Defender not enabled' -Completed
-                Write-Log '[DefenderStatus] ✗ Windows Defender Antivirus is not enabled. Skipping scan.' 'WARN'
-                return $false
-            }
-            if (-not $defenderStatus.RealTimeProtectionEnabled) {
-                Write-Log '[DefenderStatus] ⚠ Warning: Real-time protection is disabled' 'WARN'
-            }
-            if (-not $defenderStatus.BehaviorMonitorEnabled) {
-                Write-Log '[DefenderStatus] ⚠ Warning: Behavior monitor is disabled' 'WARN'
-            }
-            if ($defenderStatus.AntivirusSignatureAge -gt 7) {
-                Write-Log "[DefenderStatus] ⚠ Warning: Antivirus signatures are $($defenderStatus.AntivirusSignatureAge) days old" 'WARN'
-            }
-            Write-Log '[DefenderStatus] ✓ Windows Defender is enabled and operational' 'INFO'
-        } catch {
-            Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Defender Status' -PercentComplete 100 -Status 'Error checking status' -Completed
-            Write-Log "[DefenderStatus] ✗ Error checking Windows Defender status: $_. Skipping scan." 'WARN'
-            return $false
-        }
-
-        # Progress: 12% - Checking scan history before signature update
-        Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Scan History' -PercentComplete 12 -Status 'Analyzing previous scan history...'
-        Write-Log '[ScanHistory] Analyzing previous scan history for reference...' 'INFO'
-        try {
-            $scanHistory = Get-MpScanHistory -ErrorAction Stop | Select-Object -First 5
-            if ($scanHistory) {
-                Write-Log '[ScanHistory] === RECENT SCAN HISTORY ===' 'INFO'
-                foreach ($scan in $scanHistory) {
-                    # Handle potential "-" values in date fields
-                    $startTime = if ($scan.StartTime -and $scan.StartTime -ne '-') { $scan.StartTime } else { 'Not available' }
-                    $endTime = if ($scan.EndTime -and $scan.EndTime -ne '-') { $scan.EndTime } else { 'Not available' }
-
-                    Write-Log "[ScanHistory] Scan Type: $($scan.ScanType) | Start: $startTime | End: $endTime | Result: $($scan.Result)" 'INFO'
-                    if ($scan.ScanParameters) {
-                        Write-Log "[ScanHistory] Parameters: $($scan.ScanParameters)" 'INFO'
-                    }
-                }
-                $detailedLogData.ScanHistory = $scanHistory
-            } else {
-                Write-Log '[ScanHistory] No previous scan history found.' 'INFO'
-            }
-        } catch [System.Management.Automation.CommandNotFoundException] {
-            Write-Log "[ScanHistory] Warning: 'Get-MpScanHistory' command not available on this system. Skipping history check." 'WARN'
-        } catch {
-            Write-Log "[ScanHistory] Warning: Could not retrieve scan history - $($_.Exception.Message)" 'WARN'
-        }
-
-        # Progress: 14% - Preparing signature update with detailed logging
-        Write-ActionProgress -ActionType 'Updating' -ItemName 'Defender Signatures' -PercentComplete 14 -Status 'Preparing signature update with detailed analysis...'
-        Write-Log '[SignatureUpdate] === SIGNATURE UPDATE PROCESS ===' 'INFO'
-        Write-Log '[SignatureUpdate] Current signature versions before update:' 'INFO'
-        Write-Log "[SignatureUpdate] - Antivirus: $($defenderStatus.AntivirusSignatureVersion) (Age: $($defenderStatus.AntivirusSignatureAge) days)" 'INFO'
-        Write-Log "[SignatureUpdate] - Antispyware: $($defenderStatus.AntispywareSignatureVersion) (Age: $($defenderStatus.AntispywareSignatureAge) days)" 'INFO'
-        Write-Log "[SignatureUpdate] - NIS: $($defenderStatus.NISSignatureVersion) (Age: $($defenderStatus.NISSignatureAge) days)" 'INFO'
-
-        try {
-            # Progress: 15% - Updating signatures
-            Write-ActionProgress -ActionType 'Updating' -ItemName 'Defender Signatures' -PercentComplete 15 -Status 'Downloading and installing latest signatures...'
-            $updateStartTime = Get-Date
-            Update-MpSignature
-            $updateEndTime = Get-Date
-            $updateDuration = $updateEndTime - $updateStartTime
-
-            # Progress: 18% - Verifying signature update
-            Write-ActionProgress -ActionType 'Updating' -ItemName 'Defender Signatures' -PercentComplete 18 -Status 'Verifying signature update...'
-            $updatedStatus = Get-MpComputerStatus
-            Write-Log "[SignatureUpdate] ✓ Signature update completed in $($updateDuration.TotalSeconds) seconds" 'INFO'
-            Write-Log '[SignatureUpdate] Updated signature versions:' 'INFO'
-            Write-Log "[SignatureUpdate] - Antivirus: $($updatedStatus.AntivirusSignatureVersion) (Updated: $($updatedStatus.AntivirusSignatureLastUpdated))" 'INFO'
-            Write-Log "[SignatureUpdate] - Antispyware: $($updatedStatus.AntispywareSignatureVersion) (Updated: $($updatedStatus.AntispywareSignatureLastUpdated))" 'INFO'
-            Write-Log "[SignatureUpdate] - NIS: $($updatedStatus.NISSignatureVersion) (Updated: $($updatedStatus.NISSignatureLastUpdated))" 'INFO'
-            $detailedLogData.SignatureUpdate = @{
-                Duration    = $updateDuration
-                OldVersions = @{
-                    Antivirus   = $defenderStatus.AntivirusSignatureVersion
-                    Antispyware = $defenderStatus.AntispywareSignatureVersion
-                    NIS         = $defenderStatus.NISSignatureVersion
-                }
-                NewVersions = @{
-                    Antivirus   = $updatedStatus.AntivirusSignatureVersion
-                    Antispyware = $updatedStatus.AntispywareSignatureVersion
-                    NIS         = $updatedStatus.NISSignatureVersion
-                }
-            }
-        } catch {
-            Write-Log "[SignatureUpdate] ⚠ Warning: Failed to update signatures - $_" 'WARN'
-        }
-
-        # Preparing full scan with enhanced logging
-        Write-Log '[ScanPreparation] === FULL SYSTEM SCAN PREPARATION ===' 'INFO'
-        Write-Host '⚙️ Preparing comprehensive system scan...' -ForegroundColor Yellow
-        Write-Log '[ScanPreparation] Scan Type: Full System Scan' 'INFO'
-        Write-Log "[ScanPreparation] Computer Name: $env:COMPUTERNAME" 'INFO'
-        Write-Log "[ScanPreparation] User Context: $env:USERNAME" 'INFO'
-        Write-Log "[ScanPreparation] PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
-        Write-Log "[ScanPreparation] OS Version: $([System.Environment]::OSVersion.VersionString)" 'INFO'
-        Write-Log "[ScanPreparation] Total System Memory: $([math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)) GB" 'INFO'
-
-        # Get system drive information
-        try {
-            $systemDrive = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $env:SystemDrive }
-            if ($systemDrive) {
-                $totalSize = [math]::Round($systemDrive.Size / 1GB, 2)
-                $freeSpace = [math]::Round($systemDrive.FreeSpace / 1GB, 2)
-                $usedSpace = $totalSize - $freeSpace
-                Write-Log "[ScanPreparation] System Drive ($($systemDrive.DeviceID)) - Total: ${totalSize} GB, Used: ${usedSpace} GB, Free: ${freeSpace} GB" 'INFO'
-                $detailedLogData.SystemInfo = @{
-                    TotalMemoryGB      = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
-                    SystemDriveTotalGB = $totalSize
-                    SystemDriveUsedGB  = $usedSpace
-                    SystemDriveFreeGB  = $freeSpace
-                }
-            }
-        } catch {
-            Write-Log "[ScanPreparation] Warning: Could not retrieve system drive information - $_" 'WARN'
-        }
-
-        Write-Log '[ScanPreparation] Note: This operation may take considerable time depending on system size and data volume' 'INFO'
-        Write-Log '[ScanPreparation] Estimated scan time: Large systems may require 2-4 hours or more' 'INFO'
-
-        try {
-            # Starting full system scan
-            Write-Log '[ScanExecution] === FULL SYSTEM SCAN EXECUTION ===' 'INFO'
-            Write-Log "[ScanExecution] Initiating scan at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" 'INFO'
-            Write-Host '🔍 Starting Windows Defender Full System Scan...' -ForegroundColor Cyan            # Start scan in background with optimized parameters
-            $scanJob = Start-Job -ScriptBlock {
-                try {
-                    # Set PowerShell preference to avoid any prompts
-                    $ProgressPreference = 'SilentlyContinue'
-                    $WarningPreference = 'SilentlyContinue'
-                    $VerbosePreference = 'SilentlyContinue'
-
-                    # Run the scan
-                    $result = Start-MpScan -ScanType FullScan
-                    return @{
-                        Success     = $true
-                        Result      = $result
-                        CompletedAt = Get-Date
-                    }
-                } catch {
-                    return @{
-                        Success     = $false
-                        Error       = $_.Exception.Message
-                        CompletedAt = Get-Date
-                    }
-                }
-            }
-
-            # Monitor scan progress with optimized non-blocking approach
-            $progressCounter = 25
-            $lastProgressUpdate = Get-Date
-            $lastLogUpdate = Get-Date
-            $scanTimeoutMinutes = 240  # 4 hours maximum
-            $scanStartTimeForTimeout = Get-Date
-
-            Write-Log "[ScanExecution] Monitoring scan progress (Job ID: $($scanJob.Id))..." 'INFO'
-            Write-Log "[ScanExecution] Maximum scan timeout: $scanTimeoutMinutes minutes" 'INFO'
-            Write-Log '[ScanExecution] Scan running in background - no user interaction required' 'INFO'
-
-            # Non-blocking monitoring loop with reduced update frequency
-            while ($scanJob.State -eq 'Running') {
-                $currentTime = Get-Date
-                $elapsedTime = $currentTime - $scanStartTime
-                $timeoutElapsed = $currentTime - $scanStartTimeForTimeout
-
-                # Check for timeout first (safety mechanism)
-                if ($timeoutElapsed.TotalMinutes -gt $scanTimeoutMinutes) {
-                    Write-Log "[ScanExecution] ⚠ Scan timeout reached ($scanTimeoutMinutes minutes). Stopping scan job..." 'WARN'
-                    try { Stop-Job -Job $scanJob -ErrorAction SilentlyContinue } catch { }
-                    try { Remove-Job -Job $scanJob -Force -ErrorAction SilentlyContinue } catch { }
-                    throw "Scan timeout reached after $scanTimeoutMinutes minutes"
-                }
-
-                # Update progress display every 5 minutes (reduced frequency)
-                if (($currentTime - $lastProgressUpdate).TotalMinutes -ge 5) {
-                    $progressCounter = [math]::Min($progressCounter + 5, 68)  # Cap at 68% until scan completes
-                    $elapsedMinutes = [math]::Floor($elapsedTime.TotalMinutes)
-                    Write-Host "⏳ Scan active: $elapsedMinutes minutes elapsed..." -ForegroundColor Cyan
-                    Write-Log "[ScanExecution] Scan progress: $elapsedMinutes minutes elapsed, continuing..." 'INFO'
-                    $lastProgressUpdate = $currentTime
-                }
-
-                # Detailed logging every 15 minutes (reduced frequency)
-                if (($currentTime - $lastLogUpdate).TotalMinutes -ge 15) {
-                    Write-Log "[ScanExecution] Detailed progress: $($elapsedTime.ToString('hh\:mm\:ss')) elapsed, scan active..." 'INFO'
-
-                    # Quick threat check (non-blocking)
-                    try {
-                        $currentThreats = Get-MpThreat -ErrorAction SilentlyContinue
-                        if ($currentThreats) {
-                            Write-Log "[ScanExecution] Threats detected during scan: $($currentThreats.Count)" 'INFO'
-                        }
-                    } catch {
-                        # Silent error - don't log to avoid noise
-                    }
-                    $lastLogUpdate = $currentTime
-                }
-
-                # Reduced sleep interval for better responsiveness
-                Start-Sleep -Seconds 10
-            }
-
-            # Get scan results
-            $scanResult = Receive-Job -Job $scanJob
-            Remove-Job -Job $scanJob
-
-            # Process results
-            $scanExecutionTime = Get-Date - $scanStartTime
-
-            if ($scanResult.Success) {
-                Write-Host '✅ Windows Defender scan completed successfully!' -ForegroundColor Green
-                Write-Log '[ScanExecution] ✓ Full system scan completed successfully' 'INFO'
-                Write-Log "[ScanExecution] Total scan execution time: $($scanExecutionTime.ToString('hh\:mm\:ss'))" 'INFO'
-                if ($scanResult.Result) {
-                    Write-Log "[ScanExecution] Scan result: $($scanResult.Result)" 'INFO'
-                }
-            } else {
-                Write-Host "⚠️ Scan completed with warnings: $($scanResult.Error)" -ForegroundColor Yellow
-                Write-Log "[ScanExecution] ⚠ Scan completed with error: $($scanResult.Error)" 'WARN'
-            }
-            $scanSuccess = $true
-            $detailedLogData.ScanExecution = @{
-                Duration = $scanExecutionTime
-                Result   = $scanResult
-                JobId    = $scanJob.Id
-            }
-        } catch {
-            Write-Host "❌ Windows Defender scan failed: $_" -ForegroundColor Red
-            Write-Log "[ScanExecution] ✗ Defender scan failed: $_" 'ERROR'
-            return $false
-        }
-
-        # Comprehensive threat analysis
-        Write-Log '[ThreatAnalysis] === COMPREHENSIVE THREAT ANALYSIS ===' 'INFO'
-        Write-Host '🔍 Analyzing scan results for threats...' -ForegroundColor Yellow
-        try {
-            $threatsFound = Get-MpThreat
-
-            # Enhanced threat analysis
-            if ($threatsFound.Count -gt 0) {
-                Write-Log "[ThreatAnalysis] ⚠ THREATS DETECTED: $($threatsFound.Count) threats found" 'WARN'
-                Write-Log '[ThreatAnalysis] === DETAILED THREAT INFORMATION ===' 'WARN'
-
-                $threatCategories = @{}
-                $threatSeverities = @{}
-
-                foreach ($threat in $threatsFound) {
-                    # Detailed threat logging
-                    Write-Log '[ThreatAnalysis] --- THREAT DETAILS ---' 'WARN'
-                    Write-Log "[ThreatAnalysis] Threat Name: $($threat.ThreatName)" 'WARN'
-                    Write-Log "[ThreatAnalysis] Threat ID: $($threat.ThreatID)" 'WARN'
-                    Write-Log "[ThreatAnalysis] Severity ID: $($threat.SeverityID)" 'WARN'
-                    Write-Log "[ThreatAnalysis] Category ID: $($threat.CategoryID)" 'WARN'
-                    Write-Log "[ThreatAnalysis] Type ID: $($threat.TypeID)" 'WARN'
-                    Write-Log "[ThreatAnalysis] Detection Time: $($threat.InitialDetectionTime)" 'WARN'
-                    Write-Log "[ThreatAnalysis] Last Detection Time: $($threat.LastThreatStatusChangeTime)" 'WARN'
-                    Write-Log "[ThreatAnalysis] Current Threat Status: $($threat.CurrentThreatExecutionStatus)" 'WARN'
-                    Write-Log "[ThreatAnalysis] Threat Status ID: $($threat.ThreatStatusID)" 'WARN'
-
-                    # Process affected resources
-                    if ($threat.Resources -and $threat.Resources.Count -gt 0) {
-                        Write-Log "[ThreatAnalysis] Affected Resources ($($threat.Resources.Count)):" 'WARN'
-                        foreach ($resource in $threat.Resources) {
-                            Write-Log "[ThreatAnalysis] - Resource: $resource" 'WARN'
-
-                            # Analyze resource type and provide additional context
-                            if (Test-Path $resource -ErrorAction SilentlyContinue) {
-                                try {
-                                    $resourceInfo = Get-Item $resource -ErrorAction SilentlyContinue
-                                    if ($resourceInfo) {
-                                        Write-Log "[ThreatAnalysis]   * File Size: $($resourceInfo.Length) bytes" 'WARN'
-                                        Write-Log "[ThreatAnalysis]   * Creation Time: $($resourceInfo.CreationTime)" 'WARN'
-                                        Write-Log "[ThreatAnalysis]   * Last Write Time: $($resourceInfo.LastWriteTime)" 'WARN'
-                                        Write-Log "[ThreatAnalysis]   * Attributes: $($resourceInfo.Attributes)" 'WARN'
-                                    }
-                                } catch {
-                                    Write-Log "[ThreatAnalysis]   * Could not get file details: $_" 'WARN'
-                                }
-                            }
-                        }
-                    } else {
-                        Write-Log '[ThreatAnalysis] No specific resources identified for this threat' 'WARN'
-                    }
-
-                    # Categorize threats for summary
-                    $severityName = switch ($threat.SeverityID) {
-                        1 { 'Low' }
-                        2 { 'Medium' }
-                        3 { 'High' }
-                        4 { 'Severe' }
-                        5 { 'Critical' }
-                        default { "Unknown ($($threat.SeverityID))" }
-                    }
-
-                    $categoryName = switch ($threat.CategoryID) {
-                        1 { 'Adware' }
-                        2 { 'Spyware' }
-                        3 { 'Password Stealer' }
-                        4 { 'Trojan Downloader' }
-                        5 { 'Worm' }
-                        6 { 'Backdoor' }
-                        7 { 'Remote Access Trojan' }
-                        8 { 'Trojan' }
-                        9 { 'Email Flooder' }
-                        10 { 'Keylogger' }
-                        11 { 'Dialer' }
-                        12 { 'Monitoring Software' }
-                        13 { 'Browser Modifier' }
-                        14 { 'Cookie' }
-                        15 { 'Browser Plugin' }
-                        16 { 'AOL Exploit' }
-                        17 { 'Nuker' }
-                        18 { 'Security Disabler' }
-                        19 { 'Joke Program' }
-                        20 { 'Hostile ActiveX Control' }
-                        21 { 'Software Bundler' }
-                        22 { 'Stealth Modifier' }
-                        23 { 'Settings Modifier' }
-                        24 { 'Toolbar' }
-                        25 { 'Remote Control Software' }
-                        26 { 'Trojan FTP' }
-                        27 { 'Potential Unwanted Software' }
-                        28 { 'ICQ Exploit' }
-                        29 { 'Trojan Telnet' }
-                        30 { 'Exploit' }
-                        31 { 'File Sharing Program' }
-                        32 { 'Malware Creation Tool' }
-                        33 { 'Remote Control Software' }
-                        34 { 'Tool' }
-                        36 { 'Trojan Denial of Service' }
-                        37 { 'Trojan Dropper' }
-                        38 { 'Trojan Mass Mailer' }
-                        39 { 'Trojan Monitoring Software' }
-                        40 { 'Trojan Proxy Server' }
-                        42 { 'Virus' }
-                        43 { 'Known' }
-                        44 { 'Unknown' }
-                        45 { 'SPP' }
-                        46 { 'Behavior' }
-                        47 { 'Vulnerability' }
-                        48 { 'Policy' }
-                        default { "Unknown Category ($($threat.CategoryID))" }
-                    }
-
-                    Write-Log "[ThreatAnalysis] Severity: $severityName | Category: $categoryName" 'WARN'
-
-                    # Update counters for summary
-                    if ($threatSeverities.ContainsKey($severityName)) {
-                        $threatSeverities[$severityName]++
-                    } else {
-                        $threatSeverities[$severityName] = 1
-                    }
-
-                    if ($threatCategories.ContainsKey($categoryName)) {
-                        $threatCategories[$categoryName]++
-                    } else {
-                        $threatCategories[$categoryName] = 1
-                    }
-                }
-
-                # Threat summary
-                Write-Log '[ThreatAnalysis] === THREAT SUMMARY BY SEVERITY ===' 'WARN'
-                foreach ($severity in $threatSeverities.GetEnumerator() | Sort-Object Name) {
-                    Write-Log "[ThreatAnalysis] $($severity.Key): $($severity.Value) threats" 'WARN'
-                }
-
-                Write-Log '[ThreatAnalysis] === THREAT SUMMARY BY CATEGORY ===' 'WARN'
-                foreach ($category in $threatCategories.GetEnumerator() | Sort-Object Name) {
-                    Write-Log "[ThreatAnalysis] $($category.Key): $($category.Value) threats" 'WARN'
-                }
-
-                $detailedLogData.ThreatAnalysis = @{
-                    TotalThreats    = $threatsFound.Count
-                    BySeverity      = $threatSeverities
-                    ByCategory      = $threatCategories
-                    DetailedThreats = $threatsFound
-                }
-            } else {
-                Write-Log '[ThreatAnalysis] ✓ No threats detected - system is clean' 'INFO'
-                $detailedLogData.ThreatAnalysis = @{
-                    TotalThreats = 0
-                    SystemStatus = 'Clean'
-                }
-            }
-
-            # Progress: 76% - Getting comprehensive scan history
-            Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Scan Results' -PercentComplete 76 -Status 'Getting comprehensive scan history...'
-            try {
-                $completeScanHistory = Get-MpScanHistory -ErrorAction Stop | Select-Object -First 1
-            } catch {
-                $completeScanHistory = $null
-                Write-Log '[ScanResults] Warning: Could not retrieve final scan history.' 'WARN'
-            }
-
-            # Progress: 78% - Analyzing final scan results
-            Write-ActionProgress -ActionType 'Analyzing' -ItemName 'Scan Results' -PercentComplete 78 -Status 'Analyzing comprehensive scan results...'
-            if ($completeScanHistory) {
-                Write-Log '[ScanResults] === COMPREHENSIVE SCAN COMPLETION DETAILS ===' 'INFO'
-                Write-Log "[ScanResults] Last scan completed: $($completeScanHistory.StartTime)" 'INFO'
-                Write-Log "[ScanResults] Scan end time: $($completeScanHistory.EndTime)" 'INFO'
-                Write-Log "[ScanResults] Scan type: $($completeScanHistory.ScanType)" 'INFO'
-                Write-Log "[ScanResults] Scan result: $($completeScanHistory.Result)" 'INFO'
-                if ($completeScanHistory.ScanParameters) {
-                    Write-Log "[ScanResults] Scan parameters: $($completeScanHistory.ScanParameters)" 'INFO'
-                }
-
-                # Calculate scan duration from history if available
-                if ($completeScanHistory.StartTime -and $completeScanHistory.EndTime -and $completeScanHistory.StartTime -ne '-' -and $completeScanHistory.EndTime -ne '-') {
-                    try {
-                        $historicalScanDuration = $completeScanHistory.EndTime - $completeScanHistory.StartTime
-                        Write-Log "[ScanResults] Historical scan duration: $($historicalScanDuration.ToString('hh\:mm\:ss'))" 'INFO'
-                    } catch {
-                        Write-Log "[ScanResults] Warning: Could not calculate scan duration - $_" 'WARN'
-                    }
-                }
-
-                $detailedLogData.FinalScanHistory = $completeScanHistory
-            }
-
-            # Check quarantine status
-            try {
-                Write-Log '[QuarantineAnalysis] === QUARANTINE STATUS ANALYSIS ===' 'INFO'
-                $quarantineItems = Get-MpQuarantineItem -ErrorAction SilentlyContinue
-                if ($quarantineItems) {
-                    Write-Log "[QuarantineAnalysis] Quarantine contains $($quarantineItems.Count) items" 'INFO'
-                    foreach ($item in $quarantineItems | Select-Object -First 10) {
-                        # Limit to first 10 for logging and handle potential "-" values in date fields
-                        $quarantineTime = if ($item.QuarantineTime -and $item.QuarantineTime -ne '-') { $item.QuarantineTime } else { 'Not available' }
-                        Write-Log "[QuarantineAnalysis] - Quarantined: $($item.FileName) | Threat: $($item.ThreatName) | Date: $quarantineTime" 'INFO'
-                    }
-                    if ($quarantineItems.Count -gt 10) {
-                        Write-Log "[QuarantineAnalysis] ... and $($quarantineItems.Count - 10) more items" 'INFO'
-                    }
-                    $detailedLogData.QuarantineStatus = @{
-                        ItemCount = $quarantineItems.Count
-                        Items     = $quarantineItems
-                    }
-                } else {
-                    Write-Log '[QuarantineAnalysis] Quarantine is empty' 'INFO'
-                    $detailedLogData.QuarantineStatus = @{ ItemCount = 0 }
-                }
-            } catch {
-                Write-Log "[QuarantineAnalysis] Warning: Could not retrieve quarantine information - $_" 'WARN'
-            }
-
-        } catch {
-            Write-Log "[ThreatAnalysis] ✗ Error retrieving scan results: $_" 'WARN'
-        }
-
-        # Enhanced automatic threat cleanup with comprehensive logging
-        if ($threatsFound.Count -gt 0) {
-            # Progress: 82% - Preparing comprehensive threat cleanup
-            Write-ActionProgress -ActionType 'Removing' -ItemName 'Detected Threats' -PercentComplete 82 -Status 'Preparing comprehensive threat cleanup...'
-            Write-Log '[ThreatCleanup] === COMPREHENSIVE THREAT CLEANUP PROCESS ===' 'INFO'
-            Write-Log "[ThreatCleanup] Initiating automatic cleanup for $($threatsFound.Count) detected threats..." 'INFO'
-
-            # Log pre-cleanup quarantine status
-            try {
-                $preCleanupQuarantine = Get-MpQuarantineItem -ErrorAction SilentlyContinue
-                $preCleanupQuarantineCount = if ($preCleanupQuarantine) { $preCleanupQuarantine.Count } else { 0 }
-                Write-Log "[ThreatCleanup] Pre-cleanup quarantine items: $preCleanupQuarantineCount" 'INFO'
-            } catch {
-                Write-Log '[ThreatCleanup] Could not check pre-cleanup quarantine status' 'WARN'
-                $preCleanupQuarantineCount = 0
-            }
-
-            try {
-                # Progress: 85% - Executing threat removal
-                Write-ActionProgress -ActionType 'Removing' -ItemName 'Detected Threats' -PercentComplete 85 -Status 'Executing comprehensive threat removal...'
-                Write-Log '[ThreatCleanup] Executing Remove-MpThreat -All command...' 'INFO'
-                $cleanupStartTime = Get-Date
-                Remove-MpThreat -All
-                $cleanupEndTime = Get-Date
-                $cleanupDuration = $cleanupEndTime - $cleanupStartTime
-                Write-Log "[ThreatCleanup] ✓ Threat removal command completed in $($cleanupDuration.TotalSeconds) seconds" 'INFO'
-
-                # Progress: 88% - Comprehensive cleanup verification
-                Write-ActionProgress -ActionType 'Removing' -ItemName 'Detected Threats' -PercentComplete 88 -Status 'Performing comprehensive cleanup verification...'
-                Write-Log '[ThreatCleanup] Performing comprehensive cleanup verification...' 'INFO'
-                Start-Sleep -Seconds 5  # Allow more time for cleanup to complete
-
-                # Multiple verification checks
-                Write-Log '[ThreatCleanup] === CLEANUP VERIFICATION PROCESS ===' 'INFO'
-
-                # Check 1: Remaining threats
-                $remainingThreats = Get-MpThreat
-                Write-Log "[ThreatCleanup] Verification Check 1 - Remaining threats: $($remainingThreats.Count)" 'INFO'
-
-                # Check 2: Updated quarantine status
-                try {
-                    $postCleanupQuarantine = Get-MpQuarantineItem -ErrorAction SilentlyContinue
-                    $postCleanupQuarantineCount = if ($postCleanupQuarantine) { $postCleanupQuarantine.Count } else { 0 }
-                    $quarantineIncrease = $postCleanupQuarantineCount - $preCleanupQuarantineCount
-                    Write-Log "[ThreatCleanup] Verification Check 2 - Post-cleanup quarantine items: $postCleanupQuarantineCount (+$quarantineIncrease)" 'INFO'
-
-                    if ($quarantineIncrease -gt 0) {
-                        Write-Log "[ThreatCleanup] ✓ $quarantineIncrease new items moved to quarantine" 'INFO'
-                        # Log details of newly quarantined items
-                        if ($postCleanupQuarantine) {
-                            $newQuarantineItems = $postCleanupQuarantine | Sort-Object QuarantineTime -Descending | Select-Object -First $quarantineIncrease
-                            Write-Log '[ThreatCleanup] Newly quarantined items:' 'INFO'
-                            foreach ($item in $newQuarantineItems) {
-                                # Handle potential "-" values in date fields
-                                $quarantineTime = if ($item.QuarantineTime -and $item.QuarantineTime -ne '-') { $item.QuarantineTime } else { 'Not available' }
-                                Write-Log "[ThreatCleanup] - $($item.FileName) | Threat: $($item.ThreatName) | Time: $quarantineTime" 'INFO'
-                            }
-                        }
-                    }
-                } catch {
-                    Write-Log "[ThreatCleanup] Warning: Could not verify quarantine status after cleanup - $_" 'WARN'
-                }
-
-                # Check 3: Updated Defender status
-                try {
-                    $postCleanupStatus = Get-MpComputerStatus
-                    Write-Log '[ThreatCleanup] Verification Check 3 - Updated Defender status retrieved' 'INFO'
-                    Write-Log "[ThreatCleanup] Last Quick Scan: $($postCleanupStatus.QuickScanEndTime)" 'INFO'
-                    Write-Log "[ThreatCleanup] Last Full Scan: $($postCleanupStatus.FullScanEndTime)" 'INFO'
-                } catch {
-                    Write-Log '[ThreatCleanup] Warning: Could not get updated Defender status' 'WARN'
-                }
-
-                # Progress: 90% - Final cleanup verification
-                Write-ActionProgress -ActionType 'Removing' -ItemName 'Detected Threats' -PercentComplete 90 -Status 'Completing final cleanup verification...'
-                if ($remainingThreats.Count -eq 0) {
-                    Write-Log '[ThreatCleanup] ✓ CLEANUP SUCCESSFUL: No threats remain on the system' 'INFO'
-                    Write-Log "[ThreatCleanup] All $($threatsFound.Count) detected threats have been successfully removed" 'INFO'
-                    $cleanupSuccess = $true
-                } else {
-                    Write-Log "[ThreatCleanup] ⚠ PARTIAL CLEANUP: $($remainingThreats.Count) threats still remain after cleanup" 'WARN'
-                    Write-Log '[ThreatCleanup] Remaining threats may require manual intervention' 'WARN'
-                    foreach ($remainingThreat in $remainingThreats) {
-                        Write-Log "[ThreatCleanup] Remaining: $($remainingThreat.ThreatName) | Status: $($remainingThreat.CurrentThreatExecutionStatus)" 'WARN'
-                    }
-                    $cleanupSuccess = $false
-                }
-
-                $detailedLogData.ThreatCleanup = @{
-                    Duration             = $cleanupDuration
-                    OriginalThreatCount  = $threatsFound.Count
-                    RemainingThreatCount = $remainingThreats.Count
-                    QuarantineIncrease   = $quarantineIncrease
-                    CleanupSuccess       = $cleanupSuccess
-                }
-            } catch {
-                Write-Log "[ThreatCleanup] ✗ Error during automatic threat cleanup: $_" 'ERROR'
-                Write-Log '[ThreatCleanup] Threat cleanup failed - manual intervention may be required' 'ERROR'
-                $cleanupSuccess = $false
-            }
-        } else {
-            Write-Log '[ThreatCleanup] No threats detected - cleanup not required' 'INFO'
-            $detailedLogData.ThreatCleanup = @{
-                Required            = $false
-                OriginalThreatCount = 0
-            }
-        }
-
-        # Progress: 92% - Preparing comprehensive scan report
-        Write-ActionProgress -ActionType 'Reporting' -ItemName 'Comprehensive Scan Report' -PercentComplete 92 -Status 'Preparing comprehensive scan report...'
-        Write-Log '[ScanReport] === COMPREHENSIVE SCAN REPORT GENERATION ===' 'INFO'
-
-        # Generate comprehensive scan report with enhanced details
-        $scanEndTime = Get-Date
-        $scanDuration = $scanEndTime - $scanStartTime
-
-        # Progress: 94% - Generating detailed summary
-        Write-ActionProgress -ActionType 'Reporting' -ItemName 'Comprehensive Scan Report' -PercentComplete 94 -Status 'Generating detailed scan summary...'
-        Write-Log '[ScanReport] === COMPREHENSIVE DEFENDER SCAN SUMMARY ===' 'INFO'
-        Write-Log '[ScanReport] ================================' 'INFO'
-        Write-Log "[ScanReport] Computer: $env:COMPUTERNAME" 'INFO'
-        Write-Log "[ScanReport] User: $env:USERNAME" 'INFO'
-        Write-Log "[ScanReport] PowerShell Version: $($PSVersionTable.PSVersion)" 'INFO'
-        Write-Log "[ScanReport] Scan start time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-        Write-Log "[ScanReport] Scan end time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))" 'INFO'
-        Write-Log "[ScanReport] Total scan duration: $($scanDuration.ToString('hh\:mm\:ss'))" 'INFO'
-        Write-Log "[ScanReport] Scan successful: $(if($scanSuccess){'Yes'}else{'No'})" 'INFO'
-        Write-Log "[ScanReport] Threats detected: $($threatsFound.Count)" 'INFO'
-        Write-Log "[ScanReport] Automatic cleanup required: $(if($threatsFound.Count -gt 0){'Yes'}else{'No'})" 'INFO'
-        Write-Log "[ScanReport] Automatic cleanup successful: $(if($cleanupSuccess){'Yes'}else{'No'})" 'INFO'
-        Write-Log "[ScanReport] System status: $(if($threatsFound.Count -eq 0){'Clean'}elseif($cleanupSuccess){'Cleaned'}else{'Requires Attention'})" 'INFO'
-        Write-Log '[ScanReport] ================================' 'INFO'
-
-        # Add performance metrics
-        if ($detailedLogData.SystemInfo) {
-            Write-Log '[ScanReport] System Performance Context:' 'INFO'
-            Write-Log "[ScanReport] - Total Memory: $($detailedLogData.SystemInfo.TotalMemoryGB) GB" 'INFO'
-            Write-Log "[ScanReport] - System Drive Used: $($detailedLogData.SystemInfo.SystemDriveUsedGB) GB / $($detailedLogData.SystemInfo.SystemDriveTotalGB) GB" 'INFO'
-        }
-
-        # Progress: 96% - Creating enhanced detailed log file
-        Write-ActionProgress -ActionType 'Reporting' -ItemName 'Comprehensive Scan Report' -PercentComplete 96 -Status 'Creating enhanced detailed log file...'
-        # Create comprehensive detailed log file in temp folder
-        try {
-            $scanLogPath = Join-Path $global:TempFolder "defender_comprehensive_scan_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-            $logContent = @"
-Windows Defender Comprehensive Full Scan Report
-==============================================
-Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Computer: $env:COMPUTERNAME
-User: $env:USERNAME
-PowerShell Version: $($PSVersionTable.PSVersion)
-OS Version: $([System.Environment]::OSVersion.VersionString)
-
-=== SCAN EXECUTION DETAILS ===
-Start Time: $($scanStartTime.ToString('yyyy-MM-dd HH:mm:ss'))
-End Time: $($scanEndTime.ToString('yyyy-MM-dd HH:mm:ss'))
-Total Duration: $($scanDuration.ToString('hh\:mm\:ss'))
-Scan Type: Full System Scan
-Scan Successful: $(if($scanSuccess){'Yes'}else{'No'})
-
-=== SYSTEM INFORMATION ===
-"@
-
-            if ($detailedLogData.SystemInfo) {
-                $logContent += @"
-Total Physical Memory: $($detailedLogData.SystemInfo.TotalMemoryGB) GB
-System Drive Total Space: $($detailedLogData.SystemInfo.SystemDriveTotalGB) GB
-System Drive Used Space: $($detailedLogData.SystemInfo.SystemDriveUsedGB) GB
-System Drive Free Space: $($detailedLogData.SystemInfo.SystemDriveFreeGB) GB
-
-"@
-            }
-
-            $logContent += @'
-=== DEFENDER STATUS ANALYSIS ===
-'@
-
-            if ($detailedLogData.Status) {
-                $status = $detailedLogData.Status
-                $logContent += @"
-Antivirus Enabled: $($status.AntivirusEnabled)
-Real-time Protection: $($status.RealTimeProtectionEnabled)
-Behavior Monitor: $($status.BehaviorMonitorEnabled)
-Network Inspection System: $($status.NISEnabled)
-Antivirus Signature Version: $($status.AntivirusSignatureVersion)
-Antivirus Signature Age: $($status.AntivirusSignatureAge) days
-Last Full Scan: $($status.FullScanEndTime)
-Full Scan Age: $($status.FullScanAge) days
-
-"@
-            }
-
-            if ($detailedLogData.SignatureUpdate) {
-                $sigUpdate = $detailedLogData.SignatureUpdate
-                $logContent += @"
-=== SIGNATURE UPDATE DETAILS ===
-Update Duration: $($sigUpdate.Duration.TotalSeconds) seconds
-Previous Antivirus Version: $($sigUpdate.OldVersions.Antivirus)
-Updated Antivirus Version: $($sigUpdate.NewVersions.Antivirus)
-Previous NIS Version: $($sigUpdate.OldVersions.NIS)
-Updated NIS Version: $($sigUpdate.NewVersions.NIS)
-
-"@
-            }
-
-            $logContent += @"
-=== THREAT ANALYSIS RESULTS ===
-Total Threats Detected: $($threatsFound.Count)
-"@
-
-            if ($threatsFound.Count -gt 0) {
-                $logContent += "Cleanup Required: Yes`nCleanup Successful: $(if($cleanupSuccess){'Yes'}else{'No'})`n`n"
-
-                if ($detailedLogData.ThreatAnalysis.BySeverity) {
-                    $logContent += "Threats by Severity:`n"
-                    foreach ($severity in $detailedLogData.ThreatAnalysis.BySeverity.GetEnumerator() | Sort-Object Name) {
-                        $logContent += "- $($severity.Key): $($severity.Value) threats`n"
-                    }
-                    $logContent += "`n"
-                }
-
-                if ($detailedLogData.ThreatAnalysis.ByCategory) {
-                    $logContent += "Threats by Category:`n"
-                    foreach ($category in $detailedLogData.ThreatAnalysis.ByCategory.GetEnumerator() | Sort-Object Name) {
-                        $logContent += "- $($category.Key): $($category.Value) threats`n"
-                    }
-                    $logContent += "`n"
-                }
-
-                $logContent += "Detailed Threat Information:`n"
-                foreach ($threat in $threatsFound) {
-                    $logContent += "---`n"
-                    $logContent += "Threat Name: $($threat.ThreatName)`n"
-                    $logContent += "Threat ID: $($threat.ThreatID)`n"
-                    $logContent += "Severity ID: $($threat.SeverityID)`n"
-                    $logContent += "Category ID: $($threat.CategoryID)`n"
-                    $logContent += "Detection Time: $($threat.InitialDetectionTime)`n"
-                    $logContent += "Status: $($threat.CurrentThreatExecutionStatus)`n"
-                    if ($threat.Resources) {
-                        $logContent += "Affected Resources:`n"
-                        foreach ($resource in $threat.Resources) {
-                            $logContent += "- $resource`n"
-                        }
-                    }
-                    $logContent += "`n"
-                }
-            } else {
-                $logContent += "System Status: Clean - No threats detected`n`n"
-            }
-
-            if ($detailedLogData.QuarantineStatus) {
-                $logContent += @"
-=== QUARANTINE STATUS ===
-Total Quarantined Items: $($detailedLogData.QuarantineStatus.ItemCount)
-
-"@
-                if ($detailedLogData.QuarantineStatus.ItemCount -gt 0 -and $detailedLogData.QuarantineStatus.Items) {
-                    $logContent += "Recent Quarantine Items (Last 10):`n"
-                    foreach ($item in ($detailedLogData.QuarantineStatus.Items | Sort-Object QuarantineTime -Descending | Select-Object -First 10)) {
-                        $logContent += "- $($item.FileName) | Threat: $($item.ThreatName) | Date: $($item.QuarantineTime)`n"
-                    }
-                    $logContent += "`n"
-                }
-            }
-
-            if ($detailedLogData.Preferences) {
-                $prefs = $detailedLogData.Preferences
-                $logContent += @"
-=== DEFENDER CONFIGURATION ===
-Exclusion Paths: $($prefs.ExclusionPath.Count) configured
-Exclusion Extensions: $($prefs.ExclusionExtension.Count) configured
-Exclusion Processes: $($prefs.ExclusionProcess.Count) configured
-Real-time Scan Direction: $($prefs.RealTimeScanDirection)
-Cloud Block Level: $($prefs.CloudBlockLevel)
-Cloud Extended Timeout: $($prefs.CloudExtendedTimeout) seconds
-Archive Max Size: $($prefs.ScanArchiveMaxSize) MB
-Archive Max Depth: $($prefs.ScanArchiveMaxDepth)
-
-"@
-            }
-
-            $logContent += @"
-=== SCAN PERFORMANCE METRICS ===
-Total Execution Time: $($scanDuration.ToString('hh\:mm\:ss'))
-"@
-
-            if ($detailedLogData.ScanExecution) {
-                $exec = $detailedLogData.ScanExecution
-                $logContent += @"
-Scan Job Duration: $($exec.Duration.ToString('hh\:mm\:ss'))
-Scan Job ID: $($exec.JobId)
-Scan Result: $($exec.Result)
-
-"@
-            }
-
-            if ($detailedLogData.ThreatCleanup -and $detailedLogData.ThreatCleanup.Duration) {
-                $cleanup = $detailedLogData.ThreatCleanup
-                $logContent += @"
-Cleanup Duration: $($cleanup.Duration.TotalSeconds) seconds
-Original Threat Count: $($cleanup.OriginalThreatCount)
-Remaining Threat Count: $($cleanup.RemainingThreatCount)
-Quarantine Items Added: $($cleanup.QuarantineIncrease)
-
-"@
-            }
-
-            $logContent += @'
-=== RECOMMENDATIONS ===
-'@
-
-            if ($threatsFound.Count -eq 0) {
-                $logContent += "- System is clean and secure`n"
-                $logContent += "- Continue regular maintenance and scans`n"
-            } elseif ($cleanupSuccess) {
-                $logContent += "- Threats successfully cleaned and quarantined`n"
-                $logContent += "- Monitor system for any unusual behavior`n"
-                $logContent += "- Consider running another scan in 24-48 hours`n"
-            } else {
-                $logContent += "- Manual threat removal may be required`n"
-                $logContent += "- Review quarantine and remaining threats`n"
-                $logContent += "- Consider professional assistance if needed`n"
-            }
-
-            if ($defenderStatus -and $defenderStatus.AntivirusSignatureAge -gt 7) {
-                $logContent += "- Update antivirus signatures more frequently`n"
-            }
-
-            if ($defenderStatus -and -not $defenderStatus.RealTimeProtectionEnabled) {
-                $logContent += "- Enable real-time protection for better security`n"
-            }
-
-            $logContent += "`n=== END OF REPORT ===`n"
-
-            # Progress: 98% - Saving comprehensive log file
-            Write-ActionProgress -ActionType 'Reporting' -ItemName 'Comprehensive Scan Report' -PercentComplete 98 -Status 'Saving comprehensive detailed log file...'
-            $logContent | Out-File -FilePath $scanLogPath -Encoding UTF8
-            Write-Log "[ScanReport] ✓ Comprehensive detailed scan report saved to: $scanLogPath" 'INFO'
-            Write-Log "[ScanReport] Report contains $($logContent.Split("`n").Count) lines of detailed analysis" 'INFO'
-        } catch {
-            Write-Log "[ScanReport] ⚠ Warning: Could not save comprehensive detailed scan report: $_" 'WARN'
-        }
-
-        # Progress: 100% - Complete
-        Write-ActionProgress -ActionType 'Reporting' -ItemName 'Comprehensive Scan Report' -PercentComplete 100 -Status 'Comprehensive scan operation complete!' -Completed
-
-        return $scanSuccess
-    } catch {
-        Write-Log "[DefenderScan] ✗ Unexpected error during comprehensive Defender scan: $_" 'ERROR'
-        Write-Log "[DefenderScan] Error details: $($_.Exception.Message)" 'ERROR'
-        Write-Log "[DefenderScan] Error occurred at: $($_.ScriptStackTrace)" 'ERROR'
-        return $false
-    } finally {
-        $finalEndTime = Get-Date
-        $totalDuration = $finalEndTime - $scanStartTime
-        Write-Log '[DefenderScan] === SCAN OPERATION COMPLETED ===' 'INFO'
-        Write-Log "[DefenderScan] Total operation duration: $($totalDuration.ToString('hh\:mm\:ss'))" 'INFO'
-        Write-Log "[DefenderScan] Scan result: $(if($scanSuccess){'SUCCESS'}else{'FAILED'})" 'INFO'
-        if ($threatsFound.Count -gt 0) {
-            Write-Log "[DefenderScan] Threats found: $($threatsFound.Count)" 'INFO'
-            Write-Log "[DefenderScan] Cleanup status: $(if($cleanupSuccess){'SUCCESS'}else{'REQUIRES ATTENTION'})" 'INFO'
-        }
-        Write-Log '[END] Windows Defender Comprehensive Full System Scan - Enhanced Logging Complete' 'INFO'
-    }
-}
-
-# ================================================================
 # Function: Write-TempListsSummary
 # ================================================================
 # Purpose: Summarize temporary lists created during execution (bloatware,
@@ -10357,11 +9666,20 @@ function Write-UnifiedMaintenanceReport {
         }
     }
 
-    # Generate report paths
-    $jsonReportPath = Join-Path $global:TempFolder 'maintenance_report.json'
-    $textReportPath = Join-Path $WorkingDirectory 'maintenance_report.txt'
+    # ================================================================
+    # REPORT GENERATION PHASE - HTML and JSON Output
+    # ================================================================
+    # Generate comprehensive multi-format reports from aggregated maintenance data
+    # Output Formats: 
+    #   - HTML: Professional, responsive, single-file report (primary output)
+    #   - JSON: Structured data for programmatic access (secondary output)
+    # ================================================================
 
-    # Write structured JSON report
+    # Define report output paths
+    $jsonReportPath = Join-Path $global:TempFolder 'maintenance_report.json'
+    $htmlReportPath = Join-Path $WorkingDirectory 'maintenance_report.html'
+
+    # Write structured JSON report for programmatic access and data export
     try {
         $reportData | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonReportPath -Encoding UTF8
         Write-Log "Structured JSON report saved to $jsonReportPath" 'INFO'
@@ -10369,82 +9687,590 @@ function Write-UnifiedMaintenanceReport {
         Write-Log "Failed to write JSON report: $_" 'WARN'
     }
 
-    # Build human-readable text report
-    $summaryLines = @()
-    $summaryLines += '============================================================'
-    $summaryLines += '           WINDOWS MAINTENANCE REPORT'
-    $summaryLines += '============================================================'
-    $summaryLines += "Generated: $($reportData.metadata.date)"
-    $summaryLines += "User: $($reportData.metadata.user)"
-    $summaryLines += "Computer: $($reportData.metadata.computer)"
-    $summaryLines += "Script Version: $($reportData.metadata.scriptVersion)"
-    $summaryLines += "OS: $($reportData.metadata.os) ($($reportData.metadata.osVersion))"
-    $summaryLines += "PowerShell: $($reportData.metadata.powershellVersion)"
-    $summaryLines += "Architecture: $($reportData.systemInfo.windowsVersion.architecture)"
-    $summaryLines += "Build: $($reportData.systemInfo.windowsVersion.build)"
-    $summaryLines += ''
-    $summaryLines += 'SYSTEM INFORMATION:'
-    $summaryLines += "- Processor: $($reportData.systemInfo.processor)"
-    $summaryLines += "- Memory: $($reportData.systemInfo.memory.availableGB) GB available of $($reportData.systemInfo.memory.totalGB) GB total"
-    $summaryLines += "- Disk: $($reportData.systemInfo.disk.freeGB) GB free of $($reportData.systemInfo.disk.totalGB) GB total ($($reportData.systemInfo.disk.usedPercent)% used)"
-    $summaryLines += "- Uptime: $($reportData.systemInfo.uptime.hours) hours"
-    $summaryLines += ''
-    $summaryLines += 'EXECUTION SUMMARY:'
-    $summaryLines += "- Total tasks: $($reportData.summary.totalTasks)"
-    $summaryLines += "- Successful: $($reportData.summary.successfulTasks)"
-    $summaryLines += "- Failed: $($reportData.summary.failedTasks)"
-    $summaryLines += "- Success rate: $($reportData.summary.successRate)%"
-    $summaryLines += "- Total duration: $([math]::Round($reportData.summary.totalDuration, 2)) seconds"
-    $summaryLines += ''
-    $summaryLines += 'TASK BREAKDOWN:'
+    # ================================================================
+    # HTML REPORT TEMPLATE AND GENERATION
+    # ================================================================
+    # Build professional, responsive HTML report with:
+    # - Embedded CSS (no external dependencies)
+    # - Responsive grid layouts (mobile, tablet, desktop)
+    # - Color-coded task status indicators
+    # - Complete data aggregation
+    # - Professional gradients and styling (Bootstrap/W3.CSS inspired)
+    # ================================================================
+    
+    # Build professional HTML report with embedded CSS styling
+    $htmlContent = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows Maintenance Report - $($reportData.metadata.computer)</title>
+    <!-- ============================================================ -->
+    <!-- EMBEDDED CSS STYLING                                         -->
+    <!-- ============================================================ -->
+    <!-- Purpose: Professional styling with responsive design         -->
+    <!-- Features:                                                    -->
+    <!--   - Bootstrap 5-inspired table styling                       -->
+    <!--   - W3.CSS-inspired card layouts                             -->
+    <!--   - CSS Grid for responsive layouts                          -->
+    <!--   - Media queries for mobile/tablet/desktop                  -->
+    <!--   - Print-friendly styling                                   -->
+    <!--   - No external dependencies                                 -->
+    <!-- ============================================================ -->
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px 30px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+            page-break-inside: avoid;
+        }
+        
+        .section h2 {
+            color: #667eea;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .metadata-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .metadata-item label {
+            display: block;
+            font-weight: bold;
+            color: #667eea;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .metadata-item value {
+            display: block;
+            font-size: 1.1em;
+            color: #333;
+        }
+        
+        .summary-boxes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .summary-box .value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .summary-box .label {
+            font-size: 0.95em;
+            opacity: 0.9;
+        }
+        
+        .success-rate {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        table th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+        
+        table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        table tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        table tbody tr:hover {
+            background: #f0f1ff;
+            transition: background 0.3s ease;
+        }
+        
+        .status-success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .status-failed {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        .status-icon {
+            font-size: 1.2em;
+            margin-right: 5px;
+        }
+        
+        .system-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .info-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .info-card h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .info-card p {
+            margin: 8px 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+        }
+        
+        .info-card .label {
+            font-weight: bold;
+            color: #555;
+        }
+        
+        .info-card .value {
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            padding: 20px 30px;
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .alert {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid;
+        }
+        
+        .alert-info {
+            background: #e7f3ff;
+            border-color: #2196F3;
+            color: #0c5aa0;
+        }
+        
+        .alert-success {
+            background: #dff0d8;
+            border-color: #5cb85c;
+            color: #3c763d;
+        }
+        
+        .alert-warning {
+            background: #fcf8e3;
+            border-color: #faebcc;
+            color: #8a6d3b;
+        }
+        
+        .alert-error {
+            background: #f2dede;
+            border-color: #ebccd1;
+            color: #a94442;
+        }
+        
+        @media print {
+            body { background: white; }
+            .container { box-shadow: none; }
+            .section { page-break-inside: avoid; }
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.8em; }
+            .metadata-grid { grid-template-columns: 1fr; }
+            .summary-boxes { grid-template-columns: repeat(2, 1fr); }
+            .summary-box .value { font-size: 1.8em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ============================================================ -->
+        <!-- HEADER SECTION                                              -->
+        <!-- ============================================================ -->
+        <!-- Purpose: Professional report title with metadata             -->
+        <!-- Content: Title, computer name, generation timestamp         -->
+        <!-- Design: Purple gradient background, emoji icons             -->
+        <!-- ============================================================ -->
+        <div class="header">
+            <h1>🖥️ Windows Maintenance Report</h1>
+            <p>$($reportData.metadata.computer) • $($reportData.metadata.date)</p>
+        </div>
+        
+        <div class="content">
+            <!-- ============================================================ -->
+            <!-- SECTION 1: SYSTEM METADATA GRID                            -->
+            <!-- ============================================================ -->
+            <!-- Purpose: Display system identification and configuration   -->
+            <!-- Fields: Computer, User, OS, Version, Architecture, Build  -->
+            <!-- Layout: Responsive grid (3 cols desktop, 1 col mobile)    -->
+            <!-- ============================================================ -->
+            <!-- System Metadata Section -->
+            <div class="section">
+                <h2>📋 System Information</h2>
+                <div class="metadata-grid">
+                    <div class="metadata-item">
+                        <label>Computer</label>
+                        <value>$($reportData.metadata.computer)</value>
+                    </div>
+                    <div class="metadata-item">
+                        <label>User</label>
+                        <value>$($reportData.metadata.user)</value>
+                    </div>
+                    <div class="metadata-item">
+                        <label>Operating System</label>
+                        <value>$($reportData.metadata.os)</value>
+                    </div>
+                    <div class="metadata-item">
+                        <label>OS Version</label>
+                        <value>$($reportData.metadata.osVersion)</value>
+                    </div>
+                    <div class="metadata-item">
+                        <label>Architecture</label>
+                        <value>$($reportData.systemInfo.windowsVersion.architecture)</value>
+                    </div>
+                    <div class="metadata-item">
+                        <label>Build Number</label>
+                        <value>$($reportData.systemInfo.windowsVersion.build)</value>
+                    </div>
+                    <div class="metadata-item">
+                        <label>PowerShell Version</label>
+                        <value>$($reportData.metadata.powershellVersion)</value>
+                    </div>
+                    <div class="metadata-item">
+                        <label>Script Version</label>
+                        <value>$($reportData.metadata.scriptVersion)</value>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 2: EXECUTION SUMMARY DASHBOARD                       -->
+            <!-- ============================================================ -->
+            <!-- Purpose: At-a-glance key performance indicators              -->
+            <!-- Metrics: Total tasks, Success count, Failed count            -->
+            <!-- Display: 5 prominent stat boxes with gradient backgrounds    -->
+            <!-- Color Coding: Green for success, success-rate with gradient  -->
+            <!-- ============================================================ -->
+            <!-- Execution Summary Section -->
+            <div class="section">
+                <h2>📊 Execution Summary</h2>
+                <div class="summary-boxes">
+                    <div class="summary-box">
+                        <div class="label">Total Tasks</div>
+                        <div class="value">$($reportData.summary.totalTasks)</div>
+                    </div>
+                    <div class="summary-box">
+                        <div class="label">Successful</div>
+                        <div class="value" style="color: #4ade80;">$($reportData.summary.successfulTasks)</div>
+                    </div>
+                    <div class="summary-box">
+                        <div class="label">Failed</div>
+                        <div class="value" style="color: #f87171;">$($reportData.summary.failedTasks)</div>
+                    </div>
+                    <div class="summary-box success-rate">
+                        <div class="label">Success Rate</div>
+                        <div class="value">$($reportData.summary.successRate)%</div>
+                    </div>
+                    <div class="summary-box">
+                        <div class="label">Total Duration</div>
+                        <div class="value">${[math]::Round($reportData.summary.totalDuration, 1)}s</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 3: TASK BREAKDOWN TABLE                             -->
+            <!-- ============================================================ -->
+            <!-- Purpose: Detailed execution results for each maintenance    -->
+            <!-- Fields: Task name, status indicator, description, duration  -->
+            <!-- Features: Color-coded rows, error row highlighting          -->
+            <!-- Status: ✓ (green) success, ✗ (red) failure                  -->
+            <!-- ============================================================ -->
+            <!-- Tasks Breakdown Section -->
+            <div class="section">
+                <h2>✅ Task Breakdown</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Task Name</th>
+                            <th style="width: 15%;">Status</th>
+                            <th style="width: 35%;">Description</th>
+                            <th style="width: 15%;">Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+"@
+
     foreach ($task in $reportData.tasks) {
-        $status = if ($task.success) { '✓ SUCCESS' } else { '✗ FAILED' }
-        $summaryLines += "- $($task.name) | $status | $($task.description) | Duration: $($task.duration)s"
+        $statusClass = if ($task.success) { 'status-success' } else { 'status-failed' }
+        $statusIcon = if ($task.success) { '✓' } else { '✗' }
+        $statusText = if ($task.success) { 'SUCCESS' } else { 'FAILED' }
+        
+        $htmlContent += @"
+                        <tr>
+                            <td><strong>$($task.name)</strong></td>
+                            <td class="$statusClass"><span class="status-icon">$statusIcon</span>$statusText</td>
+                            <td>$($task.description)</td>
+                            <td>${$task.duration}s</td>
+                        </tr>
+"@
+        
         if ($task.error) {
-            $summaryLines += "    Error: $($task.error)"
+            $htmlContent += @"
+                        <tr style="background: #fff3cd;">
+                            <td colspan="4"><div class="alert alert-error">⚠️ Error: $($task.error)</div></td>
+                        </tr>
+"@
         }
     }
-    $summaryLines += ''
 
-    $summaryLines += 'FILES GENERATED:'
-    if ($reportData.files.inventoryFiles.Count -gt 0) {
-        $summaryLines += 'Inventory files:'
-        $reportData.files.inventoryFiles | ForEach-Object { $summaryLines += "- $($_.name) ($($_.sizeKB) KB)" }
-    }
+    $htmlContent += @"
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 4: HARDWARE INFORMATION CARDS                        -->
+            <!-- ============================================================ -->
+            <!-- Purpose: System hardware specifications and status           -->
+            <!-- Cards: CPU model, Memory (total/available), Storage, Uptime  -->
+            <!-- Layout: Responsive grid (4 cols desktop, 1 col mobile)       -->
+            <!-- Design: Light gray cards with purple headers                 -->
+            <!-- ============================================================ -->
+            <!-- Hardware Information Section -->
+            <div class="section">
+                <h2>🔧 Hardware Information</h2>
+                <div class="system-info">
+                    <div class="info-card">
+                        <h4>💾 Processor</h4>
+                        <p><span class="label">CPU:</span> <span class="value">$($reportData.systemInfo.processor)</span></p>
+                    </div>
+                    <div class="info-card">
+                        <h4>🧠 Memory</h4>
+                        <p><span class="label">Total:</span> <span class="value">$($reportData.systemInfo.memory.totalGB) GB</span></p>
+                        <p><span class="label">Available:</span> <span class="value">$($reportData.systemInfo.memory.availableGB) GB</span></p>
+                    </div>
+                    <div class="info-card">
+                        <h4>💿 Storage</h4>
+                        <p><span class="label">Total:</span> <span class="value">$($reportData.systemInfo.disk.totalGB) GB</span></p>
+                        <p><span class="label">Free:</span> <span class="value">$($reportData.systemInfo.disk.freeGB) GB</span></p>
+                        <p><span class="label">Used:</span> <span class="value">$($reportData.systemInfo.disk.usedPercent)%</span></p>
+                    </div>
+                    <div class="info-card">
+                        <h4>⏱️ Uptime</h4>
+                        <p><span class="label">Hours:</span> <span class="value">$($reportData.systemInfo.uptime.hours)h</span></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- SECTION 5: GENERATED FILES & ARTIFACTS                       -->
+            <!-- ============================================================ -->
+            <!-- Purpose: Inventory of all generated report and log files     -->
+            <!-- Lists: Log files, inventory snapshots, temp files            -->
+            <!-- Format: Alert boxes with file names, sizes, timestamps       -->
+            <!-- ============================================================ -->
+            <!-- Files Generated Section -->
+            <div class="section">
+                <h2>📁 Generated Files & Artifacts</h2>
+"@
+
+    <!-- ============================================================ -->
+    <!-- LOG FILES LISTING -->
+    <!-- ============================================================ -->
+    <!-- Conditional Alert Box: Only shows if log files exist -->
+    <!-- Content: File names and sizes in KB with bullet points -->
+    <!-- Purpose: User can see what logs were generated -->
+    <!-- Alert Class: alert-info (blue background, informational tone) -->
+    <!-- ============================================================ -->
     if ($reportData.files.logFiles.Count -gt 0) {
-        $summaryLines += 'Log files:'
-        $reportData.files.logFiles | ForEach-Object { $summaryLines += "- $($_.name) ($($_.sizeKB) KB)" }
+        $htmlContent += @'
+                <div class="alert alert-info">
+                    <strong>📋 Log Files:</strong>
+'@
+        foreach ($file in $reportData.files.logFiles) {
+            $htmlContent += "<br/>• $($file.name) - $($file.sizeKB) KB"
+        }
+        $htmlContent += '</div>'
     }
-    $summaryLines += ''
 
-    if ($reportData.actions.Count -gt 0) {
-        $summaryLines += 'MAINTENANCE ACTIONS PERFORMED:'
-        $reportData.actions | ForEach-Object { $summaryLines += "- $_" }
-        $summaryLines += ''
+    <!-- ============================================================ -->
+    <!-- INVENTORY FILES LISTING -->
+    <!-- ============================================================ -->
+    <!-- Conditional Alert Box: Only shows if inventory files exist -->
+    <!-- Content: File names, sizes, and creation timestamps -->
+    <!-- Purpose: Track system snapshots taken during maintenance -->
+    <!-- Alert Class: alert-info (blue background, informational tone) -->
+    <!-- Details: Shows when each snapshot was created -->
+    <!-- ============================================================ -->
+    if ($reportData.files.inventoryFiles.Count -gt 0) {
+        $htmlContent += @'
+                <div class="alert alert-info">
+                    <strong>📊 Inventory Files:</strong>
+'@
+        foreach ($file in $reportData.files.inventoryFiles) {
+            $htmlContent += "<br/>• $($file.name) - $($file.sizeKB) KB (Created: $($file.created))"
+        }
+        $htmlContent += '</div>'
     }
 
-    $summaryLines += '============================================================'
-    $summaryLines += 'Report files:'
-    $summaryLines += "- JSON Report: $jsonReportPath"
-    $summaryLines += "- Text Report: $textReportPath"
-    $summaryLines += "- Log File: $LogFile"
-    if (Test-Path $global:TempFolder) {
-        $summaryLines += "- Temp Folder: $global:TempFolder"
-    }
-    $summaryLines += '============================================================'
+    <!-- ============================================================ -->
+    <!-- SECTION 6: FOOTER & METADATA -->
+    <!-- ============================================================ -->
+    <!-- Purpose: Report metadata and professional closure -->
+    <!-- Content: Generation timestamp, script version, path info -->
+    <!-- Design: Dark text on white background, subtle styling -->
+    <!-- Branding: Professional footer with system attribution -->
+    <!-- ============================================================ -->
+    <!-- Footer Section with Report Metadata -->
+    $htmlContent += @"
+            </div>
+        </div>
+        
+        <div class="footer">
+            <!-- Report Generation Date/Time -->
+            <p><strong>Report Generated:</strong> $($reportData.metadata.date)</p>
+            
+            <!-- Script Version and Location -->
+            <p><strong>Script Version:</strong> $($reportData.metadata.scriptVersion) | <strong>Path:</strong> $($reportData.metadata.scriptPath)</p>
+            
+            <!-- Professional Branding -->
+            <p style="margin-top: 10px; color: #999;">Windows Maintenance Automation System • Professional Report</p>
+        </div>
+    </div>
+</body>
+</html>
+"@
 
-    # Write text report
+    <!-- ============================================================ -->
+    <!-- FINAL HTML REPORT OUTPUT -->
+    <!-- ============================================================ -->
+    <!-- Purpose: Write complete HTML report to file system -->
+    <!-- Encoding: UTF8 (unicode support, standard web encoding) -->
+    <!-- Destination: $htmlReportPath variable (project working dir) -->
+    <!-- Error Handling: Try/catch with fallback logging -->
+    <!-- Features: -->
+    <!-- - Self-contained HTML (no external dependencies) -->
+    <!-- - Embedded CSS styling (bootstrap/W3.CSS inspired) -->
+    <!-- - Responsive design (mobile-friendly) -->
+    <!-- - Professional formatting with color coding -->
+    <!-- - Complete system + maintenance data aggregation -->
+    <!-- ============================================================ -->
+    # Write HTML report to file system
     try {
-        $summaryLines | Out-File -FilePath $textReportPath -Encoding UTF8
-        Write-Log "Human-readable report saved to $textReportPath" 'INFO'
+        $htmlContent | Out-File -FilePath $htmlReportPath -Encoding UTF8
+        Write-Log "Professional HTML report generated: $htmlReportPath" 'INFO'
+        
+        # Log report size for reference
+        $reportSize = (Get-Item $htmlReportPath).Length
+        $reportSizeMB = [Math]::Round($reportSize / 1MB, 2)
+        Write-Log "Report file size: $reportSizeMB MB" 'DEBUG'
     } catch {
-        Write-Log "Failed to write text report: $_" 'WARN'
+        Write-Log "Failed to write HTML report: $_" 'WARN'
     }
 
+    <!-- ============================================================ -->
+    <!-- REPORT GENERATION COMPLETION -->
+    <!-- ============================================================ -->
+    <!-- Function End Marker: [END] Unified Maintenance Report -->
+    <!-- Return Value: Hashtable with report paths and statistics -->
+    <!-- ============================================================ -->
     Write-Log '[END] Unified Maintenance Report Generation' 'INFO'
     return @{
         JsonReport  = $jsonReportPath
         TextReport  = $textReportPath
+        HtmlReport  = $htmlReportPath
         TaskCount   = $reportData.summary.totalTasks
         SuccessRate = $reportData.summary.successRate
     }
@@ -10704,11 +10530,6 @@ $global:ScriptTasks = @(
         Name        = 'TempCleanup';
         Function    = { Clear-TempFiles };
         Description = 'Clean temporary files and browser caches'
-    },
-    @{
-        Name        = 'DefenderScan';
-        Function    = { Start-DefenderFullScan };
-        Description = 'Windows Defender full system scan with automatic threat cleanup'
     }
 )
 
