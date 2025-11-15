@@ -3401,10 +3401,6 @@ function Get-AppXBloatware {
 # Returns: Array of candidate objects
 # Side-effects: None
 # ================================================================
-function Get-WingetBloatware {
-    # ...existing code...
-}
-
 # ================================================================
 # Function: Get-WingetBloatware
 # ================================================================
@@ -3511,10 +3507,6 @@ function Get-ChocolateyBloatware {
 # Returns: Array of candidate uninstall objects
 # Side-effects: None
 # ================================================================
-function Get-RegistryBloatware {
-    # ...existing code...
-}
-
 # ================================================================
 # Function: Get-RegistryBloatware
 # ================================================================
@@ -3610,10 +3602,6 @@ function Get-BrowserExtensionsBloatware {
 # Returns: Array of extension objects
 # Side-effects: None
 # ================================================================
-function Get-ContextMenuBloatware {
-    # ...existing code...
-}
-
 # ================================================================
 # Function: Get-ContextMenuBloatware
 # ================================================================
@@ -4397,10 +4385,6 @@ function Get-ExtensiveSystemInventory {
 # Returns: Array of feature objects
 # Side-effects: None (detection only)
 # ================================================================
-function Get-WindowsFeaturesBloatware {
-    # ...existing code...
-}
-
 # ================================================================
 # REUSABLE UTILITY FUNCTIONS: Enhanced Bloatware Detection System
 # ================================================================
@@ -4496,10 +4480,6 @@ function Get-WindowsFeaturesBloatware {
 # Returns: Array of service objects { Name, DisplayName, Path }
 # Side-effects: None (detection only)
 # ================================================================
-function Get-ServicesBloatware {
-    # ...existing code...
-}
-
 # ================================================================
 # Function: Get-ServicesBloatware
 # ================================================================
@@ -4599,10 +4579,6 @@ function Get-ServicesBloatware {
 # Returns: Array of scheduled task objects
 # Side-effects: None
 # ================================================================
-function Get-ScheduledTasksBloatware {
-    # ...existing code...
-}
-
 # ================================================================
 # Function: Get-ScheduledTasksBloatware
 # ================================================================
@@ -4704,10 +4680,6 @@ function Get-ScheduledTasksBloatware {
 # Returns: Array of shortcut objects
 # Side-effects: None
 # ================================================================
-function Get-StartMenuBloatware {
-    # ...existing code...
-}
-
 # ================================================================
 # Function: Get-StartMenuBloatware
 # ================================================================
