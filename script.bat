@@ -633,29 +633,21 @@ REM Works from any directory, downloads to current script location
 REM -----------------------------------------------------------------------------
 :SKIP_SELF_UPDATE
 
-REM Check if we need to download repository or use local files
-REM Enhanced check: Look for script.ps1 in current directory first
+REM Check if local script.ps1 exists and remove it to ensure latest version is downloaded
 IF EXIST "%WORKING_DIR%script.ps1" (
-    SET "PS1_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "Found local script.ps1 file: %PS1_PATH%" "INFO" "BAT"
-    CALL :LOG_MESSAGE "Skipping repository download - local files available" "INFO" "BAT"
-    GOTO :PS1_DETECTION_COMPLETE
-)
-
-REM Fallback: Check if PS1_PATH was set earlier and file exists
-IF DEFINED PS1_PATH (
-    IF EXIST "%PS1_PATH%" (
-        CALL :LOG_MESSAGE "Using previously detected script.ps1 file: %PS1_PATH%" "INFO" "BAT"
-        CALL :LOG_MESSAGE "Skipping repository download - local files available" "INFO" "BAT"
-        GOTO :PS1_DETECTION_COMPLETE
+    CALL :LOG_MESSAGE "Found local script.ps1 file - removing to download latest version" "INFO" "BAT"
+    DEL /F /Q "%WORKING_DIR%script.ps1" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Local script.ps1 removed successfully" "INFO" "BAT"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Warning: Could not remove local script.ps1, attempting force delete..." "WARN" "BAT"
+        powershell -ExecutionPolicy Bypass -Command "try { if(Test-Path '%WORKING_DIR%script.ps1') { Remove-Item -Path '%WORKING_DIR%script.ps1' -Force } } catch { Write-Warning 'Could not force delete script.ps1' }"
     )
 )
 
-CALL :LOG_MESSAGE "Local script.ps1 not found - attempting repository download from GitHub..." "INFO" "BAT"
+CALL :LOG_MESSAGE "Attempting to download latest script.ps1 from GitHub repository..." "INFO" "BAT"
 CALL :LOG_MESSAGE "NOTE: Repository download requires the GitHub repository to be public and accessible" "WARN" "BAT"
 CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "BAT"
-CALL :LOG_MESSAGE "Checked for: %WORKING_DIR%script.ps1" "DEBUG" "BAT"
-CALL :LOG_MESSAGE "PS1_PATH variable: %PS1_PATH%" "DEBUG" "BAT"
 CALL :LOG_MESSAGE "Downloading to: %WORKING_DIR%" "INFO" "BAT"
 
 REM Clean up existing files
