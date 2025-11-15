@@ -1042,8 +1042,8 @@ function Write-Log {
 # ================================================================
 function Test-TaskShouldSkip {
     param(
-        [Parameter(Mandatory=$true)][string[]]$SkipFlagName,
-        [Parameter(Mandatory=$true)][string]$TaskName
+        [Parameter(Mandatory = $true)][string[]]$SkipFlagName,
+        [Parameter(Mandatory = $true)][string]$TaskName
     )
     
     foreach ($flag in $SkipFlagName) {
