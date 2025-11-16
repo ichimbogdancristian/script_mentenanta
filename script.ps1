@@ -253,21 +253,27 @@ $global:AppInventoryCache = $null      # Detected applications (cached to avoid 
 # ================================================================
 # Path Resolution Diagnostics (Debug Information)
 # ================================================================
-Write-Log '=== PATH RESOLUTION DIAGNOSTICS ===' 'DEBUG'
-Write-Log "Script Full Path: $ScriptFullPath" 'DEBUG'
-Write-Log "Script Directory: $ScriptDir" 'DEBUG'
-Write-Log "Environment WORKING_DIRECTORY: $env:WORKING_DIRECTORY" 'DEBUG'
-Write-Log "PowerShell Working Directory: $WorkingDirectory" 'DEBUG'
-Write-Log "Drive Type: $DriveType" 'DEBUG'
-Write-Log "Is Network Path: $IsNetworkPath" 'DEBUG'
-Write-Log "UNC Path: $IsUNCPath" 'DEBUG'
+# Only show path diagnostics in verbose mode to reduce log noise
+if ($global:Config.EnableVerboseLogging) {
+    Write-Log '=== PATH RESOLUTION DIAGNOSTICS ===' 'DEBUG'
+    Write-Log "Script Full Path: $ScriptFullPath" 'DEBUG'
+    Write-Log "Script Directory: $ScriptDir" 'DEBUG'
+    Write-Log "Environment WORKING_DIRECTORY: $env:WORKING_DIRECTORY" 'DEBUG'
+    Write-Log "PowerShell Working Directory: $WorkingDirectory" 'DEBUG'
+    Write-Log "Drive Type: $DriveType" 'DEBUG'
+    Write-Log "Is Network Path: $IsNetworkPath" 'DEBUG'
+    Write-Log "UNC Path: $IsUNCPath" 'DEBUG'
+}
 
 # Determine repository-based temp folder. Prefer $ScriptDir (script location) when available,
 # otherwise use the configured $WorkingDirectory. If creation fails, fallback to the system temp path.
 $repoTempBase = if ($ScriptDir) { $ScriptDir } else { $WorkingDirectory }
 $global:TempFolder = Join-Path $repoTempBase 'temp_files'
-Write-Log "Temp Folder Base Resolution: $repoTempBase" 'DEBUG'
-Write-Log "Temp Folder Path: $global:TempFolder" 'DEBUG'
+
+if ($global:Config.EnableVerboseLogging) {
+    Write-Log "Temp Folder Base Resolution: $repoTempBase" 'DEBUG'
+    Write-Log "Temp Folder Path: $global:TempFolder" 'DEBUG'
+}
 $global:BloatwareList = @()
 $global:EssentialApps = @()
 
@@ -897,12 +903,11 @@ function Use-AllScriptTasks {
         # Display visual task banner
         Show-TaskBanner -TaskNumber $taskIndex -TotalTasks $totalTasks -TaskName $taskName -TaskDescription $desc -Importance $importance
 
-        Write-ActionLog -Action 'Preparing task execution' -Details "$taskName ($taskIndex/$totalTasks) - $desc" -Category 'Task Execution' -Status 'START'
-        Write-Log "[$taskIndex/$totalTasks] Executing task: $taskName - $desc" 'INFO'
+        # Single consolidated log entry for task start
+        Write-Log "[$taskIndex/$totalTasks] STARTING: $taskName" 'ACTION' -Component $taskName
 
         $startTime = Get-Date
         try {
-            Write-ActionLog -Action 'Starting task function' -Details "$taskName | Function execution beginning" -Category 'Task Execution' -Status 'START'
             $taskOutcome = Invoke-Task $taskName $task.Function
             $endTime = $taskOutcome.Ended
             $duration = $taskOutcome.Duration
@@ -910,12 +915,12 @@ function Use-AllScriptTasks {
             $statusMessage = if ($taskOutcome.Status) { $taskOutcome.Status } elseif ($wasSuccessful) { 'Completed' } else { 'Failed' }
 
             if ($wasSuccessful) {
-                Write-ActionLog -Action 'Task completed successfully' -Details "$taskName | Duration: ${duration}s | Status: $statusMessage" -Category 'Task Execution' -Status 'SUCCESS'
-                Write-Log "[$taskIndex/$totalTasks] Task $taskName completed in $duration seconds - $statusMessage" 'SUCCESS'
+                # Single consolidated log entry for task completion
+                Write-Log "[$taskIndex/$totalTasks] ✓ COMPLETED: $taskName in ${duration}s" 'SUCCESS' -Component $taskName
             }
             else {
-                Write-ActionLog -Action 'Task completed with issues' -Details "$taskName | Duration: ${duration}s | Status: $statusMessage" -Category 'Task Execution' -Status 'FAILURE'
-                Write-Log "[$taskIndex/$totalTasks] Task $taskName failed after $duration seconds - $statusMessage" 'ERROR'
+                # Single consolidated log entry for task failure
+                Write-Log "[$taskIndex/$totalTasks] ✗ FAILED: $taskName after ${duration}s" 'ERROR' -Component $taskName
             }
 
             $global:TaskResults[$taskName] = [ordered]@{
@@ -933,9 +938,16 @@ function Use-AllScriptTasks {
         catch {
             $endTime = Get-Date
             $duration = ($endTime - $startTime).TotalSeconds
+            
+            # Extract rich error context for debugging
+            $errorMessage = $_.Exception.Message
+            $errorLine = $_.InvocationInfo.ScriptLineNumber
+            $errorCommand = $_.InvocationInfo.MyCommand.Name
 
-            Write-ActionLog -Action 'Task execution failed with exception' -Details "$taskName | Duration: ${duration}s | Exception: $_.Exception.Message" -Category 'Task Execution' -Status 'FAILURE'
-            Write-Log "[$taskIndex/$totalTasks] Task $taskName execution failed: $_" 'ERROR'
+            # Log with comprehensive error details
+            Write-Log "[$taskIndex/$totalTasks] ✗ FAILED: $taskName (Duration: ${duration}s)" 'ERROR' -Component $taskName
+            Write-Log "  Error: $errorMessage" 'ERROR' -Component $taskName
+            Write-Log "  Location: Line $errorLine in $errorCommand" 'ERROR' -Component $taskName
             $global:TaskResults[$taskName] = [ordered]@{
                 IsSuccessful = $false
                 Status       = 'Error'
@@ -948,9 +960,11 @@ function Use-AllScriptTasks {
             }
         }
 
-        # Progress update
+        # Progress update with visual separator
         $progressPercent = [math]::Round(($taskIndex / $totalTasks) * 100, 1)
-        Write-ActionLog -Action 'Task execution progress' -Details "$taskIndex/$totalTasks tasks completed ($progressPercent%)" -Category 'Task Orchestration' -Status 'INFO'
+        $successCount = ($global:TaskResults.Values | Where-Object { $_.IsSuccessful }).Count
+        Write-Log "" 'PROGRESS'  # Visual separator line
+        Write-Log "[$taskIndex/$totalTasks] Progress: $progressPercent% - $successCount successful" 'PROGRESS'
     }
 
     # Final summary
@@ -984,14 +998,8 @@ function Write-Log {
         [string]$Component = 'PS1'
     )
 
-    # Check if logging is enabled for this level
-    if ($global:LoggingConfig -and $global:LoggingConfig.LogLevels.ContainsKey($Level)) {
-        $currentLevelValue = $global:LoggingConfig.LogLevels[$global:LoggingConfig.LogLevel]
-        $messageLevelValue = $global:LoggingConfig.LogLevels[$Level]
-        if ($messageLevelValue -lt $currentLevelValue) {
-            return  # Skip logging this message
-        }
-    }
+    # Note: Dynamic log level filtering not implemented
+    # All messages are logged regardless of level (can be enhanced in future)
 
     $timestamp = Get-Date -Format 'HH:mm:ss'
     $logEntry = "[$timestamp] [$Level] [$Component] $Message"
@@ -1029,11 +1037,6 @@ function Write-Log {
     }
 
     Write-Host $logEntry -ForegroundColor $color
-
-    # For important actions, also write to host using Write-Output for comprehensive logging
-    if ($Level -in @('ACTION', 'COMMAND', 'ERROR', 'SUCCESS')) {
-        Write-Output $logEntry
-    }
 }
 
 # ================================================================
@@ -7218,6 +7221,8 @@ function Update-AllPackages {
     Write-Log '[START] Update All Packages - Comprehensive Package Manager Updates' 'INFO'
     Write-Host '🔄 Starting comprehensive package updates...' -ForegroundColor Cyan
     $startTime = Get-Date
+    
+    Write-ActionProgress -ActionType 'Updating' -ItemName 'All Packages' -PercentComplete 0 -Status 'Initializing package managers'
 
     # Initialize results tracking
     $updateResults = @{
@@ -7245,6 +7250,7 @@ function Update-AllPackages {
         # WINGET PACKAGE UPDATES (Including Microsoft Store Apps)
         # ================================================================
         if ($wingetAvailable) {
+            Write-ActionProgress -ActionType 'Updating' -ItemName 'Winget' -PercentComplete 25 -Status 'Checking Winget packages'
             Write-Log '[Winget] Starting Winget package updates (includes Microsoft Store apps)...' 'INFO'
             Write-Host '📦 Updating Winget packages (includes Microsoft Store apps)...' -ForegroundColor Cyan
             $updateResults.Winget.Available = $true
@@ -7389,6 +7395,8 @@ function Update-AllPackages {
             Write-Host '  ⚪ Chocolatey not available - skipping' -ForegroundColor Yellow
         }
 
+        Write-ActionProgress -ActionType 'Updating' -ItemName 'All Packages' -PercentComplete 75 -Status 'Finalizing updates'
+
         # ================================================================
         # CLEANUP AND SUMMARY
         # ================================================================
@@ -7426,10 +7434,9 @@ function Update-AllPackages {
         elseif ($updateResults.TotalUpdates -gt 0) {
             Write-Host "✅ Successfully updated $($updateResults.TotalUpdates) packages" -ForegroundColor Green
         }
-        else {
-            Write-Host '⚠ Package update process completed with issues' -ForegroundColor Yellow
-        }
-
+        
+        Write-ActionProgress -ActionType 'Updating' -ItemName 'All Packages' -PercentComplete 100 -Completed
+        Write-Log '[END] Update All Packages' 'INFO'
     }
     catch {
         Write-Log "❌ CRITICAL ERROR in Update-AllPackages: $($_.Exception.Message)" 'ERROR'
@@ -7437,7 +7444,6 @@ function Update-AllPackages {
         $updateResults.ExecutionTime = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 2)
     }
 
-    Write-Log "[END] Update All Packages - Total execution time: $($updateResults.ExecutionTime) minutes" 'INFO'
     return $updateResults
 }
 
@@ -8015,11 +8021,6 @@ function Optimize-TaskbarAndDesktopUI {
 # Returns: Summary of changes applied
 # Side-effects: Alters telemetry and diagnostics behavior
 # ================================================================
-function Disable-Telemetry {
-    # ...existing code...
-}
-
-# ================================================================
 # Function: Disable-Telemetry
 # ================================================================
 # Purpose: Comprehensive disabling of Windows telemetry, privacy-invasive features, and browser tracking with optimization
@@ -8030,7 +8031,7 @@ function Disable-Telemetry {
 # Features: OS notification disabling, telemetry service management, registry cleanup, privacy hardening, browser tracking prevention
 # ================================================================
 function Disable-Telemetry {
-    Write-Log 'Starting Disable Telemetry and Privacy Features - Enhanced Performance Mode' 'INFO'
+    Write-Log '[START] Disable Telemetry and Privacy Features' 'INFO'
 
     # Batch notification management for improved performance
     try {
@@ -8158,7 +8159,7 @@ function Disable-Telemetry {
 
             # Avoid disabling Windows Error Reporting unless explicitly allowed via config
             if ($serviceName -eq 'WerSvc' -and -not $global:Config.AllowDisableWerSvc) {
-                Write-Log 'WerSvc detected but disabling is skipped (AllowDisableWerSvc not set)' 'INFO'
+                Write-Log 'WerSvc detected but disabling is skipped (AllowDisableWerSvc not set)' 'DEBUG'
                 continue
             }
 
@@ -8185,22 +8186,14 @@ function Disable-Telemetry {
         Write-Log "Telemetry services disabled: $servicesDisabled services stopped and disabled" 'INFO'
     }
 
+    # ===== SUMMARY =====
+    Write-Log "═══════════════════════════════════════════════════════════════════════════" 'INFO'
+    Write-Log "[SUMMARY] Disable Telemetry" 'INFO'
+    Write-Log "  • Registry settings applied: $totalSettingsApplied" 'INFO'
+    Write-Log "  • Telemetry services disabled: $servicesDisabled" 'INFO'
+    Write-Log "  • OS notifications disabled: $appsDisabled apps" 'INFO'
+    Write-Log "═══════════════════════════════════════════════════════════════════════════" 'INFO'
     Write-Log '[END] Disable Telemetry and Privacy Features' 'INFO'
-}
-
-# ================================================================
-# Function: Protect-SystemRestore
-# ================================================================
-# Purpose: Ensure System Restore is enabled and create a restore point before
-#          performing maintenance when configured to do so.
-# Environment: Windows with System Restore features available; admin required
-# Logic: Checks existing restore points, enables protection if needed and
-#        creates a checkpoint restore point prior to destructive actions
-# Returns: Hashtable with status and created checkpoint ID (if any)
-# Side-effects: Creates system restore points (uses storage)
-# ================================================================
-function Protect-SystemRestore {
-    # ...existing code...
 }
 
 # ================================================================
@@ -8889,6 +8882,7 @@ function Get-EventLogAnalysis {
 # ================================================================
 function Install-WindowsUpdatesCompatible {
     Write-Log '[START] Windows Updates Installation (Enhanced Compatibility)' 'INFO'
+    Write-ActionProgress -ActionType 'Installing' -ItemName 'Windows Updates' -PercentComplete 0 -Status 'Initializing Windows Update check'
 
     # Automatically answer "No" to any reboot/restart Read-Host prompts raised by PSWindowsUpdate
     $readHostOverrideAdded = $false
@@ -8926,19 +8920,6 @@ function Install-WindowsUpdatesCompatible {
     }
     catch {
         Write-Log "Failed to configure Read-Host override for reboot prompts: $_" 'WARN'
-    }
-
-    # Configure input redirection to suppress interactive prompts from PSWindowsUpdate module
-    # This ensures that even if the module tries to read from stdin, it gets immediate EOF
-    $inputRedirectionAdded = $false
-    try {
-        # Redirect stdin to NUL to suppress any input requests
-        $null = cmd /c "echo N" | Out-Null
-        $inputRedirectionAdded = $true
-        Write-Log 'Configured input stream redirection for unattended operation' 'DEBUG'
-    }
-    catch {
-        Write-Log "Failed to configure input redirection: $_" 'WARN'
     }
 
     try {
@@ -8987,11 +8968,13 @@ function Install-WindowsUpdatesCompatible {
         if ($moduleInstalled) {
             try {
                 # Get available updates using PSWindowsUpdate
+                Write-ActionProgress -ActionType 'Installing' -ItemName 'Windows Updates' -PercentComplete 25 -Status 'Checking for available updates'
                 Write-Log 'Checking for available Windows updates...' 'INFO'
                 $availableUpdates = Get-WUList -ErrorAction SilentlyContinue
 
                 if ($availableUpdates -and $availableUpdates.Count -gt 0) {
                     Write-Log "Found $($availableUpdates.Count) available updates" 'INFO'
+                    Write-ActionProgress -ActionType 'Installing' -ItemName 'Windows Updates' -PercentComplete 50 -Status "Installing $($availableUpdates.Count) updates"
                     Write-Host "Installing $($availableUpdates.Count) Windows updates..." -ForegroundColor Cyan
 
                     # Set comprehensive environment variables for automatic operation
@@ -9074,6 +9057,7 @@ function Install-WindowsUpdatesCompatible {
             }
         }
 
+        Write-ActionProgress -ActionType 'Installing' -ItemName 'Windows Updates' -PercentComplete 100 -Completed
         Write-Log '[END] Windows Updates Installation' 'INFO'
     }
     finally {
@@ -9092,20 +9076,6 @@ function Install-WindowsUpdatesCompatible {
             }
         }
     }
-}
-
-# ================================================================
-# Function: Clear-TempFiles
-# ================================================================
-# Purpose: Remove temporary files from configured temp locations (including
-#          `$global:TempFolder`) while preserving important caches and logs
-# Environment: File-system access; may require admin for some paths
-# Logic: Iterates configured temp paths, applies safe deletion rules, logs results
-# Returns: Summary object with deleted file counts and errors
-# Side-effects: Deletes files; be cautious in multi-user systems
-# ================================================================
-function Clear-TempFiles {
-    # ...existing code...
 }
 
 # ================================================================
