@@ -633,24 +633,26 @@ REM Works from any directory, downloads to current script location
 REM -----------------------------------------------------------------------------
 :SKIP_SELF_UPDATE
 
-REM Check if local script.ps1 exists and remove it to ensure latest version is downloaded
+REM Check if local script.ps1 exists - ALWAYS download latest from GitHub
+REM This ensures we always have the most up-to-date version
+CALL :LOG_MESSAGE "Checking for local script.ps1 file..." "DEBUG" "BAT"
 IF EXIST "%WORKING_DIR%script.ps1" (
-    CALL :LOG_MESSAGE "Found local script.ps1 file - removing to download latest version" "INFO" "BAT"
+    CALL :LOG_MESSAGE "Found local script.ps1 - removing to download latest version from GitHub" "INFO" "BAT"
     DEL /F /Q "%WORKING_DIR%script.ps1" >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Local script.ps1 removed successfully" "INFO" "BAT"
     ) ELSE (
-        CALL :LOG_MESSAGE "Warning: Could not remove local script.ps1, attempting force delete..." "WARN" "BAT"
+        CALL :LOG_MESSAGE "Warning: Could not delete local script.ps1, attempting force delete..." "WARN" "BAT"
         powershell -ExecutionPolicy Bypass -Command "try { if(Test-Path '%WORKING_DIR%script.ps1') { Remove-Item -Path '%WORKING_DIR%script.ps1' -Force } } catch { Write-Warning 'Could not force delete script.ps1' }"
     )
 )
 
-CALL :LOG_MESSAGE "Attempting to download latest script.ps1 from GitHub repository..." "INFO" "BAT"
+CALL :LOG_MESSAGE "Downloading latest version from GitHub repository..." "INFO" "BAT"
 CALL :LOG_MESSAGE "NOTE: Repository download requires the GitHub repository to be public and accessible" "WARN" "BAT"
 CALL :LOG_MESSAGE "Working directory: %WORKING_DIR%" "DEBUG" "BAT"
 CALL :LOG_MESSAGE "Downloading to: %WORKING_DIR%" "INFO" "BAT"
 
-REM Clean up existing files
+REM Clean up existing files before download
 IF EXIST "%ZIP_FILE%" (
     DEL "%ZIP_FILE%" >nul 2>&1
     CALL :LOG_MESSAGE "Removed existing ZIP file" "INFO" "BAT"
@@ -675,13 +677,10 @@ IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository URL: %REPO_URL%" "ERROR" "BAT"
     CALL :LOG_MESSAGE "" "INFO" "BAT"
     CALL :LOG_MESSAGE "TROUBLESHOOTING:" "WARN" "BAT"
-    CALL :LOG_MESSAGE "1. The GitHub repository may not exist yet or is private" "WARN" "BAT"
+    CALL :LOG_MESSAGE "1. The GitHub repository may not be accessible or is private" "WARN" "BAT"
     CALL :LOG_MESSAGE "2. Check your internet connection" "WARN" "BAT"
-    CALL :LOG_MESSAGE "3. If running locally, ensure script.ps1 is in the same directory as script.bat" "WARN" "BAT"
-    CALL :LOG_MESSAGE "4. To create the repository: git init, git add ., git commit, git push to GitHub" "WARN" "BAT"
+    CALL :LOG_MESSAGE "3. Verify the repository URL is correct: %REPO_URL%" "WARN" "BAT"
     CALL :LOG_MESSAGE "" "INFO" "BAT"
-    CALL :LOG_MESSAGE "Current working directory: %WORKING_DIR%" "INFO" "BAT"
-    CALL :LOG_MESSAGE "Looking for: %WORKING_DIR%script.ps1" "INFO" "BAT"
     pause
     EXIT /B 3
 )
@@ -691,9 +690,8 @@ IF NOT EXIST "%ZIP_FILE%" (
     pause
     EXIT /B 3
 )
-REM -----------------------------------------------------------------------------
-REM Universal Repository Extraction - Extract to working directory
-REM -----------------------------------------------------------------------------
+
+REM Extract repository
 CALL :LOG_MESSAGE "Extracting repository to: %WORKING_DIR%" "INFO" "BAT"
 
 powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; if(Test-Path '%ZIP_FILE%') { [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host '[INFO] Repository extracted successfully.' } else { Write-Host '[ERROR] ZIP file not found at %ZIP_FILE%'; exit 1 } } catch { Write-Host '[ERROR] Extraction failed:' $_.Exception.Message; exit 1 }"
@@ -723,7 +721,7 @@ IF EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "ZIP file not found (already cleaned up)" "DEBUG" "BAT"
 )
 
-REM Verify extraction and update PowerShell script path
+REM Verify extraction and locate script.ps1
 CALL :LOG_MESSAGE "Verifying repository extraction..." "INFO" "BAT"
 CALL :LOG_MESSAGE "Looking for extracted folder: %EXTRACTED_PATH%" "INFO" "BAT"
 
@@ -733,7 +731,8 @@ IF EXIST "%EXTRACTED_PATH%" (
     REM Update PowerShell script path to extracted version
     IF EXIST "%EXTRACTED_PATH%\script.ps1" (
         SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "Found script.ps1 in extracted folder" "INFO" "BAT"
+        CALL :LOG_MESSAGE "Found script.ps1 in extracted folder: %PS1_PATH%" "INFO" "BAT"
+        GOTO :PS1_LOCAL_CONFIRMED
     ) ELSE (
         CALL :LOG_MESSAGE "script.ps1 not found in extracted folder" "ERROR" "BAT"
         pause
@@ -745,18 +744,25 @@ IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Available folders in working directory:" "INFO" "BAT"
     DIR "%WORKING_DIR%" /AD /B
     
-    REM Try alternative folder names
+    REM Try alternative folder names (older GitHub naming)
     IF EXIST "%WORKING_DIR%script_mentenanta-master" (
         SET "EXTRACT_FOLDER=script_mentenanta-master"
         SET "EXTRACTED_PATH=%WORKING_DIR%script_mentenanta-master"
-        SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
-        CALL :LOG_MESSAGE "Found alternative folder: script_mentenanta-master" "INFO" "BAT"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Could not find any valid extracted folder" "ERROR" "BAT"
-        pause
-        EXIT /B 3
+        IF EXIST "%EXTRACTED_PATH%\script.ps1" (
+            SET "PS1_PATH=%EXTRACTED_PATH%\script.ps1"
+            CALL :LOG_MESSAGE "Found alternative folder: script_mentenanta-master" "INFO" "BAT"
+            GOTO :PS1_LOCAL_CONFIRMED
+        )
     )
+    
+    CALL :LOG_MESSAGE "Could not find valid extracted folder with script.ps1" "ERROR" "BAT"
+    pause
+    EXIT /B 3
 )
+
+REM Should not reach here, but if extraction succeeded and PS1_PATH was set, continue
+:PS1_LOCAL_CONFIRMED
+
 REM -----------------------------------------------------------------------------
 REM Self-Update Mechanism - Using dynamic paths
 REM -----------------------------------------------------------------------------
