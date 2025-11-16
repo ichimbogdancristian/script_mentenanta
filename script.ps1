@@ -7261,7 +7261,8 @@ function Update-AllPackages {
                 $wingetListArgs = @('upgrade', '--include-unknown')
                 $wingetUpgradesPath = Join-Path $global:TempFolder 'winget_upgrades.txt'
                 $wingetUpgradesErrPath = Join-Path $global:TempFolder 'winget_upgrades_error.txt'
-                $listProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetUpgradesPath -RedirectStandardError $wingetUpgradesErrPath
+                # Redirect stdin to suppress interactive prompts
+                $listProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetUpgradesPath -RedirectStandardError $wingetUpgradesErrPath -RedirectStandardInput 'nul'
 
                 if ($listProcess.ExitCode -eq 0 -and (Test-Path $wingetUpgradesPath)) {
                     $upgradeList = Get-Content $wingetUpgradesPath -ErrorAction SilentlyContinue
@@ -7283,7 +7284,8 @@ function Update-AllPackages {
                         Write-Log "[Winget] Executing: winget $($wingetUpgradeArgs -join ' ')" 'VERBOSE'
                         $wingetUpgradeOutPath = Join-Path $global:TempFolder 'winget_upgrade_output.txt'
                         $wingetUpgradeErrPath = Join-Path $global:TempFolder 'winget_upgrade_error.txt'
-                        $upgradeProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetUpgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetUpgradeOutPath -RedirectStandardError $wingetUpgradeErrPath
+                        # Redirect stdin to suppress interactive prompts ("Terminate batch job Y/N?")
+                        $upgradeProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetUpgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $wingetUpgradeOutPath -RedirectStandardError $wingetUpgradeErrPath -RedirectStandardInput 'nul'
 
                         if ($upgradeProcess.ExitCode -eq 0) {
                             $updateResults.Winget.Success = $true
@@ -7338,7 +7340,8 @@ function Update-AllPackages {
                 $chocoOutdatedArgs = @('outdated', '--limit-output')
                 $chocoOutdatedPath = "$global:TempFolder\choco_outdated.txt"
                 $chocoOutdatedErrPath = "$global:TempFolder\choco_outdated_error.txt"
-                $outdatedProcess = Start-Process -FilePath 'choco' -ArgumentList $chocoOutdatedArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoOutdatedPath -RedirectStandardError $chocoOutdatedErrPath
+                # Redirect stdin to suppress interactive prompts
+                $outdatedProcess = Start-Process -FilePath 'choco' -ArgumentList $chocoOutdatedArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoOutdatedPath -RedirectStandardError $chocoOutdatedErrPath -RedirectStandardInput 'nul'
 
                 if ($outdatedProcess.ExitCode -eq 0 -and (Test-Path $chocoOutdatedPath)) {
                     $outdatedList = Get-Content $chocoOutdatedPath -ErrorAction SilentlyContinue | Where-Object { $_ -and $_ -ne '' }
@@ -7354,7 +7357,8 @@ function Update-AllPackages {
                         Write-Log "[Chocolatey] Executing: choco $($chocoUpgradeArgs -join ' ')" 'VERBOSE'
                         $chocoUpgradeOutPath = "$global:TempFolder\choco_upgrade_output.txt"
                         $chocoUpgradeErrPath = "$global:TempFolder\choco_upgrade_error.txt"
-                        $upgradeProcess = Start-Process -FilePath 'choco' -ArgumentList $chocoUpgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoUpgradeOutPath -RedirectStandardError $chocoUpgradeErrPath
+                        # Redirect stdin to suppress interactive prompts
+                        $upgradeProcess = Start-Process -FilePath 'choco' -ArgumentList $chocoUpgradeArgs -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $chocoUpgradeOutPath -RedirectStandardError $chocoUpgradeErrPath -RedirectStandardInput 'nul'
 
                         if ($upgradeProcess.ExitCode -eq 0) {
                             $updateResults.Chocolatey.Success = $true
@@ -10458,20 +10462,20 @@ function Write-UnifiedMaintenanceReport {
 </html>
 "@
 
-    <!-- ============================================================ -->
-    <!-- FINAL HTML REPORT OUTPUT -->
-    <!-- ============================================================ -->
-    <!-- Purpose: Write complete HTML report to file system -->
-    <!-- Encoding: UTF8 (unicode support, standard web encoding) -->
-    <!-- Destination: $htmlReportPath variable (project working dir) -->
-    <!-- Error Handling: Try/catch with fallback logging -->
-    <!-- Features: -->
-    <!-- - Self-contained HTML (no external dependencies) -->
-    <!-- - Embedded CSS styling (bootstrap/W3.CSS inspired) -->
-    <!-- - Responsive design (mobile-friendly) -->
-    <!-- - Professional formatting with color coding -->
-    <!-- - Complete system + maintenance data aggregation -->
-    <!-- ============================================================ -->
+    # ============================================================
+    # FINAL HTML REPORT OUTPUT
+    # ============================================================
+    # Purpose: Write complete HTML report to file system
+    # Encoding: UTF8 (unicode support, standard web encoding)
+    # Destination: $htmlReportPath variable (project working dir)
+    # Error Handling: Try/catch with fallback logging
+    # Features:
+    # - Self-contained HTML (no external dependencies)
+    # - Embedded CSS styling (bootstrap/W3.CSS inspired)
+    # - Responsive design (mobile-friendly)
+    # - Professional formatting with color coding
+    # - Complete system + maintenance data aggregation
+    # ============================================================
     # Write HTML report to file system
     try {
         $htmlContent | Out-File -FilePath $htmlReportPath -Encoding UTF8
@@ -10486,12 +10490,12 @@ function Write-UnifiedMaintenanceReport {
         Write-Log "Failed to write HTML report: $_" 'WARN'
     }
 
-    <!-- ============================================================ -->
-    <!-- REPORT GENERATION COMPLETION -->
-    <!-- ============================================================ -->
-    <!-- Function End Marker: [END] Unified Maintenance Report -->
-    <!-- Return Value: Hashtable with report paths and statistics -->
-    <!-- ============================================================ -->
+    # ============================================================
+    # REPORT GENERATION COMPLETION
+    # ============================================================
+    # Function End Marker: [END] Unified Maintenance Report
+    # Return Value: Hashtable with report paths and statistics
+    # ============================================================
     Write-Log '[END] Unified Maintenance Report Generation' 'INFO'
     return @{
         JsonReport  = $jsonReportPath
