@@ -380,6 +380,28 @@ Write-CleanProgress -Activity "Cleaning temp files" `
                     -Completed
 ```
 
+#### `Format-ProgressBar` & `Write-VisualProgressBar` - High-Visibility Summaries
+**Purpose**: Provide boxed, multi-line progress summaries with counts/success metrics without duplicating markup logic.
+
+**Usage Rules**:
+- `Format-ProgressBar` returns a hashtable containing the ASCII bar, percent complete, and descriptive summary. Do **not** reimplement bar math—call it wherever you need consistent visuals.
+- `Write-VisualProgressBar` logs the formatted output with the purple box-drawing frame used throughout bloatware removal, essential app installs, and temp cleanup. Call it sparingly (start, end, every N items) to avoid log noise.
+
+**Example**:
+```powershell
+if ($itemsProcessed -eq 1 -or $itemsProcessed -eq $totalItems -or $itemsProcessed % 5 -eq 0) {
+    Write-VisualProgressBar -Current $itemsProcessed `
+                            -Total $totalItems `
+                            -Title "INSTALLING ESSENTIAL APPS" `
+                            -Details "→ $($currentApp.Name)"
+}
+```
+
+**Guidance**:
+- Always pass integers for `-Current`/`-Total`; the helper handles percentage math internally.
+- Provide a short `-Title` (uppercase verbs work well) and a concise `-Details` string (e.g., `→ AppName`).
+- Reuse these helpers for any new iterative workflow so reports and consoles maintain a consistent visual language.
+
 **Design Principle**: Visual feedback via progress bars, minimal log file pollution. Never log intermediate percentages.
 
 ### 3. Error Handling Strategy
@@ -1149,6 +1171,7 @@ Output Phase:
 - Individual task execution results from `$global:TaskResults`
 - Task name, description, status (success/failure)
 - Duration for each task, error messages if failed
+- **Serialization requirement**: Append tasks as `[pscustomobject]` instances with `success` explicitly cast to `[bool]` and `duration` stored as `[double]`. Hashtable entries default to `$false` when accessed via dot notation, which forces every row in the Task Breakdown to render as `✗ FAILED`.
 
 **System Information** (Lines 9390-9420):
 - WMI queries via `Get-CimInstance` for hardware specs
@@ -1772,7 +1795,7 @@ function Test-RegistryOperations {
             @{ Name = 'TestString'; Value = 'TestValue'; Type = 'String'; Expected = 'TestValue' },
             @{ Name = 'TestDWord'; Value = 12345; Type = 'DWord'; Expected = 12345 },
             @{ Name = 'TestQWord'; Value = [int64]123456789; Type = 'QWord'; Expected = [int64]123456789 },
-            @{ Name = 'TestBinary'; Value = [byte[]](1,2,3,4); Type = 'Binary'; Expected = @(1,2,3,4) }
+            @{ Name = 'TestBinary'; Value = [byte[]]@(1,2,3,4); Type = 'Binary'; Expected = @(1,2,3,4) }
         )
         
         $successCount = 0
@@ -3218,6 +3241,21 @@ if ($null -eq $global:SystemInventory) {
 
 # Reuse cached data
 $osVersion = $global:SystemInventory.OSVersion
+```
+
+**Use Int64 for File Sizes**:
+```powershell
+$sizeBytes = (Get-ChildItem $path -Recurse -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+if ($null -eq $sizeBytes) { $sizeBytes = 0 }
+$sizeMB = [math]::Round([int64]$sizeBytes / 1MB, 2)
+```
+- Always cast to `[int64]` before arithmetic to prevent `System.Int32` overflow when folders exceed ~2 GB.
+- Apply the same pattern when computing deltas:
+```powershell
+$deltaBytes = [System.Math]::Max(
+    [System.Convert]::ToInt64(0),
+    [System.Convert]::ToInt64($beforeBytes - $afterBytes)
+)
 ```
 
 ### Security Considerations
