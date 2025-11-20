@@ -471,9 +471,14 @@ $global:ScriptTasks = @(
                     if (Test-Path $action.Path) {
                         try {
                             $beforeSize = (Get-ChildItem $action.Path -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                            if ($null -eq $beforeSize) { $beforeSize = 0 }  # Handle null case
+                            
                             Get-ChildItem $action.Path -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+                            
                             $afterSize = (Get-ChildItem $action.Path -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-                            $cleaned = [math]::Max(0, ($beforeSize - $afterSize))
+                            if ($null -eq $afterSize) { $afterSize = 0 }  # Handle null case
+                            
+                            $cleaned = [System.Math]::Max([int64]0, [int64]($beforeSize - $afterSize))  # Use Int64 for large values
                             $totalCleaned += $cleaned
                             Write-Log "Cleaned $($action.Name): $([math]::Round($cleaned/1MB, 2)) MB" 'INFO'
                         }
@@ -963,8 +968,19 @@ function Use-AllScriptTasks {
         # Progress update with visual separator
         $progressPercent = [math]::Round(($taskIndex / $totalTasks) * 100, 1)
         $successCount = ($global:TaskResults.Values | Where-Object { $_.IsSuccessful }).Count
+        $failedCount = $taskIndex - $successCount
+        
+        # Create visual progress bar
+        $barLength = 30
+        $filledLength = [math]::Round(($taskIndex / $totalTasks) * $barLength)
+        $emptyLength = $barLength - $filledLength
+        $progressBar = "█" * $filledLength + "░" * $emptyLength
+        
         Write-Log "" 'PROGRESS'  # Visual separator line
-        Write-Log "[$taskIndex/$totalTasks] Progress: $progressPercent% - $successCount successful" 'PROGRESS'
+        Write-Log "╭─ TASK PROGRESS ─────────────────────────────────────────╮" 'PROGRESS'
+        Write-Log "│ $progressBar $progressPercent% │" 'PROGRESS'
+        Write-Log "│ Tasks: $taskIndex/$totalTasks | ✓ $successCount | ✗ $failedCount" 'PROGRESS'
+        Write-Log "╰────────────────────────────────────────────────────────╯" 'PROGRESS'
     }
 
     # Final summary
@@ -1313,6 +1329,72 @@ function Write-CleanProgress {
         Start-Sleep -Milliseconds 500  # Brief pause to show completion
         Write-Progress -Activity $Activity -Completed
     }
+}
+
+# ================================================================
+# Function: Format-ProgressBar
+# Purpose: Generate a visual progress bar with percentage and item counts
+# Usage: $bar = Format-ProgressBar -Current 5 -Total 10 -BarLength 30
+# Returns: Formatted string with visual bar
+# ================================================================
+function Format-ProgressBar {
+    param(
+        [int]$Current = 0,
+        [int]$Total = 1,
+        [int]$BarLength = 30,
+        [bool]$ShowPercentage = $true,
+        [bool]$ShowCounts = $true
+    )
+
+    # Ensure values are valid
+    if ($Total -le 0) { $Total = 1 }
+    if ($Current -lt 0) { $Current = 0 }
+    if ($Current -gt $Total) { $Current = $Total }
+
+    # Calculate percentages
+    $percentage = if ($Total -gt 0) { [math]::Round(($Current / $Total) * 100, 1) } else { 0 }
+    $filledLength = [math]::Round(($Current / $Total) * $BarLength)
+    $emptyLength = $BarLength - $filledLength
+
+    # Build progress bar
+    $progressBar = "█" * $filledLength + "░" * $emptyLength
+
+    # Format output
+    $output = $progressBar
+    if ($ShowPercentage) {
+        $output += " $percentage%"
+    }
+    if ($ShowCounts) {
+        $output += " [$Current/$Total]"
+    }
+
+    return $output
+}
+
+# ================================================================
+# Function: Write-VisualProgressBar
+# Purpose: Log a formatted visual progress bar with box decoration
+# Usage: Write-VisualProgressBar -Current 5 -Total 10 -Title "Processing"
+# Returns: None
+# Side-effects: Logs to console and log file
+# ================================================================
+function Write-VisualProgressBar {
+    param(
+        [int]$Current = 0,
+        [int]$Total = 1,
+        [string]$Title = "PROGRESS",
+        [string]$Details = ""
+    )
+
+    $progressBar = Format-ProgressBar -Current $Current -Total $Total -BarLength 30
+
+    Write-Log "" 'PROGRESS'
+    Write-Log "╭─ $Title ─────────────────────────────────────────────────────╮" 'PROGRESS'
+    Write-Log "│ $progressBar │" 'PROGRESS'
+    if ($Details) {
+        Write-Log "│ $Details" 'PROGRESS'
+    }
+    Write-Log "╰────────────────────────────────────────────────────────────╯" 'PROGRESS'
 }
 
 # ================================================================
@@ -2970,6 +3052,11 @@ function Remove-AppsByPattern {
             $progress = [math]::Round(($currentIndex / $safeAppsToRemove.Count) * 100)
 
             Write-ActionProgress -ActionType 'Removing' -ItemName $app.DisplayName -PercentComplete $progress -Status "Removing app ($currentIndex/$($safeAppsToRemove.Count))"
+            
+            # Log visual progress bar every 5 items or at start/end
+            if ($currentIndex -eq 1 -or $currentIndex -eq $safeAppsToRemove.Count -or $currentIndex % 5 -eq 0) {
+                Write-VisualProgressBar -Current $currentIndex -Total $safeAppsToRemove.Count -Title "REMOVING BLOATWARE" -Details "→ $($app.DisplayName)"
+            }
 
             try {
                 $removalResult = $null
@@ -3140,6 +3227,11 @@ function Install-AppsByCategory {
 
             $appName = if ($app -is [hashtable]) { $app.Name } else { $app }
             Write-ActionProgress -ActionType 'Installing' -ItemName $appName -PercentComplete $progress -Status "Installing $category app ($currentIndex/$($allApps.Count))"
+            
+            # Log visual progress bar every 5 items or at start/end
+            if ($currentIndex -eq 1 -or $currentIndex -eq $allApps.Count -or $currentIndex % 5 -eq 0) {
+                Write-VisualProgressBar -Current $currentIndex -Total $allApps.Count -Title "INSTALLING ESSENTIAL APPS" -Details "→ $appName [$category]"
+            }
 
             try {
                 $installResult = $null
@@ -6493,15 +6585,12 @@ function Install-EssentialApps {
         }
 
         if ($found) {
-            Write-Log "✅ DETECTED: $($essentialApp.Name) ($matchDetails)" 'DEBUG'
+            Write-Log "✅ DETECTED: $($essentialApp.Name) - $matchDetails" 'DEBUG'
         }
         else {
-            Write-Log "⚪ NOT DETECTED: $($essentialApp.Name) - will install ($matchDetails, checked: $($identifiersToCheck -join ', '))" 'DEBUG'
-            # Log which identifiers were checked but NOT found in installed list
-            $missingIds = $identifiersToCheck | Where-Object { $_ -and -not $installedLookup.Contains($_) }
-            if ($missingIds) {
-                Write-Log "  → Missing identifiers: $($missingIds -join ', ')" 'VERBOSE'
-            }
+            Write-Log "⚪ NOT DETECTED: $($essentialApp.Name) - will install ($matchDetails)" 'DEBUG'
+            # Log which identifiers were checked for this app
+            Write-Log "   Checked identifiers: $($identifiersToCheck -join ', ')" 'VERBOSE'
             $appsToInstall += $essentialApp
         }
     }
@@ -8460,22 +8549,68 @@ function Clear-OldRestorePoints {
 
         Write-Log 'Enumerating system restore points...' 'INFO'
 
-        try {
-            # Get all restore points sorted by creation time (newest first)
-            $allRestorePoints = Get-ComputerRestorePoint -ErrorAction Stop | Sort-Object CreationTime -Descending
+        # Try multiple methods to get restore points for maximum compatibility
+        $allRestorePoints = $null
+        
+        # Method 1: Try Get-ComputerRestorePoint (most reliable if available)
+        if (Get-Command -Name Get-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+            try {
+                $allRestorePoints = Get-ComputerRestorePoint -ErrorAction Stop | Sort-Object CreationTime -Descending
+                Write-Log "Retrieved restore points using Get-ComputerRestorePoint cmdlet" 'DEBUG'
+            }
+            catch {
+                Write-Log "Get-ComputerRestorePoint failed: $_" 'DEBUG'
+                $allRestorePoints = $null
+            }
         }
-        catch [System.Management.Automation.CommandNotFoundException] {
-            Write-Log "Warning: 'Get-ComputerRestorePoint' command not available on this system. System Restore may be disabled or not supported. Skipping cleanup." 'WARN'
-            return $true # Not a failure, just not applicable.
-        }
-        catch {
-            Write-Log "Unexpected error during restore point cleanup: $($_.Exception.Message)" 'ERROR'
-            return $false
-        }
-
+        
+        # Method 2: Fallback to WMI/CIM SystemRestore class
         if (-not $allRestorePoints) {
-            Write-Log 'No system restore points found on this system' 'INFO'
-            return $true
+            try {
+                Write-Log "Attempting WMI retrieval as fallback..." 'DEBUG'
+                $cimRestorePoints = Get-CimInstance -ClassName Win32_SystemRestore -ErrorAction SilentlyContinue | Sort-Object CreationTime -Descending
+                
+                if ($cimRestorePoints) {
+                    # Convert CIM objects to compatible format
+                    $allRestorePoints = @()
+                    foreach ($point in $cimRestorePoints) {
+                        $allRestorePoints += [PSCustomObject]@{
+                            CreationTime     = [datetime]::ParseExact($point.CreationTime.Substring(0, 14), 'yyyyMMddHHmmss', $null)
+                            Description      = $point.Description
+                            RestorePointType = $point.RestorePointType
+                            SequenceNumber   = $point.SequenceNumber
+                        }
+                    }
+                    $allRestorePoints = $allRestorePoints | Sort-Object CreationTime -Descending
+                    Write-Log "Retrieved restore points using WMI fallback" 'DEBUG'
+                }
+            }
+            catch {
+                Write-Log "WMI retrieval also failed: $_" 'DEBUG'
+                $allRestorePoints = $null
+            }
+        }
+        
+        # Method 3: Fallback to PowerShell on Windows class
+        if (-not $allRestorePoints) {
+            try {
+                Write-Log "Attempting COM-based retrieval as final fallback..." 'DEBUG'
+                $shell = New-Object -ComObject Shell.Application
+                $allRestorePoints = @()
+                
+                # This is a last-resort method and may not be fully functional
+                Write-Log "COM method requires additional configuration, skipping" 'DEBUG'
+            }
+            catch {
+                Write-Log "COM method not available: $_" 'DEBUG'
+            }
+        }
+        
+        if (-not $allRestorePoints) {
+            Write-Log "⚠ System Restore feature appears to be disabled or unavailable on this system." 'WARN'
+            Write-Log "   This is normal on systems with System Restore disabled or minimal recovery partitions." 'WARN'
+            Write-Log "   Skipping restore point cleanup." 'INFO'
+            return $true  # Not a failure, feature just not available
         }
 
         $totalPoints = $allRestorePoints.Count
@@ -8543,24 +8678,63 @@ function Clear-OldRestorePoints {
 
         Write-Log 'Starting restore point removal process...' 'INFO'
 
-        # Perform cleanup with detailed logging (only if removal cmdlet exists)
-        if (-not (Get-Command -Name Remove-ComputerRestorePoint -ErrorAction SilentlyContinue)) {
-            Write-Log 'Remove-ComputerRestorePoint cmdlet not available on this system. Skipping actual removals.' 'WARN'
+        # Check if removal is possible using multiple methods
+        $removalMethodAvailable = $false
+        $removalMethod = $null
+        
+        # Method 1: Check for Remove-ComputerRestorePoint cmdlet
+        if (Get-Command -Name Remove-ComputerRestorePoint -ErrorAction SilentlyContinue) {
+            $removalMethodAvailable = $true
+            $removalMethod = 'Remove-ComputerRestorePoint'
         }
-        else {
-            foreach ($point in $pointsToRemove) {
-                $pointDate = $point.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
-                $pointDescription = $point.Description
-                try {
-                    Write-Log "Removing restore point: $pointDate | $pointDescription" 'INFO'
+        
+        # Method 2: Check for WMI deletion capability (Win32_SystemRestore.Delete())
+        if (-not $removalMethodAvailable) {
+            try {
+                $testPoint = Get-CimInstance -ClassName Win32_SystemRestore -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($testPoint -and (Get-CimClass -ClassName Win32_SystemRestore -ErrorAction SilentlyContinue).CimClassMethods.Name -contains 'Delete') {
+                    $removalMethodAvailable = $true
+                    $removalMethod = 'WMI'
+                }
+            }
+            catch {
+                # WMI deletion may not be available
+            }
+        }
+        
+        if (-not $removalMethodAvailable) {
+            Write-Log "⚠ No restore point removal method available on this system." 'WARN'
+            Write-Log "   Removal cmdlets are unavailable. Restore points cannot be deleted via API." 'WARN'
+            Write-Log "   This is common on systems with Group Policy restrictions or managed configurations." 'WARN'
+            return $true  # Not a failure, just not possible on this system
+        }
+        
+        Write-Log "Using removal method: $removalMethod" 'DEBUG'
+
+        # Perform cleanup with detailed logging
+        foreach ($point in $pointsToRemove) {
+            $pointDate = $point.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
+            $pointDescription = $point.Description
+            try {
+                Write-Log "Removing restore point: $pointDate | $pointDescription" 'INFO'
+                
+                if ($removalMethod -eq 'Remove-ComputerRestorePoint') {
                     Remove-ComputerRestorePoint -RestorePoint $point -ErrorAction Stop
-                    $removedCount++
-                    Write-Log "✓ Successfully removed restore point: $pointDate" 'INFO'
                 }
-                catch {
-                    $failedCount++
-                    Write-Log "✗ Failed to remove restore point: $pointDate | Error: $_" 'ERROR'
+                elseif ($removalMethod -eq 'WMI') {
+                    # Use CIM to delete the restore point
+                    $cimPoint = Get-CimInstance -ClassName Win32_SystemRestore -Filter "SequenceNumber=$($point.SequenceNumber)" -ErrorAction Stop
+                    if ($cimPoint) {
+                        Invoke-CimMethod -InputObject $cimPoint -MethodName Delete -ErrorAction Stop | Out-Null
+                    }
                 }
+                
+                $removedCount++
+                Write-Log "✓ Successfully removed restore point: $pointDate" 'INFO'
+            }
+            catch {
+                $failedCount++
+                Write-Log "✗ Failed to remove restore point: $pointDate | Error: $_" 'ERROR'
             }
         }
 
@@ -8704,11 +8878,27 @@ function Get-EventLogAnalysis {
         Write-Log 'Analyzing System Event Log for errors...' 'INFO'
 
         try {
-            $systemErrors = Get-WinEvent -FilterHashtable @{
-                LogName   = 'System'
-                Level     = 1, 2  # Critical and Error levels
-                StartTime = $startTime
-            } -ErrorAction SilentlyContinue | Select-Object -First 50
+            # Attempt to clear corrupted module cache if necessary
+            try {
+                $systemErrors = Get-WinEvent -FilterHashtable @{
+                    LogName   = 'System'
+                    Level     = 1, 2  # Critical and Error levels
+                    StartTime = $startTime
+                } -ErrorAction Stop | Select-Object -First 50
+            }
+            catch {
+                # If Get-WinEvent fails due to module loading issues, try cleaning up temp files
+                Write-Log "Attempting to recover from module loading error: $_" 'DEBUG'
+                $tempProxyPath = "$env:TEMP\remoteIpMoProxy_*"
+                Get-Item $tempProxyPath -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+                
+                # Retry Get-WinEvent
+                $systemErrors = Get-WinEvent -FilterHashtable @{
+                    LogName   = 'System'
+                    Level     = 1, 2  # Critical and Error levels
+                    StartTime = $startTime
+                } -ErrorAction SilentlyContinue | Select-Object -First 50
+            }
 
             if ($systemErrors) {
                 $parsedSystemErrors = @()
@@ -8745,11 +8935,27 @@ function Get-EventLogAnalysis {
         Write-Log 'Analyzing Application Event Log for errors...' 'INFO'
 
         try {
-            $appErrors = Get-WinEvent -FilterHashtable @{
-                LogName   = 'Application'
-                Level     = 1, 2  # Critical and Error levels
-                StartTime = $startTime
-            } -ErrorAction SilentlyContinue | Select-Object -First 30
+            # Attempt to clear corrupted module cache if necessary
+            try {
+                $appErrors = Get-WinEvent -FilterHashtable @{
+                    LogName   = 'Application'
+                    Level     = 1, 2  # Critical and Error levels
+                    StartTime = $startTime
+                } -ErrorAction Stop | Select-Object -First 30
+            }
+            catch {
+                # If Get-WinEvent fails due to module loading issues, try cleaning up temp files
+                Write-Log "Attempting to recover from module loading error: $_" 'DEBUG'
+                $tempProxyPath = "$env:TEMP\remoteIpMoProxy_*"
+                Get-Item $tempProxyPath -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+                
+                # Retry Get-WinEvent
+                $appErrors = Get-WinEvent -FilterHashtable @{
+                    LogName   = 'Application'
+                    Level     = 1, 2  # Critical and Error levels
+                    StartTime = $startTime
+                } -ErrorAction SilentlyContinue | Select-Object -First 30
+            }
 
             if ($appErrors) {
                 $parsedAppErrors = @()
@@ -8786,11 +8992,27 @@ function Get-EventLogAnalysis {
         Write-Log 'Analyzing Security Event Log for critical issues...' 'INFO'
 
         try {
-            $securityErrors = Get-WinEvent -FilterHashtable @{
-                LogName   = 'Security'
-                Level     = 1  # Critical level only
-                StartTime = $startTime
-            } -ErrorAction SilentlyContinue | Select-Object -First 20
+            # Attempt to clear corrupted module cache if necessary
+            try {
+                $securityErrors = Get-WinEvent -FilterHashtable @{
+                    LogName   = 'Security'
+                    Level     = 1  # Critical level only
+                    StartTime = $startTime
+                } -ErrorAction Stop | Select-Object -First 20
+            }
+            catch {
+                # If Get-WinEvent fails due to module loading issues, try cleaning up temp files
+                Write-Log "Attempting to recover from module loading error: $_" 'DEBUG'
+                $tempProxyPath = "$env:TEMP\remoteIpMoProxy_*"
+                Get-Item $tempProxyPath -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+                
+                # Retry Get-WinEvent
+                $securityErrors = Get-WinEvent -FilterHashtable @{
+                    LogName   = 'Security'
+                    Level     = 1  # Critical level only
+                    StartTime = $startTime
+                } -ErrorAction SilentlyContinue | Select-Object -First 20
+            }
 
             if ($securityErrors) {
                 $parsedSecurityErrors = @()
@@ -9120,7 +9342,11 @@ function Clear-TempFiles {
         $progressPercent = [math]::Round(($locationsProcessed / $totalLocations) * 100, 1)
 
         Write-TaskProgress -Activity 'Cleaning Temp Files' -CurrentStep $locationsProcessed -TotalSteps $totalLocations -Status "$($location.Name) ($locationsProcessed/$totalLocations)" -FileBased:$false
-        Write-Host "[$progressPercent%] Cleaning: $($location.Name) ($locationsProcessed/$totalLocations)" -ForegroundColor Cyan
+        
+        # Log visual progress bar every location or at start/end
+        if ($locationsProcessed -eq 1 -or $locationsProcessed -eq $totalLocations -or $locationsProcessed % 3 -eq 0) {
+            Write-VisualProgressBar -Current $locationsProcessed -Total $totalLocations -Title "CLEANING TEMPORARY FILES" -Details "→ $($location.Name)"
+        }
 
         try {
             # Handle wildcard paths (like Firefox profiles)
@@ -9139,7 +9365,8 @@ function Clear-TempFiles {
                     # Calculate size before deletion
                     try {
                         $sizeBeforeBytes = (Get-ChildItem -Path $cleanPath -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-                        $sizeBeforeMB = [math]::Round($sizeBeforeBytes / 1MB, 2)
+                        if ($null -eq $sizeBeforeBytes) { $sizeBeforeBytes = 0 }  # Handle null case
+                        $sizeBeforeMB = [math]::Round([int64]$sizeBeforeBytes / 1MB, 2)
                     }
                     catch {
                         $sizeBeforeMB = 0
@@ -9194,7 +9421,9 @@ function Clear-TempFiles {
         # Calculate Recycle Bin size
         try {
             $recycleBinItems = Get-ChildItem -Path 'C:\$Recycle.Bin' -Recurse -File -ErrorAction SilentlyContinue
-            $recycleBinSize = [math]::Round(($recycleBinItems | Measure-Object -Property Length -Sum).Sum / 1MB, 2)
+            $recycleBinSizeBytes = ($recycleBinItems | Measure-Object -Property Length -Sum).Sum
+            if ($null -eq $recycleBinSizeBytes) { $recycleBinSizeBytes = 0 }  # Handle null case
+            $recycleBinSize = [math]::Round([int64]$recycleBinSizeBytes / 1MB, 2)
         }
         catch { }
 
@@ -9273,7 +9502,8 @@ function Remove-AllTempFiles {
             # Get temp folder size before cleanup
             try {
                 $tempFolderSize = (Get-ChildItem -Path $global:TempFolder -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-                $tempFolderSizeMB = [math]::Round($tempFolderSize / 1MB, 2)
+                if ($null -eq $tempFolderSize) { $tempFolderSize = 0 }  # Handle null case
+                $tempFolderSizeMB = [math]::Round([int64]$tempFolderSize / 1MB, 2)
                 Write-Log "[TEMP-CLEANUP] Temp folder size before cleanup: $tempFolderSizeMB MB" 'INFO'
                 $cleanupResults.TotalSizeFreed = $tempFolderSizeMB
             }
@@ -9702,7 +9932,9 @@ function Write-TempListsSummary {
 
     # Total temp folder analysis
     $totalFiles = (Get-ChildItem -Path $global:TempFolder -File -ErrorAction SilentlyContinue).Count
-    $totalSize = [math]::Round((Get-ChildItem -Path $global:TempFolder -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
+    $totalSizeBytes = (Get-ChildItem -Path $global:TempFolder -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    if ($null -eq $totalSizeBytes) { $totalSizeBytes = 0 }
+    $totalSize = [math]::Round([int64]$totalSizeBytes / 1KB, 2)
 
     $summaryLines += 'TEMP FOLDER SUMMARY:'
     $summaryLines += "- Total files: $totalFiles"
@@ -9793,7 +10025,7 @@ function Write-UnifiedMaintenanceReport {
                 duration    = if ($result.Duration) { [math]::Round($result.Duration, 2) } else { 0 }
                 started     = if ($result.Started) { $result.Started.ToString('HH:mm:ss') } else { 'Unknown' }
                 ended       = if ($result.Ended) { $result.Ended.ToString('HH:mm:ss') } else { 'Unknown' }
-                error       = if ($result.ContainsKey('Error')) { $result.Error } else { $null }
+                error       = if ($result.PSObject.Properties['Error']) { $result.Error } else { $null }
             }
             $reportData.tasks += $taskDetail
             $reportData.summary.totalDuration += $taskDetail.duration
@@ -10395,14 +10627,7 @@ function Write-UnifiedMaintenanceReport {
                 <h2>📁 Generated Files & Artifacts</h2>
 "@
 
-    <!-- ============================================================ -->
-    <!-- LOG FILES LISTING -->
-    <!-- ============================================================ -->
-    <!-- Conditional Alert Box: Only shows if log files exist -->
-    <!-- Content: File names and sizes in KB with bullet points -->
-    <!-- Purpose: User can see what logs were generated -->
-    <!-- Alert Class: alert-info (blue background, informational tone) -->
-    <!-- ============================================================ -->
+    # LOG FILES LISTING
     if ($reportData.files.logFiles.Count -gt 0) {
         $htmlContent += @'
                 <div class="alert alert-info">
@@ -10414,15 +10639,7 @@ function Write-UnifiedMaintenanceReport {
         $htmlContent += '</div>'
     }
 
-    <!-- ============================================================ -->
-    <!-- INVENTORY FILES LISTING -->
-    <!-- ============================================================ -->
-    <!-- Conditional Alert Box: Only shows if inventory files exist -->
-    <!-- Content: File names, sizes, and creation timestamps -->
-    <!-- Purpose: Track system snapshots taken during maintenance -->
-    <!-- Alert Class: alert-info (blue background, informational tone) -->
-    <!-- Details: Shows when each snapshot was created -->
-    <!-- ============================================================ -->
+    # INVENTORY FILES LISTING
     if ($reportData.files.inventoryFiles.Count -gt 0) {
         $htmlContent += @'
                 <div class="alert alert-info">
@@ -10434,15 +10651,7 @@ function Write-UnifiedMaintenanceReport {
         $htmlContent += '</div>'
     }
 
-    <!-- ============================================================ -->
-    <!-- SECTION 6: FOOTER & METADATA -->
-    <!-- ============================================================ -->
-    <!-- Purpose: Report metadata and professional closure -->
-    <!-- Content: Generation timestamp, script version, path info -->
-    <!-- Design: Dark text on white background, subtle styling -->
-    <!-- Branding: Professional footer with system attribution -->
-    <!-- ============================================================ -->
-    <!-- Footer Section with Report Metadata -->
+    # FOOTER SECTION
     $htmlContent += @"
             </div>
         </div>
