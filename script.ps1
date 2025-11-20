@@ -9626,6 +9626,71 @@ function Start-SystemHealthRepair {
 }
 
 # ================================================================
+# Function: Get-DismProgressPercent
+# Purpose: Extract percentage markers from DISM output so we can reuse the
+#          standardized Write-VisualProgressBar helper instead of logging
+#          raw ASCII progress spam.
+# ================================================================
+function Get-DismProgressPercent {
+    param([string]$Line)
+
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $null }
+
+    $match = [regex]::Match($Line, '(?<percent>\d{1,3}(?:\.\d+)?)%')
+    if ($match.Success) {
+        return [math]::Min([double]$match.Groups['percent'].Value, 100)
+    }
+
+    return $null
+}
+
+# ================================================================
+# Function: Invoke-DismOperation
+# Purpose: Run DISM while translating its textual progress into our visual
+#          progress bar format to keep logs consistent and readable.
+# ================================================================
+function Invoke-DismOperation {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+        [string]$Title = 'DISM OPERATION',
+        [string]$Details = '→ Running DISM operation',
+        [int]$ProgressStep = 10
+    )
+
+    $outputLines = New-Object System.Collections.Generic.List[string]
+    $lastReportedPercent = -$ProgressStep
+
+    Write-VisualProgressBar -Current 0 -Total 100 -Title $Title -Details $Details
+
+    & dism @Arguments 2>&1 | ForEach-Object {
+        $line = $_
+        if ($null -ne $line) {
+            $null = $outputLines.Add($line)
+            $percentValue = Get-DismProgressPercent -Line $line
+            if ($percentValue -ne $null) {
+                $roundedPercent = [math]::Min([int][math]::Round($percentValue), 100)
+                if ($roundedPercent -ge $lastReportedPercent + $ProgressStep) {
+                    Write-VisualProgressBar -Current $roundedPercent -Total 100 -Title $Title -Details $Details
+                    $lastReportedPercent = $roundedPercent
+                }
+            }
+        }
+    }
+
+    $exitCode = $LASTEXITCODE
+
+    if ($lastReportedPercent -lt 100) {
+        Write-VisualProgressBar -Current 100 -Total 100 -Title $Title -Details "$Details ✓"
+    }
+
+    return [PSCustomObject]@{
+        ExitCode = $exitCode
+        Output   = ($outputLines -join "`n")
+    }
+}
+
+# ================================================================
 # Function: Start-DefenderFullScan
 # ================================================================
 # Purpose: Launch a full Windows Defender scan (or other AV tool) and
@@ -9675,10 +9740,19 @@ function Start-SystemHealthRepair {
         Write-ActionProgress -ActionType 'Analyzing' -ItemName 'System Health' -PercentComplete 5 -Status 'Initializing DISM health check...'
 
         try {
-            $dismScanResult = & dism /online /cleanup-image /scanhealth /english 2>&1
-            $dismScanOutput = $dismScanResult -join "`n"
+            $dismScanResult = Invoke-DismOperation -Arguments @('/online', '/cleanup-image', '/scanhealth', '/english') -Title 'DISM SCANHEALTH' -Details '→ analyzing component store'
+            $dismScanOutput = $dismScanResult.Output
             $results.DismCheckPerformed = $true
-            Write-Log "DISM ScanHealth output: $dismScanOutput" 'VERBOSE'
+
+            $scanSummary = ($dismScanOutput -split "`n") | Where-Object { $_ -and $_ -notmatch '^\s*\[=+' }
+            if ($scanSummary) {
+                $scanTail = $scanSummary | Select-Object -Last 5
+                Write-Log ("DISM ScanHealth summary:`n{0}" -f ($scanTail -join "`n")) 'VERBOSE'
+            }
+
+            if ($dismScanResult.ExitCode -ne 0) {
+                Write-Log "DISM ScanHealth exited with code $($dismScanResult.ExitCode)." 'WARN'
+            }
 
             if ($dismScanOutput -match 'component store is repairable|corruption was detected') {
                 Write-Log 'DISM detected component store corruption. Attempting repair...' 'WARN'
@@ -9686,16 +9760,21 @@ function Start-SystemHealthRepair {
                 $results.RepairNeeded = $true
 
                 Write-ActionProgress -ActionType 'Repairing' -ItemName 'Component Store' -PercentComplete 20 -Status 'Running DISM RestoreHealth...'
-                $dismRepairResult = & dism /online /cleanup-image /restorehealth /english 2>&1
-                $dismRepairOutput = $dismRepairResult -join "`n"
-                Write-Log "DISM RestoreHealth output: $dismRepairOutput" 'VERBOSE'
+                $dismRepairResult = Invoke-DismOperation -Arguments @('/online', '/cleanup-image', '/restorehealth', '/english') -Title 'DISM RESTOREHEALTH' -Details '→ repairing component store'
+                $dismRepairOutput = $dismRepairResult.Output
 
-                if ($LASTEXITCODE -eq 0 -and $dismRepairOutput -match 'The restore operation completed successfully') {
+                $repairSummary = ($dismRepairOutput -split "`n") | Where-Object { $_ -and $_ -notmatch '^\s*\[=+' }
+                if ($repairSummary) {
+                    $repairTail = $repairSummary | Select-Object -Last 5
+                    Write-Log ("DISM RestoreHealth summary:`n{0}" -f ($repairTail -join "`n")) 'VERBOSE'
+                }
+
+                if ($dismRepairResult.ExitCode -eq 0 -and $dismRepairOutput -match 'The restore operation completed successfully') {
                     Write-Log 'DISM RestoreHealth completed successfully.' 'SUCCESS'
                     $results.DismRepairSuccess = $true
                 }
                 else {
-                    Write-Log "DISM RestoreHealth failed. Exit Code: $LASTEXITCODE" 'ERROR'
+                    Write-Log "DISM RestoreHealth failed. Exit Code: $($dismRepairResult.ExitCode)" 'ERROR'
                     $results.DismRepairSuccess = $false
                 }
             }
