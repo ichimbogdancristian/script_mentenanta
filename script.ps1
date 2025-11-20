@@ -8591,19 +8591,9 @@ function Clear-OldRestorePoints {
             }
         }
         
-        # Method 3: Fallback to PowerShell on Windows class
+        # Method 3 placeholder: COM-based retrieval would go here if implemented in future
         if (-not $allRestorePoints) {
-            try {
-                Write-Log "Attempting COM-based retrieval as final fallback..." 'DEBUG'
-                $shell = New-Object -ComObject Shell.Application
-                $allRestorePoints = @()
-                
-                # This is a last-resort method and may not be fully functional
-                Write-Log "COM method requires additional configuration, skipping" 'DEBUG'
-            }
-            catch {
-                Write-Log "COM method not available: $_" 'DEBUG'
-            }
+            Write-Log "COM-based restore point retrieval not implemented; skipping final fallback" 'DEBUG'
         }
         
         if (-not $allRestorePoints) {
@@ -9339,7 +9329,6 @@ function Clear-TempFiles {
 
     foreach ($location in $cleanupLocations) {
         $locationsProcessed++
-        $progressPercent = [math]::Round(($locationsProcessed / $totalLocations) * 100, 1)
 
         Write-TaskProgress -Activity 'Cleaning Temp Files' -CurrentStep $locationsProcessed -TotalSteps $totalLocations -Status "$($location.Name) ($locationsProcessed/$totalLocations)" -FileBased:$false
         
@@ -10018,11 +10007,11 @@ function Write-UnifiedMaintenanceReport {
         foreach ($taskName in $global:TaskResults.Keys) {
             $result = $global:TaskResults[$taskName]
             $task = $global:ScriptTasks | Where-Object { $_.Name -eq $taskName }
-            $taskDetail = @{
+            $taskDetail = [pscustomobject]@{
                 name        = $taskName
                 description = if ($task) { $task.Description } else { 'Task description not available' }
-                success     = $result.IsSuccessful
-                duration    = if ($result.Duration) { [math]::Round($result.Duration, 2) } else { 0 }
+                success     = [bool]$result.IsSuccessful
+                duration    = if ($null -ne $result.Duration) { [math]::Round([double]$result.Duration, 2) } else { 0 }
                 started     = if ($result.Started) { $result.Started.ToString('HH:mm:ss') } else { 'Unknown' }
                 ended       = if ($result.Ended) { $result.Ended.ToString('HH:mm:ss') } else { 'Unknown' }
                 error       = if ($result.PSObject.Properties['Error']) { $result.Error } else { $null }
