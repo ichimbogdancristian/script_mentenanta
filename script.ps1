@@ -9659,7 +9659,7 @@ function Invoke-DismOperation {
     )
 
     $outputLines = New-Object System.Collections.Generic.List[string]
-    $lastReportedPercent = -$ProgressStep
+    $lastReportedPercent = - $ProgressStep
 
     Write-VisualProgressBar -Current 0 -Total 100 -Title $Title -Details $Details
 
@@ -9668,7 +9668,7 @@ function Invoke-DismOperation {
         if ($null -ne $line) {
             $null = $outputLines.Add($line)
             $percentValue = Get-DismProgressPercent -Line $line
-            if ($percentValue -ne $null) {
+            if ($null -ne $percentValue) {
                 $roundedPercent = [math]::Min([int][math]::Round($percentValue), 100)
                 if ($roundedPercent -ge $lastReportedPercent + $ProgressStep) {
                     Write-VisualProgressBar -Current $roundedPercent -Total 100 -Title $Title -Details $Details
