@@ -1,6 +1,6 @@
 # Temporary files directory
 temp_files/
-
+archive/
 # Log files
 *.log
 

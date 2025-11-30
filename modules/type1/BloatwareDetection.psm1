@@ -28,15 +28,8 @@ if (Test-Path $SystemInventoryPath) {
     Import-Module $SystemInventoryPath -Force
 }
 
-$ConfigManagerPath = Join-Path $ModuleRoot 'core\ConfigManager.psm1'
-if (Test-Path $ConfigManagerPath) {
-    Import-Module $ConfigManagerPath -Force
-}
-
-$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingPath) {
-    Import-Module $LoggingPath -Force
-}
+# Legacy imports removed - functions now available via CoreInfrastructure global import
+# ConfigManager and LoggingManager functions consolidated into CoreInfrastructure.psm1
 
 #region Public Functions
 

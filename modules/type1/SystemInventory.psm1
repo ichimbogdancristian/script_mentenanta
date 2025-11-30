@@ -72,27 +72,24 @@ function Get-SystemInventory {
     # Use centralized logging if available
     try {
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'Starting comprehensive system inventory collection' -Data @{
-            UseCache = $UseCache
-            CacheTimeout = $CacheTimeout
+            UseCache        = $UseCache
+            CacheTimeout    = $CacheTimeout
             IncludeDetailed = $IncludeDetailed
         }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard output
     }
 
     # Check for cached inventory data if UseCache is enabled
     if ($UseCache) {
         $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        # Use ConfigManager for path resolution if available
+        # Use CoreInfrastructure for path resolution (loaded globally)
         try {
-            $ConfigManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\ConfigManager.psm1'
-            if (Test-Path $ConfigManagerPath) {
-                Import-Module $ConfigManagerPath -Force
-                $inventoryDir = Get-InventoryPath
-            } else {
-                $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
-            }
-        } catch {
+            $inventoryDir = Get-MaintenancePath 'TempRoot'
+            $inventoryDir = Join-Path $inventoryDir "data"
+        }
+        catch {
             $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
         }
 
@@ -128,7 +125,8 @@ function Get-SystemInventory {
     $perfContext = $null
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'SystemInventoryCollection' -Component 'SYSTEM-INVENTORY'
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue without performance tracking
     }
 
@@ -201,12 +199,13 @@ function Get-SystemInventory {
             }
             
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection completed successfully' -Data @{
-                CollectionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
+                CollectionTime      = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
                 ComponentsCollected = $inventoryData.Keys -join ', '
-                SoftwareItemsFound = if ($inventoryData.InstalledSoftware) { $inventoryData.InstalledSoftware.Count } else { 0 }
-                ServicesFound = if ($inventoryData.Services) { $inventoryData.Services.Count } else { 0 }
+                SoftwareItemsFound  = if ($inventoryData.InstalledSoftware) { $inventoryData.InstalledSoftware.Count } else { 0 }
+                ServicesFound       = if ($inventoryData.Services) { $inventoryData.Services.Count } else { 0 }
             }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue
         }
 
@@ -220,10 +219,11 @@ function Get-SystemInventory {
             }
             
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection failed' -Data @{
-                Error = $_.Exception.Message
+                Error          = $_.Exception.Message
                 CollectionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
             }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue
         }
         
@@ -480,13 +480,13 @@ function Get-InstalledSoftwareInfo {
                 $appxPackages = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Microsoft*" -or $_.Name -like "*Microsoft.Office*" }
                 foreach ($package in $appxPackages) {
                     $installedPrograms.Add(@{
-                        Name            = $package.Name
-                        DisplayName     = $package.PackageFullName
-                        Version         = $package.Version
-                        Publisher       = $package.Publisher
-                        InstallLocation = $package.InstallLocation
-                        Source          = 'AppX'
-                    })
+                            Name            = $package.Name
+                            DisplayName     = $package.PackageFullName
+                            Version         = $package.Version
+                            Publisher       = $package.Publisher
+                            InstallLocation = $package.InstallLocation
+                            Source          = 'AppX'
+                        })
                 }
                 
                 # Clear appx packages from memory after processing
@@ -504,11 +504,11 @@ function Get-InstalledSoftwareInfo {
                     foreach ($line in $wingetLines) {
                         if ($line -match '^(.+?)\s+(.+?)\s+(.+?)\s+(.+?)$') {
                             $installedPrograms.Add(@{
-                                Name      = $matches[1].Trim()
-                                Version   = $matches[2].Trim()
-                                Publisher = $matches[4].Trim()
-                                Source    = 'Winget'
-                            })
+                                    Name      = $matches[1].Trim()
+                                    Version   = $matches[2].Trim()
+                                    Publisher = $matches[4].Trim()
+                                    Source    = 'Winget'
+                                })
                         }
                     }
                     
@@ -527,11 +527,11 @@ function Get-InstalledSoftwareInfo {
                     foreach ($line in $chocoOutput) {
                         if ($line -match '^(.+?)\s+(.+?)$') {
                             $installedPrograms.Add(@{
-                                Name      = $matches[1].Trim()
-                                Version   = $matches[2].Trim()
-                                Publisher = 'Chocolatey'
-                                Source    = 'Chocolatey'
-                            })
+                                    Name      = $matches[1].Trim()
+                                    Version   = $matches[2].Trim()
+                                    Publisher = 'Chocolatey'
+                                    Source    = 'Chocolatey'
+                                })
                         }
                     }
                     
@@ -555,16 +555,16 @@ function Get-InstalledSoftwareInfo {
 
                 foreach ($program in $programs) {
                     $installedPrograms.Add(@{
-                        Name            = $program.DisplayName
-                        DisplayName     = $program.DisplayName
-                        Version         = $program.DisplayVersion
-                        Publisher       = $program.Publisher
-                        InstallDate     = $program.InstallDate
-                        InstallLocation = $program.InstallLocation
-                        UninstallString = $program.UninstallString
-                        Size            = $program.EstimatedSize
-                        Source          = 'Registry'
-                    })
+                            Name            = $program.DisplayName
+                            DisplayName     = $program.DisplayName
+                            Version         = $program.DisplayVersion
+                            Publisher       = $program.Publisher
+                            InstallDate     = $program.InstallDate
+                            InstallLocation = $program.InstallLocation
+                            UninstallString = $program.UninstallString
+                            Size            = $program.EstimatedSize
+                            Source          = 'Registry'
+                        })
                 }
                 
                 # Clear programs variable after processing each path

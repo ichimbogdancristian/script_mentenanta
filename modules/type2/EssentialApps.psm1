@@ -638,16 +638,9 @@ function Save-AppDiffList {
 
     try {
         $scriptRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-        # Use ConfigManager for path resolution if available
+        # Use CoreInfrastructure for path resolution (loaded globally)
         try {
-            $ConfigManagerPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\ConfigManager.psm1'
-            if (Test-Path $ConfigManagerPath) {
-                Import-Module $ConfigManagerPath -Force
-                $tempDir = Get-TempDirectoryPath
-            }
-            else {
-                $tempDir = Join-Path $scriptRoot 'temp_files'
-            }
+            $tempDir = Get-MaintenancePath 'TempRoot'
         }
         catch {
             $tempDir = Join-Path $scriptRoot 'temp_files'

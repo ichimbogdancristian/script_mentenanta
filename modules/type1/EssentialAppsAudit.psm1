@@ -1,7 +1,7 @@
 ﻿#Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for essential apps configuration)
-#   - LoggingManager.psm1 (for structured logging)
+#   - CoreInfrastructure.psm1 (for configuration and logging - loaded globally)
+#   - SystemInventory.psm1 (for system analysis)
 
 <#
 .SYNOPSIS
@@ -13,7 +13,7 @@
 
 .NOTES
     Module Type: Type 1 (Inventory/Reporting)
-    Dependencies: ConfigManager.psm1, LoggingManager.psm1
+    Dependencies: CoreInfrastructure.psm1, SystemInventory.psm1
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
 #>
@@ -36,10 +36,7 @@ else {
 
 # Import shared utilities for fallback functions (only if needed)
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
-$CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'
-if (Test-Path $CommonUtilitiesPath) {
-    Import-Module $CommonUtilitiesPath -Force -ErrorAction SilentlyContinue
-}
+# Legacy import removed - utility functions now available via CoreInfrastructure global import
 
 #region Public Functions
 

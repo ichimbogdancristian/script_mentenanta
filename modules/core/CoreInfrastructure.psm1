@@ -438,16 +438,12 @@ function Get-MainConfiguration {
     )
     
     try {
-        # Try new path first
-        $newPath = Join-Path $ConfigPath 'settings/main-config.json'
-        $oldPath = Join-Path $ConfigPath 'execution/main-config.json'
+        # Use standardized config path structure
+        $configFile = Join-Path $ConfigPath 'settings/main-config.json'
         
-        $configFile = if (Test-Path $newPath) { $newPath } 
-        elseif (Test-Path $oldPath) { 
-            Write-Warning "FIX #5: Deprecated config path detected 'execution/' - please migrate to 'settings/' (see docs/DELIVERABLES.md)"
-            $oldPath 
+        if (-not (Test-Path $configFile)) {
+            throw "Main configuration file not found at: $configFile"
         }
-        else { $null }
         
         if (-not $configFile) {
             throw "main-config.json not found in $ConfigPath (tried settings/ and execution/)"
@@ -520,18 +516,11 @@ function Get-BloatwareConfiguration {
     )
     
     try {
-        $newPath = Join-Path $ConfigPath 'lists/bloatware-list.json'
-        $oldPath = Join-Path $ConfigPath 'data/bloatware-list.json'
+        # Use standardized config path structure  
+        $configFile = Join-Path $ConfigPath 'lists/bloatware-list.json'
         
-        $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { 
-            Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
-            $oldPath 
-        }
-        else { $null }
-        
-        if (-not $configFile) {
-            Write-Verbose "Bloatware configuration not found"
+        if (-not (Test-Path $configFile)) {
+            Write-Verbose "Bloatware configuration not found at: $configFile"
             return @{ all = @() }
         }
         
@@ -570,18 +559,11 @@ function Get-EssentialAppsConfiguration {
     )
     
     try {
-        $newPath = Join-Path $ConfigPath 'lists/essential-apps.json'
-        $oldPath = Join-Path $ConfigPath 'data/essential-apps.json'
+        # Use standardized config path structure
+        $configFile = Join-Path $ConfigPath 'lists/essential-apps.json'
         
-        $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { 
-            Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
-            $oldPath 
-        }
-        else { $null }
-        
-        if (-not $configFile) {
-            Write-Verbose "Essential apps configuration not found"
+        if (-not (Test-Path $configFile)) {
+            Write-Verbose "Essential apps configuration not found at: $configFile"
             return @{ all = @() }
         }
         
@@ -664,15 +646,12 @@ function Get-LoggingConfiguration {
     )
     
     try {
-        $newPath = Join-Path $ConfigPath 'settings/logging-config.json'
-        $oldPath = Join-Path $ConfigPath 'execution/logging-config.json'
+        $configFile = Join-Path $ConfigPath 'settings/logging-config.json'
         
-        $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { 
-            Write-Warning "FIX #5: Deprecated config path detected 'execution/' - please migrate to 'settings/' (see docs/DELIVERABLES.md)"
-            $oldPath 
+        if (-not (Test-Path $configFile)) {
+            Write-Warning "Logging configuration not found at: $configFile - using defaults"
+            return @{ levels = @('INFO', 'WARNING', 'ERROR') }
         }
-        else { $null }
         
         if (-not $configFile) {
             Write-Verbose "Logging configuration not found"

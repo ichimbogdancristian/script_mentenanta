@@ -123,10 +123,6 @@ function Invoke-AppUpgrade {
 
         # STEP 2: Load module configuration
         $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\app-upgrade-config.json"
-        if (-not (Test-Path $moduleConfigPath)) {
-            # Fallback to data folder for backward compatibility
-            $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "data\app-upgrade-config.json"
-        }
         
         if (-not (Test-Path $moduleConfigPath)) {
             Write-Warning "Module configuration not found at: $moduleConfigPath"

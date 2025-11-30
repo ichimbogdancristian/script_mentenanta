@@ -1,7 +1,7 @@
 ﻿#Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for bloatware list configuration)
-#   - LoggingManager.psm1 (for structured logging)
+#   - CoreInfrastructure.psm1 (for configuration and logging - loaded globally)
+#   - SystemInventory.psm1 (for system data collection)
 
 <#
 .SYNOPSIS
@@ -13,7 +13,7 @@
 
 .NOTES
     Module Type: Type 1 (Inventory/Reporting)
-    Dependencies: ConfigManager.psm1, SystemInventory.psm1
+    Dependencies: CoreInfrastructure.psm1, SystemInventory.psm1
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
 #>

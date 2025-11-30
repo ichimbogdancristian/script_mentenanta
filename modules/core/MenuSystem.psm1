@@ -17,15 +17,8 @@
 
 using namespace System.Collections.Generic
 
-# Import LoggingManager for structured logging (with graceful fallback)
-try {
-    $loggingManagerPath = Join-Path $PSScriptRoot 'LoggingManager.psm1'
-    if (Test-Path $loggingManagerPath) {
-        Import-Module $loggingManagerPath -Force -ErrorAction SilentlyContinue
-    }
-} catch {
-    # LoggingManager not available, continue without structured logging
-}
+# Logging functions now available via CoreInfrastructure global import
+# No separate LoggingManager import needed
 
 # Module variables
 $script:MenuConfig = @{
@@ -73,7 +66,8 @@ function Show-MainMenu {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'MainMenuDisplay' -Component 'MENU-SYSTEM'
         Write-LogEntry -Level 'INFO' -Component 'MENU-SYSTEM' -Message 'Displaying main menu' -Data @{ CountdownSeconds = $CountdownSeconds; DefaultOption = $DefaultOption }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
 
@@ -98,9 +92,9 @@ function Show-MainMenu {
     
     # Initialize result structure
     $result = @{
-        Mode = 'Execute'
-        DryRun = $false
-        SelectedTasks = @()
+        Mode           = 'Execute'
+        DryRun         = $false
+        SelectedTasks  = @()
         UserInteracted = $false
     }
     
@@ -138,13 +132,14 @@ function Show-MainMenu {
     try {
         Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
             SelectedOption = $selection
-            Mode = $result.Mode
-            DryRun = $result.DryRun
-            TaskCount = $result.SelectedTasks.Count
-            CountdownUsed = $true
+            Mode           = $result.Mode
+            DryRun         = $result.DryRun
+            TaskCount      = $result.SelectedTasks.Count
+            CountdownUsed  = $true
         }
         Write-LogEntry -Level 'SUCCESS' -Component 'MENU-SYSTEM' -Message 'Main menu selection completed' -Data @{ SelectedOption = $selection; Mode = $result.Mode; DryRun = $result.DryRun; TaskCount = $result.SelectedTasks.Count }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
     
@@ -219,7 +214,7 @@ function Show-ExecutionSubmenu {
         $selection = Start-CountdownSelection -CountdownSeconds $CountdownSeconds -DefaultOption 1 -OptionsCount 2
 
         $result = @{
-            SelectedTasks = @()
+            SelectedTasks     = @()
             TaskSelectionMode = 'All'
         }
 
@@ -243,11 +238,12 @@ function Show-ExecutionSubmenu {
 
         return $result
 
-    } catch {
+    }
+    catch {
         Write-Error "Failed to display execution submenu: $_"
         # Return default: all tasks
         return @{
-            SelectedTasks = 1..$AvailableTasks.Count
+            SelectedTasks     = 1..$AvailableTasks.Count
             TaskSelectionMode = 'All'
         }
     }
@@ -277,7 +273,7 @@ function Get-SpecificTaskNumbers {
     )
 
     $result = @{
-        SelectedTasks = @()
+        SelectedTasks     = @()
         TaskSelectionMode = 'Specific'
     }
 
@@ -291,7 +287,8 @@ function Get-SpecificTaskNumbers {
             Write-Host "No input provided. Selecting all tasks." -ForegroundColor Yellow
             $result.SelectedTasks = 1..$AvailableTasks.Count
             $result.TaskSelectionMode = 'All'
-        } else {
+        }
+        else {
             # Parse comma-separated numbers
             $taskNumbers = @()
             $inputParts = $input -split ',' | ForEach-Object { $_.Trim() }
@@ -301,10 +298,12 @@ function Get-SpecificTaskNumbers {
                     $number = [int]$part
                     if ($number -ge 1 -and $number -le $AvailableTasks.Count) {
                         $taskNumbers += $number
-                    } else {
+                    }
+                    else {
                         Write-Warning "Task number $number is out of range (1-$($AvailableTasks.Count)). Skipping."
                     }
-                } catch {
+                }
+                catch {
                     Write-Warning "Invalid task number '$part'. Skipping."
                 }
             }
@@ -312,13 +311,15 @@ function Get-SpecificTaskNumbers {
             if ($taskNumbers.Count -gt 0) {
                 $result.SelectedTasks = $taskNumbers | Sort-Object -Unique
                 Write-Host "✓ Selected tasks: $($result.SelectedTasks -join ', ')" -ForegroundColor $ModeColor
-            } else {
+            }
+            else {
                 Write-Host "No valid task numbers provided. Selecting all tasks." -ForegroundColor Yellow
                 $result.SelectedTasks = 1..$AvailableTasks.Count
                 $result.TaskSelectionMode = 'All'
             }
         }
-    } catch {
+    }
+    catch {
         Write-Error "Error processing task selection: $_"
         # Fallback to all tasks
         $result.SelectedTasks = 1..$AvailableTasks.Count
@@ -366,7 +367,8 @@ function Show-TaskSelectionMenu {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'TaskSelectionMenuDisplay' -Component 'MENU-SYSTEM'
         Write-LogEntry -Level 'INFO' -Component 'MENU-SYSTEM' -Message 'Displaying task selection menu' -Data @{ IsDryRun = $IsDryRun; AvailableTasksCount = $AvailableTasks.Count; CountdownSeconds = $CountdownSeconds; DefaultOption = $DefaultOption }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
 
@@ -417,7 +419,8 @@ function Show-TaskSelectionMenu {
                 if ($perfContext) {
                     Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $result
                 }
-            } catch {
+            }
+            catch {
                 # LoggingManager not available, continue
             }
             
@@ -432,7 +435,8 @@ function Show-TaskSelectionMenu {
                 if ($perfContext) {
                     Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $selectedTasks
                 }
-            } catch {
+            }
+            catch {
                 # LoggingManager not available, continue
             }
             
@@ -451,7 +455,8 @@ function Show-TaskSelectionMenu {
                 if ($perfContext) {
                     Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $result
                 }
-            } catch {
+            }
+            catch {
                 # LoggingManager not available, continue
             }
             
