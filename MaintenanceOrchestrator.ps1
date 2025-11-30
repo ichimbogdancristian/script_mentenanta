@@ -139,7 +139,8 @@ Write-Information "Log File: $LogFilePath" -InformationAction Continue
 
 #region Patch 2: Initialize Result Collection (v3.1)
 Write-Information "`nInitializing session result collection..." -InformationAction Continue
-$ProcessedDataPath = $script:ProjectPaths.Processed
+# Use environment variable directly since $script:ProjectPaths not yet initialized
+$ProcessedDataPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'processed'
 if (-not (Test-Path $ProcessedDataPath)) {
     New-Item -Path $ProcessedDataPath -ItemType Directory -Force | Out-Null
 }
@@ -192,8 +193,9 @@ $Type2Modules = @(
     'AppUpgrade'
 )
 $Type2ModulesPath = Join-Path $ModulesPath 'type2'
+$CoreModulesPath = Join-Path $ModulesPath 'core'
 foreach ($moduleName in $CoreModules) {
-    $modulePath = Join-Path $script:ProjectPaths.Core "$moduleName.psm1"
+    $modulePath = Join-Path $CoreModulesPath "$moduleName.psm1"
     try {
         if (-not (Test-Path $modulePath)) {
             throw "Module file not found: $modulePath"
@@ -275,17 +277,6 @@ foreach ($moduleName in $Type2Modules) {
     }
 }
 
-#region Validate Critical Paths
-# Validate all critical paths exist (already created earlier)
-$criticalPaths = @('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot')
-foreach ($pathKey in $criticalPaths) {
-    if (-not (Test-Path $script:ProjectPaths[$pathKey])) {
-        Write-Error "Required path not found: $pathKey = $($script:ProjectPaths[$pathKey])"
-        exit 1
-    }
-}
-Write-Information "   Critical paths validated" -InformationAction Continue
-#endregion
 #region FIX #2: Validate CoreInfrastructure Functions
 Write-Information "`nValidating CoreInfrastructure module..." -InformationAction Continue
 try {
@@ -315,12 +306,28 @@ catch {
 Write-Information "`n Initializing global path discovery..." -InformationAction Continue
 try {
     Initialize-GlobalPathDiscovery -HintPath $ScriptRoot -Force
+    
+    # Populate $script:ProjectPaths for use throughout the script
+    $script:ProjectPaths = Get-MaintenancePaths
+    
     Write-Information "   Global path discovery initialized successfully" -InformationAction Continue
 }
 catch {
     Write-Error "Failed to initialize global path discovery: $($_.Exception.Message)"
     exit 1
 }
+#endregion
+
+#region Validate Critical Paths
+Write-Information "`nValidating critical paths..." -InformationAction Continue
+$criticalPaths = @('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot')
+foreach ($pathKey in $criticalPaths) {
+    if (-not (Test-Path $script:ProjectPaths[$pathKey])) {
+        Write-Error "Required path not found: $pathKey = $($script:ProjectPaths[$pathKey])"
+        exit 1
+    }
+}
+Write-Information "   Critical paths validated" -InformationAction Continue
 #endregion
 
 #region System Readiness Validation
