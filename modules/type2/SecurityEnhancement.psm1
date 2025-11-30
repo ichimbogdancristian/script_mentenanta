@@ -98,7 +98,9 @@ function Invoke-SecurityEnhancement {
     try { 
         $perfContext = Start-PerformanceTracking -OperationName 'SecurityEnhancement' -Component 'SECURITY-ENHANCEMENT'
     } 
-    catch { }
+    catch { 
+        Write-Verbose "Performance tracking not available: $($_.Exception.Message)"
+    }
     
     try {
         # Track execution duration
@@ -128,6 +130,8 @@ function Invoke-SecurityEnhancement {
         Write-Information "" -InformationAction Continue
         Write-Information "🔍 Step 2: Analyzing current security posture..." -InformationAction Continue
         
+        # Explicit assignment to prevent pipeline contamination
+        $auditResults = $null
         $auditResults = Get-SecurityAuditAnalysis -Config $Config
         
         if (-not $auditResults) {
@@ -244,7 +248,7 @@ function Invoke-SecurityEnhancement {
     }
     finally {
         if ($perfContext) {
-            try { Stop-PerformanceTracking -Context $perfContext } catch { }
+            try { Stop-PerformanceTracking -Context $perfContext } catch { Write-Verbose "Failed to stop performance tracking: $($_.Exception.Message)" }
         }
     }
 }

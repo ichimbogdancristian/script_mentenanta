@@ -106,6 +106,8 @@ function Invoke-AppUpgrade {
         
         # STEP 1: Run Type1 detection
         Write-Information "   Running upgrade detection..." -InformationAction Continue
+        # Explicit assignment to prevent pipeline contamination
+        $detectionResults = $null
         $detectionResults = Get-AppUpgradeAnalysis -Config $Config
         
         # Null safety: ensure detectionResults is an array
@@ -481,9 +483,10 @@ function Invoke-SingleUpgrade {
             Duration    = [math]::Round($operationDuration.TotalSeconds, 2)
             Exception   = $_.Exception.GetType().FullName
             StackTrace  = $_.ScriptStackTrace
-        })
-    return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -Error $_.Exception.Message
-}
+        }
+
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -Error $_.Exception.Message
+    }
 }
 
 #endregion

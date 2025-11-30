@@ -107,11 +107,13 @@ function Invoke-SystemInventory {
         }
         
         # STEP 1: Run Type1 detection (inventory collection)
+        # Explicit assignment to prevent pipeline contamination
+        $inventoryData = $null
         $inventoryData = Get-SystemInventoryAnalysis -Config $Config
         
         # STEP 2: Save inventory data to temp_files/data/
         $inventoryDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "system-inventory.json"
-        $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8 -ErrorAction Stop | Out-Null
+        $null = $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8 -ErrorAction Stop
         Write-Information "   System inventory saved to data folder" -InformationAction Continue
         
         # STEP 3: Setup logging (information gathering, minimal logging needed)
@@ -221,8 +223,8 @@ Collection completed successfully
             }
         }
         
-        # STEP 4: Return standardized result
-        return New-ModuleExecutionResult `
+        # STEP 4: Return standardized result (explicit return to prevent pipeline contamination)
+        $result = New-ModuleExecutionResult `
             -Success $true `
             -ItemsDetected 1 `
             -ItemsProcessed 1 `
@@ -230,6 +232,8 @@ Collection completed successfully
             -LogPath $executionLogPath `
             -ModuleName 'SystemInventory' `
             -AdditionalData @{ DataPath = $inventoryDataPath }
+        
+        return $result
     }
     catch {
         $errorMsg = "System inventory collection failed: $($_.Exception.Message)"
@@ -245,8 +249,8 @@ Collection completed successfully
             }
         }
         
-        # Return failure result
-        return New-ModuleExecutionResult `
+        # Return failure result (explicit assignment to prevent pipeline contamination)
+        $errorResult = New-ModuleExecutionResult `
             -Success $false `
             -ItemsDetected 0 `
             -ItemsProcessed 0 `
@@ -254,6 +258,8 @@ Collection completed successfully
             -LogPath $executionLogPath `
             -ModuleName 'SystemInventory' `
             -ErrorMessage $errorMsg
+        
+        return $errorResult
     }
 }
 

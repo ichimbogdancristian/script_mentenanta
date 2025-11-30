@@ -65,7 +65,7 @@ function Invoke-WindowsUpdates {
         [switch]$DryRun
     )
     
-    $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES' } catch { }
+    $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES' } catch { Write-Verbose "Performance tracking not available: $($_.Exception.Message)" }
     
     try {
         # Track execution duration for v3.0 compliance
@@ -307,7 +307,7 @@ function Install-WindowsUpdate {
         # Try PSWindowsUpdate module first
         if (Test-PSWindowsUpdateAvailable) {
             Write-Information "   Using PSWindowsUpdate module..." -InformationAction Continue
-            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using PSWindowsUpdate module for update installation' } catch {}
+            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using PSWindowsUpdate module for update installation' } catch { Write-Verbose "Logging failed: $($_.Exception.Message)" }
             
             # Create parameters for PSWindowsUpdate (remove ExecutionLogPath since it doesn't support it)
             $psWindowsUpdateParams = @{}
@@ -321,7 +321,7 @@ function Install-WindowsUpdate {
         # Fallback to native Windows Update API
         elseif (Test-NativeWindowsUpdateAvailable) {
             Write-Information "   Using native Windows Update API..." -InformationAction Continue
-            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using native Windows Update API for update installation' } catch {}
+            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using native Windows Update API for update installation' } catch { Write-Verbose "Logging failed: $($_.Exception.Message)" }
             # Remove ExecutionLogPath from parameters as native API doesn't support it
             $nativeApiParams = @{}
             foreach ($key in $PSBoundParameters.Keys) {

@@ -1,0 +1,347 @@
+<!-- Module Card Template for Type2 Maintenance Modules -->
+<div class="card module-card {{MODULE_STATUS_CLASS}} fade-in">
+    <div class="card-header">
+        <div class="card-icon">{{MODULE_ICON}}</div>
+        <h3 class="card-title">{{MODULE_NAME}}</h3>
+        <div class="module-status {{MODULE_STATUS_CLASS}}"></div>
+    </div>
+    
+    <div class="card-content">
+        <div class="module-stats">
+            <div class="stat-item">
+                <span class="stat-label">Status:</span>
+                <span class="stat-value status-text-{{MODULE_STATUS_CLASS}}">{{MODULE_STATUS_TEXT}}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Execution Time:</span>
+                <span class="stat-value">{{EXECUTION_DURATION}}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Items Processed:</span>
+                <span class="stat-value">{{ITEMS_PROCESSED_COUNT}}</span>
+            </div>
+            {{#if ITEMS_SUCCESSFUL_COUNT}}
+            <div class="stat-item">
+                <span class="stat-label">Successful:</span>
+                <span class="stat-value status-text-success">{{ITEMS_SUCCESSFUL_COUNT}}</span>
+            </div>
+            {{/if}}
+            {{#if ITEMS_FAILED_COUNT}}
+            <div class="stat-item">
+                <span class="stat-label">Failed:</span>
+                <span class="stat-value status-text-error">{{ITEMS_FAILED_COUNT}}</span>
+            </div>
+            {{/if}}
+            {{#if ITEMS_SKIPPED_COUNT}}
+            <div class="stat-item">
+                <span class="stat-label">Skipped:</span>
+                <span class="stat-value status-text-warning">{{ITEMS_SKIPPED_COUNT}}</span>
+            </div>
+            {{/if}}
+        </div>
+
+        {{#if MODULE_DESCRIPTION}}
+        <div class="module-description">
+            <p>{{MODULE_DESCRIPTION}}</p>
+        </div>
+        {{/if}}
+
+        <!-- Progress Bar -->
+        {{#if PROGRESS_PERCENT}}
+        <div class="progress-container">
+            <div class="progress-label">
+                <span>Progress</span>
+                <span>{{PROGRESS_PERCENT}}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill {{MODULE_STATUS_CLASS}}" style="width: {{PROGRESS_PERCENT}}%"></div>
+            </div>
+        </div>
+        {{/if}}
+
+        <!-- Module-Specific Data -->
+        <div class="module-data">
+            {{#if DETECTED_ITEMS}}
+            <div class="data-section">
+                <h4 class="data-section-title">🔍 Detected Items</h4>
+                <div class="data-list">
+                    {{#each DETECTED_ITEMS}}
+                    <div class="data-item {{this.status}}">
+                        <div class="data-item-icon">{{this.icon}}</div>
+                        <div class="data-item-content">
+                            <div class="data-item-name">{{this.name}}</div>
+                            {{#if this.description}}
+                            <div class="data-item-description">{{this.description}}</div>
+                            {{/if}}
+                            {{#if this.size}}
+                            <div class="data-item-metadata">Size: {{this.size}}</div>
+                            {{/if}}
+                            {{#if this.location}}
+                            <div class="data-item-metadata">Location: {{this.location}}</div>
+                            {{/if}}
+                        </div>
+                        <div class="data-item-status">
+                            <span class="status-badge {{this.status}}">{{this.statusText}}</span>
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+            {{/if}}
+
+            {{#if PROCESSED_ITEMS}}
+            <div class="data-section">
+                <h4 class="data-section-title">⚡ Processed Items</h4>
+                <div class="data-list">
+                    {{#each PROCESSED_ITEMS}}
+                    <div class="data-item {{this.result}}">
+                        <div class="data-item-icon">{{this.icon}}</div>
+                        <div class="data-item-content">
+                            <div class="data-item-name">{{this.name}}</div>
+                            {{#if this.action}}
+                            <div class="data-item-description">Action: {{this.action}}</div>
+                            {{/if}}
+                            {{#if this.details}}
+                            <div class="data-item-metadata">{{this.details}}</div>
+                            {{/if}}
+                        </div>
+                        <div class="data-item-status">
+                            <span class="status-badge {{this.result}}">{{this.resultText}}</span>
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+            {{/if}}
+
+            {{#if SECURITY_FINDINGS}}
+            <div class="data-section">
+                <h4 class="data-section-title">🔒 Security Findings</h4>
+                <div class="data-list">
+                    {{#each SECURITY_FINDINGS}}
+                    <div class="data-item {{this.severity}}">
+                        <div class="data-item-icon">{{this.icon}}</div>
+                        <div class="data-item-content">
+                            <div class="data-item-name">{{this.finding}}</div>
+                            <div class="data-item-description">{{this.description}}</div>
+                            {{#if this.recommendation}}
+                            <div class="data-item-metadata">💡 {{this.recommendation}}</div>
+                            {{/if}}
+                        </div>
+                        <div class="data-item-status">
+                            <span class="status-badge {{this.severity}}">{{this.severityText}}</span>
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+            {{/if}}
+
+            {{#if UPDATE_ITEMS}}
+            <div class="data-section">
+                <h4 class="data-section-title">🔄 Updates</h4>
+                <div class="data-list">
+                    {{#each UPDATE_ITEMS}}
+                    <div class="data-item {{this.status}}">
+                        <div class="data-item-icon">{{this.icon}}</div>
+                        <div class="data-item-content">
+                            <div class="data-item-name">{{this.title}}</div>
+                            {{#if this.description}}
+                            <div class="data-item-description">{{this.description}}</div>
+                            {{/if}}
+                            <div class="data-item-metadata">
+                                {{#if this.size}}Size: {{this.size}} | {{/if}}
+                                {{#if this.releaseDate}}Released: {{this.releaseDate}}{{/if}}
+                            </div>
+                        </div>
+                        <div class="data-item-status">
+                            <span class="status-badge {{this.status}}">{{this.statusText}}</span>
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+            {{/if}}
+
+            {{#if OPTIMIZATION_ITEMS}}
+            <div class="data-section">
+                <h4 class="data-section-title">⚡ Optimizations</h4>
+                <div class="data-list">
+                    {{#each OPTIMIZATION_ITEMS}}
+                    <div class="data-item {{this.status}}">
+                        <div class="data-item-icon">{{this.icon}}</div>
+                        <div class="data-item-content">
+                            <div class="data-item-name">{{this.name}}</div>
+                            <div class="data-item-description">{{this.description}}</div>
+                            {{#if this.impact}}
+                            <div class="data-item-metadata">Impact: {{this.impact}}</div>
+                            {{/if}}
+                        </div>
+                        <div class="data-item-status">
+                            <span class="status-badge {{this.status}}">{{this.statusText}}</span>
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+            {{/if}}
+        </div>
+
+        <!-- Recent Log Entries -->
+        {{#if RECENT_LOGS}}
+        <div class="log-section">
+            <div class="log-header">
+                <h4 class="log-title">📝 Recent Activity</h4>
+                <button class="log-control" onclick="toggleModuleLogs('{{MODULE_ID}}')">
+                    <span id="logToggle{{MODULE_ID}}">Show All</span>
+                </button>
+            </div>
+            <div class="log-viewer compact" id="logs{{MODULE_ID}}">
+                <div class="log-content">
+                    {{#each RECENT_LOGS}}
+                    <div class="log-entry {{this.level}}" data-timestamp="{{this.timestamp}}">
+                        <div class="log-time">{{this.time}}</div>
+                        <div class="log-level {{this.level}}">{{this.levelIcon}}</div>
+                        <div class="log-message">{{this.message}}</div>
+                        {{#if this.target}}
+                        <div class="log-target">{{this.target}}</div>
+                        {{/if}}
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+        </div>
+        {{/if}}
+    </div>
+
+    <!-- Module Actions -->
+    <div class="card-actions">
+        <button class="card-action" onclick="viewModuleDetails('{{MODULE_ID}}')" title="View Details">
+            📊 Details
+        </button>
+        <button class="card-action" onclick="viewModuleLogs('{{MODULE_ID}}')" title="View Full Logs">
+            📄 Logs
+        </button>
+        {{#if CAN_RERUN}}
+        <button class="card-action" onclick="rerunModule('{{MODULE_ID}}')" title="Re-run Module">
+            🔄 Re-run
+        </button>
+        {{/if}}
+        {{#if HAS_CONFIG}}
+        <button class="card-action" onclick="configureModule('{{MODULE_ID}}')" title="Configure">
+            ⚙️ Config
+        </button>
+        {{/if}}
+    </div>
+</div>
+
+<script>
+// Module-specific JavaScript functions
+function toggleModuleLogs(moduleId) {
+    const logViewer = document.getElementById(`logs${moduleId}`);
+    const toggleBtn = document.getElementById(`logToggle${moduleId}`);
+    
+    if (logViewer.classList.contains('compact')) {
+        logViewer.classList.remove('compact');
+        toggleBtn.textContent = 'Show Less';
+    } else {
+        logViewer.classList.add('compact');
+        toggleBtn.textContent = 'Show All';
+    }
+}
+
+function viewModuleDetails(moduleId) {
+    // In a real implementation, this would show detailed module information
+    const detailsWindow = window.open('', `details_${moduleId}`, 'width=900,height=700');
+    detailsWindow.document.write(`
+        <html>
+        <head>
+            <title>Module Details - ${moduleId}</title>
+            <link rel="stylesheet" href="../modern-dashboard.css">
+        </head>
+        <body style="padding: 20px;">
+            <h2>📊 ${moduleId} - Detailed View</h2>
+            <div class="card">
+                <div class="card-content">
+                    <p>This would show detailed information about the ${moduleId} module execution.</p>
+                    <h3>Execution Timeline</h3>
+                    <p>• Module started: [Timestamp]</p>
+                    <p>• Items processed: [Count]</p>
+                    <p>• Module completed: [Timestamp]</p>
+                    <h3>Performance Metrics</h3>
+                    <p>• Processing rate: [Items/second]</p>
+                    <p>• Memory usage: [Peak MB]</p>
+                    <p>• CPU utilization: [Average %]</p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
+}
+
+function viewModuleLogs(moduleId) {
+    const logsWindow = window.open('', `logs_${moduleId}`, 'width=1000,height=600');
+    logsWindow.document.write(`
+        <html>
+        <head>
+            <title>Full Logs - ${moduleId}</title>
+            <style>
+                body { font-family: 'JetBrains Mono', monospace; background: #0d1117; color: #f0f6fc; padding: 20px; }
+                .log-viewer { background: #161b22; border-radius: 8px; padding: 20px; }
+                .log-entry { margin: 8px 0; padding: 8px; border-radius: 4px; }
+                .info { background: rgba(56, 139, 253, 0.1); }
+                .success { background: rgba(46, 160, 67, 0.1); }
+                .warning { background: rgba(251, 188, 5, 0.1); }
+                .error { background: rgba(248, 81, 73, 0.1); }
+            </style>
+        </head>
+        <body>
+            <h2>🔍 Full Logs - ${moduleId}</h2>
+            <div class="log-viewer">
+                <p>Complete execution logs for ${moduleId} would appear here...</p>
+                <div class="log-entry info">[INFO] Module ${moduleId} started</div>
+                <div class="log-entry success">[SUCCESS] Processing completed</div>
+                <div class="log-entry warning">[WARNING] Some items skipped</div>
+            </div>
+        </body>
+        </html>
+    `);
+}
+
+function rerunModule(moduleId) {
+    if (confirm(`Are you sure you want to re-run the ${moduleId} module?`)) {
+        alert(`In a real implementation, this would:\n• Re-execute ${moduleId}\n• Show progress dialog\n• Update results in real-time`);
+    }
+}
+
+function configureModule(moduleId) {
+    const configWindow = window.open('', `config_${moduleId}`, 'width=800,height=600');
+    configWindow.document.write(`
+        <html>
+        <head>
+            <title>Configure - ${moduleId}</title>
+            <link rel="stylesheet" href="../modern-dashboard.css">
+        </head>
+        <body style="padding: 20px;">
+            <h2>⚙️ ${moduleId} Configuration</h2>
+            <div class="card">
+                <div class="card-content">
+                    <p>Module configuration options would appear here...</p>
+                    <form>
+                        <label>Enable Module: <input type="checkbox" checked></label><br><br>
+                        <label>Processing Level: 
+                            <select>
+                                <option>Standard</option>
+                                <option>Thorough</option>
+                                <option>Quick</option>
+                            </select>
+                        </label><br><br>
+                        <button type="button" onclick="window.close()">Save Changes</button>
+                    </form>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
+}
+</script>

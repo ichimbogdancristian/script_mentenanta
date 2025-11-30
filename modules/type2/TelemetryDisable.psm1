@@ -55,7 +55,7 @@ function Invoke-TelemetryDisable {
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$Config, [Parameter()][switch]$DryRun)
     
-    $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE' } catch { }
+    $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE' } catch { Write-Verbose "Performance tracking not available: $($_.Exception.Message)" }
     
     try {
         # Track execution duration for v3.0 compliance

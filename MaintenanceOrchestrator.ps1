@@ -103,14 +103,14 @@ if (-not (Test-Path $ConfigPath)) {
 }
 Write-Information "Configuration Path: $ConfigPath" -InformationAction Continue
 # Initialize session management
-$Global:MaintenanceSessionId = [guid]::NewGuid().ToString()
-$Global:MaintenanceSessionTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$Global:MaintenanceSessionStartTime = Get-Date
-Write-Information "Session ID: $Global:MaintenanceSessionId" -InformationAction Continue
-Write-Information "Session Timestamp: $Global:MaintenanceSessionTimestamp" -InformationAction Continue
+$script:MaintenanceSessionId = [guid]::NewGuid().ToString()
+$script:MaintenanceSessionTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$script:MaintenanceSessionStartTime = Get-Date
+Write-Information "Session ID: $script:MaintenanceSessionId" -InformationAction Continue
+Write-Information "Session Timestamp: $script:MaintenanceSessionTimestamp" -InformationAction Continue
 # Set session environment variables for modules to access
-$env:MAINTENANCE_SESSION_ID = $Global:MaintenanceSessionId
-$env:MAINTENANCE_SESSION_TIMESTAMP = $Global:MaintenanceSessionTimestamp
+$env:MAINTENANCE_SESSION_ID = $script:MaintenanceSessionId
+$env:MAINTENANCE_SESSION_TIMESTAMP = $script:MaintenanceSessionTimestamp
 # Note: MAINTENANCE_TEMP_ROOT already set above in global path discovery
 # Set up temp directories (using global environment variables)
 $TempRoot = $env:MAINTENANCE_TEMP_ROOT
@@ -165,11 +165,11 @@ if (-not (Test-Path $ProcessedDataPath)) {
     New-Item -Path $ProcessedDataPath -ItemType Directory -Force | Out-Null
 }
 
-$Global:ResultCollectionEnabled = $false
+$script:ResultCollectionEnabled = $false
 try {
     if (Get-Command -Name 'Start-ResultCollection' -ErrorAction SilentlyContinue) {
-        Start-ResultCollection -SessionId $Global:MaintenanceSessionId -CachePath $ProcessedDataPath
-        $Global:ResultCollectionEnabled = $true
+        Start-ResultCollection -SessionId $script:MaintenanceSessionId -CachePath $ProcessedDataPath
+        $script:ResultCollectionEnabled = $true
         Write-Information "  [OK] Result collection initialized successfully" -InformationAction Continue
     }
     else {
@@ -178,7 +178,7 @@ try {
 }
 catch {
     Write-Warning "Failed to initialize result collection: $($_.Exception.Message) - Using fallback session tracking"
-    $Global:ResultCollectionEnabled = $false
+    $script:ResultCollectionEnabled = $false
 }
 #endregion
 
@@ -300,7 +300,7 @@ foreach ($moduleName in $Type2Modules) {
 #region FIX #1: Create Unified Global Path Object
 Write-Information "`nCreating unified global path object..." -InformationAction Continue
 try {
-    $Global:ProjectPaths = @{
+    $script:ProjectPaths = @{
         ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
         ConfigRoot  = $env:MAINTENANCE_CONFIG_ROOT
         ModulesRoot = $env:MAINTENANCE_MODULES_ROOT
@@ -315,14 +315,14 @@ try {
     # Validate all critical paths exist
     $criticalPaths = @('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot')
     foreach ($pathKey in $criticalPaths) {
-        if (-not (Test-Path $Global:ProjectPaths[$pathKey])) {
-            throw "Required path not found: $pathKey = $($Global:ProjectPaths[$pathKey])"
+        if (-not (Test-Path $script:ProjectPaths[$pathKey])) {
+            throw "Required path not found: $pathKey = $($script:ProjectPaths[$pathKey])"
         }
     }
     Write-Information "   Global project paths initialized:" -InformationAction Continue
-    Write-Information "    - TempFiles: $($Global:ProjectPaths.TempFiles)" -InformationAction Continue
-    Write-Information "    - Config: $($Global:ProjectPaths.Config)" -InformationAction Continue
-    Write-Information "    - Logs: $($Global:ProjectPaths.Logs)" -InformationAction Continue
+    Write-Information "    - TempFiles: $($script:ProjectPaths.TempFiles)" -InformationAction Continue
+    Write-Information "    - Config: $($script:ProjectPaths.Config)" -InformationAction Continue
+    Write-Information "    - Logs: $($script:ProjectPaths.Logs)" -InformationAction Continue
 }
 catch {
     Write-Error "Failed to create global path object: $($_.Exception.Message)"
@@ -778,14 +778,14 @@ try {
             [Parameter()]
             [string]$Extension
         )
-        $fileName = "$BaseName-$Global:MaintenanceSessionTimestamp"
+        $fileName = "$BaseName-$script:MaintenanceSessionTimestamp"
         if ($Extension) {
             $fileName += ".$Extension"
         }
         return $fileName
     }
     # Export session functions globally so modules can access them
-    $Global:GetSessionFileName = ${function:Get-SessionFileName}
+    $script:GetSessionFileName = ${function:Get-SessionFileName}
     #endregion
     #region Helper Functions
     function Invoke-TaskWithParameters {
@@ -850,7 +850,7 @@ try {
                 Type1AuditData      = @{}
                 Type2ExecutionLogs  = @{}
                 CollectionTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-                SessionId           = $Global:MaintenanceSessionId
+                SessionId           = $script:MaintenanceSessionId
             }
             # Collect Type1 audit results from temp_files/data/
             $dataPath = Join-Path $env:MAINTENANCE_TEMP_ROOT "data"
@@ -1300,7 +1300,7 @@ try {
                     Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
                     
                     # Patch 3: Collect module result for aggregation
-                    if ($Global:ResultCollectionEnabled) {
+                    if ($script:ResultCollectionEnabled) {
                         try {
                             $moduleDuration = ((Get-Date) - $taskStartTime).TotalSeconds
                             $moduleStatus = if ($result.Success) { 'Success' } else { 'Failed' }
@@ -1320,7 +1320,45 @@ try {
                 }
                 else {
                     $resultType = if ($result) { $result.GetType().Name } else { 'null' }
-                    Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, may not be v3.0 compliant"
+                    $resultCount = if ($result -is [array]) { $result.Count } else { 1 }
+                    $hasSuccessKey = if ($result -is [array] -and $result.Count -gt 0) { 
+                        ($result[0] -is [hashtable] -and $result[0].ContainsKey('Success')) -or 
+                        ($result[0] -is [PSCustomObject] -and (Get-Member -InputObject $result[0] -Name 'Success' -ErrorAction SilentlyContinue))
+                    }
+                    elseif ($result) {
+                        ($result -is [hashtable] -and $result.ContainsKey('Success')) -or 
+                        ($result -is [PSCustomObject] -and (Get-Member -InputObject $result -Name 'Success' -ErrorAction SilentlyContinue))
+                    }
+                    else { $false }
+                    
+                    Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
+                    
+                    # If it's an array with a single valid object, extract it (FIX for pipeline contamination)
+                    if ($result -is [array] -and $result.Count -eq 1 -and $hasSuccessKey) {
+                        Write-Information "   Extracting single result from array (pipeline contamination detected and fixed)" -InformationAction Continue
+                        $result = $result[0]
+                        $hasValidStructure = $true
+                        Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
+                        
+                        # Collect module result for aggregation after fixing the format
+                        if ($script:ResultCollectionEnabled) {
+                            try {
+                                $moduleDuration = ((Get-Date) - $taskStartTime).TotalSeconds
+                                $moduleStatus = if ($result.Success) { 'Success' } else { 'Failed' }
+                                $moduleResultObj = New-ModuleResult `
+                                    -ModuleName $task.Name `
+                                    -Status $moduleStatus `
+                                    -ItemsDetected $($result.ItemsDetected -as [int]) `
+                                    -ItemsProcessed $($result.ItemsProcessed -as [int]) `
+                                    -DurationSeconds $moduleDuration
+                                Add-ModuleResult -Result $moduleResultObj
+                                Write-Information "     [Aggregation] Module result collected for reporting (format corrected)" -InformationAction Continue
+                            }
+                            catch {
+                                Write-Warning "     [Aggregation] Failed to collect module result: $($_.Exception.Message)"
+                            }
+                        }
+                    }
                 }
             }
             catch {
@@ -1436,7 +1474,7 @@ try {
         Write-Information "`nProcessing logs and generating reports using split architecture..." -InformationAction Continue
         
         # Patch 4: Finalize and export aggregated results
-        if ($Global:ResultCollectionEnabled) {
+        if ($script:ResultCollectionEnabled) {
             Write-Information "`n  Finalizing session result collection..." -InformationAction Continue
             try {
                 $aggregatedResultsPath = Join-Path $ProcessedDataPath 'aggregated-results.json'
@@ -1445,8 +1483,8 @@ try {
                     Write-Information "    [OK] Result collection finalized" -InformationAction Continue
                     Write-Information "    [INFO] Summary: Total modules=$($aggregatedResults.Summary.TotalModules), Success=$($aggregatedResults.Summary.SuccessfulModules), Failed=$($aggregatedResults.Summary.FailedModules)" -InformationAction Continue
                     Write-Information "    [INFO] Aggregated results exported to: $aggregatedResultsPath" -InformationAction Continue
-                    $Global:MaintenanceSessionData.AggregatedResults = $aggregatedResults
-                    $Global:MaintenanceSessionData.Summary = $aggregatedResults.Summary
+                    $script:MaintenanceSessionData.AggregatedResults = $aggregatedResults
+                    $script:MaintenanceSessionData.Summary = $aggregatedResults.Summary
                 }
             }
             catch {
@@ -1485,7 +1523,7 @@ try {
                     # Copy main HTML report to parent directory (Desktop/Documents/USB root)
                     if ($reportResult.HtmlReport -and (Test-Path $reportResult.HtmlReport)) {
                         try {
-                            $parentHtmlPath = Join-Path $Global:ProjectPaths.ParentDir (Split-Path -Leaf $reportResult.HtmlReport)
+                            $parentHtmlPath = Join-Path $script:ProjectPaths.ParentDir (Split-Path -Leaf $reportResult.HtmlReport)
                             Copy-Item -Path $reportResult.HtmlReport -Destination $parentHtmlPath -Force
                             Write-Information "   HTML report copied to: $parentHtmlPath" -InformationAction Continue
                             # Update result to include parent copy location
@@ -1512,7 +1550,7 @@ try {
             # Fallback: Try to generate basic report with available data
             if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
                 try {
-                    $reportsDir = Join-Path $Global:ProjectPaths.TempFiles "reports"
+                    $reportsDir = Join-Path $script:ProjectPaths.TempFiles "reports"
                     New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
                     $fallbackReportPath = Join-Path $reportsDir "MaintenanceReport_Fallback_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
                     $fallbackResult = New-MaintenanceReport -OutputPath $fallbackReportPath -EnableFallback
@@ -1594,14 +1632,14 @@ try {
         TaskResults            = $TaskResults
         Configuration          = $MainConfig
     }
-    $summaryPath = Join-Path $ReportsDir "execution-summary-$Global:MaintenanceSessionTimestamp.json"
+    $summaryPath = Join-Path $ReportsDir "execution-summary-$script:MaintenanceSessionTimestamp.json"
     $executionSummary | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $summaryPath -Encoding UTF8
     Write-Information "" -InformationAction Continue
     Write-Information "Execution summary saved to: $summaryPath" -InformationAction Continue
     # FIX #9: Create session manifest with complete execution metadata
     Write-Information "" -InformationAction Continue
     Write-Information " Creating session manifest..." -InformationAction Continue
-    $manifestPath = New-SessionManifest -SessionId $Global:MaintenanceSessionId `
+    $manifestPath = New-SessionManifest -SessionId $script:MaintenanceSessionId `
         -ExecutionMode $executionMode `
         -ModuleResults $TaskResults `
         -ExecutionStartTime $StartTime `
@@ -1620,9 +1658,9 @@ try {
     Write-Information "   Target directory: $ParentDir" -InformationAction Continue
     $finalReports = @()
     $reportsToMove = @(
-        @{ Pattern = "maintenance-report-$Global:MaintenanceSessionTimestamp.html"; Description = "HTML maintenance report" }
-        @{ Pattern = "maintenance-report-$Global:MaintenanceSessionTimestamp.txt"; Description = "Text maintenance report" }
-        @{ Pattern = "maintenance-log-$Global:MaintenanceSessionTimestamp.log"; Description = "Maintenance log file" }
+        @{ Pattern = "maintenance-report-$script:MaintenanceSessionTimestamp.html"; Description = "HTML maintenance report" }
+        @{ Pattern = "maintenance-report-$script:MaintenanceSessionTimestamp.txt"; Description = "Text maintenance report" }
+        @{ Pattern = "maintenance-log-$script:MaintenanceSessionTimestamp.log"; Description = "Maintenance log file" }
     )
     foreach ($reportInfo in $reportsToMove) {
         $sourcePattern = $reportInfo.Pattern

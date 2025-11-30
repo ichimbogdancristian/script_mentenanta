@@ -115,6 +115,8 @@ function Invoke-EssentialApps {
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
+        # Explicit assignment to prevent pipeline contamination
+        $detectionResults = $null
         $detectionResults = Get-EssentialAppsAnalysis -Config $Config
         
         # STEP 2: Compare detection with config to create diff list

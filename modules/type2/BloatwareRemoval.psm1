@@ -114,6 +114,8 @@ function Invoke-BloatwareRemoval {
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
+        # Explicit assignment to prevent pipeline contamination
+        $detectionResults = $null
         $detectionResults = Get-BloatwareAnalysis -Config $Config
         
         # STEP 2: Compare detection with config to create diff list using centralized function
