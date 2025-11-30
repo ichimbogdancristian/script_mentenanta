@@ -1,4 +1,4 @@
-[  
+[
   {
     "name": "PowerShell 7",
     "winget": "Microsoft.Powershell",
@@ -19,6 +19,20 @@
     "choco": "javaruntime",
     "category": "Runtime",
     "description": "Java runtime environment"
+  },
+  {
+    "name": "7-Zip",
+    "winget": "7zip.7zip",
+    "choco": "7zip",
+    "category": "Utilities",
+    "description": "Free and open-source file archiver with high compression ratio"
+  },
+  {
+    "name": "WinRAR",
+    "winget": "RARLab.WinRAR",
+    "choco": "winrar",
+    "category": "Utilities",
+    "description": "Powerful archive manager supporting RAR and ZIP formats"
   },
   {
     "name": "LibreOffice",
@@ -61,12 +75,5 @@
     "choco": "firefox",
     "category": "Browser",
     "description": "Open source web browser with privacy focus"
-  },
-  {
-    "name": "Microsoft Edge",
-    "winget": "Microsoft.Edge",
-    "choco": "microsoft-edge",
-    "category": "Browser",
-    "description": "Modern web browser by Microsoft"
   }
 ]

@@ -84,9 +84,6 @@ script_mentenanta/
 │   │   ├── TelemetryAudit.psm1           # Privacy & telemetry analysis
 │   │   ├── WindowsUpdatesAudit.psm1      # Update compliance check
 │   │   ├── SecurityAudit.psm1            # Security posture assessment
-│   │   ├── SecurityInventory.psm1        # Security settings inventory
-│   │   ├── AppsInventory.psm1            # Installed applications catalog
-│   │   ├── UpdatesInventory.psm1         # Windows Update history
 │   │   ├── PrivacyInventory.psm1         # Privacy settings inventory
 │   │   └── AppUpgradeAudit.psm1          # Application upgrade recommendations
 │   │
@@ -131,8 +128,6 @@ script_mentenanta/
 Some Type1 audit modules exist without corresponding Type2 execution modules. This is **intentional design**:
 
 - **PrivacyInventory.psm1** - Information gathering only, used for manual compliance audits. Privacy actions are handled by `TelemetryDisable.psm1`.
-- **SecurityInventory.psm1** - Low-level security inventory, complementary to `SecurityAudit.psm1`. Used by `SecurityEnhancement.psm1`.
-- **UpdatesInventory.psm1** - Detailed update history logging. Update execution handled by `WindowsUpdates.psm1`.
 
 Not all audit modules require automated remediation - some are designed for **manual review**, **compliance reporting**, and **system documentation** purposes.
 

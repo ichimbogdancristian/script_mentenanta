@@ -1,7 +1,7 @@
 {
   "execution": {
     "defaultMode": "unattended",
-    "countdownSeconds": 20,
+    "countdownSeconds": 30,
     "enableDryRun": true,
     "autoSelectDefault": true,
     "showProgressBars": true

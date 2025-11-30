@@ -55,23 +55,21 @@ function Invoke-TelemetryDisable {
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$Config, [Parameter()][switch]$DryRun)
     
-    $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE' } catch { Write-Verbose "Performance tracking not available: $($_.Exception.Message)" }
+    $perfContext = Start-PerformanceTrackingSafe -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE'
     
     try {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
         
-        # Validate temp_files structure (FIX #12)
-        if (-not (Test-TempFilesStructure)) {
-            throw "Failed to initialize temp_files directory structure"
-        }
+        # Initialize module execution environment
+        Initialize-ModuleExecution -ModuleName 'TelemetryDisable'
         
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry analysis'
         $analysisResults = Get-TelemetryAnalysis
         
         if (-not $analysisResults -or $analysisResults.ActiveTelemetryCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'No active telemetry detected'
-            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
             $executionTime = (Get-Date) - $executionStartTime
             return New-ModuleExecutionResult `
                 -Success $true `
@@ -167,7 +165,7 @@ function Invoke-TelemetryDisable {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
         
-        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
         return New-ModuleExecutionResult `
             -Success $true `
             -ItemsDetected $telemetryCount `
@@ -181,7 +179,7 @@ function Invoke-TelemetryDisable {
     catch {
         $errorMsg = "Failed to execute telemetry disable: $($_.Exception.Message)"
         Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message $errorMsg -Data @{ Error = $_.Exception }
-        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg | Out-Null }
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         return New-ModuleExecutionResult `
             -Success $false `

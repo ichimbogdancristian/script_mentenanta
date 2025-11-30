@@ -1,0 +1,44 @@
+{
+  "startupPrograms": {
+    "safeToDisablePatterns": [
+      "*Updater*",
+      "*Update*Helper*",
+      "*AutoUpdate*",
+      "*UpdateChecker*",
+      "*Adobe*Updater*",
+      "*Google*Update*",
+      "*Java*Update*"
+    ],
+    "neverDisable": [
+      "*Security*",
+      "*Antivirus*",
+      "*Defender*",
+      "*Firewall*",
+      "*VPN*",
+      "*Authentication*"
+    ]
+  },
+  "services": {
+    "safeToDisable": [
+      "DiagTrack",
+      "dmwappushservice",
+      "RetailDemo",
+      "XblAuthManager",
+      "XblGameSave",
+      "XboxGipSvc",
+      "XboxNetApiSvc"
+    ]
+  },
+  "visualEffects": {
+    "performance": {
+      "animations": false,
+      "shadows": false,
+      "transparency": false,
+      "smoothEdges": false,
+      "showWindowContents": true
+    }
+  },
+  "powerPlan": {
+    "defaultPlan": "High Performance"
+  }
+}

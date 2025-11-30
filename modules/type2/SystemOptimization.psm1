@@ -79,10 +79,8 @@ function Invoke-SystemOptimization {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
         
-        # Validate temp_files structure (FIX #12)
-        if (-not (Test-TempFilesStructure)) {
-            throw "Failed to initialize temp_files directory structure"
-        }
+        # Initialize module execution environment
+        Initialize-ModuleExecution -ModuleName 'SystemOptimization'
         
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
         $analysisResults = Get-SystemOptimizationAnalysis
@@ -265,7 +263,7 @@ function Invoke-SystemOptimization {
             -DryRun $DryRun.IsPresent
         
         Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed. Processed: $processedCount/$optimizationCount"
-        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
         return $returnData
         
     }
@@ -678,11 +676,18 @@ function Optimize-StartupProgram {
     )
 
     # v3.0 compliance: Get safe-to-disable startup programs from configuration
-    # TODO: Move this to a configuration file in future version
-    # For now, use a minimal conservative list without specific app references
-    $safeToDisable = @(
-        '*Updater*', '*Update*Helper*', '*AutoUpdate*', '*UpdateChecker*'
-    )
+    try {
+        $optimizationConfig = Get-SystemOptimizationConfiguration
+        $safeToDisable = $optimizationConfig.startupPrograms.safeToDisablePatterns
+        if (-not $safeToDisable) {
+            # Fallback to defaults if config not available
+            $safeToDisable = @('*Updater*', '*Update*Helper*', '*AutoUpdate*', '*UpdateChecker*')
+        }
+    }
+    catch {
+        Write-LogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to load optimization config, using defaults: $_"
+        $safeToDisable = @('*Updater*', '*Update*Helper*', '*AutoUpdate*', '*UpdateChecker*')
+    }
 
     foreach ($location in $startupLocations) {
         if (Test-Path $location) {

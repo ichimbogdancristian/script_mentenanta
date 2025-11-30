@@ -464,7 +464,7 @@ function Get-JsonConfiguration {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('Main', 'Bloatware', 'EssentialApps', 'AppUpgrade', 'Logging', 'ReportTemplates')]
+        [ValidateSet('Main', 'Bloatware', 'EssentialApps', 'AppUpgrade', 'SystemOptimization', 'Logging', 'ReportTemplates')]
         [string]$ConfigType,
         
         [Parameter()]
@@ -476,22 +476,24 @@ function Get-JsonConfiguration {
     
     # Map config types to file paths (relative to CONFIG_ROOT)
     $configFiles = @{
-        'Main'            = 'settings\main-config.json'
-        'Bloatware'       = 'lists\bloatware-list.json'
-        'EssentialApps'   = 'lists\essential-apps.json'
-        'AppUpgrade'      = 'lists\app-upgrade-config.json'
-        'Logging'         = 'settings\logging-config.json'
-        'ReportTemplates' = 'templates\report-template-config.json'
+        'Main'               = 'settings\main-config.json'
+        'Bloatware'          = 'lists\bloatware-list.json'
+        'EssentialApps'      = 'lists\essential-apps.json'
+        'AppUpgrade'         = 'lists\app-upgrade-config.json'
+        'SystemOptimization' = 'lists\system-optimization-config.json'
+        'Logging'            = 'settings\logging-config.json'
+        'ReportTemplates'    = 'templates\report-template-config.json'
     }
     
     # Default return values for each config type
     $defaultValues = @{
-        'Main'            = @{}
-        'Bloatware'       = @{ all = @() }
-        'EssentialApps'   = @{ all = @() }
-        'AppUpgrade'      = @{ all = @() }
-        'Logging'         = @{ levels = @('INFO', 'WARNING', 'ERROR') }
-        'ReportTemplates' = @{}
+        'Main'               = @{}
+        'Bloatware'          = @{ all = @() }
+        'EssentialApps'      = @{ all = @() }
+        'AppUpgrade'         = @{ all = @() }
+        'SystemOptimization' = @{ startupPrograms = @{ safeToDisablePatterns = @() }; services = @{ safeToDisable = @() } }
+        'Logging'            = @{ levels = @('INFO', 'WARNING', 'ERROR') }
+        'ReportTemplates'    = @{}
     }
     
     try {
@@ -602,6 +604,59 @@ function Assert-AdminPrivilege {
 
 <#
 .SYNOPSIS
+    Initializes module execution environment with standard validations
+
+.DESCRIPTION
+    Performs common initialization checks required by Type2 modules:
+    - Validates temp_files structure exists
+    - Optionally checks administrator privileges
+    
+    This consolidates duplicate validation code across modules.
+
+.PARAMETER ModuleName
+    Name of the calling module (for error messages)
+
+.PARAMETER RequireAdmin
+    If specified, validates administrator privileges
+
+.PARAMETER Operation
+    Description of operation requiring admin rights (used with -RequireAdmin)
+
+.EXAMPLE
+    Initialize-ModuleExecution -ModuleName 'BloatwareRemoval'
+
+.EXAMPLE
+    Initialize-ModuleExecution -ModuleName 'WindowsUpdates' -RequireAdmin -Operation 'Windows Update installation'
+#>
+function Initialize-ModuleExecution {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ModuleName,
+        
+        [Parameter()]
+        [switch]$RequireAdmin,
+        
+        [Parameter()]
+        [string]$Operation
+    )
+    
+    # Validate temp_files structure
+    if (-not (Test-TempFilesStructure)) {
+        throw "$ModuleName`: Failed to initialize temp_files directory structure"
+    }
+    
+    # Validate admin privileges if required
+    if ($RequireAdmin) {
+        $operationDesc = if ($Operation) { $Operation } else { "$ModuleName execution" }
+        Assert-AdminPrivilege -Operation $operationDesc
+    }
+}
+
+#endregion
+
+<#
+.SYNOPSIS
     Gets bloatware configuration list
 
 .DESCRIPTION
@@ -676,6 +731,30 @@ function Get-AppUpgradeConfiguration {
 
 <#
 .SYNOPSIS
+    Gets system optimization configuration
+
+.DESCRIPTION
+    Loads system-optimization-config.json from lists/ directory
+    Returns hashtable with optimization settings (startup programs, services, etc.)
+
+.OUTPUTS
+    Hashtable with system optimization configuration
+
+.EXAMPLE
+    $optimizationConfig = Get-SystemOptimizationConfiguration
+#>
+function Get-SystemOptimizationConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+    )
+    
+    return Get-JsonConfiguration -ConfigType 'SystemOptimization' -ConfigPath $ConfigPath
+}
+
+<#
+.SYNOPSIS
     Gets logging configuration
 
 .DESCRIPTION
@@ -696,49 +775,6 @@ function Get-LoggingConfiguration {
 
 <#
 .SYNOPSIS
-    Gets cached configuration
-
-.DESCRIPTION
-    Retrieves cached configuration data
-#>
-<#
-.SYNOPSIS
-    Retrieves cached configuration values
-
-.DESCRIPTION
-    Accesses module-level configuration cache for previously loaded configuration data.
-    Supports fast retrieval of frequently accessed settings without reloading from disk.
-
-.PARAMETER ConfigKey
-    The configuration key to retrieve (e.g., 'main-config', 'logging-config', 'bloatware-list')
-
-.OUTPUTS
-    [hashtable] Configuration data if cached, empty hashtable if not found
-
-.EXAMPLE
-    PS> $config = Get-CachedConfiguration -ConfigKey 'main-config'
-    PS> $config['ExecutionMode']
-    Interactive
-    
-    Retrieves previously loaded main configuration from cache
-
-.NOTES
-    Used internally by configuration loading system.
-    Reduces I/O overhead for repeated access to same configuration files.
-#>
-function Get-CachedConfiguration {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ConfigKey
-    )
-    
-    Write-Verbose "Getting cached configuration for: $ConfigKey"
-    return @{}
-}
-
-<#
-.SYNOPSIS
     Gets configuration file path
 
 .DESCRIPTION
@@ -751,53 +787,13 @@ function Get-ConfigFilePath {
         [string]$ConfigName
     )
     
-    $newPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "settings/$ConfigName"
-    $oldPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "execution/$ConfigName"
-    
-    if (Test-Path $newPath) { return $newPath }
-    if (Test-Path $oldPath) { return $oldPath }
-    return $newPath  # Return new path as default even if not exists
+    $configPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "settings/$ConfigName"
+    return $configPath
 }
 
 <#
 .SYNOPSIS
-    Gets report templates configuration
-
-.DESCRIPTION
-    Returns report template configuration
-#>
-function Get-ReportTemplatesConfiguration {
-    [CmdletBinding()]
-    param()
-    
-    return @{ templates = @('default', 'executive', 'detailed') }
-}
-
-<#
-.SYNOPSIS
-    Tests configuration integrity
-
-.DESCRIPTION
-    Validates configuration files are proper JSON and have required structure
-#>
-function Test-ConfigurationIntegrity {
-    [CmdletBinding()]
-    param()
-    
-    try {
-        Get-MainConfiguration | Out-Null
-        Get-LoggingConfiguration | Out-Null
-        return $true
-    }
-    catch {
-        Write-Error "Configuration integrity test failed: $_"
-        return $false
-    }
-}
-
-<#
-.SYNOPSIS
-    Helper function to get nested properties from objects using dot notation
+    Tests configuration integrity properties from objects using dot notation
 
 .DESCRIPTION
     Retrieves nested property values from hashtables or PSCustomObjects using
@@ -1275,6 +1271,45 @@ New-Alias -Name 'Write-LogEntry' -Value 'Write-ModuleLogEntry' -Force
 .EXAMPLE
     $context = Start-PerformanceTracking -OperationName 'BloatwareRemoval' -Component 'BLOATWARE'
 #>
+<#
+.SYNOPSIS
+    Safely starts performance tracking with automatic error handling
+
+.DESCRIPTION
+    Wrapper around Start-PerformanceTracking that handles errors gracefully.
+    Returns $null if performance tracking is not available.
+
+.PARAMETER OperationName
+    Name of the operation to track
+
+.PARAMETER Component
+    Component identifier for logging
+
+.OUTPUTS
+    Performance context object or $null if unavailable
+
+.EXAMPLE
+    $perfContext = Start-PerformanceTrackingSafe -OperationName 'ModuleName' -Component 'MODULE'
+#>
+function Start-PerformanceTrackingSafe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OperationName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Component = 'UNKNOWN'
+    )
+    
+    try {
+        return Start-PerformanceTracking -OperationName $OperationName -Component $Component
+    }
+    catch {
+        Write-Verbose "Performance tracking not available: $($_.Exception.Message)"
+        return $null
+    }
+}
+
 function Start-PerformanceTracking {
     [CmdletBinding()]
     param(
@@ -1559,45 +1594,7 @@ function Write-OperationSkipped {
 
 <#
 .SYNOPSIS
-    Set logging verbosity level
-
-.DESCRIPTION
-    Controls how much detail is logged
-    
-.NOTES
-    DEPRECATED: Write-OperationFailure-Old removed in v3.1
-    Use Write-StructuredLogEntry with -Level 'ERROR' instead
-#>
-function Set-LoggingVerbosity {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [ValidateSet('Silent', 'Quiet', 'Normal', 'Verbose')]
-        [string]$Level
-    )
-    
-    Write-Verbose "Logging verbosity set to: $Level"
-}
-
-<#
-.SYNOPSIS
     Enable or disable logging
-
-.DESCRIPTION
-    Controls logging on/off
-#>
-function Set-LoggingEnabled {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [bool]$Enabled
-    )
-    
-    Write-Verbose "Logging enabled: $Enabled"
-}
-
-#endregion Logging System
-
 #region Session File Organization
 
 <#
@@ -1720,40 +1717,6 @@ function Test-TempFilesStructure {
 .DESCRIPTION
     Returns path for a session file
 #>
-<#
-.SYNOPSIS
-    Get session file path (DEPRECATED)
-
-.DESCRIPTION
-    DEPRECATED in v3.1: Use Get-SessionPath instead for better flexibility
-    This function redirects to Get-SessionPath for backward compatibility
-    
-.PARAMETER FileName
-    Name of the file
-    
-.PARAMETER Type
-    Type of directory (data, logs, reports, temp)
-    
-.NOTES
-    Deprecated: Use Get-SessionPath -Category $Type -FileName $FileName
-    Will be removed in v4.0
-#>
-function Get-SessionFilePath {
-    [CmdletBinding()]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingDeprecatedCommand', '')]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FileName,
-        
-        [Parameter(Mandatory = $false)]
-        [ValidateSet('data', 'logs', 'reports', 'temp')]
-        [string]$Type = 'temp'
-    )
-    
-    Write-Warning "Get-SessionFilePath is deprecated. Use Get-SessionPath -Category '$Type' -FileName '$FileName' instead."
-    return Get-SessionPath -Category $Type -FileName $FileName
-}
-
 <#
 .SYNOPSIS
     Get session directory path
@@ -3260,12 +3223,12 @@ function Get-ChangeLog {
 Export-ModuleMember -Function @(
     'Initialize-GlobalPathDiscovery', 'Get-MaintenancePaths', 'Get-MaintenancePath', 'Test-MaintenancePathsIntegrity',
     'Initialize-ConfigurationSystem', 'Get-ConfigFilePath', 'Get-JsonConfiguration', 'Get-MainConfiguration', 'Get-LoggingConfiguration',
-    'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-ReportTemplatesConfiguration',
+    'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-SystemOptimizationConfiguration', 'Get-ReportTemplatesConfiguration',
     'Get-CachedConfiguration', 'Test-ConfigurationIntegrity', 'Test-ConfigurationSchema', 'Get-NestedProperty',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
     'Write-DetectionLog',
-    'Assert-AdminPrivilege',
-    'Start-PerformanceTracking', 'Complete-PerformanceTracking', 'Set-LoggingVerbosity', 'Set-LoggingEnabled',
+    'Assert-AdminPrivilege', 'Initialize-ModuleExecution',
+    'Start-PerformanceTracking', 'Start-PerformanceTrackingSafe', 'Complete-PerformanceTracking', 'Set-LoggingVerbosity', 'Set-LoggingEnabled',
     'Initialize-SessionFileOrganization', 'Test-TempFilesStructure', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
     'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',
     'Initialize-MaintenanceInfrastructure', 'Get-InfrastructureStatus',

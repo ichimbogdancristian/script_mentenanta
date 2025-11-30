@@ -65,16 +65,14 @@ function Invoke-WindowsUpdates {
         [switch]$DryRun
     )
     
-    $perfContext = $null; try { $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES' } catch { Write-Verbose "Performance tracking not available: $($_.Exception.Message)" }
+    $perfContext = Start-PerformanceTrackingSafe -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES'
     
     try {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
         
-        # Validate temp_files structure (FIX #12)
-        if (-not (Test-TempFilesStructure)) {
-            throw "Failed to initialize temp_files directory structure"
-        }
+        # Initialize module execution environment
+        Initialize-ModuleExecution -ModuleName 'WindowsUpdates'
         
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
         $analysisResults = Get-WindowsUpdatesAnalysis
@@ -160,14 +158,14 @@ function Invoke-WindowsUpdates {
             -LogPath $executionLogPath `
             -ModuleName 'WindowsUpdates' `
             -DryRun $DryRun.IsPresent
-        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
         return $returnData
         
     }
     catch {
         $errorMsg = "Failed to execute Windows updates: $($_.Exception.Message)"
         Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message $errorMsg -Data @{ Error = $_.Exception }
-        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg | Out-Null }
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         return New-ModuleExecutionResult `
             -Success $false `

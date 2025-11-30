@@ -104,10 +104,8 @@ function Invoke-EssentialApps {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
         
-        # Validate temp_files structure (FIX #12)
-        if (-not (Test-TempFilesStructure)) {
-            throw "Failed to initialize temp_files directory structure"
-        }
+        # Initialize module execution environment
+        Initialize-ModuleExecution -ModuleName 'EssentialApps'
         
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\essential-apps"

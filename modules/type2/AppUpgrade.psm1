@@ -99,10 +99,8 @@ function Invoke-AppUpgrade {
     Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message 'Starting application upgrade execution'
 
     try {
-        # Validate temp_files structure (FIX #12)
-        if (-not (Test-TempFilesStructure)) {
-            throw "Failed to initialize temp_files directory structure"
-        }
+        # Initialize module execution environment
+        Initialize-ModuleExecution -ModuleName 'AppUpgrade'
         
         # STEP 1: Run Type1 detection
         Write-Information "   Running upgrade detection..." -InformationAction Continue
@@ -268,7 +266,7 @@ function Invoke-AppUpgrade {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
 
-        Complete-PerformanceTracking -Context $perfContext -Status 'Success'
+        Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null
         Write-LogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message 'Application upgrade execution completed' -Data @{
             ItemsDetected  = $detectionResults.Count
             ItemsProcessed = $itemsProcessed
@@ -287,7 +285,7 @@ function Invoke-AppUpgrade {
             -DryRun $DryRun.IsPresent
     }
     catch {
-        Complete-PerformanceTracking -Context $perfContext -Status 'Failed'
+        Complete-PerformanceTracking -Context $perfContext -Status 'Failed' | Out-Null
         Write-LogEntry -Level 'ERROR' -Component 'APP-UPGRADE' -Message 'Application upgrade execution failed' -Data @{
             Error = $_.Exception.Message
         }
