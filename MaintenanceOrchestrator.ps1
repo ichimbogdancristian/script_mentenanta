@@ -354,6 +354,44 @@ catch {
 }
 #endregion
 
+#region System Restore Point Creation
+Write-Information "`nChecking System Restore Point configuration..." -InformationAction Continue
+try {
+    $mainConfig = Get-MainConfiguration
+    $createRestorePoint = $mainConfig.system.createSystemRestorePoint ?? $true
+    
+    if ($createRestorePoint -and -not $DryRun) {
+        Write-Information "   Creating system restore point before maintenance..." -InformationAction Continue
+        
+        $restoreDescription = "Before Windows Maintenance - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+        $restoreResult = New-SystemRestorePoint -Description $restoreDescription
+        
+        if ($restoreResult.Success) {
+            if ($restoreResult.SequenceNumber) {
+                Write-Information "   ✓ Restore point created successfully (Sequence: $($restoreResult.SequenceNumber))" -InformationAction Continue
+            }
+            else {
+                Write-Information "   ✓ Restore point created: $($restoreResult.Description)" -InformationAction Continue
+            }
+        }
+        else {
+            Write-Warning "   Failed to create restore point: $($restoreResult.Message)"
+            Write-Warning "   Continuing without restore point - you may want to create one manually"
+        }
+    }
+    elseif ($DryRun) {
+        Write-Information "   [DRY-RUN] Restore point creation skipped in dry-run mode" -InformationAction Continue
+    }
+    else {
+        Write-Information "   Restore point creation disabled in configuration" -InformationAction Continue
+    }
+}
+catch {
+    Write-Warning "Failed to create restore point: $($_.Exception.Message)"
+    Write-Warning "Continuing without restore point - you may want to create one manually"
+}
+#endregion
+
 # Ensure Write-LogEntry is available after module loading (modules may have overridden it)
 if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     function global:Write-LogEntry {

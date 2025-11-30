@@ -2641,6 +2641,7 @@ function Test-SystemRequirements {
     # Check 6: System Protection Enabled (for restore points)
     try {
         $spEnabled = $false
+        $spAutoEnabled = $false
         
         # Try WMI first (more reliable across PS versions)
         try {
@@ -2657,16 +2658,44 @@ function Test-SystemRequirements {
             }
         }
         
+        # If disabled, try to enable it automatically (if configured)
+        if (-not $spEnabled) {
+            try {
+                $mainConfig = Get-MainConfiguration
+                $autoEnable = $mainConfig.system.enableSystemProtectionIfDisabled ?? $true
+                
+                if ($autoEnable) {
+                    Write-Verbose "Attempting to enable System Protection automatically..."
+                    $enableResult = Enable-SystemProtection
+                    if ($enableResult.Success) {
+                        $spEnabled = $true
+                        $spAutoEnabled = $true
+                        Write-Verbose "System Protection enabled automatically"
+                    }
+                }
+            }
+            catch {
+                Write-Verbose "Could not auto-enable System Protection: $($_.Exception.Message)"
+            }
+        }
+        
+        $actualStatus = if ($spEnabled) { 
+            if ($spAutoEnabled) { 'Enabled (auto-enabled)' } else { 'Enabled' }
+        } else { 'Disabled' }
+        
         $spCheck = @{
             Name     = 'System Protection'
             Required = 'Enabled'
-            Actual   = if ($spEnabled) { 'Enabled' } else { 'Disabled' }
+            Actual   = $actualStatus
             Met      = $spEnabled
         }
         $results.Checks += $spCheck
         
         if (-not $spEnabled) {
             $results.Warnings += "System Protection disabled - cannot create restore points"
+        }
+        elseif ($spAutoEnabled) {
+            $results.Warnings += "System Protection was disabled but has been enabled automatically"
         }
     }
     catch {
@@ -3242,7 +3271,7 @@ Export-ModuleMember -Function @(
     'Get-AuditResultsPath', 'Save-DiffResults',
     'New-ModuleExecutionResult', 'Write-StructuredLogEntry', 'Compare-DetectedVsConfig',
     'New-StandardLogEntry',
-    'Test-SystemRequirements', 'Test-SystemReadiness',
+    'Test-SystemRequirements', 'Test-SystemReadiness', 'Enable-SystemProtection', 'New-SystemRestorePoint',
     'Invoke-WithTimeout', 'Invoke-ModuleWithTimeout',
     'Register-SystemChange', 'Undo-AllChanges', 'Clear-ChangeLog', 'Get-ChangeLog'
 ) -Alias @('Write-LogEntry')
