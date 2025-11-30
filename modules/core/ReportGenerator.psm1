@@ -145,16 +145,10 @@ function Get-HtmlTemplates {
         $configPath = Get-MaintenancePath 'ConfigRoot'
         $templatesPath = Join-Path $configPath 'templates'
         
-        # Helper to find file with backward compatibility
+        # Standardized template location - config/templates only
         function Find-ConfigTemplate {
             param([string]$FileName)
-            # Try new location first
-            $newPath = Join-Path $templatesPath $FileName
-            if (Test-Path $newPath) { return $newPath }
-            # Fall back to old location
-            $oldPath = Join-Path $configPath $FileName
-            if (Test-Path $oldPath) { return $oldPath }
-            return $newPath  # Return new path as default
+            return Join-Path $templatesPath $FileName
         }
         
         $templates = @{
@@ -210,11 +204,7 @@ function Get-HtmlTemplates {
             Write-Verbose "Loaded main template: $mainTemplatePath"
         }
         else {
-            if ($UseEnhanced) {
-                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced template not found, falling back to standard templates"
-                return Get-HtmlTemplates  # Recursive call without -UseEnhanced
-            }
-            throw "Main report template not found: $mainTemplatePath"
+            throw "Main report template not found: $mainTemplatePath (check config/templates directory)"
         }
         
         # Load module/task card template
