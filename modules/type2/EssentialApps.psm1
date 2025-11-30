@@ -1474,7 +1474,7 @@ function Install-SingleApplication {
             -LogPath $ExecutionLogPath `
             -ModuleName 'EssentialApps' `
             -ErrorMessage $errorMsg `
-            -AdditionalInfo @{ Method = 'Unknown'; AppName = $appName }
+            -AdditionalData @{ Method = 'Unknown'; AppName = $appName }
     }
     
     if (-not $appId -or [string]::IsNullOrWhiteSpace($appId)) {
@@ -1488,7 +1488,7 @@ function Install-SingleApplication {
             -LogPath $ExecutionLogPath `
             -ModuleName 'EssentialApps' `
             -ErrorMessage $errorMsg `
-            -AdditionalInfo @{ Method = $source; AppName = $appName }
+            -AdditionalData @{ Method = $source; AppName = $appName }
     }
     
     Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Starting installation: $appName via $source" -LogPath $ExecutionLogPath
@@ -1508,7 +1508,7 @@ function Install-SingleApplication {
                         -LogPath $ExecutionLogPath `
                         -ModuleName 'EssentialApps' `
                         -ErrorMessage "Winget not available" `
-                        -AdditionalInfo @{ Method = 'Winget'; AppName = $appName }
+                        -AdditionalData @{ Method = 'Winget'; AppName = $appName }
                 }
                 
                 Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: winget install --id $appId --silent --accept-package-agreements --accept-source-agreements" -LogPath $ExecutionLogPath
@@ -1543,7 +1543,7 @@ function Install-SingleApplication {
                         -DurationMilliseconds 0 `
                         -LogPath $ExecutionLogPath `
                         -ModuleName 'EssentialApps' `
-                        -AdditionalInfo @{ Method = 'Winget'; AppName = $appName }
+                        -AdditionalData @{ Method = 'Winget'; AppName = $appName }
                 }
                 else {
                     Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Winget installation failed: $appName (Exit code: $($process.ExitCode))" -LogPath $ExecutionLogPath
@@ -1555,7 +1555,7 @@ function Install-SingleApplication {
                         -LogPath $ExecutionLogPath `
                         -ModuleName 'EssentialApps' `
                         -ErrorMessage "Exit code: $($process.ExitCode), Stderr: $stderr" `
-                        -AdditionalInfo @{ Method = 'Winget'; AppName = $appName }
+                        -AdditionalData @{ Method = 'Winget'; AppName = $appName }
                 }
             }
             
@@ -1572,7 +1572,7 @@ function Install-SingleApplication {
                         -LogPath $ExecutionLogPath `
                         -ModuleName 'EssentialApps' `
                         -ErrorMessage "Chocolatey not available" `
-                        -AdditionalInfo @{ Method = 'Chocolatey'; AppName = $appName }
+                        -AdditionalData @{ Method = 'Chocolatey'; AppName = $appName }
                 }
                 
                 Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Executing: choco install $appName --force --yes" -LogPath $ExecutionLogPath
@@ -1607,7 +1607,7 @@ function Install-SingleApplication {
                         -DurationMilliseconds 0 `
                         -LogPath $ExecutionLogPath `
                         -ModuleName 'EssentialApps' `
-                        -AdditionalInfo @{ Method = 'Chocolatey'; AppName = $appName }
+                        -AdditionalData @{ Method = 'Chocolatey'; AppName = $appName }
                 }
                 else {
                     Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Chocolatey installation failed: $appName (Exit code: $($process.ExitCode))" -LogPath $ExecutionLogPath
@@ -1619,7 +1619,7 @@ function Install-SingleApplication {
                         -LogPath $ExecutionLogPath `
                         -ModuleName 'EssentialApps' `
                         -ErrorMessage "Exit code: $($process.ExitCode), Stderr: $stderr" `
-                        -AdditionalInfo @{ Method = 'Chocolatey'; AppName = $appName }
+                        -AdditionalData @{ Method = 'Chocolatey'; AppName = $appName }
                 }
             }
             
@@ -1663,7 +1663,7 @@ function Install-SingleApplication {
                                     -DurationMilliseconds 0 `
                                     -LogPath $ExecutionLogPath `
                                     -ModuleName 'EssentialApps' `
-                                    -AdditionalInfo @{ Method = 'Manual-Winget'; AppName = $appName }
+                                    -AdditionalData @{ Method = 'Manual-Winget'; AppName = $appName }
                             }
                             else {
                                 $errorDetail = "Exit code: $($installProcess.ExitCode)"
@@ -1711,7 +1711,7 @@ function Install-SingleApplication {
                                     -DurationMilliseconds 0 `
                                     -LogPath $ExecutionLogPath `
                                     -ModuleName 'EssentialApps' `
-                                    -AdditionalInfo @{ Method = 'Manual-Chocolatey'; AppName = $appName }
+                                    -AdditionalData @{ Method = 'Manual-Chocolatey'; AppName = $appName }
                             }
                             else {
                                 $errorDetail = "Exit code: $($installProcess.ExitCode)"
@@ -1738,7 +1738,7 @@ function Install-SingleApplication {
                     -LogPath $ExecutionLogPath `
                     -ModuleName 'EssentialApps' `
                     -ErrorMessage "All installation methods exhausted - see logs for details" `
-                    -AdditionalInfo @{ Method = 'Manual'; AppName = $appName }
+                    -AdditionalData @{ Method = 'Manual'; AppName = $appName }
             }
             
             'direct' {
@@ -1765,7 +1765,7 @@ function Install-SingleApplication {
                             -DurationMilliseconds 0 `
                             -LogPath $ExecutionLogPath `
                             -ModuleName 'EssentialApps' `
-                            -AdditionalInfo @{ Method = 'Direct'; AppName = $appName }
+                            -AdditionalData @{ Method = 'Direct'; AppName = $appName }
                     }
                     else {
                         Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Direct installation failed: $appName (Exit code: $($installProcess.ExitCode))" -LogPath $ExecutionLogPath
@@ -1777,7 +1777,7 @@ function Install-SingleApplication {
                             -LogPath $ExecutionLogPath `
                             -ModuleName 'EssentialApps' `
                             -ErrorMessage "Exit code: $($installProcess.ExitCode)" `
-                            -AdditionalInfo @{ Method = 'Direct'; AppName = $appName }
+                            -AdditionalData @{ Method = 'Direct'; AppName = $appName }
                     }
                 }
                 else {
@@ -1790,7 +1790,7 @@ function Install-SingleApplication {
                         -LogPath $ExecutionLogPath `
                         -ModuleName 'EssentialApps' `
                         -ErrorMessage "No download URL provided" `
-                        -AdditionalInfo @{ Method = 'Direct'; AppName = $appName }
+                        -AdditionalData @{ Method = 'Direct'; AppName = $appName }
                 }
             }
             
@@ -1804,7 +1804,7 @@ function Install-SingleApplication {
                     -LogPath $ExecutionLogPath `
                     -ModuleName 'EssentialApps' `
                     -ErrorMessage "Unknown installation source: $source" `
-                    -AdditionalInfo @{ Method = $source; AppName = $appName }
+                    -AdditionalData @{ Method = $source; AppName = $appName }
             }
         }
     }
@@ -1818,7 +1818,7 @@ function Install-SingleApplication {
             -LogPath $ExecutionLogPath `
             -ModuleName 'EssentialApps' `
             -ErrorMessage $_.Exception.Message `
-            -AdditionalInfo @{ Method = $source; AppName = $appName }
+            -AdditionalData @{ Method = $source; AppName = $appName }
     }
 }
 

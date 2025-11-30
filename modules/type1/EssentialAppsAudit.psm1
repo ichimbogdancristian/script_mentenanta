@@ -140,8 +140,22 @@ function Get-EssentialAppsAnalysis {
         }
 
         Write-Information "Analyzing $($essentialAppsList.Count) essential applications..." -InformationAction Continue
+        
+        # Check for Microsoft Office before processing LibreOffice
+        $isMicrosoftOfficeInstalled = Test-MicrosoftOfficeInstallation -InstalledApps $installedApps
 
         foreach ($app in $essentialAppsList) {
+            # Skip LibreOffice if Microsoft Office is installed
+            if ($app.name -eq 'LibreOffice' -and $isMicrosoftOfficeInstalled) {
+                Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-SKIP' -Message "Skipped LibreOffice - Microsoft Office detected" -Data @{
+                    SkipReason  = 'Microsoft Office already installed'
+                    Status      = 'Not Needed'
+                    Category    = $app.category
+                    Description = $app.description
+                }
+                continue
+            }
+            
             $installationStatus = Test-ApplicationInstallation -AppDefinition $app -InstalledApps $installedApps
             
             if ($installationStatus.IsInstalled) {
@@ -392,6 +406,83 @@ function Test-ApplicationInstallation {
     }
 
     return $result
+}
+
+<#
+.SYNOPSIS
+    Tests if Microsoft Office is installed on the system
+#>
+function Test-MicrosoftOfficeInstallation {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [array]$InstalledApps
+    )
+
+    # Microsoft Office detection patterns
+    $officePatterns = @(
+        '*Microsoft Office*',
+        '*Microsoft 365*',
+        '*Office 365*',
+        '*Word 20*',
+        '*Excel 20*',
+        '*PowerPoint 20*',
+        '*Outlook 20*'
+    )
+
+    foreach ($pattern in $officePatterns) {
+        $matchedOffice = $InstalledApps | Where-Object {
+            ($_.DisplayName -like $pattern) -or 
+            ($_.Name -like $pattern) -or
+            ($_.Publisher -like "*Microsoft Corporation*" -and $_.DisplayName -like "*Office*")
+        } | Select-Object -First 1
+
+        if ($matchedOffice) {
+            Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-OFFICE' -Message "Microsoft Office detected: $($matchedOffice.DisplayName)" -Data @{
+                ProductName      = $matchedOffice.DisplayName
+                Version          = $matchedOffice.DisplayVersion
+                Publisher        = $matchedOffice.Publisher
+                InstallDate      = $matchedOffice.InstallDate
+                DetectionPattern = $pattern
+            }
+            return $true
+        }
+    }
+
+    # Additional check via registry for Office installations
+    try {
+        $officeRegistryPaths = @(
+            'HKLM:\SOFTWARE\Microsoft\Office',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office'
+        )
+
+        foreach ($regPath in $officeRegistryPaths) {
+            if (Test-Path $regPath) {
+                $officeVersions = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue | 
+                Where-Object { $_.Name -match '\d+\.\d+' } | 
+                Select-Object -First 1
+
+                if ($officeVersions) {
+                    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-OFFICE' -Message "Microsoft Office detected via registry: $regPath" -Data @{
+                        RegistryPath     = $regPath
+                        DetectedVersions = @($officeVersions.Name)
+                    }
+                    return $true
+                }
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Registry check for Office failed: $($_.Exception.Message)"
+    }
+
+    Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-OFFICE' -Message "No Microsoft Office installation detected" -Data @{
+        CheckedPatterns = $officePatterns.Count
+        CheckedRegistry = $true
+        Result          = 'Not Found'
+    }
+    return $false
 }
 
 <#
