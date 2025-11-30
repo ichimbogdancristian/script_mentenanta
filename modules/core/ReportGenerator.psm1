@@ -52,7 +52,7 @@
         • config/templates/report-template-v4-enhanced.html - Modern dashboard template
         • config/templates/report-styles-v4-enhanced.css - Modern CSS framework
         • config/templates/components/executive-dashboard.html - Dashboard component
-        • config/templates/components/module-card-enhanced.html - Module card component
+        • config/templates/components/module-card-enhanced-v5.html - Enhanced module card component (v5)
         • config/templates/assets/dashboard.js - Interactive JavaScript
     
     Input Data (from LogProcessor):
@@ -182,7 +182,7 @@ function Get-HtmlTemplates {
             else {
                 # Fallback to v4 enhanced
                 $mainTemplateFile = 'report-template-v4-enhanced.html'
-                $moduleCardFile = 'components/module-card-enhanced.html'
+                $moduleCardFile = 'components/module-card-enhanced-v5.html'
                 $cssFile = 'report-styles-v4-enhanced.css'
                 Write-Verbose "Using enhanced v4.0 templates (v5.0 not available)"
                 Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced v5.0 templates not found, using v4.0"
@@ -191,7 +191,7 @@ function Get-HtmlTemplates {
         else {
             # Fallback to v4 enhanced (old templates moved to archive)
             $mainTemplateFile = 'report-template-v4-enhanced.html'
-            $moduleCardFile = 'components/module-card-enhanced.html'
+            $moduleCardFile = 'components/module-card-enhanced-v5.html'
             $cssFile = 'report-styles-v4-enhanced.css'
             
             Write-Verbose "Using v4 enhanced templates (legacy mode disabled)"
