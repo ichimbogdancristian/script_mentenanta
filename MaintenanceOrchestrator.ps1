@@ -190,6 +190,7 @@ $Type2Modules = @(
     'EssentialApps',
     'SystemOptimization',
     'TelemetryDisable',
+    'SecurityEnhancement', # Security hardening and enhancements
     'WindowsUpdates',
     'AppUpgrade'
 )
