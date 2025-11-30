@@ -339,11 +339,11 @@ function Set-WindowsDefenderConfiguration {
             Write-Information "      ✅ Windows Defender configured successfully" -InformationAction Continue
         }
         
-        return @{ Success = $true; ItemsProcessed = $itemsProcessed }
+        return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed
     }
     catch {
         Write-Warning "      Failed to configure Windows Defender: $($_.Exception.Message)"
-        return @{ Success = $false; ItemsProcessed = 0 }
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error $_.Exception.Message
     }
 }
 
@@ -370,11 +370,11 @@ function Set-FirewallConfiguration {
             Write-Information "      ✅ Windows Firewall enabled for all profiles" -InformationAction Continue
         }
         
-        return @{ Success = $true; ItemsProcessed = $itemsProcessed }
+        return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed
     }
     catch {
         Write-Warning "      Failed to configure firewall: $($_.Exception.Message)"
-        return @{ Success = $false; ItemsProcessed = 0 }
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error $_.Exception.Message
     }
 }
 
@@ -403,11 +403,11 @@ function Set-UACConfiguration {
             Write-Information "      ✅ UAC configured successfully" -InformationAction Continue
         }
         
-        return @{ Success = $true; ItemsProcessed = $itemsProcessed }
+        return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed
     }
     catch {
         Write-Warning "      Failed to configure UAC: $($_.Exception.Message)"
-        return @{ Success = $false; ItemsProcessed = 0 }
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error $_.Exception.Message
     }
 }
 
@@ -435,11 +435,11 @@ function Set-PowerShellExecutionPolicy {
             Write-Information "      ✅ Execution policy set to: $policy" -InformationAction Continue
         }
         
-        return @{ Success = $true; ItemsProcessed = $itemsProcessed }
+        return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed
     }
     catch {
         Write-Warning "      Failed to set execution policy: $($_.Exception.Message)"
-        return @{ Success = $false; ItemsProcessed = 0 }
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error $_.Exception.Message
     }
 }
 
@@ -478,11 +478,11 @@ function Set-SystemAuditPolicies {
             Write-Information "      ✅ Audit policies configured successfully" -InformationAction Continue
         }
         
-        return @{ Success = $true; ItemsProcessed = $itemsProcessed }
+        return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed
     }
     catch {
         Write-Warning "      Failed to configure audit policies: $($_.Exception.Message)"
-        return @{ Success = $false; ItemsProcessed = 0 }
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error $_.Exception.Message
     }
 }
 
@@ -526,11 +526,11 @@ function Set-NetworkSecurityConfiguration {
             Write-Information "      ✅ Network security configured successfully" -InformationAction Continue
         }
         
-        return @{ Success = $true; ItemsProcessed = $itemsProcessed }
+        return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed
     }
     catch {
         Write-Warning "      Failed to configure network security: $($_.Exception.Message)"
-        return @{ Success = $false; ItemsProcessed = 0 }
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error $_.Exception.Message
     }
 }
 

@@ -87,11 +87,20 @@ function Invoke-SystemOptimization {
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
         $analysisResults = Get-SystemOptimizationAnalysis
         
-        if (-not $analysisResults -or $analysisResults.OptimizationCount -eq 0) {
+        $optimizationCount = if ($analysisResults -and $analysisResults.OptimizationOpportunities) { $analysisResults.OptimizationOpportunities.Count } else { 0 }
+        
+        if (-not $analysisResults -or $optimizationCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'No optimization opportunities detected'
-            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
             $executionTime = (Get-Date) - $executionStartTime
-            return @{ Success = $true; ItemsDetected = 0; ItemsProcessed = 0; Duration = $executionTime.TotalMilliseconds }
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected 0 `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds $executionTime.TotalMilliseconds `
+                -LogPath "" `
+                -ModuleName 'SystemOptimization' `
+                -DryRun $DryRun.IsPresent
         }
         
         # STEP 3: Setup execution logging directory
@@ -99,7 +108,7 @@ function Invoke-SystemOptimization {
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
-        $optimizationCount = $analysisResults.OptimizationCount
+
         Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ OpportunityCount = $optimizationCount }
         
         if ($DryRun) {
@@ -109,58 +118,95 @@ function Invoke-SystemOptimization {
             $processedCount = $optimizationCount
         }
         else {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing system optimization' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ OpportunityCount = $optimizationCount }
-            # Process optimization opportunities based on detected types
+            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing enhanced system optimization' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ OpportunityCount = $optimizationCount }
+            
+            # Load enhanced configuration
+            $enhancedConfig = Get-EnhancedOptimizationConfig
+            $systemProfile = Get-SystemPerformanceProfile
+            
+            # Process optimization opportunities with enhanced logic
             $processedCount = 0
+            $optimizationResults = @{
+                Startup  = @{ Applied = 0; Failed = 0; Skipped = 0 }
+                UI       = @{ Applied = 0; Failed = 0; Skipped = 0 }
+                Disk     = @{ Applied = 0; Failed = 0; Skipped = 0; SpaceFreed = 0 }
+                Registry = @{ Applied = 0; Failed = 0; Skipped = 0 }
+                Network  = @{ Applied = 0; Failed = 0; Skipped = 0 }
+                Modern   = @{ Applied = 0; Failed = 0; Skipped = 0 }
+            }
+            
             if ($analysisResults.OptimizationOpportunities) {
-                # Group opportunities by optimization function to prevent duplicates
-                $optimizationGroups = @{
-                    'Startup'  = @('DisableStartupApp', 'OptimizeService')
-                    'UI'       = @('OptimizeVisualEffects', 'OptimizeAnimations', 'OptimizeTaskbar')
-                    'Registry' = @('CleanUserAssist', 'EnablePrefetch')
-                    'Cleanup'  = @('DiskCleanup', 'CleanTempFiles')
-                    'Disk'     = @('DefragmentDisk')
-                    'Network'  = @('EnableRSS', 'OptimizeDNS')
-                }
+                # Group opportunities by category with enhanced processing
+                $opportunitiesByCategory = $analysisResults.OptimizationOpportunities | Group-Object Category
                 
-                # Track which optimization groups need to be executed
-                $executeGroups = @{}
-                foreach ($opportunity in $analysisResults.OptimizationOpportunities) {
-                    foreach ($groupName in $optimizationGroups.Keys) {
-                        if ($optimizationGroups[$groupName] -contains $opportunity.Type) {
-                            $executeGroups[$groupName] = $true
-                            break
-                        }
-                    }
-                }
-                
-                # Execute each optimization group once
-                foreach ($groupName in $executeGroups.Keys) {
-                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing optimization group: $groupName" -LogPath $executionLogPath -Operation 'ProcessGroup' -Target $groupName
+                foreach ($categoryGroup in $opportunitiesByCategory) {
+                    $category = $categoryGroup.Name
+                    $opportunities = $categoryGroup.Group
+                    
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Processing $category optimizations" -LogPath $executionLogPath -Operation 'ProcessCategory' -Target $category -Metadata @{ OpportunityCount = $opportunities.Count }
+                    
                     try {
-                        $result = $false
-                        switch ($groupName) {
-                            'Startup' { $result = Optimize-SystemPerformance -OptimizeStartup }
-                            'UI' { $result = Optimize-SystemPerformance -OptimizeUI }
-                            'Registry' { $result = Optimize-SystemPerformance -OptimizeRegistry }
-                            'Cleanup' { $result = Optimize-SystemPerformance -CleanupTemp }
-                            'Disk' { $result = Optimize-SystemPerformance -OptimizeDisk }
-                            'Network' { $result = Optimize-SystemPerformance -OptimizeNetwork }
+                        $categoryResult = switch ($category) {
+                            'Startup' { 
+                                Invoke-EnhancedStartupOptimization -Opportunities $opportunities -Config $enhancedConfig -SystemProfile $systemProfile -LogPath $executionLogPath
+                            }
+                            'UI' { 
+                                Invoke-EnhancedUIOptimization -Opportunities $opportunities -Config $enhancedConfig -SystemProfile $systemProfile -LogPath $executionLogPath
+                            }
+                            'Disk' { 
+                                Invoke-EnhancedDiskOptimization -Opportunities $opportunities -Config $enhancedConfig -SystemProfile $systemProfile -LogPath $executionLogPath
+                            }
+                            'Registry' { 
+                                if ($enhancedConfig.systemOptimizations.registry.enabled) {
+                                    Invoke-EnhancedRegistryOptimization -Opportunities $opportunities -Config $enhancedConfig -LogPath $executionLogPath
+                                }
+                                else {
+                                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Registry optimization disabled in configuration" -LogPath $executionLogPath -Operation 'Skip' -Target $category
+                                    @{ Applied = 0; Failed = 0; Skipped = $opportunities.Count }
+                                }
+                            }
+                            'Network' { 
+                                if ($enhancedConfig.systemOptimizations.network.enabled) {
+                                    Invoke-EnhancedNetworkOptimization -Opportunities $opportunities -Config $enhancedConfig -LogPath $executionLogPath
+                                }
+                                else {
+                                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Network optimization disabled in configuration" -LogPath $executionLogPath -Operation 'Skip' -Target $category
+                                    @{ Applied = 0; Failed = 0; Skipped = $opportunities.Count }
+                                }
+                            }
                             default { 
-                                Write-StructuredLogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization group: $groupName" -LogPath $executionLogPath -Operation 'ProcessGroup' -Target $groupName -Result 'Unknown'
-                                $result = $false 
+                                Write-StructuredLogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown optimization category: $category" -LogPath $executionLogPath -Operation 'ProcessCategory' -Target $category -Result 'Unknown'
+                                @{ Applied = 0; Failed = $opportunities.Count; Skipped = 0 }
                             }
                         }
-                        if ($result) { 
-                            $processedCount++
-                            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied optimization group: $groupName" -LogPath $executionLogPath -Operation 'Apply' -Target $groupName -Result 'Success'
-                        }
-                        else {
-                            Write-StructuredLogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to apply optimization group: $groupName" -LogPath $executionLogPath -Operation 'Apply' -Target $groupName -Result 'Failed'
+                        
+                        # Merge category results
+                        $optimizationResults[$category] = $categoryResult
+                        $processedCount += $categoryResult.Applied
+                        
+                        if ($categoryResult.Applied -gt 0) {
+                            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Successfully applied $($categoryResult.Applied) $category optimizations" -LogPath $executionLogPath -Operation 'Apply' -Target $category -Result 'Success' -Metadata $categoryResult
                         }
                     }
                     catch {
-                        Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error applying $($opportunity.Type): $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Apply' -Target $opportunity.Type -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+                        $optimizationResults[$category].Failed += $opportunities.Count
+                        Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error processing $category optimizations: $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Apply' -Target $category -Result 'Error' -Metadata @{ Error = $_.Exception.Message; OpportunityCount = $opportunities.Count }
+                    }
+                }
+                
+                # Apply Windows 11 specific optimizations if detected
+                if ($systemProfile.WindowsVersion -ge 11 -and $enhancedConfig.systemOptimizations.modern.windows11.enabled) {
+                    try {
+                        $modernResult = Invoke-ModernWindowsOptimization -Config $enhancedConfig -SystemProfile $systemProfile -LogPath $executionLogPath
+                        $optimizationResults.Modern = $modernResult
+                        $processedCount += $modernResult.Applied
+                        
+                        if ($modernResult.Applied -gt 0) {
+                            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Applied $($modernResult.Applied) modern Windows optimizations" -LogPath $executionLogPath -Operation 'Apply' -Target 'Modern' -Result 'Success' -Metadata $modernResult
+                        }
+                    }
+                    catch {
+                        Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error applying modern optimizations: $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Apply' -Target 'Modern' -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
                     }
                 }
             }
@@ -226,12 +272,12 @@ function Invoke-SystemOptimization {
     catch {
         $errorMsg = "Failed to execute system optimization: $($_.Exception.Message)"
         Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message $errorMsg -Data @{ Error = $_.Exception }
-        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
+        if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg | Out-Null }
         
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         return New-ModuleExecutionResult `
             -Success $false `
-            -ItemsDetected (if ($analysisResults) { $analysisResults.OptimizationCount } else { 0 }) `
+            -ItemsDetected (if ($analysisResults -and $analysisResults.OptimizationOpportunities) { $analysisResults.OptimizationOpportunities.Count } else { 0 }) `
             -ItemsProcessed 0 `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
             -LogPath $executionLogPath `
@@ -431,7 +477,7 @@ function Optimize-SystemPerformance {
                 RegistryOptimizations = $results.Categories.RegistryOptimization
                 DiskOptimizations     = $results.Categories.DiskOptimization
                 NetworkOptimizations  = $results.Categories.NetworkOptimization
-            }
+            } | Out-Null
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation completed' -Data $results
         }
         catch {
@@ -451,7 +497,7 @@ function Optimize-SystemPerformance {
         
         # Complete performance tracking for failed operation
         try {
-            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message } | Out-Null
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
         }
         catch {
@@ -1249,6 +1295,736 @@ function Merge-OptimizationResult {
         $Results.Categories[$Category].EntriesProcessed = ($NewResults.EntriesProcessed ?? 0)
         $Results.Categories[$Category].TasksCompleted = ($NewResults.TasksCompleted ?? 0)
         $Results.Categories[$Category].SettingsApplied = ($NewResults.SettingsApplied ?? 0)
+    }
+}
+
+#endregion
+
+#region Enhanced Optimization Functions (v3.1)
+
+<#
+.SYNOPSIS
+    Gets enhanced optimization configuration with system adaptation
+#>
+function Get-EnhancedOptimizationConfig {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param()
+    
+    try {
+        $configPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\system-optimization-enhanced.json'
+        if (Test-Path $configPath) {
+            $config = Get-Content $configPath -Raw | ConvertFrom-Json
+            Write-Verbose "Loaded enhanced optimization configuration from: $configPath"
+            return $config
+        }
+    }
+    catch {
+        Write-Warning "Failed to load enhanced configuration: $($_.Exception.Message)"
+    }
+    
+    # Return minimal default configuration if file not found
+    return @{
+        systemOptimizations   = @{
+            startup  = @{ enabled = $true; aggressiveMode = $false }
+            ui       = @{ enabled = $true; profileBased = $true }
+            disk     = @{ enabled = $true }
+            registry = @{ enabled = $false }
+            network  = @{ enabled = $false }
+            modern   = @{ windows11 = @{ enabled = $true } }
+        }
+        performanceThresholds = @{
+            diskSpace = @{ critical = 5; warning = 15; optimal = 25 }
+            memory    = @{ high = 85; warning = 70; optimal = 60 }
+            startup   = @{ tooMany = 15; optimal = 8; minimal = 5 }
+        }
+        adaptiveSettings      = @{ enabled = $true }
+    }
+}
+
+<#
+.SYNOPSIS
+    Determines system performance profile for adaptive optimization
+#>
+function Get-SystemPerformanceProfile {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param()
+    
+    try {
+        $computerInfo = Get-ComputerInfo -Property TotalPhysicalMemory, CsProcessors
+        $ramGB = [math]::Round($computerInfo.TotalPhysicalMemory / 1GB, 2)
+        $cpuCores = $computerInfo.CsProcessors.Count
+        $osVersion = [Environment]::OSVersion.Version
+        
+        # Determine performance profile
+        $profile = 'midRange'
+        if ($ramGB -le 8 -or $cpuCores -le 4) {
+            $profile = 'lowEnd'
+        }
+        elseif ($ramGB -ge 32 -and $cpuCores -ge 12) {
+            $profile = 'highEnd'
+        }
+        
+        return @{
+            RAM            = $ramGB
+            CPUCores       = $cpuCores
+            WindowsVersion = $osVersion.Major
+            WindowsBuild   = $osVersion.Build
+            Profile        = $profile
+            IsLowEnd       = ($profile -eq 'lowEnd')
+            IsHighEnd      = ($profile -eq 'highEnd')
+        }
+    }
+    catch {
+        Write-Warning "Failed to determine system profile: $($_.Exception.Message)"
+        return @{
+            RAM            = 8
+            CPUCores       = 4
+            WindowsVersion = 10
+            WindowsBuild   = 19044
+            Profile        = 'midRange'
+            IsLowEnd       = $false
+            IsHighEnd      = $false
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Enhanced startup optimization with intelligent pattern matching
+#>
+function Invoke-EnhancedStartupOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]$Opportunities,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$SystemProfile,
+        
+        [Parameter(Mandatory)]
+        [string]$LogPath
+    )
+    
+    $results = @{ Applied = 0; Failed = 0; Skipped = 0 }
+    $startupConfig = $Config.systemOptimizations.startup
+    
+    if (-not $startupConfig.enabled) {
+        Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Startup optimization disabled in configuration" -LogPath $LogPath
+        $results.Skipped = $Opportunities.Count
+        return $results
+    }
+    
+    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Starting enhanced startup optimization" -LogPath $LogPath -Metadata @{ OpportunityCount = $Opportunities.Count; SystemProfile = $SystemProfile.Profile }
+    
+    foreach ($opportunity in $Opportunities) {
+        try {
+            $shouldOptimize = $false
+            $reason = ""
+            
+            # Enhanced pattern matching
+            foreach ($pattern in $startupConfig.safeToDisablePatterns) {
+                if ($opportunity.Target -like $pattern) {
+                    $shouldOptimize = $true
+                    $reason = "Matched safe-to-disable pattern: $pattern"
+                    break
+                }
+            }
+            
+            # Safety check - never disable critical items
+            foreach ($pattern in $startupConfig.neverDisablePatterns) {
+                if ($opportunity.Target -like $pattern) {
+                    $shouldOptimize = $false
+                    $reason = "Matched never-disable pattern: $pattern"
+                    break
+                }
+            }
+            
+            # Adaptive optimization based on system profile
+            if ($SystemProfile.IsLowEnd -and $startupConfig.aggressiveMode) {
+                # More aggressive on low-end systems
+                if ($opportunity.Impact -eq 'Medium' -and -not $shouldOptimize) {
+                    $shouldOptimize = $true
+                    $reason = "Aggressive mode for low-end system"
+                }
+            }
+            
+            if ($shouldOptimize) {
+                if ($opportunity.Type -eq 'DisableStartupApp') {
+                    $optimizeResult = Disable-StartupApplication -AppName $opportunity.Target -Reason $reason -LogPath $LogPath
+                    if ($optimizeResult) {
+                        $results.Applied++
+                        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Disabled startup app: $($opportunity.Target)" -LogPath $LogPath -Operation 'Disable' -Target $opportunity.Target -Result 'Success' -Metadata @{ Reason = $reason }
+                    }
+                    else {
+                        $results.Failed++
+                        Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to disable startup app: $($opportunity.Target)" -LogPath $LogPath -Operation 'Disable' -Target $opportunity.Target -Result 'Failed'
+                    }
+                }
+                elseif ($opportunity.Type -eq 'OptimizeService') {
+                    $optimizeResult = Optimize-WindowsService -ServiceName $opportunity.Target -Reason $reason -LogPath $LogPath
+                    if ($optimizeResult) {
+                        $results.Applied++
+                        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Optimized service: $($opportunity.Target)" -LogPath $LogPath -Operation 'Optimize' -Target $opportunity.Target -Result 'Success' -Metadata @{ Reason = $reason }
+                    }
+                    else {
+                        $results.Failed++
+                        Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to optimize service: $($opportunity.Target)" -LogPath $LogPath -Operation 'Optimize' -Target $opportunity.Target -Result 'Failed'
+                    }
+                }
+            }
+            else {
+                $results.Skipped++
+                Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Skipped startup item: $($opportunity.Target)" -LogPath $LogPath -Operation 'Skip' -Target $opportunity.Target -Metadata @{ Reason = $reason }
+            }
+        }
+        catch {
+            $results.Failed++
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error processing startup opportunity: $($_.Exception.Message)" -LogPath $LogPath -Operation 'Process' -Target $opportunity.Target -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+        }
+    }
+    
+    return $results
+}
+
+<#
+.SYNOPSIS
+    Enhanced UI optimization with profile-based settings
+#>
+function Invoke-EnhancedUIOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]$Opportunities,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$SystemProfile,
+        
+        [Parameter(Mandatory)]
+        [string]$LogPath
+    )
+    
+    $results = @{ Applied = 0; Failed = 0; Skipped = 0 }
+    $uiConfig = $Config.systemOptimizations.ui
+    
+    if (-not $uiConfig.enabled) {
+        $results.Skipped = $Opportunities.Count
+        return $results
+    }
+    
+    # Select profile based on system capabilities
+    $selectedProfile = 'balanced'
+    if ($SystemProfile.IsLowEnd) {
+        $selectedProfile = 'performance'
+    }
+    
+    $profileSettings = $uiConfig.profiles.$selectedProfile
+    
+    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Applying UI optimizations with profile: $selectedProfile" -LogPath $LogPath -Metadata @{ Profile = $selectedProfile; SystemProfile = $SystemProfile.Profile }
+    
+    # Apply UI optimizations based on profile
+    $uiOptimizations = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' = @{}
+        'HKCU:\Control Panel\Desktop'                                       = @{}
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search'            = @{}
+    }
+    
+    # Configure based on profile
+    if ($profileSettings.disableAnimations) {
+        $uiOptimizations['HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced']['TaskbarAnimations'] = 0
+        $uiOptimizations['HKCU:\Control Panel\Desktop']['MenuShowDelay'] = '0'
+        $uiOptimizations['HKCU:\Control Panel\Desktop\WindowMetrics'] = @{ 'MinAnimate' = '0' }
+    }
+    
+    if ($profileSettings.useSmallTaskbarIcons) {
+        $uiOptimizations['HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced']['TaskbarSmallIcons'] = 1
+    }
+    
+    if ($profileSettings.hideSearchBox) {
+        $uiOptimizations['HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search']['SearchboxTaskbarMode'] = 0
+    }
+    
+    if ($profileSettings.disableVisualEffects) {
+        $uiOptimizations['HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'] = @{ 'VisualFXSetting' = 2 }
+        $uiOptimizations['HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced']['ListviewShadow'] = 0
+    }
+    
+    # Apply the optimizations
+    foreach ($registryPath in $uiOptimizations.Keys) {
+        foreach ($setting in $uiOptimizations[$registryPath].GetEnumerator()) {
+            try {
+                if (-not (Test-Path $registryPath)) {
+                    New-Item -Path $registryPath -Force | Out-Null
+                }
+                
+                Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
+                
+                # Verify the change
+                $newValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
+                if ($newValue -eq $setting.Value) {
+                    $results.Applied++
+                    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Applied UI setting: $($setting.Key)" -LogPath $LogPath -Operation 'Apply' -Target "$registryPath\$($setting.Key)" -Result 'Success' -Metadata @{ OldValue = $null; NewValue = $newValue; Profile = $selectedProfile }
+                }
+                else {
+                    $results.Failed++
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to verify UI setting: $($setting.Key)" -LogPath $LogPath -Operation 'Apply' -Target "$registryPath\$($setting.Key)" -Result 'Failed' -Metadata @{ ExpectedValue = $setting.Value; ActualValue = $newValue }
+                }
+            }
+            catch {
+                $results.Failed++
+                Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error applying UI setting: $($_.Exception.Message)" -LogPath $LogPath -Operation 'Apply' -Target "$registryPath\$($setting.Key)" -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+            }
+        }
+    }
+    
+    return $results
+}
+
+<#
+.SYNOPSIS
+    Enhanced disk optimization with intelligent cleanup and modern storage awareness
+#>
+function Invoke-EnhancedDiskOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]$Opportunities,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$SystemProfile,
+        
+        [Parameter(Mandatory)]
+        [string]$LogPath
+    )
+    
+    $results = @{ Applied = 0; Failed = 0; Skipped = 0; SpaceFreed = 0 }
+    $diskConfig = $Config.systemOptimizations.disk
+    
+    if (-not $diskConfig.enabled) {
+        $results.Skipped = $Opportunities.Count
+        return $results
+    }
+    
+    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Starting enhanced disk optimization" -LogPath $LogPath -Metadata @{ OpportunityCount = $Opportunities.Count; SystemProfile = $SystemProfile.Profile }
+    
+    # Process cleanup targets from configuration
+    foreach ($cleanupTarget in $diskConfig.cleanupTargets) {
+        try {
+            $targetPath = [Environment]::ExpandEnvironmentVariables($cleanupTarget.path)
+            $parentPath = Split-Path $targetPath -Parent
+            
+            if (Test-Path $parentPath) {
+                # Calculate current size
+                $beforeSize = 0
+                if (Test-Path $targetPath) {
+                    $items = Get-ChildItem -Path $targetPath -Force -ErrorAction SilentlyContinue
+                    if ($cleanupTarget.recurse) {
+                        $beforeSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                    }
+                    else {
+                        $beforeSize = ($items | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                    }
+                }
+                
+                # Check if cleanup is needed based on thresholds
+                $minSizeBytes = ConvertTo-Bytes -SizeString $cleanupTarget.minSize
+                $shouldClean = ($beforeSize -gt $minSizeBytes)
+                
+                if ($shouldClean) {
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Cleaning: $($cleanupTarget.name)" -LogPath $LogPath -Operation 'Clean' -Target $cleanupTarget.name -Metadata @{ Path = $targetPath; SizeBefore = $beforeSize; MinSize = $minSizeBytes }
+                    
+                    # Perform cleanup with age filtering if specified
+                    if ($cleanupTarget.maxAge -and $cleanupTarget.maxAge -ne "0days") {
+                        $maxAge = ConvertTo-TimeSpan -AgeString $cleanupTarget.maxAge
+                        $cutoffDate = (Get-Date).Subtract($maxAge)
+                        
+                        if ($cleanupTarget.recurse) {
+                            Get-ChildItem -Path $targetPath -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cutoffDate } | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+                        }
+                        else {
+                            Get-ChildItem -Path $targetPath -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cutoffDate } | Remove-Item -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                    else {
+                        # Clean all files
+                        if ($cleanupTarget.recurse) {
+                            Remove-Item -Path $targetPath -Recurse -Force -ErrorAction SilentlyContinue
+                        }
+                        else {
+                            Remove-Item -Path $targetPath -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                    
+                    # Calculate space freed
+                    $afterSize = 0
+                    if (Test-Path $targetPath) {
+                        $items = Get-ChildItem -Path $targetPath -Force -ErrorAction SilentlyContinue
+                        if ($cleanupTarget.recurse) {
+                            $afterSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                        }
+                        else {
+                            $afterSize = ($items | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                        }
+                    }
+                    
+                    $spaceFreed = [math]::Max(0, ($beforeSize ?? 0) - ($afterSize ?? 0))
+                    $results.SpaceFreed += $spaceFreed
+                    
+                    if ($spaceFreed -gt 0) {
+                        $results.Applied++
+                        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Cleaned $($cleanupTarget.name): $([math]::Round($spaceFreed/1MB, 2)) MB freed" -LogPath $LogPath -Operation 'Clean' -Target $cleanupTarget.name -Result 'Success' -Metadata @{ SpaceFreedMB = [math]::Round($spaceFreed / 1MB, 2); BeforeSize = $beforeSize; AfterSize = $afterSize }
+                    }
+                    else {
+                        Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "No space freed for: $($cleanupTarget.name)" -LogPath $LogPath -Operation 'Clean' -Target $cleanupTarget.name -Result 'NoChange'
+                    }
+                }
+                else {
+                    $results.Skipped++
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Skipped cleanup: $($cleanupTarget.name) (below threshold)" -LogPath $LogPath -Operation 'Skip' -Target $cleanupTarget.name -Metadata @{ CurrentSize = $beforeSize; MinSize = $minSizeBytes }
+                }
+            }
+            else {
+                $results.Skipped++
+                Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Skipped cleanup: $($cleanupTarget.name) (path not found)" -LogPath $LogPath -Operation 'Skip' -Target $cleanupTarget.name -Metadata @{ Path = $parentPath }
+            }
+        }
+        catch {
+            $results.Failed++
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error cleaning $($cleanupTarget.name): $($_.Exception.Message)" -LogPath $LogPath -Operation 'Clean' -Target $cleanupTarget.name -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+        }
+    }
+    
+    return $results
+}
+
+<#
+.SYNOPSIS
+    Enhanced registry optimization with safety checks
+#>
+function Invoke-EnhancedRegistryOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]$Opportunities,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        
+        [Parameter(Mandatory)]
+        [string]$LogPath
+    )
+    
+    $results = @{ Applied = 0; Failed = 0; Skipped = 0 }
+    $registryConfig = $Config.systemOptimizations.registry
+    
+    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Starting enhanced registry optimization" -LogPath $LogPath -Metadata @{ SafeOptimizationsCount = $registryConfig.safeOptimizations.Count }
+    
+    # Only perform safe optimizations from configuration
+    foreach ($optimization in $registryConfig.safeOptimizations) {
+        try {
+            $registryPath = $optimization.path
+            if (Test-Path $registryPath) {
+                Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Applying registry optimization: $($optimization.name)" -LogPath $LogPath -Operation 'Clean' -Target $optimization.name -Metadata @{ Path = $registryPath; Action = $optimization.action }
+                
+                switch ($optimization.action) {
+                    'clearEntries' {
+                        $items = Get-ChildItem -Path $registryPath -ErrorAction SilentlyContinue
+                        $itemCount = $items.Count
+                        
+                        foreach ($item in $items) {
+                            Remove-Item -Path $item.PSPath -Force -ErrorAction SilentlyContinue
+                        }
+                        
+                        $results.Applied++
+                        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Cleared registry entries: $($optimization.name) ($itemCount items)" -LogPath $LogPath -Operation 'Clean' -Target $optimization.name -Result 'Success' -Metadata @{ ItemsCleared = $itemCount }
+                    }
+                    default {
+                        Write-StructuredLogEntry -Level 'WARNING' -Component 'SYSTEM-OPTIMIZATION' -Message "Unknown registry action: $($optimization.action)" -LogPath $LogPath -Operation 'Clean' -Target $optimization.name -Result 'Unknown'
+                        $results.Skipped++
+                    }
+                }
+            }
+            else {
+                $results.Skipped++
+                Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Registry path not found: $($optimization.name)" -LogPath $LogPath -Operation 'Skip' -Target $optimization.name -Metadata @{ Path = $registryPath }
+            }
+        }
+        catch {
+            $results.Failed++
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error in registry optimization $($optimization.name): $($_.Exception.Message)" -LogPath $LogPath -Operation 'Clean' -Target $optimization.name -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+        }
+    }
+    
+    return $results
+}
+
+<#
+.SYNOPSIS
+    Enhanced network optimization with modern TCP settings
+#>
+function Invoke-EnhancedNetworkOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]$Opportunities,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        
+        [Parameter(Mandatory)]
+        [string]$LogPath
+    )
+    
+    $results = @{ Applied = 0; Failed = 0; Skipped = 0 }
+    $networkConfig = $Config.systemOptimizations.network
+    
+    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Starting enhanced network optimization" -LogPath $LogPath
+    
+    # Apply TCP optimizations if enabled
+    if ($networkConfig.tcpOptimizations.enabled) {
+        $tcpSettings = $networkConfig.tcpOptimizations.settings
+        $tcpRegistryPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'
+        
+        foreach ($setting in $tcpSettings.PSObject.Properties) {
+            try {
+                if (-not (Test-Path $tcpRegistryPath)) {
+                    New-Item -Path $tcpRegistryPath -Force | Out-Null
+                }
+                
+                Set-ItemProperty -Path $tcpRegistryPath -Name $setting.Name -Value $setting.Value -Force
+                
+                # Verify the change
+                $newValue = (Get-ItemProperty -Path $tcpRegistryPath -Name $setting.Name -ErrorAction SilentlyContinue).($setting.Name)
+                if ($newValue -eq $setting.Value) {
+                    $results.Applied++
+                    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Applied TCP setting: $($setting.Name)" -LogPath $LogPath -Operation 'Apply' -Target $setting.Name -Result 'Success' -Metadata @{ NewValue = $newValue }
+                }
+                else {
+                    $results.Failed++
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to verify TCP setting: $($setting.Name)" -LogPath $LogPath -Operation 'Apply' -Target $setting.Name -Result 'Failed' -Metadata @{ ExpectedValue = $setting.Value; ActualValue = $newValue }
+                }
+            }
+            catch {
+                $results.Failed++
+                Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error applying TCP setting $($setting.Name): $($_.Exception.Message)" -LogPath $LogPath -Operation 'Apply' -Target $setting.Name -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+            }
+        }
+    }
+    
+    # Apply DNS optimizations if enabled
+    if ($networkConfig.dnsOptimizations.enabled) {
+        try {
+            if ($networkConfig.dnsOptimizations.flushDNSCache) {
+                Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Flushing DNS cache" -LogPath $LogPath -Operation 'Flush' -Target 'DNSCache'
+                $dnsResult = & ipconfig /flushdns 2>&1
+                $results.Applied++
+                Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "DNS cache flushed successfully" -LogPath $LogPath -Operation 'Flush' -Target 'DNSCache' -Result 'Success'
+            }
+        }
+        catch {
+            $results.Failed++
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error flushing DNS cache: $($_.Exception.Message)" -LogPath $LogPath -Operation 'Flush' -Target 'DNSCache' -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+        }
+    }
+    
+    return $results
+}
+
+<#
+.SYNOPSIS
+    Modern Windows optimization for Windows 11 specific features
+#>
+function Invoke-ModernWindowsOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Config,
+        
+        [Parameter(Mandatory)]
+        [PSCustomObject]$SystemProfile,
+        
+        [Parameter(Mandatory)]
+        [string]$LogPath
+    )
+    
+    $results = @{ Applied = 0; Failed = 0; Skipped = 0 }
+    $modernConfig = $Config.systemOptimizations.modern.windows11
+    
+    if (-not $modernConfig.enabled -or $SystemProfile.WindowsVersion -lt 11) {
+        Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Modern Windows optimizations not applicable" -LogPath $LogPath -Metadata @{ WindowsVersion = $SystemProfile.WindowsVersion; Enabled = $modernConfig.enabled }
+        return $results
+    }
+    
+    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Applying Windows 11 specific optimizations" -LogPath $LogPath -Metadata @{ OptimizationCount = $modernConfig.optimizations.Count }
+    
+    foreach ($optimization in $modernConfig.optimizations) {
+        try {
+            $registryPath = $optimization.registry
+            
+            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Applying modern optimization: $($optimization.name)" -LogPath $LogPath -Operation 'Apply' -Target $optimization.name -Metadata @{ Path = $registryPath }
+            
+            # Ensure registry path exists
+            if (-not (Test-Path $registryPath)) {
+                New-Item -Path $registryPath -Force | Out-Null
+            }
+            
+            # Apply the setting
+            if ($optimization.key) {
+                Set-ItemProperty -Path $registryPath -Name $optimization.key -Value $optimization.value -Type $optimization.type -Force
+                
+                # Verify the change
+                $newValue = (Get-ItemProperty -Path $registryPath -Name $optimization.key -ErrorAction SilentlyContinue).($optimization.key)
+                if ($newValue -eq $optimization.value) {
+                    $results.Applied++
+                    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Applied modern optimization: $($optimization.name)" -LogPath $LogPath -Operation 'Apply' -Target $optimization.name -Result 'Success' -Metadata @{ Key = $optimization.key; Value = $newValue }
+                }
+                else {
+                    $results.Failed++
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Failed to verify modern optimization: $($optimization.name)" -LogPath $LogPath -Operation 'Apply' -Target $optimization.name -Result 'Failed' -Metadata @{ ExpectedValue = $optimization.value; ActualValue = $newValue }
+                }
+            }
+            else {
+                # Special case for empty string value (like context menu fix)
+                Set-ItemProperty -Path $registryPath -Name '(Default)' -Value $optimization.value -Type $optimization.type -Force
+                $results.Applied++
+                Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Applied modern optimization: $($optimization.name)" -LogPath $LogPath -Operation 'Apply' -Target $optimization.name -Result 'Success'
+            }
+        }
+        catch {
+            $results.Failed++
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error applying modern optimization $($optimization.name): $($_.Exception.Message)" -LogPath $LogPath -Operation 'Apply' -Target $optimization.name -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+        }
+    }
+    
+    return $results
+}
+
+<#
+.SYNOPSIS
+    Helper function to convert size strings to bytes
+#>
+function ConvertTo-Bytes {
+    [CmdletBinding()]
+    param([string]$SizeString)
+    
+    if ($SizeString -match '(\d+)(MB|GB|KB)') {
+        $size = [int]$matches[1]
+        $unit = $matches[2]
+        
+        switch ($unit) {
+            'KB' { return $size * 1KB }
+            'MB' { return $size * 1MB }
+            'GB' { return $size * 1GB }
+        }
+    }
+    
+    return 0
+}
+
+<#
+.SYNOPSIS
+    Helper function to convert age strings to TimeSpan
+#>
+function ConvertTo-TimeSpan {
+    [CmdletBinding()]
+    param([string]$AgeString)
+    
+    if ($AgeString -match '(\d+)days') {
+        return New-TimeSpan -Days $matches[1]
+    }
+    elseif ($AgeString -match '(\d+)hours') {
+        return New-TimeSpan -Hours $matches[1]
+    }
+    
+    return New-TimeSpan -Days 7  # Default to 7 days
+}
+
+<#
+.SYNOPSIS
+    Disable specific startup application with enhanced safety checks
+#>
+function Disable-StartupApplication {
+    [CmdletBinding()]
+    param(
+        [string]$AppName,
+        [string]$Reason,
+        [string]$LogPath
+    )
+    
+    try {
+        $startupLocations = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+        )
+        
+        foreach ($location in $startupLocations) {
+            if (Test-Path $location) {
+                $property = Get-ItemProperty -Path $location -Name $AppName -ErrorAction SilentlyContinue
+                if ($property) {
+                    # Create backup
+                    $backupPath = "$location\Disabled"
+                    if (-not (Test-Path $backupPath)) {
+                        New-Item -Path $backupPath -Force | Out-Null
+                    }
+                    
+                    Set-ItemProperty -Path $backupPath -Name $AppName -Value $property.$AppName -Force
+                    Remove-ItemProperty -Path $location -Name $AppName -Force
+                    
+                    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Disabled startup app: $AppName" -LogPath $LogPath -Operation 'Disable' -Target $AppName -Result 'Success' -Metadata @{ Location = $location; Reason = $Reason; BackedUp = $true }
+                    return $true
+                }
+            }
+        }
+        
+        return $false
+    }
+    catch {
+        Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error disabling startup app $AppName`: $($_.Exception.Message)" -LogPath $LogPath -Operation 'Disable' -Target $AppName -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Optimize Windows service with enhanced configuration
+#>
+function Optimize-WindowsService {
+    [CmdletBinding()]
+    param(
+        [string]$ServiceName,
+        [string]$Reason,
+        [string]$LogPath
+    )
+    
+    try {
+        $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if ($service) {
+            # Get current startup type
+            $currentStartup = (Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'").StartMode
+            
+            # Set to manual if currently automatic
+            if ($currentStartup -eq 'Auto') {
+                Set-Service -Name $ServiceName -StartupType Manual
+                Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "Changed service startup: $ServiceName (Auto -> Manual)" -LogPath $LogPath -Operation 'Optimize' -Target $ServiceName -Result 'Success' -Metadata @{ OldStartup = $currentStartup; NewStartup = 'Manual'; Reason = $Reason }
+                return $true
+            }
+        }
+        
+        return $false
+    }
+    catch {
+        Write-StructuredLogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message "Error optimizing service $ServiceName`: $($_.Exception.Message)" -LogPath $LogPath -Operation 'Optimize' -Target $ServiceName -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+        return $false
     }
 }
 

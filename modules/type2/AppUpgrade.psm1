@@ -414,7 +414,7 @@ function Invoke-SingleUpgrade {
             }
             default {
                 Write-OperationFailure -Operation 'Upgrade' -Target $Upgrade.Name -Component 'APP-UPGRADE-EXEC' -Error "Unknown source: $($Upgrade.Source)" -LogPath $ExecutionLogPath
-                return @{ Success = $false; Error = "Unknown source: $($Upgrade.Source)" }
+                return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error "Unknown source: $($Upgrade.Source)"
             }
         }
 
@@ -457,7 +457,7 @@ function Invoke-SingleUpgrade {
                 Write-LogEntry -Level 'DEBUG' -Component 'APP-UPGRADE-EXEC' -Message "Command output: $stdout" -LogPath $ExecutionLogPath
             }
 
-            return @{ Success = $true; Duration = $operationDuration.TotalMilliseconds }
+            return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 1 -DurationMilliseconds $operationDuration.TotalMilliseconds
         }
         else {
             # Log failure with full error context
@@ -472,7 +472,7 @@ function Invoke-SingleUpgrade {
                 StdErr      = if ($stderr) { $stderr.Trim() } else { "No error output" }
             }
 
-            return @{ Success = $false; Error = "Exit code: $($process.ExitCode)" }
+            return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -Error "Exit code: $($process.ExitCode)"
         }
     }
     catch {
@@ -485,9 +485,9 @@ function Invoke-SingleUpgrade {
             Duration    = [math]::Round($operationDuration.TotalSeconds, 2)
             Exception   = $_.Exception.GetType().FullName
             StackTrace  = $_.ScriptStackTrace
-        }
-        return @{ Success = $false; Error = $_.Exception.Message }
-    }
+        })
+    return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -Error $_.Exception.Message
+}
 }
 
 #endregion
