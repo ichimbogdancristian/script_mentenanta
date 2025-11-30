@@ -35,7 +35,7 @@ function New-EnhancedMaintenanceReport {
         [string]$OutputPath,
         
         [Parameter()]
-        [switch]$UseModernTemplate = $true
+        [bool]$UseModernTemplate = $true
     )
     
     Write-LogEntry -Level 'INFO' -Component 'ENHANCED-REPORT' -Message "Generating enhanced maintenance report with modern templates"
@@ -226,7 +226,7 @@ function Invoke-CompleteReportTest {
     [CmdletBinding()]
     param(
         [Parameter()]
-        [switch]$OpenInBrowser = $true
+        [bool]$OpenInBrowser = $true
     )
     
     Write-Host "`n🚀 Starting Complete Modern Report Generation Test" -ForegroundColor Cyan

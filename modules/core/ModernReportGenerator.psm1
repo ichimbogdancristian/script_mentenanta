@@ -30,7 +30,6 @@ function New-ModernMaintenanceReport {
         # Define paths
         $templatePath = Join-Path $PSScriptRoot "..\..\config\templates\modern-dashboard.html"
         $moduleCardTemplatePath = Join-Path $PSScriptRoot "..\..\config\templates\module-card.html"
-        $cssPath = Join-Path $PSScriptRoot "..\..\config\templates\modern-dashboard.css"
         
         # Load templates
         $mainTemplate = Get-Content $templatePath -Raw
