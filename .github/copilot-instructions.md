@@ -76,9 +76,7 @@ modules/core/
 ├── LogProcessor.psm1          # Data processing pipeline
 ├── ReportGenerator.psm1       # Report rendering engine
 ├── UserInterface.psm1         # UI & menus
-├── MenuSystem.psm1            # Countdown menus
-├── ModernReportGenerator.psm1 # Modern dashboard (v5.0)
-└── ModernReportIntegration.psm1
+└── ModernReportGenerator.psm1 # Modern dashboard (v5.0)
 ```
 
 ### Operational Modules
@@ -807,7 +805,6 @@ CoreInfrastructure.psm1 (Foundation - loads first)
     ↓
     ├─→ LogAggregator.psm1 (Result collection)
     ├─→ UserInterface.psm1 (UI & menus)
-    ├─→ MenuSystem.psm1 (Countdown menus)
     │
     └─→ Type2 Modules (self-contained)
         ├─→ BloatwareRemoval.psm1

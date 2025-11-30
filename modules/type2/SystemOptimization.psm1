@@ -325,9 +325,12 @@ function Invoke-SystemOptimization {
 .EXAMPLE
     $results = Optimize-SystemPerformance -OptimizeStartup -OptimizeUI -DryRun
 #>
+# DEPRECATED: Legacy function maintained for backward compatibility
+# Use Invoke-SystemOptimization instead (v3.0 API with enhanced optimization logic)
 function Optimize-SystemPerformance {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     [OutputType([bool])]
+    [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param(
         [Parameter()]
         [switch]$CleanupTemp,
@@ -648,9 +651,12 @@ function Clear-TemporaryFile {
 .SYNOPSIS
     Optimizes startup programs and services
 #>
+# DEPRECATED: Legacy function for backward compatibility
+# Use Invoke-SystemOptimization which calls Invoke-EnhancedStartupOptimization internally
 function Optimize-StartupProgram {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
+    [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param(
         [Parameter()]
         [switch]$DryRun
@@ -789,9 +795,12 @@ function Optimize-StartupProgram {
 .SYNOPSIS
     Optimizes Windows user interface and visual effects
 #>
+# DEPRECATED: Legacy function for backward compatibility
+# Use Invoke-SystemOptimization which calls Invoke-EnhancedUIOptimization internally
 function Optimize-UserInterface {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
+    [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param(
         [Parameter()]
         [switch]$DryRun
@@ -928,8 +937,11 @@ function Optimize-UserInterface {
 .SYNOPSIS
     Optimizes Windows registry for better performance
 #>
+# DEPRECATED: Legacy function for backward compatibility
+# Use Invoke-SystemOptimization which calls Invoke-EnhancedRegistryOptimization internally
 function Optimize-WindowsRegistry {
     [CmdletBinding()]
+    [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param(
         [Parameter()]
         [switch]$DryRun
@@ -1008,8 +1020,11 @@ function Optimize-WindowsRegistry {
 .SYNOPSIS
     Optimizes disk performance settings
 #>
+# DEPRECATED: Legacy function for backward compatibility
+# Use Invoke-SystemOptimization which calls Invoke-EnhancedDiskOptimization internally
 function Optimize-DiskPerformance {
     [CmdletBinding()]
+    [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param(
         [Parameter()]
         [switch]$DryRun
@@ -1085,8 +1100,11 @@ function Optimize-DiskPerformance {
 .SYNOPSIS
     Optimizes network settings for better performance
 #>
+# DEPRECATED: Legacy function for backward compatibility
+# Use Invoke-SystemOptimization which calls Invoke-EnhancedNetworkOptimization internally
 function Optimize-NetworkSetting {
     [CmdletBinding()]
+    [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param(
         [Parameter()]
         [switch]$DryRun
@@ -1358,12 +1376,12 @@ function Get-SystemPerformanceProfile {
         $osVersion = [Environment]::OSVersion.Version
         
         # Determine performance profile
-        $profile = 'midRange'
+        $performanceProfile = 'midRange'
         if ($ramGB -le 8 -or $cpuCores -le 4) {
-            $profile = 'lowEnd'
+            $performanceProfile = 'lowEnd'
         }
         elseif ($ramGB -ge 32 -and $cpuCores -ge 12) {
-            $profile = 'highEnd'
+            $performanceProfile = 'highEnd'
         }
         
         return @{
@@ -1371,9 +1389,9 @@ function Get-SystemPerformanceProfile {
             CPUCores       = $cpuCores
             WindowsVersion = $osVersion.Major
             WindowsBuild   = $osVersion.Build
-            Profile        = $profile
-            IsLowEnd       = ($profile -eq 'lowEnd')
-            IsHighEnd      = ($profile -eq 'highEnd')
+            Profile        = $performanceProfile
+            IsLowEnd       = ($performanceProfile -eq 'lowEnd')
+            IsHighEnd      = ($performanceProfile -eq 'highEnd')
         }
     }
     catch {
@@ -1826,7 +1844,7 @@ function Invoke-EnhancedNetworkOptimization {
         try {
             if ($networkConfig.dnsOptimizations.flushDNSCache) {
                 Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Flushing DNS cache" -LogPath $LogPath -Operation 'Flush' -Target 'DNSCache'
-                $dnsResult = & ipconfig /flushdns 2>&1
+                $null = & ipconfig /flushdns 2>&1
                 $results.Applied++
                 Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "DNS cache flushed successfully" -LogPath $LogPath -Operation 'Flush' -Target 'DNSCache' -Result 'Success'
             }
@@ -1998,8 +2016,11 @@ function Disable-StartupApplication {
 .SYNOPSIS
     Optimize Windows service with enhanced configuration
 #>
+# DEPRECATED: Legacy function for backward compatibility
+# Used internally by enhanced optimization functions
 function Optimize-WindowsService {
     [CmdletBinding()]
+    [Obsolete("This function is deprecated and may be removed in v4.0.", false)]
     param(
         [string]$ServiceName,
         [string]$Reason,

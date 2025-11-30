@@ -116,7 +116,6 @@ $env:MAINTENANCE_SESSION_TIMESTAMP = $script:MaintenanceSessionTimestamp
 $TempRoot = $env:MAINTENANCE_TEMP_ROOT
 $ReportsDir = Join-Path $TempRoot 'reports'
 $LogsDir = Join-Path $TempRoot 'logs'
-$MainLogFile = Join-Path $TempRoot 'maintenance.log'
 $InventoryDir = Join-Path $TempRoot 'inventory'
 @($TempRoot, $ReportsDir, $LogsDir, $InventoryDir) | ForEach-Object {
     if (-not (Test-Path $_)) {
@@ -173,7 +172,6 @@ if (-not (Test-Path $ModulesPath)) {
         $ModulesPath = $fallbackModulesPath
     }
 }
-$CoreModulesPath = Join-Path $ModulesPath 'core'
 Write-Information "Modules Path: $ModulesPath" -InformationAction Continue
 # v3.1 Split Architecture: Load essential core modules + split report architecture
 $CoreModules = @(

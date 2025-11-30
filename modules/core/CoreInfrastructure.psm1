@@ -432,11 +432,122 @@ function Test-MaintenancePathsIntegrity {
 
 <#
 .SYNOPSIS
-    Gets the main configuration (settings)
+    Generic JSON configuration loader
 
 .DESCRIPTION
-    Loads main-config.json from either new (settings/) or old (execution/) path
-    Returns hashtable for compatibility with Type2 modules
+    Loads any JSON configuration file from the standardized config directory structure.
+    Supports both settings/ and lists/ subdirectories. Returns hashtable or PSCustomObject.
+
+.PARAMETER ConfigType
+    Type of configuration to load. Valid options: Main, Bloatware, EssentialApps, AppUpgrade, Logging, ReportTemplates
+
+.PARAMETER ConfigPath
+    Optional override for config root directory. Defaults to $env:MAINTENANCE_CONFIG_ROOT
+
+.PARAMETER AsHashtable
+    Convert result to hashtable (default: true). Set to false to return PSCustomObject
+
+.OUTPUTS
+    [hashtable] or [PSCustomObject] Configuration data
+
+.EXAMPLE
+    $config = Get-JsonConfiguration -ConfigType 'Main'
+    
+.EXAMPLE
+    $bloatware = Get-JsonConfiguration -ConfigType 'Bloatware' -AsHashtable $false
+    
+.NOTES
+    This is the primary configuration loader. Other Get-*Configuration functions
+    are backward-compatible wrappers around this function.
+#>
+function Get-JsonConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Main', 'Bloatware', 'EssentialApps', 'AppUpgrade', 'Logging', 'ReportTemplates')]
+        [string]$ConfigType,
+        
+        [Parameter()]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT,
+        
+        [Parameter()]
+        [bool]$AsHashtable = $true
+    )
+    
+    # Map config types to file paths (relative to CONFIG_ROOT)
+    $configFiles = @{
+        'Main'            = 'settings\main-config.json'
+        'Bloatware'       = 'lists\bloatware-list.json'
+        'EssentialApps'   = 'lists\essential-apps.json'
+        'AppUpgrade'      = 'lists\app-upgrade-config.json'
+        'Logging'         = 'settings\logging-config.json'
+        'ReportTemplates' = 'templates\report-template-config.json'
+    }
+    
+    # Default return values for each config type
+    $defaultValues = @{
+        'Main'            = @{}
+        'Bloatware'       = @{ all = @() }
+        'EssentialApps'   = @{ all = @() }
+        'AppUpgrade'      = @{ all = @() }
+        'Logging'         = @{ levels = @('INFO', 'WARNING', 'ERROR') }
+        'ReportTemplates' = @{}
+    }
+    
+    try {
+        $configFile = Join-Path $ConfigPath $configFiles[$ConfigType]
+        
+        if (-not (Test-Path $configFile)) {
+            # For AppUpgrade, check legacy path
+            if ($ConfigType -eq 'AppUpgrade') {
+                $legacyPath = Join-Path $ConfigPath 'data\app-upgrade-config.json'
+                if (Test-Path $legacyPath) {
+                    Write-Warning "Using legacy config path 'data/' - please migrate to 'lists/' directory"
+                    $configFile = $legacyPath
+                }
+                else {
+                    Write-Verbose "$ConfigType configuration not found at: $configFile"
+                    return $defaultValues[$ConfigType]
+                }
+            }
+            else {
+                Write-Verbose "$ConfigType configuration not found at: $configFile"
+                return $defaultValues[$ConfigType]
+            }
+        }
+        
+        Write-Verbose "Loading $ConfigType configuration from: $configFile"
+        $content = Get-Content $configFile -Raw -ErrorAction Stop
+        $config = $content | ConvertFrom-Json -ErrorAction Stop
+        
+        if ($AsHashtable) {
+            return $config | ConvertTo-Hashtable
+        }
+        else {
+            return $config
+        }
+    }
+    catch {
+        $errorMsg = "Failed to load $ConfigType configuration from ${configFile}: $($_.Exception.Message)"
+        
+        # Main config failure should throw (critical)
+        if ($ConfigType -eq 'Main') {
+            throw $errorMsg
+        }
+        else {
+            Write-Warning $errorMsg
+            return $defaultValues[$ConfigType]
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Gets main system configuration
+
+.DESCRIPTION
+    Loads main-config.json from settings/ directory.
+    This is a backward-compatible wrapper around Get-JsonConfiguration.
 
 .PARAMETER ConfigPath
     Optional override for config root directory
@@ -454,28 +565,7 @@ function Get-MainConfiguration {
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
     
-    try {
-        # Use standardized config path structure
-        $configFile = Join-Path $ConfigPath 'settings/main-config.json'
-        
-        if (-not (Test-Path $configFile)) {
-            throw "Main configuration file not found at: $configFile"
-        }
-        
-        if (-not $configFile) {
-            throw "main-config.json not found in $ConfigPath (tried settings/ and execution/)"
-        }
-        
-        Write-Verbose "Loading configuration from: $configFile"
-        $configContent = Get-Content $configFile -Raw
-        $config = $configContent | ConvertFrom-Json
-        
-        # Convert to hashtable for v3.0 compatibility
-        return $config | ConvertTo-Hashtable
-    }
-    catch {
-        throw "Failed to load main configuration: $($_.Exception.Message)"
-    }
+    return Get-JsonConfiguration -ConfigType 'Main' -ConfigPath $ConfigPath
 }
 
 #region Privilege and Security Validation
@@ -532,25 +622,7 @@ function Get-BloatwareConfiguration {
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
     
-    try {
-        # Use standardized config path structure  
-        $configFile = Join-Path $ConfigPath 'lists/bloatware-list.json'
-        
-        if (-not (Test-Path $configFile)) {
-            Write-Verbose "Bloatware configuration not found at: $configFile"
-            return @{ all = @() }
-        }
-        
-        Write-Verbose "Loading bloatware configuration from: $configFile"
-        $content = Get-Content $configFile -Raw
-        $config = $content | ConvertFrom-Json
-        
-        return $config | ConvertTo-Hashtable
-    }
-    catch {
-        Write-Warning "Failed to load bloatware configuration: $($_.Exception.Message)"
-        return @{ all = @() }
-    }
+    return Get-JsonConfiguration -ConfigType 'Bloatware' -ConfigPath $ConfigPath
 }
 
 <#
@@ -575,25 +647,7 @@ function Get-EssentialAppsConfiguration {
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
     
-    try {
-        # Use standardized config path structure
-        $configFile = Join-Path $ConfigPath 'lists/essential-apps.json'
-        
-        if (-not (Test-Path $configFile)) {
-            Write-Verbose "Essential apps configuration not found at: $configFile"
-            return @{ all = @() }
-        }
-        
-        Write-Verbose "Loading essential apps configuration from: $configFile"
-        $content = Get-Content $configFile -Raw
-        $config = $content | ConvertFrom-Json
-        
-        return $config | ConvertTo-Hashtable
-    }
-    catch {
-        Write-Warning "Failed to load essential apps configuration: $($_.Exception.Message)"
-        return @{ all = @() }
-    }
+    return Get-JsonConfiguration -ConfigType 'EssentialApps' -ConfigPath $ConfigPath
 }
 
 <#
@@ -617,32 +671,7 @@ function Get-AppUpgradeConfiguration {
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
     
-    try {
-        $newPath = Join-Path $ConfigPath 'lists/app-upgrade-config.json'
-        $oldPath = Join-Path $ConfigPath 'data/app-upgrade-config.json'
-        
-        $configFile = if (Test-Path $newPath) { $newPath }
-        elseif (Test-Path $oldPath) { 
-            Write-Warning "FIX #5: Deprecated config path detected 'data/' - please migrate to 'lists/' (see docs/DELIVERABLES.md)"
-            $oldPath 
-        }
-        else { $null }
-        
-        if (-not $configFile) {
-            Write-Verbose "App upgrade configuration not found"
-            return @{ all = @() }
-        }
-        
-        Write-Verbose "Loading app upgrade configuration from: $configFile"
-        $content = Get-Content $configFile -Raw
-        $config = $content | ConvertFrom-Json
-        
-        return $config | ConvertTo-Hashtable
-    }
-    catch {
-        Write-Warning "Failed to load app upgrade configuration: $($_.Exception.Message)"
-        return @{ all = @() }
-    }
+    return Get-JsonConfiguration -ConfigType 'AppUpgrade' -ConfigPath $ConfigPath
 }
 
 <#
@@ -662,29 +691,7 @@ function Get-LoggingConfiguration {
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
     
-    try {
-        $configFile = Join-Path $ConfigPath 'settings/logging-config.json'
-        
-        if (-not (Test-Path $configFile)) {
-            Write-Warning "Logging configuration not found at: $configFile - using defaults"
-            return @{ levels = @('INFO', 'WARNING', 'ERROR') }
-        }
-        
-        if (-not $configFile) {
-            Write-Verbose "Logging configuration not found"
-            return @{ levels = @('INFO', 'WARNING', 'ERROR') }
-        }
-        
-        Write-Verbose "Loading logging configuration from: $configFile"
-        $content = Get-Content $configFile -Raw
-        $config = $content | ConvertFrom-Json
-        
-        return $config | ConvertTo-Hashtable
-    }
-    catch {
-        Write-Warning "Failed to load logging configuration: $($_.Exception.Message)"
-        return @{ levels = @('INFO', 'WARNING', 'ERROR') }
-    }
+    return Get-JsonConfiguration -ConfigType 'Logging' -ConfigPath $ConfigPath
 }
 
 <#
@@ -1092,9 +1099,8 @@ function Initialize-ConfigurationSystem {
 
 #region Backward Compatibility Aliases
 
-New-Alias -Name 'Initialize-ConfigSystem' -Value 'Initialize-ConfigurationSystem' -Force
-New-Alias -Name 'Get-MainConfig' -Value 'Get-MainConfiguration' -Force
-New-Alias -Name 'Get-BloatwareList' -Value 'Get-BloatwareConfiguration' -Force
+# Note: Removed unused aliases (Get-MainConfig, Get-BloatwareList) as of v3.1
+# All code now uses full function names for clarity
 New-Alias -Name 'Get-UnifiedEssentialAppsList' -Value 'Get-EssentialAppsConfiguration' -Force
 
 #endregion
@@ -3222,7 +3228,7 @@ function Get-ChangeLog {
 
 Export-ModuleMember -Function @(
     'Initialize-GlobalPathDiscovery', 'Get-MaintenancePaths', 'Get-MaintenancePath', 'Test-MaintenancePathsIntegrity',
-    'Initialize-ConfigurationSystem', 'Get-ConfigFilePath', 'Get-MainConfiguration', 'Get-LoggingConfiguration',
+    'Initialize-ConfigurationSystem', 'Get-ConfigFilePath', 'Get-JsonConfiguration', 'Get-MainConfiguration', 'Get-LoggingConfiguration',
     'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-ReportTemplatesConfiguration',
     'Get-CachedConfiguration', 'Test-ConfigurationIntegrity', 'Test-ConfigurationSchema', 'Get-NestedProperty',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
@@ -3238,7 +3244,7 @@ Export-ModuleMember -Function @(
     'Test-SystemRequirements', 'Test-SystemReadiness',
     'Invoke-WithTimeout', 'Invoke-ModuleWithTimeout',
     'Register-SystemChange', 'Undo-AllChanges', 'Clear-ChangeLog', 'Get-ChangeLog'
-) -Alias @('Initialize-ConfigSystem', 'Get-MainConfig', 'Get-BloatwareList', 'Get-UnifiedEssentialAppsList', 'Write-LogEntry')
+) -Alias @('Write-LogEntry')
 
 #endregion
 

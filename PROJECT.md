@@ -72,11 +72,9 @@ script_mentenanta/
 │   │   ├── CoreInfrastructure.psm1       # Path discovery, config loading, logging foundation
 │   │   ├── LogAggregator.psm1            # Result collection & correlation (v3.1)
 │   │   ├── LogProcessor.psm1             # Data processing pipeline (Type1)
-│   │   ├── MenuSystem.psm1               # Interactive countdown menus
-│   │   ├── UserInterface.psm1            # Progress display & result presentation
+│   │   ├── UserInterface.psm1            # Interactive menus, progress & result presentation
 │   │   ├── ReportGenerator.psm1          # HTML/Text report rendering
-│   │   ├── ModernReportGenerator.psm1    # Modern dashboard reports (v5.0 glassmorphism)
-│   │   └── ModernReportIntegration.psm1  # Modern report integration layer
+│   │   └── ModernReportGenerator.psm1    # Modern dashboard reports (v5.0 glassmorphism)
 │   │
 │   ├── 📁 type1/                          # Audit & Inventory Modules (read-only)
 │   │   ├── SystemInventoryAudit.psm1     # System hardware/software inventory
@@ -127,6 +125,16 @@ script_mentenanta/
     ├── 📁 inventory/                      # System inventory snapshots
     └── 📁 temp/                           # Temporary processing files
 ```
+
+**📝 Note on Orphaned Type1 Modules:**
+
+Some Type1 audit modules exist without corresponding Type2 execution modules. This is **intentional design**:
+
+- **PrivacyInventory.psm1** - Information gathering only, used for manual compliance audits. Privacy actions are handled by `TelemetryDisable.psm1`.
+- **SecurityInventory.psm1** - Low-level security inventory, complementary to `SecurityAudit.psm1`. Used by `SecurityEnhancement.psm1`.
+- **UpdatesInventory.psm1** - Detailed update history logging. Update execution handled by `WindowsUpdates.psm1`.
+
+Not all audit modules require automated remediation - some are designed for **manual review**, **compliance reporting**, and **system documentation** purposes.
 
 ---
 
@@ -247,15 +255,13 @@ New-HtmlReportContent       # Generate HTML report
 New-TextReportContent       # Generate text report
 ```
 
-### MenuSystem.psm1 & UserInterface.psm1
-**Purpose:** Interactive user interface
+### UserInterface.psm1
+**Purpose:** Interactive user interface with countdown-based menus
 
-**MenuSystem** - Countdown-based menus:
-- Main execution menu (Normal vs Dry-Run)
-- Task selection submenu (All vs Specific)
+**Features:**
+- Main execution menu (Normal vs Dry-Run mode)
+- Task selection submenu (All vs Specific tasks)
 - Automatic defaults after 20-second countdown
-
-**UserInterface** - Progress & results:
 - Real-time progress display
 - Task completion tracking
 - Formatted result summaries

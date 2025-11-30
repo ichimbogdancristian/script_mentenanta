@@ -31,12 +31,12 @@ if (Test-Path $SystemAnalysisPath) {
 # v3.0 Type 1 module - imported by Type 2 modules
 # Note: CoreInfrastructure should be loaded by the Type 2 module before importing this module
 # Check if CoreInfrastructure functions are available (loaded by Type2 module)
-if (Get-Command 'Get-BloatwareList' -ErrorAction SilentlyContinue) {
+if (Get-Command 'Get-BloatwareConfiguration' -ErrorAction SilentlyContinue) {
     Write-Verbose "CoreInfrastructure functions detected - using configuration-based bloatware list"
 }
 else {
     # Non-critical: Function will be available once Type2 module completes global import
-    Write-Verbose "CoreInfrastructure global import in progress - Get-BloatwareList will be available momentarily"
+    Write-Verbose "CoreInfrastructure global import in progress - Get-BloatwareConfiguration will be available momentarily"
 }
 
 #region Public Functions
