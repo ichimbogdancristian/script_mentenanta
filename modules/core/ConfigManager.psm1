@@ -23,7 +23,8 @@ try {
     if (Test-Path $loggingManagerPath) {
         Import-Module $loggingManagerPath -Force -ErrorAction SilentlyContinue
     }
-} catch {
+}
+catch {
     # LoggingManager not available, continue without structured logging
 }
 
@@ -62,7 +63,8 @@ function Initialize-ConfigSystem {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'ConfigSystemInitialization' -Component 'CONFIG-MANAGER'
         Write-LogEntry -Level 'INFO' -Component 'CONFIG-MANAGER' -Message 'Starting configuration system initialization' -Data @{ ConfigRootPath = $ConfigRootPath }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
 
@@ -95,10 +97,11 @@ function Initialize-ConfigSystem {
         Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
             ConfigRootPath = $ConfigRootPath
             ValidatedPaths = $requiredPaths.Count
-            ConfigPaths = $script:ConfigPaths.Keys -join ', '
+            ConfigPaths    = $script:ConfigPaths.Keys -join ', '
         }
         Write-LogEntry -Level 'SUCCESS' -Component 'CONFIG-MANAGER' -Message 'Configuration system initialization completed successfully' -Data @{ ConfigRootPath = $ConfigRootPath; ValidatedPaths = $requiredPaths.Count }
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
 
@@ -129,7 +132,8 @@ function Get-MainConfiguration {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'MainConfigurationLoad' -Component 'CONFIG-MANAGER'
         Write-LogEntry -Level 'INFO' -Component 'CONFIG-MANAGER' -Message 'Loading main configuration'
-    } catch {
+    }
+    catch {
         # LoggingManager not available, continue with standard logging
     }
 
@@ -171,7 +175,8 @@ function Get-MainConfiguration {
                     foreach ($issue in $validationResult.Issues) {
                         Write-Warning "  - $issue"
                     }
-                } else {
+                }
+                else {
                     Write-Warning "Main configuration validation failed (no specific issues available)"
                 }
                 Write-Warning "Proceeding with default configuration values for invalid properties"
@@ -188,12 +193,13 @@ function Get-MainConfiguration {
         # Complete performance tracking for successful load
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
-                ConfigPath = $configPath
-                ConfigLoaded = $true
+                ConfigPath       = $configPath
+                ConfigLoaded     = $true
                 ValidationStatus = if ($validationResult.IsValid) { 'Valid' } else { 'DefaultsApplied' }
             }
             Write-LogEntry -Level 'SUCCESS' -Component 'CONFIG-MANAGER' -Message 'Main configuration loaded and validated successfully' -Data @{ ConfigPath = $configPath }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
 
@@ -207,12 +213,13 @@ function Get-MainConfiguration {
         # Complete performance tracking for failed load
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{
-                ConfigPath = $configPath
-                Error = $_.Exception.Message
+                ConfigPath   = $configPath
+                Error        = $_.Exception.Message
                 FallbackUsed = $true
             }
             Write-LogEntry -Level 'WARN' -Component 'CONFIG-MANAGER' -Message 'Main configuration load failed, using defaults' -Data @{ ConfigPath = $configPath; Error = $_.Exception.Message }
-        } catch {
+        }
+        catch {
             # LoggingManager not available, continue with standard logging
         }
         
@@ -332,7 +339,8 @@ function Get-LoggingConfiguration {
                     foreach ($issue in $validationResult.Issues) {
                         Write-Warning "  - $issue"
                     }
-                } else {
+                }
+                else {
                     Write-Warning "Logging configuration validation failed (no specific issues available)"
                 }
                 Write-Warning "Proceeding with default values for invalid properties"
