@@ -128,9 +128,9 @@ SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
 REM Repository configuration for auto-updates
-SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip"
+SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
 SET "ZIP_FILE=%WORKING_DIR%update.zip"
-SET "EXTRACT_FOLDER=script_mentenanta-main"
+SET "EXTRACT_FOLDER=script_mentenanta-master"
 
 CALL :LOG_MESSAGE "Self-discovery environment initialized" "SUCCESS" "LAUNCHER"
 

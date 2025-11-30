@@ -5,9 +5,9 @@
   "lastValidation": "2025-10-27T10:00:00Z",
   "cacheExpiration": 604800,
   "cacheExpirationDescription": "7 days (604800 seconds)",
-  "repositoryUrl": "https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip",
+  "repositoryUrl": "https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip",
   "validationStatus": "valid",
-  "extractionPath": "script_mentenanta-main",
+  "extractionPath": "script_mentenanta-master",
   "extractedFilesCount": 0,
   "extractedFilesSize": 0,
   "notes": "This file is auto-managed by the maintenance system. Manual edits may cause cache validation issues."
