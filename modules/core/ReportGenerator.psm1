@@ -172,7 +172,7 @@ function Get-HtmlTemplates {
             $v5Templates = @{
                 main = 'report-template-enhanced-v5.html'
                 card = 'module-card-enhanced-v5.html'
-                css = 'report-styles-enhanced-v5.css'
+                css  = 'report-styles-enhanced-v5.css'
             }
             
             # Check if v5 templates are available
