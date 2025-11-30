@@ -1,0 +1,455 @@
+<!-- Enhanced Module Card Template -->
+<!-- This template represents a single module's execution results with collapsible details -->
+
+<div class="module-card" data-module="{{MODULE_NAME}}" data-status="{{STATUS_LOWER}}">
+    <!-- Module Header (Always Visible) -->
+    <div class="module-header" onclick="toggleModuleDetails('{{MODULE_ID}}')">
+        <div class="module-title-group">
+            <!-- Module Icon -->
+            <div class="module-icon">
+                {{MODULE_ICON}}
+            </div>
+            
+            <!-- Module Information -->
+            <div class="module-info">
+                <h3>{{MODULE_NAME}}</h3>
+                <p>{{MODULE_DESCRIPTION}}</p>
+            </div>
+        </div>
+        
+        <!-- Module Statistics -->
+        <div class="module-stats">
+            <div class="module-stat">
+                <div class="module-stat-value">{{ITEMS_DETECTED}}</div>
+                <div class="module-stat-label">Detected</div>
+            </div>
+            <div class="module-stat">
+                <div class="module-stat-value">{{ITEMS_PROCESSED}}</div>
+                <div class="module-stat-label">Processed</div>
+            </div>
+            <div class="module-stat">
+                <div class="module-stat-value">{{DURATION_SECONDS}}s</div>
+                <div class="module-stat-label">Duration</div>
+            </div>
+        </div>
+        
+        <!-- Status Badge -->
+        <div class="status-badge {{STATUS_LOWER}}">
+            <span class="status-dot {{STATUS_LOWER}}"></span>
+            {{STATUS_TEXT}}
+        </div>
+        
+        <!-- Expand/Collapse Icon -->
+        <div class="module-expand-icon" id="expand-icon-{{MODULE_ID}}">
+            ▶
+        </div>
+    </div>
+    
+    <!-- Module Body (Collapsible Details) -->
+    <div class="module-body" id="module-body-{{MODULE_ID}}">
+        <!-- Progress Overview -->
+        <div class="mb-4">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-sm font-medium text-gray-700">Processing Progress</span>
+                <span class="text-sm text-gray-600">{{COMPLETION_PERCENTAGE}}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{COMPLETION_PERCENTAGE}}%"></div>
+            </div>
+            <div class="progress-text">
+                {{ITEMS_PROCESSED}} of {{ITEMS_DETECTED}} items completed
+                {{#if ITEMS_SKIPPED}}({{ITEMS_SKIPPED}} skipped){{/if}}
+                {{#if ITEMS_FAILED}}({{ITEMS_FAILED}} failed){{/if}}
+            </div>
+        </div>
+        
+        <!-- Module Details Grid -->
+        <div class="module-details-grid mb-6">
+            <!-- Execution Details -->
+            <div class="module-detail-item">
+                <div class="module-detail-label">Start Time</div>
+                <div class="module-detail-value">{{START_TIME}}</div>
+            </div>
+            <div class="module-detail-item">
+                <div class="module-detail-label">End Time</div>
+                <div class="module-detail-value">{{END_TIME}}</div>
+            </div>
+            <div class="module-detail-item">
+                <div class="module-detail-label">Execution Sequence</div>
+                <div class="module-detail-value">#{{EXECUTION_SEQUENCE}}</div>
+            </div>
+            <div class="module-detail-item">
+                <div class="module-detail-label">Log Path</div>
+                <div class="module-detail-value">{{LOG_PATH}}</div>
+            </div>
+        </div>
+        
+        <!-- Results Section -->
+        {{#if RESULTS}}
+        <div class="mb-6">
+            <h4 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                📋 Results Summary
+            </h4>
+            <div class="card" style="background: var(--gray-50); border: 1px solid var(--gray-200);">
+                <div class="card-body" style="padding: var(--space-4);">
+                    {{#if SUMMARY}}
+                    <p class="text-sm text-gray-700 mb-4">{{SUMMARY}}</p>
+                    {{/if}}
+                    
+                    <div class="dashboard-grid">
+                        {{#each RESULTS}}
+                        <div class="module-detail-item">
+                            <div class="module-detail-label">{{@key}}</div>
+                            <div class="module-detail-value">{{this}}</div>
+                        </div>
+                        {{/each}}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{/if}}
+        
+        <!-- Execution Phases -->
+        {{#if EXECUTION_PHASES}}
+        <div class="mb-6">
+            <h4 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                ⚡ Execution Phases
+            </h4>
+            <div class="space-y-3">
+                {{#each EXECUTION_PHASES}}
+                <div class="execution-phase">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="status-badge {{status}}">
+                                <span class="status-dot {{status}}"></span>
+                                {{name}}
+                            </span>
+                        </div>
+                        <span class="text-sm text-gray-600">{{duration}}s</span>
+                    </div>
+                    {{#if description}}
+                    <p class="text-sm text-gray-600 ml-6">{{description}}</p>
+                    {{/if}}
+                </div>
+                {{/each}}
+            </div>
+        </div>
+        {{/if}}
+        
+        <!-- Recommendations -->
+        {{#if RECOMMENDATIONS}}
+        <div class="mb-6">
+            <h4 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                💡 Recommendations
+            </h4>
+            <div class="space-y-2">
+                {{#each RECOMMENDATIONS}}
+                <div class="recommendation-item">
+                    <div class="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <span class="text-info">💡</span>
+                        <div>
+                            <p class="text-sm font-medium text-blue-900">{{title}}</p>
+                            {{#if description}}
+                            <p class="text-sm text-blue-700 mt-1">{{description}}</p>
+                            {{/if}}
+                            {{#if action}}
+                            <button class="control-btn info mt-2" onclick="executeRecommendation('{{action}}')">
+                                {{actionText}}
+                            </button>
+                            {{/if}}
+                        </div>
+                    </div>
+                </div>
+                {{/each}}
+            </div>
+        </div>
+        {{/if}}
+        
+        <!-- Warnings Section -->
+        {{#if WARNINGS}}
+        <div class="mb-6">
+            <h4 class="text-lg font-semibold mb-3 flex items-center gap-2 text-warning">
+                ⚠️ Warnings ({{WARNINGS.length}})
+            </h4>
+            <div class="space-y-2">
+                {{#each WARNINGS}}
+                <div class="warning-item">
+                    <div class="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <span class="text-warning">⚠️</span>
+                        <div class="flex-1">
+                            <p class="text-sm text-yellow-800">{{this}}</p>
+                        </div>
+                    </div>
+                </div>
+                {{/each}}
+            </div>
+        </div>
+        {{/if}}
+        
+        <!-- Errors Section -->
+        {{#if ERRORS}}
+        <div class="mb-6">
+            <h4 class="text-lg font-semibold mb-3 flex items-center gap-2 text-error">
+                ❌ Errors ({{ERRORS.length}})
+            </h4>
+            <div class="space-y-2">
+                {{#each ERRORS}}
+                <div class="error-item">
+                    <div class="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <span class="text-error">❌</span>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-red-900">{{message}}</p>
+                            {{#if details}}
+                            <p class="text-sm text-red-700 mt-1">{{details}}</p>
+                            {{/if}}
+                            {{#if timestamp}}
+                            <p class="text-xs text-red-600 mt-2">{{timestamp}}</p>
+                            {{/if}}
+                        </div>
+                    </div>
+                </div>
+                {{/each}}
+            </div>
+        </div>
+        {{/if}}
+        
+        <!-- Raw Data Section (Collapsible) -->
+        {{#if RAW_DATA}}
+        <div class="mb-4">
+            <button class="control-btn" onclick="toggleRawData('{{MODULE_ID}}')" id="raw-data-toggle-{{MODULE_ID}}">
+                🔍 Show Raw Data
+            </button>
+            <div class="raw-data-container hidden mt-4" id="raw-data-{{MODULE_ID}}">
+                <div class="card" style="background: var(--gray-900); border: 1px solid var(--gray-700);">
+                    <div class="card-body">
+                        <pre class="text-xs text-green-400 font-mono overflow-x-auto">{{RAW_DATA_JSON}}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{/if}}
+        
+        <!-- Module Actions -->
+        <div class="card-footer">
+            <div class="control-group">
+                {{#if LOG_PATH}}
+                <button class="control-btn" onclick="openLogFile('{{LOG_PATH}}')">
+                    📄 View Log
+                </button>
+                {{/if}}
+                {{#if CAN_RETRY}}
+                <button class="control-btn warning" onclick="retryModule('{{MODULE_NAME}}')">
+                    🔄 Retry Module
+                </button>
+                {{/if}}
+                <button class="control-btn" onclick="copyModuleInfo('{{MODULE_ID}}')">
+                    📋 Copy Details
+                </button>
+            </div>
+            <div class="text-xs text-gray-500">
+                Correlation ID: {{CORRELATION_ID}}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Module Card Specific Styles */
+.execution-phase {
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border-radius: var(--radius);
+    border-left: 3px solid var(--primary-500);
+}
+
+.recommendation-item,
+.warning-item,
+.error-item {
+    transition: all var(--transition-fast);
+}
+
+.recommendation-item:hover,
+.warning-item:hover,
+.error-item:hover {
+    transform: translateX(4px);
+}
+
+.raw-data-container pre {
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--gray-900);
+    color: var(--success-400);
+    padding: var(--space-4);
+    border-radius: var(--radius);
+    font-family: var(--font-family-mono);
+    line-height: 1.4;
+}
+
+/* Color utilities for this template */
+.bg-blue-50 { background-color: var(--info-50); }
+.border-blue-200 { border-color: var(--info-200); }
+.text-blue-900 { color: var(--info-700); }
+.text-blue-700 { color: var(--info-600); }
+
+.bg-yellow-50 { background-color: var(--warning-50); }
+.border-yellow-200 { border-color: var(--warning-200); }
+.text-yellow-800 { color: var(--warning-700); }
+
+.bg-red-50 { background-color: var(--error-50); }
+.border-red-200 { border-color: var(--error-200); }
+.text-red-900 { color: var(--error-700); }
+.text-red-700 { color: var(--error-600); }
+.text-red-600 { color: var(--error-500); }
+
+.text-green-400 { color: var(--success-400); }
+
+/* Responsive module card adjustments */
+@media (max-width: 768px) {
+    .module-title-group {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-2);
+    }
+    
+    .module-stats {
+        flex-wrap: wrap;
+        gap: var(--space-3);
+    }
+    
+    .module-details-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<script>
+// Module Card Interactive Functions
+
+function toggleModuleDetails(moduleId) {
+    const body = document.getElementById(`module-body-${moduleId}`);
+    const icon = document.getElementById(`expand-icon-${moduleId}`);
+    
+    if (body && icon) {
+        const isExpanded = body.classList.contains('expanded');
+        
+        if (isExpanded) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.textContent = '▶';
+            icon.classList.remove('expanded');
+        } else {
+            body.style.display = 'block';
+            body.classList.add('expanded');
+            icon.textContent = '▼';
+            icon.classList.add('expanded');
+        }
+    }
+}
+
+function toggleRawData(moduleId) {
+    const container = document.getElementById(`raw-data-${moduleId}`);
+    const toggle = document.getElementById(`raw-data-toggle-${moduleId}`);
+    
+    if (container && toggle) {
+        const isHidden = container.classList.contains('hidden');
+        
+        if (isHidden) {
+            container.classList.remove('hidden');
+            toggle.textContent = '🔍 Hide Raw Data';
+        } else {
+            container.classList.add('hidden');
+            toggle.textContent = '🔍 Show Raw Data';
+        }
+    }
+}
+
+function executeRecommendation(action) {
+    console.log('Executing recommendation:', action);
+    // This would integrate with the PowerShell backend for actionable recommendations
+    alert(`Recommendation action: ${action}\n\nThis would execute the recommended action in a real implementation.`);
+}
+
+function openLogFile(logPath) {
+    console.log('Opening log file:', logPath);
+    // This would open the log file in the default text editor
+    alert(`Opening log file: ${logPath}\n\nIn a real implementation, this would open the log file.`);
+}
+
+function retryModule(moduleName) {
+    console.log('Retrying module:', moduleName);
+    // This would trigger a module retry
+    if (confirm(`Retry execution of ${moduleName} module?`)) {
+        alert(`Retrying ${moduleName}...\n\nThis would re-execute the module in a real implementation.`);
+    }
+}
+
+function copyModuleInfo(moduleId) {
+    const moduleCard = document.querySelector(`[data-module="${moduleId}"]`);
+    if (moduleCard) {
+        const moduleInfo = {
+            name: moduleCard.dataset.module,
+            status: moduleCard.dataset.status,
+            timestamp: new Date().toISOString()
+        };
+        
+        const infoText = JSON.stringify(moduleInfo, null, 2);
+        
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(infoText).then(() => {
+                showToast('Module information copied to clipboard!', 'success');
+            });
+        } else {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = infoText;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showToast('Module information copied to clipboard!', 'success');
+        }
+    }
+}
+
+function showToast(message, type = 'info') {
+    // Create a simple toast notification
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--${type === 'success' ? 'success' : 'info'}-500);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 6px;
+        box-shadow: var(--shadow-lg);
+        z-index: 1000;
+        animation: slideInRight 0.3s ease-out;
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'slideOutRight 0.3s ease-in';
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, 3000);
+}
+
+// Add CSS for toast animations
+const toastStyles = document.createElement('style');
+toastStyles.textContent = `
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOutRight {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+`;
+document.head.appendChild(toastStyles);
+</script>

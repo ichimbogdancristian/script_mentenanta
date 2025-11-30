@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="Windows Maintenance Report - Comprehensive system analysis and optimization results">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="author" content="Windows Maintenance Automation">
+    <title>⚙️ Windows Maintenance Report - {{GENERATION_TIME}}</title>
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="report-styles-v4-enhanced.css">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="components/executive-dashboard.html" as="fetch" crossorigin>
+    <link rel="preload" href="components/module-card-enhanced.html" as="fetch" crossorigin>
+    
+    <!-- Critical inline CSS for above-the-fold content -->
+    <style>
+        /* Critical CSS for immediate rendering */
+        body {
+            opacity: 0;
+            transition: opacity 0.3s ease-in;
+        }
+        
+        body.loaded {
+            opacity: 1;
+        }
+        
+        /* Loading animation */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--gray-50);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.3s ease-out;
+        }
+        
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--gray-300);
+            border-top: 3px solid var(--primary-500);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Scroll progress indicator */
+        .scroll-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 0%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+            z-index: 1000;
+            transition: width 0.1s ease-out;
+        }
+        
+        /* Back to top button */
+        .back-to-top {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: var(--primary-500);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: var(--shadow-lg);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all var(--transition-normal);
+            z-index: 999;
+        }
+        
+        .back-to-top.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .back-to-top:hover {
+            background: var(--primary-600);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-xl);
+        }
+    </style>
+</head>
+<body class="animate-fade-in">
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p class="mt-4 text-sm text-gray-600">Loading maintenance report...</p>
+        </div>
+    </div>
+    
+    <!-- Scroll Progress Indicator -->
+    <div class="scroll-progress" id="scroll-progress"></div>
+    
+    <!-- Skip Link for Accessibility -->
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:bg-primary-500 focus:text-white focus:px-4 focus:py-2 focus:rounded focus:z-50">
+        Skip to main content
+    </a>
+
+    <!-- Top Controls Bar -->
+    <div class="top-controls-bar">
+        <div class="container">
+            <div class="controls-container">
+                <!-- Theme Toggle -->
+                <button 
+                    class="theme-toggle" 
+                    onclick="toggleTheme()" 
+                    id="themeToggle" 
+                    title="Toggle Dark/Light Mode"
+                    aria-label="Toggle between light and dark mode"
+                    aria-pressed="false">
+                    <span class="icon" id="themeIcon" aria-hidden="true">🌙</span>
+                    <span id="themeText">Dark Mode</span>
+                </button>
+
+                <!-- Filter and Search Controls -->
+                <div class="control-group">
+                    <input 
+                        type="search" 
+                        class="search-input" 
+                        placeholder="Search modules..." 
+                        id="module-search"
+                        aria-label="Search modules">
+                    <select class="filter-select" id="status-filter" aria-label="Filter by status">
+                        <option value="all">All Statuses</option>
+                        <option value="success">✅ Success</option>
+                        <option value="warning">⚠️ Warning</option>
+                        <option value="error">❌ Error</option>
+                        <option value="skipped">⏭️ Skipped</option>
+                    </select>
+                </div>
+
+                <!-- Report Controls -->
+                <div class="control-group">
+                    <button class="control-btn" onclick="printReport()" title="Print report (Ctrl+P)" aria-label="Print this report">
+                        <span class="btn-icon">🖨️</span>
+                        <span class="btn-text">Print</span>
+                    </button>
+                    <button class="control-btn" onclick="exportToJSON()" title="Export as JSON" aria-label="Export report data as JSON">
+                        <span class="btn-icon">📄</span>
+                        <span class="btn-text">Export</span>
+                    </button>
+                    <button class="control-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" aria-label="Toggle fullscreen mode">
+                        <span class="btn-icon">🔳</span>
+                        <span class="btn-text">Fullscreen</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <main id="main-content" class="container">
+        <!-- Header Section with Hero Design -->
+        <header class="report-header">
+            <div class="header-content">
+                <h1>
+                    <span class="header-icon">⚙️</span>
+                    Windows Maintenance Report
+                </h1>
+                <p class="header-subtitle">{{REPORT_SUBTITLE}}</p>
+                
+                <!-- Quick Navigation -->
+                <nav class="header-nav" aria-label="Quick navigation to report sections">
+                    <a href="#executive-dashboard" class="nav-link">📊 Dashboard</a>
+                    <a href="#modules" class="nav-link">🔧 Modules</a>
+                    <a href="#errors" class="nav-link">⚠️ Issues</a>
+                    <a href="#logs" class="nav-link">📝 Logs</a>
+                    <a href="#system-info" class="nav-link">💻 System</a>
+                </nav>
+            </div>
+            
+            <!-- Header Metadata -->
+            <div class="header-metadata">
+                <div class="dashboard-grid">
+                    <div class="metadata-item">
+                        <div class="metadata-icon">📅</div>
+                        <div class="metadata-content">
+                            <div class="metadata-label">Generated</div>
+                            <div class="metadata-value">{{GENERATION_TIME}}</div>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">💻</div>
+                        <div class="metadata-content">
+                            <div class="metadata-label">Computer</div>
+                            <div class="metadata-value">{{COMPUTER_NAME}}</div>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">👤</div>
+                        <div class="metadata-content">
+                            <div class="metadata-label">User</div>
+                            <div class="metadata-value">{{USER_NAME}}</div>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">🖥️</div>
+                        <div class="metadata-content">
+                            <div class="metadata-label">OS Version</div>
+                            <div class="metadata-value">{{OS_VERSION}}</div>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">▶️</div>
+                        <div class="metadata-content">
+                            <div class="metadata-label">Mode</div>
+                            <div class="metadata-value">{{EXECUTION_MODE}}</div>
+                        </div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-icon">🔗</div>
+                        <div class="metadata-content">
+                            <div class="metadata-label">Session ID</div>
+                            <div class="metadata-value">{{SESSION_ID}}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Executive Dashboard Section -->
+        {{> executive-dashboard}}
+
+        <!-- Module Results Section -->
+        <section id="modules" class="mb-8">
+            <div class="section-header mb-6">
+                <h2 class="section-title">🔧 Module Execution Results</h2>
+                <p class="section-subtitle">
+                    Detailed results for each maintenance module executed during this session.
+                </p>
+            </div>
+            
+            <!-- Module Results Container -->
+            <div class="modules-container" id="modules-container">
+                {{#each MODULES}}
+                    {{> module-card-enhanced}}
+                {{/each}}
+            </div>
+            
+            <!-- No modules message (shown when filtered) -->
+            <div class="no-modules-message hidden" id="no-modules-message">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <div class="text-6xl mb-4">🔍</div>
+                        <h3 class="text-xl font-semibold mb-2">No modules match your criteria</h3>
+                        <p class="text-gray-600 mb-4">Try adjusting your search or filter settings.</p>
+                        <button class="control-btn" onclick="clearFilters()">Clear Filters</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Errors and Issues Section -->
+        {{#if TOTAL_ERRORS}}
+        <section id="errors" class="mb-8">
+            <div class="section-header mb-6">
+                <h2 class="section-title text-error">⚠️ Issues and Errors</h2>
+                <p class="section-subtitle">
+                    Critical issues that require attention and resolution steps.
+                </p>
+            </div>
+            
+            <div class="dashboard-grid">
+                {{#each ERROR_SUMMARY}}
+                <div class="card error-card">
+                    <div class="card-header">
+                        <h3 class="card-title text-error">
+                            {{icon}} {{module}}
+                        </h3>
+                        <div class="status-badge error">
+                            <span class="status-dot error"></span>
+                            {{count}} Error{{#if plural}}s{{/if}}
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="space-y-3">
+                            {{#each errors}}
+                            <div class="error-detail">
+                                <p class="text-sm font-medium text-error">{{message}}</p>
+                                {{#if solution}}
+                                <p class="text-sm text-gray-600 mt-1">💡 {{solution}}</p>
+                                {{/if}}
+                            </div>
+                            {{/each}}
+                        </div>
+                    </div>
+                </div>
+                {{/each}}
+            </div>
+        </section>
+        {{/if}}
+
+        <!-- System Information Section -->
+        <section id="system-info" class="mb-8">
+            <div class="section-header mb-6">
+                <h2 class="section-title">💻 System Information</h2>
+                <p class="section-subtitle">
+                    Comprehensive system details and environment information.
+                </p>
+            </div>
+            
+            <div class="dashboard-grid">
+                <!-- Hardware Information -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🖥️ Hardware</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="module-details-grid">
+                            {{#each SYSTEM_INFO.HARDWARE}}
+                            <div class="module-detail-item">
+                                <div class="module-detail-label">{{@key}}</div>
+                                <div class="module-detail-value">{{this}}</div>
+                            </div>
+                            {{/each}}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Software Information -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">⚙️ Software</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="module-details-grid">
+                            {{#each SYSTEM_INFO.SOFTWARE}}
+                            <div class="module-detail-item">
+                                <div class="module-detail-label">{{@key}}</div>
+                                <div class="module-detail-value">{{this}}</div>
+                            </div>
+                            {{/each}}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Network Information -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🌐 Network</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="module-details-grid">
+                            {{#each SYSTEM_INFO.NETWORK}}
+                            <div class="module-detail-item">
+                                <div class="module-detail-label">{{@key}}</div>
+                                <div class="module-detail-value">{{this}}</div>
+                            </div>
+                            {{/each}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Log Summary Section -->
+        <section id="logs" class="mb-8">
+            <div class="section-header mb-6">
+                <h2 class="section-title">📝 Execution Logs</h2>
+                <p class="section-subtitle">
+                    Summary of log files generated during maintenance execution.
+                </p>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">📋 Log Files Overview</h3>
+                    <button class="control-btn" onclick="downloadAllLogs()">
+                        📦 Download All Logs
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="dashboard-grid">
+                        {{#each LOG_FILES}}
+                        <div class="log-file-item">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-lg">📄</span>
+                                    <span class="font-medium">{{name}}</span>
+                                </div>
+                                <span class="text-sm text-gray-500">{{size}}</span>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-2">{{description}}</p>
+                            <div class="control-group">
+                                <button class="control-btn" onclick="viewLog('{{path}}')">
+                                    👁️ View
+                                </button>
+                                <button class="control-btn" onclick="downloadLog('{{path}}')">
+                                    💾 Download
+                                </button>
+                            </div>
+                        </div>
+                        {{/each}}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="report-footer mt-16 pt-8 border-t border-gray-200">
+            <div class="dashboard-grid">
+                <div>
+                    <h3 class="font-semibold mb-3">Windows Maintenance Automation</h3>
+                    <p class="text-sm text-gray-600 mb-2">
+                        Automated system maintenance and optimization tool for Windows environments.
+                    </p>
+                    <p class="text-xs text-gray-500">
+                        Report generated on {{GENERATION_TIME}} by {{USER_NAME}}@{{COMPUTER_NAME}}
+                    </p>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-3">Report Statistics</h4>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <div>Total execution time: {{TOTAL_DURATION_FORMATTED}}</div>
+                        <div>Modules processed: {{TOTAL_MODULES}}</div>
+                        <div>Success rate: {{SUCCESS_RATE}}%</div>
+                        <div>Session ID: {{SESSION_ID}}</div>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-3">Actions</h4>
+                    <div class="control-group flex-col">
+                        <button class="control-btn" onclick="scheduleNextMaintenance()">
+                            📅 Schedule Next Run
+                        </button>
+                        <button class="control-btn" onclick="shareFeedback()">
+                            💬 Share Feedback
+                        </button>
+                        <button class="control-btn" onclick="exportReport()">
+                            📤 Export Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </main>
+
+    <!-- Back to Top Button -->
+    <button class="back-to-top" id="back-to-top" onclick="scrollToTop()" aria-label="Back to top">
+        ⬆️
+    </button>
+
+    <!-- Scripts -->
+    <script src="assets/dashboard.js"></script>
+    <script>
+        // Initialize the dashboard when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDashboard();
+        });
+        
+        // Add loading complete handler
+        window.addEventListener('load', function() {
+            document.body.classList.add('loaded');
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.classList.add('hidden');
+                setTimeout(() => {
+                    loadingOverlay.remove();
+                }, 300);
+            }
+        });
+    </script>
+</body>
+</html>
+
+<style>
+/* Template-specific styles */
+.metadata-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius);
+    backdrop-filter: blur(10px);
+}
+
+.metadata-icon {
+    font-size: var(--text-xl);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius);
+}
+
+.metadata-content {
+    flex: 1;
+}
+
+.metadata-label {
+    font-size: var(--text-xs);
+    opacity: 0.8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-1);
+}
+
+.metadata-value {
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.section-header {
+    text-align: center;
+    margin-bottom: var(--space-8);
+}
+
+.section-title {
+    font-size: var(--text-3xl);
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-bottom: var(--space-2);
+}
+
+.section-subtitle {
+    font-size: var(--text-lg);
+    color: var(--gray-600);
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.error-card {
+    border-left: 4px solid var(--error-500);
+}
+
+.error-detail {
+    padding: var(--space-3);
+    background: var(--error-50);
+    border-radius: var(--radius);
+    border: 1px solid var(--error-200);
+}
+
+.log-file-item {
+    padding: var(--space-4);
+    background: var(--gray-50);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--gray-200);
+    transition: all var(--transition-fast);
+}
+
+.log-file-item:hover {
+    background: white;
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+
+.report-footer {
+    background: var(--gray-50);
+    margin: 0 calc(-1 * var(--space-4));
+    padding: var(--space-8) var(--space-4);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .header-metadata .dashboard-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-3);
+    }
+    
+    .controls-container {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .control-group {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .header-metadata .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .section-title {
+        font-size: var(--text-2xl);
+    }
+    
+    .section-subtitle {
+        font-size: var(--text-base);
+    }
+}
+</style>

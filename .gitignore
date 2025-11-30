@@ -1,0 +1,36 @@
+# Temporary files directory
+temp_files/
+
+# Log files
+*.log
+
+# PowerShell automatic variables
+*.ps1xml
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# OS generated files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Compiled files
+*.dll
+*.exe
+*.pdb
+
+# Test results
+TestResults/
+*.trx
+
+# PowerShell modules cache
+PSGetModuleInfo.xml

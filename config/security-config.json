@@ -1,0 +1,134 @@
+{
+  "security": {
+    "enableDigitalSignatureVerification": true,
+    "requireAuthenticodeSignature": true,
+    "trustedPublishers": [
+      "Microsoft Corporation",
+      "Microsoft Windows",
+      "Microsoft Windows Publisher"
+    ],
+    "allowUnsignedScripts": false,
+    "requireAdministratorConsent": true,
+    "enablePrivilegeEscalationDetection": true,
+    "maxAllowedPrivileges": [
+      "SeBackupPrivilege",
+      "SeRestorePrivilege",
+      "SeSystemtimePrivilege",
+      "SeShutdownPrivilege",
+      "SeRemoteShutdownPrivilege",
+      "SeTakeOwnershipPrivilege",
+      "SeDebugPrivilege",
+      "SeSystemEnvironmentPrivilege",
+      "SeSystemProfilePrivilege",
+      "SeProfileSingleProcessPrivilege",
+      "SeIncreaseBasePriorityPrivilege",
+      "SeLoadDriverPrivilege",
+      "SeCreatePagefilePrivilege",
+      "SeIncreaseQuotaPrivilege",
+      "SeChangeNotifyPrivilege",
+      "SeUndockPrivilege",
+      "SeManageVolumePrivilege",
+      "SeImpersonatePrivilege",
+      "SeCreateGlobalPrivilege"
+    ],
+    "blockedPrivileges": [
+      "SeTcbPrivilege",
+      "SeMachineAccountPrivilege",
+      "SeTrustedCredManAccessPrivilege",
+      "SeNetworkLogonRight",
+      "SeBatchLogonRight",
+      "SeServiceLogonRight",
+      "SeInteractiveLogonRight",
+      "SeRemoteInteractiveLogonRight"
+    ],
+    "enableMalwareScan": true,
+    "malwareScanTimeout": 30000,
+    "scanBeforeExecution": true,
+    "quarantineThreats": true,
+    "enableRealTimeProtection": true,
+    "defenderIntegration": true,
+    "enableConfigurationProtection": true,
+    "configurationEncryption": true,
+    "secureKeyStorage": true,
+    "enableAuditLogging": true,
+    "logSecurityEvents": true,
+    "alertOnSecurityViolations": true
+  },
+  "threatDetection": {
+    "enableProcessMonitoring": true,
+    "monitorFileSystemChanges": true,
+    "monitorRegistryChanges": true,
+    "monitorNetworkConnections": false,
+    "detectSuspiciousPatterns": true,
+    "suspiciousPatterns": [
+      "powershell.*-encoded.*command",
+      "cmd.*\/c.*echo",
+      "wmic.*process.*call.*create",
+      "rundll32.*javascript",
+      "regsvr32.*\/s.*\/u.*\/i",
+      "certutil.*-decode",
+      "bitsadmin.*\/transfer",
+      "mshta.*javascript",
+      "cscript.*\/nologo",
+      "wscript.*\/nologo"
+    ],
+    "monitoredDirectories": [
+      "%TEMP%",
+      "%APPDATA%",
+      "%PROGRAMDATA%",
+      "%USERPROFILE%\\Downloads",
+      "%WINDIR%\\System32",
+      "%WINDIR%\\SysWOW64"
+    ],
+    "monitoredRegistryKeys": [
+      "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+      "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce"
+    ],
+    "enableBehaviorAnalysis": true,
+    "behaviorAnalysisTimeout": 5000
+  },
+  "compliance": {
+    "enableCISBaseline": true,
+    "cisLevel": 1,
+    "enableSTIGCompliance": false,
+    "stigCategoryLevel": "CAT_II",
+    "requireSecureBootstrap": true,
+    "enforceExecutionPolicy": "RemoteSigned",
+    "requireCodeSigning": false,
+    "enableConstrainedLanguageMode": false,
+    "enableApplicationGuard": false,
+    "enableControlFlowGuard": true,
+    "enableDEP": true,
+    "enableASLR": true
+  },
+  "monitoring": {
+    "enableSecurityMetrics": true,
+    "metricsCollectionInterval": 60000,
+    "enableThreatIntelligence": false,
+    "threatIntelligenceProvider": "None",
+    "enableIncidentResponse": true,
+    "autoResponseActions": [
+      "Log",
+      "Alert",
+      "Quarantine"
+    ],
+    "escalationThresholds": {
+      "criticalThreats": 1,
+      "highThreats": 3,
+      "mediumThreats": 10,
+      "lowThreats": 50
+    }
+  },
+  "recovery": {
+    "enableAutomaticRecovery": true,
+    "createRecoveryPoints": true,
+    "recoveryPointInterval": 3600000,
+    "maxRecoveryPoints": 24,
+    "enableRollbackOnThreat": true,
+    "rollbackTimeout": 300000,
+    "preserveUserData": true,
+    "enableEmergencyMode": true
+  }
+}

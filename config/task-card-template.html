@@ -1,0 +1,120 @@
+<!-- Module Report Template - Before/After Comparison -->
+<div class="card module-report">
+    <div class="card-header">
+        <h3>{{MODULE_ICON}} {{MODULE_NAME}}</h3>
+        <span class="status {{MODULE_STATUS_CLASS}}">{{MODULE_STATUS}}</span>
+        <div class="module-meta">
+            <span class="execution-time">⏱️ {{EXECUTION_DURATION}}</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Summary Metrics -->
+        <div class="module-summary">
+            <div class="metric-row">
+                <div class="metric-item">
+                    <span class="metric-label">Items Detected:</span>
+                    <span class="metric-value">{{ITEMS_DETECTED}}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Items Processed:</span>
+                    <span class="metric-value {{PROCESSED_CLASS}}">{{ITEMS_PROCESSED}}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Success Rate:</span>
+                    <span class="metric-value success">{{MODULE_SUCCESS_RATE}}%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Before/After Comparison -->
+        <div class="before-after-section">
+            <div class="comparison-grid">
+                <div class="before-section">
+                    <h4 class="section-title">📋 Before - Detected Issues</h4>
+                    <div class="items-list">
+                        {{BEFORE_ITEMS_LIST}}
+                    </div>
+                </div>
+                <div class="after-section">
+                    <h4 class="section-title">✅ After - Actions Taken</h4>
+                    <div class="items-list">
+                        {{AFTER_ITEMS_LIST}}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Results Table -->
+        {{#if HAS_DETAILED_RESULTS}}
+        <div class="detailed-results">
+            <h4>📊 Detailed Results</h4>
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Type</th>
+                        <th>Before Status</th>
+                        <th>Action Taken</th>
+                        <th>After Status</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{DETAILED_RESULTS_ROWS}}
+                </tbody>
+            </table>
+        </div>
+        {{/if}}
+
+        <!-- Changes Summary -->
+        <div class="changes-summary">
+            <h4>📝 Changes Summary</h4>
+            <div class="changes-grid">
+                <div class="change-category">
+                    <div class="change-header">
+                        <span class="change-icon">➕</span>
+                        <span class="change-title">Added/Installed</span>
+                        <span class="change-count success">{{ITEMS_ADDED}}</span>
+                    </div>
+                    <div class="change-items">{{ADDED_ITEMS}}</div>
+                </div>
+                <div class="change-category">
+                    <div class="change-header">
+                        <span class="change-icon">➖</span>
+                        <span class="change-title">Removed/Uninstalled</span>
+                        <span class="change-count warning">{{ITEMS_REMOVED}}</span>
+                    </div>
+                    <div class="change-items">{{REMOVED_ITEMS}}</div>
+                </div>
+                <div class="change-category">
+                    <div class="change-header">
+                        <span class="change-icon">🔧</span>
+                        <span class="change-title">Modified/Updated</span>
+                        <span class="change-count info">{{ITEMS_MODIFIED}}</span>
+                    </div>
+                    <div class="change-items">{{MODIFIED_ITEMS}}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Errors and Warnings -->
+        {{#if HAS_ERRORS}}
+        <div class="error-section">
+            <h4 class="error-title">⚠️ Errors & Warnings</h4>
+            <div class="error-list">
+                {{ERROR_ITEMS_LIST}}
+            </div>
+        </div>
+        {{/if}}
+
+        <!-- Recommendations -->
+        {{#if HAS_RECOMMENDATIONS}}
+        <div class="recommendations-section">
+            <h4 class="recommendations-title">💡 Recommendations</h4>
+            <div class="recommendations-list">
+                {{RECOMMENDATIONS_LIST}}
+            </div>
+        </div>
+        {{/if}}
+    </div>
+</div>

@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "description": "Repository cache manifest - tracks cached state to avoid unnecessary downloads",
+  "lastDownload": "2025-10-27T10:00:00Z",
+  "lastValidation": "2025-10-27T10:00:00Z",
+  "cacheExpiration": 604800,
+  "cacheExpirationDescription": "7 days (604800 seconds)",
+  "repositoryUrl": "https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/main.zip",
+  "validationStatus": "valid",
+  "extractionPath": "script_mentenanta-main",
+  "extractedFilesCount": 0,
+  "extractedFilesSize": 0,
+  "notes": "This file is auto-managed by the maintenance system. Manual edits may cause cache validation issues."
+}

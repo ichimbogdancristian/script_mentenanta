@@ -1,0 +1,50 @@
+{
+  "execution": {
+    "defaultMode": "unattended",
+    "countdownSeconds": 20,
+    "enableDryRun": true,
+    "autoSelectDefault": true,
+    "showProgressBars": true
+  },
+  "modules": {
+    "skipBloatwareRemoval": false,
+    "skipEssentialApps": false,
+    "skipWindowsUpdates": false,
+    "skipTelemetryDisable": false,
+    "skipSystemOptimization": false,
+    "skipSecurityAudit": false,
+    "skipSecurityEnhancement": false,
+    "skipAppUpgrade": false,
+    "customModulesPath": ""
+  },
+  "bloatware": {
+    "enableDiffBasedProcessing": true,
+    "parallelRemoval": true,
+    "createBackups": true,
+    "customBloatwareList": []
+  },
+  "essentialApps": {
+    "enableParallelInstallation": true,
+    "fallbackToLibreOffice": true,
+    "customEssentialApps": [],
+    "skipConflictResolution": false
+  },
+  "system": {
+    "createSystemRestorePoint": true,
+    "enableVerboseLogging": false,
+    "maxLogSizeMB": 10,
+    "enablePerformanceOptimizations": true
+  },
+  "reporting": {
+    "enableHtmlReport": true,
+    "enableDetailedAudit": true,
+    "includeSystemInventory": true,
+    "generateBeforeAfterComparison": true
+  },
+  "paths": {
+    "tempFolder": "temp_files",
+    "reportsFolder": "temp_files/reports",
+    "logsFolder": "temp_files/logs",
+    "inventoryFolder": "temp_files/inventory"
+  }
+}
