@@ -27,13 +27,16 @@
     "enableParallelInstallation": true,
     "fallbackToLibreOffice": true,
     "customEssentialApps": [],
-    "skipConflictResolution": false
+    "skipConflictResolution": false,
+    "skipIfPackageManagerMissing": true
   },
   "system": {
     "createSystemRestorePoint": true,
     "enableVerboseLogging": false,
     "maxLogSizeMB": 10,
-    "enablePerformanceOptimizations": true
+    "enablePerformanceOptimizations": true,
+    "warnOnPendingReboot": true,
+    "enableSystemProtectionIfDisabled": false
   },
   "reporting": {
     "enableHtmlReport": true,

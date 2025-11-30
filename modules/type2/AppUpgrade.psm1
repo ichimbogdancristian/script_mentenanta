@@ -27,7 +27,8 @@ using namespace System.Collections.Generic
 #region Module Imports
 
 # Import CoreInfrastructure with -Global flag (CRITICAL for v3.0 architecture)
-$CoreInfraPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'modules\core\CoreInfrastructure.psm1'
+$ModuleRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
+$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
 }

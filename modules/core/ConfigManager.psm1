@@ -373,34 +373,107 @@ function Get-BloatwareConfiguration {
         return $script:BloatwareLists
     }
 
-    $bloatwareFile = Join-Path $script:ConfigPaths.Root "bloatware-list.json"
-
-    if (-not (Test-Path $bloatwareFile)) {
-        Write-Warning "Bloatware configuration file not found: $bloatwareFile"
-        return @{}
+    # Load from main consolidated list first
+    $bloatwareFile = Join-Path $script:ConfigPaths.Root "lists\bloatware-list.json"
+    
+    if (Test-Path $bloatwareFile) {
+        try {
+            Write-Verbose "Loading consolidated bloatware configuration from: $bloatwareFile"
+            $configJson = Get-Content $bloatwareFile -Raw -ErrorAction Stop
+            $bloatwareList = $configJson | ConvertFrom-Json -ErrorAction Stop
+            
+            # Convert to array if it's not already
+            if ($bloatwareList -is [Array]) {
+                $script:BloatwareLists['all'] = $bloatwareList
+            }
+            elseif ($bloatwareList.all) {
+                $script:BloatwareLists['all'] = @($bloatwareList.all)
+            }
+            else {
+                $script:BloatwareLists['all'] = @($bloatwareList)
+            }
+            
+            Write-Verbose "Loaded consolidated bloatware list with $($script:BloatwareLists['all'].Count) entries"
+            return $script:BloatwareLists
+        }
+        catch {
+            Write-Warning "Failed to load consolidated bloatware list: $_"
+        }
     }
-
-    try {
-        Write-Verbose "Loading bloatware configuration from: $bloatwareFile"
-
-        $configJson = Get-Content $bloatwareFile -Raw -ErrorAction Stop
-        $bloatwareList = $configJson | ConvertFrom-Json -ErrorAction Stop
-
-        # Convert to array if it's not already
-        if ($bloatwareList -is [Array]) {
-            $script:BloatwareLists['all'] = $bloatwareList
+    
+    # Fallback: Load from individual category files in bloatware-lists directory
+    $bloatwareListsDir = Join-Path $script:ConfigPaths.Root "bloatware-lists"
+    
+    if (Test-Path $bloatwareListsDir) {
+        Write-Verbose "Loading individual bloatware category files from: $bloatwareListsDir"
+        
+        $allBloatware = @()
+        $categoryFiles = @{
+            'gaming'   = 'gaming-bloatware.json'
+            'oem'      = 'oem-bloatware.json' 
+            'security' = 'security-bloatware.json'
+            'windows'  = 'windows-bloatware.json'
         }
-        else {
-            $script:BloatwareLists['all'] = @($bloatwareList)
+        
+        foreach ($category in $categoryFiles.Keys) {
+            $categoryFile = Join-Path $bloatwareListsDir $categoryFiles[$category]
+            if (Test-Path $categoryFile) {
+                try {
+                    $categoryJson = Get-Content $categoryFile -Raw -ErrorAction Stop
+                    $categoryList = $categoryJson | ConvertFrom-Json -ErrorAction Stop
+                    
+                    if ($categoryList -is [Array]) {
+                        $script:BloatwareLists[$category] = $categoryList
+                        $allBloatware += $categoryList
+                        Write-Verbose "Loaded $($categoryList.Count) entries from $($categoryFiles[$category])"
+                    }
+                }
+                catch {
+                    Write-Warning "Failed to load $($categoryFiles[$category]): $_"
+                }
+            }
         }
-
-        Write-Verbose "Loaded bloatware list with $($script:BloatwareLists['all'].Count) entries"
+        
+        # Deduplicate and store as 'all' category
+        $script:BloatwareLists['all'] = @($allBloatware | Sort-Object -Unique)
+        Write-Verbose "Combined bloatware list with $($script:BloatwareLists['all'].Count) unique entries"
+        
         return $script:BloatwareLists
     }
-    catch {
-        Write-Error "Failed to load bloatware configuration: $_"
-        return @{}
+    
+    # Final fallback: Check legacy path
+    $legacyFile = Join-Path $script:ConfigPaths.Root "data\bloatware-list.json"
+    
+    if (Test-Path $legacyFile) {
+        Write-Warning "Using legacy bloatware configuration path - consider migrating to lists/bloatware-list.json"
+        try {
+            Write-Verbose "Loading legacy bloatware configuration from: $legacyFile"
+            $configJson = Get-Content $legacyFile -Raw -ErrorAction Stop
+            $bloatwareList = $configJson | ConvertFrom-Json -ErrorAction Stop
+
+            # Convert to array if it's not already
+            if ($bloatwareList -is [Array]) {
+                $script:BloatwareLists['all'] = $bloatwareList
+            }
+            elseif ($bloatwareList.all) {
+                $script:BloatwareLists['all'] = @($bloatwareList.all)
+            }
+            else {
+                $script:BloatwareLists['all'] = @($bloatwareList)
+            }
+            
+            Write-Verbose "Loaded legacy bloatware list with $($script:BloatwareLists['all'].Count) entries"
+            return $script:BloatwareLists
+        }
+        catch {
+            Write-Warning "Failed to load legacy bloatware configuration: $_"
+        }
     }
+    
+    # No configuration found
+    Write-Warning "No bloatware configuration found in any expected location"
+    $script:BloatwareLists = @{ 'all' = @() }
+    return $script:BloatwareLists
 }
 
 <#
@@ -469,17 +542,88 @@ function Get-EssentialAppsConfiguration {
 function Get-UnifiedBloatwareList {
     [CmdletBinding()]
     [OutputType([array])]
-    param()
+    param(
+        [Parameter()]
+        [string[]]$IncludeCategories = @('all')
+    )
 
     $bloatwareLists = Get-BloatwareConfiguration
+    
+    if ($IncludeCategories -contains 'all' -or $IncludeCategories.Count -eq 0) {
+        if ($bloatwareLists.ContainsKey('all')) {
+            return $bloatwareLists['all'] | Sort-Object
+        }
+        else {
+            Write-Warning "No bloatware patterns found in configuration"
+            return @()
+        }
+    }
+    
+    # Get specific categories
+    $categoryList = @()
+    foreach ($category in $IncludeCategories) {
+        if ($bloatwareLists.ContainsKey($category)) {
+            $categoryList += $bloatwareLists[$category]
+        }
+        else {
+            Write-Warning "Bloatware category '$category' not found in configuration"
+        }
+    }
+    
+    return $categoryList | Sort-Object -Unique
+}
 
-    if ($bloatwareLists.ContainsKey('all')) {
-        return $bloatwareLists['all'] | Sort-Object
+<#
+.SYNOPSIS
+    Gets bloatware list for specific categories
+
+.DESCRIPTION
+    Returns bloatware patterns for specified categories, with fallback to all categories.
+
+.PARAMETER Categories
+    Array of category names to retrieve (gaming, oem, security, windows, all)
+
+.EXAMPLE
+    $oemBloatware = Get-BloatwareList -Categories @('oem')
+    $allBloatware = Get-BloatwareList -Categories @('all')
+#>
+function Get-BloatwareList {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param(
+        [Parameter()]
+        [string[]]$Categories = @('all')
+    )
+    
+    return Get-UnifiedBloatwareList -IncludeCategories $Categories
+}
+
+<#
+.SYNOPSIS
+    Gets available bloatware categories
+
+.DESCRIPTION
+    Returns list of available bloatware categories from configuration.
+
+.OUTPUTS
+    Array of category names
+
+.EXAMPLE
+    $categories = Get-BloatwareCategories
+#>
+function Get-BloatwareCategories {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param()
+    
+    $bloatwareLists = Get-BloatwareConfiguration
+    $categories = @($bloatwareLists.Keys | Where-Object { $_ -ne 'all' })
+    
+    if ($categories.Count -eq 0) {
+        return @('all')  # Fallback if no specific categories found
     }
-    else {
-        Write-Warning "No bloatware patterns found in configuration"
-        return @()
-    }
+    
+    return $categories + 'all'  # Include 'all' as an option
 }
 
 <#
@@ -1528,46 +1672,6 @@ function Test-ConfigProperty {
         [Parameter(Mandatory)]
         $Object,
         
-
-        function Resolve-InventoryFilePath {
-            [CmdletBinding()]
-            param(
-                [Parameter(Mandatory = $true)]
-                [ValidateNotNullOrEmpty()]
-                [string]$Category,
-
-                [Parameter()]
-                [string]$FileName
-            )
-
-            $inventoryRoot = Get-InventoryPath
-
-            if (-not (Test-Path $inventoryRoot)) {
-                New-Item -Path $inventoryRoot -ItemType Directory -Force | Out-Null
-            }
-
-            $sanitizedCategory = ($Category -replace '[^A-Za-z0-9]+', '-').Trim('-')
-            if ([string]::IsNullOrWhiteSpace($sanitizedCategory)) {
-                $sanitizedCategory = 'inventory'
-            }
-
-            if ([string]::IsNullOrWhiteSpace($FileName)) {
-                $FileName = "$sanitizedCategory-inventory.json"
-            }
-
-            if (-not [System.IO.Path]::GetExtension($FileName)) {
-                $FileName = "$FileName.json"
-            }
-
-            $fullPath = Join-Path $inventoryRoot $FileName
-
-            $parentDir = Split-Path -Parent $fullPath
-            if (-not (Test-Path $parentDir)) {
-                New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
-            }
-
-            return $fullPath
-        }
         [Parameter(Mandatory)]
         [string]$PropertyName,
         
@@ -1649,6 +1753,62 @@ function Test-ConfigProperty {
     }
 }
 
+<#
+.SYNOPSIS
+    Resolves the full path for inventory files
+
+.DESCRIPTION
+    Creates standardized file paths for inventory data storage with automatic directory creation.
+
+.PARAMETER Category
+    Category name for the inventory file
+
+.PARAMETER FileName
+    Optional specific filename (defaults to category-inventory.json)
+
+.OUTPUTS
+    String path to the inventory file
+#>
+function Resolve-InventoryFilePath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Category,
+
+        [Parameter()]
+        [string]$FileName
+    )
+
+    $inventoryRoot = Get-InventoryPath
+
+    if (-not (Test-Path $inventoryRoot)) {
+        New-Item -Path $inventoryRoot -ItemType Directory -Force | Out-Null
+    }
+
+    $sanitizedCategory = ($Category -replace '[^A-Za-z0-9]+', '-').Trim('-')
+    if ([string]::IsNullOrWhiteSpace($sanitizedCategory)) {
+        $sanitizedCategory = 'inventory'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($FileName)) {
+        $FileName = "$sanitizedCategory-inventory.json"
+    }
+
+    if (-not [System.IO.Path]::GetExtension($FileName)) {
+        $FileName = "$FileName.json"
+    }
+
+    $fullPath = Join-Path $inventoryRoot $FileName
+
+    $parentDir = Split-Path -Parent $fullPath
+    if (-not (Test-Path $parentDir)) {
+        New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
+    }
+
+    return $fullPath
+}
+
 #endregion
 
 # Export module functions
@@ -1661,6 +1821,8 @@ Export-ModuleMember -Function @(
     'Get-EssentialAppsConfiguration',
     'Get-UnifiedBloatwareList',
     'Get-UnifiedEssentialAppsList',
+    'Get-BloatwareList',
+    'Get-BloatwareCategories',
     'Save-Configuration',
     'Test-ConfigurationSchema',
     'Get-TempDirectoryPath',
@@ -1669,5 +1831,6 @@ Export-ModuleMember -Function @(
     'Get-InventoryPath',
     'Get-ScriptRootPath',
     'Save-InventoryFile',
-    'Import-InventoryFile'
+    'Import-InventoryFile',
+    'Resolve-InventoryFilePath'
 )
