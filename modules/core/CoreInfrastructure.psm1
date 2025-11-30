@@ -2681,7 +2681,8 @@ function Test-SystemRequirements {
         
         $actualStatus = if ($spEnabled) { 
             if ($spAutoEnabled) { 'Enabled (auto-enabled)' } else { 'Enabled' }
-        } else { 'Disabled' }
+        }
+        else { 'Disabled' }
         
         $spCheck = @{
             Name     = 'System Protection'
