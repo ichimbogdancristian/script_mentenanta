@@ -106,6 +106,7 @@ Write-Information "Configuration Path: $ConfigPath" -InformationAction Continue
 $script:MaintenanceSessionId = [guid]::NewGuid().ToString()
 $script:MaintenanceSessionTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $script:MaintenanceSessionStartTime = Get-Date
+$SessionStartTime = $script:MaintenanceSessionStartTime  # For backward compatibility
 Write-Information "Session ID: $script:MaintenanceSessionId" -InformationAction Continue
 Write-Information "Session Timestamp: $script:MaintenanceSessionTimestamp" -InformationAction Continue
 # Set session environment variables for modules to access
@@ -1264,17 +1265,25 @@ try {
                     }
                     else { $false }
                     
-                    Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
-                    
                     # If it's an array with a single valid object, extract it (FIX for pipeline contamination)
                     if ($result -is [array] -and $result.Count -eq 1 -and $hasSuccessKey) {
-                        Write-Information "   Extracting single result from array (pipeline contamination detected and fixed)" -InformationAction Continue
+                        Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracting single result from array (pipeline contamination detected and fixed)" -Data @{ Module = $task.Function }
                         $result = $result[0]
                         $hasValidStructure = $true
                         Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
+                    }
+                    elseif ($result -is [array] -and $result.Count -eq 2 -and $hasSuccessKey) {
+                        # Handle case where result is [result_object, performance_tracking_data]
+                        Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracting result from 2-element array" -Data @{ Module = $task.Function }
+                        $result = $result[0]
+                        $hasValidStructure = $true
+                        Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
+                    }
+                    else {
+                        Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
                         
                         # Collect module result for aggregation after fixing the format
-                        if ($script:ResultCollectionEnabled) {
+                        if ($script:ResultCollectionEnabled -and $hasValidStructure) {
                             try {
                                 $moduleDuration = ((Get-Date) - $taskStartTime).TotalSeconds
                                 $moduleStatus = if ($result.Success) { 'Success' } else { 'Failed' }
@@ -1285,7 +1294,7 @@ try {
                                     -ItemsProcessed $($result.ItemsProcessed -as [int]) `
                                     -DurationSeconds $moduleDuration
                                 Add-ModuleResult -Result $moduleResultObj
-                                Write-Information "     [Aggregation] Module result collected for reporting (format corrected)" -InformationAction Continue
+                                Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Module result collected for reporting (format corrected)" -Data @{ Module = $task.Name }
                             }
                             catch {
                                 Write-Warning "     [Aggregation] Failed to collect module result: $($_.Exception.Message)"

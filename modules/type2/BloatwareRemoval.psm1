@@ -118,6 +118,19 @@ function Invoke-BloatwareRemoval {
         $detectionResults = $null
         $detectionResults = Get-BloatwareAnalysis -Config $Config
         
+        # Validate detection results before proceeding
+        if (-not $detectionResults -or $detectionResults.Count -eq 0) {
+            Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware detected on system' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            $executionTime = (Get-Date) - $executionStartTime
+            return @{ 
+                Success        = $true
+                ItemsDetected  = 0
+                ItemsProcessed = 0
+                Duration       = $executionTime.TotalMilliseconds
+            }
+        }
+        
         # STEP 2: Compare detection with config to create diff list using centralized function
         # Use standardized config path structure
         $configDataPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\bloatware-list.json"

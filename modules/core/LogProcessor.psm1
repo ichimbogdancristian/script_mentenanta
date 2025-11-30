@@ -534,7 +534,7 @@ function Get-Type1AuditData {
         }
     }
     
-    Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Scanning Type1 audit data files (cache miss or bypassed)'
+    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Scanning Type1 audit data files (cache miss or bypassed)'
     
     $auditData = @{}
     $dataPath = Join-Path (Get-MaintenancePath 'TempRoot') 'data'
@@ -630,7 +630,7 @@ function Get-Type2ExecutionLogs {
         }
     }
     
-    Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Scanning Type2 execution logs (cache miss or bypassed)'
+    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Scanning Type2 execution logs (cache miss or bypassed)'
     
     $executionLogs = @{}
     $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') 'logs'

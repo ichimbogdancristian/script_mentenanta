@@ -180,21 +180,21 @@ function Get-HtmlTemplates {
                 Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Using enhanced v5.0 templates with modern design"
             }
             else {
-                # Fallback to v4 enhanced
-                $mainTemplateFile = 'report-template-v4-enhanced.html'
-                $moduleCardFile = 'components/module-card-enhanced-v5.html'
-                $cssFile = 'report-styles-v4-enhanced.css'
-                Write-Verbose "Using enhanced v4.0 templates (v5.0 not available)"
-                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced v5.0 templates not found, using v4.0"
+                # Fallback to modern-dashboard (available in config/templates)
+                $mainTemplateFile = 'modern-dashboard.html'
+                $moduleCardFile = 'module-card.html'
+                $cssFile = 'modern-dashboard.css'
+                Write-Verbose "Using modern-dashboard templates (v5.0 not available)"
+                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced v5.0 templates not found, using modern-dashboard"
             }
         }
         else {
-            # Fallback to v4 enhanced (old templates moved to archive)
-            $mainTemplateFile = 'report-template-v4-enhanced.html'
-            $moduleCardFile = 'components/module-card-enhanced-v5.html'
-            $cssFile = 'report-styles-v4-enhanced.css'
+            # Fallback to modern-dashboard (available in config/templates)
+            $mainTemplateFile = 'modern-dashboard.html'
+            $moduleCardFile = 'module-card.html'
+            $cssFile = 'modern-dashboard.css'
             
-            Write-Verbose "Using v4 enhanced templates (legacy mode disabled)"
+            Write-Verbose "Using modern-dashboard templates (legacy mode disabled)"
         }
         
         # Load main report template
@@ -453,7 +453,9 @@ function Get-ProcessedLogData {
                 }
             }
             else {
-                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Processed data file not found: $($summaryFiles[$key])"
+                # Use DEBUG for optional files like maintenance-log.json
+                $logLevel = if ($key -eq 'MaintenanceLog') { 'DEBUG' } else { 'WARNING' }
+                Write-LogEntry -Level $logLevel -Component 'REPORT-GENERATOR' -Message "Processed data file not found: $($summaryFiles[$key])"
             }
         }
         

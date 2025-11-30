@@ -1102,6 +1102,7 @@ function Initialize-ConfigurationSystem {
 # Note: Removed unused aliases (Get-MainConfig, Get-BloatwareList) as of v3.1
 # All code now uses full function names for clarity
 New-Alias -Name 'Get-UnifiedEssentialAppsList' -Value 'Get-EssentialAppsConfiguration' -Force
+Export-ModuleMember -Alias 'Get-UnifiedEssentialAppsList'
 
 #endregion
 
@@ -1337,10 +1338,9 @@ function Complete-PerformanceTracking {
         -Component $Context.Component `
         -Message $message
     
-    return @{
-        Duration = $duration
-        Status   = $Status
-    }
+    # Don't return anything - avoid pipeline contamination
+    # Performance data is already logged
+    [void]0
 }
 
 <#
@@ -2188,7 +2188,8 @@ function New-ModuleExecutionResult {
         AdditionalData     = $AdditionalData
     }
     
-    return $result
+    # Use Write-Output -NoEnumerate to prevent array wrapping
+    Write-Output -NoEnumerate $result
 }
 
 #endregion
