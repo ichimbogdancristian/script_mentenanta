@@ -103,8 +103,26 @@
     },
     "templates": {
       "mainTemplate": "report-template.html",
+      "enhancedV4Template": "report-template-v4-enhanced.html",
+      "enhancedV5Template": "report-template-enhanced-v5.html",
       "moduleTemplate": "task-card-template.html",
-      "styleSheet": "report-styles.css"
+      "enhancedV4ModuleTemplate": "components/module-card-enhanced.html",
+      "enhancedV5ModuleTemplate": "module-card-enhanced-v5.html",
+      "styleSheet": "report-styles.css",
+      "enhancedV4StyleSheet": "report-styles-v4-enhanced.css",
+      "enhancedV5StyleSheet": "report-styles-enhanced-v5.css"
+    },
+    "features": {
+      "v5Enhanced": {
+        "glassmorphism": true,
+        "modernAnimations": true,
+        "responsiveDesign": true,
+        "accessibilityOptimized": true,
+        "printOptimized": true,
+        "darkModeSupport": true,
+        "interactiveMetrics": true,
+        "performanceOptimized": true
+      }
     }
   }
 }

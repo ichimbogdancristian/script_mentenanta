@@ -168,11 +168,31 @@ function Get-HtmlTemplates {
         
         # Determine template filenames based on enhanced mode
         if ($UseEnhanced) {
-            $mainTemplateFile = 'report-template-v4-enhanced.html'
-            $moduleCardFile = 'components/module-card-enhanced.html'
-            $cssFile = 'report-styles-v4-enhanced.css'
+            # Try v5 enhanced first, then v4 enhanced
+            $v5Templates = @{
+                main = 'report-template-enhanced-v5.html'
+                card = 'module-card-enhanced-v5.html'
+                css = 'report-styles-enhanced-v5.css'
+            }
             
-            Write-Verbose "Using enhanced templates (v4.0 - Modern Dashboard)"
+            # Check if v5 templates are available
+            $v5Available = ($v5Templates.Values | ForEach-Object { Test-Path (Find-ConfigTemplate $_) }) -notcontains $false
+            
+            if ($v5Available) {
+                $mainTemplateFile = $v5Templates.main
+                $moduleCardFile = $v5Templates.card
+                $cssFile = $v5Templates.css
+                Write-Verbose "Using enhanced v5.0 templates (Modern Dashboard with Glassmorphism)"
+                Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Using enhanced v5.0 templates with modern design"
+            }
+            else {
+                # Fallback to v4 enhanced
+                $mainTemplateFile = 'report-template-v4-enhanced.html'
+                $moduleCardFile = 'components/module-card-enhanced.html'
+                $cssFile = 'report-styles-v4-enhanced.css'
+                Write-Verbose "Using enhanced v4.0 templates (v5.0 not available)"
+                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced v5.0 templates not found, using v4.0"
+            }
         }
         else {
             # Fallback to v4 enhanced (old templates moved to archive)
@@ -212,7 +232,7 @@ function Get-HtmlTemplates {
             throw "Module card template not found: $moduleCardPath"
         }
         
-        # Load CSS styles
+        # Load CSS styles with enhanced fallback chain
         $cssPath = Find-ConfigTemplate $cssFile
         if (Test-Path $cssPath) {
             $templates.CSS = Get-Content $cssPath -Raw
@@ -220,10 +240,26 @@ function Get-HtmlTemplates {
         }
         else {
             if ($UseEnhanced) {
-                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced CSS not found, using v4 enhanced CSS as fallback"
-                $cssPath = Find-ConfigTemplate 'report-styles-v4-enhanced.css'
-                if (Test-Path $cssPath) {
-                    $templates.CSS = Get-Content $cssPath -Raw
+                # Try v5 enhanced, then v4 enhanced, then standard
+                $fallbackPaths = @(
+                    'report-styles-enhanced-v5.css',
+                    'report-styles-v4-enhanced.css',
+                    'report-styles.css'
+                )
+                
+                $cssLoaded = $false
+                foreach ($fallbackCss in $fallbackPaths) {
+                    $fallbackPath = Find-ConfigTemplate $fallbackCss
+                    if (Test-Path $fallbackPath) {
+                        $templates.CSS = Get-Content $fallbackPath -Raw
+                        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Using fallback CSS: $fallbackCss"
+                        $cssLoaded = $true
+                        break
+                    }
+                }
+                
+                if (-not $cssLoaded) {
+                    throw "No CSS styles found in fallback chain"
                 }
             }
             else {
