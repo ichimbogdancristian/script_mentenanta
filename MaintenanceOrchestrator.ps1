@@ -1612,8 +1612,13 @@ try {
         -ModuleResults $TaskResults `
         -ExecutionStartTime $StartTime `
         -IsDryRun:($executionMode -eq 'DryRun')
-    if ($manifestPath -and (Test-Path $manifestPath)) {
-        Write-Information "   Session manifest successfully created" -InformationAction Continue
+    if ($manifestPath) {
+        if (Test-Path $manifestPath) {
+            Write-Information "   Session manifest successfully created" -InformationAction Continue
+        }
+        else {
+            Write-Information "   Session manifest path returned but file not found" -InformationAction Continue
+        }
     }
     else {
         Write-Information "   Session manifest creation encountered issues" -InformationAction Continue

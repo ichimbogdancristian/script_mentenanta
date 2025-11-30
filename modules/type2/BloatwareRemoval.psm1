@@ -348,10 +348,9 @@ function Remove-DetectedBloatware {
             Status            = "No bloatware detected"
         }
 
-        $emptyDiffPath = Save-OrganizedFile -Data $emptyAnalysis -FileType 'Data' -Category 'apps' -FileName 'bloatware-analysis' -Format 'JSON'
-        if ($emptyDiffPath) {
-            Write-Information "   Empty bloatware analysis saved: $emptyDiffPath" -InformationAction Continue
-        }
+        $emptyDiffPath = Get-SessionPath -Category 'data' -SubCategory 'apps' -FileName 'bloatware-analysis.json'
+        $emptyAnalysis | ConvertTo-Json -Depth 10 -WarningAction SilentlyContinue | Out-File -FilePath $emptyDiffPath -Encoding UTF8
+        Write-Information "   Empty bloatware analysis saved: $emptyDiffPath" -InformationAction Continue
 
         return @{
             TotalProcessed = 0
@@ -378,11 +377,10 @@ function Remove-DetectedBloatware {
             Status            = "Bloatware detected and processed"
         }
 
-        # Persist analysis using organized file system
-        $analysisPath = Save-OrganizedFile -Data $bloatwareAnalysis -FileType 'Data' -Category 'apps' -FileName 'bloatware-analysis' -Format 'JSON'
-        if ($analysisPath) {
-            Write-Information "   Bloatware analysis saved: $analysisPath" -InformationAction Continue
-        }
+        # Persist analysis using standardized paths
+        $analysisPath = Get-SessionPath -Category 'data' -SubCategory 'apps' -FileName 'bloatware-analysis.json'
+        $bloatwareAnalysis | ConvertTo-Json -Depth 10 -WarningAction SilentlyContinue | Out-File -FilePath $analysisPath -Encoding UTF8
+        Write-Information "   Bloatware analysis saved: $analysisPath" -InformationAction Continue
 
         # Create comprehensive diff data
         $diffData = @{
@@ -396,14 +394,17 @@ function Remove-DetectedBloatware {
             DryRun            = $DryRun.IsPresent
         }
 
-        # Save diff via organized file system
-        $diffFilePath = Save-OrganizedFile -Data $diffData -FileType 'Data' -Category 'apps' -FileName 'bloatware-diff' -Format 'JSON'
-        if ($diffFilePath) {
-            Write-Information "   Diff file created: $diffFilePath" -InformationAction Continue
-        }
+        # Save diff via standardized paths
+        $diffFilePath = Get-SessionPath -Category 'data' -SubCategory 'apps' -FileName 'bloatware-diff.json'
+        $diffData | ConvertTo-Json -Depth 10 -WarningAction SilentlyContinue | Out-File -FilePath $diffFilePath -Encoding UTF8
+        Write-Information "   Diff file created: $diffFilePath" -InformationAction Continue
 
-        # Create human-readable summary in organized file system
-        $summaryPath = Get-OrganizedFilePath -FileType 'Report' -Category 'apps' -FileName 'bloatware-summary.txt'
+        # Create human-readable summary
+        $summaryPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'reports\bloatware-summary.txt'
+        $summaryDir = Split-Path -Parent $summaryPath
+        if (-not (Test-Path $summaryDir)) {
+            New-Item -Path $summaryDir -ItemType Directory -Force | Out-Null
+        }
         $summaryContent = @"
 BLOATWARE REMOVAL SUMMARY
 ========================

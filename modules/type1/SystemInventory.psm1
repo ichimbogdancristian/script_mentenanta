@@ -174,19 +174,21 @@ function Get-SystemInventory {
         $duration = [math]::Round($inventoryData.Metadata.Duration, 2)
         Write-Information "  ✅ System inventory completed in $duration seconds" -InformationAction Continue
 
-        # Auto-save inventory data using organized file system
+        # Auto-save inventory data using standardized paths
         try {
             # Save main inventory data
-            $inventoryPath = Save-OrganizedFile -Data $inventoryData -FileType 'Data' -Category 'inventory' -FileName 'system-inventory' -Format 'JSON'
-            if ($inventoryPath) {
-                Write-Information "  💾 System inventory saved to: $inventoryPath" -InformationAction Continue
+            if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
+                $inventoryPath = Get-AuditResultsPath -ModuleName 'SystemInventory'
+            } else {
+                $inventoryPath = Get-SessionPath -Category 'data' -SubCategory 'inventory' -FileName 'system-inventory.json'
             }
+            $inventoryData | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $inventoryPath -Encoding UTF8
+            Write-Information "  💾 System inventory saved to: $inventoryPath" -InformationAction Continue
 
             # Also save installed software as a separate list for easier comparison
-            $installedSoftwarePath = Save-OrganizedFile -Data $inventoryData.InstalledSoftware -FileType 'Data' -Category 'inventory' -FileName 'installed-software' -Format 'JSON'
-            if ($installedSoftwarePath) {
-                Write-Information "  📦 Installed software list saved to: $installedSoftwarePath" -InformationAction Continue
-            }
+            $installedSoftwarePath = Get-SessionPath -Category 'data' -SubCategory 'inventory' -FileName 'installed-software.json'
+            $inventoryData.InstalledSoftware | ConvertTo-Json -Depth 10 -WarningAction SilentlyContinue | Out-File -FilePath $installedSoftwarePath -Encoding UTF8
+            Write-Information "  📦 Installed software list saved to: $installedSoftwarePath" -InformationAction Continue
         }
         catch {
             Write-Warning "Failed to save inventory data: $_"

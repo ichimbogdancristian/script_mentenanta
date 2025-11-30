@@ -856,11 +856,26 @@ function New-SecurityReport {
     param($AuditResults)
 
     if ($PSCmdlet.ShouldProcess("Security audit report", "Generate security audit report and data files")) {
-        # Save audit results using organized file system  
-        $auditDataPath = Save-OrganizedFile -Data $AuditResults -FileType 'Data' -Category 'security' -FileName 'security-audit' -Format 'JSON'
+        # Save audit results using standardized path function
+        try {
+            if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
+                $auditDataPath = Get-AuditResultsPath -ModuleName 'Security'
+            } else {
+                $auditDataPath = Get-SessionPath -Category 'data' -FileName 'security-audit.json'
+            }
+            $AuditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $auditDataPath -Encoding UTF8
+        }
+        catch {
+            Write-Warning "Failed to save audit results: $($_.Exception.Message)"
+            $auditDataPath = "N/A"
+        }
         
         # Generate text report path
-        $reportPath = Get-OrganizedFilePath -FileType 'Report' -FileName 'security-audit.txt'
+        $reportPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'reports\security-audit.txt'
+        $reportDir = Split-Path -Parent $reportPath
+        if (-not (Test-Path $reportDir)) {
+            New-Item -Path $reportDir -ItemType Directory -Force | Out-Null
+        }
 
         $report = @"
 WINDOWS SECURITY AUDIT REPORT

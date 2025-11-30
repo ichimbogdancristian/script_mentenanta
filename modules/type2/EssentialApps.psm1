@@ -719,24 +719,28 @@ function Save-AppDiffList {
         $diffAnalysis.DetailedAnalysis = @{ ByCategory = $byCategory; ByPackageManager = @{ Winget = @{ Count = $wingetPkgArr.Count; Apps = $wingetPkgArr }; Chocolatey = @{ Count = $chocoPkgArr.Count; Apps = $chocoPkgArr }; Manual = @{ Count = $manualPkgArr.Count; Apps = $manualPkgArr } }; RecommendedActions = $recs }
 
         # Save outputs
-        $diffPath = Save-OrganizedFile -Data $diffAnalysis -FileType 'Data' -Category 'apps' -FileName 'essential-apps-analysis' -Format 'JSON'
-        if ($diffPath) { Write-Information "   App diff analysis saved to: $diffPath" -InformationAction Continue }
+        $diffPath = Get-SessionPath -Category 'data' -SubCategory 'apps' -FileName 'essential-apps-analysis.json'
+        $diffAnalysis | ConvertTo-Json -Depth 10 -WarningAction SilentlyContinue | Out-File -FilePath $diffPath -Encoding UTF8
+        Write-Information "   App diff analysis saved to: $diffPath" -InformationAction Continue
 
         $missingAppsPath = $null
         $installDataPath = $null
         if ($MissingApps.Count -gt 0) {
-            $missingAppsPath = Save-OrganizedFile -Data $MissingApps -FileType 'Data' -Category 'apps' -FileName 'missing-apps' -Format 'JSON'
-            if ($missingAppsPath) { Write-Information "   Missing apps list saved to: $missingAppsPath" -InformationAction Continue }
+            $missingAppsPath = Get-SessionPath -Category 'data' -SubCategory 'apps' -FileName 'missing-apps.json'
+            $MissingApps | ConvertTo-Json -Depth 10 -WarningAction SilentlyContinue | Out-File -FilePath $missingAppsPath -Encoding UTF8
+            Write-Information "   Missing apps list saved to: $missingAppsPath" -InformationAction Continue
 
             $installationData = @{ Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"); TotalMissingApps = $MissingApps.Count; InstallationMethods = @{ Winget = @{ Count = $wingetApps.Count; Apps = $wingetPkgArr }; Chocolatey = @{ Count = $chocoApps.Count; Apps = $chocoPkgArr }; Manual = @{ Count = $manualApps.Count; Apps = $manualPkgArr } } }
-            $installDataPath = Save-OrganizedFile -Data $installationData -FileType 'Data' -Category 'apps' -FileName 'installation-methods' -Format 'JSON'
-            if ($installDataPath) { Write-Information "   Installation methods data saved to: $installDataPath" -InformationAction Continue }
+            $installDataPath = Get-SessionPath -Category 'data' -SubCategory 'apps' -FileName 'installation-methods.json'
+            $installationData | ConvertTo-Json -Depth 10 -WarningAction SilentlyContinue | Out-File -FilePath $installDataPath -Encoding UTF8
+            Write-Information "   Installation methods data saved to: $installDataPath" -InformationAction Continue
         }
 
         $installedAppsPath = $null
         if ($InstalledApps.Count -gt 0) {
-            $installedAppsPath = Save-OrganizedFile -Data $InstalledApps -FileType 'Data' -Category 'apps' -FileName 'installed-essential-apps' -Format 'JSON'
-            if ($installedAppsPath) { Write-Information "   Installed essential apps list saved to: $installedAppsPath" -InformationAction Continue }
+            $installedAppsPath = Get-SessionPath -Category 'data' -SubCategory 'apps' -FileName 'installed-essential-apps.json'
+            $InstalledApps | ConvertTo-Json -Depth 10 -WarningAction SilentlyContinue | Out-File -FilePath $installedAppsPath -Encoding UTF8
+            Write-Information "   Installed essential apps list saved to: $installedAppsPath" -InformationAction Continue
         }
 
         return @{ DiffPath = $diffPath; MissingAppsPath = $missingAppsPath; InstallDataPath = $installDataPath; InstalledAppsPath = $installedAppsPath }
