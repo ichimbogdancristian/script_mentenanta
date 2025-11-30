@@ -1,0 +1,172 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Windows Maintenance Security Configuration",
+    "description": "Security enhancement policies and settings for system hardening",
+    "version": "3.0.0",
+    "lastModified": "2025-12-01",
+    "security": {
+        "enableDigitalSignatureVerification": true,
+        "enableRealTimeProtection": true,
+        "defenderIntegration": true,
+        "enableAuditLogging": true,
+        "enableMalwareScan": false,
+        "enableNetworkProtection": true,
+        "enableExploitProtection": true,
+        "enableControlledFolderAccess": false,
+        "defenderSettings": {
+            "realTimeProtection": true,
+            "cloudProtection": "Advanced",
+            "behaviorMonitoring": true,
+            "sampleSubmission": "AlwaysPrompt",
+            "scanArchives": true,
+            "scanRemovableMedia": true,
+            "scanNetworkFiles": false
+        }
+    },
+    "compliance": {
+        "enableCISBaseline": true,
+        "enforceExecutionPolicy": "RemoteSigned",
+        "enableUAC": true,
+        "uacLevel": "ConsentPrompt",
+        "enableSecureBoot": true,
+        "requireStrongPasswords": true,
+        "minimumPasswordLength": 12,
+        "passwordComplexity": true,
+        "lockoutThreshold": 5,
+        "lockoutDuration": 30
+    },
+    "firewall": {
+        "enableFirewall": true,
+        "profiles": {
+            "domain": {
+                "enabled": true,
+                "inboundAction": "Block",
+                "outboundAction": "Allow"
+            },
+            "private": {
+                "enabled": true,
+                "inboundAction": "Block",
+                "outboundAction": "Allow"
+            },
+            "public": {
+                "enabled": true,
+                "inboundAction": "Block",
+                "outboundAction": "Allow"
+            }
+        },
+        "logDroppedPackets": true,
+        "logSuccessfulConnections": false
+    },
+    "services": {
+        "securityServices": {
+            "required": [
+                "WinDefend",
+                "SecurityHealthService",
+                "WdNisSvc",
+                "wscsvc",
+                "EventLog",
+                "Dnscache"
+            ],
+            "recommended": [
+                "BITS",
+                "wuauserv",
+                "CryptSvc",
+                "TrustedInstaller"
+            ]
+        },
+        "disableUnsafeServices": false,
+        "unsafeServices": [
+            "RemoteRegistry",
+            "RemoteAccess",
+            "TlntSvr",
+            "simptcp"
+        ]
+    },
+    "updates": {
+        "enableAutomaticUpdates": true,
+        "installSecurityUpdates": true,
+        "autoRestart": false,
+        "checkFrequency": "Daily",
+        "installTime": "03:00"
+    },
+    "privacy": {
+        "disableTelemetry": true,
+        "telemetryLevel": "Security",
+        "disableAdvertisingId": true,
+        "disableLocationTracking": true,
+        "disableActivityHistory": true,
+        "disableDiagnosticData": true
+    },
+    "networkSecurity": {
+        "enableSMBEncryption": true,
+        "disableSMBv1": true,
+        "enableLLMNR": false,
+        "enableNetBIOS": false,
+        "enableIPv6": true,
+        "dnsOverHTTPS": false
+    },
+    "systemHardening": {
+        "enableDEP": true,
+        "enableASLR": true,
+        "enableSEHOP": true,
+        "disableAutoRun": true,
+        "disableAutoPlay": true,
+        "hideFileExtensions": false,
+        "showHiddenFiles": true
+    },
+    "audit": {
+        "enableAuditPolicy": true,
+        "auditCategories": {
+            "logonEvents": true,
+            "accountManagement": true,
+            "objectAccess": false,
+            "policyChange": true,
+            "privilegeUse": true,
+            "processTracking": false,
+            "systemEvents": true
+        },
+        "auditLogSize": 20480,
+        "auditLogRetention": "OverwriteAsNeeded"
+    },
+    "encryption": {
+        "enableBitLocker": false,
+        "bitLockerMethod": "XTS-AES-256",
+        "requireTPM": true,
+        "backupRecoveryKey": true
+    },
+    "recommendations": {
+        "enforceRecommendations": true,
+        "autoApplyLowRisk": false,
+        "requireApprovalForHighRisk": true,
+        "notifyOnSecurityIssues": true
+    },
+    "exclusions": {
+        "defenderExclusions": {
+            "paths": [],
+            "processes": [],
+            "extensions": []
+        },
+        "auditExclusions": {
+            "services": [],
+            "processes": []
+        }
+    },
+    "advanced": {
+        "enableKernelMode": false,
+        "enableHypervisorProtection": false,
+        "enableSecureMemory": true,
+        "enableCredentialGuard": false,
+        "enableDeviceGuard": false
+    },
+    "notifications": {
+        "enableSecurityNotifications": true,
+        "notificationLevel": "Important",
+        "emailNotifications": false,
+        "emailAddress": ""
+    },
+    "dryRunDefaults": {
+        "simulateChanges": true,
+        "verboseLogging": true,
+        "skipDangerousOperations": true
+    }
+}

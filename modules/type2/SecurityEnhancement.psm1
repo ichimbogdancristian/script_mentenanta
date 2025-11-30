@@ -266,12 +266,22 @@ function Get-SecurityConfiguration {
     param()
     
     try {
+        # Use CoreInfrastructure function if available
+        if (Get-Command 'Get-SecurityConfiguration' -Module 'CoreInfrastructure' -ErrorAction SilentlyContinue) {
+            $config = & (Get-Module CoreInfrastructure) { Get-SecurityConfiguration }
+            if ($config) {
+                Write-LogEntry -Level 'INFO' -Component 'SECURITY-ENHANCEMENT' -Message "Security configuration loaded via CoreInfrastructure"
+                return $config
+            }
+        }
+        
+        # Fallback to direct file access
         $configRoot = $env:MAINTENANCE_CONFIG_ROOT
         if (-not $configRoot) {
             $configRoot = Join-Path $PSScriptRoot '..\..\config'
         }
         
-        $securityConfigPath = Join-Path $configRoot 'security-config.json'
+        $securityConfigPath = Join-Path $configRoot 'settings\security-config.json'
         
         if (-not (Test-Path $securityConfigPath)) {
             Write-Warning "security-config.json not found at: $securityConfigPath"

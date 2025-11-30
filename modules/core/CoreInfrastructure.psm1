@@ -464,7 +464,7 @@ function Get-JsonConfiguration {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('Main', 'Bloatware', 'EssentialApps', 'AppUpgrade', 'SystemOptimization', 'Logging', 'ReportTemplates')]
+        [ValidateSet('Main', 'Bloatware', 'EssentialApps', 'AppUpgrade', 'SystemOptimization', 'Security', 'Logging', 'ReportTemplates')]
         [string]$ConfigType,
         
         [Parameter()]
@@ -481,6 +481,7 @@ function Get-JsonConfiguration {
         'EssentialApps'      = 'lists\essential-apps.json'
         'AppUpgrade'         = 'lists\app-upgrade-config.json'
         'SystemOptimization' = 'lists\system-optimization-config.json'
+        'Security'           = 'settings\security-config.json'
         'Logging'            = 'settings\logging-config.json'
         'ReportTemplates'    = 'templates\report-template-config.json'
     }
@@ -492,6 +493,7 @@ function Get-JsonConfiguration {
         'EssentialApps'      = @{ all = @() }
         'AppUpgrade'         = @{ all = @() }
         'SystemOptimization' = @{ startupPrograms = @{ safeToDisablePatterns = @() }; services = @{ safeToDisable = @() } }
+        'Security'           = @{ security = @{ enableDigitalSignatureVerification = $true; enableRealTimeProtection = $true; defenderIntegration = $true; enableAuditLogging = $true }; compliance = @{ enableCISBaseline = $true; enforceExecutionPolicy = 'RemoteSigned' } }
         'Logging'            = @{ levels = @('INFO', 'WARNING', 'ERROR') }
         'ReportTemplates'    = @{}
     }
@@ -751,6 +753,26 @@ function Get-SystemOptimizationConfiguration {
     )
     
     return Get-JsonConfiguration -ConfigType 'SystemOptimization' -ConfigPath $ConfigPath
+}
+
+<#
+.SYNOPSIS
+    Gets security configuration
+
+.DESCRIPTION
+    Loads security-config.json configuration for security enhancement module
+
+.OUTPUTS
+    Hashtable with security configuration
+#>
+function Get-SecurityConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+    )
+    
+    return Get-JsonConfiguration -ConfigType 'Security' -ConfigPath $ConfigPath
 }
 
 <#
@@ -3223,7 +3245,7 @@ function Get-ChangeLog {
 Export-ModuleMember -Function @(
     'Initialize-GlobalPathDiscovery', 'Get-MaintenancePaths', 'Get-MaintenancePath', 'Test-MaintenancePathsIntegrity',
     'Initialize-ConfigurationSystem', 'Get-ConfigFilePath', 'Get-JsonConfiguration', 'Get-MainConfiguration', 'Get-LoggingConfiguration',
-    'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-SystemOptimizationConfiguration', 'Get-ReportTemplatesConfiguration',
+    'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-SystemOptimizationConfiguration', 'Get-SecurityConfiguration', 'Get-ReportTemplatesConfiguration',
     'Get-CachedConfiguration', 'Test-ConfigurationIntegrity', 'Test-ConfigurationSchema', 'Get-NestedProperty',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
     'Write-DetectionLog',
