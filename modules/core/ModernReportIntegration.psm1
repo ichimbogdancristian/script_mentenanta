@@ -81,59 +81,59 @@ function Test-ModernReportGeneration {
     try {
         # Create mock processed data for testing
         $mockData = @{
-            ModuleResults = @{
-                'BloatwareRemoval' = @{
-                    Status = 'Success'
-                    Duration = '45s'
-                    TotalOperations = 15
+            ModuleResults  = @{
+                'BloatwareRemoval'   = @{
+                    Status               = 'Success'
+                    Duration             = '45s'
+                    TotalOperations      = 15
                     SuccessfulOperations = 12
-                    FailedOperations = 2
-                    SkippedOperations = 1
-                    ProgressPercent = 100
+                    FailedOperations     = 2
+                    SkippedOperations    = 1
+                    ProgressPercent      = 100
                 }
-                'EssentialApps' = @{
-                    Status = 'Completed'
-                    Duration = '120s'
-                    TotalOperations = 8
+                'EssentialApps'      = @{
+                    Status               = 'Completed'
+                    Duration             = '120s'
+                    TotalOperations      = 8
                     SuccessfulOperations = 8
-                    FailedOperations = 0
-                    SkippedOperations = 0
-                    ProgressPercent = 100
+                    FailedOperations     = 0
+                    SkippedOperations    = 0
+                    ProgressPercent      = 100
                 }
                 'SystemOptimization' = @{
-                    Status = 'Warning'
-                    Duration = '78s'
-                    TotalOperations = 23
+                    Status               = 'Warning'
+                    Duration             = '78s'
+                    TotalOperations      = 23
                     SuccessfulOperations = 20
-                    FailedOperations = 1
-                    SkippedOperations = 2
-                    ProgressPercent = 95
+                    FailedOperations     = 1
+                    SkippedOperations    = 2
+                    ProgressPercent      = 95
                 }
-                'TelemetryDisable' = @{
-                    Status = 'Success'
-                    Duration = '32s'
-                    TotalOperations = 12
+                'TelemetryDisable'   = @{
+                    Status               = 'Success'
+                    Duration             = '32s'
+                    TotalOperations      = 12
                     SuccessfulOperations = 12
-                    FailedOperations = 0
-                    SkippedOperations = 0
-                    ProgressPercent = 100
+                    FailedOperations     = 0
+                    SkippedOperations    = 0
+                    ProgressPercent      = 100
                 }
-                'WindowsUpdates' = @{
-                    Status = 'Success'
-                    Duration = '156s'
-                    TotalOperations = 6
+                'WindowsUpdates'     = @{
+                    Status               = 'Success'
+                    Duration             = '156s'
+                    TotalOperations      = 6
                     SuccessfulOperations = 6
-                    FailedOperations = 0
-                    SkippedOperations = 0
-                    ProgressPercent = 100
+                    FailedOperations     = 0
+                    SkippedOperations    = 0
+                    ProgressPercent      = 100
                 }
             }
             SessionSummary = @{
-                TotalModules = 5
-                SuccessfulModules = 4
+                TotalModules       = 5
+                SuccessfulModules  = 4
                 TotalExecutionTime = '7 minutes 31 seconds'
                 OverallHealthScore = 89
-                SecurityScore = 92
+                SecurityScore      = 92
             }
         }
         
@@ -196,9 +196,9 @@ function Test-ModernTemplateFiles {
     }
     
     $result = @{
-        Valid = ($missingFiles.Count -eq 0)
-        ValidFiles = $validFiles
-        MissingFiles = $missingFiles
+        Valid             = ($missingFiles.Count -eq 0)
+        ValidFiles        = $validFiles
+        MissingFiles      = $missingFiles
         TemplateDirectory = $templateDir
     }
     
@@ -278,10 +278,10 @@ function Invoke-CompleteReportTest {
         Write-Host "=" * 60 -ForegroundColor Gray
         
         return @{
-            Success = $true
-            ReportPath = $testReportPath
+            Success            = $true
+            ReportPath         = $testReportPath
             TemplateValidation = $templateValidation
-            ValidationResults = $validations
+            ValidationResults  = $validations
         }
     }
     catch {
@@ -291,7 +291,7 @@ function Invoke-CompleteReportTest {
         
         return @{
             Success = $false
-            Error = $_.Exception.Message
+            Error   = $_.Exception.Message
         }
     }
 }
