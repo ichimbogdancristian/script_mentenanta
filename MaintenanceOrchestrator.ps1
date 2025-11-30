@@ -125,27 +125,7 @@ $InventoryDir = Join-Path $TempRoot 'inventory'
     }
 }
 Write-Information "Temp Root Directory: $TempRoot" -InformationAction Continue
-# Initialize Session-based Cache Management
-$SessionStartTime = Get-Date
-$CacheTimeoutMinutes = 5  # Cache inventory data for 5 minutes within same session
-$UseInventoryCache = $false
-# Check if recent inventory data exists and is within cache timeout
-$recentInventory = Get-ChildItem -Path $InventoryDir -Filter "system-inventory-*.json" -ErrorAction SilentlyContinue |
-Sort-Object LastWriteTime -Descending |
-Select-Object -First 1
-if ($recentInventory) {
-    $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
-    if ($cacheAge.TotalMinutes -le $CacheTimeoutMinutes) {
-        $UseInventoryCache = $true
-        Write-Information "    Recent inventory data found (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes) - caching enabled" -InformationAction Continue
-    }
-    else {
-        Write-Information "   Inventory data is $([math]::Round($cacheAge.TotalMinutes, 1)) minutes old - will refresh" -InformationAction Continue
-    }
-}
-else {
-    Write-Information "   No cached inventory data found - will collect fresh data" -InformationAction Continue
-}
+
 # Set up log file
 if (-not $LogFilePath) {
     $LogFilePath = if ($env:SCRIPT_LOG_FILE) {
@@ -160,7 +140,7 @@ Write-Information "Log File: $LogFilePath" -InformationAction Continue
 
 #region Patch 2: Initialize Result Collection (v3.1)
 Write-Information "`nInitializing session result collection..." -InformationAction Continue
-$ProcessedDataPath = Join-Path $TempRoot 'processed'
+$ProcessedDataPath = $script:ProjectPaths.Processed
 if (-not (Test-Path $ProcessedDataPath)) {
     New-Item -Path $ProcessedDataPath -ItemType Directory -Force | Out-Null
 }
@@ -215,7 +195,7 @@ $Type2Modules = @(
 )
 $Type2ModulesPath = Join-Path $ModulesPath 'type2'
 foreach ($moduleName in $CoreModules) {
-    $modulePath = Join-Path $CoreModulesPath "$moduleName.psm1"
+    $modulePath = Join-Path $script:ProjectPaths.Core "$moduleName.psm1"
     try {
         if (-not (Test-Path $modulePath)) {
             throw "Module file not found: $modulePath"
@@ -297,37 +277,16 @@ foreach ($moduleName in $Type2Modules) {
     }
 }
 
-#region FIX #1: Create Unified Global Path Object
-Write-Information "`nCreating unified global path object..." -InformationAction Continue
-try {
-    $script:ProjectPaths = @{
-        ProjectRoot = $env:MAINTENANCE_PROJECT_ROOT
-        ConfigRoot  = $env:MAINTENANCE_CONFIG_ROOT
-        ModulesRoot = $env:MAINTENANCE_MODULES_ROOT
-        TempRoot    = $env:MAINTENANCE_TEMP_ROOT
-        TempFiles   = Join-Path $env:MAINTENANCE_TEMP_ROOT 'data'
-        Config      = $env:MAINTENANCE_CONFIG_ROOT
-        ParentDir   = Split-Path -Parent $env:MAINTENANCE_PROJECT_ROOT
-        Logs        = Join-Path $env:MAINTENANCE_TEMP_ROOT 'logs'
-        Reports     = Join-Path $env:MAINTENANCE_TEMP_ROOT 'reports'
-        Temp        = Join-Path $env:MAINTENANCE_TEMP_ROOT 'temp'
+#region Validate Critical Paths
+# Validate all critical paths exist (already created earlier)
+$criticalPaths = @('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot')
+foreach ($pathKey in $criticalPaths) {
+    if (-not (Test-Path $script:ProjectPaths[$pathKey])) {
+        Write-Error "Required path not found: $pathKey = $($script:ProjectPaths[$pathKey])"
+        exit 1
     }
-    # Validate all critical paths exist
-    $criticalPaths = @('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot')
-    foreach ($pathKey in $criticalPaths) {
-        if (-not (Test-Path $script:ProjectPaths[$pathKey])) {
-            throw "Required path not found: $pathKey = $($script:ProjectPaths[$pathKey])"
-        }
-    }
-    Write-Information "   Global project paths initialized:" -InformationAction Continue
-    Write-Information "    - TempFiles: $($script:ProjectPaths.TempFiles)" -InformationAction Continue
-    Write-Information "    - Config: $($script:ProjectPaths.Config)" -InformationAction Continue
-    Write-Information "    - Logs: $($script:ProjectPaths.Logs)" -InformationAction Continue
 }
-catch {
-    Write-Error "Failed to create global path object: $($_.Exception.Message)"
-    exit 1
-}
+Write-Information "   Critical paths validated" -InformationAction Continue
 #endregion
 #region FIX #2: Validate CoreInfrastructure Functions
 Write-Information "`nValidating CoreInfrastructure module..." -InformationAction Continue
@@ -529,7 +488,7 @@ try {
             $coreModule = Get-Module -Name CoreInfrastructure -ErrorAction SilentlyContinue
             if (-not $coreModule) {
                 Write-Information "  CoreInfrastructure module not found, attempting to re-import..." -InformationAction Continue
-                $coreModulePath = Join-Path $CoreModulesPath "CoreInfrastructure.psm1"
+                $coreModulePath = Join-Path $script:ProjectPaths.Core "CoreInfrastructure.psm1"
                 Import-Module $coreModulePath -Force -Global -ErrorAction Stop
                 Write-Information "   CoreInfrastructure module re-imported" -InformationAction Continue
             }
@@ -620,7 +579,7 @@ try {
         
         # Initialize file organization system first (required by logging system)
         try {
-            $fileOrgResult = Initialize-SessionFileOrganization -SessionRoot $TempRoot -ErrorAction Stop
+            $fileOrgResult = Initialize-SessionFileOrganization -SessionRoot $script:ProjectPaths.TempRoot -ErrorAction Stop
             if ($fileOrgResult) {
                 Write-Information "   File organization system initialized" -InformationAction Continue
             }
@@ -636,7 +595,7 @@ try {
         # Initialize temp_files directory structure (v3.0 requirement for Type1/Type2 module flow)
         try {
             Write-Information "  Initializing temp_files directory structure..." -InformationAction Continue
-            $tempStructureValid = Initialize-SessionFileOrganization -SessionRoot $TempRoot
+            $tempStructureValid = Initialize-SessionFileOrganization -SessionRoot $script:ProjectPaths.TempRoot
             if ($tempStructureValid) {
                 Write-Information "   Temp files directory structure validated/created" -InformationAction Continue
             }
@@ -650,7 +609,7 @@ try {
         }
         # Initialize logging system (depends on file organization)
         try {
-            $loggingInitResult = Initialize-LoggingSystem -BaseLogPath $MainLogFile -ErrorAction Stop
+            $loggingInitResult = Initialize-LoggingSystem -BaseLogPath $script:ProjectPaths.MainLogFile -ErrorAction Stop
             if ($loggingInitResult) {
                 Write-Information "   Logging system initialized" -InformationAction Continue
                 # LoggingManager functions are now available
@@ -758,34 +717,6 @@ try {
     }
     #endregion
     #region Session Management Functions
-    <#
-.SYNOPSIS
-    Gets a standardized filename using the current session timestamp
-.DESCRIPTION
-    Provides a consistent file naming pattern across all modules for the current maintenance session
-.PARAMETER BaseName
-    The base name for the file (without timestamp or extension)
-.PARAMETER Extension
-    The file extension (optional)
-.EXAMPLE
-    Get-SessionFileName -BaseName "maintenance-report" -Extension "html"
-    Returns: maintenance-report-20241012-110054.html
-#>
-    function Get-SessionFileName {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$BaseName,
-            [Parameter()]
-            [string]$Extension
-        )
-        $fileName = "$BaseName-$script:MaintenanceSessionTimestamp"
-        if ($Extension) {
-            $fileName += ".$Extension"
-        }
-        return $fileName
-    }
-    # Export session functions globally so modules can access them
-    $script:GetSessionFileName = ${function:Get-SessionFileName}
     #endregion
     #region Helper Functions
     function Invoke-TaskWithParameters {
@@ -805,7 +736,6 @@ try {
             'BloatwareRemoval' {
                 $params = @{ Config = $Config }
                 if ($DryRun) { $params.DryRun = $true }
-                if ($UseInventoryCache) { $params.UseCache = $true }
                 return & $FunctionName @params
             }
             'TelemetryDisable' {
@@ -814,15 +744,13 @@ try {
                 return & $FunctionName @params
             }
             'BloatwareDetection' {
-                # Call with intelligent caching
+                # Call without caching (not implemented in module)
                 $params = @{ Config = $Config }
-                if ($UseInventoryCache) { $params.UseCache = $true }
                 return & $FunctionName @params
             }
             'SystemInventory' {
-                # Call with detailed information and caching
+                # Call with detailed information (caching not implemented)
                 $params = @{ Config = $Config; IncludeDetailed = $true }
-                if ($UseInventoryCache) { $params.UseCache = $true }
                 return & $FunctionName @params
             }
             default {
@@ -1370,7 +1298,8 @@ try {
                     Function   = $task.Function
                     Line       = $_.InvocationInfo.ScriptLineNumber
                 }
-                # Log detailed error information for debugging
+                # Log detailed error information with structured logging
+                Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task execution failed: $($task.Name)" -Data $errorDetails
                 Write-Information "[ERROR] [ORCHESTRATOR] Task failed: $($task.Name)" -InformationAction Continue
                 Write-Information "  Error Type: $($errorDetails.Type)" -InformationAction Continue
                 Write-Information "  Message: $($errorDetails.Message)" -InformationAction Continue
@@ -1446,20 +1375,6 @@ try {
             $TaskResults += $taskResult
             Write-Information "  Duration: $([math]::Round($taskResult.Duration, 2)) seconds" -InformationAction Continue
         }
-    }
-    #endregion
-    #region Log Collection (v3.1 Architecture)
-    # Collect comprehensive logs from Type1 audit results and Type2 execution logs
-    Write-Information "" -InformationAction Continue
-    Write-Information " Collecting comprehensive log data..." -InformationAction Continue
-    $comprehensiveLogCollection = Get-ComprehensiveLogCollection
-    # Use the collection (write a short summary) so static analysis doesn't flag it as unused
-    if ($comprehensiveLogCollection -is [System.Collections.IEnumerable]) {
-        $count = ($comprehensiveLogCollection | Measure-Object).Count
-        Write-Information "   Collected $count log items for report generation" -InformationAction Continue
-    }
-    else {
-        Write-Information "   Collected comprehensive log data" -InformationAction Continue
     }
     #endregion
     #region Report Generation (v3.1 Architecture - Enhanced)
@@ -1632,7 +1547,7 @@ try {
         TaskResults            = $TaskResults
         Configuration          = $MainConfig
     }
-    $summaryPath = Join-Path $ReportsDir "execution-summary-$script:MaintenanceSessionTimestamp.json"
+    $summaryPath = Join-Path $script:ProjectPaths.Reports "execution-summary-$script:MaintenanceSessionTimestamp.json"
     $executionSummary | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $summaryPath -Encoding UTF8
     Write-Information "" -InformationAction Continue
     Write-Information "Execution summary saved to: $summaryPath" -InformationAction Continue
@@ -1667,7 +1582,7 @@ try {
         $description = $reportInfo.Description
         # Look for the file in temp directories
         $sourceFile = $null
-        $searchPaths = @($ReportsDir, $LogsDir, $TempRoot)
+        $searchPaths = @($script:ProjectPaths.Reports, $script:ProjectPaths.Logs, $script:ProjectPaths.TempRoot)
         foreach ($searchPath in $searchPaths) {
             $potentialPath = Join-Path $searchPath $sourcePattern
             if (Test-Path $potentialPath) {

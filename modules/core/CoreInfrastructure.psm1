@@ -84,12 +84,18 @@ Write-Verbose "CoreInfrastructure: Consolidated module loading (Path B refactori
 
 <#
 .SYNOPSIS
-    Converts PSCustomObject to Hashtable recursively
+    Converts PSCustomObject to Hashtable recursively [INTERNAL HELPER]
 
 .DESCRIPTION
+    **Internal helper function - not exported from module.**
+    
     Recursively converts PSCustomObject instances to Hashtable for compatibility
     with functions expecting hashtable parameters. Handles nested PSCustomObjects
     by recursively converting child objects.
+    
+    Used internally by configuration management functions (Get-MainConfiguration,
+    Get-BloatwareConfiguration, etc.) to ensure returned data is in hashtable format
+    for compatibility with Type2 modules that expect hashtable parameters.
 
 .PARAMETER InputObject
     The PSCustomObject to convert. Accepts pipeline input via filter pattern.
@@ -100,6 +106,17 @@ Write-Verbose "CoreInfrastructure: Consolidated module loading (Path B refactori
 .EXAMPLE
     PS> $obj = @{ Name = 'Test'; Nested = @{ Value = 42 } } | ConvertTo-Json | ConvertFrom-Json
     PS> $hash = $obj | ConvertTo-Hashtable
+    
+.NOTES
+    This is an internal helper function and is intentionally NOT exported via
+    Export-ModuleMember. It should only be used within CoreInfrastructure.psm1.
+    
+    Used by:
+    - Get-MainConfiguration (line 457)
+    - Get-LoggingConfiguration (line 531)
+    - Get-BloatwareConfiguration (line 574)
+    - Get-EssentialAppsConfiguration (line 623)
+    - Get-AppUpgradeConfiguration (line 665)
     PS> $hash['Name']
     Test
     
