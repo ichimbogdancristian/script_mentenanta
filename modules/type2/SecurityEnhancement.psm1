@@ -89,23 +89,23 @@ function Invoke-SecurityEnhancement {
     param(
         [Parameter(Mandatory = $true)]
         [hashtable]$Config,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $perfContext = $null
-    try { 
+    try {
         $perfContext = Start-PerformanceTracking -OperationName 'SecurityEnhancement' -Component 'SECURITY-ENHANCEMENT'
-    } 
-    catch { 
+    }
+    catch {
         Write-Verbose "Performance tracking not available: $($_.Exception.Message)"
     }
-    
+
     try {
         # Track execution duration
         $executionStartTime = Get-Date
-        
+
         Write-Host "`n" -NoNewline
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host "  SECURITY ENHANCEMENT MODULE v3.0" -ForegroundColor White
@@ -116,11 +116,11 @@ function Invoke-SecurityEnhancement {
         Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
-        
+
         # Step 1: Load security configuration
         Write-Information "[Step 1/3] Loading security configuration..." -InformationAction Continue
         $securityConfig = Get-SecurityConfiguration -ErrorAction Stop
-        
+
         if ($securityConfig) {
             Write-Information "   [OK] Security configuration loaded successfully" -InformationAction Continue
             Write-Information "   • CIS Baseline: $($securityConfig.compliance.enableCISBaseline)" -InformationAction Continue
@@ -131,19 +131,19 @@ function Invoke-SecurityEnhancement {
             Write-Warning "   Security configuration not found - using default policies"
             $securityConfig = Get-DefaultSecurityConfiguration
         }
-        
+
         # Step 2: Call Type1 module for security audit
         Write-Information "" -InformationAction Continue
         Write-Information "[Step 2/3] Analyzing current security posture..." -InformationAction Continue
-        
+
         # Explicit assignment to prevent pipeline contamination
         $auditResults = $null
         $auditResults = Get-SecurityAuditAnalysis -Config $Config
-        
+
         if (-not $auditResults) {
             throw "SecurityAudit returned no results"
         }
-        
+
         # Extract metrics from audit
         $issuesDetected = 0
         if ($auditResults.Issues) {
@@ -152,14 +152,14 @@ function Invoke-SecurityEnhancement {
         elseif ($auditResults.TotalIssues) {
             $issuesDetected = $auditResults.TotalIssues
         }
-        
+
         Write-Information "   [OK] Security audit completed" -InformationAction Continue
         Write-Information "   • Security issues detected: $issuesDetected" -InformationAction Continue
-        
+
         # Step 3: Apply security enhancements
         Write-Information "" -InformationAction Continue
         Write-Information "[Step 3/3] Applying security enhancements..." -InformationAction Continue
-        
+
         $enhancementResults = @{
             WindowsDefender    = $null
             Firewall           = $null
@@ -168,32 +168,32 @@ function Invoke-SecurityEnhancement {
             AuditPolicies      = $null
             NetworkSecurity    = $null
         }
-        
+
         $itemsProcessed = 0
-        
+
         # Apply Windows Defender enhancements
         if ($securityConfig.security.enableRealTimeProtection) {
             Write-Information "   >> Configuring Windows Defender..." -InformationAction Continue
-            $enhancementResults.WindowsDefender = Set-WindowsDefenderConfiguration -Config $securityConfig -DryRun:$DryRun
+            $enhancementResults.WindowsDefender = Set-WindowsDefenderConfiguration -DryRun:$DryRun
             if ($enhancementResults.WindowsDefender.Success) {
                 $itemsProcessed += $enhancementResults.WindowsDefender.ItemsProcessed
             }
         }
-        
+
         # Configure Firewall
         Write-Information "   >> Verifying Windows Firewall..." -InformationAction Continue
-        $enhancementResults.Firewall = Set-FirewallConfiguration -Config $securityConfig -DryRun:$DryRun
+        $enhancementResults.Firewall = Set-FirewallConfiguration -DryRun:$DryRun
         if ($enhancementResults.Firewall.Success) {
             $itemsProcessed += $enhancementResults.Firewall.ItemsProcessed
         }
-        
+
         # Configure UAC
         Write-Information "   >> Configuring User Account Control..." -InformationAction Continue
-        $enhancementResults.UserAccountControl = Set-UACConfiguration -Config $securityConfig -DryRun:$DryRun
+        $enhancementResults.UserAccountControl = Set-UACConfiguration -DryRun:$DryRun
         if ($enhancementResults.UserAccountControl.Success) {
             $itemsProcessed += $enhancementResults.UserAccountControl.ItemsProcessed
         }
-        
+
         # Set PowerShell Execution Policy
         if ($securityConfig.compliance.enforceExecutionPolicy) {
             Write-Information "   >> Setting PowerShell Execution Policy..." -InformationAction Continue
@@ -202,32 +202,32 @@ function Invoke-SecurityEnhancement {
                 $itemsProcessed += $enhancementResults.ExecutionPolicy.ItemsProcessed
             }
         }
-        
+
         # Configure Audit Policies
         if ($securityConfig.security.enableAuditLogging) {
             Write-Information "   >> Configuring system audit policies..." -InformationAction Continue
-            $enhancementResults.AuditPolicies = Set-SystemAuditPolicies -Config $securityConfig -DryRun:$DryRun
+            $enhancementResults.AuditPolicies = Set-SystemAuditPolicy -DryRun:$DryRun
             if ($enhancementResults.AuditPolicies.Success) {
                 $itemsProcessed += $enhancementResults.AuditPolicies.ItemsProcessed
             }
         }
-        
+
         # Network Security
         Write-Information "   >> Applying network security settings..." -InformationAction Continue
-        $enhancementResults.NetworkSecurity = Set-NetworkSecurityConfiguration -Config $securityConfig -DryRun:$DryRun
+        $enhancementResults.NetworkSecurity = Set-NetworkSecurityConfiguration -DryRun:$DryRun
         if ($enhancementResults.NetworkSecurity.Success) {
             $itemsProcessed += $enhancementResults.NetworkSecurity.ItemsProcessed
         }
-        
+
         # Calculate execution duration
         $executionDuration = ((Get-Date) - $executionStartTime).TotalSeconds
-        
+
         Write-Information "" -InformationAction Continue
         Write-Information "[COMPLETED] Security enhancement finished successfully" -InformationAction Continue
         Write-Information "   • Security issues detected: $issuesDetected" -InformationAction Continue
         Write-Information "   • Enhancements applied: $itemsProcessed" -InformationAction Continue
         Write-Information "   • Execution time: $([math]::Round($executionDuration, 2)) seconds" -InformationAction Continue
-        
+
         # Return standardized v3.0 result structure
         return [PSCustomObject]@{
             Success            = $true
@@ -242,7 +242,7 @@ function Invoke-SecurityEnhancement {
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'SECURITY-ENHANCEMENT' -Message "Security enhancement failed: $($_.Exception.Message)"
-        
+
         return [PSCustomObject]@{
             Success        = $false
             ItemsDetected  = 0
@@ -270,7 +270,7 @@ function Invoke-SecurityEnhancement {
 function Get-SecurityConfiguration {
     [CmdletBinding()]
     param()
-    
+
     try {
         # Use CoreInfrastructure function if available
         if (Get-Command 'Get-SecurityConfiguration' -Module 'CoreInfrastructure' -ErrorAction SilentlyContinue) {
@@ -280,25 +280,25 @@ function Get-SecurityConfiguration {
                 return $config
             }
         }
-        
+
         # Fallback to direct file access
         $configRoot = $env:MAINTENANCE_CONFIG_ROOT
         if (-not $configRoot) {
             $configRoot = Join-Path $PSScriptRoot '..\..\config'
         }
-        
+
         $securityConfigPath = Join-Path $configRoot 'settings\security-config.json'
-        
+
         if (-not (Test-Path $securityConfigPath)) {
             Write-Warning "security-config.json not found at: $securityConfigPath"
             return $null
         }
-        
+
         $configJson = Get-Content $securityConfigPath -Raw -ErrorAction Stop
         $config = $configJson | ConvertFrom-Json -ErrorAction Stop
-        
+
         Write-LogEntry -Level 'INFO' -Component 'SECURITY-ENHANCEMENT' -Message "Security configuration loaded from: $securityConfigPath"
-        
+
         return $config
     }
     catch {
@@ -331,34 +331,34 @@ function Get-DefaultSecurityConfiguration {
     Configures Windows Defender settings
 #>
 function Set-WindowsDefenderConfiguration {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
-        [PSCustomObject]$Config,
         [switch]$DryRun
     )
-    
+
     $itemsProcessed = 0
-    
+
     try {
         if ($DryRun) {
             Write-Information "      [DRY-RUN] Would configure Windows Defender real-time protection" -InformationAction Continue
             $itemsProcessed = 3  # Simulated: Real-time, Cloud-delivered, Behavior monitoring
         }
-        else {
+        elseif ($PSCmdlet.ShouldProcess("Windows Defender", "Configure security settings")) {
             # Enable real-time protection
             Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
             $itemsProcessed++
-            
+
             # Enable cloud-delivered protection
             Set-MpPreference -MAPSReporting Advanced -ErrorAction SilentlyContinue
             $itemsProcessed++
-            
+
             # Enable behavior monitoring
             Set-MpPreference -DisableBehaviorMonitoring $false -ErrorAction SilentlyContinue
             $itemsProcessed++
-            
+
             Write-Information "      [OK] Windows Defender configured successfully" -InformationAction Continue
         }
-        
+
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
     }
     catch {
@@ -372,13 +372,13 @@ function Set-WindowsDefenderConfiguration {
     Verifies and enables Windows Firewall
 #>
 function Set-FirewallConfiguration {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
-        [PSCustomObject]$Config,
         [switch]$DryRun
     )
-    
+
     $itemsProcessed = 0
-    
+
     try {
         if ($DryRun) {
             Write-Information "      [DRY-RUN] Would enable Windows Firewall for all profiles" -InformationAction Continue
@@ -389,7 +389,7 @@ function Set-FirewallConfiguration {
             $itemsProcessed = 3
             Write-Information "      [OK] Windows Firewall enabled for all profiles" -InformationAction Continue
         }
-        
+
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
     }
     catch {
@@ -403,14 +403,14 @@ function Set-FirewallConfiguration {
     Configures User Account Control (UAC) settings
 #>
 function Set-UACConfiguration {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
-        [PSCustomObject]$Config,
         [switch]$DryRun
     )
-    
+
     $itemsProcessed = 0
     $uacRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
-    
+
     try {
         if ($DryRun) {
             Write-Information "      [DRY-RUN] Would configure UAC to prompt for consent" -InformationAction Continue
@@ -422,7 +422,7 @@ function Set-UACConfiguration {
             $itemsProcessed++
             Write-Information "      [OK] UAC configured successfully" -InformationAction Continue
         }
-        
+
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
     }
     catch {
@@ -436,14 +436,15 @@ function Set-UACConfiguration {
     Sets PowerShell execution policy
 #>
 function Set-PowerShellExecutionPolicy {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [PSCustomObject]$Config,
         [switch]$DryRun
     )
-    
+
     $itemsProcessed = 0
     $policy = $Config.compliance.enforceExecutionPolicy
-    
+
     try {
         if ($DryRun) {
             Write-Information "      [DRY-RUN] Would set execution policy to: $policy" -InformationAction Continue
@@ -454,7 +455,7 @@ function Set-PowerShellExecutionPolicy {
             $itemsProcessed++
             Write-Information "      [OK] Execution policy set to: $policy" -InformationAction Continue
         }
-        
+
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
     }
     catch {
@@ -467,20 +468,20 @@ function Set-PowerShellExecutionPolicy {
 .SYNOPSIS
     Configures system audit policies
 #>
-function Set-SystemAuditPolicies {
+function Set-SystemAuditPolicy {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
-        [PSCustomObject]$Config,
         [switch]$DryRun
     )
-    
+
     $itemsProcessed = 0
-    
+
     try {
         if ($DryRun) {
             Write-Information "      [DRY-RUN] Would enable audit policies for security events" -InformationAction Continue
             $itemsProcessed = 5  # Various audit categories
         }
-        else {
+        elseif ($PSCmdlet.ShouldProcess("System Audit Policies", "Configure security audit settings")) {
             # Enable audit policies using auditpol
             $auditCategories = @(
                 "Logon/Logoff",
@@ -489,15 +490,15 @@ function Set-SystemAuditPolicies {
                 "Privilege Use",
                 "System"
             )
-            
+
             foreach ($category in $auditCategories) {
                 auditpol /set /category:"$category" /success:enable /failure:enable 2>&1 | Out-Null
                 $itemsProcessed++
             }
-            
+
             Write-Information "      [OK] Audit policies configured successfully" -InformationAction Continue
         }
-        
+
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
     }
     catch {
@@ -511,13 +512,13 @@ function Set-SystemAuditPolicies {
     Applies network security settings
 #>
 function Set-NetworkSecurityConfiguration {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
-        [PSCustomObject]$Config,
         [switch]$DryRun
     )
-    
+
     $itemsProcessed = 0
-    
+
     try {
         if ($DryRun) {
             Write-Information "      [DRY-RUN] Would apply network security hardening" -InformationAction Continue
@@ -527,7 +528,7 @@ function Set-NetworkSecurityConfiguration {
             # Disable SMBv1
             Disable-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol" -NoRestart -ErrorAction SilentlyContinue | Out-Null
             $itemsProcessed++
-            
+
             # Disable LLMNR
             $llmnrPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient"
             if (-not (Test-Path $llmnrPath)) {
@@ -535,17 +536,17 @@ function Set-NetworkSecurityConfiguration {
             }
             Set-ItemProperty -Path $llmnrPath -Name "EnableMulticast" -Value 0 -Type DWord -ErrorAction SilentlyContinue
             $itemsProcessed++
-            
+
             # Disable NetBIOS over TCP/IP
             $adapters = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ErrorAction SilentlyContinue
             foreach ($adapter in $adapters) {
                 Invoke-CimMethod -InputObject $adapter -MethodName SetTcpipNetbios -Arguments @{TcpipNetbiosOptions = 2 } -ErrorAction SilentlyContinue | Out-Null  # 2 = Disable
             }
             $itemsProcessed++
-            
+
             Write-Information "      [OK] Network security configured successfully" -InformationAction Continue
         }
-        
+
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
     }
     catch {
