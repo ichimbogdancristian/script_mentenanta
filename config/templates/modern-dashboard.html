@@ -450,6 +450,137 @@
             }, 1000);
         }
 
+        // Module card interaction functions
+        function filterLogs(moduleId, level) {
+            const logsContainer = document.getElementById(`logs-${moduleId}`);
+            if (!logsContainer) return;
+            
+            const logEntries = logsContainer.querySelectorAll('.log-entry');
+            const filterButtons = logsContainer.closest('.module-logs-section').querySelectorAll('.log-filter-btn');
+            
+            // Update button states
+            filterButtons.forEach(btn => {
+                if (btn.dataset.level === level) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Filter log entries
+            logEntries.forEach(entry => {
+                if (level === 'all' || entry.classList.contains(level)) {
+                    entry.style.display = '';
+                } else {
+                    entry.style.display = 'none';
+                }
+            });
+        }
+        
+        function expandAllLogs(moduleId) {
+            const logsContainer = document.getElementById(`logs-${moduleId}`);
+            const expandBtn = event.target.closest('.logs-expand-btn');
+            
+            if (!logsContainer) return;
+            
+            if (logsContainer.style.maxHeight === 'none' || logsContainer.style.maxHeight === '') {
+                logsContainer.style.maxHeight = '400px';
+                expandBtn.innerHTML = '<span>↓</span> Show All Logs';
+            } else {
+                logsContainer.style.maxHeight = 'none';
+                expandBtn.innerHTML = '<span>↑</span> Show Less';
+            }
+        }
+        
+        function viewModuleDetails(moduleId) {
+            const moduleCard = document.querySelector(`[data-module-id="${moduleId}"]`);
+            if (!moduleCard) {
+                alert(`Module ${moduleId} details not found.`);
+                return;
+            }
+            
+            // Create a detailed view modal
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.8);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+                padding: 20px;
+            `;
+            
+            const modalContent = document.createElement('div');
+            modalContent.style.cssText = `
+                background: var(--bg-primary);
+                border: 1px solid var(--border-secondary);
+                border-radius: var(--radius-xl);
+                padding: var(--spacing-xl);
+                max-width: 900px;
+                width: 100%;
+                max-height: 90vh;
+                overflow-y: auto;
+                box-shadow: var(--shadow-xl);
+            `;
+            
+            modalContent.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg);">
+                    <h2 style="margin: 0; color: var(--text-primary);">📊 ${moduleId} - Detailed View</h2>
+                    <button onclick="this.closest('[style*=fixed]').remove()" style="background: var(--bg-glass); border: 1px solid var(--border-secondary); border-radius: var(--radius-md); padding: var(--spacing-sm) var(--spacing-md); cursor: pointer; color: var(--text-primary);">✕ Close</button>
+                </div>
+                ${moduleCard.outerHTML}
+            `;
+            
+            modal.appendChild(modalContent);
+            document.body.appendChild(modal);
+            
+            // Close on background click
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+        }
+        
+        function exportModuleLogs(moduleId) {
+            const logsContainer = document.getElementById(`logs-${moduleId}`);
+            if (!logsContainer) {
+                alert('No logs available for this module.');
+                return;
+            }
+            
+            const logEntries = logsContainer.querySelectorAll('.log-entry');
+            let logsText = `=== ${moduleId} Module Logs ===\n`;
+            logsText += `Generated: ${new Date().toLocaleString()}\n\n`;
+            
+            logEntries.forEach(entry => {
+                const timestamp = entry.querySelector('.log-timestamp')?.textContent || '';
+                const message = entry.querySelector('.log-message')?.textContent || '';
+                const level = Array.from(entry.classList).find(c => ['info', 'success', 'warning', 'error'].includes(c)) || 'info';
+                logsText += `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
+            });
+            
+            // Create and download file
+            const blob = new Blob([logsText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${moduleId}-logs-${new Date().toISOString().slice(0,10)}.txt`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function rerunModule(moduleId) {
+            if (confirm(`Are you sure you want to re-run the ${moduleId} module?\n\nNote: This will execute the module again with current system state.`)) {
+                alert(`Module re-run functionality would be implemented here.\n\nIn a production system, this would:\n• Launch PowerShell with elevated privileges\n• Execute only the ${moduleId} module\n• Show real-time progress\n• Update the report when complete`);
+            }
+        }
+        
         // Initialize everything when page loads
         document.addEventListener('DOMContentLoaded', function() {
             initTheme();
@@ -463,6 +594,12 @@
                 card.addEventListener('mouseleave', function() {
                     this.style.boxShadow = '';
                 });
+            });
+            
+            // Initialize module cards
+            document.querySelectorAll('.module-card').forEach((card, index) => {
+                card.style.animationDelay = `${index * 0.1}s`;
+                card.classList.add('fade-in');
             });
         });
     </script>
