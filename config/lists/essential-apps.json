@@ -35,6 +35,13 @@
     "description": "Powerful archive manager supporting RAR and ZIP formats"
   },
   {
+    "name": "Total Commander",
+    "winget": "Ghisler.TotalCommander",
+    "choco": "totalcommander",
+    "category": "Utilities",
+    "description": "Powerful file manager with dual-pane interface"
+  },
+  {
     "name": "LibreOffice",
     "winget": "TheDocumentFoundation.LibreOffice",
     "choco": "libreoffice",

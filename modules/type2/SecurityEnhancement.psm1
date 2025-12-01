@@ -188,7 +188,7 @@ function Invoke-SecurityEnhancement {
         }
         
         # Configure UAC
-        Write-Information "   🔐 Configuring User Account Control..." -InformationAction Continue
+        Write-Information "   >> Configuring User Account Control..." -InformationAction Continue
         $enhancementResults.UserAccountControl = Set-UACConfiguration -Config $securityConfig -DryRun:$DryRun
         if ($enhancementResults.UserAccountControl.Success) {
             $itemsProcessed += $enhancementResults.UserAccountControl.ItemsProcessed
@@ -196,7 +196,7 @@ function Invoke-SecurityEnhancement {
         
         # Set PowerShell Execution Policy
         if ($securityConfig.compliance.enforceExecutionPolicy) {
-            Write-Information "   📜 Setting PowerShell Execution Policy..." -InformationAction Continue
+            Write-Information "   >> Setting PowerShell Execution Policy..." -InformationAction Continue
             $enhancementResults.ExecutionPolicy = Set-PowerShellExecutionPolicy -Config $securityConfig -DryRun:$DryRun
             if ($enhancementResults.ExecutionPolicy.Success) {
                 $itemsProcessed += $enhancementResults.ExecutionPolicy.ItemsProcessed
@@ -537,9 +537,9 @@ function Set-NetworkSecurityConfiguration {
             $itemsProcessed++
             
             # Disable NetBIOS over TCP/IP
-            $adapters = Get-WmiObject Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ErrorAction SilentlyContinue
+            $adapters = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ErrorAction SilentlyContinue
             foreach ($adapter in $adapters) {
-                $adapter.SetTcpipNetbios(2) | Out-Null  # 2 = Disable
+                Invoke-CimMethod -InputObject $adapter -MethodName SetTcpipNetbios -Arguments @{TcpipNetbiosOptions = 2} -ErrorAction SilentlyContinue | Out-Null  # 2 = Disable
             }
             $itemsProcessed++
             
