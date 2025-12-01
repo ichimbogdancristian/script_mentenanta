@@ -124,6 +124,7 @@ function Get-AppUpgradeAnalysis {
             }
         }
         catch {
+            Write-Verbose "APP-UPGRADE-AUDIT: Logging completion failed - $_"
             # Logging not available, continue
         }
 
@@ -139,6 +140,7 @@ function Get-AppUpgradeAnalysis {
             }
         }
         catch {
+            Write-Verbose "APP-UPGRADE-AUDIT: Logging cleanup failed - $_"
             # Logging not available, continue
         }
 

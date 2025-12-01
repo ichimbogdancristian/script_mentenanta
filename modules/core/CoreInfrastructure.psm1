@@ -3145,8 +3145,9 @@ function Undo-AllChanges {
                 Write-LogEntry -Level 'DEBUG' -Component 'ChangeTracking' `
                     -Message "Executing undo command" -Data @{Command = $undoCommand }
                 
-                # Execute undo command in current scope
-                Invoke-Expression -Command $undoCommand -ErrorAction Stop
+                # Execute undo command using scriptblock (safer than Invoke-Expression)
+                $scriptBlock = [scriptblock]::Create($undoCommand)
+                & $scriptBlock
             }
             
             $result.RolledBackCount += 1

@@ -738,7 +738,7 @@ function Get-SecurityUpdateStatus {
 
         # Try to get last update installation date
         try {
-            $lastUpdate = Get-WmiObject -Class Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
+            $lastUpdate = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
             Sort-Object InstalledOn -Descending | Select-Object -First 1
 
             if ($lastUpdate -and $lastUpdate.InstalledOn) {

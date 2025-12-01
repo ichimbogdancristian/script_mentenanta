@@ -96,6 +96,7 @@ function Invoke-BloatwareRemoval {
         $perfContext = Start-PerformanceTracking -OperationName 'BloatwareRemoval' -Component 'BLOATWARE-REMOVAL'
     }
     catch {
+        Write-Verbose "BLOATWARE-REMOVAL: Performance tracking unavailable - $_"
         # CoreInfrastructure not available, continue without performance tracking
     }
     
@@ -338,6 +339,7 @@ function Remove-DetectedBloatware {
         }
     }
     catch {
+        Write-Verbose "BLOATWARE-REMOVAL: Logging initialization failed - $_"
         # LoggingManager not available, continue
     }
 
@@ -523,6 +525,7 @@ ITEMS BY SOURCE:
             }
         }
         catch {
+            Write-Verbose "BLOATWARE-REMOVAL: Logging completion failed - $_"
             # LoggingManager not available, continue
         }
         
@@ -546,6 +549,7 @@ ITEMS BY SOURCE:
             }
         }
         catch {
+            Write-Verbose "BLOATWARE-REMOVAL: Error logging failed - $_"
             # LoggingManager not available, continue
         }
         

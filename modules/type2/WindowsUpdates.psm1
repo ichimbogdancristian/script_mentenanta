@@ -289,6 +289,7 @@ function Install-WindowsUpdate {
         $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdatesInstallation' -Component 'WINDOWS-UPDATES'
     }
     catch {
+        Write-Verbose "WINDOWS-UPDATES: Logging initialization failed - $_"
         # LoggingManager not available, continue with standard logging
     }
     
@@ -383,6 +384,7 @@ function Install-WindowsUpdate {
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation completed' -Data $results
         }
         catch {
+            Write-Verbose "WINDOWS-UPDATES: Logging completion failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         
@@ -403,6 +405,7 @@ function Install-WindowsUpdate {
             Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
         }
         catch {
+            Write-Verbose "WINDOWS-UPDATES: Error logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         
@@ -456,6 +459,7 @@ function Get-WindowsUpdateStatus {
         $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdateStatusCheck' -Component 'WINDOWS-UPDATES'
     }
     catch {
+        Write-Verbose "WINDOWS-UPDATES: Status check logging failed - $_"
         # LoggingManager not available, continue with standard logging
     }
 
@@ -496,6 +500,7 @@ function Get-WindowsUpdateStatus {
             Write-LogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message 'Windows Update status check completed' -Data $status
         }
         catch {
+            Write-Verbose "WINDOWS-UPDATES: Status check completion logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
 
@@ -510,6 +515,7 @@ function Get-WindowsUpdateStatus {
             Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message 'Windows Update status check failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
         }
         catch {
+            Write-Verbose "WINDOWS-UPDATES: Status check error logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         

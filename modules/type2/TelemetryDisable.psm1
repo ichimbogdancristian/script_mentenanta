@@ -279,6 +279,7 @@ function Disable-WindowsTelemetry {
         $perfContext = Start-PerformanceTracking -OperationName 'TelemetryPrivacyHardening' -Component 'TELEMETRY-DISABLE'
     }
     catch {
+        Write-Verbose "TELEMETRY-DISABLE: Logging initialization failed - $_"
         # LoggingManager not available, continue with standard logging
     }
     
@@ -380,6 +381,7 @@ function Disable-WindowsTelemetry {
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation completed' -Data $results
         }
         catch {
+            Write-Verbose "TELEMETRY-DISABLE: Logging completion failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         
@@ -400,6 +402,7 @@ function Disable-WindowsTelemetry {
             Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
         }
         catch {
+            Write-Verbose "TELEMETRY-DISABLE: Error logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         
@@ -545,6 +548,7 @@ function Set-TelemetryRegistrySetting {
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry registry settings configuration' -Data @{ DryRun = $DryRun.IsPresent }
     }
     catch {
+        Write-Verbose "TELEMETRY-DISABLE: Registry settings logging failed - $_"
         # LoggingManager not available, continue with standard logging
     }
     

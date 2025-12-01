@@ -111,6 +111,7 @@ catch {
         }
     }
     catch {
+        Write-Verbose "LogProcessor: Path initialization fallback failed - $_"
         # If initialization fails, it will be caught when functions try to access paths
     }
 }

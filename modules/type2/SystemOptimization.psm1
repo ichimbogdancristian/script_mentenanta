@@ -381,6 +381,7 @@ function Optimize-SystemPerformance {
         $perfContext = Start-PerformanceTracking -OperationName 'SystemPerformanceOptimization' -Component 'SYSTEM-OPTIMIZATION'
     }
     catch {
+        Write-Verbose "SYSTEM-OPTIMIZATION: Logging initialization failed - $_"
         # LoggingManager not available, continue with standard logging
     }
     
@@ -494,6 +495,7 @@ function Optimize-SystemPerformance {
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation completed' -Data $results
         }
         catch {
+            Write-Verbose "SYSTEM-OPTIMIZATION: Logging completion failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         
@@ -514,6 +516,7 @@ function Optimize-SystemPerformance {
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
         }
         catch {
+            Write-Verbose "SYSTEM-OPTIMIZATION: Error logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         

@@ -95,6 +95,7 @@ function Invoke-SystemInventory {
         $perfContext = Start-PerformanceTracking -OperationName 'SystemInventory' -Component 'SYSTEM-INVENTORY'
     }
     catch {
+        Write-Verbose "SYSTEM-INVENTORY: Performance tracking unavailable - $_"
         # Performance tracking is optional
     }
     
@@ -229,6 +230,7 @@ Collection completed successfully
                 Complete-PerformanceTracking -Context $perfContext -Status 'Success'
             }
             catch {
+                Write-Verbose "SYSTEM-INVENTORY: Performance tracking completion failed - $_"
                 # Performance tracking is optional
             }
         }
@@ -255,6 +257,7 @@ Collection completed successfully
                 Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
             }
             catch {
+                Write-Verbose "SYSTEM-INVENTORY: Performance tracking error handling failed - $_"
                 # Performance tracking is optional
             }
         }

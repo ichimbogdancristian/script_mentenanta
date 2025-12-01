@@ -78,6 +78,7 @@ function Get-SystemInventory {
         }
     }
     catch {
+        Write-Verbose "SYSTEM-INVENTORY: Logging initialization failed - $_"
         # LoggingManager not available, continue with standard output
     }
 
@@ -127,6 +128,7 @@ function Get-SystemInventory {
         $perfContext = Start-PerformanceTracking -OperationName 'SystemInventoryCollection' -Component 'SYSTEM-INVENTORY'
     }
     catch {
+        Write-Verbose "SYSTEM-INVENTORY: Performance tracking unavailable - $_"
         # LoggingManager not available, continue without performance tracking
     }
 
@@ -209,6 +211,7 @@ function Get-SystemInventory {
             }
         }
         catch {
+            Write-Verbose "SYSTEM-INVENTORY: Logging completion failed - $_"
             # LoggingManager not available, continue
         }
 
@@ -227,6 +230,7 @@ function Get-SystemInventory {
             }
         }
         catch {
+            Write-Verbose "SYSTEM-INVENTORY: Error logging failed - $_"
             # LoggingManager not available, continue
         }
         
@@ -826,6 +830,7 @@ function Get-StartupProgramsInfo {
                 }
             }
             catch {
+                Write-Verbose "SYSTEM-INVENTORY: Registry path inaccessible - $_"
                 # Skip inaccessible registry paths
             }
         }

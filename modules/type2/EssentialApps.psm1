@@ -97,6 +97,7 @@ function Invoke-EssentialApps {
         $perfContext = Start-PerformanceTracking -OperationName 'EssentialAppsInstallation' -Component 'ESSENTIAL-APPS'
     }
     catch {
+        Write-Verbose "ESSENTIAL-APPS: Performance tracking unavailable - $_"
         # CoreInfrastructure not available, continue without performance tracking
     }
     
@@ -355,6 +356,7 @@ function Install-EssentialApplication {
         $perfContext = Start-PerformanceTracking -OperationName 'EssentialAppsInstallation' -Component 'ESSENTIAL-APPS'
     }
     catch {
+        Write-Verbose "ESSENTIAL-APPS: Logging initialization failed - $_"
         # LoggingManager not available, continue with standard logging
     }
     
@@ -494,6 +496,7 @@ function Install-EssentialApplication {
             Write-StructuredLogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation completed' -Data $results
         }
         catch {
+            Write-Verbose "ESSENTIAL-APPS: Logging completion failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         
@@ -514,6 +517,7 @@ function Install-EssentialApplication {
             Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
         }
         catch {
+            Write-Verbose "ESSENTIAL-APPS: Error logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
         
@@ -942,6 +946,7 @@ function Install-AppViaWinget {
         Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Winget batch installation' -Data @{ AppCount = $Apps.Count; ParallelCount = $ParallelCount; DryRun = $DryRun.IsPresent }
     }
     catch {
+        Write-Verbose "ESSENTIAL-APPS: Winget batch logging failed - $_"
         # LoggingManager not available, continue with standard logging
     }
     
@@ -1116,6 +1121,7 @@ function Install-AppViaChocolatey {
         Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Chocolatey batch installation' -Data @{ AppCount = $Apps.Count; DryRun = $DryRun.IsPresent }
     }
     catch {
+        Write-Verbose "ESSENTIAL-APPS: Chocolatey batch logging failed - $_"
         # LoggingManager not available, continue with standard logging
     }
     

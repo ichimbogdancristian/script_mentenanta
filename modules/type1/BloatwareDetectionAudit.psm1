@@ -91,6 +91,7 @@ function Find-InstalledBloatware {
         }
     }
     catch {
+        Write-Verbose "BLOATWARE-DETECTION: Logging initialization failed - $_"
         # LoggingManager not available, continue
     }
 
@@ -258,6 +259,7 @@ function Find-InstalledBloatware {
             }
         }
         catch {
+            Write-Verbose "BLOATWARE-DETECTION: Logging completion failed - $_"
             # LoggingManager not available, continue
         }
         
@@ -277,6 +279,7 @@ function Find-InstalledBloatware {
             }
         }
         catch {
+            Write-Verbose "BLOATWARE-DETECTION: Error logging failed - $_"
             # LoggingManager not available, continue
         }
             
