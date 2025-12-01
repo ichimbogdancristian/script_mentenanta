@@ -1254,14 +1254,27 @@ function Write-ModuleLogEntry {
         [string]$Component,
         
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Message,
         
         [Parameter(Mandatory = $false)]
         [hashtable]$Data = @{}
     )
     
+    # Filter non-actionable content (progress bars, spinners) from DEBUG logs
+    # Only filter DEBUG level to reduce noise in detailed logs
+    $filteredMessage = $Message
+    if ($Level -eq 'DEBUG') {
+        $filteredMessage = Remove-NonActionableLogContent -Message $Message
+        
+        # If message was entirely non-actionable (only progress bars), skip logging
+        if ([string]::IsNullOrWhiteSpace($filteredMessage)) {
+            return
+        }
+    }
+    
     # Use standardized log entry format
-    $logEntry = New-StandardLogEntry -Level $Level -Component $Component -Message $Message
+    $logEntry = New-StandardLogEntry -Level $Level -Component $Component -Message $filteredMessage
     
     if ($Data.Count -gt 0) {
         $logEntry += " | Data: $(($Data.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ')"
@@ -1272,6 +1285,143 @@ function Write-ModuleLogEntry {
 
 # Backward compatibility alias
 New-Alias -Name 'Write-LogEntry' -Value 'Write-ModuleLogEntry' -Force
+
+<#
+.SYNOPSIS
+    Filters non-actionable output from log messages
+
+.DESCRIPTION
+    Removes progress bars, spinners, and other terminal-only visual elements
+    that are not useful in persistent log files. Keeps only actionable data.
+    
+    Filters out:
+    - Progress bar characters (█ ▒ ░ ╫ ═ ╪)
+    - Spinner animations (\ | / -)
+    - Carriage returns (\r)
+    - ANSI escape sequences
+    - Download progress lines (XX.X MB / YY.Y MB)
+    - Empty lines with only whitespace/control characters
+    - Repetitive "Starting package install..." spinner lines
+
+.PARAMETER Message
+    The message to filter
+
+.OUTPUTS
+    [string] Filtered message with only actionable content, or $null if message is non-actionable
+
+.EXAMPLE
+    $clean = Remove-NonActionableLogContent -Message $wingetOutput
+    # Returns: "Found Package [Version] Successfully installed" (progress bars removed)
+
+.NOTES
+    Used internally by Write-ModuleLogEntry and Write-StructuredLogEntry to ensure
+    only meaningful data is persisted to log files.
+#>
+function Remove-NonActionableLogContent {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Message
+    )
+    
+    if ([string]::IsNullOrWhiteSpace($Message)) {
+        return $null
+    }
+    
+    # Split into lines for line-by-line filtering
+    $lines = $Message -split "`r`n|`r|`n"
+    $filteredLines = @()
+    
+    foreach ($line in $lines) {
+        # Skip empty or whitespace-only lines
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+        
+        # Skip lines that are ONLY progress bar characters and spaces
+        if ($line -match '^[\s\u2592\u2588\u2580-\u259F\-\|\/\\]+$') {
+            continue
+        }
+        
+        # Skip lines with spinner animations at start (e.g., "   - ", "   \ ", "   | ")
+        if ($line -match '^\s+([-\\|/])\s+$') {
+            continue
+        }
+        
+        # Skip download progress lines (e.g., "  ██████  12.3 MB / 45.6 MB")
+        if ($line -match '^\s*[▒█\s]+\s+[\d.]+\s+(B|KB|MB|GB)\s*/\s*[\d.]+\s+(B|KB|MB|GB)\s*$') {
+            continue
+        }
+        
+        # Skip lines that are only control characters and whitespace
+        if ($line -match '^[\s\x00-\x1F\x7F]+$') {
+            continue
+        }
+        
+        # Remove ANSI escape sequences (color codes, cursor positioning)
+        $cleanLine = $line -replace '\x1B\[[0-9;]*[mGKHfJ]', ''
+        
+        # Remove progress bar characters but keep surrounding text
+        $cleanLine = $cleanLine -replace '[█▒░╫═╪\u2580-\u259F]+', ''
+        
+        # Remove excessive whitespace (collapse multiple spaces to one)
+        $cleanLine = $cleanLine -replace '\s{2,}', ' '
+        
+        # Trim whitespace
+        $cleanLine = $cleanLine.Trim()
+        
+        # Skip if line became empty after cleaning
+        if ([string]::IsNullOrWhiteSpace($cleanLine)) {
+            continue
+        }
+        
+        # Only keep lines with actual content:
+        # - Status messages (Found, Successfully, Error, Failed, Downloading, Starting)
+        # - Version information
+        # - Package names
+        # - Error messages
+        # - Completion messages
+        
+        # Skip repetitive "Starting package install..." with only spinner
+        if ($cleanLine -match '^Starting package install\.\.\.\s*$') {
+            # Only keep the FIRST occurrence (track in parent scope would be complex, so we filter these out entirely)
+            continue
+        }
+        
+        # Keep lines with actionable keywords
+        if ($cleanLine -match '(Found|Successfully|Error|Failed|Warning|Completed|Detected|Processing|Installing|Upgrading|Removing|Skipped|Version|Package|Download|verified|hash)') {
+            $filteredLines += $cleanLine
+            continue
+        }
+        
+        # Keep lines with URLs (download sources)
+        if ($cleanLine -match 'https?://') {
+            $filteredLines += $cleanLine
+            continue
+        }
+        
+        # Keep lines with file paths or package identifiers
+        if ($cleanLine -match '[\w]+\.[\w]+\.[^ ]+') {
+            $filteredLines += $cleanLine
+            continue
+        }
+        
+        # If line is substantial (> 20 chars after cleaning) and not filtered above, keep it
+        if ($cleanLine.Length -gt 20) {
+            $filteredLines += $cleanLine
+        }
+    }
+    
+    # If no lines survived filtering, return null (non-actionable content)
+    if ($filteredLines.Count -eq 0) {
+        return $null
+    }
+    
+    # Join filtered lines with newline
+    return ($filteredLines -join "`n")
+}
 
 <#
 .SYNOPSIS
@@ -2284,6 +2434,7 @@ function Write-StructuredLogEntry {
         [string]$Component,
         
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Message,
         
         [Parameter(Mandatory = $false)]
@@ -2302,8 +2453,20 @@ function Write-StructuredLogEntry {
         [hashtable]$Metadata = @{}
     )
     
+    # Filter non-actionable content for DEBUG logs
+    $filteredMessage = $Message
+    if ($Level -eq 'DEBUG') {
+        $filteredMessage = Remove-NonActionableLogContent -Message $Message
+        
+        # If message was entirely non-actionable, skip logging to file but still show in console if needed
+        if ([string]::IsNullOrWhiteSpace($filteredMessage)) {
+            # Skip this log entry entirely
+            return
+        }
+    }
+    
     # Build enhanced message with operation details
-    $enhancedMessage = $Message
+    $enhancedMessage = $filteredMessage
     
     if ($Operation) {
         $enhancedMessage = "[$Operation] $enhancedMessage"
@@ -2320,8 +2483,10 @@ function Write-StructuredLogEntry {
     # Use standardized log entry format
     $logMessage = New-StandardLogEntry -Level $Level -Component $Component -Message $enhancedMessage
     
-    # Write to console
-    Write-Information $logMessage -InformationAction Continue
+    # Write to console (only INFO and above for better UX)
+    if ($Level -ne 'DEBUG' -or $VerbosePreference -eq 'Continue') {
+        Write-Information $logMessage -InformationAction Continue
+    }
     
     # Write to text log file if path specified
     if ($LogPath) {
@@ -2358,7 +2523,7 @@ function Write-StructuredLogEntry {
                 timestamp  = $isoTimestamp
                 level      = $Level
                 component  = $Component
-                message    = $Message
+                message    = $filteredMessage  # Use filtered message in JSON too
                 operation  = $Operation
                 target     = $Target
                 result     = $Result
@@ -3249,7 +3414,7 @@ Export-ModuleMember -Function @(
     'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-SystemOptimizationConfiguration', 'Get-SecurityConfiguration', 'Get-ReportTemplatesConfiguration',
     'Get-CachedConfiguration', 'Test-ConfigurationIntegrity', 'Test-ConfigurationSchema', 'Get-NestedProperty',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
-    'Write-DetectionLog',
+    'Write-DetectionLog', 'Remove-NonActionableLogContent',
     'Assert-AdminPrivilege', 'Initialize-ModuleExecution',
     'Start-PerformanceTracking', 'Start-PerformanceTrackingSafe', 'Complete-PerformanceTracking', 'Set-LoggingVerbosity', 'Set-LoggingEnabled',
     'Initialize-SessionFileOrganization', 'Test-TempFilesStructure', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
