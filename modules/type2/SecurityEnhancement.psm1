@@ -539,7 +539,7 @@ function Set-NetworkSecurityConfiguration {
             # Disable NetBIOS over TCP/IP
             $adapters = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ErrorAction SilentlyContinue
             foreach ($adapter in $adapters) {
-                Invoke-CimMethod -InputObject $adapter -MethodName SetTcpipNetbios -Arguments @{TcpipNetbiosOptions = 2} -ErrorAction SilentlyContinue | Out-Null  # 2 = Disable
+                Invoke-CimMethod -InputObject $adapter -MethodName SetTcpipNetbios -Arguments @{TcpipNetbiosOptions = 2 } -ErrorAction SilentlyContinue | Out-Null  # 2 = Disable
             }
             $itemsProcessed++
             
