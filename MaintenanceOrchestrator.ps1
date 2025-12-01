@@ -1600,7 +1600,8 @@ try {
         TaskResults            = $TaskResults
         Configuration          = $MainConfig
     }
-    $summaryPath = Join-Path $script:ProjectPaths.Reports "execution-summary-$script:MaintenanceSessionTimestamp.json"
+    $reportsDir = Join-Path $script:ProjectPaths.TempRoot "reports"
+    $summaryPath = Join-Path $reportsDir "execution-summary-$script:MaintenanceSessionTimestamp.json"
     $executionSummary | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $summaryPath -Encoding UTF8
     Write-Information "" -InformationAction Continue
     Write-Information "Execution summary saved to: $summaryPath" -InformationAction Continue
@@ -1640,7 +1641,9 @@ try {
         $description = $reportInfo.Description
         # Look for the file in temp directories
         $sourceFile = $null
-        $searchPaths = @($script:ProjectPaths.Reports, $script:ProjectPaths.Logs, $script:ProjectPaths.TempRoot)
+        $reportsDir = Join-Path $script:ProjectPaths.TempRoot "reports"
+        $logsDir = Join-Path $script:ProjectPaths.TempRoot "logs"
+        $searchPaths = @($reportsDir, $logsDir, $script:ProjectPaths.TempRoot) | Where-Object { $_ -and (Test-Path $_) }
         foreach ($searchPath in $searchPaths) {
             $potentialPath = Join-Path $searchPath $sourcePattern
             if (Test-Path $potentialPath) {
