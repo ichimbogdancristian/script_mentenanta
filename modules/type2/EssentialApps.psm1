@@ -1364,8 +1364,8 @@ function Get-WingetPath {
             
             if (Test-Path $parentPath) {
                 $resolved = Get-ChildItem -Path $parentPath -Filter $filePattern -Recurse -ErrorAction SilentlyContinue | 
-                    Sort-Object LastWriteTime -Descending | 
-                    Select-Object -First 1
+                Sort-Object LastWriteTime -Descending | 
+                Select-Object -First 1
                 
                 if ($resolved -and (Test-Path $resolved.FullName)) {
                     Write-Verbose "Found winget at: $($resolved.FullName)"
