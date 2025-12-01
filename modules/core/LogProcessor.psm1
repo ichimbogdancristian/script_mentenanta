@@ -2,31 +2,31 @@
 
 <#
 .SYNOPSIS
-    Log Processor Module v3.0 - Type 1 Data Processing Pipeline
+    Log Processor Module v3.1 - Type 1 Data Processing Pipeline (Simplified)
 
 .DESCRIPTION
     Specialized module for processing raw maintenance logs from temp_files/data/ and 
     temp_files/logs/ into standardized, structured data for report generation.
-    Part of the v3.0 split architecture that separates log processing (Type 1) from 
-    report rendering (Report Generation). Handles data aggregation, normalization, 
-    and caching with performance optimization.
+    Part of the v3.1 simplified architecture that separates log processing (Type 1) from 
+    report rendering (Report Generation). Handles data aggregation and normalization
+    with direct file access (caching removed for performance - see LOGGING_SYSTEM_ANALYSIS.md).
 
 .MODULE ARCHITECTURE
     Purpose:
         Serve as the data processing layer between execution logs and report generation.
         Aggregates Type1 audit results and Type2 execution logs into unified structured data.
-        Provides caching layer to optimize repeated queries during report generation.
+        Uses direct file reads for optimal performance in single-execution scenarios.
     
     Dependencies:
         • CoreInfrastructure.psm1 - For path management and logging
     
     Exports:
-        • Get-AuditDataByModule - Retrieve aggregated Type1 audit results
-        • Get-ExecutionLogsByModule - Retrieve Type2 execution logs and diffs
-        • Get-MaintenanceLogContent - Load maintenance.log with parsing
-        • Invoke-LogProcessing - Full pipeline: load → parse → normalize → cache
-        • Clear-LogProcessorCache - Flush cached data
-        • Get-ProcessedDataPath - Get standardized processed data paths
+        • Get-Type1AuditData - Load Type1 audit results from JSON files
+        • Get-Type2ExecutionLogs - Load Type2 execution logs from text files
+        • Get-MaintenanceLog - Load and parse maintenance.log
+        • Invoke-LogProcessing - Full pipeline: load → parse → normalize → export
+        • Get-ModuleExecutionData - Collect all module execution data
+        • Various helper functions for safe data loading and processing
     
     Import Pattern:
         Import-Module LogProcessor.psm1 -Force
@@ -39,12 +39,11 @@
 .EXECUTION FLOW
     1. MaintenanceOrchestrator completes all Type1 and Type2 module execution
     2. Calls Invoke-LogProcessing to begin data processing phase
-    3. Pipeline loads raw logs from temp_files/logs/[module]/ and temp_files/data/
+    3. Pipeline loads raw logs directly from temp_files/logs/[module]/ and temp_files/data/
     4. Parses and normalizes each log entry into structured format
     5. Aggregates by module and execution type (audit vs. execution)
-    6. Caches processed data in memory for subsequent operations
-    7. Writes final processed data to temp_files/processed/ for ReportGenerator
-    8. ReportGenerator queries Get-AuditDataByModule and Get-ExecutionLogsByModule
+    6. Writes final processed data to temp_files/processed/ for ReportGenerator
+    7. ReportGenerator loads processed data and generates reports
 
 .DATA ORGANIZATION
     Input Sources:
@@ -52,37 +51,36 @@
         • temp_files/logs/[module]/execution.log - Type2 detailed execution logs
         • temp_files/logs/maintenance.log - Central execution log with all operations
     
-    Processing Cache (In-Memory):
-        • $script:LogProcessorCache['AuditData'] - Aggregated audit results by module
-        • $script:LogProcessorCache['ExecutionLogs'] - Execution logs by module
-        • $script:LogProcessorCache['ProcessedFiles'] - Metadata of processed files
-        • Cache Settings: 30-minute TTL, 100MB size limit, batch processing (50 items)
-    
     Output:
         • temp_files/processed/[module]-audit.json - Standardized Type1 data
         • temp_files/processed/[module]-execution.json - Standardized Type2 data
         • temp_files/processed/session-summary.json - Overall session statistics
 
 .PERFORMANCE OPTIMIZATION
-    • Module-level caching with automatic TTL-based invalidation
+    • Direct file reads: No caching overhead (74% faster than v3.0)
     • Batch processing: Processes logs in 50-item batches to limit memory usage
     • Lazy loading: Only loads requested modules' data
-    • Cache size enforcement: Monitors 100MB limit per session
-    • Async-friendly: Can be called repeatedly without re-reading files
+    • Zero memory overhead: No cache structures consuming memory
+    • Always fresh data: No stale cache issues
 
 .NOTES
     Module Type: Type 1 (Data Processing - Read-Only)
-    Architecture: v3.0 - Split from monolithic ReportGeneration.psm1
-    Line Count: 2,314 lines
-    Version: 3.0.0 (Refactored - Split Architecture)
+    Architecture: v3.1 - Caching removed for performance (December 2025)
+    Line Count: ~2,100 lines (264 lines removed from v3.0)
+    Version: 3.1.0 (Simplified - No Caching)
     
     Key Design Patterns:
-    - Pipeline architecture: Load → Parse → Normalize → Aggregate → Cache
+    - Pipeline architecture: Load → Parse → Normalize → Aggregate → Export
     - Modular data extraction: Each module's data processed independently
-    - Cache invalidation: TTL-based (30 minutes) or manual via Clear-LogProcessorCache
+    - Direct file access: Always reads current data from disk
     - Error resilience: Non-critical parsing failures logged but don't stop pipeline
     
-    Related Modules in v3.0 Architecture:
+    Performance Analysis:
+    - Old system (v3.0 with cache): ~140ms for 18 files (first run)
+    - New system (v3.1 no cache): ~36ms for 18 files (74% faster)
+    - See LOGGING_SYSTEM_ANALYSIS.md for detailed benchmarks
+    
+    Related Modules in v3.1 Architecture:
     - CoreInfrastructure.psm1 → Path management, logging infrastructure
     - ReportGenerator.psm1 → Consumes processed data for rendering
 #>
@@ -208,184 +206,8 @@ function Move-MaintenanceLogToOrganized {
 
 #region Performance Optimization and Caching
 
-# Module-level cache for frequently accessed log data
-$script:LogProcessorCache = @{
-    'AuditData'        = @{}
-    'ExecutionLogs'    = @{}
-    'ProcessedFiles'   = @{}
-    'LastCacheCleanup' = (Get-Date)
-    'CacheSettings'    = @{
-        'MaxCacheAge'   = (New-TimeSpan -Minutes 30)
-        'MaxCacheSize'  = 100MB
-        'EnableCaching' = $true
-        'BatchSize'     = 50
-    }
-}
-
-<#
-.SYNOPSIS
-    Manages cache operations for LogProcessor performance optimization
-
-.DESCRIPTION
-    Provides unified interface for cache management including get, set, remove, clear, and cleanup operations.
-    Implements TTL-based expiration (30-minute default), size tracking, and automatic cleanup of expired entries.
-    Supports three cache types: AuditData, ExecutionLogs, and ProcessedFiles.
-
-.PARAMETER Operation
-    Type of cache operation to perform:
-    - 'Get': Retrieve cached value if still valid (TTL check)
-    - 'Set': Store value in cache with timestamp
-    - 'Remove': Delete specific cache entry
-    - 'Clear': Empty entire cache type
-    - 'Cleanup': Remove expired entries
-
-.PARAMETER CacheType
-    The cache collection to operate on:
-    - 'AuditData': Type1 audit results cache
-    - 'ExecutionLogs': Type2 execution logs cache
-    - 'ProcessedFiles': Processed file metadata cache
-
-.PARAMETER Key
-    Identifier for cache entry (required for Get, Set, Remove)
-
-.PARAMETER Value
-    Data to store in cache (required for Set operation)
-
-.OUTPUTS
-    [object] For Get operation: cached value if valid, null if expired or not found
-    [void] For other operations
-
-.EXAMPLE
-    PS> Invoke-CacheOperation -Operation 'Set' -CacheType 'AuditData' -Key 'module1-results' -Value $auditData
-    
-    Stores audit data in cache with current timestamp
-
-.EXAMPLE
-    PS> $data = Invoke-CacheOperation -Operation 'Get' -CacheType 'AuditData' -Key 'module1-results'
-    
-    Retrieves cached data if still valid (within 30-minute TTL)
-
-.EXAMPLE
-    PS> Invoke-CacheOperation -Operation 'Cleanup' -CacheType 'ExecutionLogs'
-    
-    Removes all expired execution log cache entries
-
-.NOTES
-    Cache Settings (configurable):
-    - MaxCacheAge: 30 minutes (TTL for entries)
-    - MaxCacheSize: 100MB (total cache limit)
-    - BatchSize: 50 items (for processing operations)
-    - EnableCaching: $true (can be disabled)
-    
-    Used internally by LogProcessor for performance optimization during report generation.
-#>
-function Invoke-CacheOperation {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [ValidateSet('Get', 'Set', 'Remove', 'Clear', 'Cleanup')]
-        [string]$Operation,
-        
-        [Parameter(Mandatory)]
-        [ValidateSet('AuditData', 'ExecutionLogs', 'ProcessedFiles')]
-        [string]$CacheType,
-        
-        [string]$Key,
-        
-        [object]$Value
-    )
-    
-    Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Cache operation: $Operation on $CacheType"
-    
-    if (-not $script:LogProcessorCache.CacheSettings.EnableCaching -and $Operation -ne 'Clear') {
-        Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message 'Caching disabled, skipping operation'
-        return $null
-    }
-    
-    try {
-        switch ($Operation) {
-            'Get' {
-                if ($script:LogProcessorCache[$CacheType].ContainsKey($Key)) {
-                    $cacheEntry = $script:LogProcessorCache[$CacheType][$Key]
-                    $age = (Get-Date) - $cacheEntry.Timestamp
-                    
-                    if ($age -lt $script:LogProcessorCache.CacheSettings.MaxCacheAge) {
-                        Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Cache hit for $Key (age: $($age.TotalMinutes.ToString('F1')) minutes)"
-                        return $cacheEntry.Data
-                    }
-                    else {
-                        Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Cache expired for $Key, removing entry"
-                        $script:LogProcessorCache[$CacheType].Remove($Key)
-                    }
-                }
-                return $null
-            }
-            
-            'Set' {
-                $cacheEntry = @{
-                    'Data'      = $Value
-                    'Timestamp' = Get-Date
-                    'Size'      = if ($Value) { 
-                        try { [System.Text.Encoding]::UTF8.GetBytes(($Value | ConvertTo-Json -Depth 10)).Length } 
-                        catch { 1KB } 
-                    }
-                    else { 0 }
-                }
-                
-                $script:LogProcessorCache[$CacheType][$Key] = $cacheEntry
-                Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Cached $Key (size: $($cacheEntry.Size) bytes)"
-            }
-            
-            'Remove' {
-                if ($script:LogProcessorCache[$CacheType].ContainsKey($Key)) {
-                    $script:LogProcessorCache[$CacheType].Remove($Key)
-                    Write-LogEntry -Level 'DEBUG' -Component 'CACHE-MGR' -Message "Removed cache entry for $Key"
-                }
-            }
-            
-            'Clear' {
-                $script:LogProcessorCache[$CacheType].Clear()
-                Write-LogEntry -Level 'INFO' -Component 'CACHE-MGR' -Message "Cleared all $CacheType cache entries"
-            }
-            
-            'Cleanup' {
-                $removed = 0
-                $totalSize = 0
-                $cutoffTime = (Get-Date) - $script:LogProcessorCache.CacheSettings.MaxCacheAge
-                
-                foreach ($cacheType in @('AuditData', 'ExecutionLogs', 'ProcessedFiles')) {
-                    $keysToRemove = @()
-                    foreach ($key in $script:LogProcessorCache[$cacheType].Keys) {
-                        $entry = $script:LogProcessorCache[$cacheType][$key]
-                        $totalSize += $entry.Size
-                        
-                        if ($entry.Timestamp -lt $cutoffTime) {
-                            $keysToRemove += $key
-                        }
-                    }
-                    
-                    foreach ($key in $keysToRemove) {
-                        $script:LogProcessorCache[$cacheType].Remove($key)
-                        $removed++
-                    }
-                }
-                
-                # Size-based cleanup if cache is too large
-                if ($totalSize -gt $script:LogProcessorCache.CacheSettings.MaxCacheSize) {
-                    Write-LogEntry -Level 'WARNING' -Component 'CACHE-MGR' -Message "Cache size ($totalSize bytes) exceeds limit, performing aggressive cleanup"
-                    Invoke-CacheOperation -Operation 'Clear' -CacheType 'ProcessedFiles'
-                }
-                
-                $script:LogProcessorCache.LastCacheCleanup = Get-Date
-                Write-LogEntry -Level 'INFO' -Component 'CACHE-MGR' -Message "Cache cleanup complete: removed $removed entries, total size: $totalSize bytes"
-            }
-        }
-    }
-    catch {
-        Write-LogEntry -Level 'ERROR' -Component 'CACHE-MGR' -Message "Cache operation failed: $($_.Exception.Message)"
-        return $null
-    }
-}
+# Caching removed in v3.1 - Direct file reads are faster and simpler for single-execution scripts
+# See LOGGING_SYSTEM_ANALYSIS.md for performance analysis showing 74% improvement
 
 <#
 .SYNOPSIS
@@ -400,7 +222,7 @@ function Invoke-BatchProcessing {
         [Parameter(Mandatory)]
         [scriptblock]$ProcessingScript,
         
-        [int]$BatchSize = $script:LogProcessorCache.CacheSettings.BatchSize,
+        [int]$BatchSize = 50,
         
         [switch]$ContinueOnError,
         
@@ -442,14 +264,6 @@ function Invoke-BatchProcessing {
                 }
                 
                 $results.AddRange(@($batchResults))
-                
-                # Periodic cache cleanup during large operations
-                if ($currentBatch % 10 -eq 0) {
-                    $timeSinceCleanup = (Get-Date) - $script:LogProcessorCache.LastCacheCleanup
-                    if ($timeSinceCleanup -gt (New-TimeSpan -Minutes 15)) {
-                        Invoke-CacheOperation -Operation 'Cleanup' -CacheType 'AuditData'
-                    }
-                }
             }
             catch {
                 $errors++
@@ -519,22 +333,9 @@ function Initialize-ProcessedDataPaths {
 #>
 function Get-Type1AuditData {
     [CmdletBinding()]
-    param(
-        [switch]$BypassCache
-    )
+    param()
     
-    $cacheKey = 'Type1-AuditData-All'
-    
-    # Check cache first unless bypassed
-    if (-not $BypassCache) {
-        $cachedData = Invoke-CacheOperation -Operation 'Get' -CacheType 'AuditData' -Key $cacheKey
-        if ($cachedData) {
-            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Returning cached Type1 audit data'
-            return $cachedData
-        }
-    }
-    
-    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Scanning Type1 audit data files (cache miss or bypassed)'
+    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Loading Type1 audit data files'
     
     $auditData = @{}
     $dataPath = Join-Path (Get-MaintenancePath 'TempRoot') 'data'
@@ -555,15 +356,6 @@ function Get-Type1AuditData {
             $file = $InputObject
             $moduleName = $file.BaseName -replace '-results$', ''
             
-            # Check individual file cache
-            $fileCacheKey = "File-$($file.FullName)-$($file.LastWriteTime.Ticks)"
-            $cachedFileData = Invoke-CacheOperation -Operation 'Get' -CacheType 'AuditData' -Key $fileCacheKey
-            
-            if ($cachedFileData) {
-                Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "Using cached data for $moduleName"
-                return @{ ModuleName = $moduleName; Data = $cachedFileData }
-            }
-            
             # Use safe JSON loading with validation
             $defaultData = @{
                 ModuleName       = $moduleName
@@ -575,9 +367,7 @@ function Get-Type1AuditData {
             $content = Import-SafeJsonData -JsonPath $file.FullName -DefaultData $defaultData -ContinueOnError
             
             if ($content) {
-                # Cache individual file data
-                Invoke-CacheOperation -Operation 'Set' -CacheType 'AuditData' -Key $fileCacheKey -Value $content
-                Write-Verbose " Loaded and cached audit data for module: $moduleName"
+                Write-Verbose " Loaded audit data for module: $moduleName"
                 return @{ ModuleName = $moduleName; Data = $content }
             }
             else {
@@ -596,10 +386,7 @@ function Get-Type1AuditData {
             }
         }
         
-        # Cache the complete audit data set
-        Invoke-CacheOperation -Operation 'Set' -CacheType 'AuditData' -Key $cacheKey -Value $auditData
-        
-        Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message "Audit data loading completed: $($auditData.Keys.Count) modules processed and cached"
+        Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message "Audit data loading completed: $($auditData.Keys.Count) modules processed"
         return $auditData
     }
     catch {
@@ -615,22 +402,9 @@ function Get-Type1AuditData {
 #>
 function Get-Type2ExecutionLogs {
     [CmdletBinding()]
-    param(
-        [switch]$BypassCache
-    )
+    param()
     
-    $cacheKey = 'Type2-ExecutionLogs-All'
-    
-    # Check cache first unless bypassed
-    if (-not $BypassCache) {
-        $cachedData = Invoke-CacheOperation -Operation 'Get' -CacheType 'ExecutionLogs' -Key $cacheKey
-        if ($cachedData) {
-            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Returning cached Type2 execution logs'
-            return $cachedData
-        }
-    }
-    
-    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Scanning Type2 execution logs (cache miss or bypassed)'
+    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Loading Type2 execution logs'
     
     $executionLogs = @{}
     $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') 'logs'
@@ -652,18 +426,6 @@ function Get-Type2ExecutionLogs {
             $moduleName = $moduleDir.Name
             $executionLogPath = Join-Path $moduleDir.FullName 'execution.log'
             
-            # Check individual log file cache
-            if (Test-Path $executionLogPath) {
-                $logFile = Get-Item $executionLogPath
-                $fileCacheKey = "LogFile-$($logFile.FullName)-$($logFile.LastWriteTime.Ticks)"
-                $cachedLogData = Invoke-CacheOperation -Operation 'Get' -CacheType 'ExecutionLogs' -Key $fileCacheKey
-                
-                if ($cachedLogData) {
-                    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "Using cached log data for $moduleName"
-                    return @{ ModuleName = $moduleName; Data = $cachedLogData; Success = $true; FallbackUsed = $false }
-                }
-            }
-            
             # Use safe log file reading operation
             $logLoadOperation = {
                 param($ExecutionLogPath)
@@ -684,13 +446,6 @@ function Get-Type2ExecutionLogs {
             $result = Invoke-SafeLogOperation -OperationName "Load execution log for $moduleName" -Operation $logLoadOperation -Parameters @{
                 ExecutionLogPath = $executionLogPath
             } -FallbackOperation $fallbackOperation -FallbackMessage "Using placeholder content for $moduleName execution log" -ContinueOnError
-            
-            if ($result.Success -and (Test-Path $executionLogPath)) {
-                # Cache the log data
-                $logFile = Get-Item $executionLogPath
-                $fileCacheKey = "LogFile-$($logFile.FullName)-$($logFile.LastWriteTime.Ticks)"
-                Invoke-CacheOperation -Operation 'Set' -CacheType 'ExecutionLogs' -Key $fileCacheKey -Value $result.Data
-            }
             
             return @{
                 ModuleName   = $moduleName
@@ -715,10 +470,7 @@ function Get-Type2ExecutionLogs {
             }
         }
         
-        # Cache the complete execution logs set
-        Invoke-CacheOperation -Operation 'Set' -CacheType 'ExecutionLogs' -Key $cacheKey -Value $executionLogs
-        
-        Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Loaded execution logs for $($executionLogs.Keys.Count) modules and cached"
+        Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Loaded execution logs for $($executionLogs.Keys.Count) modules"
         return $executionLogs
     }
     catch {
@@ -737,20 +489,7 @@ function Get-Type2ExecutionLogs {
 function Get-MaintenanceLog {
     [CmdletBinding()]
     [OutputType([hashtable])]
-    param(
-        [switch]$BypassCache
-    )
-    
-    $cacheKey = 'MaintenanceLog-Content'
-    
-    # Check cache first unless bypassed
-    if (-not $BypassCache) {
-        $cachedData = Invoke-CacheOperation -Operation 'Get' -CacheType 'ExecutionLogs' -Key $cacheKey
-        if ($cachedData) {
-            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Returning cached maintenance.log content'
-            return $cachedData
-        }
-    }
+    param()
     
     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Loading main maintenance.log file'
     
@@ -835,9 +574,6 @@ function Get-MaintenanceLog {
                     $maintenanceLogData.Parsed.TotalEntries++
                 }
             }
-            
-            # Cache the loaded data
-            Invoke-CacheOperation -Operation 'Set' -CacheType 'ExecutionLogs' -Key $cacheKey -Value $maintenanceLogData
             
             Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message "Loaded maintenance.log: $($maintenanceLogData.LineCount) lines, $($maintenanceLogData.Parsed.TotalEntries) structured entries"
         }
@@ -2565,6 +2301,5 @@ Export-ModuleMember -Function @(
     'Test-JsonDataIntegrity',
     'Import-SafeJsonData',
     'Get-SafeDirectoryContents',
-    'Invoke-CacheOperation',
     'Invoke-BatchProcessing'
 )
