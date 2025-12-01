@@ -1280,7 +1280,39 @@ function Test-PackageManagerAvailable {
 
     switch ($Manager) {
         'Winget' {
-            return $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
+            # Check standard PATH first
+            $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+            if ($wingetCmd) {
+                return $true
+            }
+            
+            # On fresh Windows installations, winget might not be in PATH yet
+            # Try common winget locations
+            $wingetPaths = @(
+                "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe",
+                "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
+            )
+            
+            foreach ($path in $wingetPaths) {
+                if ($path -like '*`**') {
+                    # Wildcard path - resolve it
+                    $resolved = Get-ChildItem -Path (Split-Path $path) -Filter (Split-Path $path -Leaf) -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($resolved -and (Test-Path $resolved.FullName)) {
+                        # Add to PATH for this session
+                        $env:PATH += ";$(Split-Path $resolved.FullName)"
+                        Write-Verbose "Added winget to PATH: $(Split-Path $resolved.FullName)"
+                        return $true
+                    }
+                }
+                elseif (Test-Path $path) {
+                    # Add to PATH for this session
+                    $env:PATH += ";$(Split-Path $path)"
+                    Write-Verbose "Added winget to PATH: $(Split-Path $path)"
+                    return $true
+                }
+            }
+            
+            return $false
         }
         'Chocolatey' {
             return $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
@@ -1289,6 +1321,78 @@ function Test-PackageManagerAvailable {
             return $false
         }
     }
+}
+
+<#
+.SYNOPSIS
+    Gets the full path to winget executable
+
+.DESCRIPTION
+    Locates winget.exe on the system, checking PATH first and then common installation locations.
+    On fresh Windows installations, winget may not be in PATH but is still installed.
+
+.OUTPUTS
+    [string] Full path to winget.exe, or $null if not found
+
+.EXAMPLE
+    $wingetPath = Get-WingetPath
+    if ($wingetPath) { & $wingetPath --version }
+#>
+function Get-WingetPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    
+    # Check if winget is in PATH
+    $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+    if ($wingetCmd) {
+        return $wingetCmd.Source
+    }
+    
+    # Try common winget locations on fresh Windows installations
+    $wingetPaths = @(
+        "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe",
+        "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe",
+        "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\AppInstallerCLI.exe"
+    )
+    
+    foreach ($path in $wingetPaths) {
+        if ($path -like '*`**') {
+            # Wildcard path - resolve it
+            $parentPath = Split-Path $path -Parent
+            $filePattern = Split-Path $path -Leaf
+            
+            if (Test-Path $parentPath) {
+                $resolved = Get-ChildItem -Path $parentPath -Filter $filePattern -Recurse -ErrorAction SilentlyContinue | 
+                    Sort-Object LastWriteTime -Descending | 
+                    Select-Object -First 1
+                
+                if ($resolved -and (Test-Path $resolved.FullName)) {
+                    Write-Verbose "Found winget at: $($resolved.FullName)"
+                    # Add to PATH for this session
+                    $wingetDir = Split-Path $resolved.FullName
+                    if ($env:PATH -notlike "*$wingetDir*") {
+                        $env:PATH = "$wingetDir;$env:PATH"
+                        Write-Verbose "Added winget to PATH: $wingetDir"
+                    }
+                    return $resolved.FullName
+                }
+            }
+        }
+        elseif (Test-Path $path) {
+            Write-Verbose "Found winget at: $path"
+            # Add to PATH for this session
+            $wingetDir = Split-Path $path
+            if ($env:PATH -notlike "*$wingetDir*") {
+                $env:PATH = "$wingetDir;$env:PATH"
+                Write-Verbose "Added winget to PATH: $wingetDir"
+            }
+            return $path
+        }
+    }
+    
+    Write-Verbose "Winget not found in any known location"
+    return $null
 }
 
 <#
@@ -1644,11 +1748,13 @@ function Install-SingleApplication {
                     $wingetId = if ($AppData.WingetId) { $AppData.WingetId } else { $appId }
                     Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Manual mode: Attempting Winget installation for $appName (ID: $wingetId)" -LogPath $ExecutionLogPath
                     
-                    $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
-                    if ($wingetAvailable) {
+                    # Use enhanced winget detection for fresh Windows installations
+                    $wingetPath = Get-WingetPath
+                    if ($wingetPath) {
+                        Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Using winget at: $wingetPath" -LogPath $ExecutionLogPath
                         # Verify winget is functional
                         try {
-                            $wingetVersion = & winget --version 2>&1
+                            $wingetVersion = & $wingetPath --version 2>&1
                             Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Winget version: $wingetVersion" -LogPath $ExecutionLogPath
                         }
                         catch {
@@ -1661,9 +1767,9 @@ function Install-SingleApplication {
                         
                         try {
                             $installArgs = @('install', '--id', $wingetId, '--silent', '--accept-package-agreements', '--accept-source-agreements')
-                            Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Executing: winget $($installArgs -join ' ')" -LogPath $ExecutionLogPath
+                            Write-StructuredLogEntry -Level 'DEBUG' -Component 'ESSENTIAL-APPS' -Message "Executing: $wingetPath $($installArgs -join ' ')" -LogPath $ExecutionLogPath
                             
-                            $installProcess = Start-Process -FilePath 'winget' -ArgumentList $installArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput $tempStdOut -RedirectStandardError $tempStdErr
+                            $installProcess = Start-Process -FilePath $wingetPath -ArgumentList $installArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput $tempStdOut -RedirectStandardError $tempStdErr
                             
                             $stdout = Get-Content $tempStdOut -Raw -ErrorAction SilentlyContinue
                             $stderr = Get-Content $tempStdErr -Raw -ErrorAction SilentlyContinue
