@@ -921,9 +921,18 @@ function New-MaintenanceReport {
         
         $processedData = Get-ProcessedLogData @processedDataParams
         
-        # Check if we should use enhanced reporting
+        # Check if we should use enhanced reporting (auto-detect enhanced templates if not explicitly disabled)
+        if (-not $UseEnhancedReports) {
+            # Auto-detect enhanced templates
+            $enhancedTemplateCheck = Find-ConfigTemplate -TemplateName "enhanced-module-card.html" -ErrorAction SilentlyContinue
+            if ($enhancedTemplateCheck -and (Test-Path $enhancedTemplateCheck)) {
+                Write-Information "✓ Enhanced templates detected, enabling enhanced reporting (v5.0)..." -InformationAction Continue
+                $UseEnhancedReports = $true
+            }
+        }
+        
         if ($UseEnhancedReports) {
-            Write-Information "✓ Using enhanced reporting system (v3.0)..." -InformationAction Continue
+            Write-Information "✓ Using enhanced reporting system (v5.0)..." -InformationAction Continue
             
             # Load enhanced templates
             Write-Information "✓ Loading enhanced templates..." -InformationAction Continue
@@ -3823,10 +3832,11 @@ function Build-ExecutiveDashboard {
 
 <#
 .SYNOPSIS
-    Builds an enhanced module card with comprehensive details
+    Builds an enhanced module card with comprehensive details (v5.0)
 .DESCRIPTION
-    Generates a complete module card HTML including header, metrics, summary,
-    collapsible details with results, changes, logs, performance, and errors.
+    Generates a professional module card HTML using enhanced-module-card.html template
+    with flexbox layout, metrics, detailed logs, and modern UI elements.
+    This version integrates with the enhanced report generation system.
 #>
 function Build-ModuleCard {
     [CmdletBinding()]
@@ -3835,105 +3845,80 @@ function Build-ModuleCard {
         [Parameter(Mandatory)]
         [hashtable]$ModuleResult,
         
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$CardTemplate
     )
     
     try {
-        Write-Verbose "Building module card for $($ModuleResult.ModuleName)"
-        
-        # Extract module data
         $moduleName = $ModuleResult.ModuleName
-        $displayName = if ($moduleName -match '([A-Z][a-z]+)') { 
-            $moduleName -creplace '([A-Z])', ' $1' 
-        }
-        else { 
-            $moduleName 
-        }
-        $displayName = $displayName.Trim()
+        Write-Verbose "Building enhanced module card for $moduleName"
         
-        $status = if ($ModuleResult.Status) { $ModuleResult.Status } else { 'Unknown' }
-        $icon = if ($ModuleResult.Icon) { $ModuleResult.Icon } else { '⚙️' }
-        
-        # Get metrics
-        $metrics = if ($ModuleResult.Metrics) { $ModuleResult.Metrics } else { @{} }
-        $detected = if ($metrics.ItemsDetected) { $metrics.ItemsDetected } else { 0 }
-        $processed = if ($metrics.ItemsProcessed) { $metrics.ItemsProcessed } else { 0 }
-        $skipped = if ($metrics.ItemsSkipped) { $metrics.ItemsSkipped } else { 0 }
-        $failed = if ($metrics.ItemsFailed) { $metrics.ItemsFailed } else { 0 }
-        $duration = if ($metrics.DurationSeconds) { 
-            "$([Math]::Round($metrics.DurationSeconds, 1))s" 
-        }
-        else { 
-            "N/A" 
-        }
-        
-        # Generate summary
-        $summary = New-ModuleSummary -ModuleResult $ModuleResult
-        
-        # Build detail sections
-        $resultsHtml = ""
-        if ($ModuleResult.Results -and $ModuleResult.Results.Count -gt 0) {
-            foreach ($key in $ModuleResult.Results.Keys) {
-                $value = $ModuleResult.Results[$key]
-                if ($value -is [array] -and $value.Count -gt 0) {
-                    $resultsHtml += "                    <div class='result-category'><strong>${key}:</strong> $($value.Count) items</div>`n"
-                }
-                elseif ($value) {
-                    $resultsHtml += "                    <div class='result-item'>$value</div>`n"
-                }
+        # Try to load enhanced template if not provided
+        if (-not $CardTemplate) {
+            $enhancedTemplatePath = Find-ConfigTemplate -TemplateName "enhanced-module-card.html"
+            if ($enhancedTemplatePath -and (Test-Path $enhancedTemplatePath)) {
+                $CardTemplate = Get-Content $enhancedTemplatePath -Raw
+                Write-Verbose "Using enhanced module card template"
             }
         }
-        if ([string]::IsNullOrWhiteSpace($resultsHtml)) {
-            $resultsHtml = "                    <div class='no-data'>No results data available</div>`n"
+        
+        # Define module metadata
+        $moduleInfo = @{
+            'BloatwareRemoval'    = @{ Icon = '🗑️'; Name = 'Bloatware Removal'; Description = 'Removes unnecessary pre-installed software and applications' }
+            'EssentialApps'       = @{ Icon = '📦'; Name = 'Essential Applications'; Description = 'Installs and manages essential system applications' }
+            'SystemOptimization'  = @{ Icon = '⚡'; Name = 'System Optimization'; Description = 'Optimizes system performance and resource usage' }
+            'TelemetryDisable'    = @{ Icon = '🔒'; Name = 'Privacy & Telemetry'; Description = 'Disables telemetry and enhances privacy settings' }
+            'WindowsUpdates'      = @{ Icon = '🔄'; Name = 'Windows Updates'; Description = 'Manages system updates and security patches' }
+            'SecurityAudit'       = @{ Icon = '🛡️'; Name = 'Security Audit'; Description = 'Comprehensive security assessment and recommendations' }
+            'SystemInventory'     = @{ Icon = '📊'; Name = 'System Inventory'; Description = 'Complete system hardware and software inventory' }
+            'AppUpgrade'          = @{ Icon = '⬆️'; Name = 'Application Upgrades'; Description = 'Updates installed applications to latest versions' }
+            'SecurityEnhancement' = @{ Icon = '🔐'; Name = 'Security Enhancement'; Description = 'Applies advanced security configurations' }
         }
         
-        $changesHtml = ""
-        if ($ModuleResult.Changes -and $ModuleResult.Changes.Count -gt 0) {
-            foreach ($key in $ModuleResult.Changes.Keys) {
-                $value = $ModuleResult.Changes[$key]
-                if ($value -is [array] -and $value.Count -gt 0) {
-                    $changesHtml += "                    <div class='change-category'><strong>${key}:</strong> $($value.Count) changes</div>`n"
-                }
-            }
-        }
-        if ([string]::IsNullOrWhiteSpace($changesHtml)) {
-            $changesHtml = "                    <div class='no-data'>No changes made</div>`n"
-        }
+        $info = $moduleInfo[$moduleName] ?? @{ Icon = '⚙️'; Name = $moduleName; Description = 'Module execution results' }
         
-        $logEntriesHtml = Build-ModuleLogEntries -ModuleResult $ModuleResult -MaxEntries 20
-        $performancePhasesHtml = Build-PerformancePhases -ModuleResult $ModuleResult
-        $errorsHtml = Build-ModuleErrors -ModuleResult $ModuleResult
+        # Extract metrics from either Metrics property or direct properties
+        $totalOps = [int]($ModuleResult.Metrics.ItemsProcessed ?? $ModuleResult.ItemsProcessed ?? $ModuleResult.TotalOperations ?? 0)
+        $successOps = [int]($ModuleResult.Metrics.ItemsSuccessful ?? $ModuleResult.SuccessfulOperations ?? 0)
+        $skippedOps = [int]($ModuleResult.Metrics.ItemsSkipped ?? $ModuleResult.SkippedOperations ?? 0)
+        $failedOps = [int]($ModuleResult.Metrics.ItemsFailed ?? $ModuleResult.FailedOperations ?? 0)
+        $durationSec = [double]($ModuleResult.Metrics.DurationSeconds ?? $ModuleResult.DurationSeconds ?? 0)
         
-        $recommendationsHtml = ""
-        if ($ModuleResult.Recommendations -and $ModuleResult.Recommendations.Count -gt 0) {
-            foreach ($recommendation in $ModuleResult.Recommendations) {
-                $escapedRec = [System.Web.HttpUtility]::HtmlEncode($recommendation)
-                $recommendationsHtml += "                    <div class='recommendation-item'><span class='recommendation-icon'>💡</span><span class='recommendation-text'>$escapedRec</span></div>`n"
-            }
-        }
-        else {
-            $recommendationsHtml = "                    <div class='no-data'>No recommendations</div>`n"
-        }
+        # Calculate success rate
+        $successRate = if ($totalOps -gt 0) { [math]::Round(($successOps / $totalOps) * 100, 1) } else { 100 }
         
-        # Replace tokens in card template
+        # Determine status class
+        $status = $ModuleResult.Status ?? 'Completed'
+        $statusClass = if ($status -match 'Success|Completed') { 'status-success' }
+        elseif ($status -match 'Warning') { 'status-warning' }
+        elseif ($status -match 'Error|Failed') { 'status-error' }
+        else { 'status-info' }
+        
+        # Build module details HTML using enhanced system
+        $detailsHtml = Build-ModuleDetailsSection -ModuleKey $moduleName -ModuleData $ModuleResult
+        
+        # Build module logs HTML using enhanced system
+        $logsHtml = Build-ModuleLogsSection -ModuleKey $moduleName -ModuleData $ModuleResult
+        $logsCount = if ($ModuleResult.Logs) { $ModuleResult.Logs.Count } elseif ($ModuleResult.LogEntries) { $ModuleResult.LogEntries.Count } else { 0 }
+        
+        # Generate module card HTML by replacing template tokens
         $cardHtml = $CardTemplate
-        $cardHtml = $cardHtml -replace '{{MODULE_NAME}}', $moduleName
-        $cardHtml = $cardHtml -replace '{{MODULE_DISPLAY_NAME}}', $displayName
-        $cardHtml = $cardHtml -replace '{{MODULE_ICON}}', $icon
-        $cardHtml = $cardHtml -replace '{{MODULE_STATUS}}', $status.ToLower()
-        $cardHtml = $cardHtml -replace '{{MODULE_DURATION}}', $duration
-        $cardHtml = $cardHtml -replace '{{ITEMS_DETECTED}}', $detected
-        $cardHtml = $cardHtml -replace '{{ITEMS_PROCESSED}}', $processed
-        $cardHtml = $cardHtml -replace '{{ITEMS_SKIPPED}}', $skipped
-        $cardHtml = $cardHtml -replace '{{ITEMS_FAILED}}', $failed
-        $cardHtml = $cardHtml -replace '{{MODULE_SUMMARY}}', $summary
-        $cardHtml = $cardHtml -replace '{{MODULE_RESULTS}}', $resultsHtml
-        $cardHtml = $cardHtml -replace '{{MODULE_CHANGES}}', $changesHtml
-        $cardHtml = $cardHtml -replace '{{MODULE_LOG_ENTRIES}}', $logEntriesHtml
-        $cardHtml = $cardHtml -replace '{{PERFORMANCE_PHASES}}', $performancePhasesHtml
-        $cardHtml = $cardHtml -replace '{{MODULE_ERRORS}}', $errorsHtml
-        $cardHtml = $cardHtml -replace '{{MODULE_RECOMMENDATIONS}}', $recommendationsHtml
+        $cardHtml = $cardHtml -replace '\{\{MODULE_ID\}\}', $moduleName
+        $cardHtml = $cardHtml -replace '\{\{MODULE_ICON\}\}', $info.Icon
+        $cardHtml = $cardHtml -replace '\{\{MODULE_NAME\}\}', $info.Name
+        $cardHtml = $cardHtml -replace '\{\{MODULE_DESCRIPTION\}\}', $info.Description
+        $cardHtml = $cardHtml -replace '\{\{MODULE_STATUS_CLASS\}\}', $statusClass
+        $cardHtml = $cardHtml -replace '\{\{MODULE_STATUS_TEXT\}\}', $status
+        $cardHtml = $cardHtml -replace '\{\{EXECUTION_TIMESTAMP\}\}', (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+        $cardHtml = $cardHtml -replace '\{\{EXECUTION_DURATION\}\}', "$([math]::Round($durationSec, 1))s"
+        $cardHtml = $cardHtml -replace '\{\{ITEMS_PROCESSED\}\}', $totalOps
+        $cardHtml = $cardHtml -replace '\{\{ITEMS_SUCCESSFUL\}\}', $successOps
+        $cardHtml = $cardHtml -replace '\{\{ITEMS_SKIPPED\}\}', $skippedOps
+        $cardHtml = $cardHtml -replace '\{\{ITEMS_FAILED\}\}', $failedOps
+        $cardHtml = $cardHtml -replace '\{\{SUCCESS_RATE\}\}', $successRate
+        $cardHtml = $cardHtml -replace '\{\{MODULE_DETAILS_HTML\}\}', $detailsHtml
+        $cardHtml = $cardHtml -replace '\{\{MODULE_LOGS_HTML\}\}', $logsHtml
+        $cardHtml = $cardHtml -replace '\{\{LOGS_COUNT\}\}', $logsCount
         
         return $cardHtml
     }
@@ -3941,6 +3926,193 @@ function Build-ModuleCard {
         Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to build module card for $($ModuleResult.ModuleName): $($_.Exception.Message)"
         return "<div class='module-card error'><p>Failed to generate module card: $($_.Exception.Message)</p></div>`n"
     }
+}
+
+<#
+.SYNOPSIS
+    Builds the module details section with detected and processed items (v5.0)
+.DESCRIPTION
+    Generates HTML for module details including detected items (Type1 audit results)
+    and processed items (Type2 execution results) with professional styling.
+#>
+function Build-ModuleDetailsSection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleKey,
+        
+        [Parameter(Mandatory)]
+        [hashtable]$ModuleData
+    )
+    
+    $detailsHtml = @()
+    
+    # Check for detected items (Type1 audit results)
+    if ($ModuleData.DetectedItems -and $ModuleData.DetectedItems.Count -gt 0) {
+        $detailsHtml += '<div class="detail-section">'
+        $detailsHtml += '<h4 class="detail-section-title"><span>🔍</span> Detected Items</h4>'
+        $detailsHtml += '<div class="detail-list">'
+        
+        foreach ($item in $ModuleData.DetectedItems | Select-Object -First 10) {
+            $itemName = if ($item.Name) { $item.Name } elseif ($item.DisplayName) { $item.DisplayName } else { $item.ToString() }
+            $itemStatus = if ($item.Status) { $item.Status } else { 'Detected' }
+            $statusBadgeClass = switch ($itemStatus.ToLower()) {
+                'success' { 'success' }
+                'removed' { 'success' }
+                'installed' { 'success' }
+                'warning' { 'warning' }
+                'skipped' { 'warning' }
+                'error' { 'error' }
+                'failed' { 'error' }
+                default { 'info' }
+            }
+            
+            $detailsHtml += '<div class="detail-item">'
+            $detailsHtml += '<div class="detail-item-icon">📄</div>'
+            $detailsHtml += '<div class="detail-item-content">'
+            $detailsHtml += "<div class='detail-item-name'>$itemName</div>"
+            if ($item.Version) {
+                $detailsHtml += "<div class='detail-item-description'>Version: $($item.Version)</div>"
+            }
+            if ($item.Size) {
+                $detailsHtml += "<div class='detail-item-description'>Size: $($item.Size)</div>"
+            }
+            $detailsHtml += '</div>'
+            $detailsHtml += "<div class='detail-item-status'><span class='status-badge $statusBadgeClass'>$itemStatus</span></div>"
+            $detailsHtml += '</div>'
+        }
+        
+        if ($ModuleData.DetectedItems.Count -gt 10) {
+            $remaining = $ModuleData.DetectedItems.Count - 10
+            $detailsHtml += "<div class='detail-item' style='justify-content: center; color: var(--text-muted); font-style: italic;'>+ $remaining more items...</div>"
+        }
+        
+        $detailsHtml += '</div></div>'
+    }
+    
+    # Check for processed items (Type2 execution results)
+    if ($ModuleData.ProcessedItems -and $ModuleData.ProcessedItems.Count -gt 0) {
+        $detailsHtml += '<div class="detail-section">'
+        $detailsHtml += '<h4 class="detail-section-title"><span>⚡</span> Processed Items</h4>'
+        $detailsHtml += '<div class="detail-list">'
+        
+        foreach ($item in $ModuleData.ProcessedItems | Select-Object -First 10) {
+            $itemName = if ($item.Name) { $item.Name } else { $item.ToString() }
+            $itemResult = if ($item.Result) { $item.Result } elseif ($item.Status) { $item.Status } else { 'Processed' }
+            $resultBadgeClass = switch ($itemResult.ToLower()) {
+                'success' { 'success' }
+                'completed' { 'success' }
+                'warning' { 'warning' }
+                'skipped' { 'warning' }
+                'error' { 'error' }
+                'failed' { 'error' }
+                default { 'info' }
+            }
+            
+            $detailsHtml += '<div class="detail-item">'
+            $detailsHtml += '<div class="detail-item-icon">✓</div>'
+            $detailsHtml += '<div class="detail-item-content">'
+            $detailsHtml += "<div class='detail-item-name'>$itemName</div>"
+            if ($item.Action) {
+                $detailsHtml += "<div class='detail-item-description'>Action: $($item.Action)</div>"
+            }
+            $detailsHtml += '</div>'
+            $detailsHtml += "<div class='detail-item-status'><span class='status-badge $resultBadgeClass'>$itemResult</span></div>"
+            $detailsHtml += '</div>'
+        }
+        
+        if ($ModuleData.ProcessedItems.Count -gt 10) {
+            $remaining = $ModuleData.ProcessedItems.Count - 10
+            $detailsHtml += "<div class='detail-item' style='justify-content: center; color: var(--text-muted); font-style: italic;'>+ $remaining more items...</div>"
+        }
+        
+        $detailsHtml += '</div></div>'
+    }
+    
+    if ($detailsHtml.Count -eq 0) {
+        $detailsHtml += '<div style="padding: var(--spacing-lg); text-align: center; color: var(--text-muted);">'
+        $detailsHtml += '<p>✓ Module completed successfully with no specific items to display</p>'
+        $detailsHtml += '</div>'
+    }
+    
+    return $detailsHtml -join "`n"
+}
+
+<#
+.SYNOPSIS
+    Builds the module logs section with formatted execution logs (v5.0)
+.DESCRIPTION
+    Loads and formats execution logs from module log files or embedded log data.
+    Displays logs with timestamps, level icons, and message content.
+#>
+function Build-ModuleLogsSection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleKey,
+        
+        [Parameter(Mandatory)]
+        [hashtable]$ModuleData
+    )
+    
+    $logsHtml = @()
+    
+    # Try to load logs from module's log file
+    $logFilePath = Get-SessionPath -Category 'logs' -SubCategory $ModuleKey -FileName 'execution-structured.json'
+    $logEntries = @()
+    
+    if ($logFilePath -and (Test-Path $logFilePath)) {
+        try {
+            $logData = Get-Content $logFilePath -Raw | ConvertFrom-Json
+            if ($logData.Entries) {
+                $logEntries = $logData.Entries | Select-Object -First 20
+            }
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to load logs for $ModuleKey : $_"
+        }
+    }
+    
+    # Fallback to embedded logs if file not available
+    if ($logEntries.Count -eq 0 -and $ModuleData.Logs) {
+        $logEntries = $ModuleData.Logs | Select-Object -First 20
+    }
+    
+    if ($logEntries.Count -gt 0) {
+        foreach ($log in $logEntries) {
+            $level = if ($log.Level) { $log.Level.ToLower() } else { 'info' }
+            $timestamp = if ($log.Timestamp) { 
+                try { [datetime]::Parse($log.Timestamp).ToString('HH:mm:ss') } 
+                catch { (Get-Date).ToString('HH:mm:ss') }
+            }
+            else { (Get-Date).ToString('HH:mm:ss') }
+            $message = if ($log.Message) { $log.Message } else { $log.ToString() }
+            
+            $levelIcon = switch ($level) {
+                'success' { '✓' }
+                'info' { 'ℹ' }
+                'warning' { '⚠' }
+                'error' { '✗' }
+                'debug' { '🔍' }
+                default { '•' }
+            }
+            
+            $logsHtml += "<div class='log-entry $level'>"
+            $logsHtml += "<div class='log-timestamp'>$timestamp</div>"
+            $logsHtml += "<div class='log-level-icon'>$levelIcon</div>"
+            $logsHtml += "<div class='log-message'>$message</div>"
+            $logsHtml += '</div>'
+        }
+    }
+    else {
+        $logsHtml += '<div class="log-entry info">'
+        $logsHtml += '<div class="log-timestamp">' + (Get-Date).ToString('HH:mm:ss') + '</div>'
+        $logsHtml += '<div class="log-level-icon">ℹ</div>'
+        $logsHtml += "<div class='log-message'>Module $ModuleKey completed - no detailed logs available</div>"
+        $logsHtml += '</div>'
+    }
+    
+    return $logsHtml -join "`n"
 }
 
 <#
@@ -4265,5 +4437,8 @@ Export-ModuleMember -Function @(
     'Build-ExecutiveDashboard',
     'Build-ModuleCard',
     'Build-ErrorAnalysis',
-    'Build-KeyFindings'
+    'Build-KeyFindings',
+    # Enhanced Builder Functions v5.0 (Integrated from ModernReportGenerator)
+    'Build-ModuleDetailsSection',
+    'Build-ModuleLogsSection'
 )

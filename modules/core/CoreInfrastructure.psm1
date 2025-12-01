@@ -3417,7 +3417,7 @@ Export-ModuleMember -Function @(
     'Write-DetectionLog', 'Remove-NonActionableLogContent',
     'Assert-AdminPrivilege', 'Initialize-ModuleExecution',
     'Start-PerformanceTracking', 'Start-PerformanceTrackingSafe', 'Complete-PerformanceTracking', 'Set-LoggingVerbosity', 'Set-LoggingEnabled',
-    'Initialize-SessionFileOrganization', 'Test-TempFilesStructure', 'Get-SessionFilePath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
+    'Initialize-SessionFileOrganization', 'Test-TempFilesStructure', 'Get-SessionFilePath', 'Get-SessionPath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
     'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',
     'Initialize-MaintenanceInfrastructure', 'Get-InfrastructureStatus',
     'Get-AuditResultsPath', 'Save-DiffResults',
