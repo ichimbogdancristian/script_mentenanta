@@ -426,14 +426,17 @@ function Get-WindowsDefenderStatus {
 
             # Perform scan if requested
             if ($IncludeScan) {
-                Write-Information "    🔍 Performing quick security scan..." -InformationAction Continue
+                Write-Information "    🔍 Initiating quick security scan (background)..." -InformationAction Continue
                 try {
-                    Start-MpScan -ScanType QuickScan -AsJob | Out-Null
-                    Start-Sleep -Seconds 2  # Brief pause to let scan start
+                    # Run scan as background job without waiting
+                    $scanJob = Start-MpScan -ScanType QuickScan -AsJob -ErrorAction Stop
                     $results.Details.ScanInitiated = $true
+                    $results.Details.ScanJobId = $scanJob.Id
+                    Write-Verbose "Security scan job started with ID: $($scanJob.Id)"
                 }
                 catch {
                     $results.Issues.Add("Failed to initiate security scan: $_")
+                    Write-Verbose "Scan initiation error: $_"
                 }
             }
         }
@@ -860,7 +863,8 @@ function New-SecurityReport {
         try {
             if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
                 $auditDataPath = Get-AuditResultsPath -ModuleName 'Security'
-            } else {
+            }
+            else {
                 $auditDataPath = Get-SessionPath -Category 'data' -FileName 'security-audit.json'
             }
             $AuditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $auditDataPath -Encoding UTF8
