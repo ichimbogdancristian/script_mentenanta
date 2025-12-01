@@ -81,6 +81,18 @@ function Invoke-TelemetryDisable {
                 -DryRun $DryRun.IsPresent
         }
         
+        # Display module banner
+        Write-Host "`n" -NoNewline
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host "  TELEMETRY DISABLE MODULE v3.0" -ForegroundColor White
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host "  Type: " -NoNewline -ForegroundColor Gray
+        Write-Host "Type 2 (System Modification)" -ForegroundColor Yellow
+        Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
+        Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host ""
+        
         # STEP 3: Setup execution logging directory
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\telemetry-disable"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null

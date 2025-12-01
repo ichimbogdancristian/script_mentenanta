@@ -142,7 +142,7 @@ function Show-MainMenu {
     Write-Host "  [2] Dry-run mode (simulate changes)" -ForegroundColor Cyan -NoNewline
     Write-Host "  [Shortcut: D]" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "Tip: Press ESC to abort" -ForegroundColor DarkGray
+    Write-Host "Tip: Press ENTER for default, ESC to abort" -ForegroundColor DarkGray
     Write-Host ""
 
     # Show available tasks if provided
@@ -158,7 +158,7 @@ function Show-MainMenu {
                 $taskDesc = $task.Description
                 Write-Host "  $taskNumber " -ForegroundColor Cyan -NoNewline
                 Write-Host "$taskName" -ForegroundColor White
-                Write-Host "      └─ $taskDesc" -ForegroundColor DarkGray
+                Write-Host "      - $taskDesc" -ForegroundColor DarkGray
             }
             elseif ($task -is [hashtable] -and $task.ContainsKey('Name')) {
                 Write-Host "  $taskNumber " -ForegroundColor Cyan -NoNewline
@@ -361,7 +361,7 @@ function Show-Progress {
         Write-Host $Activity -ForegroundColor $activityColor -NoNewline
         
         if ($Status) {
-            Write-Host " » " -ForegroundColor DarkGray -NoNewline
+            Write-Host " > " -ForegroundColor DarkGray -NoNewline
             Write-Host $Status -ForegroundColor White -NoNewline
         }
         
@@ -405,17 +405,17 @@ function Show-Progress {
     Whether to show percentage text with the bar
 
 .PARAMETER Completed
-    Character to use for completed portion (default: '█')
+    Character to use for completed portion (default: '#')
 
 .PARAMETER Remaining
-    Character to use for remaining portion (default: '░')
+    Character to use for remaining portion (default: '-')
 
 .OUTPUTS
     [string] Visual progress bar string
 
 .EXAMPLE
     Show-ProgressBar -Percent 75 -Width 30
-    # Returns: "[██████████████████████░░░░░░░░] 75%"
+    # Returns: "[######################--------] 75%"
 
 .NOTES
     Used internally by Show-Progress and can be called independently for custom displays
@@ -436,10 +436,10 @@ function Show-ProgressBar {
         [switch]$ShowPercentage,
 
         [Parameter()]
-        [string]$Completed = '█',
+        [string]$Completed = '#',
 
         [Parameter()]
-        [string]$Remaining = '░'
+        [string]$Remaining = '-'
     )
 
     try {
@@ -498,11 +498,9 @@ function Show-ResultSummary {
     )
 
     try {
-        Write-Host "`n╔═══════════════════════════════════════════════════╗" -ForegroundColor Cyan
-        Write-Host "║ " -ForegroundColor Cyan -NoNewline
-        Write-Host $Title.PadRight(49) -ForegroundColor White -NoNewline
-        Write-Host " ║" -ForegroundColor Cyan
-        Write-Host "╚═══════════════════════════════════════════════════╝" -ForegroundColor Cyan
+        Write-Host "`n===================================================" -ForegroundColor Cyan
+        Write-Host "  $Title" -ForegroundColor White
+        Write-Host "===================================================" -ForegroundColor Cyan
         Write-Host ""
 
         # Calculate maximum key length for alignment
@@ -650,6 +648,13 @@ function Start-CountdownMenu {
                     throw "User cancelled operation"
                 }
                 
+                # Handle Enter key - use default option
+                if ($key.Key -eq 'Enter' -or $key.KeyChar -eq [char]13) {
+                    $selection = $DefaultOption
+                    Write-Host "`n`nSelected: $selection (default)" -ForegroundColor Green
+                    return $selection
+                }
+                
                 $userInput = $key.KeyChar.ToString().ToUpper()
                 
                 # Support keyboard shortcuts
@@ -754,11 +759,15 @@ function Start-CountdownInput {
                     throw "User cancelled operation"
                 }
                 
-                if ($key.Key -eq 'Enter') {
+                # Handle Enter key - submit input or use default
+                if ($key.Key -eq 'Enter' -or $key.KeyChar -eq [char]13) {
                     if ([string]::IsNullOrWhiteSpace($userInput)) {
                         $userInput = $DefaultValue
+                        Write-Host "`n`nSelected: $userInput (default)" -ForegroundColor Green
                     }
-                    Write-Host "`n`nSelected: $userInput" -ForegroundColor Green
+                    else {
+                        Write-Host "`n`nSelected: $userInput" -ForegroundColor Green
+                    }
                     return $userInput
                 }
                 elseif ($key.Key -eq 'Backspace' -and $userInput.Length -gt 0) {
@@ -842,7 +851,7 @@ function ConvertFrom-TaskNumbers {
                     $selectedTasks += $i
                 }
                 
-                Write-Host "Range expanded: $num → $($rangeStart..$rangeEnd -join ', ')" -ForegroundColor Gray
+                Write-Host "Range expanded: $num -> $($rangeStart..$rangeEnd -join ', ')" -ForegroundColor Gray
             }
             # Handle single number
             elseif ($num -match '^\d+$') {

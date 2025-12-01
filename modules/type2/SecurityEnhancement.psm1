@@ -106,17 +106,23 @@ function Invoke-SecurityEnhancement {
         # Track execution duration
         $executionStartTime = Get-Date
         
-        Write-Information "🔒 Security Enhancement Module v3.0" -InformationAction Continue
-        Write-Information "   Type: Type 2 (System Modification)" -InformationAction Continue
-        Write-Information "   Mode: $(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -InformationAction Continue
-        Write-Information "" -InformationAction Continue
+        Write-Host "`n" -NoNewline
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host "  SECURITY ENHANCEMENT MODULE v3.0" -ForegroundColor White
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host "  Type: " -NoNewline -ForegroundColor Gray
+        Write-Host "Type 2 (System Modification)" -ForegroundColor Yellow
+        Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
+        Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host ""
         
         # Step 1: Load security configuration
-        Write-Information "📋 Step 1: Loading security configuration..." -InformationAction Continue
+        Write-Information "[Step 1/3] Loading security configuration..." -InformationAction Continue
         $securityConfig = Get-SecurityConfiguration -ErrorAction Stop
         
         if ($securityConfig) {
-            Write-Information "   ✅ Security configuration loaded successfully" -InformationAction Continue
+            Write-Information "   [OK] Security configuration loaded successfully" -InformationAction Continue
             Write-Information "   • CIS Baseline: $($securityConfig.compliance.enableCISBaseline)" -InformationAction Continue
             Write-Information "   • Digital Signature Verification: $($securityConfig.security.enableDigitalSignatureVerification)" -InformationAction Continue
             Write-Information "   • Malware Scanning: $($securityConfig.security.enableMalwareScan)" -InformationAction Continue
@@ -128,7 +134,7 @@ function Invoke-SecurityEnhancement {
         
         # Step 2: Call Type1 module for security audit
         Write-Information "" -InformationAction Continue
-        Write-Information "🔍 Step 2: Analyzing current security posture..." -InformationAction Continue
+        Write-Information "[Step 2/3] Analyzing current security posture..." -InformationAction Continue
         
         # Explicit assignment to prevent pipeline contamination
         $auditResults = $null
@@ -147,12 +153,12 @@ function Invoke-SecurityEnhancement {
             $issuesDetected = $auditResults.TotalIssues
         }
         
-        Write-Information "   ✅ Security audit completed" -InformationAction Continue
+        Write-Information "   [OK] Security audit completed" -InformationAction Continue
         Write-Information "   • Security issues detected: $issuesDetected" -InformationAction Continue
         
         # Step 3: Apply security enhancements
         Write-Information "" -InformationAction Continue
-        Write-Information "🛡️ Step 3: Applying security enhancements..." -InformationAction Continue
+        Write-Information "[Step 3/3] Applying security enhancements..." -InformationAction Continue
         
         $enhancementResults = @{
             WindowsDefender    = $null
@@ -167,7 +173,7 @@ function Invoke-SecurityEnhancement {
         
         # Apply Windows Defender enhancements
         if ($securityConfig.security.enableRealTimeProtection) {
-            Write-Information "   🛡️ Configuring Windows Defender..." -InformationAction Continue
+            Write-Information "   >> Configuring Windows Defender..." -InformationAction Continue
             $enhancementResults.WindowsDefender = Set-WindowsDefenderConfiguration -Config $securityConfig -DryRun:$DryRun
             if ($enhancementResults.WindowsDefender.Success) {
                 $itemsProcessed += $enhancementResults.WindowsDefender.ItemsProcessed
@@ -175,7 +181,7 @@ function Invoke-SecurityEnhancement {
         }
         
         # Configure Firewall
-        Write-Information "   🔥 Verifying Windows Firewall..." -InformationAction Continue
+        Write-Information "   >> Verifying Windows Firewall..." -InformationAction Continue
         $enhancementResults.Firewall = Set-FirewallConfiguration -Config $securityConfig -DryRun:$DryRun
         if ($enhancementResults.Firewall.Success) {
             $itemsProcessed += $enhancementResults.Firewall.ItemsProcessed
@@ -199,7 +205,7 @@ function Invoke-SecurityEnhancement {
         
         # Configure Audit Policies
         if ($securityConfig.security.enableAuditLogging) {
-            Write-Information "   📋 Configuring system audit policies..." -InformationAction Continue
+            Write-Information "   >> Configuring system audit policies..." -InformationAction Continue
             $enhancementResults.AuditPolicies = Set-SystemAuditPolicies -Config $securityConfig -DryRun:$DryRun
             if ($enhancementResults.AuditPolicies.Success) {
                 $itemsProcessed += $enhancementResults.AuditPolicies.ItemsProcessed
@@ -207,7 +213,7 @@ function Invoke-SecurityEnhancement {
         }
         
         # Network Security
-        Write-Information "   🌐 Applying network security settings..." -InformationAction Continue
+        Write-Information "   >> Applying network security settings..." -InformationAction Continue
         $enhancementResults.NetworkSecurity = Set-NetworkSecurityConfiguration -Config $securityConfig -DryRun:$DryRun
         if ($enhancementResults.NetworkSecurity.Success) {
             $itemsProcessed += $enhancementResults.NetworkSecurity.ItemsProcessed
@@ -217,7 +223,7 @@ function Invoke-SecurityEnhancement {
         $executionDuration = ((Get-Date) - $executionStartTime).TotalSeconds
         
         Write-Information "" -InformationAction Continue
-        Write-Information "✅ Security enhancement completed" -InformationAction Continue
+        Write-Information "[COMPLETED] Security enhancement finished successfully" -InformationAction Continue
         Write-Information "   • Security issues detected: $issuesDetected" -InformationAction Continue
         Write-Information "   • Enhancements applied: $itemsProcessed" -InformationAction Continue
         Write-Information "   • Execution time: $([math]::Round($executionDuration, 2)) seconds" -InformationAction Continue
@@ -350,7 +356,7 @@ function Set-WindowsDefenderConfiguration {
             Set-MpPreference -DisableBehaviorMonitoring $false -ErrorAction SilentlyContinue
             $itemsProcessed++
             
-            Write-Information "      ✅ Windows Defender configured successfully" -InformationAction Continue
+            Write-Information "      [OK] Windows Defender configured successfully" -InformationAction Continue
         }
         
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
@@ -381,7 +387,7 @@ function Set-FirewallConfiguration {
         else {
             Set-NetFirewallProfile -Profile Domain, Public, Private -Enabled True -ErrorAction SilentlyContinue
             $itemsProcessed = 3
-            Write-Information "      ✅ Windows Firewall enabled for all profiles" -InformationAction Continue
+            Write-Information "      [OK] Windows Firewall enabled for all profiles" -InformationAction Continue
         }
         
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
@@ -414,7 +420,7 @@ function Set-UACConfiguration {
             # Set UAC to prompt for consent on the secure desktop
             Set-ItemProperty -Path $uacRegPath -Name "ConsentPromptBehaviorAdmin" -Value 2 -Type DWord -ErrorAction Stop
             $itemsProcessed++
-            Write-Information "      ✅ UAC configured successfully" -InformationAction Continue
+            Write-Information "      [OK] UAC configured successfully" -InformationAction Continue
         }
         
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
@@ -446,7 +452,7 @@ function Set-PowerShellExecutionPolicy {
         else {
             Set-ExecutionPolicy -ExecutionPolicy $policy -Scope LocalMachine -Force -ErrorAction Stop
             $itemsProcessed++
-            Write-Information "      ✅ Execution policy set to: $policy" -InformationAction Continue
+            Write-Information "      [OK] Execution policy set to: $policy" -InformationAction Continue
         }
         
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
@@ -489,7 +495,7 @@ function Set-SystemAuditPolicies {
                 $itemsProcessed++
             }
             
-            Write-Information "      ✅ Audit policies configured successfully" -InformationAction Continue
+            Write-Information "      [OK] Audit policies configured successfully" -InformationAction Continue
         }
         
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
@@ -537,7 +543,7 @@ function Set-NetworkSecurityConfiguration {
             }
             $itemsProcessed++
             
-            Write-Information "      ✅ Network security configured successfully" -InformationAction Continue
+            Write-Information "      [OK] Network security configured successfully" -InformationAction Continue
         }
         
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0

@@ -87,7 +87,7 @@ function Get-PrivacyInventory {
             }
         }
         
-        Write-Information "🔍 Scanning privacy and telemetry settings..." -InformationAction Continue
+        Write-Information "[PRIVACY] Scanning privacy and telemetry settings..." -InformationAction Continue
         
         # Initialize inventory structure
         $inventory = @{
@@ -121,7 +121,7 @@ function Get-PrivacyInventory {
         
         # Step 1: Check telemetry settings
         Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Auditing telemetry settings'
-        Write-Information "  📊 Checking telemetry settings..." -InformationAction Continue
+        Write-Information "  >> Checking telemetry settings..." -InformationAction Continue
         $inventory.telemetrySettings = Get-TelemetryConfiguration
         
         # Step 2: Audit privacy-related services
@@ -165,7 +165,7 @@ function Get-PrivacyInventory {
         Save-InventoryFile -Category 'Privacy' -Data $inventory
         
         # Display summary
-        Write-Information "`n  📊 Privacy Inventory Summary:" -InformationAction Continue
+        Write-Information "`n  Privacy Inventory Summary:" -InformationAction Continue
         Write-Information "    Diagnostic Data Level: $($inventory.telemetrySettings.diagnosticDataLevel)" -InformationAction Continue
         Write-Information "    Privacy Services Running: $($inventory.statistics.totalServicesRunning)" -InformationAction Continue
         Write-Information "    Data Collection Tasks Enabled: $($inventory.statistics.totalTasksEnabled)" -InformationAction Continue
@@ -184,7 +184,7 @@ function Get-PrivacyInventory {
     }
     catch {
         Write-DetailedLog -Level 'ERROR' -Component 'Privacy' -Message "Privacy inventory scan failed: $_" -Exception $_
-        Write-Information "`n❌ Privacy inventory scan failed: $_" -InformationAction Continue
+        Write-Information "`n[ERROR] Privacy inventory scan failed: $_" -InformationAction Continue
         Complete-PerformanceTracking -PerformanceContext $perf -Success $false
         return $null
     }

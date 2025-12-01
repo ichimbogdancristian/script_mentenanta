@@ -67,7 +67,7 @@ function Get-SystemInventory {
         [switch]$IncludeDetailed
     )
 
-    Write-Information "🔍 Starting system inventory collection..." -InformationAction Continue
+    Write-Information "[INVENTORY] Starting system inventory collection..." -InformationAction Continue
     
     # Use centralized logging if available
     try {
@@ -132,7 +132,7 @@ function Get-SystemInventory {
 
     try {
         # Basic system information
-        Write-Information "  📊 Collecting basic system information..." -InformationAction Continue
+        Write-Information "  >> Collecting basic system information..." -InformationAction Continue
         $inventoryData.SystemInfo = Get-BasicSystemInfo
 
         # Hardware information
@@ -152,7 +152,7 @@ function Get-SystemInventory {
         $inventoryData.Services = Get-ServiceInfo
 
         # Network configuration
-        Write-Information "  🌐 Collecting network configuration..." -InformationAction Continue
+        Write-Information "  >> Collecting network configuration..." -InformationAction Continue
         $inventoryData.Network = Get-NetworkInfo
 
         if ($IncludeDetailed) {
@@ -172,14 +172,15 @@ function Get-SystemInventory {
         }
 
         $duration = [math]::Round($inventoryData.Metadata.Duration, 2)
-        Write-Information "  ✅ System inventory completed in $duration seconds" -InformationAction Continue
+        Write-Information "  [OK] System inventory completed in $duration seconds" -InformationAction Continue
 
         # Auto-save inventory data using standardized paths
         try {
             # Save main inventory data
             if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
                 $inventoryPath = Get-AuditResultsPath -ModuleName 'SystemInventory'
-            } else {
+            }
+            else {
                 $inventoryPath = Get-SessionPath -Category 'data' -SubCategory 'inventory' -FileName 'system-inventory.json'
             }
             $inventoryData | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $inventoryPath -Encoding UTF8

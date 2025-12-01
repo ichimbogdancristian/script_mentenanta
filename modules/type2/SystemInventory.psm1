@@ -99,6 +99,18 @@ function Invoke-SystemInventory {
     }
     
     try {
+        # Display module banner
+        Write-Host "`n" -NoNewline
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host "  SYSTEM INVENTORY MODULE v3.0" -ForegroundColor White
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host "  Type: " -NoNewline -ForegroundColor Gray
+        Write-Host "Type 2 (Information Gathering)" -ForegroundColor Yellow
+        Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
+        Write-Host "Data Collection" -ForegroundColor Green
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host ""
+        
         Write-Information " Collecting system inventory..." -InformationAction Continue
         
         # Initialize module execution environment

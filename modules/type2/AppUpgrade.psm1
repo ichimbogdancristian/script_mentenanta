@@ -108,6 +108,18 @@ function Invoke-AppUpgrade {
         $detectionResults = $null
         $detectionResults = Get-AppUpgradeAnalysis -Config $Config
         
+        # Display module banner
+        Write-Host "`n" -NoNewline
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host "  APP UPGRADE MODULE v3.0" -ForegroundColor White
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host "  Type: " -NoNewline -ForegroundColor Gray
+        Write-Host "Type 2 (System Modification)" -ForegroundColor Yellow
+        Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
+        Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
+        Write-Host "=================================================" -ForegroundColor Cyan
+        Write-Host ""
+        
         # Null safety: ensure detectionResults is an array
         if ($null -eq $detectionResults) {
             $detectionResults = @()

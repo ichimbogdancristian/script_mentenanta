@@ -369,10 +369,10 @@ try {
         
         if ($restoreResult.Success) {
             if ($restoreResult.SequenceNumber) {
-                Write-Information "   ✓ Restore point created successfully (Sequence: $($restoreResult.SequenceNumber))" -InformationAction Continue
+                Write-Information "   [OK] Restore point created successfully (Sequence: $($restoreResult.SequenceNumber))" -InformationAction Continue
             }
             else {
-                Write-Information "   ✓ Restore point created: $($restoreResult.Description)" -InformationAction Continue
+                Write-Information "   [OK] Restore point created: $($restoreResult.Description)" -InformationAction Continue
             }
         }
         else {
