@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
-#   - SystemInventoryAudit.psm1 (Type1 - detection/analysis)
+#   - SystemInventory.psm1 (Type1 - detection/analysis)
 #
 # External Tools: None (uses native Windows WMI/CIM queries)
 
@@ -15,7 +15,7 @@
 
 .NOTES
     Module Type: Type 2 (Information Collection - No Modifications)
-    Dependencies: SystemInventoryAudit.psm1, CoreInfrastructure.psm1
+    Dependencies: SystemInventory.psm1, CoreInfrastructure.psm1
     Requires: Administrator privileges (for full system access)
     Author: Windows Maintenance Automation Project
     Version: 1.0.0
@@ -32,11 +32,17 @@ if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force -Global -WarningAction SilentlyContinue
 }
 else {
-    Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
+    $fallbackCorePath = Join-Path $ModuleRoot 'CoreInfrastructure.psm1'
+    if (Test-Path $fallbackCorePath) {
+        Import-Module $fallbackCorePath -Force -Global -WarningAction SilentlyContinue
+    }
+    else {
+        Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
+    }
 }
 
 # Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
-$Type1ModulePath = Join-Path $ModuleRoot 'type1\SystemInventoryAudit.psm1'
+$Type1ModulePath = Join-Path $ModuleRoot 'type1\SystemInventory.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force -WarningAction SilentlyContinue
 }
@@ -45,8 +51,8 @@ else {
 }
 
 # Validate Type1 module loaded correctly
-if (-not (Get-Command -Name 'Get-SystemInventoryAnalysis' -ErrorAction SilentlyContinue)) {
-    throw "Type 1 module functions not available - ensure SystemInventoryAudit.psm1 is properly imported"
+if (-not (Get-Command -Name 'Get-SystemInventoryAnalysis' -ErrorAction SilentlyContinue) -and -not (Get-Command -Name 'Get-SystemInventory' -ErrorAction SilentlyContinue)) {
+    throw "Type 1 module functions not available - ensure SystemInventory.psm1 is properly imported"
 }
 
 #region v3.0 Standardized Execution Function
@@ -120,10 +126,15 @@ function Invoke-SystemInventory {
         # STEP 1: Run Type1 detection (inventory collection)
         # Explicit assignment to prevent pipeline contamination
         $inventoryData = $null
-        $inventoryData = Get-SystemInventoryAnalysis -Config $Config
+        if (Get-Command -Name 'Get-SystemInventoryAnalysis' -ErrorAction SilentlyContinue) {
+            $inventoryData = Get-SystemInventoryAnalysis -Config $Config
+        }
+        else {
+            $inventoryData = Get-SystemInventory -IncludeDetailed:$false
+        }
         
         # STEP 2: Save inventory data to temp_files/data/
-        $inventoryDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "system-inventory.json"
+        $inventoryDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\system-inventory.json"
         $null = $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8 -ErrorAction Stop
         Write-Information "   System inventory saved to data folder" -InformationAction Continue
         
@@ -135,40 +146,58 @@ function Invoke-SystemInventory {
         $executionLogPath = Join-Path $executionLogDir "execution.log"
         
         # Log inventory summary
-        $logSummary = @"
+                $computerName = $inventoryData.ComputerName ?? $inventoryData.Metadata.ComputerName ?? $inventoryData.SystemInfo.ComputerName ?? $env:COMPUTERNAME
+                $osName = $inventoryData.OperatingSystem.Name ?? $inventoryData.SystemInfo.OSName ?? $inventoryData.SystemInfo.OperatingSystem ?? 'Unknown'
+                $osVersion = $inventoryData.OperatingSystem.Version ?? $inventoryData.SystemInfo.OSVersion ?? 'Unknown'
+                $osBuild = $inventoryData.OperatingSystem.Build ?? $inventoryData.SystemInfo.Build ?? 'Unknown'
+                $cpuName = $inventoryData.Hardware.Processor.Name ?? $inventoryData.Hardware.CPU.Name ?? $inventoryData.SystemInfo.Processor ?? 'Unknown'
+                $cpuCores = $inventoryData.Hardware.Processor.Cores ?? $inventoryData.Hardware.CPU.Cores ?? $inventoryData.SystemInfo.Cores ?? 'Unknown'
+                $ramGb = $inventoryData.Hardware.Memory.TotalPhysicalGB ?? $inventoryData.SystemInfo.TotalMemoryGB ?? 'Unknown'
+                $totalCapacity = $inventoryData.Storage.TotalCapacityGB ?? $inventoryData.Hardware.Storage.TotalCapacityGB ?? 'Unknown'
+                $totalFree = $inventoryData.Storage.TotalFreeGB ?? $inventoryData.Hardware.Storage.TotalFreeGB ?? 'Unknown'
+                $driveCount = $inventoryData.Storage.Drives.Count ?? $inventoryData.Hardware.Storage.Drives.Count ?? 0
+                $adapterCount = $inventoryData.Network.Adapters.Count ?? $inventoryData.Network.AdapterCount ?? 0
+                $domainName = $inventoryData.Network.DomainName ?? $inventoryData.SystemInfo.Domain ?? 'Unknown'
+                $installedApps = $inventoryData.Software.InstalledApplications ?? $inventoryData.InstalledSoftware.Count ?? 0
+                $psVersion = $inventoryData.Software.PowerShellVersion ?? $PSVersionTable.PSVersion.ToString()
+                $uptime = $inventoryData.Performance.Uptime ?? $inventoryData.SystemInfo.Uptime ?? 'Unknown'
+                $cpuUsage = $inventoryData.Performance.CPUUsage ?? $inventoryData.SystemInfo.CPUUsage ?? 'Unknown'
+                $memoryUsage = $inventoryData.Performance.MemoryUsagePercent ?? $inventoryData.SystemInfo.MemoryUsagePercent ?? 'Unknown'
+
+                $logSummary = @"
 ========================================
 System Inventory Collection Log
 Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 ========================================
 
 COMPUTER INFORMATION:
-  Computer Name: $($inventoryData.ComputerName)
-  OS: $($inventoryData.OperatingSystem.Name)
-  Version: $($inventoryData.OperatingSystem.Version)
-  Build: $($inventoryData.OperatingSystem.Build)
+    Computer Name: $computerName
+    OS: $osName
+    Version: $osVersion
+    Build: $osBuild
 
 HARDWARE:
-  CPU: $($inventoryData.Hardware.Processor.Name)
-  Cores: $($inventoryData.Hardware.Processor.Cores)
-  RAM: $($inventoryData.Hardware.Memory.TotalPhysicalGB) GB
+    CPU: $cpuName
+    Cores: $cpuCores
+    RAM: $ramGb GB
 
 STORAGE:
-  Total Capacity: $($inventoryData.Storage.TotalCapacityGB) GB
-  Total Free: $($inventoryData.Storage.TotalFreeGB) GB
-  Drives: $($inventoryData.Storage.Drives.Count)
+    Total Capacity: $totalCapacity GB
+    Total Free: $totalFree GB
+    Drives: $driveCount
 
 NETWORK:
-  Active Adapters: $($inventoryData.Network.Adapters.Count)
-  Domain: $($inventoryData.Network.DomainName)
+    Active Adapters: $adapterCount
+    Domain: $domainName
 
 SOFTWARE:
-  Installed Apps: $($inventoryData.Software.InstalledApplications)
-  PowerShell: $($inventoryData.Software.PowerShellVersion)
+    Installed Apps: $installedApps
+    PowerShell: $psVersion
 
 PERFORMANCE:
-  Uptime: $($inventoryData.Performance.Uptime)
-  CPU Usage: $($inventoryData.Performance.CPUUsage)
-  Memory Usage: $($inventoryData.Performance.MemoryUsagePercent)%
+    Uptime: $uptime
+    CPU Usage: $cpuUsage
+    Memory Usage: $memoryUsage%
 
 ========================================
 Collection completed successfully
@@ -209,10 +238,10 @@ Collection completed successfully
                 PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
             InventoryDetails = @{
-                ComputerName  = $inventoryData.ComputerName
-                OSVersion     = $inventoryData.OperatingSystem.Version
-                TotalRAM      = $inventoryData.Hardware.Memory.TotalPhysicalGB
-                InstalledApps = $inventoryData.Software.InstalledApplications
+                ComputerName  = $computerName
+                OSVersion     = $osVersion
+                TotalRAM      = $ramGb
+                InstalledApps = $installedApps
             }
         }
         

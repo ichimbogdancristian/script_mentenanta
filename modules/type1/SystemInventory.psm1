@@ -1,7 +1,6 @@
 ﻿#Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for configuration and paths)
-#   - LoggingManager.psm1 (for structured logging)
+#   - CoreInfrastructure.psm1 (for configuration, paths, logging)
 
 <#
 .SYNOPSIS
@@ -20,16 +19,13 @@
 
 using namespace System.Collections.Generic
 
-# Import required modules
+# Import CoreInfrastructure for logging and paths
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
-$FileOrgPath = Join-Path $ModuleRoot 'core\FileOrganizationManager.psm1'
-if (Test-Path $FileOrgPath) {
-    Import-Module $FileOrgPath -Force
-}
-
-$LoggingPath = Join-Path $ModuleRoot 'core\LoggingManager.psm1'
-if (Test-Path $LoggingPath) {
-    Import-Module $LoggingPath -Force
+$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
+if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
+    if (Test-Path $CoreInfraPath) {
+        Import-Module $CoreInfraPath -Force -Global
+    }
 }
 
 #region Public Functions
@@ -237,6 +233,37 @@ function Get-SystemInventory {
         Write-Error "Failed to collect system inventory: $_"
         throw
     }
+}
+
+<#
+.SYNOPSIS
+    Compatibility wrapper for Type2 SystemInventory module
+
+.DESCRIPTION
+    Provides a standardized entry point for Type2 modules by mapping
+    configuration settings to Get-SystemInventory parameters.
+
+.PARAMETER Config
+    Main configuration object from orchestrator
+#>
+function Get-SystemInventoryAnalysis {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [PSCustomObject]$Config
+    )
+
+    $useCache = $true
+    $cacheTimeout = 30
+    $includeDetailed = $false
+
+    if ($Config -and $Config.systemInventory) {
+        $useCache = $Config.systemInventory.useCache ?? $useCache
+        $cacheTimeout = $Config.systemInventory.cacheTimeoutMinutes ?? $cacheTimeout
+        $includeDetailed = $Config.systemInventory.includeDetailed ?? $includeDetailed
+    }
+
+    return Get-SystemInventory -UseCache:$useCache -CacheTimeout $cacheTimeout -IncludeDetailed:$includeDetailed
 }
 
 <#
@@ -948,5 +975,6 @@ function Test-InternetConnectivity {
 # Export module functions
 Export-ModuleMember -Function @(
     'Get-SystemInventory',
+    'Get-SystemInventoryAnalysis',
     'Export-SystemInventory'
 )

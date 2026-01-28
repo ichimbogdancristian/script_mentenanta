@@ -493,6 +493,11 @@ function Set-SystemAuditPolicy {
         }
         elseif ($PSCmdlet.ShouldProcess("System Audit Policies", "Configure security audit settings")) {
             # Enable audit policies using auditpol
+            $auditpolPath = Join-Path $env:SystemRoot 'System32\auditpol.exe'
+            if (-not (Test-Path $auditpolPath)) {
+                throw "auditpol.exe not found at $auditpolPath"
+            }
+
             $auditCategories = @(
                 "Logon/Logoff",
                 "Account Management",
@@ -502,7 +507,7 @@ function Set-SystemAuditPolicy {
             )
 
             foreach ($category in $auditCategories) {
-                auditpol /set /category:"$category" /success:enable /failure:enable 2>&1 | Out-Null
+                & $auditpolPath /set /category:"$category" /success:enable /failure:enable 2>&1 | Out-Null
                 $itemsProcessed++
             }
 

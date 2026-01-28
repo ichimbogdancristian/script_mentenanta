@@ -32,6 +32,7 @@
   },
   "system": {
     "createSystemRestorePoint": true,
+    "restorePointMaxSizeGB": 10,
     "enableVerboseLogging": false,
     "maxLogSizeMB": 10,
     "enablePerformanceOptimizations": true,

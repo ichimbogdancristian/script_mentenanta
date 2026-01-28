@@ -365,7 +365,19 @@ try {
         Write-Information "   Creating system restore point before maintenance..." -InformationAction Continue
         
         $restoreDescription = "Before Windows Maintenance - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-        $restoreResult = New-SystemRestorePoint -Description $restoreDescription
+        if (Get-Command -Name 'New-SystemRestorePoint' -ErrorAction SilentlyContinue) {
+            $restoreResult = New-SystemRestorePoint -Description $restoreDescription
+        }
+        elseif (Get-Command -Name 'Checkpoint-Computer' -ErrorAction SilentlyContinue) {
+            Checkpoint-Computer -Description $restoreDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+            $restoreResult = @{
+                Success     = $true
+                Description = $restoreDescription
+            }
+        }
+        else {
+            throw "System restore point cmdlet not available (New-SystemRestorePoint or Checkpoint-Computer)."
+        }
         
         if ($restoreResult.Success) {
             if ($restoreResult.SequenceNumber) {
@@ -654,7 +666,19 @@ try {
         }
         # Initialize logging system (depends on file organization)
         try {
-            $loggingInitResult = Initialize-LoggingSystem -BaseLogPath $script:ProjectPaths.MainLogFile -ErrorAction Stop
+            $baseLogPath = $script:ProjectPaths.MainLogFile
+            if ([string]::IsNullOrWhiteSpace($baseLogPath)) {
+                $fallbackRoot = if ($script:ProjectPaths.TempRoot) { $script:ProjectPaths.TempRoot } else { $env:MAINTENANCE_TEMP_ROOT }
+                if (-not [string]::IsNullOrWhiteSpace($fallbackRoot)) {
+                    $baseLogPath = Join-Path $fallbackRoot 'logs\maintenance.log'
+                }
+            }
+
+            if ([string]::IsNullOrWhiteSpace($baseLogPath)) {
+                throw "Logging base path is empty. Ensure temp paths are initialized."
+            }
+
+            $loggingInitResult = Initialize-LoggingSystem -BaseLogPath $baseLogPath -ErrorAction Stop
             if ($loggingInitResult) {
                 Write-Information "   Logging system initialized" -InformationAction Continue
                 # LoggingManager functions are now available

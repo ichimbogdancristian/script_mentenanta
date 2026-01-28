@@ -1,7 +1,6 @@
 ﻿#Requires -Version 7.0
 # Module Dependencies:
-#   - ConfigManager.psm1 (for configuration access)
-#   - LoggingManager.psm1 (for structured logging)
+#   - CoreInfrastructure.psm1 (configuration, logging, paths)
 
 <#
 .SYNOPSIS
@@ -26,51 +25,11 @@ using namespace System.Collections.Generic
 # Standard dependency import pattern for Windows Maintenance Automation
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
 
-# Define module dependencies with metadata
-$ModuleDependencies = @(
-    @{
-        Path        = 'core\FileOrganizationManager.psm1'
-        Name        = 'FileOrganizationManager'
-        Required    = $false
-        Description = 'Session-based file organization for audit reports'
-    }
-)
-
-# Import dependencies with consistent error handling
-foreach ($dependency in $ModuleDependencies) {
-    $dependencyPath = Join-Path $ModuleRoot $dependency.Path
-    
-    if (Test-Path $dependencyPath) {
-        # Check if module is already loaded globally (from MaintenanceOrchestrator)
-        if (-not (Get-Module -Name $dependency.Name -ErrorAction SilentlyContinue)) {
-            try {
-                Import-Module $dependencyPath -ErrorAction Stop
-                Write-Verbose "✓ Imported dependency: $($dependency.Name)"
-            }
-            catch {
-                if ($dependency.Required) {
-                    Write-Error "❌ Failed to import required dependency '$($dependency.Name)': $_"
-                    throw "Critical dependency '$($dependency.Name)' could not be loaded"
-                }
-                else {
-                    Write-Warning "⚠️ Optional dependency '$($dependency.Name)' not available: $_"
-                    Write-Verbose "Continuing with fallback functionality"
-                }
-            }
-        }
-        else {
-            Write-Verbose "✓ Dependency already loaded: $($dependency.Name)"
-        }
-    }
-    else {
-        $message = "Dependency file not found: $dependencyPath"
-        if ($dependency.Required) {
-            Write-Error "❌ $message"
-            throw "Critical dependency file missing: $($dependency.Path)"
-        }
-        else {
-            Write-Warning "⚠️ Optional dependency file missing: $($dependency.Path)"
-        }
+# Import CoreInfrastructure if not already available
+$CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
+if (-not (Get-Command -Name 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
+    if (Test-Path $CoreInfraPath) {
+        Import-Module $CoreInfraPath -Force -Global
     }
 }
 

@@ -127,6 +127,30 @@ catch {
 
 <#
 .SYNOPSIS
+    Resolves a template path from the config/templates directory
+.DESCRIPTION
+    Uses CoreInfrastructure path resolution to locate template files reliably
+.PARAMETER TemplateName
+    Template file name relative to config/templates
+#>
+function Find-ConfigTemplate {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TemplateName
+    )
+
+    $configPath = Get-MaintenancePath 'ConfigRoot'
+    if ([string]::IsNullOrWhiteSpace($configPath)) {
+        throw "Config root path not available. Ensure CoreInfrastructure is loaded."
+    }
+
+    $templatesPath = Join-Path $configPath 'templates'
+    return Join-Path $templatesPath $TemplateName
+}
+
+<#
+.SYNOPSIS
     Loads HTML templates from config directory
 .DESCRIPTION
     Loads all report templates including HTML structure, CSS styles, and configuration metadata
@@ -145,12 +169,6 @@ function Get-HtmlTemplates {
     try {
         $configPath = Get-MaintenancePath 'ConfigRoot'
         $templatesPath = Join-Path $configPath 'templates'
-        
-        # Standardized template location - config/templates only
-        function Find-ConfigTemplate {
-            param([string]$FileName)
-            return Join-Path $templatesPath $FileName
-        }
         
         $templates = @{
             Main       = $null

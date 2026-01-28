@@ -921,6 +921,7 @@ function Test-ConfigurationSchema {
             'modules.skipEssentialApps'       = @{ Type = 'bool'; Required = $false; Description = 'Skip essential apps module' }
             'modules.skipWindowsUpdates'      = @{ Type = 'bool'; Required = $false; Description = 'Skip Windows updates module' }
             'system.createSystemRestorePoint' = @{ Type = 'bool'; Required = $false; Description = 'Create restore point before changes' }
+            'system.restorePointMaxSizeGB'    = @{ Type = 'int'; Min = 1; Max = 100; Required = $false; Description = 'Max size (GB) for System Restore storage' }
             'system.maxLogSizeMB'             = @{ Type = 'int'; Min = 1; Max = 100; Required = $false; Description = 'Maximum log file size in MB' }
             'reporting.enableHtmlReport'      = @{ Type = 'bool'; Required = $false; Description = 'Generate HTML reports' }
             'paths.tempFolder'                = @{ Type = 'string'; Required = $false; Description = 'Temporary files directory' }
@@ -2642,6 +2643,112 @@ function Compare-DetectedVsConfig {
 
 <#
 .SYNOPSIS
+    Enables System Protection on a drive
+
+.DESCRIPTION
+    Uses Enable-ComputerRestore to enable System Protection for restore points.
+
+.PARAMETER Drive
+    Drive letter to enable System Protection on (default: system drive)
+#>
+function Enable-SystemProtection {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [ValidateNotNullOrEmpty()]
+        [string]$Drive = $env:SystemDrive
+    )
+
+    try {
+        if (-not $Drive.EndsWith('\')) {
+            $Drive = "$Drive\"
+        }
+
+        if ($PSCmdlet.ShouldProcess($Drive, 'Enable System Protection')) {
+            Enable-ComputerRestore -Drive $Drive -ErrorAction Stop
+        }
+
+        return @{ Success = $true; Message = 'System Protection enabled' }
+    }
+    catch {
+        return @{ Success = $false; Message = $_.Exception.Message }
+    }
+}
+
+<#
+.SYNOPSIS
+    Sets System Restore storage size
+
+.DESCRIPTION
+    Uses vssadmin to set shadow storage (restore point) max size for a drive.
+
+.PARAMETER Drive
+    Drive letter to apply settings to (default: system drive)
+
+.PARAMETER MaxSizeGB
+    Maximum size in GB for System Restore storage
+#>
+function Set-SystemRestoreStorage {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [ValidateNotNullOrEmpty()]
+        [string]$Drive = $env:SystemDrive,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1, 100)]
+        [int]$MaxSizeGB
+    )
+
+    try {
+        if (-not $Drive.EndsWith('\')) {
+            $Drive = "$Drive\"
+        }
+
+        $maxSizeArg = "${MaxSizeGB}GB"
+        if ($PSCmdlet.ShouldProcess($Drive, "Set System Restore storage to $maxSizeArg")) {
+            & vssadmin Resize ShadowStorage /For=$Drive /On=$Drive /MaxSize=$maxSizeArg | Out-Null
+        }
+
+        return @{ Success = $true; Message = "System Restore storage set to $maxSizeArg" }
+    }
+    catch {
+        return @{ Success = $false; Message = $_.Exception.Message }
+    }
+}
+
+<#
+.SYNOPSIS
+    Creates a system restore point
+
+.DESCRIPTION
+    Wraps Checkpoint-Computer to create a restore point and returns a standardized result.
+
+.PARAMETER Description
+    Description for the restore point
+#>
+function New-SystemRestorePoint {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Description
+    )
+
+    try {
+        if ($PSCmdlet.ShouldProcess('System Restore', "Create restore point: $Description")) {
+            Checkpoint-Computer -Description $Description -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+        }
+
+        return @{ Success = $true; Description = $Description }
+    }
+    catch {
+        return @{ Success = $false; Message = $_.Exception.Message }
+    }
+}
+
+<#
+.SYNOPSIS
     Tests system requirements for maintenance execution
 
 .DESCRIPTION
@@ -2813,6 +2920,7 @@ function Test-SystemRequirements {
             try {
                 $mainConfig = Get-MainConfiguration
                 $autoEnable = $mainConfig.system.enableSystemProtectionIfDisabled ?? $true
+                $restoreSizeGb = $mainConfig.system.restorePointMaxSizeGB ?? 10
                 
                 if ($autoEnable) {
                     Write-Verbose "Attempting to enable System Protection automatically..."
@@ -2821,11 +2929,28 @@ function Test-SystemRequirements {
                         $spEnabled = $true
                         $spAutoEnabled = $true
                         Write-Verbose "System Protection enabled automatically"
+                        $sizeResult = Set-SystemRestoreStorage -MaxSizeGB $restoreSizeGb
+                        if (-not $sizeResult.Success) {
+                            Write-Verbose "Failed to set System Restore storage size: $($sizeResult.Message)"
+                        }
                     }
                 }
             }
             catch {
                 Write-Verbose "Could not auto-enable System Protection: $($_.Exception.Message)"
+            }
+        }
+        elseif ($spEnabled) {
+            try {
+                $mainConfig = Get-MainConfiguration
+                $restoreSizeGb = $mainConfig.system.restorePointMaxSizeGB ?? 10
+                $sizeResult = Set-SystemRestoreStorage -MaxSizeGB $restoreSizeGb
+                if (-not $sizeResult.Success) {
+                    Write-Verbose "Failed to set System Restore storage size: $($sizeResult.Message)"
+                }
+            }
+            catch {
+                Write-Verbose "Could not apply System Restore storage size: $($_.Exception.Message)"
             }
         }
         
@@ -3423,7 +3548,7 @@ Export-ModuleMember -Function @(
     'Get-AuditResultsPath', 'Save-DiffResults',
     'New-ModuleExecutionResult', 'Write-StructuredLogEntry', 'Compare-DetectedVsConfig',
     'New-StandardLogEntry',
-    'Test-SystemRequirements', 'Test-SystemReadiness', 'Enable-SystemProtection', 'New-SystemRestorePoint',
+    'Test-SystemRequirements', 'Test-SystemReadiness', 'Enable-SystemProtection', 'Set-SystemRestoreStorage', 'New-SystemRestorePoint',
     'Invoke-WithTimeout', 'Invoke-ModuleWithTimeout',
     'Register-SystemChange', 'Undo-AllChanges', 'Clear-ChangeLog', 'Get-ChangeLog'
 ) -Alias @('Write-LogEntry')
