@@ -1156,15 +1156,45 @@ IF "%PS_EXECUTABLE%"=="" (
 
 REM -----------------------------------------------------------------------------
 REM System Restore Point Creation (before orchestrator execution)
+REM Includes: Availability check, space allocation (minimum 10GB), and creation
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking System Protection status..." "INFO" "LAUNCHER"
 
 SET "SYS_DRIVE=%SystemDrive%"
 SET "SR_STATUS=UNKNOWN"
 SET "SR_VERIFY_STATUS=UNKNOWN"
+SET "MIN_RESTORE_SPACE_GB=10"
 
 REM Simple check for System Protection availability
 FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
+
+REM Check and allocate System Restore Point space (minimum 10GB)
+IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
+    CALL :LOG_MESSAGE "Checking System Protection disk space allocation..." "INFO" "LAUNCHER"
+    
+    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $srp = Get-WmiObject -Class Win32_SystemRestoreConfig -Namespace 'root\cimv2' -ErrorAction SilentlyContinue; if ($srp) { $allocationGB = [math]::Round($srp.MaxSpace / 1GB, 2); Write-Host ('CURRENT:' + $allocationGB) } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
+    
+    REM Parse current allocation
+    IF "!SR_SPACE_CHECK:~0,8!"=="CURRENT:" (
+        SET "SR_CURRENT_GB=!SR_SPACE_CHECK:~8!"
+        FOR /F "tokens=1" %%a IN ("!SR_CURRENT_GB!") DO SET "SR_CURRENT_GB=%%a"
+        
+        REM Check if allocation is less than 10GB
+        IF !SR_CURRENT_GB! LSS !MIN_RESTORE_SPACE_GB! (
+            CALL :LOG_MESSAGE "Current allocation is !SR_CURRENT_GB! GB (minimum required: !MIN_RESTORE_SPACE_GB! GB). Allocating..." "WARN" "LAUNCHER"
+            
+            FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $srp = Get-WmiObject -Class Win32_SystemRestoreConfig -Namespace 'root\cimv2' -ErrorAction SilentlyContinue; if ($srp) { $srp.MaxSpace = [int64](10 * 1GB); $srp.Put() | Out-Null; Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
+            
+            IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
+                CALL :LOG_MESSAGE "System Restore Point allocation set to !MIN_RESTORE_SPACE_GB! GB successfully" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "Failed to allocate System Restore Point space (may require administrator elevation)" "WARN" "LAUNCHER"
+            )
+        ) ELSE (
+            CALL :LOG_MESSAGE "System Protection allocation is sufficient (!SR_CURRENT_GB! GB >= !MIN_RESTORE_SPACE_GB! GB)" "SUCCESS" "LAUNCHER"
+        )
+    )
+)
 
 IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     CALL :LOG_MESSAGE "System Protection is available and functional" "SUCCESS" "LAUNCHER"

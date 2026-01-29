@@ -355,11 +355,106 @@ catch {
 }
 #endregion
 
-#region System Restore Point Creation
+#region System Restore Point Space Management & Creation
+
+<#
+.SYNOPSIS
+    Ensures System Restore Point has minimum 10GB allocation
+
+.DESCRIPTION
+    Checks current System Protection storage allocation
+    If less than 10GB, allocates 10GB for restore points
+    Non-blocking: continues even if allocation fails
+#>
+function Ensure-SystemRestorePointSpace {
+    [CmdletBinding()]
+    param(
+        [int]$MinimumGB = 10
+    )
+    
+    try {
+        Write-Information "   Checking System Restore Point disk space allocation..." -InformationAction Continue
+        
+        # Get system drive
+        $systemDrive = $env:SystemDrive
+        $driveLetter = $systemDrive.TrimEnd(':')
+        
+        # Check if System Protection is enabled
+        try {
+            $volume = Get-Volume -DriveLetter $driveLetter -ErrorAction SilentlyContinue
+            if (-not $volume) {
+                Write-Information "   Could not access volume information for $systemDrive" -InformationAction Continue
+                return $false
+            }
+        }
+        catch {
+            Write-Information "   Could not query volume for System Restore Point space check: $_" -InformationAction Continue
+            return $false
+        }
+        
+        # Get current System Protection usage via WMI
+        try {
+            $srp = Get-WmiObject -Class Win32_SystemRestoreConfig -Namespace "root\cimv2" -ErrorAction SilentlyContinue
+            
+            if ($srp) {
+                # ShadowCopy size is in bytes; convert to GB
+                $currentAllocationGB = [math]::Round($srp.MaxSpace / 1GB, 2)
+                $allocatedBytes = $srp.AllocatedSpace
+                $usedSpaceGB = [math]::Round($allocatedBytes / 1GB, 2)
+                
+                Write-Information "   Current System Protection allocation: $currentAllocationGB GB (Used: $usedSpaceGB GB)" -InformationAction Continue
+                
+                if ($currentAllocationGB -lt $MinimumGB) {
+                    Write-Information "   Allocation is below minimum ($MinimumGB GB). Attempting to allocate..." -InformationAction Continue
+                    
+                    # Set minimum allocation in bytes
+                    $newAllocationBytes = [int64]($MinimumGB * 1GB)
+                    
+                    try {
+                        $srp.MaxSpace = $newAllocationBytes
+                        $srp.Put() | Out-Null
+                        
+                        Write-Information "   [OK] System Restore Point allocation set to $MinimumGB GB" -InformationAction Continue
+                        Write-LogEntry -Level 'SUCCESS' -Component 'RESTORE-POINT' -Message "System Restore Point allocation increased to $MinimumGB GB"
+                        return $true
+                    }
+                    catch {
+                        Write-Information "   Failed to allocate System Restore Point space: $_" -InformationAction Continue
+                        Write-LogEntry -Level 'WARN' -Component 'RESTORE-POINT' -Message "Could not allocate $MinimumGB GB for System Restore Point: $_"
+                        return $false
+                    }
+                }
+                else {
+                    Write-Information "   [OK] System Protection allocation is sufficient ($currentAllocationGB GB >= $MinimumGB GB)" -InformationAction Continue
+                    return $true
+                }
+            }
+            else {
+                Write-Information "   System Restore configuration not available via WMI" -InformationAction Continue
+                return $false
+            }
+        }
+        catch {
+            Write-Information "   Error checking System Restore Point allocation: $_" -InformationAction Continue
+            return $false
+        }
+    }
+    catch {
+        Write-Warning "   Unexpected error in System Restore Point space check: $_"
+        return $false
+    }
+}
+
 Write-Information "`nChecking System Restore Point configuration..." -InformationAction Continue
 try {
     $mainConfig = Get-MainConfiguration
     $createRestorePoint = $mainConfig.system.createSystemRestorePoint ?? $true
+    $restorePointMinSizeGB = $mainConfig.system.restorePointMaxSizeGB ?? 10
+    
+    # First, ensure adequate disk space allocation for restore points
+    if ($createRestorePoint -and -not $DryRun) {
+        Ensure-SystemRestorePointSpace -MinimumGB $restorePointMinSizeGB | Out-Null
+    }
     
     if ($createRestorePoint -and -not $DryRun) {
         Write-Information "   Creating system restore point before maintenance..." -InformationAction Continue
