@@ -2,20 +2,19 @@
 
 <#
 .SYNOPSIS
-    Report Generator Module v3.0 - Report Rendering Engine
+    Report Generator Module v3.1 - Enhanced Report Rendering Engine
 
 .DESCRIPTION
-    Specialized module for generating maintenance reports from processed log data.
-    Focuses purely on presentation layer - loading templates, rendering HTML/text reports,
-    and creating interactive visualizations. Part of the v3.0 split architecture that
-    separates data processing (LogProcessor) from report rendering. Handles template
-    management, styling, and multi-format output generation.
+    Consolidated report generation module with modern glassmorphism design.
+    Combines features from legacy ReportGenerator and ModernReportGenerator into
+    a single, enhanced module with beautiful CSS styling, smooth animations, and
+    professional dashboard layouts. Generates HTML reports from processed maintenance data.
 
 .MODULE ARCHITECTURE
     Purpose:
-        Serve as the report rendering layer consuming processed data from LogProcessor.
-        Transforms standardized structured data into human-readable HTML and text reports.
-        Manages templates, CSS styling, and report sections for each module.
+        Single unified report rendering system consuming processed data from LogProcessor.
+        Transforms structured data into beautiful, interactive HTML reports with modern design.
+        Handles templates, CSS styling (glassmorphism/gradient themes), and multi-format exports.
     
     Dependencies:
         • CoreInfrastructure.psm1 - For path management and logging
@@ -323,25 +322,41 @@ function Get-FallbackTemplates {
     $fallbackTemplates = @{
         Main     = @'
 <!DOCTYPE html>
-<html>
+<html lang="en" data-theme="dark">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Windows Maintenance Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>{{CSS_CONTENT}}</style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Windows Maintenance Report</h1>
-            <p>Generated: {{REPORT_DATE}}</p>
-            <p class="fallback-notice">Note: Using fallback templates due to missing config files</p>
+            <h1>🛠️ Windows System Maintenance Report</h1>
+            <p class="subtitle">Generated on {{REPORT_DATE}}</p>
+            <p class="fallback-notice">⚠️ Using fallback templates - Enhanced styling available with config templates</p>
         </header>
         
-        {{DASHBOARD_CONTENT}}
-        {{MODULE_SECTIONS}}
-        {{SUMMARY_SECTION}}
+        <section class="dashboard-grid">
+            {{DASHBOARD_CONTENT}}
+        </section>
+        
+        <main>
+            <h2 class="section-title">📋 Maintenance Tasks</h2>
+            {{MODULE_SECTIONS}}
+        </main>
+        
+        <section>
+            <h2 class="section-title">📊 Summary</h2>
+            {{SUMMARY_SECTION}}
+        </section>
         
         <footer>
-            <p>Windows Maintenance Automation v3.0 - Fallback Mode</p>
+            <p>Windows Maintenance Automation System v3.0 | Powered by PowerShell 7+</p>
+            <p>Report generated in fallback mode - Install config templates for enhanced visuals</p>
         </footer>
     </div>
 </body>
@@ -351,31 +366,98 @@ function Get-FallbackTemplates {
         TaskCard = @'
 <div class="task-card {{STATUS_CLASS}}">
     <div class="task-header">
-        <h3>{{TASK_TITLE}}</h3>
-        <span class="task-status">{{TASK_STATUS}}</span>
+        <div>
+            <h3>{{TASK_ICON}} {{TASK_TITLE}}</h3>
+            <p class="task-description">{{TASK_DESCRIPTION}}</p>
+        </div>
+        <span class="task-status {{STATUS_CLASS}}">{{TASK_STATUS}}</span>
     </div>
     <div class="task-content">
         {{TASK_CONTENT}}
     </div>
     <div class="task-metrics">
-        <span>Items: {{ITEMS_COUNT}}</span>
-        <span>Duration: {{DURATION}}</span>
+        <div class="metric-item">
+            <span class="metric-value">{{ITEMS_PROCESSED}}</span>
+            <span class="metric-label">Processed</span>
+        </div>
+        <div class="metric-item">
+            <span class="metric-value">{{ITEMS_SUCCESSFUL}}</span>
+            <span class="metric-label">Successful</span>
+        </div>
+        <div class="metric-item">
+            <span class="metric-value">{{ITEMS_FAILED}}</span>
+            <span class="metric-label">Failed</span>
+        </div>
+        <div class="metric-item">
+            <span class="metric-value">{{DURATION}}</span>
+            <span class="metric-label">Duration</span>
+        </div>
     </div>
 </div>
 '@
         
         CSS      = @'
-body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
-.container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-header { text-align: center; border-bottom: 2px solid #0078d4; padding-bottom: 20px; margin-bottom: 30px; }
-.fallback-notice { color: #d13438; font-weight: bold; }
-.task-card { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 4px; }
-.task-card.success { border-left: 4px solid #107c10; }
-.task-card.error { border-left: 4px solid #d13438; }
-.task-header { display: flex; justify-content: space-between; align-items: center; }
-.task-status { padding: 4px 8px; border-radius: 4px; font-size: 0.9em; }
-.task-metrics { margin-top: 10px; font-size: 0.9em; color: #666; }
-footer { margin-top: 40px; text-align: center; color: #666; }
+/* Modern Enhanced Dashboard CSS v2.0 - Embedded Fallback */
+:root {
+  --bg-primary: #0a0e27; --bg-secondary: #151934; --bg-tertiary: #1e2139;
+  --bg-glass: rgba(255,255,255,0.06); --bg-glass-hover: rgba(255,255,255,0.12);
+  --text-primary: #f0f6fc; --text-secondary: #8b949e; --text-muted: #656d76;
+  --success: #2ea043; --warning: #fb8500; --error: #f85149; --info: #1f6feb;
+  --gradient-accent: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --radius-md: 12px; --spacing-md: 1rem; --spacing-lg: 1.5rem;
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.4); --shadow-glow: 0 0 20px rgba(102,126,234,0.3);
+}
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 0;
+  background: linear-gradient(135deg, #0a0e27 0%, #1e2139 100%); color: var(--text-primary); line-height: 1.6; }
+.container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+header { background: var(--bg-glass); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md); padding: 2rem; margin-bottom: 2rem; box-shadow: var(--shadow-lg); }
+header h1 { font-size: 2.5rem; font-weight: 700; background: var(--gradient-accent);
+  background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0 0 0.5rem 0; }
+header .subtitle { color: var(--text-secondary); font-size: 1rem; }
+.fallback-notice { color: var(--error); font-weight: 600; padding: 1rem; background: rgba(248,81,73,0.1);
+  border-radius: var(--radius-md); border: 1px solid var(--error); margin: 1rem 0; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+.status-card { background: var(--bg-glass); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md); padding: 1.5rem; box-shadow: var(--shadow-lg); transition: all 0.3s ease; }
+.status-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-glow); border-color: rgba(102,126,234,0.4); }
+.status-card .card-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+.status-value { font-size: 2.5rem; font-weight: 700; margin: 0.5rem 0; }
+.status-label { font-size: 0.875rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+.task-card { background: var(--bg-glass); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md); padding: 1.5rem; margin: 1.5rem 0; transition: all 0.3s ease; }
+.task-card:hover { transform: translateX(8px); border-color: rgba(102,126,234,0.4); }
+.task-card.success { border-left: 4px solid var(--success); background: linear-gradient(90deg, rgba(46,160,67,0.1) 0%, transparent 100%); }
+.task-card.error { border-left: 4px solid var(--error); background: linear-gradient(90deg, rgba(248,81,73,0.1) 0%, transparent 100%); }
+.task-card.warning { border-left: 4px solid var(--warning); background: linear-gradient(90deg, rgba(251,133,0,0.1) 0%, transparent 100%); }
+.task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.task-header h3 { font-size: 1.25rem; font-weight: 600; margin: 0; color: var(--text-primary); }
+.task-status { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.875rem; font-weight: 500; }
+.task-status.success { background: rgba(46,160,67,0.2); color: var(--success); }
+.task-status.error { background: rgba(248,81,73,0.2); color: var(--error); }
+.task-status.warning { background: rgba(251,133,0,0.2); color: var(--warning); }
+.task-content { color: var(--text-secondary); margin: 1rem 0; line-height: 1.8; }
+.task-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1rem;
+  padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05); }
+.metric-item { display: flex; flex-direction: column; }
+.metric-value { font-size: 1.5rem; font-weight: 600; color: var(--text-primary); }
+.metric-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.section-title { font-size: 1.75rem; font-weight: 600; margin: 3rem 0 1.5rem 0; padding-bottom: 0.75rem;
+  border-bottom: 2px solid rgba(102,126,234,0.3); }
+.log-container { background: var(--bg-secondary); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-md);
+  padding: 1.5rem; margin: 1.5rem 0; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 0.875rem;
+  max-height: 400px; overflow-y: auto; }
+.log-entry { padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; transition: background 0.2s ease; }
+.log-entry:hover { background: rgba(255,255,255,0.03); }
+.log-entry.success { color: var(--success); }
+.log-entry.error { color: var(--error); }
+.log-entry.warning { color: var(--warning); }
+.log-entry.info { color: var(--info); }
+footer { margin-top: 4rem; padding: 2rem; text-align: center; color: var(--text-muted); font-size: 0.875rem;
+  border-top: 1px solid rgba(255,255,255,0.05); }
+@media print { .task-card { break-inside: avoid; } .dashboard-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 768px) { .container { padding: 1rem; } .dashboard-grid { grid-template-columns: 1fr; }
+  header h1 { font-size: 1.75rem; } }
 '@
         
         Config   = @{

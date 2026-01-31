@@ -1,17 +1,17 @@
 /* 
- * Modern System Maintenance Dashboard CSS Framework v1.0
- * Inspired by modern web applications and system monitoring tools
- * Features: Dark/Light themes, Glassmorphism, Responsive design, Flexbox layouts
+ * Modern System Maintenance Dashboard CSS Framework v2.0
+ * Enhanced with better glassmorphism, animations, and professional styling
+ * Features: Dark/Light themes, Modern gradients, Smooth animations, Responsive grid
  */
 
 :root {
   /* Color Palette - Dark Theme (Primary) */
-  --bg-primary: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #21262d;
-  --bg-elevated: rgba(33, 38, 45, 0.8);
-  --bg-glass: rgba(255, 255, 255, 0.05);
-  --bg-glass-hover: rgba(255, 255, 255, 0.1);
+  --bg-primary: #0a0e27;
+  --bg-secondary: #151934;
+  --bg-tertiary: #1e2139;
+  --bg-elevated: rgba(30, 33, 57, 0.85);
+  --bg-glass: rgba(255, 255, 255, 0.06);
+  --bg-glass-hover: rgba(255, 255, 255, 0.12);
   
   --text-primary: #f0f6fc;
   --text-secondary: #8b949e;
