@@ -277,32 +277,32 @@ function Get-HtmlTemplates {
             }
         }
         
-    # Load template configuration
-    $configJsonPath = Find-ConfigTemplate 'report-templates-config.json'
-    if (Test-Path $configJsonPath) {
-        $templates.Config = Get-Content $configJsonPath | ConvertFrom-Json
-        Write-Verbose "Loaded template config: $configJsonPath"
-    }
-    else {
-        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Template configuration not found: $configJsonPath"
-        # Not critical, continue without config
-    }
+        # Load template configuration
+        $configJsonPath = Find-ConfigTemplate 'report-templates-config.json'
+        if (Test-Path $configJsonPath) {
+            $templates.Config = Get-Content $configJsonPath | ConvertFrom-Json
+            Write-Verbose "Loaded template config: $configJsonPath"
+        }
+        else {
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Template configuration not found: $configJsonPath"
+            # Not critical, continue without config
+        }
         
-    Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Successfully loaded $templateType HTML templates"
-    return $templates
-}
-catch {
-    Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to load HTML templates: $($_.Exception.Message)"
-    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting to use fallback templates for basic functionality'
-        
-    try {
-        return Get-FallbackTemplates
+        Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Successfully loaded $templateType HTML templates"
+        return $templates
     }
     catch {
-        Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Both template loading and fallback failed: $($_.Exception.Message)"
-        throw "Cannot generate reports - template system unavailable"
+        Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to load HTML templates: $($_.Exception.Message)"
+        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting to use fallback templates for basic functionality'
+        
+        try {
+            return Get-FallbackTemplates
+        }
+        catch {
+            Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Both template loading and fallback failed: $($_.Exception.Message)"
+            throw "Cannot generate reports - template system unavailable"
+        }
     }
-}
 
 }
 
