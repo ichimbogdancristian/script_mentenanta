@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -844,7 +844,8 @@ function Set-CISEncryption {
 #>
 function Invoke-CISSecurityEnhancement {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$DryRun,
 
@@ -953,7 +954,8 @@ function Invoke-CISSecurityEnhancement {
 #>
 function Invoke-SecurityEnhancementCIS {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$DryRun,
 
@@ -997,7 +999,8 @@ function Invoke-SecurityEnhancementCIS {
 #>
 function Get-CISControlStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     Write-LogEntry -Level 'INFO' -Component 'CIS-STATUS' -Message "Checking CIS control compliance status..."
 
@@ -1030,6 +1033,7 @@ Export-ModuleMember -Function @(
     'Invoke-SecurityEnhancementCIS',
     'Get-CISControlStatus'
 )
+
 
 
 

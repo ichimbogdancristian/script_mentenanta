@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - BloatwareDetectionAudit.psm1 (Type1 - detection/analysis)
@@ -82,7 +82,8 @@ if (-not (Get-Command -Name 'Find-InstalledBloatware' -ErrorAction SilentlyConti
 #>
 function Invoke-BloatwareRemoval {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [hashtable]$Config,
 
@@ -613,7 +614,8 @@ ITEMS BY SOURCE:
 #>
 function Test-BloatwareRemoval {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$BloatwareList
     )
@@ -671,7 +673,8 @@ function Test-BloatwareRemoval {
 #>
 function Remove-AppXBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$Items,
 
@@ -797,7 +800,8 @@ function Remove-AppXBloatware {
 #>
 function Remove-WingetBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$Items,
 
@@ -925,7 +929,8 @@ function Remove-WingetBloatware {
 #>
 function Remove-ChocolateyBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$Items,
 
@@ -1050,7 +1055,8 @@ function Remove-ChocolateyBloatware {
 #>
 function Remove-RegistryBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$Items,
 
@@ -1212,7 +1218,8 @@ function Remove-RegistryBloatware {
 #>
 function Test-ProtectedBloatwareItem {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [PSCustomObject]$Item
     )
@@ -1313,6 +1320,7 @@ Export-ModuleMember -Function @(
     # Note: Legacy functions (Remove-DetectedBloatware, Test-BloatwareRemoval)
     # are used internally but not exported to maintain clean module interface
 )
+
 
 
 

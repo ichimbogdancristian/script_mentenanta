@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -216,7 +216,8 @@ function Move-MaintenanceLogToOrganized {
 #>
 function Invoke-BatchProcessing {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+param(
         [Parameter(Mandatory)]
         [array]$InputData,
 
@@ -295,7 +296,8 @@ function Invoke-BatchProcessing {
 #>
 function Initialize-ProcessedDataPaths {
     [CmdletBinding()]
-    [OutputType([hashtable])]\nparam()
+    [OutputType([hashtable])]
+param()
     {
 
         Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Initializing processed data directory structure'
@@ -335,7 +337,8 @@ function Initialize-ProcessedDataPaths {
 #>
     function Get-Type1AuditData {
         [CmdletBinding()]
-        [OutputType([hashtable])]\nparam()
+        [OutputType([hashtable])]
+param()
         {
 
             Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Loading Type1 audit data files'
@@ -410,7 +413,8 @@ function Initialize-ProcessedDataPaths {
 #>
         function Get-Type2ExecutionLogs {
             [CmdletBinding()]
-            [OutputType([hashtable])]\nparam()
+            [OutputType([hashtable])]
+param()
             {
 
                 Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Loading Type2 execution logs'
@@ -497,7 +501,8 @@ function Initialize-ProcessedDataPaths {
 #>
             function Get-MaintenanceLog {
                 [CmdletBinding()]
-                [OutputType([hashtable])]\nparam()
+                [OutputType([hashtable])]
+param()
                 {
 
                     Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Loading main maintenance.log file'
@@ -619,7 +624,8 @@ function Initialize-ProcessedDataPaths {
 #>
                 function Get-ModuleExecutionData {
                     [CmdletBinding()]
-                    [OutputType([hashtable])]\nparam()
+                    [OutputType([hashtable])]
+param()
                     {
 
                         try {
@@ -716,7 +722,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function ConvertFrom-ModuleExecutionLog {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam(
+                        [OutputType([hashtable])]
+param(
                             [Parameter(Mandatory)]
                             [string]$ModuleName,
 
@@ -884,7 +891,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-ActionFromMessage {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam([string]$Message)
+                        [OutputType([hashtable])]([string]$Message)
+param(
 
                         # Extract specific actions from log messages
                         if ($Message -match '(Installing|Removing|Uninstalling|Optimizing|Disabling|Updating|Processing)\s+(.+)') {
@@ -911,7 +919,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-SystemModificationFromMessage {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam(
+                        [OutputType([hashtable])]
+param(
                             [string]$Message,
                             [string]$Timestamp,
                             [string]$Component
@@ -977,7 +986,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-TaskDetailFromMessage {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam(
+                        [OutputType([hashtable])]
+param(
                             [string]$Message,
                             [string]$Timestamp,
                             [string]$Component
@@ -1023,7 +1033,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function ConvertFrom-AuditData {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam(
+                        [OutputType([hashtable])]
+param(
                             [Parameter(Mandatory)]
                             [string]$ModuleName,
 
@@ -1078,7 +1089,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-ComprehensiveLogAnalysis {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam(
+                        [OutputType([hashtable])]
+param(
                             [Parameter(Mandatory)]
                             [hashtable]$ComprehensiveLogCollection
                         )
@@ -1148,7 +1160,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-ComprehensiveDashboardMetrics {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam(
+                        [OutputType([hashtable])]
+param(
                             [Parameter(Mandatory)]
                             [hashtable]$ComprehensiveLogCollection,
 
@@ -1288,7 +1301,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-ErrorsFromExecutionLogs {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam(
+                        [OutputType([hashtable])]
+param(
                             [Parameter(Mandatory)]
                             [hashtable]$ComprehensiveLogCollection
                         )
@@ -1385,7 +1399,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-ExecutionSummary {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam([Array]$TaskResults)
+                        [OutputType([hashtable])]([Array]$TaskResults)
+param(
 
                         $successful = $TaskResults | Where-Object { $_.Success }
                         $failed = $TaskResults | Where-Object { -not $_.Success }
@@ -1410,7 +1425,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-SystemHealthAnalytic {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam([hashtable]$SystemInventory)
+                        [OutputType([hashtable])]([hashtable]$SystemInventory)
+param(
 
                         if (-not $SystemInventory) { return @{} }
 
@@ -1479,7 +1495,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-PerformanceAnalytic {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam([Array]$TaskResults)
+                        [OutputType([hashtable])]([Array]$TaskResults)
+param(
 
                         if (-not $TaskResults -or $TaskResults.Count -eq 0) { return @{} }
 
@@ -1513,7 +1530,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-SecurityAnalytic {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam([hashtable]$SystemInventory)
+                        [OutputType([hashtable])]([hashtable]$SystemInventory)
+param(
 
                         if (-not $SystemInventory) { return @{} }
 
@@ -1556,7 +1574,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Get-HealthRecommendation {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]`nparam([hashtable]$HealthFactors)
+                        [OutputType([hashtable])]([hashtable]$HealthFactors)
+param(
 
                         $recommendations = @()
 
@@ -1597,7 +1616,8 @@ function Initialize-ProcessedDataPaths {
 #>
                     function Invoke-LogProcessing {
                         [CmdletBinding()]
-                        [OutputType([hashtable])]\nparam()
+                        [OutputType([hashtable])]
+param()
                         {
 
                             Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message 'Starting comprehensive log processing pipeline'
@@ -1916,7 +1936,8 @@ function Initialize-ProcessedDataPaths {
 #>
                         function Invoke-SafeLogOperation {
                             [CmdletBinding()]
-                            [OutputType([hashtable])]`nparam(
+                            [OutputType([hashtable])]
+param(
                                 [Parameter(Mandatory)]
                                 [string]$OperationName,
 
@@ -1987,7 +2008,8 @@ function Initialize-ProcessedDataPaths {
 #>
                         function Test-JsonDataIntegrity {
                             [CmdletBinding()]
-                            [OutputType([hashtable])]`nparam(
+                            [OutputType([hashtable])]
+param(
                                 [Parameter(Mandatory)]
                                 [string]$JsonPath,
 
@@ -2075,7 +2097,8 @@ function Initialize-ProcessedDataPaths {
 #>
                         function Import-SafeJsonData {
                             [CmdletBinding()]
-                            [OutputType([hashtable])]`nparam(
+                            [OutputType([hashtable])]
+param(
                                 [Parameter(Mandatory)]
                                 [string]$JsonPath,
 
@@ -2123,7 +2146,8 @@ function Initialize-ProcessedDataPaths {
 #>
                         function Get-SafeDirectoryContents {
                             [CmdletBinding()]
-                            [OutputType([hashtable])]`nparam(
+                            [OutputType([hashtable])]
+param(
                                 [Parameter(Mandatory)]
                                 [string]$DirectoryPath,
 
@@ -2194,7 +2218,8 @@ function Initialize-ProcessedDataPaths {
 #>
                         function Get-ModuleExecutionDataFromJson {
                             [CmdletBinding()]
-                            [OutputType([hashtable])]`nparam(
+                            [OutputType([hashtable])]
+param(
                                 [Parameter(Mandatory)]
                                 [ValidateSet('BloatwareRemoval', 'EssentialApps', 'SystemOptimization', 'TelemetryDisable', 'WindowsUpdates', 'AppUpgrade', 'SystemInventory',
                                     'bloatware-removal', 'essential-apps', 'system-optimization', 'telemetry-disable', 'windows-updates', 'app-upgrade', 'system-inventory')]
@@ -2317,6 +2342,8 @@ function Initialize-ProcessedDataPaths {
                             'Get-SafeDirectoryContents',
                             'Invoke-BatchProcessing'
                         )
+
+
 
 
 

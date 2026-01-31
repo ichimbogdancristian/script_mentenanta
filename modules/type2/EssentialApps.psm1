@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - EssentialAppsAudit.psm1 (Type1 - detection/analysis)
@@ -83,7 +83,8 @@ if (-not (Get-Command -Name 'Get-EssentialAppsAudit' -ErrorAction SilentlyContin
 #>
 function Invoke-EssentialApps {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [hashtable]$Config,
 
@@ -640,7 +641,8 @@ function Get-AppNotInstalled {
 #>
 function Save-AppDiffList {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$EssentialApps,
 
@@ -928,7 +930,8 @@ function Test-AppInstallationStatus {
 #>
 function Install-AppViaWinget {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$Apps,
 
@@ -1105,7 +1108,8 @@ function Install-AppViaWinget {
 #>
 function Install-AppViaChocolatey {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$Apps,
 
@@ -1543,7 +1547,8 @@ function Merge-InstallationResult {
 #>
 function Get-InstallationStatistic {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam([hashtable]$Results)
+    [OutputType([hashtable])]([hashtable]$Results)
+param(
 
     return @{
         TotalProcessed         = $Results.TotalApps
@@ -1565,7 +1570,8 @@ function Get-InstallationStatistic {
 # v3.0 Individual app installation function (Internal use)
 function Install-SingleApplication {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [hashtable]$AppData,
 
@@ -1947,6 +1953,7 @@ Export-ModuleMember -Function @(
     # Note: Legacy functions (Install-EssentialApplication, Get-AppNotInstalled, Get-InstallationStatistic)
     # are used internally but not exported to maintain clean module interface
 )
+
 
 
 

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -296,7 +296,8 @@ function Invoke-SecurityEnhancement {
 #>
 function Get-SecurityConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     try {
         # Use CoreInfrastructure function if available

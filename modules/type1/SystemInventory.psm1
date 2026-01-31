@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (for configuration, paths, logging)
 
@@ -52,7 +52,8 @@ if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
 #>
 function Get-SystemInventory {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+param(
         [Parameter()]
         [switch]$UseCache,
 
@@ -248,7 +249,8 @@ function Get-SystemInventory {
 #>
 function Get-SystemInventoryAnalysis {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+param(
         [Parameter()]
         [PSCustomObject]$Config
     )
@@ -978,6 +980,7 @@ Export-ModuleMember -Function @(
     'Get-SystemInventoryAnalysis',
     'Export-SystemInventory'
 )
+
 
 
 

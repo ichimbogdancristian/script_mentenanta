@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -182,7 +182,8 @@ $script:MaintenanceProjectPaths = @{
 #>
 function Initialize-GlobalPathDiscovery {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$HintPath,
 
@@ -284,7 +285,8 @@ function Initialize-GlobalPathDiscovery {
 #>
 function Get-MaintenancePaths {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $script:MaintenanceProjectPaths.InitLock.EnterReadLock()
 
@@ -319,7 +321,8 @@ function Get-MaintenancePaths {
 #>
 function Get-MaintenancePath {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('ProjectRoot', 'ConfigRoot', 'ModulesRoot', 'TempRoot', 'ParentDir')]
         [string]$PathKey
@@ -360,7 +363,8 @@ function Get-MaintenancePath {
 #>
 function Get-SessionPath {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('data', 'logs', 'reports', 'temp', 'inventory')]
         [string]$Category,
@@ -402,7 +406,8 @@ function Get-SessionPath {
 
 function Test-MaintenancePathsIntegrity {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $paths = Get-MaintenancePaths
     $result = @{
@@ -462,7 +467,8 @@ function Test-MaintenancePathsIntegrity {
 #>
 function Get-JsonConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [ValidateSet('Main', 'Bloatware', 'EssentialApps', 'AppUpgrade', 'SystemOptimization', 'Security', 'Logging', 'ReportTemplates')]
         [string]$ConfigType,
@@ -564,7 +570,8 @@ function Get-JsonConfiguration {
 #>
 function Get-MainConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
@@ -590,7 +597,8 @@ function Get-MainConfiguration {
 #>
 function Assert-AdminPrivilege {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$Operation
     )
@@ -632,7 +640,8 @@ function Assert-AdminPrivilege {
 #>
 function Initialize-ModuleExecution {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$ModuleName,
 
@@ -674,7 +683,8 @@ function Initialize-ModuleExecution {
 #>
 function Get-BloatwareConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
@@ -699,7 +709,8 @@ function Get-BloatwareConfiguration {
 #>
 function Get-EssentialAppsConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
@@ -723,7 +734,8 @@ function Get-EssentialAppsConfiguration {
 #>
 function Get-AppUpgradeConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
@@ -747,7 +759,8 @@ function Get-AppUpgradeConfiguration {
 #>
 function Get-SystemOptimizationConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
@@ -767,7 +780,8 @@ function Get-SystemOptimizationConfiguration {
 #>
 function Get-SecurityConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
@@ -787,7 +801,8 @@ function Get-SecurityConfiguration {
 #>
 function Get-LoggingConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
     )
@@ -804,7 +819,8 @@ function Get-LoggingConfiguration {
 #>
 function Get-ConfigFilePath {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$ConfigName
     )
@@ -1082,7 +1098,8 @@ function Test-ConfigurationSchema {
 #>
 function Initialize-ConfigurationSystem {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$ConfigRootPath
     )
@@ -1200,7 +1217,8 @@ function New-StandardLogEntry {
 #>
 function Initialize-LoggingSystem {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$BaseLogPath = (Join-Path $env:MAINTENANCE_TEMP_ROOT 'logs\maintenance.log')
     )
@@ -1246,7 +1264,8 @@ function Initialize-LoggingSystem {
 #>
 function Write-ModuleLogEntry {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS', 'DEBUG')]
         [string]$Level,
@@ -1466,7 +1485,8 @@ function Remove-NonActionableLogContent {
 #>
 function Start-PerformanceTrackingSafe {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$OperationName,
 
@@ -1485,7 +1505,8 @@ function Start-PerformanceTrackingSafe {
 
 function Start-PerformanceTracking {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$OperationName,
 
@@ -1522,7 +1543,8 @@ function Start-PerformanceTracking {
 #>
 function Complete-PerformanceTracking {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [hashtable]$Context,
 
@@ -1560,7 +1582,8 @@ function Complete-PerformanceTracking {
 #>
 function Write-OperationStart {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$Operation,
 
@@ -1614,7 +1637,8 @@ function Write-OperationStart {
 #>
 function Write-OperationSuccess {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false, ParameterSetName = 'Modern')]
         [string]$Operation,
 
@@ -1664,7 +1688,8 @@ function Write-OperationSuccess {
 #>
 function Write-OperationFailure {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$Operation,
 
@@ -1727,7 +1752,8 @@ function Write-OperationFailure {
 #>
 function Write-OperationSkipped {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$Operation,
 
@@ -1779,7 +1805,8 @@ function Write-OperationSkipped {
 #>
 function Initialize-SessionFileOrganization {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$SessionRoot = $env:MAINTENANCE_TEMP_ROOT
     )
@@ -1899,7 +1926,8 @@ function Test-TempFilesStructure {
 #>
 function Get-SessionDirectoryPath {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [ValidateSet('data', 'logs', 'reports', 'temp')]
         [string]$Type = 'temp'
@@ -1917,7 +1945,8 @@ function Get-SessionDirectoryPath {
 #>
 function Save-SessionData {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$FileName,
 
@@ -1941,7 +1970,8 @@ function Save-SessionData {
 #>
 function Get-SessionData {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$FileName,
 
@@ -1964,7 +1994,8 @@ function Get-SessionData {
 #>
 function Clear-SessionTemporaryFiles {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $tempPath = Get-SessionDirectoryPath -Type 'temp'
     if (Test-Path $tempPath) {
@@ -1981,7 +2012,8 @@ function Clear-SessionTemporaryFiles {
 #>
 function Get-SessionStatistics {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     return @{
         TotalFiles  = (Get-ChildItem -Path $env:MAINTENANCE_TEMP_ROOT -Recurse -File | Measure-Object).Count
@@ -2023,7 +2055,8 @@ function Get-SessionStatistics {
 #>
 function Get-InfrastructureStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $pathsTest = Test-MaintenancePathsIntegrity
     $configTest = Test-ConfigurationIntegrity
@@ -2075,7 +2108,8 @@ function Get-InfrastructureStatus {
 #>
 function Initialize-MaintenanceInfrastructure {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ProjectRootPath,
         [Parameter(Mandatory = $false)]
@@ -2125,7 +2159,8 @@ function Initialize-MaintenanceInfrastructure {
 #>
 function Get-AuditResultsPath {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
         [string]$ModuleName
@@ -2189,7 +2224,8 @@ function Get-AuditResultsPath {
 #>
 function Save-DiffResults {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
         [string]$ModuleName,
@@ -2280,7 +2316,8 @@ function Save-DiffResults {
 #>
 function New-ModuleExecutionResult {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [bool]$Success,
 
@@ -3211,7 +3248,8 @@ function Invoke-WithTimeout {
 #>
 function Invoke-ModuleWithTimeout {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [string]$ModuleName,
 
@@ -3344,7 +3382,8 @@ $script:ChangeLog = @()
 #>
 function Register-SystemChange {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('FileOperation', 'RegistryOperation', 'ServiceOperation', 'AppOperation', 'ConfigOperation')]
         [string]$ChangeType,
@@ -3412,7 +3451,8 @@ function Register-SystemChange {
 #>
 function Undo-AllChanges {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [switch]$ConfirmPrompt,
         [switch]$StopOnError
     )
@@ -3511,7 +3551,8 @@ function Undo-AllChanges {
 #>
 function Clear-ChangeLog {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $count = $script:ChangeLog.Count
     $script:ChangeLog = @()

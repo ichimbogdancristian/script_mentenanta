@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -117,7 +117,8 @@ if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
 #>
 function Start-MaintenanceCountdown {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [ValidateRange(10, 600)]
         [int]$CountdownSeconds = 120,
 
@@ -368,7 +369,8 @@ function Show-ShutdownAbortMenu {
 #>
 function Invoke-MaintenanceShutdownChoice {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [ValidateRange(1, 3)]
         [int]$Choice,
         [string]$WorkingDirectory,
@@ -560,6 +562,7 @@ Export-ModuleMember -Function @(
 #endregion
 
 Write-Verbose "ShutdownManager: Module initialization complete"
+
 
 
 

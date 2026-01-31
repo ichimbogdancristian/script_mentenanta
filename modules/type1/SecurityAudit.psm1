@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, paths)
 
@@ -315,7 +315,8 @@ function Start-SecurityAudit {
 #>
 function Get-WindowsDefenderStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+param(
         [Parameter()]
         [switch]$IncludeScan
     )
@@ -420,7 +421,8 @@ function Get-WindowsDefenderStatus {
 #>
 function Get-FirewallStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $results = @{
         DomainEnabled  = $false
@@ -516,7 +518,8 @@ function Get-FirewallStatus {
 #>
 function Get-UACStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $results = @{
         Enabled  = $false
@@ -584,7 +587,8 @@ function Get-UACStatus {
 #>
 function Get-SecurityServiceStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $results = @{
         Score    = 0
@@ -656,7 +660,8 @@ function Get-SecurityServiceStatus {
 #>
 function Get-SecurityUpdateStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $results = @{
         Score           = 0
@@ -901,7 +906,8 @@ CATEGORY DETAILS:
 #>
 function Get-SecurityAuditAnalysis {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+param(
         [Parameter(Mandatory)]
         [hashtable]$Config
     )
@@ -952,6 +958,7 @@ Export-ModuleMember -Function @(
     'Get-SecurityAuditAnalysis'  # v3.0 PRIMARY function for Type2 integration
     'Get-WindowsDefenderStatus'
 )
+
 
 
 

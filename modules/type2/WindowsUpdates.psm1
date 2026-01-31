@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - WindowsUpdatesAudit.psm1 (Type1 - detection/analysis)
@@ -448,7 +448,8 @@ function Install-WindowsUpdate {
 #>
 function Get-WindowsUpdateStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]
+    param()
 
     Write-Information " Checking Windows Update status..." -InformationAction Continue
 
@@ -558,7 +559,8 @@ function Get-WindowsUpdateStatus {
 #>
 function Install-UpdatesViaPSWindowsUpdate {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [switch]$ExcludePreviews,
         [int]$MaxDownloadSizeMB = 2048,
         [switch]$DryRun,
@@ -765,7 +767,8 @@ function Install-UpdatesViaPSWindowsUpdate {
 #>
 function Install-UpdatesViaNativeAPI {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [switch]$DryRun
     )
 
@@ -927,7 +930,8 @@ function Test-PendingReboot {
 #>
 function Get-WindowsUpdateSetting {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]
+    param()
     try {
         $auKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update"
 
@@ -968,7 +972,8 @@ function Get-WindowsUpdateSetting {
 #>
 function Get-WindowsUpdateBasicStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]
+    param()
     return @{
         UpdatesFound     = 0
         UpdatesInstalled = 0

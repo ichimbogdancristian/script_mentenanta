@@ -1,4 +1,4 @@
-<#
+﻿<#
 .MODULEINFO
 Type = "Type1"
 Category = "Privacy"
@@ -202,7 +202,8 @@ function Get-PrivacyInventory {
 #>
 function Get-TelemetryConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $config = @{
         diagnosticDataLevel = 'Unknown'

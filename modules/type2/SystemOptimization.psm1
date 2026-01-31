@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - SystemOptimizationAudit.psm1 (Type1 - detection/analysis)
@@ -60,7 +60,8 @@ if (-not (Get-Command -Name 'Get-SystemOptimizationAnalysis' -ErrorAction Silent
 #>
 function Invoke-SystemOptimization {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [hashtable]$Config,
         [Parameter()]
@@ -555,7 +556,8 @@ function Optimize-SystemPerformance {
 #>
 function Clear-TemporaryFile {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$DryRun
     )
@@ -1315,7 +1317,8 @@ function Get-MemoryUsagePercent {
 #>
 function Merge-OptimizationResult {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam($Results, $NewResults, $Category)
+    [OutputType([hashtable])]
+    param($Results, $NewResults, $Category)
 
     $Results.TotalOperations += ($NewResults.Success ?? 0) + ($NewResults.Failed ?? 0)
     $Results.Successful += ($NewResults.Success ?? 0)
@@ -1432,7 +1435,8 @@ function Get-SystemPerformanceProfile {
 #>
 function Invoke-EnhancedStartupOptimization {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [array]$Opportunities,
 
@@ -1533,7 +1537,8 @@ function Invoke-EnhancedStartupOptimization {
 #>
 function Invoke-EnhancedUIOptimization {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [array]$Opportunities,
 
@@ -1629,7 +1634,8 @@ function Invoke-EnhancedUIOptimization {
 #>
 function Invoke-EnhancedDiskOptimization {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [array]$Opportunities,
 
@@ -1749,7 +1755,8 @@ function Invoke-EnhancedDiskOptimization {
 #>
 function Invoke-EnhancedRegistryOptimization {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [array]$Opportunities,
 
@@ -1810,7 +1817,8 @@ function Invoke-EnhancedRegistryOptimization {
 #>
 function Invoke-EnhancedNetworkOptimization {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [array]$Opportunities,
 
@@ -1882,7 +1890,8 @@ function Invoke-EnhancedNetworkOptimization {
 #>
 function Invoke-ModernWindowsOptimization {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [PSCustomObject]$Config,
 
@@ -1951,7 +1960,8 @@ function Invoke-ModernWindowsOptimization {
 #>
 function ConvertTo-Bytes {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam([string]$SizeString)
+    [OutputType([hashtable])]
+    param([string]$SizeString)
 
     if ($SizeString -match '(\d+)(MB|GB|KB)') {
         $size = [int]$matches[1]
@@ -1973,7 +1983,8 @@ function ConvertTo-Bytes {
 #>
 function ConvertTo-TimeSpan {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam([string]$AgeString)
+    [OutputType([hashtable])]([string]$AgeString)
+param(
 
     if ($AgeString -match '(\d+)days') {
         return New-TimeSpan -Days $matches[1]
@@ -1991,7 +2002,8 @@ function ConvertTo-TimeSpan {
 #>
 function Disable-StartupApplication {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [string]$AppName,
         [string]$Reason,
         [string]$LogPath
@@ -2078,6 +2090,7 @@ Export-ModuleMember -Function @(
     'Optimize-SystemPerformance',
     'Get-SystemPerformanceMetric'
 )
+
 
 
 

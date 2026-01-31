@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -105,7 +105,8 @@ if (Test-Path $CoreInfraPath) {
 #>
 function Show-MainMenu {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [int]$CountdownSeconds = 20,
 
@@ -277,7 +278,8 @@ function Show-MainMenu {
 #>
 function Show-ConfirmationDialog {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [string]$Message,
 
@@ -322,7 +324,8 @@ function Show-ConfirmationDialog {
 #>
 function Show-Progress {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$Activity,
@@ -484,7 +487,8 @@ function Show-ProgressBar {
 #>
 function Show-ResultSummary {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$Title,
@@ -593,7 +597,8 @@ function Show-ResultSummary {
 #>
 function Start-CountdownMenu {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [ValidateRange(1, 300)]
         [int]$CountdownSeconds,
@@ -706,7 +711,8 @@ function Start-CountdownMenu {
 #>
 function Start-CountdownInput {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [ValidateRange(1, 300)]
         [int]$CountdownSeconds,
@@ -807,7 +813,8 @@ function Start-CountdownInput {
 #>
 function ConvertFrom-TaskNumbers {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [AllowEmptyString()]
         [string]$TaskInput,
@@ -896,6 +903,7 @@ Export-ModuleMember -Function @(
     'Show-ResultSummary',
     'ConvertFrom-TaskNumbers'
 )
+
 
 
 

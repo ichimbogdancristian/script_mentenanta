@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - SystemInventory.psm1 (Type1 - detection/analysis)
@@ -85,7 +85,8 @@ if (-not (Get-Command -Name 'Get-SystemInventoryAnalysis' -ErrorAction SilentlyC
 #>
 function Invoke-SystemInventory {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory = $true)]
         [PSCustomObject]$Config,
 

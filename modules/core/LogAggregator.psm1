@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -153,7 +153,8 @@ $script:Config = @{
 #>
 function Start-ResultCollection {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [string]$SessionId,
 
@@ -369,7 +370,8 @@ function New-ModuleResult {
 #>
 function Add-ModuleResult {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory, ValueFromPipeline)]
         [PSObject]$Result,
 
@@ -434,7 +436,8 @@ function Add-ModuleResult {
 #>
 function Get-AggregatedResults {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$AsHashtable
     )
@@ -462,7 +465,8 @@ function Get-AggregatedResults {
 #>
 function Get-ModuleResultsByName {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [string]$ModuleName
     )
@@ -497,7 +501,8 @@ function Get-ModuleResultsByName {
 #>
 function Get-ResultsSummary {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     $allResults = Get-AggregatedResults
 
@@ -537,7 +542,8 @@ function Get-ResultsSummary {
 #>
 function Complete-ResultCollection {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [string]$ExportPath = $null
     )
@@ -646,7 +652,8 @@ function Get-ResultsReport {
 #>
 function Get-CollectedErrors {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [string]$ModuleName = $null
     )
@@ -675,7 +682,8 @@ function Get-CollectedErrors {
 #>
 function Get-CollectedWarnings {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [string]$ModuleName = $null
     )

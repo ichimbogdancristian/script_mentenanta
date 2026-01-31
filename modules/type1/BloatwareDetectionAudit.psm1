@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (for configuration and logging - loaded globally)
 #   - SystemInventory.psm1 (for system data collection)
@@ -66,7 +66,8 @@ else {
 #>
 function Find-InstalledBloatware {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$UseCache,
 
@@ -360,7 +361,8 @@ function Find-InstalledBloatware {
 #>
 function Get-BloatwareStatistic {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$BloatwareList
     )
@@ -419,7 +421,8 @@ function Get-BloatwareStatistic {
 #>
 function Get-AppXBloatware {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [string[]]$BloatwarePatterns,
 
@@ -536,7 +539,8 @@ function Get-AppXBloatware {
 #>
 function Get-WingetBloatware {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [string[]]$BloatwarePatterns,
 
@@ -698,7 +702,8 @@ function Get-WingetBloatware {
 #>
 function Get-ChocolateyBloatware {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [string[]]$BloatwarePatterns,
 
@@ -793,7 +798,8 @@ function Get-ChocolateyBloatware {
 #>
 function Get-RegistryBloatware {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [string[]]$BloatwarePatterns,
 
@@ -869,7 +875,8 @@ function Get-RegistryBloatware {
 #>
 function Test-BloatwareDetection {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [Array]$DetectedItems
     )
@@ -933,7 +940,8 @@ function Test-BloatwareDetection {
 #>
 function Get-BloatwareAnalysis {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter(Mandatory)]
         [hashtable]$Config
     )

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - TelemetryAudit.psm1 (Type1 - detection/analysis)
@@ -53,7 +53,8 @@ if (-not (Get-Command -Name 'Get-TelemetryAnalysis' -ErrorAction SilentlyContinu
 
 function Invoke-TelemetryDisable {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam([Parameter(Mandatory)][hashtable]$Config, [Parameter()][switch]$DryRun)
+    [OutputType([hashtable])]
+    param([Parameter(Mandatory)][hashtable]$Config, [Parameter()][switch]$DryRun)
 
     $perfContext = Start-PerformanceTrackingSafe -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE'
 
@@ -476,7 +477,8 @@ function Disable-WindowsTelemetry {
 #>
 function Test-PrivacySetting {
     [CmdletBinding()]
-    [OutputType([hashtable])]`nparam()
+    [OutputType([hashtable])]()
+param(
 
     Write-Information " Analyzing current privacy and telemetry settings..." -InformationAction Continue
 
@@ -556,7 +558,8 @@ function Test-PrivacySetting {
 #>
 function Set-TelemetryRegistrySetting {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$DryRun
     )
@@ -715,7 +718,8 @@ function Set-TelemetryRegistrySetting {
 #>
 function Disable-TelemetryService {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$DryRun
     )
@@ -876,7 +880,8 @@ function Disable-TelemetryService {
 #>
 function Disable-WindowsNotification {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$DryRun
     )
@@ -1002,7 +1007,8 @@ function Disable-WindowsNotification {
 #>
 function Disable-ConsumerFeature {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]`nparam(
+    [OutputType([hashtable])]
+    param(
         [Parameter()]
         [switch]$DryRun
     )
@@ -1111,7 +1117,8 @@ function Disable-ConsumerFeature {
 #>
 function Disable-CortanaFeature {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]`nparam([switch]$DryRun)
+    [OutputType([hashtable])]([switch]$DryRun)
+param(
 
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
 
@@ -1192,7 +1199,8 @@ function Disable-CortanaFeature {
 #>
 function Disable-LocationService {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]`nparam([switch]$DryRun)
+    [OutputType([hashtable])]([switch]$DryRun)
+param(
 
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
 
