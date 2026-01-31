@@ -276,10 +276,6 @@ function Get-HtmlTemplates {
                 throw "No CSS styles found in fallback chain"
             }
         }
-        else {
-            throw "CSS styles not found: $cssPath"
-        }
-    }
         
     # Load template configuration
     $configJsonPath = Find-ConfigTemplate 'report-templates-config.json'
@@ -307,6 +303,7 @@ catch {
         throw "Cannot generate reports - template system unavailable"
     }
 }
+
 }
 
 <#
@@ -3568,7 +3565,7 @@ function Build-ExecutionSummaryRows {
             $items = [int]($moduleResult.Metrics.ItemsProcessed ?? $moduleResult.ItemsProcessed ?? $moduleResult.TotalOperations ?? 0)
             $duration = [double]($moduleResult.Metrics.DurationSeconds ?? $moduleResult.DurationSeconds ?? 0)
 
-            $rows += "<tr><td>$moduleName</td><td><span class=\"status-badge $statusClass\">$status</span></td><td>$items</td><td>$([math]::Round($duration, 1))s</td></tr>"
+            $rows += ('<tr><td>{0}</td><td><span class="status-badge {1}">{2}</span></td><td>{3}</td><td>{4}s</td></tr>' -f $moduleName, $statusClass, $status, $items, ([math]::Round($duration, 1)))
         }
 
         return ($rows -join "`n")
@@ -3623,7 +3620,8 @@ function Build-SystemChangesLog {
                 elseif ($line -match '\[SUCCESS\]') { $level = 'success' }
 
                 $escapedLine = [System.Web.HttpUtility]::HtmlEncode($line)
-                $entries.Add("<div class=\"log-entry $level\"><span class=\"log-tag\">$moduleName</span>$escapedLine</div>")
+                $escapedModule = [System.Web.HttpUtility]::HtmlEncode($moduleName)
+                $entries.Add(('<div class="log-entry {0}"><span class="log-tag">{1}</span>{2}</div>' -f $level, $escapedModule, $escapedLine))
                 if ($entries.Count -ge $MaxEntries) { break }
             }
 
