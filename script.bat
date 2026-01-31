@@ -1172,26 +1172,41 @@ REM Check and allocate System Restore Point space (minimum 10GB)
 IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     CALL :LOG_MESSAGE "Checking System Protection disk space allocation..." "INFO" "LAUNCHER"
     
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $srp = Get-WmiObject -Class Win32_SystemRestoreConfig -Namespace 'root\cimv2' -ErrorAction SilentlyContinue; if ($srp) { $allocationGB = [math]::Round($srp.MaxSpace / 1GB, 2); Write-Host ('CURRENT:' + $allocationGB) } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
+    REM Use vssadmin to check current shadow storage allocation (modern method)
+    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
     
     REM Parse current allocation
     IF "!SR_SPACE_CHECK:~0,8!"=="CURRENT:" (
         SET "SR_CURRENT_GB=!SR_SPACE_CHECK:~8!"
-        FOR /F "tokens=1" %%a IN ("!SR_CURRENT_GB!") DO SET "SR_CURRENT_GB=%%a"
+        FOR /F "tokens=1 delims=." %%a IN ("!SR_CURRENT_GB!") DO SET "SR_CURRENT_GB_INT=%%a"
         
         REM Check if allocation is less than 10GB
-        IF !SR_CURRENT_GB! LSS !MIN_RESTORE_SPACE_GB! (
+        IF !SR_CURRENT_GB_INT! LSS !MIN_RESTORE_SPACE_GB! (
             CALL :LOG_MESSAGE "Current allocation is !SR_CURRENT_GB! GB (minimum required: !MIN_RESTORE_SPACE_GB! GB). Allocating..." "WARN" "LAUNCHER"
             
-            FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $srp = Get-WmiObject -Class Win32_SystemRestoreConfig -Namespace 'root\cimv2' -ErrorAction SilentlyContinue; if ($srp) { $srp.MaxSpace = [int64](10 * 1GB); $srp.Put() | Out-Null; Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
+            REM Use vssadmin resize shadowstorage (correct modern method)
+            FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
             
             IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
                 CALL :LOG_MESSAGE "System Restore Point allocation set to !MIN_RESTORE_SPACE_GB! GB successfully" "SUCCESS" "LAUNCHER"
             ) ELSE (
-                CALL :LOG_MESSAGE "Failed to allocate System Restore Point space (may require administrator elevation)" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "Failed to allocate System Restore Point space (may require administrator elevation or storage not yet configured)" "WARN" "LAUNCHER"
             )
         ) ELSE (
             CALL :LOG_MESSAGE "System Protection allocation is sufficient (!SR_CURRENT_GB! GB >= !MIN_RESTORE_SPACE_GB! GB)" "SUCCESS" "LAUNCHER"
+        )
+    ) ELSE IF /I "!SR_SPACE_CHECK!"=="UNBOUNDED" (
+        CALL :LOG_MESSAGE "System Protection storage is unbounded (will use available space)" "SUCCESS" "LAUNCHER"
+    ) ELSE IF /I "!SR_SPACE_CHECK!"=="NO_CONFIG" (
+        CALL :LOG_MESSAGE "No shadow storage configured yet. Attempting to configure 10GB allocation..." "INFO" "LAUNCHER"
+        
+        REM Initialize shadow storage with vssadmin
+        FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
+        
+        IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
+            CALL :LOG_MESSAGE "Shadow storage initialized with 10GB allocation" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to initialize shadow storage - System Protection may need manual configuration" "WARN" "LAUNCHER"
         )
     )
 )
