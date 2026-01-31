@@ -285,7 +285,7 @@ function Initialize-GlobalPathDiscovery {
 #>
 function Get-MaintenancePaths {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $script:MaintenanceProjectPaths.InitLock.EnterReadLock()
@@ -406,7 +406,7 @@ function Get-SessionPath {
 
 function Test-MaintenancePathsIntegrity {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $paths = Get-MaintenancePaths
@@ -1994,7 +1994,7 @@ function Get-SessionData {
 #>
 function Clear-SessionTemporaryFiles {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $tempPath = Get-SessionDirectoryPath -Type 'temp'
@@ -2012,7 +2012,7 @@ param(
 #>
 function Get-SessionStatistics {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     return @{
@@ -2055,7 +2055,7 @@ param(
 #>
 function Get-InfrastructureStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $pathsTest = Test-MaintenancePathsIntegrity
@@ -3551,7 +3551,7 @@ function Undo-AllChanges {
 #>
 function Clear-ChangeLog {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $count = $script:ChangeLog.Count

@@ -310,7 +310,7 @@ function Get-HtmlTemplate {
 #>
 function Get-FallbackTemplate {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Using fallback templates - limited styling and functionality'
@@ -684,7 +684,7 @@ param(
 #>
 function Get-FallbackRawLogData {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Using fallback raw log data loading - functionality will be limited'
@@ -2822,7 +2822,7 @@ function Clear-ReportGeneratorCache {
 #>
 function Get-ReportMemoryStatistic {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     try {
@@ -3959,7 +3959,7 @@ function Build-ActionItem {
 #>
 function Get-SystemInformation {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     try {

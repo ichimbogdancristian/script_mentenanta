@@ -421,7 +421,7 @@ param(
 #>
 function Get-FirewallStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $results = @{
@@ -518,7 +518,7 @@ param(
 #>
 function Get-UACStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $results = @{
@@ -587,7 +587,7 @@ param(
 #>
 function Get-SecurityServiceStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $results = @{
@@ -660,7 +660,7 @@ param(
 #>
 function Get-SecurityUpdateStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $results = @{

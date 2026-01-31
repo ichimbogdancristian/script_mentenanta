@@ -296,7 +296,7 @@ function Invoke-SecurityEnhancement {
 #>
 function Get-SecurityConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     try {

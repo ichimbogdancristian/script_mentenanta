@@ -477,7 +477,7 @@ function Disable-WindowsTelemetry {
 #>
 function Test-PrivacySetting {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     Write-Information " Analyzing current privacy and telemetry settings..." -InformationAction Continue

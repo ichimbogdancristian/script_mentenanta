@@ -202,7 +202,7 @@ function Get-PrivacyInventory {
 #>
 function Get-TelemetryConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]()
+    [OutputType([hashtable])]
 param(
 
     $config = @{
