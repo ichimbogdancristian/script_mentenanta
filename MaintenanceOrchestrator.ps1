@@ -486,7 +486,11 @@ try {
             # Fallback to Windows PowerShell for Checkpoint-Computer if available
             $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
             if (Test-Path $psExe) {
-                $psArgs = "-NoProfile -Command \"Checkpoint-Computer -Description '$restoreDescription' -RestorePointType 'MODIFY_SETTINGS'\""
+                $psArgs = @(
+                    '-NoProfile',
+                    '-Command',
+                    "Checkpoint-Computer -Description `"$restoreDescription`" -RestorePointType 'MODIFY_SETTINGS'"
+                )
                 $proc = Start-Process -FilePath $psExe -ArgumentList $psArgs -Wait -PassThru -WindowStyle Hidden
                 if ($proc.ExitCode -eq 0) {
                     $restoreResult = @{
