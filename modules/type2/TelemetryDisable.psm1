@@ -289,7 +289,14 @@ function Disable-WindowsTelemetry {
     }
     catch {
         Write-Error "Administrator privileges are required for telemetry disabling operations: $_"
-        return $false
+        $executionTime = (Get-Date) - $startTime
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected 0 `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -ModuleName 'TelemetryDisable' `
+            -ErrorMessage 'Administrator privileges required'
     }
 
     if ($DryRun) {
@@ -389,7 +396,14 @@ function Disable-WindowsTelemetry {
         Write-Verbose "Telemetry disable operation details: $(ConvertTo-Json $results -Depth 3)"
         Write-Verbose "Privacy hardening completed successfully"
         
-        return $success
+        $executionTime = (Get-Date) - $startTime
+        return New-ModuleExecutionResult `
+            -Success $success `
+            -ItemsDetected $results.TotalOperations `
+            -ItemsProcessed $results.Successful `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -ModuleName 'TelemetryDisable' `
+            -DryRun $DryRun.IsPresent
     }
     catch {
         $errorMessage = " Privacy hardening failed: $($_.Exception.Message)"
@@ -406,8 +420,14 @@ function Disable-WindowsTelemetry {
             # LoggingManager not available, continue with standard logging
         }
         
-        # Type 2 module returns boolean for failure
-        return $false
+        $executionTime = (Get-Date) - $startTime
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected $results.TotalOperations `
+            -ItemsProcessed $results.Successful `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -ModuleName 'TelemetryDisable' `
+            -ErrorMessage $_.Exception.Message
     }
     finally {
         $duration = ((Get-Date) - $startTime).TotalSeconds

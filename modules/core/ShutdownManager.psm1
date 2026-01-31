@@ -150,6 +150,20 @@ function Start-MaintenanceCountdown {
         
         $remainingSeconds = $CountdownSeconds
         $countdownStartTime = Get-Date
+
+        # Determine whether keypress detection is supported (avoid repeated errors)
+        $keyPressSupported = $false
+        try {
+            if ($Host -and $Host.UI -and $Host.UI.RawUI) {
+                $null = $Host.UI.RawUI.KeyAvailable
+                $keyPressSupported = $true
+            }
+        }
+        catch {
+            Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' `
+                -Message "Keypress detection unavailable (non-interactive mode): $_"
+            $keyPressSupported = $false
+        }
         
         # Main countdown loop
         while ($remainingSeconds -gt 0) {
@@ -163,7 +177,7 @@ function Start-MaintenanceCountdown {
             
             # Check for keypress (non-blocking)
             try {
-                if ($Host.UI.RawUI.KeyAvailable) {
+                if ($keyPressSupported -and $Host.UI.RawUI.KeyAvailable) {
                     [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 
                     # Key pressed - abort countdown
@@ -187,9 +201,6 @@ function Start-MaintenanceCountdown {
                 }
             }
             catch {
-                # Keypress detection failed - likely running in non-interactive context
-                Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' `
-                    -Message "Keypress detection unavailable (non-interactive mode): $_"
                 # Continue countdown without interactivity
                 Write-Verbose "Continuing countdown in non-interactive mode"
             }

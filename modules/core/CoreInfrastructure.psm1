@@ -2625,8 +2625,36 @@ function Compare-DetectedVsConfig {
     
     # Compare: only include items found in BOTH lists
     foreach ($detected in $DetectionResults) {
-        # Look for this item in config
-        $configMatch = $configItems | Where-Object { $_.$MatchField -eq $detected.$MatchField } | Select-Object -First 1
+        if ($null -eq $detected) { continue }
+
+        $detectedValue = $detected.$MatchField
+        if ([string]::IsNullOrWhiteSpace($detectedValue)) {
+            # Fallback to DisplayName/Name when MatchField not present
+            $detectedValue = $detected.DisplayName
+            if ([string]::IsNullOrWhiteSpace($detectedValue)) {
+                $detectedValue = $detected.Name
+            }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($detectedValue)) { continue }
+
+        $detectedValueNormalized = $detectedValue.ToString().Trim().ToLowerInvariant()
+
+        $configMatch = $configItems | Where-Object {
+            if ($_ -is [string]) {
+                $_.ToString().Trim().ToLowerInvariant() -eq $detectedValueNormalized
+            }
+            else {
+                $configValue = $_.$MatchField
+                if ([string]::IsNullOrWhiteSpace($configValue)) {
+                    $configValue = $_.DisplayName
+                    if ([string]::IsNullOrWhiteSpace($configValue)) {
+                        $configValue = $_.Name
+                    }
+                }
+                if ([string]::IsNullOrWhiteSpace($configValue)) { $false } else { $configValue.ToString().Trim().ToLowerInvariant() -eq $detectedValueNormalized }
+            }
+        } | Select-Object -First 1
         
         if ($configMatch) {
             # Item is in both detected and config, include in diff

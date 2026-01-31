@@ -134,21 +134,40 @@ function Invoke-BloatwareRemoval {
             Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware detected on system' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
             $executionTime = (Get-Date) - $executionStartTime
-            return @{ 
-                Success        = $true
-                ItemsDetected  = 0
-                ItemsProcessed = 0
-                Duration       = $executionTime.TotalMilliseconds
-            }
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected 0 `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds $executionTime.TotalMilliseconds `
+                -LogPath $executionLogPath `
+                -ModuleName 'BloatwareRemoval' `
+                -DryRun $DryRun.IsPresent
         }
         
+        # STEP 1.5: Filter out protected system apps to avoid breaking core components
+        $protectedCount = 0
+        $filteredDetection = @()
+        foreach ($item in $detectionResults) {
+            if (Test-ProtectedBloatwareItem -Item $item) {
+                $protectedCount++
+                Write-StructuredLogEntry -Level 'WARNING' -Component 'BLOATWARE-REMOVAL' -Message "Protected app skipped: $($item.Name ?? $item.DisplayName)" -LogPath $executionLogPath -Operation 'Skip' -Metadata @{ Reason = 'ProtectedApp'; Source = $item.Source }
+            }
+            else {
+                $filteredDetection += $item
+            }
+        }
+
+        if ($protectedCount -gt 0) {
+            Write-Information "   Skipped $protectedCount protected system app(s)" -InformationAction Continue
+        }
+
         # STEP 2: Compare detection with config to create diff list using centralized function
         # Use standardized config path structure
         $configDataPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\bloatware-list.json"
         $configData = Get-Content $configDataPath | ConvertFrom-Json
         
         # Create diff: Only items from config that are actually found on system
-        $diffList = Compare-DetectedVsConfig -DetectionResults $detectionResults -ConfigData $configData -ConfigItemsPath 'bloatware' -MatchField 'Name'
+        $diffList = Compare-DetectedVsConfig -DetectionResults $filteredDetection -ConfigData $configData -ConfigItemsPath 'bloatware' -MatchField 'Name'
         
         $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\bloatware-diff.json"
         $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
@@ -157,15 +176,17 @@ function Invoke-BloatwareRemoval {
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath -Operation 'Process' -Metadata @{ ItemCount = $diffList.Count; DetectedCount = $detectionResults.Count }
         
         if (-not $diffList -or $diffList.Count -eq 0) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items to remove after config comparison' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound' -Metadata @{ DetectedCount = $detectionResults.Count }
+            Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items to remove after config comparison' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound' -Metadata @{ DetectedCount = $filteredDetection.Count }
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
             $executionTime = (Get-Date) - $executionStartTime
-            return @{ 
-                Success        = $true
-                ItemsDetected  = $detectionResults.Count
-                ItemsProcessed = 0
-                Duration       = $executionTime.TotalMilliseconds
-            }
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected $filteredDetection.Count `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds $executionTime.TotalMilliseconds `
+                -LogPath $executionLogPath `
+                -ModuleName 'BloatwareRemoval' `
+                -DryRun $DryRun.IsPresent
         }
         
         if ($DryRun) {
@@ -533,7 +554,9 @@ ITEMS BY SOURCE:
         Write-Verbose "Bloatware removal operation details: $(ConvertTo-Json $results -Depth 3)"
         Write-Verbose "Bloatware removal completed successfully"
         
-        return $success
+        $results.Success = $success
+        $results.Duration = $duration
+        return $results
     }
     catch {
         # Complete performance tracking with failure
@@ -557,8 +580,15 @@ ITEMS BY SOURCE:
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
         
-        # Type 2 module returns boolean for failure
-        return $false
+        return @{
+            Success        = $false
+            TotalProcessed = if ($BloatwareList) { $BloatwareList.Count } else { 0 }
+            Successful     = 0
+            Failed         = if ($BloatwareList) { $BloatwareList.Count } else { 0 }
+            Skipped        = 0
+            DryRun         = $DryRun.IsPresent
+            Error          = $errorMessage
+        }
     }
     finally {
         $ErrorActionPreference = 'Continue'
@@ -665,7 +695,7 @@ function Remove-AppXBloatware {
     }
 
     foreach ($item in $Items) {
-        $packageName = $item.Name
+        $packageName = if ($item.WingetId) { $item.WingetId } else { $item.Name }
         $operationStart = Get-Date
         $result = @{
             Name    = $packageName
@@ -1090,9 +1120,27 @@ function Remove-RegistryBloatware {
                     $arguments = if ($parts.Count -gt 1) { $parts[1] } else { '' }
                 }
 
-                # Add silent flags if not present
-                if ($arguments -notmatch '/S|/silent|/quiet|/q') {
-                    $arguments += ' /S'
+                # Normalize MSI uninstallers to use /x and silent flags
+                if ($executable -match 'msiexec(\.exe)?$') {
+                    if ($arguments -match '/I\s*\{') {
+                        $arguments = $arguments -replace '/I', '/X'
+                    }
+                    if ($arguments -notmatch '/X\s*\{') {
+                        # If GUID is embedded in the uninstall string, keep it as-is
+                        $arguments = "$arguments"
+                    }
+                    if ($arguments -notmatch '/qn|/quiet|/q') {
+                        $arguments += ' /qn'
+                    }
+                    if ($arguments -notmatch '/norestart') {
+                        $arguments += ' /norestart'
+                    }
+                }
+                else {
+                    # Add silent flags if not present
+                    if ($arguments -notmatch '/S|/silent|/quiet|/q') {
+                        $arguments += ' /S'
+                    }
                 }
                 
                 Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: $executable $arguments"
@@ -1162,6 +1210,48 @@ function Remove-RegistryBloatware {
 #endregion
 
 #region Helper Functions
+
+<#[
+.SYNOPSIS
+    Determines whether a detected item is protected and should never be removed
+#>
+function Test-ProtectedBloatwareItem {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Item
+    )
+
+    $protectedPatterns = @(
+        'Microsoft.WindowsStore',
+        'Microsoft.StorePurchaseApp',
+        'Microsoft.DesktopAppInstaller',
+        'Microsoft.UI.Xaml*',
+        'Microsoft.VCLibs*',
+        'Microsoft.NET.Native*',
+        'Microsoft.Windows.ShellExperienceHost',
+        'Microsoft.Windows.StartMenuExperienceHost',
+        'Microsoft.AAD.BrokerPlugin',
+        'Microsoft.WindowsAppRuntime*'
+    )
+
+    $name = $Item.Name
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        $name = $Item.DisplayName
+    }
+
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        return $false
+    }
+
+    foreach ($pattern in $protectedPatterns) {
+        if ($name -like $pattern) {
+            return $true
+        }
+    }
+
+    return $false
+}
 
 <#
 .SYNOPSIS

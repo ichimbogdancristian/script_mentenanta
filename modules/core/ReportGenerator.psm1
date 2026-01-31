@@ -253,12 +253,13 @@ function Get-HtmlTemplates {
             # Provide fallback CSS to prevent report generation failure
             $templates.CSS = Get-FallbackHtmlTemplate -TemplateType 'CSS'
         }
-        if ($UseEnhanced) {
+        if ($UseEnhanced -and [string]::IsNullOrWhiteSpace($templates.CSS)) {
             # Try v5 enhanced, then v4 enhanced, then standard
             $fallbackPaths = @(
                 'report-styles-enhanced-v5.css',
                 'report-styles-v4-enhanced.css',
-                'report-styles.css'
+                'report-styles.css',
+                'modern-dashboard.css'
             )
                 
             $cssLoaded = $false

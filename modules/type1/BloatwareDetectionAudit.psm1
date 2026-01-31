@@ -146,7 +146,20 @@ function Find-InstalledBloatware {
                 try {
                     $programs += Get-ItemProperty $path -ErrorAction SilentlyContinue |
                     Where-Object { $_.DisplayName -and $_.DisplayName.Trim() -ne '' } |
-                    Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, PSPath
+                    ForEach-Object {
+                        [PSCustomObject]@{
+                            Name            = $_.DisplayName
+                            DisplayName     = $_.DisplayName
+                            DisplayVersion  = $_.DisplayVersion
+                            Publisher       = $_.Publisher
+                            InstallDate     = $_.InstallDate
+                            InstallLocation = $_.InstallLocation
+                            EstimatedSize   = $_.EstimatedSize
+                            UninstallString = $_.UninstallString
+                            PSPath          = $_.PSPath
+                            Source          = 'Registry'
+                        }
+                    }
                 }
                 catch {
                     Write-Verbose "Failed to read registry path ${path}: $($_.Exception.Message)"
@@ -159,6 +172,34 @@ function Find-InstalledBloatware {
         catch {
             Write-Warning "Failed to collect installed programs: $($_.Exception.Message)"
             $installedPrograms = @()
+        }
+
+        # Collect AppX packages for Store apps
+        try {
+            if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) {
+                Write-Information "   Collecting AppX packages..." -InformationAction Continue
+                $appxPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+                if ($appxPackages) {
+                    $appxItems = $appxPackages | ForEach-Object {
+                        [PSCustomObject]@{
+                            Name             = $_.Name
+                            DisplayName      = $_.Name
+                            Version          = $_.Version
+                            Publisher        = $_.Publisher
+                            InstallDate      = $null
+                            InstallLocation  = $_.InstallLocation
+                            PackageFullName  = $_.PackageFullName
+                            PackageFamilyName= $_.PackageFamilyName
+                            Source           = 'AppX'
+                        }
+                    }
+                    $installedPrograms += $appxItems
+                    Write-Information "   Found $($appxItems.Count) AppX packages" -InformationAction Continue
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Failed to collect AppX packages: $($_.Exception.Message)"
         }
 
         if ($null -eq $installedPrograms -or $installedPrograms.Count -eq 0) {
@@ -507,12 +548,56 @@ function Get-WingetBloatware {
     )
 
     try {
-        if (-not $InstalledPrograms) {
-            Write-Warning "No app inventory available for Winget scan"
+        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Write-Verbose "Winget not available for detection"
             return @()
         }
 
-        $wingetApps = $InstalledPrograms | Where-Object { $_.Source -eq 'Winget' }
+        $wingetApps = @()
+
+        # Prefer JSON output when available
+        try {
+            $jsonOutput = & winget list --output json --accept-source-agreements 2>$null
+            if ($LASTEXITCODE -eq 0 -and $jsonOutput) {
+                $parsed = $jsonOutput | ConvertFrom-Json -ErrorAction Stop
+                $data = if ($parsed.Data) { $parsed.Data } elseif ($parsed -is [array]) { $parsed } else { @() }
+                $wingetApps = $data | ForEach-Object {
+                    [PSCustomObject]@{
+                        Name       = $_.Id
+                        DisplayName= $_.Name
+                        Version    = $_.Version
+                        Publisher  = $_.Publisher
+                        Source     = 'Winget'
+                        WingetId   = $_.Id
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Winget JSON list failed, falling back to text parsing: $($_.Exception.Message)"
+        }
+
+        if (-not $wingetApps -or $wingetApps.Count -eq 0) {
+            # Fallback text parsing
+            $listOutput = & winget list --accept-source-agreements 2>$null
+            if ($LASTEXITCODE -eq 0 -and $listOutput) {
+                $lines = $listOutput | Select-Object -Skip 2
+                foreach ($line in $lines) {
+                    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                    $parts = $line -split '\s{2,}'
+                    if ($parts.Count -ge 2) {
+                        $wingetApps += [PSCustomObject]@{
+                            Name        = $parts[0]
+                            DisplayName = $parts[0]
+                            Version     = if ($parts.Count -ge 3) { $parts[2] } else { $null }
+                            Publisher   = $null
+                            Source      = 'Winget'
+                            WingetId    = $null
+                        }
+                    }
+                }
+            }
+        }
 
         $found = @()
         foreach ($app in $wingetApps) {
@@ -524,7 +609,7 @@ function Get-WingetBloatware {
                 $matchType = ""
 
                 # Exact match (highest priority)
-                if ($app.Name -eq $pattern -or $app.DisplayName -eq $pattern) {
+                if ($app.Name -eq $pattern -or $app.DisplayName -eq $pattern -or $app.WingetId -eq $pattern) {
                     $matched = $true
                     $matchType = "Exact"
                 }
@@ -550,7 +635,7 @@ function Get-WingetBloatware {
 
                 if ($matched) {
                     $detectedItem = [PSCustomObject]@{
-                        Name           = $app.Name
+                        Name           = if ($app.WingetId) { $app.WingetId } else { $app.Name }
                         DisplayName    = $app.DisplayName
                         Version        = $app.Version
                         Publisher      = $app.Publisher
@@ -560,6 +645,7 @@ function Get-WingetBloatware {
                         MatchType      = $matchType
                         Context        = $Context
                         RemovalMethod  = 'winget uninstall'
+                        WingetId       = $app.WingetId
                         Confidence     = switch ($matchType) {
                             "Exact" { 100 }
                             "Publisher+Name" { 95 }
@@ -624,12 +710,33 @@ function Get-ChocolateyBloatware {
     )
 
     try {
-        if (-not $InstalledPrograms) {
-            Write-Warning "No app inventory available for Chocolatey scan"
+        if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Write-Verbose "Chocolatey not available for detection"
             return @()
         }
 
-        $chocoApps = $InstalledPrograms | Where-Object { $_.Source -eq 'Chocolatey' }
+        $chocoApps = @()
+        try {
+            $chocoList = & choco list --local-only --limit-output 2>$null
+            if ($LASTEXITCODE -eq 0 -and $chocoList) {
+                foreach ($line in $chocoList) {
+                    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                    $parts = $line -split '\|', 2
+                    $chocoApps += [PSCustomObject]@{
+                        Name        = $parts[0]
+                        DisplayName = $parts[0]
+                        Version     = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                        Publisher   = $null
+                        InstallDate = $null
+                        Source      = 'Chocolatey'
+                        ChocolateyId= $parts[0]
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Chocolatey list failed: $($_.Exception.Message)"
+        }
 
         $found = @()
         foreach ($app in $chocoApps) {

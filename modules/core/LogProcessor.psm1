@@ -517,11 +517,19 @@ function Get-MaintenanceLog {
     }
     
     try {
-        # Try to locate maintenance.log in temp_files
-        $mainLogPath = Join-Path (Get-MaintenancePath 'TempRoot') 'maintenance.log'
+        # Try to locate maintenance.log in organized and fallback locations
+        $tempRoot = Get-MaintenancePath 'TempRoot'
+        $projectRoot = Get-MaintenancePath 'ProjectRoot'
+        $candidatePaths = @(
+            (Join-Path $tempRoot 'logs\maintenance.log'),
+            (Join-Path $tempRoot 'maintenance.log'),
+            (Join-Path $projectRoot 'maintenance.log')
+        )
         
-        if (-not (Test-Path $mainLogPath)) {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Maintenance log not found at: $mainLogPath"
+        $mainLogPath = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+        
+        if (-not $mainLogPath) {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Maintenance log not found. Checked: $($candidatePaths -join ', ')"
             return $maintenanceLogData
         }
         

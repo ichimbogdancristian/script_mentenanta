@@ -103,7 +103,7 @@
 using namespace System.Collections.Generic
 
 # Import core infrastructure for path management and logging
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'CoreInfrastructure.psm1'
+$CoreInfraPath = Join-Path $PSScriptRoot 'CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force -WarningAction SilentlyContinue
 }

@@ -949,6 +949,50 @@ function Invoke-CISSecurityEnhancement {
 
 <#
 .SYNOPSIS
+    v3.0 wrapper for CIS Security Enhancement (standardized result)
+#>
+function Invoke-SecurityEnhancementCIS {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [switch]$DryRun,
+
+        [Parameter()]
+        [ValidateSet('All', 'PasswordPolicy', 'AccountLockout', 'UAC', 'Firewall', 'Auditing', 'Services', 'Defender', 'Encryption')]
+        [string[]]$ControlCategories = 'All'
+    )
+
+    try {
+        $summary = Invoke-CISSecurityEnhancement -DryRun:$DryRun -ControlCategories $ControlCategories
+
+        $itemsDetected = if ($summary.PSObject.Properties.Name -contains 'TotalControls') { [int]$summary.TotalControls } else { 0 }
+        $itemsProcessed = if ($summary.PSObject.Properties.Name -contains 'AppliedControls') { [int]$summary.AppliedControls } else { 0 }
+        $durationMs = if ($summary.PSObject.Properties.Name -contains 'DurationSeconds') { [double]$summary.DurationSeconds * 1000 } else { 0 }
+        $failedControls = if ($summary.PSObject.Properties.Name -contains 'FailedControls') { [int]$summary.FailedControls } else { 0 }
+        $success = ($failedControls -eq 0) -and ($summary.Status -ne 'Failed')
+
+        return New-ModuleExecutionResult `
+            -Success $success `
+            -ItemsDetected $itemsDetected `
+            -ItemsProcessed $itemsProcessed `
+            -DurationMilliseconds $durationMs `
+            -ModuleName 'SecurityEnhancementCIS' `
+            -DryRun $DryRun.IsPresent `
+            -AdditionalData @{ Summary = $summary }
+    }
+    catch {
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected 0 `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds 0 `
+            -ModuleName 'SecurityEnhancementCIS' `
+            -ErrorMessage $_.Exception.Message
+    }
+}
+
+<#
+.SYNOPSIS
     Get current CIS control compliance status
 #>
 function Get-CISControlStatus {
@@ -983,5 +1027,6 @@ function Get-CISControlStatus {
 # Export public functions
 Export-ModuleMember -Function @(
     'Invoke-CISSecurityEnhancement',
+    'Invoke-SecurityEnhancementCIS',
     'Get-CISControlStatus'
 )

@@ -394,9 +394,19 @@ function Ensure-SystemRestorePointSpace {
             return $false
         }
         
-        # Get current System Protection usage via WMI
+        # Ensure System Protection is enabled (attempt best-effort enablement)
         try {
-            $srp = Get-WmiObject -Class Win32_SystemRestoreConfig -Namespace "root\cimv2" -ErrorAction SilentlyContinue
+            if (Get-Command -Name 'Enable-ComputerRestore' -ErrorAction SilentlyContinue) {
+                Enable-ComputerRestore -Drive $systemDrive -ErrorAction SilentlyContinue | Out-Null
+            }
+        }
+        catch {
+            Write-Information "   Unable to enable System Protection via Enable-ComputerRestore: $_" -InformationAction Continue
+        }
+
+        # Get current System Protection usage via CIM
+        try {
+            $srp = Get-CimInstance -ClassName Win32_SystemRestoreConfig -Namespace "root\cimv2" -ErrorAction SilentlyContinue
             
             if ($srp) {
                 # ShadowCopy size is in bytes; convert to GB
@@ -473,7 +483,24 @@ try {
             }
         }
         else {
-            throw "System restore point cmdlet not available (New-SystemRestorePoint or Checkpoint-Computer)."
+            # Fallback to Windows PowerShell for Checkpoint-Computer if available
+            $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            if (Test-Path $psExe) {
+                $psArgs = "-NoProfile -Command \"Checkpoint-Computer -Description '$restoreDescription' -RestorePointType 'MODIFY_SETTINGS'\""
+                $proc = Start-Process -FilePath $psExe -ArgumentList $psArgs -Wait -PassThru -WindowStyle Hidden
+                if ($proc.ExitCode -eq 0) {
+                    $restoreResult = @{
+                        Success     = $true
+                        Description = $restoreDescription
+                    }
+                }
+                else {
+                    throw "Checkpoint-Computer failed in Windows PowerShell (ExitCode: $($proc.ExitCode))"
+                }
+            }
+            else {
+                throw "System restore point cmdlet not available (New-SystemRestorePoint or Checkpoint-Computer)."
+            }
         }
         
         if ($restoreResult.Success) {
@@ -1425,25 +1452,11 @@ try {
                     }
                     else { $false }
                     
-                    # If it's an array with a single valid object, extract it (FIX for pipeline contamination)
-                    if ($result -is [array] -and $result.Count -eq 1 -and $hasSuccessKey) {
-                        Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracting single result from array (pipeline contamination detected and fixed)" -Data @{ Module = $task.Function }
-                        $result = $result[0]
-                        $hasValidStructure = $true
-                        Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
-                    }
-                    elseif ($result -is [array] -and $result.Count -eq 2 -and $hasSuccessKey) {
-                        # Handle case where result is [result_object, performance_tracking_data]
-                        Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracting result from 2-element array" -Data @{ Module = $task.Function }
-                        $result = $result[0]
-                        $hasValidStructure = $true
-                        Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
-                    }
-                    elseif ($result -is [array] -and $result.Count -gt 2) {
-                        # Array with multiple items: search for hashtable with Success key (enhanced pipeline contamination fix)
+                    # If it's an array, search for a valid result object anywhere in the array (pipeline contamination fix)
+                    if ($result -is [array]) {
                         $validResult = $result | Where-Object { ($_ -is [hashtable] -and $_.ContainsKey('Success')) -or ($_ -is [PSCustomObject] -and (Get-Member -InputObject $_ -Name 'Success' -ErrorAction SilentlyContinue)) } | Select-Object -First 1
                         if ($validResult) {
-                            Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracted valid result from multi-element array" -Data @{ Module = $task.Function; ArrayCount = $result.Count }
+                            Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracted valid result from array" -Data @{ Module = $task.Function; ArrayCount = $result.Count }
                             $result = $validResult
                             $hasValidStructure = $true
                             Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue

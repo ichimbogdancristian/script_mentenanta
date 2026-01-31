@@ -478,6 +478,12 @@ function Set-PowerShellExecutionPolicy {
             $itemsProcessed = 1
         }
         else {
+            $machinePolicy = Get-ExecutionPolicy -Scope MachinePolicy -ErrorAction SilentlyContinue
+            $userPolicy = Get-ExecutionPolicy -Scope UserPolicy -ErrorAction SilentlyContinue
+            if (($machinePolicy -and $machinePolicy -ne 'Undefined') -or ($userPolicy -and $userPolicy -ne 'Undefined')) {
+                Write-Information "      [SKIP] Execution policy enforced by Group Policy (MachinePolicy=$machinePolicy, UserPolicy=$userPolicy)" -InformationAction Continue
+                return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -AdditionalData @{ Skipped = $true; Reason = 'Execution policy enforced by Group Policy' }
+            }
             Set-ExecutionPolicy -ExecutionPolicy $policy -Scope LocalMachine -Force -ErrorAction Stop
             $itemsProcessed++
             Write-Information "      [OK] Execution policy set to: $policy" -InformationAction Continue
