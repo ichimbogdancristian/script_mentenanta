@@ -253,60 +253,60 @@ function Get-HtmlTemplates {
             # Provide fallback CSS to prevent report generation failure
             $templates.CSS = Get-FallbackHtmlTemplate -TemplateType 'CSS'
         }
-            if ($UseEnhanced) {
-                # Try v5 enhanced, then v4 enhanced, then standard
-                $fallbackPaths = @(
-                    'report-styles-enhanced-v5.css',
-                    'report-styles-v4-enhanced.css',
-                    'report-styles.css'
-                )
+        if ($UseEnhanced) {
+            # Try v5 enhanced, then v4 enhanced, then standard
+            $fallbackPaths = @(
+                'report-styles-enhanced-v5.css',
+                'report-styles-v4-enhanced.css',
+                'report-styles.css'
+            )
                 
-                $cssLoaded = $false
-                foreach ($fallbackCss in $fallbackPaths) {
-                    $fallbackPath = Find-ConfigTemplate $fallbackCss
-                    if (Test-Path $fallbackPath) {
-                        $templates.CSS = Get-Content $fallbackPath -Raw
-                        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Using fallback CSS: $fallbackCss"
-                        $cssLoaded = $true
-                        break
-                    }
-                }
-                
-                if (-not $cssLoaded) {
-                    throw "No CSS styles found in fallback chain"
+            $cssLoaded = $false
+            foreach ($fallbackCss in $fallbackPaths) {
+                $fallbackPath = Find-ConfigTemplate $fallbackCss
+                if (Test-Path $fallbackPath) {
+                    $templates.CSS = Get-Content $fallbackPath -Raw
+                    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Using fallback CSS: $fallbackCss"
+                    $cssLoaded = $true
+                    break
                 }
             }
-            else {
-                throw "CSS styles not found: $cssPath"
+                
+            if (-not $cssLoaded) {
+                throw "No CSS styles found in fallback chain"
             }
-        }
-        
-        # Load template configuration
-        $configJsonPath = Find-ConfigTemplate 'report-templates-config.json'
-        if (Test-Path $configJsonPath) {
-            $templates.Config = Get-Content $configJsonPath | ConvertFrom-Json
-            Write-Verbose "Loaded template config: $configJsonPath"
         }
         else {
-            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Template configuration not found: $configJsonPath"
-            # Not critical, continue without config
+            throw "CSS styles not found: $cssPath"
         }
+    }
         
-        Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Successfully loaded $templateType HTML templates"
-        return $templates
+    # Load template configuration
+    $configJsonPath = Find-ConfigTemplate 'report-templates-config.json'
+    if (Test-Path $configJsonPath) {
+        $templates.Config = Get-Content $configJsonPath | ConvertFrom-Json
+        Write-Verbose "Loaded template config: $configJsonPath"
+    }
+    else {
+        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Template configuration not found: $configJsonPath"
+        # Not critical, continue without config
+    }
+        
+    Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Successfully loaded $templateType HTML templates"
+    return $templates
+}
+catch {
+    Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to load HTML templates: $($_.Exception.Message)"
+    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting to use fallback templates for basic functionality'
+        
+    try {
+        return Get-FallbackTemplates
     }
     catch {
-        Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to load HTML templates: $($_.Exception.Message)"
-        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting to use fallback templates for basic functionality'
-        
-        try {
-            return Get-FallbackTemplates
-        }
-        catch {
-            Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Both template loading and fallback failed: $($_.Exception.Message)"
-            throw "Cannot generate reports - template system unavailable"
-        }
+        Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Both template loading and fallback failed: $($_.Exception.Message)"
+        throw "Cannot generate reports - template system unavailable"
     }
+}
 }
 
 <#
