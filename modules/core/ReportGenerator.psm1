@@ -995,6 +995,12 @@ function New-MaintenanceReport {
                 $moduleCard = Build-ModuleCard -ModuleResult $moduleResult -CardTemplate $templates.ModuleCard
                 $moduleCardsHtml += $moduleCard
             }
+
+            Write-Information "✓ Building execution summary rows..." -InformationAction Continue
+            $executionSummaryRowsHtml = Build-ExecutionSummaryRows -AggregatedResults $processedData
+
+            Write-Information "✓ Building system changes log..." -InformationAction Continue
+            $systemChangesLogHtml = Build-SystemChangesLog -AggregatedResults $processedData -MaxEntries 60
             
             Write-Information "✓ Building error analysis..." -InformationAction Continue
             $errorAnalysisHtml = Build-ErrorAnalysis -AggregatedResults $processedData
@@ -1015,19 +1021,47 @@ function New-MaintenanceReport {
             $reportHtml = $reportHtml -replace '{{CSS_CONTENT}}', $templates.CSS
             
             # Replace header tokens
+            $reportHtml = $reportHtml -replace '{{REPORT_TITLE}}', 'Windows Maintenance Report'
             $reportHtml = $reportHtml -replace '{{GENERATION_TIME}}', (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+            $reportHtml = $reportHtml -replace '{{GENERATION_DATE}}', (Get-Date -Format "MMMM dd, yyyy")
             $reportHtml = $reportHtml -replace '{{REPORT_DATE}}', (Get-Date -Format "MMMM dd, yyyy")
             $reportHtml = $reportHtml -replace '{{COMPUTER_NAME}}', $env:COMPUTERNAME
             $reportHtml = $reportHtml -replace '{{USER_NAME}}', $env:USERNAME
-            $reportHtml = $reportHtml -replace '{{EXECUTION_MODE}}', $(if ($config.execution.dryRunByDefault) { "DRY RUN" } else { "LIVE" })
+            $reportHtml = $reportHtml -replace '{{EXECUTION_MODE}}', $(if ($config.execution.enableDryRun -or $config.execution.dryRunByDefault) { "DRY RUN" } else { "LIVE" })
             
             # Replace dashboard tokens
             foreach ($key in $dashboardData.Keys) {
                 $reportHtml = $reportHtml -replace "{{$key}}", $dashboardData[$key]
             }
+
+            # Map modern-dashboard tokens to dashboard data
+            $systemHealthScore = [int]($dashboardData.SYSTEM_HEALTH_SCORE ?? 0)
+            $successRateScore = [int]($dashboardData.SUCCESS_RATE ?? 0)
+            $totalErrors = [int]($dashboardData.ERROR_COUNT ?? 0)
+            $overallStatusClass = if ($systemHealthScore -ge 90) { 'status-success' } elseif ($systemHealthScore -ge 70) { 'status-warning' } else { 'status-error' }
+            $securityStatusClass = if ($successRateScore -ge 90) { 'status-success' } elseif ($successRateScore -ge 70) { 'status-warning' } else { 'status-error' }
+            $performanceStatusClass = if ($dashboardData.TOTAL_DURATION -and $dashboardData.TOTAL_DURATION -match '\d+' -and [int]$dashboardData.TOTAL_DURATION -le 900) { 'status-success' } elseif ($dashboardData.TOTAL_DURATION -and $dashboardData.TOTAL_DURATION -match '\d+' -and [int]$dashboardData.TOTAL_DURATION -le 1800) { 'status-warning' } else { 'status-info' }
+            $errorsStatusClass = if ($totalErrors -eq 0) { 'status-success' } elseif ($totalErrors -le 3) { 'status-warning' } else { 'status-error' }
+
+            $reportHtml = $reportHtml -replace '{{OVERALL_HEALTH_SCORE}}', $systemHealthScore
+            $reportHtml = $reportHtml -replace '{{OVERALL_STATUS_CLASS}}', $overallStatusClass
+            $reportHtml = $reportHtml -replace '{{OVERALL_STATUS_TEXT}}', $(if ($systemHealthScore -ge 90) { 'Excellent' } elseif ($systemHealthScore -ge 70) { 'Good' } else { 'Needs Attention' })
+            $reportHtml = $reportHtml -replace '{{SECURITY_SCORE}}', $successRateScore
+            $reportHtml = $reportHtml -replace '{{SECURITY_STATUS_CLASS}}', $securityStatusClass
+            $reportHtml = $reportHtml -replace '{{SECURITY_STATUS_TEXT}}', $(if ($successRateScore -ge 90) { 'Secure' } elseif ($successRateScore -ge 70) { 'Moderate' } else { 'At Risk' })
+            $reportHtml = $reportHtml -replace '{{PERFORMANCE_STATUS_CLASS}}', $performanceStatusClass
+            $reportHtml = $reportHtml -replace '{{EXECUTION_DURATION}}', $dashboardData.TOTAL_DURATION
+            $reportHtml = $reportHtml -replace '{{ERRORS_STATUS_CLASS}}', $errorsStatusClass
+            $reportHtml = $reportHtml -replace '{{TOTAL_ERRORS}}', $totalErrors
+            $reportHtml = $reportHtml -replace '{{ERROR_STATUS_TEXT}}', $(if ($totalErrors -eq 0) { 'No Issues' } elseif ($totalErrors -le 3) { 'Minor Issues' } else { 'Review Required' })
+            $reportHtml = $reportHtml -replace '{{SESSION_ID}}', ($processedData.MetricsSummary.ProcessingMetadata.SessionId ?? 'N/A')
+            $reportHtml = $reportHtml -replace '{{VERSION}}', '3.0.0'
             
             # Replace section tokens
             $reportHtml = $reportHtml -replace '{{MODULE_REPORTS}}', $moduleCardsHtml
+            $reportHtml = $reportHtml -replace '{{MODULE_CARDS}}', $moduleCardsHtml
+            $reportHtml = $reportHtml -replace '{{EXECUTION_SUMMARY_ROWS}}', $executionSummaryRowsHtml
+            $reportHtml = $reportHtml -replace '{{SYSTEM_CHANGES_LOG}}', $systemChangesLogHtml
             $reportHtml = $reportHtml -replace '{{ERROR_ANALYSIS}}', $errorAnalysisHtml
             $reportHtml = $reportHtml -replace '{{EXECUTION_TIMELINE}}', $timelineHtml
             $reportHtml = $reportHtml -replace '{{ACTION_ITEMS}}', $actionItemsHtml
@@ -3500,6 +3534,111 @@ function Build-ModuleLogEntries {
     catch {
         Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to build module log entries: $($_.Exception.Message)"
         return "                <div class=`"log-entry error`">Failed to load log entries</div>`n"
+    }
+}
+
+<#
+.SYNOPSIS
+    Builds HTML rows for execution summary table
+#>
+function Build-ExecutionSummaryRows {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$AggregatedResults,
+
+        [Parameter()]
+        [int]$MaxRows = 20
+    )
+
+    try {
+        if (-not $AggregatedResults.ModuleResults) {
+            return '<tr><td colspan="4">No module results available</td></tr>'
+        }
+
+        $rows = @()
+        foreach ($moduleResult in $AggregatedResults.ModuleResults.Values | Select-Object -First $MaxRows) {
+            $moduleName = [System.Web.HttpUtility]::HtmlEncode($moduleResult.ModuleName)
+            $status = $moduleResult.Status ?? 'Unknown'
+            $statusClass = if ($status -match 'Success|Completed') { 'status-success' }
+            elseif ($status -match 'Warning') { 'status-warning' }
+            elseif ($status -match 'Error|Failed') { 'status-error' }
+            else { 'status-info' }
+            $items = [int]($moduleResult.Metrics.ItemsProcessed ?? $moduleResult.ItemsProcessed ?? $moduleResult.TotalOperations ?? 0)
+            $duration = [double]($moduleResult.Metrics.DurationSeconds ?? $moduleResult.DurationSeconds ?? 0)
+
+            $rows += "<tr><td>$moduleName</td><td><span class=\"status-badge $statusClass\">$status</span></td><td>$items</td><td>$([math]::Round($duration, 1))s</td></tr>"
+        }
+
+        return ($rows -join "`n")
+    }
+    catch {
+        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to build execution summary rows: $($_.Exception.Message)"
+        return '<tr><td colspan="4">Failed to build execution summary</td></tr>'
+    }
+}
+
+<#
+.SYNOPSIS
+    Builds HTML for system changes log (aggregated module logs)
+#>
+function Build-SystemChangesLog {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$AggregatedResults,
+
+        [Parameter()]
+        [int]$MaxEntries = 60
+    )
+
+    try {
+        $entries = New-Object System.Collections.Generic.List[string]
+
+        if (-not $AggregatedResults.ModuleResults) {
+            return '<div class="log-entry info">No system changes recorded</div>'
+        }
+
+        foreach ($moduleResult in $AggregatedResults.ModuleResults.Values) {
+            $moduleName = $moduleResult.ModuleName ?? 'Module'
+            $logLines = @()
+
+            if ($moduleResult.LogEntries) {
+                $logLines = $moduleResult.LogEntries | Select-Object -Last 5
+            }
+            elseif ($moduleResult.Logs) {
+                $logLines = $moduleResult.Logs | Select-Object -Last 5
+            }
+            elseif ($moduleResult.LogPath -and (Test-Path $moduleResult.LogPath)) {
+                $logLines = Get-Content $moduleResult.LogPath -Tail 5
+            }
+
+            foreach ($line in $logLines) {
+                if (-not $line) { continue }
+                $level = 'info'
+                if ($line -match '\[ERROR\]') { $level = 'error' }
+                elseif ($line -match '\[WARNING\]') { $level = 'warning' }
+                elseif ($line -match '\[SUCCESS\]') { $level = 'success' }
+
+                $escapedLine = [System.Web.HttpUtility]::HtmlEncode($line)
+                $entries.Add("<div class=\"log-entry $level\"><span class=\"log-tag\">$moduleName</span>$escapedLine</div>")
+                if ($entries.Count -ge $MaxEntries) { break }
+            }
+
+            if ($entries.Count -ge $MaxEntries) { break }
+        }
+
+        if ($entries.Count -eq 0) {
+            return '<div class="log-entry info">No system changes recorded</div>'
+        }
+
+        return ($entries -join "`n")
+    }
+    catch {
+        Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to build system changes log: $($_.Exception.Message)"
+        return '<div class="log-entry error">Failed to load system changes</div>'
     }
 }
 
