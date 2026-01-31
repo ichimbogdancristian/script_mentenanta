@@ -181,7 +181,8 @@ $CoreModules = @(
     'LogAggregator',       # v3.1: Moved earlier to prevent race conditions
     'UserInterface',
     'LogProcessor',
-    'ReportGenerator'
+    'ReportGenerator',
+    'ShutdownManager'      # v3.2: Post-execution countdown and cleanup
 )
 # Type2 modules (self-contained with internal Type1 dependencies)
 $Type2Modules = @(
@@ -1437,6 +1438,19 @@ try {
                         $hasValidStructure = $true
                         Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
                     }
+                    elseif ($result -is [array] -and $result.Count -gt 2) {
+                        # Array with multiple items: search for hashtable with Success key (enhanced pipeline contamination fix)
+                        $validResult = $result | Where-Object { ($_ -is [hashtable] -and $_.ContainsKey('Success')) -or ($_ -is [PSCustomObject] -and (Get-Member -InputObject $_ -Name 'Success' -ErrorAction SilentlyContinue)) } | Select-Object -First 1
+                        if ($validResult) {
+                            Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracted valid result from multi-element array" -Data @{ Module = $task.Function; ArrayCount = $result.Count }
+                            $result = $validResult
+                            $hasValidStructure = $true
+                            Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
+                        }
+                        else {
+                            Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
+                        }
+                    }
                     else {
                         Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
                         
@@ -1802,6 +1816,40 @@ if ($finalReports.Count -gt 0) {
         Write-Information "  • $(Split-Path $report -Leaf)" -InformationAction Continue
     }
 }
+
+# v3.2 Post-Execution Shutdown Sequence
+if (Get-Command -Name 'Start-MaintenanceCountdown' -ErrorAction SilentlyContinue) {
+    Write-Information "`n" -InformationAction Continue
+    try {
+        # Load shutdown configuration
+        $shutdownConfig = @{
+            CountdownSeconds = $MainConfig.execution.shutdown.countdownSeconds ?? 120
+            CleanupOnTimeout = $MainConfig.execution.shutdown.cleanupOnTimeout ?? $true
+            RebootOnTimeout  = $MainConfig.execution.shutdown.rebootOnTimeout ?? $false
+        }
+        
+        Write-Information " Starting post-execution shutdown sequence..." -InformationAction Continue
+        Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Initiating shutdown sequence with config: $($shutdownConfig | ConvertTo-Json -Compress)"
+        
+        $shutdownResult = Start-MaintenanceCountdown `
+            -CountdownSeconds $shutdownConfig.CountdownSeconds `
+            -WorkingDirectory $ScriptRoot `
+            -TempRoot $script:ProjectPaths.TempRoot `
+            -CleanupOnTimeout:$shutdownConfig.CleanupOnTimeout `
+            -RebootOnTimeout:$shutdownConfig.RebootOnTimeout
+        
+        Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Shutdown sequence completed" -Data $shutdownResult
+        Write-Information " Shutdown sequence action: $($shutdownResult.Action)" -InformationAction Continue
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Shutdown sequence failed: $($_.Exception.Message)"
+        Write-Warning " Shutdown sequence error: $_"
+    }
+}
+else {
+    Write-LogEntry -Level 'WARNING' -Component 'ORCHESTRATOR' -Message "ShutdownManager module not available - skipping post-execution shutdown sequence"
+}
+
 if ($failedTasks -gt 0) {
     Write-Information "" -InformationAction Continue
     Write-Information "  Some tasks failed. Check the logs for detailed error information." -InformationAction Continue

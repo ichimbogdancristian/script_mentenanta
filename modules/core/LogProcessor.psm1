@@ -350,7 +350,12 @@ function Get-Type1AuditData {
         # Use safe directory scanning with error recovery
         $jsonFiles = Get-SafeDirectoryContents -DirectoryPath $dataPath -Filter '*.json' -FilesOnly
         
-        # Process files in batches for better performance with many modules
+        if (-not $jsonFiles -or $jsonFiles.Count -eq 0) {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "No Type1 audit data files found in: $dataPath"
+            return $auditData
+        }
+        
+        Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Found $($jsonFiles.Count) Type1 audit data file(s) for processing"
         $processingScript = {
             param($InputObject)
             

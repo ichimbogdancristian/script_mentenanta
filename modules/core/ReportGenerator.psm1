@@ -223,7 +223,9 @@ function Get-HtmlTemplates {
             Write-Verbose "Loaded main template: $mainTemplatePath"
         }
         else {
-            throw "Main report template not found: $mainTemplatePath (check config/templates directory)"
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Main report template not found: $mainTemplatePath - using fallback inline template"
+            # Provide fallback inline template to prevent report generation failure
+            $templates.Main = Get-FallbackHtmlTemplate -TemplateType 'MainReport'
         }
         
         # Load module/task card template
@@ -234,11 +236,10 @@ function Get-HtmlTemplates {
             Write-Verbose "Loaded module card template: $moduleCardPath"
         }
         else {
-            if ($UseEnhanced) {
-                Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced module card template not found, falling back to standard templates"
-                return Get-HtmlTemplates  # Recursive call without -UseEnhanced
-            }
-            throw "Module card template not found: $moduleCardPath"
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Module card template not found: $moduleCardPath - using fallback template"
+            # Provide fallback inline template
+            $templates.ModuleCard = Get-FallbackHtmlTemplate -TemplateType 'ModuleCard'
+            $templates.TaskCard = $templates.ModuleCard  # Backward compatibility
         }
         
         # Load CSS styles with enhanced fallback chain
@@ -248,6 +249,10 @@ function Get-HtmlTemplates {
             Write-Verbose "Loaded CSS styles: $cssPath"
         }
         else {
+            Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "CSS template not found: $cssPath - using fallback styles"
+            # Provide fallback CSS to prevent report generation failure
+            $templates.CSS = Get-FallbackHtmlTemplate -TemplateType 'CSS'
+        }
             if ($UseEnhanced) {
                 # Try v5 enhanced, then v4 enhanced, then standard
                 $fallbackPaths = @(
