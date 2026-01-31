@@ -286,7 +286,7 @@ function Initialize-GlobalPathDiscovery {
 function Get-MaintenancePaths {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $script:MaintenanceProjectPaths.InitLock.EnterReadLock()
 
@@ -407,7 +407,7 @@ function Get-SessionPath {
 function Test-MaintenancePathsIntegrity {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $paths = Get-MaintenancePaths
     $result = @{
@@ -1995,7 +1995,7 @@ function Get-SessionData {
 function Clear-SessionTemporaryFiles {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $tempPath = Get-SessionDirectoryPath -Type 'temp'
     if (Test-Path $tempPath) {
@@ -2013,7 +2013,7 @@ param(
 function Get-SessionStatistics {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     return @{
         TotalFiles  = (Get-ChildItem -Path $env:MAINTENANCE_TEMP_ROOT -Recurse -File | Measure-Object).Count
@@ -2056,7 +2056,7 @@ param(
 function Get-InfrastructureStatus {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $pathsTest = Test-MaintenancePathsIntegrity
     $configTest = Test-ConfigurationIntegrity
@@ -2835,7 +2835,8 @@ function New-SystemRestorePoint {
 #>
 function Test-SystemRequirements {
     [CmdletBinding()]
-    [OutputType([hashtable])]`n    param()
+    [OutputType([hashtable])]
+    param()
 
     $results = @{
         AllMet   = $true
