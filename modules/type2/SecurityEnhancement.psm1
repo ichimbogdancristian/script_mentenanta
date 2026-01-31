@@ -74,25 +74,42 @@ if (-not (Get-Command -Name 'Get-SecurityAuditAnalysis' -ErrorAction SilentlyCon
     4. Executes security enhancement actions based on DryRun mode
     5. Returns standardized results for ReportGeneration
 
+    Implements CIS Windows 10 Enterprise v4.0.0 benchmark controls:
+    - Section 1: Password Policies (1.1-1.5)
+    - Section 2: Account Lockout (1.2-1.2.4)
+    - Section 3: UAC Settings (2.3.17-2.3.17.5)
+    - Section 4: Windows Firewall (9.1-9.3)
+    - Section 5: Security Auditing (17.x)
+    - Section 6: Service Hardening (5.x services)
+    - Section 7: Defender & Malware Protection
+    - Section 8: Encryption & Data Protection
+
 .PARAMETER Config
     Main configuration object from orchestrator
 
 .PARAMETER DryRun
     If specified, simulates changes without modifying the system
 
+.PARAMETER ControlCategories
+    Limit execution to specific control categories: 'All', 'PasswordPolicy', 'Firewall', 'UAC', 'Auditing', 'Services', 'Defender', 'Encryption'
+
 .EXAMPLE
     Invoke-SecurityEnhancement -Config $MainConfig
 
 .EXAMPLE
-    Invoke-SecurityEnhancement -Config $MainConfig -DryRun
+    Invoke-SecurityEnhancement -Config $MainConfig -DryRun -ControlCategories 'PasswordPolicy', 'Firewall'
 
 .OUTPUTS
     PSCustomObject with standardized result structure:
-    - Success: Boolean indicating overall success
-    - ItemsDetected: Number of security issues found
-    - ItemsProcessed: Number of enhancements applied
+    - Status: Success/Failed/PartialSuccess
+    - TotalControls: Total CIS controls processed
+    - AppliedControls: Number of enhancements applied successfully
+    - FailedControls: Number of controls that failed
+    - SkippedControls: Number of controls skipped due to prerequisites
     - DryRun: Boolean indicating if this was a dry run
-    - Results: Detailed results array
+    - Results: Array of detailed control results
+    - ControlDetails: Hash table of per-control status
+    - DurationSeconds: Execution time in seconds
 #>
 function Invoke-SecurityEnhancement {
     [CmdletBinding(SupportsShouldProcess)]
