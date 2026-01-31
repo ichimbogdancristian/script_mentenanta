@@ -7,7 +7,7 @@
 .DESCRIPTION
     Performs comprehensive security enhancements and hardening based on audit findings.
     Integrates both modular security enhancements and comprehensive hardening tasks.
-    
+
     **V3.1 Integration Update:**
     - Consolidated Windows-Security-Hardening.ps1 (v3.0) into this module
     - Implements security best practices with 20+ hardening tasks
@@ -22,7 +22,7 @@
     Version: 3.1.0 (Integrated from Windows-Security-Hardening.ps1 v3.0)
     Created: November 30, 2025
     Integrated: January 28, 2026
-    
+
     Public Functions:
     - Invoke-SecurityEnhancement: Modular security enhancements (Type2→Type1 pattern)
     - Invoke-ComprehensiveSecurityHardening: Full 20-task hardening suite
@@ -296,7 +296,7 @@ function Invoke-SecurityEnhancement {
 #>
 function Get-SecurityConfiguration {
     [CmdletBinding()]
-    param()
+    [OutputType([hashtable])]`nparam()
 
     try {
         # Use CoreInfrastructure function if available
@@ -728,3 +728,6 @@ Export-ModuleMember -Function @(
     'Invoke-SecurityEnhancement',
     'Invoke-ComprehensiveSecurityHardening'
 )
+
+
+

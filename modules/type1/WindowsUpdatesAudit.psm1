@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -58,7 +58,7 @@ else {
 .EXAMPLE
     $audit = Get-WindowsUpdatesAudit
 
-.EXAMPLE  
+.EXAMPLE
     $audit = Get-WindowsUpdatesAudit -IncludePending -IncludeHistory
 #>
 function Get-WindowsUpdatesAnalysis {
@@ -82,7 +82,7 @@ function Get-WindowsUpdatesAnalysis {
     )
 
     Write-Information " Starting Windows Updates audit..." -InformationAction Continue
-    
+
     # Start performance tracking
     $perfContext = $null
     try {
@@ -168,7 +168,7 @@ function Get-WindowsUpdatesAnalysis {
             else {
                 $outputPath = Get-SessionPath -Category 'data' -FileName 'windows-updates-results.json'
             }
-            
+
             $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to standardized path: $outputPath" -InformationAction Continue
         }
@@ -190,7 +190,7 @@ function Get-WindowsUpdatesAnalysis {
     catch {
         $errorMsg = "Windows Updates audit failed: $($_.Exception.Message)"
         Write-Error $errorMsg
-        
+
         try {
             Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES-AUDIT' -Message $errorMsg -Data @{ Error = $_.Exception }
             Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
@@ -198,7 +198,7 @@ function Get-WindowsUpdatesAnalysis {
         catch {
             Write-Verbose "Performance tracking cleanup failed: $_"
         }
-        
+
         throw
     }
 }
@@ -219,7 +219,7 @@ function Get-WindowsUpdateStatus {
     try {
         # Check Windows Update service
         $wuauserv = Get-Service -Name 'wuauserv' -ErrorAction SilentlyContinue
-        
+
         # Get last successful scan time
         $lastScanTime = $null
         try {
@@ -312,7 +312,7 @@ function Get-PendingUpdatesAudit {
                             RebootRequired = $update.RebootRequired
                         }
                         $pendingUpdates += $updateInfo
-                        
+
                         # Log detected pending update
                         Write-DetectionLog -Operation 'Detect' -Target $update.Title -Component 'WINDOWS-UPDATES' -AdditionalInfo @{
                             KB             = $update.KBArticleIDs -join ', '
@@ -336,7 +336,7 @@ function Get-PendingUpdatesAudit {
                                 KBArticleIDs   = $update.KBArticleIDs -join ', '
                                 Recommendation = 'Install immediately for security'
                             }
-                            
+
                             # Log critical update alert
                             Write-DetectionLog -Operation 'Detect' -Target $update.Title -Component 'WINDOWS-UPDATES-CRITICAL' -AdditionalInfo @{
                                 KB             = $update.KBArticleIDs -join ', '
@@ -347,7 +347,7 @@ function Get-PendingUpdatesAudit {
                                 Recommendation = 'Install immediately for security'
                                 Reason         = "Critical security update not installed"
                             }
-                            
+
                             $issues += $issueItem
                         }
                     }
@@ -364,7 +364,7 @@ function Get-PendingUpdatesAudit {
                 $session = New-Object -ComObject Microsoft.Update.Session
                 $searcher = $session.CreateUpdateSearcher()
                 $searchResult = $searcher.Search("IsInstalled=0")
-                
+
                 foreach ($update in $searchResult.Updates) {
                     $updateInfo = [PSCustomObject]@{
                         Title          = $update.Title
@@ -376,7 +376,7 @@ function Get-PendingUpdatesAudit {
                         RebootRequired = $update.RebootRequired
                     }
                     $pendingUpdates += $updateInfo
-                    
+
                     # Log detected pending update
                     Write-DetectionLog -Operation 'Detect' -Target $update.Title -Component 'WINDOWS-UPDATES' -AdditionalInfo @{
                         KB             = $update.KBArticleIDs -join ', '
@@ -399,7 +399,7 @@ function Get-PendingUpdatesAudit {
                             KBArticleIDs   = $update.KBArticleIDs -join ', '
                             Recommendation = 'Install immediately for security'
                         }
-                        
+
                         # Log critical update alert
                         Write-DetectionLog -Operation 'Detect' -Target $update.Title -Component 'WINDOWS-UPDATES-CRITICAL' -AdditionalInfo @{
                             KB             = $update.KBArticleIDs -join ', '
@@ -410,7 +410,7 @@ function Get-PendingUpdatesAudit {
                             Recommendation = 'Install immediately for security'
                             Reason         = "Critical security update not installed"
                         }
-                        
+
                         $issues += $issueItem
                     }
                 }
@@ -467,7 +467,7 @@ function Get-UpdateHistoryAudit {
         if ($historyCount -gt 0) {
             # Get last 30 updates
             $history = $searcher.QueryHistory(0, [Math]::Min(30, $historyCount))
-            
+
             foreach ($update in $history) {
                 $updateInfo = [PSCustomObject]@{
                     Title      = $update.Title
@@ -497,10 +497,10 @@ function Get-UpdateHistoryAudit {
         }
 
         # Check if no updates in last 30 days
-        $recentSecurityUpdates = $recentUpdates | Where-Object { 
-            $_.Categories -match 'Security' -and $_.Date -gt (Get-Date).AddDays(-30) 
+        $recentSecurityUpdates = $recentUpdates | Where-Object {
+            $_.Categories -match 'Security' -and $_.Date -gt (Get-Date).AddDays(-30)
         }
-        
+
         if ($recentSecurityUpdates.Count -eq 0) {
             $issues += [PSCustomObject]@{
                 Category           = 'Security'
@@ -625,7 +625,7 @@ function Get-UpdateSecurityAudit {
         # Windows 10/11 support lifecycle check (simplified)
         $supportedBuilds = @{
             '10.0.19041' = 'Windows 10 20H1 - Extended support'
-            '10.0.19042' = 'Windows 10 20H2 - Extended support'  
+            '10.0.19042' = 'Windows 10 20H2 - Extended support'
             '10.0.19043' = 'Windows 10 21H1 - Extended support'
             '10.0.19044' = 'Windows 10 21H2 - Current support'
             '10.0.22000' = 'Windows 11 21H2 - Current support'
@@ -720,9 +720,9 @@ function Get-UpdateHealthScore {
         Deductions         = $deductions
         IssueCount         = $AuditResults.UpdateIssues.Count
         SecurityIssueCount = $AuditResults.SecurityFindings.Count
-        Category           = if ($overallScore -ge 90) { 'Excellent Update Health' } 
-        elseif ($overallScore -ge 70) { 'Good Update Health' } 
-        elseif ($overallScore -ge 50) { 'Fair Update Health' } 
+        Category           = if ($overallScore -ge 90) { 'Excellent Update Health' }
+        elseif ($overallScore -ge 70) { 'Good Update Health' }
+        elseif ($overallScore -ge 50) { 'Fair Update Health' }
         else { 'Poor Update Health - Immediate Action Required' }
     }
 }
@@ -786,7 +786,7 @@ function New-UpdateRecommendations {
     Wrapper function that performs Windows Updates audit and saves results to temp_files/data/
     for consumption by Type2 modules. This is the v3.0 standardized interface between
     Type1 (detection) and Type2 (action) modules.
-    
+
     Automatically saves results to temp_files/data/windows-updates-results.json using global paths.
 
 .PARAMETER Config
@@ -805,3 +805,6 @@ New-Alias -Name 'Get-WindowsUpdatesAudit' -Value 'Get-WindowsUpdatesAnalysis'
 Export-ModuleMember -Function @(
     'Get-WindowsUpdatesAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-WindowsUpdatesAudit')  # Backward compatibility
+
+
+

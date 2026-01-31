@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -10,7 +10,7 @@
     Part of the v3.0 architecture where Type1 modules provide detection/analysis capabilities.
 
 .NOTES
-    Module Type: Type 1 (Detection/Analysis)  
+    Module Type: Type 1 (Detection/Analysis)
     Dependencies: CoreInfrastructure.psm1, CommonUtilities.psm1
     Architecture: v3.0 - Self-contained with fallback capabilities
     Author: Windows Maintenance Automation Project
@@ -82,7 +82,7 @@ function Get-TelemetryAnalysis {
     )
 
     Write-Information " Starting telemetry and privacy audit..." -InformationAction Continue
-    
+
     # Start performance tracking
     $perfContext = $null
     try {
@@ -169,7 +169,7 @@ function Get-TelemetryAnalysis {
             else {
                 $outputPath = Get-SessionPath -Category 'data' -FileName 'telemetry-results.json'
             }
-            
+
             $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to standardized path: $outputPath" -InformationAction Continue
         }
@@ -191,7 +191,7 @@ function Get-TelemetryAnalysis {
     catch {
         $errorMsg = "Telemetry audit failed: $($_.Exception.Message)"
         Write-Error $errorMsg
-        
+
         try {
             Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-AUDIT' -Message $errorMsg -Data @{ Error = $_.Exception }
             Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
@@ -199,7 +199,7 @@ function Get-TelemetryAnalysis {
         catch {
             Write-Verbose "Performance tracking cleanup failed: $_"
         }
-        
+
         throw
     }
 }
@@ -258,7 +258,7 @@ function Get-TelemetryServicesAudit {
                         CurrentStartType = $service.StartType
                         Recommendation   = 'Disable service to improve privacy'
                     }
-                    
+
                     # Log detected active telemetry service
                     Write-DetectionLog -Operation 'Detect' -Target $serviceName -Component 'TELEMETRY-SERVICE' -AdditionalInfo @{
                         Category       = 'Telemetry Service'
@@ -271,7 +271,7 @@ function Get-TelemetryServicesAudit {
                         Recommendation = 'Stop and disable service'
                         Reason         = "Telemetry service running or set to automatic start"
                     }
-                    
+
                     $issues += $issueItem
                 }
             }
@@ -518,11 +518,11 @@ function Get-BuiltInAppsAudit {
         # Check if Get-AppxPackage cmdlet is available without importing module
         # This avoids triggering Windows AppX module initialization bugs
         $appxAvailable = $null -ne (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue)
-        
+
         if (-not $appxAvailable) {
             Write-Verbose "AppX cmdlets not available - skipping AppX package telemetry scan"
         }
-        
+
         if ($appxAvailable) {
             foreach ($appPattern in $telemetryApps.Keys) {
                 try {
@@ -623,9 +623,9 @@ function Get-PrivacyScore {
         MaxScore   = $baseScore
         Deductions = $deductions
         IssueCount = $AuditResults.PrivacyIssues.Count
-        Category   = if ($overallScore -ge 90) { 'Excellent Privacy' } 
-        elseif ($overallScore -ge 70) { 'Good Privacy' } 
-        elseif ($overallScore -ge 50) { 'Fair Privacy' } 
+        Category   = if ($overallScore -ge 90) { 'Excellent Privacy' }
+        elseif ($overallScore -ge 70) { 'Good Privacy' }
+        elseif ($overallScore -ge 50) { 'Fair Privacy' }
         else { 'Poor Privacy - Needs Attention' }
     }
 }
@@ -684,7 +684,7 @@ function New-PrivacyRecommendations {
     Wrapper function that performs telemetry audit and saves results to temp_files/data/
     for consumption by Type2 modules. This is the v3.0 standardized interface between
     Type1 (detection) and Type2 (action) modules.
-    
+
     Automatically saves results to temp_files/data/telemetry-results.json using global paths.
 
 .PARAMETER Config
@@ -703,3 +703,6 @@ New-Alias -Name 'Get-TelemetryAudit' -Value 'Get-TelemetryAnalysis'
 Export-ModuleMember -Function @(
     'Get-TelemetryAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-TelemetryAudit')  # Backward compatibility
+
+
+

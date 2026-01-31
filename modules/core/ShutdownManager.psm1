@@ -11,7 +11,7 @@
     - Interactive abort menu with multiple action options
     - Automatic cleanup of temporary files
     - Safe system reboot with notification
-    
+
     This module bridges the gap between maintenance task completion and system state
     management, ensuring proper cleanup and graceful reboot when configured.
 
@@ -20,7 +20,7 @@
     Version: 1.0.0
     Architecture: v3.0+ compatible
     Requires: PowerShell 7.0+, Administrator privileges for reboot
-    
+
     Integration:
     - Called from MaintenanceOrchestrator.ps1 after all tasks complete
     - Requires ShutdownManager in $CoreModules list
@@ -73,7 +73,7 @@ if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     - User can press any key to abort and show action menu
     - Timer continues if no key pressed
     - On timeout: Executes default action (cleanup, reboot, or both)
-    
+
     Handles Windows-specific challenges:
     - Non-blocking keypress detection via $Host.UI.RawUI
     - Graceful fallback if console not available
@@ -117,8 +117,7 @@ if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
 #>
 function Start-MaintenanceCountdown {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [ValidateRange(10, 600)]
         [int]$CountdownSeconds = 120,
 
@@ -131,7 +130,7 @@ function Start-MaintenanceCountdown {
         [switch]$CleanupOnTimeout,
         [switch]$RebootOnTimeout
     )
-    
+
     if ($PSCmdlet.ShouldProcess("System", "Execute maintenance shutdown sequence")) {
         Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
             -Message "Initiating post-execution shutdown sequence" `
@@ -147,7 +146,7 @@ function Start-MaintenanceCountdown {
         Write-Host ""
         Write-Host "System will perform cleanup and shutdown in:" -ForegroundColor Yellow
         Write-Host ""
-        
+
         $remainingSeconds = $CountdownSeconds
         $countdownStartTime = Get-Date
 
@@ -164,17 +163,17 @@ function Start-MaintenanceCountdown {
                 -Message "Keypress detection unavailable (non-interactive mode): $_"
             $keyPressSupported = $false
         }
-        
+
         # Main countdown loop
         while ($remainingSeconds -gt 0) {
             # Format display
             $minutes = [math]::Floor($remainingSeconds / 60)
             $seconds = $remainingSeconds % 60
             $display = "$($minutes):$($seconds.ToString('00')) remaining"
-            
+
             # Show countdown (overwrite previous line)
             Write-Host "`r  ⏱  $display  " -ForegroundColor Yellow -NoNewline
-            
+
             # Check for keypress (non-blocking)
             try {
                 if ($keyPressSupported -and $Host.UI.RawUI.KeyAvailable) {
@@ -183,20 +182,20 @@ function Start-MaintenanceCountdown {
                     # Key pressed - abort countdown
                     Write-Host "`n" -NoNewline
                     Write-Host "`n⏸ Countdown aborted - user requested action" -ForegroundColor Yellow
-                    
+
                     Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
                         -Message "Countdown interrupted by user keypress after $([math]::Floor((Get-Date - $countdownStartTime).TotalSeconds))s"
-                    
+
                     # Show abort menu and handle user choice
                     $abortChoice = Show-ShutdownAbortMenu
                     $abortResult = Invoke-MaintenanceShutdownChoice -Choice $abortChoice `
                         -WorkingDirectory $WorkingDirectory `
                         -TempRoot $TempRoot
-                    
+
                     Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
                         -Message "User selected action: $($abortResult.Action)" `
                         -Data $abortResult
-                    
+
                     return $abortResult
                 }
             }
@@ -204,31 +203,31 @@ function Start-MaintenanceCountdown {
                 # Continue countdown without interactivity
                 Write-Verbose "Continuing countdown in non-interactive mode"
             }
-            
+
             # Decrement and wait
             $remainingSeconds--
             Start-Sleep -Seconds 1
         }
-        
+
         # Countdown complete - execute timeout action
         Write-Host "`n" -NoNewline
         Write-Host "`n✓ Countdown complete. Executing maintenance shutdown..." -ForegroundColor Green
-        
+
         Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
             -Message "Countdown expired - executing timeout actions"
-        
+
         $timeoutResult = @{
             Action         = "CleanupAndContinue"
             RebootRequired = $false
             RebootDelay    = 0
         }
-        
+
         if ($CleanupOnTimeout) {
             Write-Host "  • Cleaning up temporary files..." -ForegroundColor Cyan
             $cleanupSuccess = Invoke-MaintenanceCleanup -WorkingDirectory $WorkingDirectory `
                 -TempRoot $TempRoot `
                 -KeepReports
-            
+
             if ($cleanupSuccess) {
                 $timeoutResult.Action = "CleanupCompleted"
                 Write-LogEntry -Level 'SUCCESS' -Component 'SHUTDOWN-MANAGER' -Message "Cleanup completed successfully"
@@ -238,15 +237,15 @@ function Start-MaintenanceCountdown {
                 Write-LogEntry -Level 'WARNING' -Component 'SHUTDOWN-MANAGER' -Message "Cleanup failed or partially completed"
             }
         }
-        
+
         if ($RebootOnTimeout) {
             Write-Host "  • Preparing system reboot in 10 seconds..." -ForegroundColor Cyan
             Write-Host "`n  Press Ctrl+C to cancel restart (cleanup already completed)" -ForegroundColor Yellow
-            
+
             Start-Sleep -Seconds 3
-            
+
             Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Initiating system reboot"
-            
+
             try {
                 Write-EventLog -LogName System -Source "Windows Maintenance" `
                     -EventId 1000 -EntryType Information `
@@ -256,24 +255,24 @@ function Start-MaintenanceCountdown {
                 Write-LogEntry -Level 'WARNING' -Component 'SHUTDOWN-MANAGER' `
                     -Message "Could not write to Windows Event Log: $_"
             }
-            
+
             # Use shutdown.exe for reliable reboot
             & shutdown.exe /r /t 10 /c "Windows Maintenance completed. System restarting..."
-            
+
             $timeoutResult.Action = "RebootInitiated"
             $timeoutResult.RebootRequired = $true
             $timeoutResult.RebootDelay = 10
-            
+
             Write-LogEntry -Level 'SUCCESS' -Component 'SHUTDOWN-MANAGER' -Message "System reboot initiated"
         }
-        
+
         return $timeoutResult
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'SHUTDOWN-MANAGER' `
             -Message "Shutdown sequence failed: $_" `
             -Data @{ ErrorType = $_.Exception.GetType().Name; StackTrace = $_.ScriptStackTrace }
-        
+
         return @{
             Action         = "Error"
             RebootRequired = $false
@@ -291,7 +290,7 @@ function Start-MaintenanceCountdown {
     1. Cleanup now (remove temp files, keep reports, no reboot)
     2. Skip cleanup (preserve all files for review)
     3. Cleanup AND reboot
-    
+
     Returns user selection (1-3)
 
 .OUTPUTS
@@ -304,7 +303,7 @@ function Show-ShutdownAbortMenu {
     [CmdletBinding()]
     [OutputType([int])]
     param()
-    
+
     Write-Host ""
     Write-Host "╔════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
     Write-Host "║   SHUTDOWN SEQUENCE ABORTED - SELECT ACTION           ║" -ForegroundColor Cyan
@@ -322,14 +321,14 @@ function Show-ShutdownAbortMenu {
     Write-Host "Cleanup AND reboot" -ForegroundColor Gray
     Write-Host "     └─ Clean up then restart system" -ForegroundColor DarkGray
     Write-Host ""
-    
+
     $choice = Read-Host "Select option (1-3, default=1)"
-    
+
     # Validate input
     if ([string]::IsNullOrWhiteSpace($choice)) {
         return 1
     }
-    
+
     try {
         $choiceInt = [int]$choice.Trim()
         if ($choiceInt -ge 1 -and $choiceInt -le 3) {
@@ -340,7 +339,7 @@ function Show-ShutdownAbortMenu {
         # Invalid input - return default
         Write-Verbose "Invalid choice entered: $choice"
     }
-    
+
     Write-Host "Invalid selection. Using default (1)..." -ForegroundColor Yellow
     return 1
 }
@@ -369,14 +368,13 @@ function Show-ShutdownAbortMenu {
 #>
 function Invoke-MaintenanceShutdownChoice {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [ValidateRange(1, 3)]
         [int]$Choice,
         [string]$WorkingDirectory,
         [string]$TempRoot
     )
-    
+
     switch ($Choice) {
         1 {
             # Cleanup now
@@ -384,7 +382,7 @@ function Invoke-MaintenanceShutdownChoice {
             $success = Invoke-MaintenanceCleanup -WorkingDirectory $WorkingDirectory `
                 -TempRoot $TempRoot `
                 -KeepReports
-            
+
             if ($success) {
                 Write-Host "`n✓ Cleanup completed successfully" -ForegroundColor Green
                 Write-Host "`nReports available at: temp_files/reports/" -ForegroundColor Cyan
@@ -392,37 +390,37 @@ function Invoke-MaintenanceShutdownChoice {
             else {
                 Write-Host "`n⚠️  Cleanup encountered some errors (see logs)" -ForegroundColor Yellow
             }
-            
+
             return @{ Action = "CleanupOnly"; RebootRequired = $false }
         }
-        
+
         2 {
             # Skip cleanup
             Write-Host "`n✓ Cleanup skipped. All files preserved for review." -ForegroundColor Green
             Write-Host "`nAll files available at: $WorkingDirectory" -ForegroundColor Cyan
             Write-Host "Reports: $WorkingDirectory/temp_files/reports/" -ForegroundColor Cyan
             Write-Host "Logs: $WorkingDirectory/temp_files/logs/" -ForegroundColor Cyan
-            
+
             return @{ Action = "SkipCleanup"; RebootRequired = $false }
         }
-        
+
         3 {
             # Cleanup AND reboot
             Write-Host "`nCleaning up and preparing reboot..." -ForegroundColor Cyan
             $success = Invoke-MaintenanceCleanup -WorkingDirectory $WorkingDirectory `
                 -TempRoot $TempRoot `
                 -KeepReports
-            
+
             Write-Host "`n✓ Cleanup completed. System will restart in 10 seconds..." -ForegroundColor Cyan
             Write-Host "Press Ctrl+C to cancel" -ForegroundColor Yellow
-            
+
             Start-Sleep -Seconds 3
-            
+
             & shutdown.exe /r /t 10 /c "Windows Maintenance cleanup complete. Restarting..."
-            
+
             return @{ Action = "CleanupAndReboot"; RebootRequired = $true; RebootDelay = 10 }
         }
-        
+
         default {
             return @{ Action = "Unknown"; RebootRequired = $false; Error = "Invalid choice" }
         }
@@ -438,7 +436,7 @@ function Invoke-MaintenanceShutdownChoice {
     - Extracted repository folder ($WorkingDirectory)
     - Temporary processing files (temp_files/temp, data, logs, processed)
     - Optionally keeps reports directory for user review
-    
+
     Uses -Force to handle locked files and non-interactive cleanup
 
 .PARAMETER WorkingDirectory
@@ -464,14 +462,14 @@ function Invoke-MaintenanceCleanup {
         [string]$TempRoot,
         [switch]$KeepReports
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
         -Message "Starting maintenance cleanup" `
         -Data @{ WorkingDirectory = $WorkingDirectory; KeepReports = $KeepReports.IsPresent }
-    
+
     $cleanupErrors = @()
     $cleanupSuccess = @()
-    
+
     try {
         # Define paths to cleanup
         $cleanupPaths = @(
@@ -481,17 +479,17 @@ function Invoke-MaintenanceCleanup {
             (Join-Path $TempRoot "processed"),  # Processed data cache
             $WorkingDirectory                    # Entire extracted repository
         )
-        
+
         # Optionally keep reports for user review
         if ($KeepReports) {
             $cleanupPaths = $cleanupPaths | Where-Object { $_ -notlike "*reports*" }
             Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' -Message "Preserving reports directory"
         }
-        
+
         # Attempt cleanup of each path
         foreach ($path in $cleanupPaths) {
             if ([string]::IsNullOrWhiteSpace($path)) { continue }
-            
+
             if (Test-Path $path) {
                 try {
                     $item = Get-Item $path -ErrorAction SilentlyContinue
@@ -501,9 +499,9 @@ function Invoke-MaintenanceCleanup {
                     else {
                         $item.Length / 1MB
                     }
-                    
+
                     Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-                    
+
                     if (-not (Test-Path $path)) {
                         $message = "Removed: $path (${size}MB)"
                         Write-LogEntry -Level 'SUCCESS' -Component 'SHUTDOWN-MANAGER' -Message $message
@@ -525,18 +523,18 @@ function Invoke-MaintenanceCleanup {
                 Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' -Message "Path does not exist (skipped): $path"
             }
         }
-        
+
         # Summary
         Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
             -Message "Cleanup completed" `
             -Data @{ SuccessfulPaths = $cleanupSuccess.Count; FailedPaths = $cleanupErrors.Count }
-        
+
         if ($cleanupErrors.Count -gt 0) {
             Write-LogEntry -Level 'WARNING' -Component 'SHUTDOWN-MANAGER' `
                 -Message "Cleanup had errors for paths: $($cleanupErrors -join '; ')"
             return $false
         }
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'SHUTDOWN-MANAGER' -Message "All cleanup operations completed successfully"
         return $true
     }
@@ -562,4 +560,6 @@ Export-ModuleMember -Function @(
 #endregion
 
 Write-Verbose "ShutdownManager: Module initialization complete"
+
+
 

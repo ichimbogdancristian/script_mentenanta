@@ -6,10 +6,10 @@
 
 .DESCRIPTION
     Comprehensive security enhancement module implementing CIS Windows 10 Enterprise v4.0.0 benchmark controls.
-    
+
     Implements 30+ critical security controls across 8 categories:
     - Section 1: Password Policies (1.1.1-1.1.6)
-    - Section 2: Account Lockout Policies (1.2.1-1.2.4) 
+    - Section 2: Account Lockout Policies (1.2.1-1.2.4)
     - Section 3: UAC Settings (2.3.17.1-2.3.17.5)
     - Section 4: Windows Firewall (9.1-9.3)
     - Section 5: Security Auditing (17.1-17.6)
@@ -23,7 +23,7 @@
     Author: CIS Security Controls Implementation
     Version: 4.0.0 (Wazuh Benchmark Aligned)
     Created: January 31, 2026
-    
+
     Compliance Frameworks:
     - CIS Windows 10 Enterprise v4.0.0
     - NIST SP 800-53
@@ -77,24 +77,24 @@ function New-CISControlResult {
     param(
         [Parameter(Mandatory)]
         [string]$ControlID,
-        
+
         [Parameter(Mandatory)]
         [string]$ControlName,
-        
+
         [Parameter(Mandatory)]
         [ValidateSet('Success', 'Failed', 'Skipped', 'DryRun')]
         [string]$Status,
-        
+
         [Parameter()]
         [string]$Message = '',
-        
+
         [Parameter()]
         [object]$Details = $null,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     return @{
         ControlID   = $ControlID
         ControlName = $ControlName
@@ -114,21 +114,21 @@ function Set-RegistryValue {
     param(
         [Parameter(Mandatory)]
         [string]$Path,
-        
+
         [Parameter(Mandatory)]
         [string]$Name,
-        
+
         [Parameter(Mandatory)]
         [object]$Value,
-        
+
         [Parameter()]
         [ValidateSet('String', 'DWord', 'QWord', 'Binary', 'MultiString')]
         [string]$Type = 'DWord',
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     try {
         # Create path if it doesn't exist
         if (-not (Test-Path $Path)) {
@@ -140,7 +140,7 @@ function Set-RegistryValue {
                 Write-LogEntry -Level 'INFO' -Component 'CIS-CONTROL' -Message "[DRY-RUN] Would create registry path: $Path"
             }
         }
-        
+
         # Set value
         if (-not $DryRun) {
             Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction Stop
@@ -166,37 +166,37 @@ function Set-SecurityPolicy {
     param(
         [Parameter(Mandatory)]
         [string]$PolicyName,
-        
+
         [Parameter(Mandatory)]
         [object]$Value,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     try {
         if ($DryRun) {
             Write-LogEntry -Level 'INFO' -Component 'CIS-CONTROL' -Message "[DRY-RUN] Would set security policy: $PolicyName = $Value"
             return $true
         }
-        
+
         # Export current policy
         $tempCfg = Join-Path $env:TEMP "secedit_$(Get-Random).cfg"
         secedit /export /cfg $tempCfg | Out-Null
-        
+
         # Update policy value
         $configContent = Get-Content $tempCfg
         $configContent = $configContent -replace "^$PolicyName\s*=\s*.*$", "$PolicyName = $Value"
         Set-Content -Path $tempCfg -Value $configContent -Force
-        
+
         # Apply policy
         secedit /configure /db "$env:TEMP\secedit.db" /cfg $tempCfg /overwrite | Out-Null
-        
+
         Write-LogEntry -Level 'INFO' -Component 'CIS-CONTROL' -Message "Applied security policy: $PolicyName = $Value"
-        
+
         # Cleanup
         Remove-Item $tempCfg -Force -ErrorAction SilentlyContinue
-        
+
         return $true
     }
     catch {
@@ -212,7 +212,7 @@ function Set-SecurityPolicy {
 <#
 .SYNOPSIS
     CIS 1.1 - Enforce password history (24 or more passwords)
-    
+
 .NOTES
     Control ID: 1.1.1
     Rationale: Prevents users from reusing old passwords by maintaining history
@@ -220,29 +220,29 @@ function Set-SecurityPolicy {
 #>
 function Set-CISPasswordHistory {
     param([switch]$DryRun)
-    
+
     $controlID = '1.1.1'
     $controlName = 'Enforce password history'
-    
+
     try {
         if ($DryRun) {
             Write-LogEntry -Level 'INFO' -Component 'CIS-1.1' -Message "DRY-RUN: Would set password history to 24"
             return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'DryRun' -DryRun
         }
-        
+
         # Method 1: Registry (local accounts)
         Set-RegistryValue -Path 'HKLM:\System\CurrentControlSet\Services\Netlogon\Parameters' `
             -Name 'PasswordHistorySize' -Value 24 -Type 'DWord'
-        
+
         # Method 2: Net accounts command (if available)
         try {
             net accounts /uniquepw:24 | Out-Null
         }
         catch {}
-        
+
         # Method 3: Group Policy via secedit
         Set-SecurityPolicy -PolicyName 'PasswordHistorySize' -Value 24
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'CIS-1.1' -Message "Password history set to 24"
         return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'Success'
     }
@@ -255,26 +255,26 @@ function Set-CISPasswordHistory {
 <#
 .SYNOPSIS
     CIS 1.1.3 - Minimum password age (1 day or more)
-    
+
 .NOTES
     Control ID: 1.1.3
     Works with password history to prevent circumvention
 #>
 function Set-CISMinimumPasswordAge {
     param([switch]$DryRun)
-    
+
     $controlID = '1.1.3'
     $controlName = 'Minimum password age'
-    
+
     try {
         if ($DryRun) {
             Write-LogEntry -Level 'INFO' -Component 'CIS-1.1.3' -Message "DRY-RUN: Would set minimum password age to 1 day"
             return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'DryRun' -DryRun
         }
-        
+
         net accounts /minpwage:1 | Out-Null
         Set-SecurityPolicy -PolicyName 'MinimumPasswordAge' -Value 1
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'CIS-1.1.3' -Message "Minimum password age set to 1 day"
         return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'Success'
     }
@@ -287,26 +287,26 @@ function Set-CISMinimumPasswordAge {
 <#
 .SYNOPSIS
     CIS 1.1.4 - Minimum password length (14 characters or more)
-    
+
 .NOTES
     Control ID: 1.1.4
     Modern recommendation: 14+ characters instead of legacy 8
 #>
 function Set-CISMinimumPasswordLength {
     param([switch]$DryRun)
-    
+
     $controlID = '1.1.4'
     $controlName = 'Minimum password length'
-    
+
     try {
         if ($DryRun) {
             Write-LogEntry -Level 'INFO' -Component 'CIS-1.1.4' -Message "DRY-RUN: Would set minimum password length to 14"
             return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'DryRun' -DryRun
         }
-        
+
         net accounts /minpwlen:14 | Out-Null
         Set-SecurityPolicy -PolicyName 'MinimumPasswordLength' -Value 14
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'CIS-1.1.4' -Message "Minimum password length set to 14 characters"
         return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'Success'
     }
@@ -319,28 +319,28 @@ function Set-CISMinimumPasswordLength {
 <#
 .SYNOPSIS
     CIS 1.1.5 - Password complexity requirements (Enabled)
-    
+
 .NOTES
     Control ID: 1.1.5
     Requires uppercase, lowercase, numbers, and special characters
 #>
 function Set-CISPasswordComplexity {
     param([switch]$DryRun)
-    
+
     $controlID = '1.1.5'
     $controlName = 'Password complexity requirements'
-    
+
     try {
         if ($DryRun) {
             Write-LogEntry -Level 'INFO' -Component 'CIS-1.1.5' -Message "DRY-RUN: Would enable password complexity"
             return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'DryRun' -DryRun
         }
-        
+
         Set-RegistryValue -Path 'HKLM:\System\CurrentControlSet\Control\Lsa' `
             -Name 'PasswordComplexity' -Value 1 -Type 'DWord'
-        
+
         Set-SecurityPolicy -PolicyName 'PasswordComplexity' -Value 1
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'CIS-1.1.5' -Message "Password complexity enabled"
         return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'Success'
     }
@@ -353,26 +353,26 @@ function Set-CISPasswordComplexity {
 <#
 .SYNOPSIS
     CIS 1.1.2 - Maximum password age (90 days or less)
-    
+
 .NOTES
     Control ID: 1.1.2
     Enforces periodic password changes
 #>
 function Set-CISMaximumPasswordAge {
     param([switch]$DryRun)
-    
+
     $controlID = '1.1.2'
     $controlName = 'Maximum password age'
-    
+
     try {
         if ($DryRun) {
             Write-LogEntry -Level 'INFO' -Component 'CIS-1.1.2' -Message "DRY-RUN: Would set maximum password age to 90 days"
             return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'DryRun' -DryRun
         }
-        
+
         net accounts /maxpwage:90 | Out-Null
         Set-SecurityPolicy -PolicyName 'MaximumPasswordAge' -Value 90
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'CIS-1.1.2' -Message "Maximum password age set to 90 days"
         return New-CISControlResult -ControlID $controlID -ControlName $controlName -Status 'Success'
     }
@@ -385,15 +385,15 @@ function Set-CISMaximumPasswordAge {
 <#
 .SYNOPSIS
     CIS 1.2 - Account Lockout Policies
-    
+
 .NOTES
     Control IDs: 1.2.1 - Duration, 1.2.2 - Threshold, 1.2.3 - Reset counter
 #>
 function Set-CISAccountLockout {
     param([switch]$DryRun)
-    
+
     $results = @()
-    
+
     # 1.2.1: Account lockout duration (15 minutes)
     try {
         if ($DryRun) {
@@ -411,7 +411,7 @@ function Set-CISAccountLockout {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-1.2.1' -Message "Control failed: $_"
         $results += New-CISControlResult -ControlID '1.2.1' -ControlName 'Account lockout duration' -Status 'Failed' -Message $_
     }
-    
+
     # 1.2.2: Account lockout threshold (5 attempts)
     try {
         if ($DryRun) {
@@ -429,7 +429,7 @@ function Set-CISAccountLockout {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-1.2.2' -Message "Control failed: $_"
         $results += New-CISControlResult -ControlID '1.2.2' -ControlName 'Account lockout threshold' -Status 'Failed' -Message $_
     }
-    
+
     # 1.2.3 / 1.2.4: Reset account lockout counter (15 minutes)
     try {
         if ($DryRun) {
@@ -447,22 +447,22 @@ function Set-CISAccountLockout {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-1.2.4' -Message "Control failed: $_"
         $results += New-CISControlResult -ControlID '1.2.4' -ControlName 'Reset account lockout counter' -Status 'Failed' -Message $_
     }
-    
+
     return $results
 }
 
 <#
 .SYNOPSIS
     CIS 2.3.17 - User Account Control (UAC) Settings
-    
+
 .NOTES
     Control IDs: 2.3.17.1 - Admin Approval, 2.3.17.3 - Standard user elevation
 #>
 function Set-CISUACSettings {
     param([switch]$DryRun)
-    
+
     $results = @()
-    
+
     # 2.3.17.1: UAC Admin Approval Mode
     try {
         if ($DryRun) {
@@ -480,7 +480,7 @@ function Set-CISUACSettings {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-2.3.17.1' -Message "Control failed: $_"
         $results += New-CISControlResult -ControlID '2.3.17.1' -ControlName 'UAC: Admin Approval Mode' -Status 'Failed' -Message $_
     }
-    
+
     # 2.3.17.3: UAC Elevation prompt for standard users
     try {
         if ($DryRun) {
@@ -498,7 +498,7 @@ function Set-CISUACSettings {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-2.3.17.3' -Message "Control failed: $_"
         $results += New-CISControlResult -ControlID '2.3.17.3' -ControlName 'UAC: Standard user elevation prompt' -Status 'Failed' -Message $_
     }
-    
+
     # 2.3.7.1: CTRL+ALT+DEL requirement
     try {
         if ($DryRun) {
@@ -516,7 +516,7 @@ function Set-CISUACSettings {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-2.3.7.1' -Message "Control failed: $_"
         $results += New-CISControlResult -ControlID '2.3.7.1' -ControlName 'Interactive logon: Require CTRL+ALT+DEL' -Status 'Failed' -Message $_
     }
-    
+
     # 2.3.7.2: Don't display last signed-in
     try {
         if ($DryRun) {
@@ -534,22 +534,22 @@ function Set-CISUACSettings {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-2.3.7.2' -Message "Control failed: $_"
         $results += New-CISControlResult -ControlID '2.3.7.2' -ControlName 'Interactive logon: Don''t display last signed-in' -Status 'Failed' -Message $_
     }
-    
+
     return $results
 }
 
 <#
 .SYNOPSIS
     CIS 9 - Windows Firewall Configuration
-    
+
 .NOTES
     Control IDs: 9.1-9.3 (Domain, Private, Public profiles)
 #>
 function Set-CISFirewall {
     param([switch]$DryRun)
-    
+
     $results = @()
-    
+
     try {
         if ($DryRun) {
             Write-LogEntry -Level 'INFO' -Component 'CIS-FIREWALL' -Message "DRY-RUN: Would enable Windows Firewall for all profiles"
@@ -560,7 +560,7 @@ function Set-CISFirewall {
         else {
             # Enable all firewall profiles
             Set-NetFirewallProfile -Profile Domain, Private, Public -Enabled True -DefaultInboundAction Block -DefaultOutboundAction Allow -ErrorAction Stop
-            
+
             # Configure logging
             @{
                 Domain  = 'domainfw.log'
@@ -569,7 +569,7 @@ function Set-CISFirewall {
             }.GetEnumerator() | ForEach-Object {
                 $profile = $_.Key
                 $logfile = $_.Value
-                
+
                 Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${profile}Profile\Logging" `
                     -Name 'LogFilePath' -Value "%SystemRoot%\System32\logfiles\firewall\$logfile" -Type 'String'
                 Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${profile}Profile\Logging" `
@@ -579,7 +579,7 @@ function Set-CISFirewall {
                 Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${profile}Profile\Logging" `
                     -Name 'LogSuccessfulConnections' -Value 1 -Type 'DWord'
             }
-            
+
             Write-LogEntry -Level 'SUCCESS' -Component 'CIS-FIREWALL' -Message "Windows Firewall enabled and configured for all profiles"
             $results += New-CISControlResult -ControlID '9.1' -ControlName 'Windows Firewall: Domain profile' -Status 'Success'
             $results += New-CISControlResult -ControlID '9.2' -ControlName 'Windows Firewall: Private profile' -Status 'Success'
@@ -590,20 +590,20 @@ function Set-CISFirewall {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-FIREWALL' -Message "Firewall configuration failed: $_"
         $results += New-CISControlResult -ControlID '9.1' -ControlName 'Windows Firewall configuration' -Status 'Failed' -Message $_
     }
-    
+
     return $results
 }
 
 <#
 .SYNOPSIS
     CIS 17 - Security Auditing Configuration
-    
+
 .NOTES
     Control IDs: 17.1.1 (Credential Validation), 17.3.x (Process tracking), 17.6.x (File/Share access)
 #>
 function Set-CISAuditing {
     param([switch]$DryRun)
-    
+
     $results = @()
     $auditPolicies = @(
         @{ SubCategory = 'Credential Validation'; Success = $true; Failure = $true; ID = '17.1.1' }
@@ -617,7 +617,7 @@ function Set-CISAuditing {
         @{ SubCategory = 'File Share'; Success = $true; Failure = $true; ID = '17.6.2' }
         @{ SubCategory = 'Removable Storage'; Success = $true; Failure = $true; ID = '17.6.4' }
     )
-    
+
     foreach ($policy in $auditPolicies) {
         try {
             if ($DryRun) {
@@ -640,22 +640,22 @@ function Set-CISAuditing {
             $results += New-CISControlResult -ControlID $policy.ID -ControlName "Audit: $($policy.SubCategory)" -Status 'Failed' -Message $_
         }
     }
-    
+
     return $results
 }
 
 <#
 .SYNOPSIS
     CIS 5 - Disable Unnecessary Services
-    
+
 .NOTES
     Control IDs: 5.1-5.47 (Bluetooth, RDP, Print Spooler, Xbox, etc.)
 #>
 function Set-CISServiceHardening {
     param([switch]$DryRun)
-    
+
     $results = @()
-    
+
     # Services to disable for security
     $servicesToDisable = @(
         @{ Name = 'BTAGService'; DisplayName = 'Bluetooth Audio Gateway'; ID = '5.1' }
@@ -689,11 +689,11 @@ function Set-CISServiceHardening {
         @{ Name = 'XblGameSave'; DisplayName = 'Xbox Live Game Save'; ID = '5.46' }
         @{ Name = 'XboxNetApiSvc'; DisplayName = 'Xbox Live Networking Service'; ID = '5.47' }
     )
-    
+
     foreach ($service in $servicesToDisable) {
         try {
             $svc = Get-Service -Name $service.Name -ErrorAction SilentlyContinue
-            
+
             if ($svc) {
                 if ($DryRun) {
                     Write-LogEntry -Level 'INFO' -Component 'CIS-SERVICES' `
@@ -724,29 +724,29 @@ function Set-CISServiceHardening {
                 -ControlName "Disable: $($service.DisplayName)" -Status 'Failed' -Message $_
         }
     }
-    
+
     return $results
 }
 
 <#
 .SYNOPSIS
     CIS 2.6 - Windows Defender Configuration
-    
+
 .NOTES
     Control IDs: 2.6.1-2.6.5 (Real-time protection, scanning, behavior monitoring, scans, remediation)
 #>
 function Set-CISDefender {
     param([switch]$DryRun)
-    
+
     $results = @()
-    
+
     if ($DryRun) {
         Write-LogEntry -Level 'INFO' -Component 'CIS-DEFENDER' -Message "DRY-RUN: Would enable Windows Defender real-time protection"
         $results += New-CISControlResult -ControlID '2.6.1' -ControlName 'Windows Defender: Real-time protection' -Status 'DryRun' -DryRun
         $results += New-CISControlResult -ControlID '2.6.2' -ControlName 'Windows Defender: Behavior monitoring' -Status 'DryRun' -DryRun
         return $results
     }
-    
+
     try {
         # Check if MpPreference cmdlets available (Windows 11/Server 2022+)
         if (Get-Command 'Set-MpPreference' -ErrorAction SilentlyContinue) {
@@ -773,22 +773,22 @@ function Set-CISDefender {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-DEFENDER' -Message "Defender configuration failed: $_"
         $results += New-CISControlResult -ControlID '2.6.1' -ControlName 'Windows Defender: Real-time protection' -Status 'Failed' -Message $_
     }
-    
+
     return $results
 }
 
 <#
 .SYNOPSIS
     CIS 18 - Encryption and Data Protection
-    
+
 .NOTES
     Control IDs: 18.x (BitLocker, EFS, Credential Guard)
 #>
 function Set-CISEncryption {
     param([switch]$DryRun)
-    
+
     $results = @()
-    
+
     # Credential Guard
     try {
         if ($DryRun) {
@@ -806,7 +806,7 @@ function Set-CISEncryption {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-ENCRYPTION' -Message "Credential Guard configuration failed: $_"
         $results += New-CISControlResult -ControlID '18.1' -ControlName 'Credential Guard' -Status 'Failed' -Message $_
     }
-    
+
     # BitLocker (informational - requires manual configuration or admin approval)
     try {
         if ($DryRun) {
@@ -826,7 +826,7 @@ function Set-CISEncryption {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-ENCRYPTION' -Message "BitLocker configuration failed: $_"
         $results += New-CISControlResult -ControlID '18.2' -ControlName 'BitLocker' -Status 'Failed' -Message $_
     }
-    
+
     return $results
 }
 
@@ -837,28 +837,28 @@ function Set-CISEncryption {
 <#
 .SYNOPSIS
     Main entry point for CIS Security Enhancement
-    
+
 .DESCRIPTION
     Applies CIS Windows 10 Enterprise v4.0.0 benchmark controls
     Type2 module following v3.0 architecture pattern
 #>
 function Invoke-CISSecurityEnhancement {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [switch]$DryRun,
-        
+
         [Parameter()]
         [ValidateSet('All', 'PasswordPolicy', 'AccountLockout', 'UAC', 'Firewall', 'Auditing', 'Services', 'Defender', 'Encryption')]
         [string[]]$ControlCategories = 'All'
     )
-    
+
     $executionStartTime = Get-Date
     Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' `
         -Message "CIS Security Enhancement starting (Categories: $($ControlCategories -join ', '))"
-    
+
     $allResults = @()
-    
+
     try {
         # 1.1 - Password Policies
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'PasswordPolicy') {
@@ -869,57 +869,57 @@ function Invoke-CISSecurityEnhancement {
             $allResults += Set-CISMinimumPasswordLength -DryRun:$DryRun
             $allResults += Set-CISPasswordComplexity -DryRun:$DryRun
         }
-        
+
         # 1.2 - Account Lockout
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'AccountLockout') {
             Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' -Message "Applying account lockout policies..."
             $allResults += Set-CISAccountLockout -DryRun:$DryRun
         }
-        
+
         # 2.3.17 - UAC
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'UAC') {
             Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' -Message "Applying UAC settings..."
             $allResults += Set-CISUACSettings -DryRun:$DryRun
         }
-        
+
         # 9 - Firewall
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'Firewall') {
             Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' -Message "Configuring Windows Firewall..."
             $allResults += Set-CISFirewall -DryRun:$DryRun
         }
-        
+
         # 17 - Auditing
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'Auditing') {
             Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' -Message "Configuring security auditing..."
             $allResults += Set-CISAuditing -DryRun:$DryRun
         }
-        
+
         # 5 - Services
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'Services') {
             Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' -Message "Disabling unnecessary services..."
             $allResults += Set-CISServiceHardening -DryRun:$DryRun
         }
-        
+
         # 2.6 - Defender
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'Defender') {
             Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' -Message "Configuring Windows Defender..."
             $allResults += Set-CISDefender -DryRun:$DryRun
         }
-        
+
         # 18 - Encryption
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'Encryption') {
             Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' -Message "Configuring encryption..."
             $allResults += Set-CISEncryption -DryRun:$DryRun
         }
-        
+
         # Summary
         $successCount = @($allResults | Where-Object { $_.Status -eq 'Success' }).Count
         $failedCount = @($allResults | Where-Object { $_.Status -eq 'Failed' }).Count
         $skippedCount = @($allResults | Where-Object { $_.Status -eq 'Skipped' }).Count
         $dryRunCount = @($allResults | Where-Object { $_.Status -eq 'DryRun' }).Count
-        
+
         $executionDuration = (Get-Date) - $executionStartTime
-        
+
         $summaryResult = @{
             Status          = if ($failedCount -eq 0) { 'Success' } else { 'PartialSuccess' }
             TotalControls   = $allResults.Count
@@ -931,10 +931,10 @@ function Invoke-CISSecurityEnhancement {
             ControlDetails  = $allResults
             DurationSeconds = $executionDuration.TotalSeconds
         }
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'CIS-ENHANCEMENT' `
             -Message "CIS Enhancement completed: $successCount applied, $failedCount failed, $skippedCount skipped ($([math]::Round($executionDuration.TotalSeconds, 2))s)"
-        
+
         return $summaryResult
     }
     catch {
@@ -953,7 +953,7 @@ function Invoke-CISSecurityEnhancement {
 #>
 function Invoke-SecurityEnhancementCIS {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [switch]$DryRun,
 
@@ -997,28 +997,28 @@ function Invoke-SecurityEnhancementCIS {
 #>
 function Get-CISControlStatus {
     [CmdletBinding()]
-    param()
-    
+    [OutputType([hashtable])]`nparam()
+
     Write-LogEntry -Level 'INFO' -Component 'CIS-STATUS' -Message "Checking CIS control compliance status..."
-    
+
     $statusReport = @{}
-    
+
     # Check password policies
     $passwordHistorySize = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Services\Netlogon\Parameters' -Name 'PasswordHistorySize' -ErrorAction SilentlyContinue
     $statusReport['PasswordHistory'] = $passwordHistorySize.PasswordHistorySize -ge 24
-    
+
     # Check password complexity
     $pwdComplexity = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Lsa' -Name 'PasswordComplexity' -ErrorAction SilentlyContinue
     $statusReport['PasswordComplexity'] = $pwdComplexity.PasswordComplexity -eq 1
-    
+
     # Check firewall
     $fwDomain = Get-NetFirewallProfile -Profile Domain -ErrorAction SilentlyContinue
     $statusReport['FirewallDomain'] = $fwDomain.Enabled -eq $true
-    
+
     # Check UAC
     $uacAdmin = Get-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'FilterAdministratorToken' -ErrorAction SilentlyContinue
     $statusReport['UACAdminApproval'] = $uacAdmin.FilterAdministratorToken -eq 1
-    
+
     return $statusReport
 }
 
@@ -1030,3 +1030,6 @@ Export-ModuleMember -Function @(
     'Invoke-SecurityEnhancementCIS',
     'Get-CISControlStatus'
 )
+
+
+

@@ -38,7 +38,7 @@ else {
     Write-Warning "CoreInfrastructure module not found at: $CoreInfraPath"
 }
 
-# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)  
+# Step 2: Import corresponding Type 1 module AFTER CoreInfrastructure (REQUIRED)
 $Type1ModulePath = Join-Path $ModuleRoot 'type1\BloatwareDetectionAudit.psm1'
 if (Test-Path $Type1ModulePath) {
     Import-Module $Type1ModulePath -Force
@@ -82,14 +82,14 @@ if (-not (Get-Command -Name 'Find-InstalledBloatware' -ErrorAction SilentlyConti
 #>
 function Invoke-BloatwareRemoval {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory = $true)]
         [hashtable]$Config,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     # Performance tracking
     $perfContext = $null
     try {
@@ -99,11 +99,11 @@ function Invoke-BloatwareRemoval {
         Write-Verbose "BLOATWARE-REMOVAL: Performance tracking unavailable - $_"
         # CoreInfrastructure not available, continue without performance tracking
     }
-    
+
     try {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
-        
+
         # Display module banner
         Write-Host "`n" -NoNewline
         Write-Host "=================================================" -ForegroundColor Cyan
@@ -115,20 +115,20 @@ function Invoke-BloatwareRemoval {
         Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
-        
+
         # Initialize module execution environment
         Initialize-ModuleExecution -ModuleName 'BloatwareRemoval'
-        
+
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\bloatware-removal"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
+
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
         # Explicit assignment to prevent pipeline contamination
         $detectionResults = $null
         $detectionResults = Get-BloatwareAnalysis -Config $Config
-        
+
         # Validate detection results before proceeding
         if (-not $detectionResults -or $detectionResults.Count -eq 0) {
             Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware detected on system' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
@@ -143,7 +143,7 @@ function Invoke-BloatwareRemoval {
                 -ModuleName 'BloatwareRemoval' `
                 -DryRun $DryRun.IsPresent
         }
-        
+
         # STEP 1.5: Filter out protected system apps to avoid breaking core components
         $protectedCount = 0
         $filteredDetection = @()
@@ -165,16 +165,16 @@ function Invoke-BloatwareRemoval {
         # Use standardized config path structure
         $configDataPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\bloatware-list.json"
         $configData = Get-Content $configDataPath | ConvertFrom-Json
-        
+
         # Create diff: Only items from config that are actually found on system
         $diffList = Compare-DetectedVsConfig -DetectionResults $filteredDetection -ConfigData $configData -ConfigItemsPath 'bloatware' -MatchField 'Name'
-        
+
         $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\bloatware-diff.json"
         $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
-        
+
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath -Operation 'Process' -Metadata @{ ItemCount = $diffList.Count; DetectedCount = $detectionResults.Count }
-        
+
         if (-not $diffList -or $diffList.Count -eq 0) {
             Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'No bloatware items to remove after config comparison' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound' -Metadata @{ DetectedCount = $filteredDetection.Count }
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
@@ -188,7 +188,7 @@ function Invoke-BloatwareRemoval {
                 -ModuleName 'BloatwareRemoval' `
                 -DryRun $DryRun.IsPresent
         }
-        
+
         if ($DryRun) {
             Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message " DRY-RUN: Would process $($diffList.Count) bloatware items" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
             $processedCount = 0
@@ -196,7 +196,7 @@ function Invoke-BloatwareRemoval {
         else {
             # Process only items found in diff comparison
             $results = Remove-DetectedBloatware -BloatwareList $diffList -LogPath $executionLogPath
-            
+
             # Handle different return types from Remove-DetectedBloatware
             if ($results -is [hashtable] -and $results.ContainsKey('TotalProcessed')) {
                 $processedCount = $results.TotalProcessed
@@ -207,12 +207,12 @@ function Invoke-BloatwareRemoval {
             else {
                 $processedCount = 0
             }
-            
+
             Write-StructuredLogEntry -Level 'SUCCESS' -Component 'BLOATWARE-REMOVAL' -Message "Processed $processedCount bloatware items" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalDetected = $detectionResults.Count }
         }
-        
+
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
-        
+
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
@@ -243,7 +243,7 @@ function Invoke-BloatwareRemoval {
                 PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
         }
-        
+
         try {
             $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
             Write-Verbose "Execution summary saved to: $summaryPath"
@@ -251,7 +251,7 @@ function Invoke-BloatwareRemoval {
         catch {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
-        
+
         return New-ModuleExecutionResult `
             -Success $true `
             -ItemsDetected $detectionResults.Count `
@@ -260,14 +260,14 @@ function Invoke-BloatwareRemoval {
             -LogPath $executionLogPath `
             -ModuleName 'BloatwareRemoval' `
             -DryRun $DryRun.IsPresent
-        
+
     }
     catch {
         $errorMsg = "Failed to execute bloatware removal: $($_.Exception.Message)"
         Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-REMOVAL' -Message $errorMsg -Data @{ Error = $_.Exception };
-        
+
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg }
-        
+
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         $itemsDetected = if ($detectionResults) { $detectionResults.Count } else { 0 }
         return New-ModuleExecutionResult `
@@ -330,14 +330,14 @@ function Remove-DetectedBloatware {
 
         [Parameter()]
         [switch]$UseCache,
-        
+
         [Parameter()]
         [string]$LogPath  # v3.0 specific log file path
     )
 
     Write-Information "  Starting bloatware removal process..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "Bloatware removal"
@@ -346,7 +346,7 @@ function Remove-DetectedBloatware {
         Write-Error "Administrator privileges are required for bloatware removal operations: $_"
         return $false
     }
-    
+
     # Start performance tracking and centralized logging
     $perfContext = $null
     try {
@@ -400,7 +400,7 @@ function Remove-DetectedBloatware {
     Write-Information "   Found $($BloatwareList.Count) bloatware items for removal" -InformationAction Continue
 
     try {
-        $ErrorActionPreference = 'Stop' 
+        $ErrorActionPreference = 'Stop'
         Write-Verbose "Starting bloatware removal process"
 
         # Prepare bloatware analysis data
@@ -535,7 +535,7 @@ ITEMS BY SOURCE:
             if ($perfContext) {
                 Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success
             }
-            
+
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Bloatware removal completed' -Data @{
                 Success        = $success
                 TotalProcessed = $results.TotalProcessed
@@ -549,11 +549,11 @@ ITEMS BY SOURCE:
             Write-Verbose "BLOATWARE-REMOVAL: Logging completion failed - $_"
             # LoggingManager not available, continue
         }
-        
+
         # Log detailed results for audit trails
         Write-Verbose "Bloatware removal operation details: $(ConvertTo-Json $results -Depth 3)"
         Write-Verbose "Bloatware removal completed successfully"
-        
+
         $results.Success = $success
         $results.Duration = $duration
         return $results
@@ -564,7 +564,7 @@ ITEMS BY SOURCE:
             if ($perfContext) {
                 Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
             }
-            
+
             Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-REMOVAL' -Message 'Bloatware removal failed' -Data @{
                 Error         = $_.Exception.Message
                 ExecutionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
@@ -575,11 +575,11 @@ ITEMS BY SOURCE:
             Write-Verbose "BLOATWARE-REMOVAL: Error logging failed - $_"
             # LoggingManager not available, continue
         }
-        
+
         $errorMessage = " Bloatware removal failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
-        
+
         return @{
             Success        = $false
             TotalProcessed = if ($BloatwareList) { $BloatwareList.Count } else { 0 }
@@ -613,8 +613,7 @@ ITEMS BY SOURCE:
 #>
 function Test-BloatwareRemoval {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [Array]$BloatwareList
     )
@@ -672,8 +671,7 @@ function Test-BloatwareRemoval {
 #>
 function Remove-AppXBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [Array]$Items,
 
@@ -709,7 +707,7 @@ function Remove-AppXBloatware {
             # Enhanced logging: Pre-action state detection
             $package = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
             $provisionedPackage = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $packageName }
-            
+
             $preActionState = @{
                 PackageFound    = ($null -ne $package)
                 PackageFullName = if ($package) { $package.PackageFullName } else { 'N/A' }
@@ -717,9 +715,9 @@ function Remove-AppXBloatware {
                 IsProvisioned   = ($null -ne $provisionedPackage)
                 InstallLocation = if ($package) { $package.InstallLocation } else { 'N/A' }
             }
-            
+
             Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -AdditionalInfo "AppX Package - Version: $($preActionState.Version), Provisioned: $($preActionState.IsProvisioned)"
-            
+
             if ($DryRun) {
                 Write-Information "    [DRY RUN] Would remove AppX package: $packageName" -InformationAction Continue
                 Write-OperationSkipped -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Reason 'DryRun mode enabled'
@@ -741,23 +739,23 @@ function Remove-AppXBloatware {
                     Remove-AppxProvisionedPackage -Online -PackageName $provisionedPackage.PackageName -ErrorAction SilentlyContinue
                     Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Provisioned package removed: $packageName"
                 }
-                
+
                 # Post-action verification
                 Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Operation 'Verify' -Target $packageName -Message 'Verifying AppX package removal'
-                
+
                 $verifyPackage = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
                 $verifyProvisioned = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $packageName }
-                
+
                 if (-not $verifyPackage -and -not $verifyProvisioned) {
                     $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-                    
+
                     # Log successful verification
                     Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Verify' -Target $packageName -Metrics @{
                         PackageStillPresent     = $false
                         ProvisionedStillPresent = $false
                         VerificationPassed      = $true
                     }
-                    
+
                     # Log successful removal
                     Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Metrics @{
                         Duration           = $operationDuration
@@ -799,8 +797,7 @@ function Remove-AppXBloatware {
 #>
 function Remove-WingetBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [Array]$Items,
 
@@ -835,14 +832,14 @@ function Remove-WingetBloatware {
         try {
             # Enhanced logging: Pre-action state detection
             Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -AdditionalInfo "Winget Package - Querying installed state"
-            
+
             # Check if package is installed before attempting removal
             $wingetListArgs = @('list', '--id', $packageName, '--accept-source-agreements')
             $listProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget-list-$packageName.txt" -ErrorAction SilentlyContinue
             $packageInstalled = $listProcess.ExitCode -eq 0
-            
+
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Pre-check: Winget package '$packageName' installed: $packageInstalled"
-            
+
             if ($DryRun) {
                 Write-Information "    [DRY RUN] Would uninstall Winget package: $packageName" -InformationAction Continue
                 Write-OperationSkipped -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Reason 'DryRun mode enabled'
@@ -857,7 +854,7 @@ function Remove-WingetBloatware {
                     '--silent',
                     '--accept-source-agreements'
                 )
-                
+
                 Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: winget $($wingetArgs -join ' ')"
 
                 $process = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
@@ -865,19 +862,19 @@ function Remove-WingetBloatware {
                 if ($process.ExitCode -eq 0) {
                     # Post-action verification
                     Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Operation 'Verify' -Target $packageName -Message 'Verifying Winget package removal'
-                    
+
                     $verifyProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget-verify-$packageName.txt" -ErrorAction SilentlyContinue
                     $stillInstalled = $verifyProcess.ExitCode -eq 0
-                    
+
                     if (-not $stillInstalled) {
                         $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-                        
+
                         # Log successful verification
                         Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Verify' -Target $packageName -Metrics @{
                             StillInstalled     = $false
                             VerificationPassed = $true
                         }
-                        
+
                         # Log successful removal
                         Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Metrics @{
                             Duration = $operationDuration
@@ -928,8 +925,7 @@ function Remove-WingetBloatware {
 #>
 function Remove-ChocolateyBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [Array]$Items,
 
@@ -964,15 +960,15 @@ function Remove-ChocolateyBloatware {
         try {
             # Enhanced logging: Pre-action state detection
             Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -AdditionalInfo "Chocolatey Package - Querying installed state"
-            
+
             # Check if package is installed before attempting removal
             $chocoListArgs = @('list', '--local-only', '--exact', $packageName, '--limit-output')
             $listOutput = & choco @chocoListArgs 2>&1
             $packageInstalled = $LASTEXITCODE -eq 0 -and $listOutput -match $packageName
             $installedVersion = if ($packageInstalled -and $listOutput -match "$packageName\|(.+)") { $matches[1] } else { 'N/A' }
-            
+
             Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Pre-check: Chocolatey package '$packageName' installed: $packageInstalled, Version: $installedVersion"
-            
+
             if ($DryRun) {
                 Write-Information "    [DRY RUN] Would uninstall Chocolatey package: $packageName" -InformationAction Continue
                 Write-OperationSkipped -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Reason 'DryRun mode enabled'
@@ -987,7 +983,7 @@ function Remove-ChocolateyBloatware {
                     '-y',
                     '--limit-output'
                 )
-                
+
                 Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: choco $($chocoArgs -join ' ')"
 
                 $process = Start-Process -FilePath 'choco' -ArgumentList $chocoArgs -Wait -PassThru -NoNewWindow
@@ -995,19 +991,19 @@ function Remove-ChocolateyBloatware {
                 if ($process.ExitCode -eq 0) {
                     # Post-action verification
                     Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Operation 'Verify' -Target $packageName -Message 'Verifying Chocolatey package removal'
-                    
+
                     $verifyOutput = & choco @chocoListArgs 2>&1
                     $stillInstalled = $LASTEXITCODE -eq 0 -and $verifyOutput -match $packageName
-                    
+
                     if (-not $stillInstalled) {
                         $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-                        
+
                         # Log successful verification
                         Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Verify' -Target $packageName -Metrics @{
                             StillInstalled     = $false
                             VerificationPassed = $true
                         }
-                        
+
                         # Log successful removal
                         Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $packageName -Metrics @{
                             Duration        = $operationDuration
@@ -1054,8 +1050,7 @@ function Remove-ChocolateyBloatware {
 #>
 function Remove-RegistryBloatware {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [Array]$Items,
 
@@ -1087,7 +1082,7 @@ function Remove-RegistryBloatware {
             if (-not $uninstallString) {
                 throw "No uninstall string available"
             }
-            
+
             # Enhanced logging: Pre-action state detection
             $preActionState = @{
                 DisplayName     = $appName
@@ -1097,7 +1092,7 @@ function Remove-RegistryBloatware {
                 Version         = $item.DisplayVersion ?? 'N/A'
                 EstimatedSize   = $item.EstimatedSize ?? 'N/A'
             }
-            
+
             Write-OperationStart -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $appName -AdditionalInfo "Registry Uninstaller - Version: $($preActionState.Version), Publisher: $($preActionState.Publisher)"
 
             if ($DryRun) {
@@ -1142,7 +1137,7 @@ function Remove-RegistryBloatware {
                         $arguments += ' /S'
                     }
                 }
-                
+
                 Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: $executable $arguments"
 
                 $process = Start-Process -FilePath $executable -ArgumentList $arguments -Wait -PassThru -NoNewWindow
@@ -1154,7 +1149,7 @@ function Remove-RegistryBloatware {
                         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
                         "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
                     )
-                    
+
                     $stillExists = $false
                     foreach ($path in $registryPaths) {
                         $regEntry = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $appName }
@@ -1163,9 +1158,9 @@ function Remove-RegistryBloatware {
                             break
                         }
                     }
-                    
+
                     $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-                    
+
                     if (-not $stillExists) {
                         Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $appName -Metrics @{
                             Duration        = $operationDuration
@@ -1217,7 +1212,7 @@ function Remove-RegistryBloatware {
 #>
 function Test-ProtectedBloatwareItem {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [PSCustomObject]$Item
     )
@@ -1314,8 +1309,10 @@ function Test-ItemRemovable {
 Export-ModuleMember -Function @(
     # v3.0 Standardized execution function (Primary interface)
     'Invoke-BloatwareRemoval'
-    
-    # Note: Legacy functions (Remove-DetectedBloatware, Test-BloatwareRemoval) 
+
+    # Note: Legacy functions (Remove-DetectedBloatware, Test-BloatwareRemoval)
     # are used internally but not exported to maintain clean module interface
 )
+
+
 

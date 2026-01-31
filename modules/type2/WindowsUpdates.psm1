@@ -60,23 +60,23 @@ function Invoke-WindowsUpdates {
     param(
         [Parameter(Mandatory = $true)]
         [hashtable]$Config,
-        
+
         [Parameter()]
         [switch]$DryRun
     )
-    
+
     $perfContext = Start-PerformanceTrackingSafe -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES'
-    
+
     try {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
-        
+
         # Initialize module execution environment
         Initialize-ModuleExecution -ModuleName 'WindowsUpdates'
-        
+
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
         $analysisResults = Get-WindowsUpdatesAnalysis
-        
+
         if (-not $analysisResults -or $analysisResults.PendingUpdatesCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No pending Windows updates detected'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
@@ -90,7 +90,7 @@ function Invoke-WindowsUpdates {
                 -ModuleName 'WindowsUpdates' `
                 -DryRun $DryRun.IsPresent
         }
-        
+
         # Display module banner
         Write-Host "`n" -NoNewline
         Write-Host "=================================================" -ForegroundColor Cyan
@@ -102,15 +102,15 @@ function Invoke-WindowsUpdates {
         Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
-        
+
         # STEP 3: Setup execution logging directory
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\windows-updates"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
+
         $updatesCount = $analysisResults.PendingUpdatesCount
         Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ UpdateCount = $updatesCount }
-        
+
         if ($DryRun) {
             Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message ' DRY-RUN: Simulating Windows updates installation' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; UpdateCount = $updatesCount }
             $results = @{ ProcessedCount = $updatesCount; Simulated = $true }; $processedCount = $updatesCount
@@ -120,9 +120,9 @@ function Invoke-WindowsUpdates {
             $results = Install-WindowsUpdate -ExecutionLogPath $executionLogPath
             $processedCount = if ($results.InstalledCount) { $results.InstalledCount } else { 0 }
         }
-        
+
         Write-StructuredLogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message "Windows updates completed. Processed: $processedCount/$updatesCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalUpdates = $updatesCount }
-        
+
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
@@ -153,7 +153,7 @@ function Invoke-WindowsUpdates {
                 PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
         }
-        
+
         try {
             $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
             Write-Verbose "Execution summary saved to: $summaryPath"
@@ -161,7 +161,7 @@ function Invoke-WindowsUpdates {
         catch {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
-        
+
         $returnData = New-ModuleExecutionResult `
             -Success $true `
             -ItemsDetected $updatesCount `
@@ -172,7 +172,7 @@ function Invoke-WindowsUpdates {
             -DryRun $DryRun.IsPresent
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
         return $returnData
-        
+
     }
     catch {
         $errorMsg = "Failed to execute Windows updates: $($_.Exception.Message)"
@@ -270,14 +270,14 @@ function Install-WindowsUpdate {
 
         [Parameter()]
         [switch]$SuppressReboot,
-        
+
         [Parameter()]
         [string]$ExecutionLogPath
     )
 
     Write-Information " Starting Windows Updates check and installation..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows Updates installation' -Data @{
@@ -292,7 +292,7 @@ function Install-WindowsUpdate {
         Write-Verbose "WINDOWS-UPDATES: Logging initialization failed - $_"
         # LoggingManager not available, continue with standard logging
     }
-    
+
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "Windows Updates installation"
@@ -319,7 +319,7 @@ function Install-WindowsUpdate {
         if (Test-PSWindowsUpdateAvailable) {
             Write-Information "   Using PSWindowsUpdate module..." -InformationAction Continue
             try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Using PSWindowsUpdate module for update installation' } catch { Write-Verbose "Logging failed: $($_.Exception.Message)" }
-            
+
             # Create parameters for PSWindowsUpdate (remove ExecutionLogPath since it doesn't support it)
             $psWindowsUpdateParams = @{}
             foreach ($key in $PSBoundParameters.Keys) {
@@ -370,7 +370,7 @@ function Install-WindowsUpdate {
         }
 
         $success = $results.UpdatesFailed -eq 0 -and ($results.UpdatesInstalled -gt 0 -or $results.UpdatesFound -eq 0)
-        
+
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
@@ -387,18 +387,18 @@ function Install-WindowsUpdate {
             Write-Verbose "WINDOWS-UPDATES: Logging completion failed - $_"
             # LoggingManager not available, continue with standard logging
         }
-        
+
         # Log detailed results for audit trails
         Write-Verbose "Windows Updates operation details: $(ConvertTo-Json $results -Depth 3)"
         Write-Verbose "Windows Updates operation completed successfully"
-        
+
         return $success
     }
     catch {
         $errorMessage = " Windows Updates operation failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
-        
+
         # Complete performance tracking for failed operation
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
@@ -408,7 +408,7 @@ function Install-WindowsUpdate {
             Write-Verbose "WINDOWS-UPDATES: Error logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
-        
+
         # Type 2 module returns boolean for failure
         return $false
     }
@@ -448,11 +448,10 @@ function Install-WindowsUpdate {
 #>
 function Get-WindowsUpdateStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
+    [OutputType([hashtable])]`nparam()
 
     Write-Information " Checking Windows Update status..." -InformationAction Continue
-    
+
     # Start structured logging for status check
     try {
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows Update status check'
@@ -493,7 +492,7 @@ function Get-WindowsUpdateStatus {
         Write-Information "   Status: $($status.UpdatesAvailable) updates available" -InformationAction Continue
         Write-Information "   Pending reboot: $($status.PendingReboot)" -InformationAction Continue
         Write-Information "   Auto-update: $($status.AutoUpdateEnabled)" -InformationAction Continue
-        
+
         # Complete structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData $status
@@ -508,7 +507,7 @@ function Get-WindowsUpdateStatus {
     }
     catch {
         Write-Warning "Failed to get complete Windows Update status: $_"
-        
+
         # Complete performance tracking for failed operation
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
@@ -518,7 +517,7 @@ function Get-WindowsUpdateStatus {
             Write-Verbose "WINDOWS-UPDATES: Status check error logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
-        
+
         return $status
     }
 }
@@ -559,8 +558,7 @@ function Get-WindowsUpdateStatus {
 #>
 function Install-UpdatesViaPSWindowsUpdate {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [switch]$ExcludePreviews,
         [int]$MaxDownloadSizeMB = 2048,
         [switch]$DryRun,
@@ -767,8 +765,7 @@ function Install-UpdatesViaPSWindowsUpdate {
 #>
 function Install-UpdatesViaNativeAPI {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [switch]$DryRun
     )
 
@@ -930,8 +927,7 @@ function Test-PendingReboot {
 #>
 function Get-WindowsUpdateSetting {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
+    [OutputType([hashtable])]`nparam()
     try {
         $auKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update"
 
@@ -972,8 +968,7 @@ function Get-WindowsUpdateSetting {
 #>
 function Get-WindowsUpdateBasicStatus {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
+    [OutputType([hashtable])]`nparam()
     return @{
         UpdatesFound     = 0
         UpdatesInstalled = 0
@@ -993,9 +988,11 @@ function Get-WindowsUpdateBasicStatus {
 Export-ModuleMember -Function @(
     # v3.0 Standardized execution function (Primary)
     'Invoke-WindowsUpdates',
-    
+
     # Legacy functions (Preserved for internal use)
     'Install-WindowsUpdate',
     'Get-WindowsUpdateStatus'
 )
+
+
 

@@ -310,10 +310,10 @@ catch {
 Write-Information "`n Initializing global path discovery..." -InformationAction Continue
 try {
     Initialize-GlobalPathDiscovery -HintPath $ScriptRoot -Force
-    
+
     # Populate $script:ProjectPaths for use throughout the script
     $script:ProjectPaths = Get-MaintenancePaths
-    
+
     Write-Information "   Global path discovery initialized successfully" -InformationAction Continue
 }
 catch {
@@ -340,7 +340,7 @@ try {
     # Check if Test-SystemReadiness function is available
     if (Get-Command -Name 'Test-SystemReadiness' -ErrorAction SilentlyContinue) {
         $systemReady = Test-SystemReadiness
-        
+
         if (-not $systemReady) {
             Write-Warning "System requirements not fully met. Continuing with caution..."
             Write-Information "Press Ctrl+C within 10 seconds to abort, or wait to continue..." -InformationAction Continue
@@ -373,14 +373,14 @@ function Ensure-SystemRestorePointSpace {
     param(
         [int]$MinimumGB = 10
     )
-    
+
     try {
         Write-Information "   Checking System Restore Point disk space allocation..." -InformationAction Continue
-        
+
         # Get system drive
         $systemDrive = $env:SystemDrive
         $driveLetter = $systemDrive.TrimEnd(':')
-        
+
         # Check if System Protection is enabled
         try {
             $volume = Get-Volume -DriveLetter $driveLetter -ErrorAction SilentlyContinue
@@ -393,7 +393,7 @@ function Ensure-SystemRestorePointSpace {
             Write-Information "   Could not query volume for System Restore Point space check: $_" -InformationAction Continue
             return $false
         }
-        
+
         # Ensure System Protection is enabled (attempt best-effort enablement)
         try {
             if (Get-Command -Name 'Enable-ComputerRestore' -ErrorAction SilentlyContinue) {
@@ -407,25 +407,25 @@ function Ensure-SystemRestorePointSpace {
         # Get current System Protection usage via CIM
         try {
             $srp = Get-CimInstance -ClassName Win32_SystemRestoreConfig -Namespace "root\cimv2" -ErrorAction SilentlyContinue
-            
+
             if ($srp) {
                 # ShadowCopy size is in bytes; convert to GB
                 $currentAllocationGB = [math]::Round($srp.MaxSpace / 1GB, 2)
                 $allocatedBytes = $srp.AllocatedSpace
                 $usedSpaceGB = [math]::Round($allocatedBytes / 1GB, 2)
-                
+
                 Write-Information "   Current System Protection allocation: $currentAllocationGB GB (Used: $usedSpaceGB GB)" -InformationAction Continue
-                
+
                 if ($currentAllocationGB -lt $MinimumGB) {
                     Write-Information "   Allocation is below minimum ($MinimumGB GB). Attempting to allocate..." -InformationAction Continue
-                    
+
                     # Set minimum allocation in bytes
                     $newAllocationBytes = [int64]($MinimumGB * 1GB)
-                    
+
                     try {
                         $srp.MaxSpace = $newAllocationBytes
                         $srp.Put() | Out-Null
-                        
+
                         Write-Information "   [OK] System Restore Point allocation set to $MinimumGB GB" -InformationAction Continue
                         Write-LogEntry -Level 'SUCCESS' -Component 'RESTORE-POINT' -Message "System Restore Point allocation increased to $MinimumGB GB"
                         return $true
@@ -462,15 +462,15 @@ try {
     $mainConfig = Get-MainConfiguration
     $createRestorePoint = $mainConfig.system.createSystemRestorePoint ?? $true
     $restorePointMinSizeGB = $mainConfig.system.restorePointMaxSizeGB ?? 10
-    
+
     # First, ensure adequate disk space allocation for restore points
     if ($createRestorePoint -and -not $DryRun) {
         Ensure-SystemRestorePointSpace -MinimumGB $restorePointMinSizeGB | Out-Null
     }
-    
+
     if ($createRestorePoint -and -not $DryRun) {
         Write-Information "   Creating system restore point before maintenance..." -InformationAction Continue
-        
+
         $restoreDescription = "Before Windows Maintenance - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
         if (Get-Command -Name 'New-SystemRestorePoint' -ErrorAction SilentlyContinue) {
             $restoreResult = New-SystemRestorePoint -Description $restoreDescription
@@ -506,7 +506,7 @@ try {
                 throw "System restore point cmdlet not available (New-SystemRestorePoint or Checkpoint-Computer)."
             }
         }
-        
+
         if ($restoreResult.Success) {
             if ($restoreResult.SequenceNumber) {
                 Write-Information "   [OK] Restore point created successfully (Sequence: $($restoreResult.SequenceNumber))" -InformationAction Continue
@@ -624,7 +624,7 @@ function Test-ConfigurationJsonValidity {
 try {
     # Validate all critical configuration files using standardized paths
     Write-Information "  Validating configuration file syntax and structure..." -InformationAction Continue
-    
+
     # Required configuration files in standardized locations
     $requiredConfigs = @(
         @{ Name = 'main-config.json'; Path = (Join-Path $ConfigPath 'settings\main-config.json') },
@@ -727,7 +727,7 @@ try {
         catch {
             throw "Failed to load logging configuration: $($_.Exception.Message)"
         }
-        
+
         # v3.1: Comprehensive schema validation beyond JSON syntax
         Write-Information "  Validating configuration schemas..." -InformationAction Continue
         try {
@@ -740,7 +740,7 @@ try {
                 else {
                     Write-Warning "     main-config.json has schema issues (see warnings above)"
                 }
-                
+
                 # Validate logging configuration
                 $loggingConfigValid = Test-ConfigurationSchema -ConfigObject $LoggingConfig -ConfigName 'logging-config.json'
                 if ($loggingConfigValid) {
@@ -749,7 +749,7 @@ try {
                 else {
                     Write-Warning "     logging-config.json has schema issues (see warnings above)"
                 }
-                
+
                 # Optionally validate data lists if needed
                 # (bloatware-list.json, essential-apps.json validated on first use)
             }
@@ -761,7 +761,7 @@ try {
             Write-Warning "  Configuration schema validation error: $($_.Exception.Message)"
             Write-Information "  ℹ Continuing with basic validation - some configuration issues may cause runtime errors" -InformationAction Continue
         }
-        
+
         # Initialize file organization system first (required by logging system)
         try {
             $fileOrgResult = Initialize-SessionFileOrganization -SessionRoot $script:ProjectPaths.TempRoot -ErrorAction Stop
@@ -1154,12 +1154,12 @@ try {
         }
     }
     #endregion
-    
+
     #region Maintenance Log Organization (v3.1 - Early organization)
     # NEW v3.1: Organize bootstrap maintenance.log to temp_files/logs/ early
     # This ensures logs are properly organized even if execution fails later
     Write-Information "`nOrganizing maintenance logs..." -InformationAction Continue
-    
+
     if (Get-Command -Name 'Move-MaintenanceLogToOrganized' -ErrorAction SilentlyContinue) {
         try {
             $logOrganized = Move-MaintenanceLogToOrganized
@@ -1179,7 +1179,7 @@ try {
         Write-Information "   [INFO] Log organization function not available (continuing)" -InformationAction Continue
     }
     #endregion
-    
+
     #region Task Definitions
     Write-Information "`nRegistering maintenance tasks..." -InformationAction Continue
     # v3.0 Architecture: Define standardized maintenance tasks using Invoke-[ModuleName] pattern
@@ -1423,7 +1423,7 @@ try {
                 }
                 if ($hasValidStructure) {
                     Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
-                    
+
                     # Patch 3: Collect module result for aggregation
                     if ($script:ResultCollectionEnabled) {
                         try {
@@ -1446,16 +1446,16 @@ try {
                 else {
                     $resultType = if ($result) { $result.GetType().Name } else { 'null' }
                     $resultCount = if ($result -is [array]) { $result.Count } else { 1 }
-                    $hasSuccessKey = if ($result -is [array] -and $result.Count -gt 0) { 
-                        ($result[0] -is [hashtable] -and $result[0].ContainsKey('Success')) -or 
+                    $hasSuccessKey = if ($result -is [array] -and $result.Count -gt 0) {
+                        ($result[0] -is [hashtable] -and $result[0].ContainsKey('Success')) -or
                         ($result[0] -is [PSCustomObject] -and (Get-Member -InputObject $result[0] -Name 'Success' -ErrorAction SilentlyContinue))
                     }
                     elseif ($result) {
-                        ($result -is [hashtable] -and $result.ContainsKey('Success')) -or 
+                        ($result -is [hashtable] -and $result.ContainsKey('Success')) -or
                         ($result -is [PSCustomObject] -and (Get-Member -InputObject $result -Name 'Success' -ErrorAction SilentlyContinue))
                     }
                     else { $false }
-                    
+
                     # If it's an array, search for a valid result object anywhere in the array (pipeline contamination fix)
                     if ($result -is [array]) {
                         $validResult = $result | Where-Object { ($_ -is [hashtable] -and $_.ContainsKey('Success')) -or ($_ -is [PSCustomObject] -and (Get-Member -InputObject $_ -Name 'Success' -ErrorAction SilentlyContinue)) } | Select-Object -First 1
@@ -1471,7 +1471,7 @@ try {
                     }
                     else {
                         Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
-                        
+
                         # Collect module result for aggregation after fixing the format
                         if ($script:ResultCollectionEnabled -and $hasValidStructure) {
                             try {
@@ -1591,7 +1591,7 @@ try {
         # If needed in future, add SystemAnalysis to core modules list and use inventory here
         # v3.0 Split Architecture: LogProcessor → ReportGenerator pipeline
         Write-Information "`nProcessing logs and generating reports using split architecture..." -InformationAction Continue
-        
+
         # Patch 4: Finalize and export aggregated results
         if ($script:ResultCollectionEnabled) {
             Write-Information "`n  Finalizing session result collection..." -InformationAction Continue
@@ -1610,7 +1610,7 @@ try {
                 Write-Warning "  Failed to finalize result collection: $($_.Exception.Message)"
             }
         }
-        
+
         try {
             # Step 1: Process logs using LogProcessor module
             if (Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue) {
@@ -1845,17 +1845,17 @@ if (Get-Command -Name 'Start-MaintenanceCountdown' -ErrorAction SilentlyContinue
             CleanupOnTimeout = $MainConfig.execution.shutdown.cleanupOnTimeout ?? $true
             RebootOnTimeout  = $MainConfig.execution.shutdown.rebootOnTimeout ?? $false
         }
-        
+
         Write-Information " Starting post-execution shutdown sequence..." -InformationAction Continue
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Initiating shutdown sequence with config: $($shutdownConfig | ConvertTo-Json -Compress)"
-        
+
         $shutdownResult = Start-MaintenanceCountdown `
             -CountdownSeconds $shutdownConfig.CountdownSeconds `
             -WorkingDirectory $ScriptRoot `
             -TempRoot $script:ProjectPaths.TempRoot `
             -CleanupOnTimeout:$shutdownConfig.CleanupOnTimeout `
             -RebootOnTimeout:$shutdownConfig.RebootOnTimeout
-        
+
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Shutdown sequence completed" -Data $shutdownResult
         Write-Information " Shutdown sequence action: $($shutdownResult.Action)" -InformationAction Continue
     }

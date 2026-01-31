@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (for configuration, paths, logging)
 
@@ -52,7 +52,7 @@ if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
 #>
 function Get-SystemInventory {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [switch]$UseCache,
 
@@ -64,7 +64,7 @@ function Get-SystemInventory {
     )
 
     Write-Information "[INVENTORY] Starting system inventory collection..." -InformationAction Continue
-    
+
     # Use centralized logging if available
     try {
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'Starting comprehensive system inventory collection' -Data @{
@@ -117,7 +117,7 @@ function Get-SystemInventory {
 
     $startTime = Get-Date
     $inventoryData = @{}
-    
+
     # Start performance tracking if LoggingManager is available
     $perfContext = $null
     try {
@@ -198,7 +198,7 @@ function Get-SystemInventory {
             if ($perfContext) {
                 Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true
             }
-            
+
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection completed successfully' -Data @{
                 CollectionTime      = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
                 ComponentsCollected = $inventoryData.Keys -join ', '
@@ -219,7 +219,7 @@ function Get-SystemInventory {
             if ($perfContext) {
                 Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
             }
-            
+
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection failed' -Data @{
                 Error          = $_.Exception.Message
                 CollectionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
@@ -229,7 +229,7 @@ function Get-SystemInventory {
             Write-Verbose "SYSTEM-INVENTORY: Error logging failed - $_"
             # LoggingManager not available, continue
         }
-        
+
         Write-Error "Failed to collect system inventory: $_"
         throw
     }
@@ -248,7 +248,7 @@ function Get-SystemInventory {
 #>
 function Get-SystemInventoryAnalysis {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [PSCustomObject]$Config
     )
@@ -503,11 +503,11 @@ function Get-InstalledSoftwareInfo {
     try {
         # Use List for better memory management instead of array concatenation
         $installedPrograms = [System.Collections.Generic.List[hashtable]]::new(500)  # Pre-allocate capacity
-        
+
         # Variables for cleanup tracking
         $appxPackages = $null
         $wingetOutput = $null
-        
+
         try {
             # Get AppX packages
             try {
@@ -522,7 +522,7 @@ function Get-InstalledSoftwareInfo {
                             Source          = 'AppX'
                         })
                 }
-                
+
                 # Clear appx packages from memory after processing
                 $appxPackages = $null
             }
@@ -545,7 +545,7 @@ function Get-InstalledSoftwareInfo {
                                 })
                         }
                     }
-                    
+
                     # Clear winget output from memory
                     $wingetOutput = $null
                 }
@@ -568,7 +568,7 @@ function Get-InstalledSoftwareInfo {
                                 })
                         }
                     }
-                    
+
                     # Clear choco output from memory
                     $chocoOutput = $null
                 }
@@ -600,7 +600,7 @@ function Get-InstalledSoftwareInfo {
                             Source          = 'Registry'
                         })
                 }
-                
+
                 # Clear programs variable after processing each path
                 $programs = $null
             }
@@ -608,11 +608,11 @@ function Get-InstalledSoftwareInfo {
             # Create result with sorted programs
             Write-Verbose "Creating final software inventory result with $($installedPrograms.Count) programs"
             $sortedPrograms = $installedPrograms.ToArray() | Sort-Object Name
-            
+
             # Clear the list to free memory
             $installedPrograms.Clear()
             $installedPrograms = $null
-            
+
             # Force garbage collection if we processed many programs
             if ($sortedPrograms.Count -gt 100) {
                 Write-Verbose "Large program inventory detected, triggering garbage collection"
@@ -633,20 +633,20 @@ function Get-InstalledSoftwareInfo {
             }
             $appxPackages = $null
             $wingetOutput = $null
-            
+
             Write-Verbose "Memory cleanup completed after error in software inventory"
             return @{ TotalCount = 0; Programs = @() }
         }
     }
     catch {
         Write-Warning "Failed to collect installed software info: $_"
-        
+
         # Final cleanup on outer catch
         if ($null -ne $installedPrograms) {
             $installedPrograms.Clear()
             $installedPrograms = $null
         }
-        
+
         return @{ TotalCount = 0; Programs = @() }
     }
 }
@@ -978,3 +978,6 @@ Export-ModuleMember -Function @(
     'Get-SystemInventoryAnalysis',
     'Export-SystemInventory'
 )
+
+
+

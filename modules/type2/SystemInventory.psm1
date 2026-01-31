@@ -85,15 +85,14 @@ if (-not (Get-Command -Name 'Get-SystemInventoryAnalysis' -ErrorAction SilentlyC
 #>
 function Invoke-SystemInventory {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory = $true)]
         [PSCustomObject]$Config,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$DryRun
     )
-    
+
     # Start performance tracking
     $startTime = Get-Date
     $perfContext = $null
@@ -104,7 +103,7 @@ function Invoke-SystemInventory {
         Write-Verbose "SYSTEM-INVENTORY: Performance tracking unavailable - $_"
         # Performance tracking is optional
     }
-    
+
     try {
         # Display module banner
         Write-Host "`n" -NoNewline
@@ -117,12 +116,12 @@ function Invoke-SystemInventory {
         Write-Host "Data Collection" -ForegroundColor Green
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
-        
+
         Write-Information " Collecting system inventory..." -InformationAction Continue
-        
+
         # Initialize module execution environment
         Initialize-ModuleExecution -ModuleName 'SystemInventory'
-        
+
         # STEP 1: Run Type1 detection (inventory collection)
         # Explicit assignment to prevent pipeline contamination
         $inventoryData = $null
@@ -132,19 +131,19 @@ function Invoke-SystemInventory {
         else {
             $inventoryData = Get-SystemInventory -IncludeDetailed:$false
         }
-        
+
         # STEP 2: Save inventory data to temp_files/data/
         $inventoryDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\system-inventory.json"
         $null = $inventoryData | ConvertTo-Json -Depth 10 | Set-Content $inventoryDataPath -Encoding UTF8 -ErrorAction Stop
         Write-Information "   System inventory saved to data folder" -InformationAction Continue
-        
+
         # STEP 3: Setup logging (information gathering, minimal logging needed)
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\system-inventory"
         if (-not (Test-Path $executionLogDir)) {
             New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
         }
         $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
+
         # Log inventory summary
                 $computerName = $inventoryData.ComputerName ?? $inventoryData.Metadata.ComputerName ?? $inventoryData.SystemInfo.ComputerName ?? $env:COMPUTERNAME
                 $osName = $inventoryData.OperatingSystem.Name ?? $inventoryData.SystemInfo.OSName ?? $inventoryData.SystemInfo.OperatingSystem ?? 'Unknown'
@@ -203,11 +202,11 @@ PERFORMANCE:
 Collection completed successfully
 ========================================
 "@
-        
+
         Add-Content -Path $executionLogPath -Value $logSummary -Encoding UTF8 | Out-Null
-        
+
         Write-Information "   Inventory collection complete" -InformationAction Continue
-        
+
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $startTime
@@ -244,7 +243,7 @@ Collection completed successfully
                 InstalledApps = $installedApps
             }
         }
-        
+
         try {
             $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force | Out-Null
             Write-Verbose "Execution summary saved to: $summaryPath"
@@ -252,7 +251,7 @@ Collection completed successfully
         catch {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
-        
+
         # Complete performance tracking
         if ($perfContext) {
             try {
@@ -263,7 +262,7 @@ Collection completed successfully
                 # Performance tracking is optional
             }
         }
-        
+
         # STEP 4: Return standardized result (explicit return to prevent pipeline contamination)
         $result = New-ModuleExecutionResult `
             -Success $true `
@@ -273,13 +272,13 @@ Collection completed successfully
             -LogPath $executionLogPath `
             -ModuleName 'SystemInventory' `
             -AdditionalData @{ DataPath = $inventoryDataPath }
-        
+
         return $result
     }
     catch {
         $errorMsg = "System inventory collection failed: $($_.Exception.Message)"
         Write-Error $errorMsg
-        
+
         # Complete performance tracking with failure
         if ($perfContext) {
             try {
@@ -290,7 +289,7 @@ Collection completed successfully
                 # Performance tracking is optional
             }
         }
-        
+
         # Return failure result (explicit assignment to prevent pipeline contamination)
         $errorResult = New-ModuleExecutionResult `
             -Success $false `
@@ -300,7 +299,7 @@ Collection completed successfully
             -LogPath $executionLogPath `
             -ModuleName 'SystemInventory' `
             -ErrorMessage $errorMsg
-        
+
         return $errorResult
     }
 }
@@ -311,4 +310,6 @@ Collection completed successfully
 Export-ModuleMember -Function @(
     'Invoke-SystemInventory'
 )
+
+
 

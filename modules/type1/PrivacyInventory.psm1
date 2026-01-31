@@ -1,4 +1,4 @@
-﻿<#
+<#
 .MODULEINFO
 Type = "Type1"
 Category = "Privacy"
@@ -50,7 +50,7 @@ DependsOn = @("Infrastructure")
 
 .EXAMPLE
     Get-PrivacyInventory
-    
+
 .EXAMPLE
     Get-PrivacyInventory -ForceRefresh
 #>
@@ -61,23 +61,23 @@ function Get-PrivacyInventory {
         [Parameter(Mandatory = $false)]
         [switch]$ForceRefresh
     )
-    
+
     $perf = Start-PerformanceTracking -OperationName 'PrivacyInventoryScan' -Component 'Privacy'
-    
+
     try {
         Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Starting privacy and telemetry inventory scan'
-        
+
         # Check for cached data (unless ForceRefresh specified)
         if (-not $ForceRefresh) {
             Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Checking for cached privacy inventory'
-            
+
             $cachedData = Import-InventoryFile -Category 'Privacy'
-            
+
             if ($cachedData -and $cachedData.metadata -and $cachedData.metadata.scanDate) {
                 $scanDate = [datetime]::Parse($cachedData.metadata.scanDate)
                 $age = (Get-Date) - $scanDate
                 $cacheExpiration = Get-ConfigValue -Path 'inventory.cacheExpirationMinutes' -Default 60
-                
+
                 if ($age.TotalMinutes -lt $cacheExpiration) {
                     Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message "Using cached data (age: $([math]::Round($age.TotalMinutes, 1)) minutes)"
                     Write-Information "ℹ️  Using cached privacy data (scanned $([math]::Round($age.TotalMinutes, 1)) minutes ago)" -InformationAction Continue
@@ -86,9 +86,9 @@ function Get-PrivacyInventory {
                 }
             }
         }
-        
+
         Write-Information "[PRIVACY] Scanning privacy and telemetry settings..." -InformationAction Continue
-        
+
         # Initialize inventory structure
         $inventory = @{
             metadata          = @{
@@ -97,73 +97,73 @@ function Get-PrivacyInventory {
                 scanDuration  = 0
                 moduleVersion = '3.0.0'
             }
-            
+
             telemetrySettings = @{
                 diagnosticDataLevel = $null
                 tailoredExperiences = $null
                 advertisingId       = $null
                 activityHistory     = $null
             }
-            
+
             services          = @()
             scheduledTasks    = @()
             registryKeys      = @()
-            
+
             statistics        = @{
                 totalServicesRunning = 0
                 totalTasksEnabled    = 0
                 privacyIssuesFound   = 0
                 recommendedActions   = 0
             }
-            
+
             recommendations   = @()
         }
-        
+
         # Step 1: Check telemetry settings
         Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Auditing telemetry settings'
         Write-Information "  >> Checking telemetry settings..." -InformationAction Continue
         $inventory.telemetrySettings = Get-TelemetryConfiguration
-        
+
         # Step 2: Audit privacy-related services
         Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Auditing privacy-related services'
         Write-Information "  🔧 Auditing services..." -InformationAction Continue
         $inventory.services = Get-PrivacyRelatedService
         $inventory.statistics.totalServicesRunning = ($inventory.services | Where-Object { $_.Status -eq 'Running' }).Count
-        
+
         # Step 3: Audit scheduled tasks
         Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Auditing scheduled tasks'
         Write-Information "  📅 Auditing scheduled tasks..." -InformationAction Continue
         $inventory.scheduledTasks = Get-PrivacyRelatedTask
         $inventory.statistics.totalTasksEnabled = ($inventory.scheduledTasks | Where-Object { $_.State -eq 'Ready' -or $_.State -eq 'Running' }).Count
-        
+
         # Step 4: Audit registry keys
         Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Auditing registry keys'
         Write-Information "  🔑 Auditing registry keys..." -InformationAction Continue
         $inventory.registryKeys = Get-PrivacyRegistryKey
-        
+
         # Step 5: Generate recommendations
         Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Generating privacy recommendations'
         $inventory.recommendations = Get-PrivacyRecommendation -Inventory $inventory
         $inventory.statistics.recommendedActions = $inventory.recommendations.Count
-        
+
         # Calculate privacy issues
         $inventory.statistics.privacyIssuesFound = 0
-        
-        if ($inventory.telemetrySettings.diagnosticDataLevel -ne 'Security' -and 
+
+        if ($inventory.telemetrySettings.diagnosticDataLevel -ne 'Security' -and
             $inventory.telemetrySettings.diagnosticDataLevel -ne 'Basic') {
             $inventory.statistics.privacyIssuesFound++
         }
-        
+
         $inventory.statistics.privacyIssuesFound += $inventory.statistics.totalServicesRunning
         $inventory.statistics.privacyIssuesFound += $inventory.statistics.totalTasksEnabled
-        
+
         # Update scan duration
         $inventory.metadata.scanDuration = $perf.StartTime ? ((Get-Date) - $perf.StartTime).TotalSeconds : 0
-        
+
         # Save inventory
         Write-DetailedLog -Level 'INFO' -Component 'Privacy' -Message 'Saving privacy inventory'
         Save-InventoryFile -Category 'Privacy' -Data $inventory
-        
+
         # Display summary
         Write-Information "`n  Privacy Inventory Summary:" -InformationAction Continue
         Write-Information "    Diagnostic Data Level: $($inventory.telemetrySettings.diagnosticDataLevel)" -InformationAction Continue
@@ -172,14 +172,14 @@ function Get-PrivacyInventory {
         Write-Information "    Privacy Issues Found: $($inventory.statistics.privacyIssuesFound)" -InformationAction Continue
         Write-Information "    Recommended Actions: $($inventory.statistics.recommendedActions)" -InformationAction Continue
         Write-Information "" -InformationAction Continue
-        
+
         Write-DetailedLog -Level 'SUCCESS' -Component 'Privacy' -Message "Privacy inventory scan completed: $($inventory.statistics.privacyIssuesFound) issues found"
-        
+
         Complete-PerformanceTracking -PerformanceContext $perf -Success $true -ResultData @{
             PrivacyIssues      = $inventory.statistics.privacyIssuesFound
             RecommendedActions = $inventory.statistics.recommendedActions
         }
-        
+
         return $inventory
     }
     catch {
@@ -202,22 +202,21 @@ function Get-PrivacyInventory {
 #>
 function Get-TelemetryConfiguration {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-    
+    [OutputType([hashtable])]`nparam()
+
     $config = @{
         diagnosticDataLevel = 'Unknown'
         tailoredExperiences = $null
         advertisingId       = $null
         activityHistory     = $null
     }
-    
+
     try {
         # Diagnostic data level
         $telemetryPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
         if (Test-Path $telemetryPath) {
             $allowTelemetry = (Get-ItemProperty -Path $telemetryPath -Name 'AllowTelemetry' -ErrorAction SilentlyContinue).AllowTelemetry
-            
+
             $config.diagnosticDataLevel = switch ($allowTelemetry) {
                 0 { 'Security' }
                 1 { 'Basic' }
@@ -229,19 +228,19 @@ function Get-TelemetryConfiguration {
         else {
             $config.diagnosticDataLevel = 'Full' # Default Windows setting
         }
-        
+
         # Tailored experiences
         $contentPath = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
         if (Test-Path $contentPath) {
             $config.tailoredExperiences = (Get-ItemProperty -Path $contentPath -Name 'SubscribedContent-338393Enabled' -ErrorAction SilentlyContinue).'SubscribedContent-338393Enabled' -eq 0
         }
-        
+
         # Advertising ID
         $advertisingPath = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo'
         if (Test-Path $advertisingPath) {
             $config.advertisingId = (Get-ItemProperty -Path $advertisingPath -Name 'Enabled' -ErrorAction SilentlyContinue).Enabled -eq 0
         }
-        
+
         # Activity history
         $activityPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'
         if (Test-Path $activityPath) {
@@ -251,7 +250,7 @@ function Get-TelemetryConfiguration {
     catch {
         Write-Verbose "Error reading telemetry configuration: $_"
     }
-    
+
     return $config
 }
 
@@ -269,7 +268,7 @@ function Get-PrivacyRelatedService {
     [CmdletBinding()]
     [OutputType([array])]
     param()
-    
+
     $privacyServices = @(
         'DiagTrack',                      # Connected User Experiences and Telemetry
         'dmwappushservice',               # Device Management Wireless Application Protocol
@@ -278,13 +277,13 @@ function Get-PrivacyRelatedService {
         'PcaSvc',                         # Program Compatibility Assistant
         'WMPNetworkSvc'                   # Windows Media Player Network Sharing
     )
-    
+
     $services = @()
-    
+
     foreach ($serviceName in $privacyServices) {
         try {
             $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-            
+
             if ($service) {
                 $services += @{
                     Name        = $service.Name
@@ -299,7 +298,7 @@ function Get-PrivacyRelatedService {
             Write-Verbose "Service not found or error: $serviceName - $_"
         }
     }
-    
+
     return $services
 }
 
@@ -317,20 +316,20 @@ function Get-PrivacyRelatedTask {
     [CmdletBinding()]
     [OutputType([array])]
     param()
-    
+
     $taskPaths = @(
         '\Microsoft\Windows\Application Experience\*',
         '\Microsoft\Windows\Customer Experience Improvement Program\*',
         '\Microsoft\Windows\Feedback\*',
         '\Microsoft\Windows\CloudExperienceHost\*'
     )
-    
+
     $tasks = @()
-    
+
     foreach ($taskPath in $taskPaths) {
         try {
             $scheduledTasks = Get-ScheduledTask -TaskPath $taskPath -ErrorAction SilentlyContinue
-            
+
             foreach ($task in $scheduledTasks) {
                 $tasks += @{
                     Name        = $task.TaskName
@@ -344,7 +343,7 @@ function Get-PrivacyRelatedTask {
             Write-Verbose "Error getting tasks from path $taskPath : $_"
         }
     }
-    
+
     return $tasks
 }
 
@@ -362,7 +361,7 @@ function Get-PrivacyRegistryKey {
     [CmdletBinding()]
     [OutputType([array])]
     param()
-    
+
     $registryKeys = @(
         @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'; Name = 'AllowTelemetry'; Expected = 0 },
         @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection'; Name = 'AllowTelemetry'; Expected = 0 },
@@ -370,19 +369,19 @@ function Get-PrivacyRegistryKey {
         @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat'; Name = 'AITEnable'; Expected = 0 },
         @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'; Name = 'NoRecentDocsHistory'; Expected = 1 }
     )
-    
+
     $keys = @()
-    
+
     foreach ($regKey in $registryKeys) {
         try {
             $value = $null
             $compliant = $false
-            
+
             if (Test-Path $regKey.Path) {
                 $value = (Get-ItemProperty -Path $regKey.Path -Name $regKey.Name -ErrorAction SilentlyContinue).($regKey.Name)
                 $compliant = ($value -eq $regKey.Expected)
             }
-            
+
             $keys += @{
                 Path      = $regKey.Path
                 Name      = $regKey.Name
@@ -395,7 +394,7 @@ function Get-PrivacyRegistryKey {
             Write-Verbose "Error reading registry key $($regKey.Path)\$($regKey.Name) : $_"
         }
     }
-    
+
     return $keys
 }
 
@@ -419,9 +418,9 @@ function Get-PrivacyRecommendation {
         [Parameter(Mandatory = $true)]
         [hashtable]$Inventory
     )
-    
+
     $recommendations = @()
-    
+
     # Telemetry level
     if ($Inventory.telemetrySettings.diagnosticDataLevel -notin @('Security', 'Basic')) {
         $recommendations += @{
@@ -432,7 +431,7 @@ function Get-PrivacyRecommendation {
             Impact   = 'Reduces data collection by Microsoft'
         }
     }
-    
+
     # Running services
     $runningServices = $Inventory.services | Where-Object { $_.Status -eq 'Running' }
     if ($runningServices.Count -gt 0) {
@@ -444,7 +443,7 @@ function Get-PrivacyRecommendation {
             Impact   = 'Prevents background data collection'
         }
     }
-    
+
     # Enabled tasks
     $enabledTasks = $Inventory.scheduledTasks | Where-Object { $_.State -in @('Ready', 'Running') }
     if ($enabledTasks.Count -gt 0) {
@@ -456,7 +455,7 @@ function Get-PrivacyRecommendation {
             Impact   = 'Prevents scheduled data collection'
         }
     }
-    
+
     # Non-compliant registry keys
     $nonCompliant = $Inventory.registryKeys | Where-Object { -not $_.Compliant }
     if ($nonCompliant.Count -gt 0) {
@@ -468,7 +467,7 @@ function Get-PrivacyRecommendation {
             Impact   = 'Enhances overall privacy configuration'
         }
     }
-    
+
     return $recommendations
 }
 
@@ -476,3 +475,6 @@ function Get-PrivacyRecommendation {
 Export-ModuleMember -Function @(
     'Get-PrivacyInventory'
 )
+
+
+

@@ -15,11 +15,11 @@
         Single unified report rendering system consuming processed data from LogProcessor.
         Transforms structured data into beautiful, interactive HTML reports with modern design.
         Handles templates, CSS styling (glassmorphism/gradient themes), and multi-format exports.
-    
+
     Dependencies:
         • CoreInfrastructure.psm1 - For path management and logging
         • LogProcessor.psm1 - For processed data consumption (data flow, not direct import)
-    
+
     Exports:
         • New-MaintenanceReport - Primary function: Generate full report
         • Test-ReportGenerationCapability - Verify report system is functional
@@ -27,7 +27,7 @@
         • Build-ReportSection - Create individual module report section
         • Format-HtmlReport - Apply styling and formatting
         • Export-Report - Save report to disk (HTML/text)
-    
+
     Import Pattern:
         Import-Module ReportGenerator.psm1 -Force
         # Functions available in MaintenanceOrchestrator context
@@ -53,12 +53,12 @@
         • config/templates/components/executive-dashboard.html - Dashboard component
         • config/templates/components/module-card-enhanced-v5.html - Enhanced module card component (v5)
         • config/templates/assets/dashboard.js - Interactive JavaScript
-    
+
     Input Data (from LogProcessor):
         • temp_files/processed/[module]-audit.json - Type1 results per module
         • temp_files/processed/[module]-execution.json - Type2 execution per module
         • temp_files/processed/session-summary.json - Overall session metrics
-    
+
     Output Reports:
         • temp_files/reports/Maintenance_Report_[timestamp].html - Full interactive HTML
         • temp_files/reports/Maintenance_Report_[timestamp].txt - Text-only summary
@@ -76,14 +76,14 @@
     Architecture: v3.0 - Split from monolithic ReportGeneration.psm1
     Line Count: 2,394 lines
     Version: 3.0.0 (Refactored - Split Architecture)
-    
+
     Key Design Patterns:
     - Template-driven rendering: Separates data from presentation
     - CSS-based styling: Consistent formatting across modules
     - Section building: Modular HTML generation (one function per report section)
     - Backward compatibility: Handles both old and new template locations
     - Performance: Lazy loads templates only when needed
-    
+
     Related Modules in v3.0 Architecture:
     - CoreInfrastructure.psm1 → Path management, logging infrastructure
     - LogProcessor.psm1 → Produces processed data consumed by reports
@@ -154,21 +154,17 @@ function Find-ConfigTemplate {
 .DESCRIPTION
     Loads all report templates including HTML structure, CSS styles, and configuration metadata
 #>
-function Get-HtmlTemplates {
+function Get-HtmlTemplate {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [switch]$UseEnhanced
     )
-    
+
     $templateType = if ($UseEnhanced) { 'enhanced' } else { 'standard' }
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Loading $templateType HTML templates from config directory"
-    
+
     try {
-        $configPath = Get-MaintenancePath 'ConfigRoot'
-        $templatesPath = Join-Path $configPath 'templates'
-        
         $templates = @{
             Main       = $null
             TaskCard   = $null
@@ -177,7 +173,7 @@ function Get-HtmlTemplates {
             Config     = $null
             IsEnhanced = $UseEnhanced
         }
-        
+
         # Determine template filenames based on enhanced mode
         if ($UseEnhanced) {
             # Try v5 enhanced first, then v4 enhanced
@@ -186,10 +182,10 @@ function Get-HtmlTemplates {
                 card = 'module-card-enhanced-v5.html'
                 css  = 'report-styles-enhanced-v5.css'
             }
-            
+
             # Check if v5 templates are available
             $v5Available = ($v5Templates.Values | ForEach-Object { Test-Path (Find-ConfigTemplate $_) }) -notcontains $false
-            
+
             if ($v5Available) {
                 $mainTemplateFile = $v5Templates.main
                 $moduleCardFile = $v5Templates.card
@@ -211,10 +207,10 @@ function Get-HtmlTemplates {
             $mainTemplateFile = 'modern-dashboard.html'
             $moduleCardFile = 'module-card.html'
             $cssFile = 'modern-dashboard.css'
-            
+
             Write-Verbose "Using modern-dashboard templates (legacy mode disabled)"
         }
-        
+
         # Load main report template
         $mainTemplatePath = Find-ConfigTemplate $mainTemplateFile
         if (Test-Path $mainTemplatePath) {
@@ -226,7 +222,7 @@ function Get-HtmlTemplates {
             # Provide fallback inline template to prevent report generation failure
             $templates.Main = Get-FallbackHtmlTemplate -TemplateType 'MainReport'
         }
-        
+
         # Load module/task card template
         $moduleCardPath = Find-ConfigTemplate $moduleCardFile
         if (Test-Path $moduleCardPath) {
@@ -240,7 +236,7 @@ function Get-HtmlTemplates {
             $templates.ModuleCard = Get-FallbackHtmlTemplate -TemplateType 'ModuleCard'
             $templates.TaskCard = $templates.ModuleCard  # Backward compatibility
         }
-        
+
         # Load CSS styles with enhanced fallback chain
         $cssPath = Find-ConfigTemplate $cssFile
         if (Test-Path $cssPath) {
@@ -260,7 +256,7 @@ function Get-HtmlTemplates {
                 'report-styles.css',
                 'modern-dashboard.css'
             )
-                
+
             $cssLoaded = $false
             foreach ($fallbackCss in $fallbackPaths) {
                 $fallbackPath = Find-ConfigTemplate $fallbackCss
@@ -271,12 +267,12 @@ function Get-HtmlTemplates {
                     break
                 }
             }
-                
+
             if (-not $cssLoaded) {
                 throw "No CSS styles found in fallback chain"
             }
         }
-        
+
         # Load template configuration
         $configJsonPath = Find-ConfigTemplate 'report-templates-config.json'
         if (Test-Path $configJsonPath) {
@@ -287,14 +283,14 @@ function Get-HtmlTemplates {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Template configuration not found: $configJsonPath"
             # Not critical, continue without config
         }
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Successfully loaded $templateType HTML templates"
         return $templates
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to load HTML templates: $($_.Exception.Message)"
         Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting to use fallback templates for basic functionality'
-        
+
         try {
             return Get-FallbackTemplates
         }
@@ -312,13 +308,12 @@ function Get-HtmlTemplates {
 .DESCRIPTION
     Emergency fallback mechanism providing basic HTML templates for report generation
 #>
-function Get-FallbackTemplates {
+function Get-FallbackTemplate {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-    
+    [OutputType([hashtable])]`nparam()
+
     Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Using fallback templates - limited styling and functionality'
-    
+
     $fallbackTemplates = @{
         Main     = @'
 <!DOCTYPE html>
@@ -339,21 +334,21 @@ function Get-FallbackTemplates {
             <p class="subtitle">Generated on {{REPORT_DATE}}</p>
             <p class="fallback-notice">⚠️ Using fallback templates - Enhanced styling available with config templates</p>
         </header>
-        
+
         <section class="dashboard-grid">
-            {{DASHBOARD_CONTENT}}
+    {{DASHBOARD_CONTENT}}
         </section>
-        
+
         <main>
             <h2 class="section-title">📋 Maintenance Tasks</h2>
-            {{MODULE_SECTIONS}}
+    {{MODULE_SECTIONS}}
         </main>
-        
+
         <section>
             <h2 class="section-title">📊 Summary</h2>
-            {{SUMMARY_SECTION}}
+    {{SUMMARY_SECTION}}
         </section>
-        
+
         <footer>
             <p>Windows Maintenance Automation System v3.0 | Powered by PowerShell 7+</p>
             <p>Report generated in fallback mode - Install config templates for enhanced visuals</p>
@@ -362,7 +357,7 @@ function Get-FallbackTemplates {
 </body>
 </html>
 '@
-        
+
         TaskCard = @'
 <div class="task-card {{STATUS_CLASS}}">
     <div class="task-header">
@@ -373,7 +368,7 @@ function Get-FallbackTemplates {
         <span class="task-status {{STATUS_CLASS}}">{{TASK_STATUS}}</span>
     </div>
     <div class="task-content">
-        {{TASK_CONTENT}}
+    {{TASK_CONTENT}}
     </div>
     <div class="task-metrics">
         <div class="metric-item">
@@ -395,7 +390,7 @@ function Get-FallbackTemplates {
     </div>
 </div>
 '@
-        
+
         CSS      = @'
 /* Modern Enhanced Dashboard CSS v2.0 - Embedded Fallback */
 :root {
@@ -459,7 +454,7 @@ footer { margin-top: 4rem; padding: 2rem; text-align: center; color: var(--text-
 @media (max-width: 768px) { .container { padding: 1rem; } .dashboard-grid { grid-template-columns: 1fr; }
   header h1 { font-size: 1.75rem; } }
 '@
-        
+
         Config   = @{
             moduleIcons  = @{
                 BloatwareRemoval   = ''
@@ -470,13 +465,13 @@ footer { margin-top: 4rem; padding: 2rem; text-align: center; color: var(--text-
             }
             statusColors = @{
                 success = '#107c10'
-                warning = '#ffb900'  
+                warning = '#ffb900'
                 error   = '#d13438'
                 info    = '#0078d4'
             }
         }
     }
-    
+
     return $fallbackTemplates
 }
 
@@ -492,17 +487,16 @@ footer { margin-top: 4rem; padding: 2rem; text-align: center; color: var(--text-
 #>
 function Get-ProcessedLogData {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [string]$ProcessedDataPath,
-        
+
         [Parameter()]
         [switch]$FallbackToRawLogs
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Loading processed log data'
-    
+
     try {
         # Use provided path or default to temp_files/processed
         $processedRoot = if ($ProcessedDataPath) {
@@ -511,7 +505,7 @@ function Get-ProcessedLogData {
         else {
             Join-Path (Get-MaintenancePath 'TempRoot') 'processed'
         }
-        
+
         if (-not (Test-Path $processedRoot)) {
             $errorMessage = "Processed data directory not found: $processedRoot"
             if ($FallbackToRawLogs) {
@@ -523,7 +517,7 @@ function Get-ProcessedLogData {
                 throw $errorMessage
             }
         }
-        
+
         $processedData = @{
             MetricsSummary  = @{}
             ModuleResults   = @{}
@@ -533,7 +527,7 @@ function Get-ProcessedLogData {
             ChartsData      = @{}
             MaintenanceLog  = @{}
         }
-        
+
         # Load main summary files
         $summaryFiles = @{
             'MetricsSummary' = 'metrics-summary.json'
@@ -542,12 +536,12 @@ function Get-ProcessedLogData {
             'HealthScores'   = 'health-scores.json'
             'MaintenanceLog' = 'maintenance-log.json'
         }
-        
+
         foreach ($key in $summaryFiles.Keys) {
             $filePath = Join-Path $processedRoot $summaryFiles[$key]
             if (Test-Path $filePath) {
                 try {
-                    $content = Get-Content $filePath | ConvertFrom-Json
+                    $content = Get-Content $filePath | ConvertFrom-Json -AsHashtable
                     $processedData[$key] = $content
                     Write-Verbose "Loaded processed data: $($summaryFiles[$key])"
                 }
@@ -562,7 +556,7 @@ function Get-ProcessedLogData {
                 Write-LogEntry -Level $logLevel -Component 'REPORT-GENERATOR' -Message "Processed data file not found: $($summaryFiles[$key])"
             }
         }
-        
+
         # Load module-specific data
         $moduleSpecificPath = Join-Path $processedRoot 'module-specific'
         if (Test-Path $moduleSpecificPath) {
@@ -570,8 +564,8 @@ function Get-ProcessedLogData {
             foreach ($file in $moduleFiles) {
                 $moduleName = $file.BaseName
                 try {
-                    $content = Get-Content $file.FullName -Raw | ConvertFrom-Json
-                    
+                    $content = Get-Content $file.FullName -Raw | ConvertFrom-Json -AsHashtable
+
                     # Ensure ModuleResults is a hashtable before indexing
                     if ($processedData.ModuleResults -isnot [hashtable]) {
                         # Convert PSCustomObject to hashtable if needed
@@ -583,7 +577,7 @@ function Get-ProcessedLogData {
                         }
                         $processedData.ModuleResults = $tempHashtable
                     }
-                    
+
                     $processedData.ModuleResults[$moduleName] = $content
                     Write-Verbose "Loaded module-specific data for: $moduleName"
                 }
@@ -592,12 +586,12 @@ function Get-ProcessedLogData {
                 }
             }
         }
-        
+
         # Validate data integrity and provide warnings for missing components
         $dataValidation = Test-ProcessedDataIntegrity -ProcessedData $processedData
         if (-not $dataValidation.IsComplete) {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Processed data validation warnings: $($dataValidation.Warnings -join ', ')"
-            
+
             if ($dataValidation.CriticalIssues.Count -gt 0) {
                 Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Critical data issues found: $($dataValidation.CriticalIssues -join ', ')"
                 if ($FallbackToRawLogs) {
@@ -606,13 +600,13 @@ function Get-ProcessedLogData {
                 }
             }
         }
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Successfully loaded processed data for $($processedData.ModuleResults.Keys.Count) modules"
         return $processedData
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Failed to load processed data: $($_.Exception.Message)"
-        
+
         if ($FallbackToRawLogs) {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting fallback to raw logs due to processing failure'
             try {
@@ -623,7 +617,7 @@ function Get-ProcessedLogData {
                 throw "Cannot load any report data - both processed and raw log loading failed"
             }
         }
-        
+
         throw
     }
 }
@@ -638,19 +632,18 @@ function Get-ProcessedLogData {
 #>
 function Test-ProcessedDataIntegrity {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
-    
+
     $validation = @{
         IsComplete        = $true
         Warnings          = @()
         CriticalIssues    = @()
         MissingComponents = @()
     }
-    
+
     # Check for required top-level components
     $requiredComponents = @('MetricsSummary', 'ModuleResults', 'ErrorsAnalysis', 'HealthScores')
     foreach ($component in $requiredComponents) {
@@ -660,22 +653,22 @@ function Test-ProcessedDataIntegrity {
             $validation.IsComplete = $false
         }
     }
-    
+
     # Check module results structure
     if ($ProcessedData.ModuleResults -and $ProcessedData.ModuleResults.Keys.Count -eq 0) {
         $validation.Warnings += 'No module execution results found'
     }
-    
+
     # Check metrics summary
     if ($ProcessedData.MetricsSummary -and -not $ProcessedData.MetricsSummary.ExecutionSummary) {
         $validation.Warnings += 'Missing execution summary in metrics'
     }
-    
+
     # Check health scores
     if ($ProcessedData.HealthScores -and (-not $ProcessedData.HealthScores.SystemHealth -or -not $ProcessedData.HealthScores.Security)) {
         $validation.Warnings += 'Incomplete health score data'
     }
-    
+
     return $validation
 }
 
@@ -688,11 +681,10 @@ function Test-ProcessedDataIntegrity {
 #>
 function Get-FallbackRawLogData {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-    
+    [OutputType([hashtable])]`nparam()
+
     Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Using fallback raw log data loading - functionality will be limited'
-    
+
     try {
         $fallbackData = @{
             MetricsSummary  = @{
@@ -723,7 +715,7 @@ function Get-FallbackRawLogData {
             PerformanceData = @{}
             ChartsData      = @{}
         }
-        
+
         # Try to load basic module data from logs directory
         $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') 'logs'
         if (Test-Path $logsPath) {
@@ -731,7 +723,7 @@ function Get-FallbackRawLogData {
             foreach ($logDir in $logDirectories) {
                 $moduleName = $logDir.Name
                 $executionLog = Join-Path $logDir.FullName 'execution.log'
-                
+
                 if (Test-Path $executionLog) {
                     try {
                         $logContent = Get-Content $executionLog
@@ -749,7 +741,7 @@ function Get-FallbackRawLogData {
                 }
             }
         }
-        
+
         Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Fallback data loaded with limited functionality for $($fallbackData.ModuleResults.Keys.Count) modules"
         return $fallbackData
     }
@@ -774,20 +766,19 @@ function Get-FallbackRawLogData {
 .OUTPUTS
     Hashtable containing parsed operations grouped by operation type with full details
 #>
-function Get-ParsedOperationLogs {
+function Get-ParsedOperationLog {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [string]$ModuleName
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Parsing operation logs for module: $ModuleName"
-    
+
     try {
         $logsPath = Join-Path (Get-MaintenancePath 'TempRoot') "logs\$ModuleName"
         $executionLogPath = Join-Path $logsPath 'execution.log'
-        
+
         $result = @{
             Available       = $false
             Operations      = @()
@@ -802,23 +793,23 @@ function Get-ParsedOperationLogs {
             FirstOperation  = $null
             LastOperation   = $null
         }
-        
+
         if (-not (Test-Path $executionLogPath)) {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "No execution log found for $ModuleName at: $executionLogPath"
             return $result
         }
-        
+
         $logContent = Get-Content $executionLogPath -ErrorAction Stop
         if ($logContent.Count -eq 0) {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Empty execution log for $ModuleName"
             return $result
         }
-        
+
         $result.Available = $true
-        
+
         # Parse log format: [Timestamp] [Level] [Component] [Operation] [Target] Message - Result: Status - Metrics: Data
         $logPattern = '^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+(.+?)(?:\s+-\s+Result:\s+(\w+))?(?:\s+-\s+Metrics:\s+(.+))?$'
-        
+
         foreach ($line in $logContent) {
             if ($line -match $logPattern) {
                 $operation = @{
@@ -832,7 +823,7 @@ function Get-ParsedOperationLogs {
                     Metrics       = if ($matches[8]) { $matches[8] } else { $null }
                     MetricsParsed = @{}
                 }
-                
+
                 # Parse metrics if available (format: "Key1=Value1, Key2=Value2")
                 if ($operation.Metrics) {
                     $metricsPairs = $operation.Metrics -split ',\s*'
@@ -842,10 +833,10 @@ function Get-ParsedOperationLogs {
                         }
                     }
                 }
-                
+
                 $result.Operations += $operation
                 $result.Summary.Total++
-                
+
                 # Count by result status
                 switch ($operation.Result) {
                     'Success' { $result.Summary.Success++ }
@@ -853,13 +844,13 @@ function Get-ParsedOperationLogs {
                     'Skipped' { $result.Summary.Skipped++ }
                     'InProgress' { $result.Summary.InProgress++ }
                 }
-                
+
                 # Group by operation type
                 if (-not $result.ByOperationType.ContainsKey($operation.Operation)) {
                     $result.ByOperationType[$operation.Operation] = @()
                 }
                 $result.ByOperationType[$operation.Operation] += $operation
-                
+
                 # Track first and last operations
                 if (-not $result.FirstOperation) {
                     $result.FirstOperation = $operation.Timestamp
@@ -867,7 +858,7 @@ function Get-ParsedOperationLogs {
                 $result.LastOperation = $operation.Timestamp
             }
         }
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Parsed $($result.Summary.Total) operations from $ModuleName logs"
         return $result
     }
@@ -900,11 +891,11 @@ function New-OperationLogTable {
     param(
         [Parameter(Mandatory)]
         [hashtable]$ParsedLogs,
-        
+
         [Parameter(Mandatory)]
         [string]$ModuleName
     )
-    
+
     if (-not $ParsedLogs.Available -or $ParsedLogs.Summary.Total -eq 0) {
         return @"
 <div class="operation-logs-section">
@@ -913,9 +904,9 @@ function New-OperationLogTable {
 </div>
 "@
     }
-    
+
     $html = [System.Text.StringBuilder]::new()
-    
+
     $html.AppendLine(@"
 <div class="operation-logs-section">
     <h4> Operation Logs - $ModuleName</h4>
@@ -925,7 +916,7 @@ function New-OperationLogTable {
         <span class="log-stat error">Failed: <strong>$($ParsedLogs.Summary.Failed)</strong></span>
         <span class="log-stat warning">Skipped: <strong>$($ParsedLogs.Summary.Skipped)</strong></span>
     </div>
-    
+
     <div class="operation-table-container">
         <table class="operation-table">
             <thead>
@@ -940,7 +931,7 @@ function New-OperationLogTable {
             </thead>
             <tbody>
 "@)
-    
+
     foreach ($operation in $ParsedLogs.Operations) {
         $resultClass = switch ($operation.Result) {
             'Success' { 'result-success' }
@@ -949,14 +940,14 @@ function New-OperationLogTable {
             'InProgress' { 'result-inprogress' }
             default { 'result-unknown' }
         }
-        
+
         $metricsDisplay = if ($operation.MetricsParsed.Count -gt 0) {
             ($operation.MetricsParsed.GetEnumerator() | ForEach-Object { "$($_.Key): $($_.Value)" }) -join '<br>'
         }
         else {
             '-'
         }
-        
+
         $html.AppendLine(@"
                 <tr>
                     <td class="timestamp">$($operation.Timestamp)</td>
@@ -968,14 +959,14 @@ function New-OperationLogTable {
                 </tr>
 "@)
     }
-    
+
     $html.AppendLine(@"
             </tbody>
         </table>
     </div>
 </div>
 "@)
-    
+
     return $html.ToString()
 }
 
@@ -996,34 +987,34 @@ function New-OperationLogTable {
 #>
 function New-MaintenanceReport {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [string]$OutputPath,
-        
+
         [Parameter()]
         [string]$ProcessedDataPath,
-        
+
         [Parameter()]
         [switch]$EnableFallback,
-        
+
         [Parameter()]
         [switch]$UseEnhancedReports
     )
-    
+
     $reportType = if ($UseEnhancedReports) { "enhanced v3.0" } else { "standard" }
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Starting $reportType maintenance report generation"
-    
+
     try {
         $startTime = Get-Date
-        
+
         # Load processed data with enhanced parameters
         Write-Information "✓ Loading processed log data..." -InformationAction Continue
         $processedDataParams = @{}
         if ($ProcessedDataPath) { $processedDataParams.ProcessedDataPath = $ProcessedDataPath }
         if ($EnableFallback) { $processedDataParams.FallbackToRawLogs = $true }
-        
+
         $processedData = Get-ProcessedLogData @processedDataParams
-        
+
         # Check if we should use enhanced reporting (auto-detect enhanced templates if not explicitly disabled)
         if (-not $UseEnhancedReports) {
             # Auto-detect enhanced templates
@@ -1033,29 +1024,29 @@ function New-MaintenanceReport {
                 $UseEnhancedReports = $true
             }
         }
-        
+
         if ($UseEnhancedReports) {
             Write-Information "✓ Using enhanced reporting system (v5.0)..." -InformationAction Continue
-            
+
             # Load enhanced templates
             Write-Information "✓ Loading enhanced templates..." -InformationAction Continue
             $templates = Get-HtmlTemplates -UseEnhanced
-            
+
             if (-not $templates.IsEnhanced) {
                 Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced templates not available, falling back to standard templates"
                 $UseEnhancedReports = $false
             }
         }
-        
+
         if (-not $UseEnhancedReports) {
             # Standard report generation (original code path)
             Write-Information "✓ Loading report templates..." -InformationAction Continue
             $templates = Get-HtmlTemplates
-            
+
             # Generate report content using templates and processed data
             Write-Information "✓ Generating HTML report content..." -InformationAction Continue
             $reportContent = New-HtmlReportContent -ProcessedData $processedData -Templates $templates
-            
+
             # Save HTML report
             Write-Information "✓ Saving HTML report..." -InformationAction Continue
             $reportContent | Out-File -FilePath $OutputPath -Encoding UTF8 -Force
@@ -1065,7 +1056,7 @@ function New-MaintenanceReport {
             Write-Information "✓ Building executive dashboard..." -InformationAction Continue
             $config = Get-MainConfiguration
             $dashboardData = Build-ExecutiveDashboard -AggregatedResults $processedData -Config $config
-            
+
             Write-Information "✓ Generating module cards..." -InformationAction Continue
             $moduleCardsHtml = ""
             $moduleCount = 0
@@ -1081,25 +1072,25 @@ function New-MaintenanceReport {
 
             Write-Information "✓ Building system changes log..." -InformationAction Continue
             $systemChangesLogHtml = Build-SystemChangesLog -AggregatedResults $processedData -MaxEntries 60
-            
+
             Write-Information "✓ Building error analysis..." -InformationAction Continue
             $errorAnalysisHtml = Build-ErrorAnalysis -AggregatedResults $processedData
-            
+
             Write-Information "✓ Building execution timeline..." -InformationAction Continue
             $timelineHtml = Build-ExecutionTimeline -AggregatedResults $processedData
-            
+
             Write-Information "✓ Building action items..." -InformationAction Continue
             $actionItemsHtml = Build-ActionItems -AggregatedResults $processedData -MaxItems 10
-            
+
             Write-Information "✓ Collecting system information..." -InformationAction Continue
             $systemInfo = Get-SystemInformation
-            
+
             # Start with main template
             $reportHtml = $templates.Main
-            
+
             # Replace CSS placeholder
             $reportHtml = $reportHtml -replace '{{CSS_CONTENT}}', $templates.CSS
-            
+
             # Replace header tokens
             $reportHtml = $reportHtml -replace '{{REPORT_TITLE}}', 'Windows Maintenance Report'
             $reportHtml = $reportHtml -replace '{{GENERATION_TIME}}', (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -1108,7 +1099,7 @@ function New-MaintenanceReport {
             $reportHtml = $reportHtml -replace '{{COMPUTER_NAME}}', $env:COMPUTERNAME
             $reportHtml = $reportHtml -replace '{{USER_NAME}}', $env:USERNAME
             $reportHtml = $reportHtml -replace '{{EXECUTION_MODE}}', $(if ($config.execution.enableDryRun -or $config.execution.dryRunByDefault) { "DRY RUN" } else { "LIVE" })
-            
+
             # Replace dashboard tokens
             foreach ($key in $dashboardData.Keys) {
                 $reportHtml = $reportHtml -replace "{{$key}}", $dashboardData[$key]
@@ -1136,7 +1127,7 @@ function New-MaintenanceReport {
             $reportHtml = $reportHtml -replace '{{ERROR_STATUS_TEXT}}', $(if ($totalErrors -eq 0) { 'No Issues' } elseif ($totalErrors -le 3) { 'Minor Issues' } else { 'Review Required' })
             $reportHtml = $reportHtml -replace '{{SESSION_ID}}', ($processedData.MetricsSummary.ProcessingMetadata.SessionId ?? 'N/A')
             $reportHtml = $reportHtml -replace '{{VERSION}}', '3.0.0'
-            
+
             # Replace section tokens
             $reportHtml = $reportHtml -replace '{{MODULE_REPORTS}}', $moduleCardsHtml
             $reportHtml = $reportHtml -replace '{{MODULE_CARDS}}', $moduleCardsHtml
@@ -1145,28 +1136,28 @@ function New-MaintenanceReport {
             $reportHtml = $reportHtml -replace '{{ERROR_ANALYSIS}}', $errorAnalysisHtml
             $reportHtml = $reportHtml -replace '{{EXECUTION_TIMELINE}}', $timelineHtml
             $reportHtml = $reportHtml -replace '{{ACTION_ITEMS}}', $actionItemsHtml
-            
+
             # Replace system info tokens
             foreach ($key in $systemInfo.Keys) {
                 $reportHtml = $reportHtml -replace "{{$key}}", $systemInfo[$key]
             }
-            
+
             # Replace any remaining common tokens
             $reportHtml = $reportHtml -replace '{{DETAILED_LOGS}}', "" # Handled in module cards
-            
+
             Write-Information "✓ Saving enhanced HTML report..." -InformationAction Continue
             $reportHtml | Out-File -FilePath $OutputPath -Encoding UTF8 -Force
-            
+
             # Copy JavaScript assets for enhanced reports
             if ($UseEnhanced) {
                 Write-Information "✓ Copying dashboard assets..." -InformationAction Continue
                 $reportDir = Split-Path $OutputPath -Parent
                 $assetsDir = Join-Path $reportDir "assets"
-                
+
                 if (-not (Test-Path $assetsDir)) {
                     New-Item -Path $assetsDir -ItemType Directory -Force | Out-Null
                 }
-                
+
                 $jsSourcePath = Find-ConfigTemplate "assets/dashboard.js"
                 if (Test-Path $jsSourcePath) {
                     $jsDestPath = Join-Path $assetsDir "dashboard.js"
@@ -1178,25 +1169,25 @@ function New-MaintenanceReport {
                 }
             }
         }
-        
+
         # Generate additional formats using processed data (both standard and enhanced)
         Write-Information "✓ Generating text report..." -InformationAction Continue
         $textPath = $OutputPath -replace '\.html$', '.txt'
         $textContent = New-TextReportContent -ProcessedData $processedData
         $textContent | Out-File -FilePath $textPath -Encoding UTF8 -Force
-        
+
         Write-Information "✓ Generating JSON export..." -InformationAction Continue
         $jsonPath = $OutputPath -replace '\.html$', '.json'
         $jsonContent = New-JsonExportContent -ProcessedData $processedData
         $jsonContent | Out-File -FilePath $jsonPath -Encoding UTF8 -Force
-        
+
         Write-Information "✓ Generating summary report..." -InformationAction Continue
         $summaryPath = $OutputPath -replace '\.html$', '_summary.txt'
         $summaryContent = New-SummaryReportContent -ProcessedData $processedData
         $summaryContent | Out-File -FilePath $summaryPath -Encoding UTF8 -Force
-        
+
         $duration = ((Get-Date) - $startTime).TotalSeconds
-        
+
         $result = @{
             Success       = $true
             ReportType    = $reportType
@@ -1207,10 +1198,10 @@ function New-MaintenanceReport {
             Duration      = $duration
             ModuleCount   = $processedData.ModuleResults.Count
         }
-        
+
         Write-Information "✓ Report generation completed in $([math]::Round($duration, 2)) seconds" -InformationAction Continue
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Report generation completed successfully ($reportType)" -Data $result
-        
+
         return $result
     }
     catch {
@@ -1237,20 +1228,20 @@ function New-HtmlReportContent {
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData,
-        
+
         [Parameter(Mandatory)]
         [hashtable]$Templates
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating comprehensive HTML report content'
-    
+
     try {
         # Start with main template structure
         $html = $Templates.Main
-        
+
         # Replace template placeholders with actual content
         $currentDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        
+
         # Basic template replacements for enhanced template
         $html = $html -replace '{{REPORT_TITLE}}', 'Windows Maintenance Report'
         $html = $html -replace '{{REPORT_SUBTITLE}}', 'Comprehensive System Maintenance Analysis'
@@ -1261,14 +1252,14 @@ function New-HtmlReportContent {
         $html = $html -replace '{{USER_NAME}}', $env:USERNAME
         $html = $html -replace '{{OS_VERSION}}', [System.Environment]::OSVersion.VersionString
         $html = $html -replace '{{EXECUTION_MODE}}', 'Full'
-        
+
         # Calculate and add enhanced metrics
         $systemHealthScore = 85  # Default value, calculate based on results
         $avgModuleTime = '00:02:15'  # Default, calculate from actual data
-        
+
         $html = $html -replace '{{SYSTEM_HEALTH_SCORE}}', $systemHealthScore
         $html = $html -replace '{{AVG_MODULE_TIME}}', $avgModuleTime
-        
+
         # System information placeholders - using Get-CimInstance instead of Get-WmiObject for better compatibility
         $processorName = 'Unknown Processor'
         $totalMemory = '0 GB'
@@ -1279,7 +1270,7 @@ function New-HtmlReportContent {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to get processor info: $($_.Exception.Message)"
         }
-        
+
         try {
             $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue
             if ($computerSystem) { $totalMemory = [math]::Round($computerSystem.TotalPhysicalMemory / 1GB, 2) }
@@ -1287,22 +1278,22 @@ function New-HtmlReportContent {
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to get computer system info: $($_.Exception.Message)"
         }
-        
+
         $html = $html -replace '{{PROCESSOR_NAME}}', $processorName
         $html = $html -replace '{{TOTAL_MEMORY}}', $totalMemory
         $html = $html -replace '{{STORAGE_INFO}}', 'Multiple Drives'
         $html = $html -replace '{{OS_VERSION_DETAILED}}', [System.Environment]::OSVersion.VersionString
         $html = $html -replace '{{BUILD_NUMBER}}', [System.Environment]::OSVersion.Version.Build
         $html = $html -replace '{{LAST_BOOT_TIME}}', (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss')
-        
+
         # Initialize empty sections for new features
         $html = $html -replace '{{EXECUTION_TIMELINE}}', '<div class="no-data">Timeline data will be available in future updates</div>'
         $html = $html -replace '{{DETAILED_LOGS}}', '<div class="no-data">Detailed logs will be available in future updates</div>'
         $html = $html -replace '{{ACTION_ITEMS}}', '<div class="no-data">No action items at this time - system is healthy!</div>'
-        
+
         # Patch 6: Enhanced variable binding from aggregated results
         Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Applying enhanced variable bindings'
-        
+
         try {
             # Build comprehensive variable replacement dictionary from aggregated results
             $placeholderValues = @{
@@ -1318,7 +1309,7 @@ function New-HtmlReportContent {
                 '{{OS_VERSION}}'          = [System.Environment]::OSVersion.VersionString
                 '{{REPORT_STATUS}}'       = 'Generated'
             }
-            
+
             # Apply aggregated result variables if available
             if ($ProcessedData.ExecutionMetrics) {
                 $metrics = $ProcessedData.ExecutionMetrics
@@ -1332,39 +1323,39 @@ function New-HtmlReportContent {
                 $placeholderValues['{{WINDOWS_UPDATES}}'] = $metrics.WindowsUpdatesInstalled -as [int]
                 $placeholderValues['{{APPS_UPGRADED}}'] = $metrics.ApplicationsUpgraded -as [int]
             }
-            
+
             # Apply replacements to HTML
             foreach ($placeholder in $placeholderValues.Keys) {
                 $value = if ($null -eq $placeholderValues[$placeholder]) { 'N/A' } else { $placeholderValues[$placeholder] }
                 $html = $html -replace [regex]::Escape($placeholder), [string]$value
             }
-            
+
             Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message "Applied $($placeholderValues.Count) variable bindings"
         }
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced variable binding failed, continuing with basic replacements: $($_.Exception.Message)"
         }
-        
+
         # Generate dashboard metrics section
         $dashboardSection = New-DashboardSection -ProcessedData $ProcessedData
         $html = $html -replace '{{DASHBOARD_SECTION}}', $dashboardSection
-        
+
         # Generate module sections
-        $moduleSections = New-ModuleSections -ProcessedData $ProcessedData -Templates $Templates  
+        $moduleSections = New-ModuleSections -ProcessedData $ProcessedData -Templates $Templates
         $html = $html -replace '{{MODULE_SECTIONS}}', $moduleSections
         $html = $html -replace '{{MODULE_REPORTS}}', $moduleSections
-        
+
         # Generate maintenance log section (if available)
         $maintenanceLogSection = New-MaintenanceLogSection -ProcessedData $ProcessedData -Templates $Templates
         if ($maintenanceLogSection) {
             # Insert maintenance log section after module sections
             $html = $html -replace '({{MODULE_SECTIONS}}.*?</div>)', "`$1`n$maintenanceLogSection"
         }
-        
+
         # Generate summary section
         $summarySection = New-SummarySection -ProcessedData $ProcessedData
         $html = $html -replace '{{SUMMARY_SECTION}}', $summarySection
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'HTML report content generated successfully'
         return $html
     }
@@ -1384,17 +1375,17 @@ function New-DashboardSection {
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
-    
+
     # Safely access nested properties with null checks
-    $metricsData = if ($ProcessedData.MetricsSummary) { 
-        $ProcessedData.MetricsSummary.DashboardMetrics 
+    $metricsData = if ($ProcessedData.MetricsSummary) {
+        $ProcessedData.MetricsSummary.DashboardMetrics
     }
-    else { 
+    else {
         @{ SuccessRate = 0; TotalTasks = 0; SystemHealthScore = 0; SecurityScore = 0 }
     }
-    
+
     $html = [System.Text.StringBuilder]::new()
-    
+
     # Dashboard header
     $html.AppendLine(@"
 <div class="dashboard-section">
@@ -1402,10 +1393,10 @@ function New-DashboardSection {
         <h2> System Health Dashboard</h2>
         <p class="dashboard-subtitle">Real-time maintenance metrics and system status</p>
     </div>
-    
+
     <div class="dashboard-grid">
 "@)
-    
+
     # Success rate card
     $successRate = $metricsData.SuccessRate ?? 0
     $successClass = if ($successRate -ge 90) { 'success' } elseif ($successRate -ge 70) { 'warning' } else { 'error' }
@@ -1417,7 +1408,7 @@ function New-DashboardSection {
             <p class="card-description">Tasks completed successfully</p>
         </div>
 "@)
-    
+
     # Total tasks card
     $totalTasks = $metricsData.TotalTasks ?? 0
     $html.AppendLine(@"
@@ -1428,7 +1419,7 @@ function New-DashboardSection {
             <p class="card-description">Maintenance tasks executed</p>
         </div>
 "@)
-    
+
     # System health score card
     $healthScore = $metricsData.SystemHealthScore ?? 0
     $healthClass = if ($healthScore -ge 85) { 'success' } elseif ($healthScore -ge 70) { 'warning' } else { 'error' }
@@ -1440,7 +1431,7 @@ function New-DashboardSection {
             <p class="card-description">Overall system health score</p>
         </div>
 "@)
-    
+
     # Security score card
     $securityScore = $metricsData.SecurityScore ?? 0
     $securityClass = if ($securityScore -ge 85) { 'success' } elseif ($securityScore -ge 70) { 'warning' } else { 'error' }
@@ -1452,10 +1443,10 @@ function New-DashboardSection {
             <p class="card-description">Privacy and security status</p>
         </div>
 "@)
-    
+
     $html.AppendLine("    </div>")
     $html.AppendLine("</div>")
-    
+
     return $html.ToString()
 }
 
@@ -1463,26 +1454,26 @@ function New-DashboardSection {
 .SYNOPSIS
     Generate individual module sections using task card templates
 #>
-function New-ModuleSections {
+function New-ModuleSection {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData,
-        
+
         [Parameter(Mandatory)]
         [hashtable]$Templates
     )
-    
+
     $html = [System.Text.StringBuilder]::new()
-    
+
     # Safely access nested properties with null checks
-    $moduleResults = if ($ProcessedData.ModuleResults) { 
-        $ProcessedData.ModuleResults 
+    $moduleResults = if ($ProcessedData.ModuleResults) {
+        $ProcessedData.ModuleResults
     }
-    else { 
+    else {
         @{ Type2ExecutionAnalysis = @{} }
     }
-    
+
     $html.AppendLine(@"
 <div class="modules-section">
     <div class="section-header">
@@ -1490,7 +1481,7 @@ function New-ModuleSections {
         <p class="section-subtitle">Detailed results for each maintenance module</p>
     </div>
 "@)
-    
+
     # Generate sections for each module
     $moduleNames = @(
         @{ Name = 'BloatwareRemoval'; DisplayName = 'Bloatware Removal'; Icon = '' }
@@ -1499,7 +1490,7 @@ function New-ModuleSections {
         @{ Name = 'TelemetryDisable'; DisplayName = 'Telemetry & Privacy'; Icon = '' }
         @{ Name = 'WindowsUpdates'; DisplayName = 'Windows Updates'; Icon = '' }
     )
-    
+
     foreach ($module in $moduleNames) {
         # Safely access module-specific data with null checks
         $moduleData = if ($moduleResults.Type2ExecutionAnalysis) {
@@ -1508,17 +1499,17 @@ function New-ModuleSections {
         else {
             $null
         }
-        
+
         # Parse operation logs for this module (convert PascalCase to kebab-case for directory name)
         $moduleLogDir = ($module.Name -creplace '([A-Z])', '-$1' -replace '^-', '').ToLower()
         $parsedLogs = Get-ParsedOperationLogs -ModuleName $moduleLogDir
-        
+
         # Generate operation log table HTML
         $operationLogTable = New-OperationLogTable -ParsedLogs $parsedLogs -ModuleName $module.DisplayName
-        
+
         if ($moduleData) {
             $taskCard = $Templates.TaskCard
-            
+
             # Replace template placeholders with comprehensive data
             $taskCard = $taskCard -replace '{{MODULE_NAME}}', $module.DisplayName
             $taskCard = $taskCard -replace '{{MODULE_ICON}}', $module.Icon
@@ -1526,19 +1517,19 @@ function New-ModuleSections {
             $taskCard = $taskCard -replace '{{MODULE_STATUS_CLASS}}', ($moduleData.Status ?? 'completed').ToLower()
             $taskCard = $taskCard -replace '{{EXECUTION_DURATION}}', ($moduleData.Duration ?? '00:00:00')
             $taskCard = $taskCard -replace '{{MODULE_DESCRIPTION}}', "This module handles $($module.DisplayName.ToLower()) operations"
-            
+
             # Metrics
             $taskCard = $taskCard -replace '{{ITEMS_DETECTED}}', ($moduleData.ItemsDetected ?? 0)
             $taskCard = $taskCard -replace '{{ITEMS_PROCESSED}}', ($moduleData.ItemsProcessed ?? 0)
             $taskCard = $taskCard -replace '{{MODULE_SUCCESS_RATE}}', ($moduleData.SuccessRate ?? 0)
             $taskCard = $taskCard -replace '{{PROCESSED_CLASS}}', 'success'
-            
+
             # Before/After sections
             $taskCard = $taskCard -replace '{{BEFORE_TITLE}}', 'Before Execution'
             $taskCard = $taskCard -replace '{{AFTER_TITLE}}', 'After Execution'
             $taskCard = $taskCard -replace '{{BEFORE_ITEMS_LIST}}', '<div class="item">Initial state captured</div>'
             $taskCard = $taskCard -replace '{{AFTER_ITEMS_LIST}}', '<div class="item">Changes applied successfully</div>'
-            
+
             # Changes summary
             $taskCard = $taskCard -replace '{{ITEMS_ADDED}}', ($moduleData.ItemsAdded ?? 0)
             $taskCard = $taskCard -replace '{{ITEMS_REMOVED}}', ($moduleData.ItemsRemoved ?? 0)
@@ -1546,30 +1537,30 @@ function New-ModuleSections {
             $taskCard = $taskCard -replace '{{ADDED_ITEMS}}', '<div class="item">Items added during execution</div>'
             $taskCard = $taskCard -replace '{{REMOVED_ITEMS}}', '<div class="item">Items removed during execution</div>'
             $taskCard = $taskCard -replace '{{MODIFIED_ITEMS}}', '<div class="item">Items modified during execution</div>'
-            
+
             # Operation logs
             $taskCard = $taskCard -replace '{{LOGS_SUCCESS_COUNT}}', ($moduleData.SuccessfulOperations ?? 0)
             $taskCard = $taskCard -replace '{{LOGS_ERROR_COUNT}}', ($moduleData.FailedOperations ?? 0)
             $taskCard = $taskCard -replace '{{LOGS_WARNING_COUNT}}', 0
             $taskCard = $taskCard -replace '{{LOGS_INFO_COUNT}}', ($moduleData.TotalOperations ?? 0)
             $taskCard = $taskCard -replace '{{OPERATION_LOG_ROWS}}', '<tr><td colspan="5" class="no-data">Operation logs available in detailed view</td></tr>'
-            
+
             # Performance stats
             $taskCard = $taskCard -replace '{{START_TIME}}', (Get-Date).ToString('HH:mm:ss')
             $taskCard = $taskCard -replace '{{END_TIME}}', (Get-Date).AddMinutes(2).ToString('HH:mm:ss')
             $taskCard = $taskCard -replace '{{MEMORY_USED}}', 'N/A'
-            
+
             # Conditional sections
             $taskCard = $taskCard -replace '{{HAS_DETAILED_RESULTS}}', 'false'
             $taskCard = $taskCard -replace '{{HAS_ERRORS}}', 'false'
             $taskCard = $taskCard -replace '{{HAS_RECOMMENDATIONS}}', 'false'
-            
+
             # Legacy placeholders
             $taskCard = $taskCard -replace '{{SUCCESS_COUNT}}', ($moduleData.SuccessfulOperations ?? 0)
             $taskCard = $taskCard -replace '{{TOTAL_COUNT}}', ($moduleData.TotalOperations ?? 0)
             $taskCard = $taskCard -replace '{{DURATION}}', ($moduleData.Duration ?? 0)
             $taskCard = $taskCard -replace '{{SUCCESS_RATE}}', ($moduleData.SuccessRate ?? 0)
-            
+
             $html.AppendLine($taskCard)
         }
         else {
@@ -1585,11 +1576,11 @@ function New-ModuleSections {
         </div>
 "@)
         }
-        
+
         # Append operation log table after module card
         $html.AppendLine($operationLogTable)
     }
-    
+
     $html.AppendLine("</div>")
     return $html.ToString()
 }
@@ -1604,30 +1595,30 @@ function New-SummarySection {
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
-    
+
     $html = [System.Text.StringBuilder]::new()
-    
+
     # Safely access nested properties with null checks
-    $executionSummary = if ($ProcessedData.MetricsSummary) { 
-        $ProcessedData.MetricsSummary.ExecutionSummary 
+    $executionSummary = if ($ProcessedData.MetricsSummary) {
+        $ProcessedData.MetricsSummary.ExecutionSummary
     }
-    else { 
+    else {
         @{ TotalDuration = 0; SuccessfulTasks = 0; FailedTasks = 0 }
     }
-    
-    $errorsData = if ($ProcessedData.ErrorsAnalysis) { 
-        $ProcessedData.ErrorsAnalysis 
+
+    $errorsData = if ($ProcessedData.ErrorsAnalysis) {
+        $ProcessedData.ErrorsAnalysis
     }
-    else { 
+    else {
         @{ ErrorSummary = @{ TotalErrors = 0 } }
     }
-    
+
     $html.AppendLine(@"
 <div class="summary-section">
     <div class="section-header">
         <h2> Execution Summary</h2>
     </div>
-    
+
     <div class="summary-content">
         <div class="summary-stats">
             <div class="stat-item">
@@ -1650,7 +1641,7 @@ function New-SummarySection {
     </div>
 </div>
 "@)
-    
+
     return $html.ToString()
 }
 
@@ -1660,16 +1651,17 @@ function New-SummarySection {
 #>
 function New-MaintenanceLogSection {
     [CmdletBinding()]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData,
-        
+
         [Parameter(Mandatory)]
         [hashtable]$Templates
     )
-    
+
     $html = [System.Text.StringBuilder]::new()
-    
+
     # Check if maintenance log data is available
     $maintenanceLog = if ($ProcessedData.ContainsKey('MaintenanceLog')) {
         $ProcessedData.MaintenanceLog
@@ -1677,22 +1669,22 @@ function New-MaintenanceLogSection {
     else {
         $null
     }
-    
+
     if (-not $maintenanceLog -or -not $maintenanceLog.Available) {
         Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Maintenance log not available for report'
         return ""
     }
-    
+
     $parsed = $maintenanceLog.Parsed
     $logConfig = $Templates.Config.reportConfiguration.moduleReports.MaintenanceLog
-    
+
     $html.AppendLine(@"
 <div class="module-card">
     <div class="module-header">
         <h3>$($logConfig.icon) $($logConfig.displayName)</h3>
         <p class="module-description">$($logConfig.description)</p>
     </div>
-    
+
     <div class="module-content">
         <div class="before-after-container">
             <!-- Before Section: Log Statistics -->
@@ -1721,7 +1713,7 @@ function New-MaintenanceLogSection {
                     </div>
                 </div>
             </div>
-            
+
             <!-- After Section: Entry Breakdown -->
             <div class="after-section">
                 <h4>$($logConfig.afterTitle)</h4>
@@ -1730,7 +1722,7 @@ function New-MaintenanceLogSection {
                         <h5 class="info">ℹ $($logConfig.changeCategories.info) ($($parsed.InfoMessages.Count))</h5>
                         <div class="change-items">
 "@)
-    
+
     # Add sample INFO messages (limit to 5 for brevity)
     $sampleInfo = $parsed.InfoMessages | Select-Object -First 5
     foreach ($msg in $sampleInfo) {
@@ -1740,16 +1732,16 @@ function New-MaintenanceLogSection {
     if ($parsed.InfoMessages.Count -gt 5) {
         $html.AppendLine("                            <div class='change-item'><em>... and $($parsed.InfoMessages.Count - 5) more INFO entries</em></div>")
     }
-    
+
     $html.AppendLine(@"
                         </div>
                     </div>
-                    
+
                     <div class="change-category">
                         <h5 class="success"> $($logConfig.changeCategories.success) ($($parsed.SuccessMessages.Count))</h5>
                         <div class="change-items">
 "@)
-    
+
     # Add sample SUCCESS messages
     $sampleSuccess = $parsed.SuccessMessages | Select-Object -First 5
     foreach ($msg in $sampleSuccess) {
@@ -1759,16 +1751,16 @@ function New-MaintenanceLogSection {
     if ($parsed.SuccessMessages.Count -gt 5) {
         $html.AppendLine("                            <div class='change-item'><em>... and $($parsed.SuccessMessages.Count - 5) more SUCCESS entries</em></div>")
     }
-    
+
     $html.AppendLine(@"
                         </div>
                     </div>
-                    
+
                     <div class="change-category">
                         <h5 class="warning"> $($logConfig.changeCategories.warning) ($($parsed.WarningMessages.Count))</h5>
                         <div class="change-items">
 "@)
-    
+
     # Add WARNING messages
     foreach ($msg in $parsed.WarningMessages) {
         $escapedMsg = [System.Web.HttpUtility]::HtmlEncode($msg)
@@ -1777,16 +1769,16 @@ function New-MaintenanceLogSection {
     if ($parsed.WarningMessages.Count -eq 0) {
         $html.AppendLine("                            <div class='change-item'><em>No warnings</em></div>")
     }
-    
+
     $html.AppendLine(@"
                         </div>
                     </div>
-                    
+
                     <div class="change-category">
                         <h5 class="error"> $($logConfig.changeCategories.error) ($($parsed.ErrorMessages.Count))</h5>
                         <div class="change-items">
 "@)
-    
+
     # Add ERROR messages
     foreach ($msg in $parsed.ErrorMessages) {
         $escapedMsg = [System.Web.HttpUtility]::HtmlEncode($msg)
@@ -1795,7 +1787,7 @@ function New-MaintenanceLogSection {
     if ($parsed.ErrorMessages.Count -eq 0) {
         $html.AppendLine("                            <div class='change-item'><em>No errors</em></div>")
     }
-    
+
     $html.AppendLine(@"
                         </div>
                     </div>
@@ -1805,7 +1797,7 @@ function New-MaintenanceLogSection {
     </div>
 </div>
 "@)
-    
+
     return $html.ToString()
 }
 
@@ -1824,12 +1816,12 @@ function New-TextReportContent {
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating text report content'
-    
+
     try {
         $text = [System.Text.StringBuilder]::new()
-        
+
         # Header
         $text.AppendLine("=" * 80)
         $text.AppendLine("                    WINDOWS MAINTENANCE REPORT")
@@ -1838,7 +1830,7 @@ function New-TextReportContent {
         $text.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
         $text.AppendLine("Computer: $env:COMPUTERNAME")
         $text.AppendLine("User: $env:USERNAME")
-        
+
         # Safely access nested properties with null checks
         $sessionId = if ($ProcessedData.MetricsSummary -and $ProcessedData.MetricsSummary.ProcessingMetadata) {
             $ProcessedData.MetricsSummary.ProcessingMetadata.SessionId
@@ -1848,22 +1840,22 @@ function New-TextReportContent {
         }
         $text.AppendLine("Session ID: $sessionId")
         $text.AppendLine("")
-        
+
         # Executive Summary - safely access nested properties
-        $executionSummary = if ($ProcessedData.MetricsSummary) { 
-            $ProcessedData.MetricsSummary.ExecutionSummary 
+        $executionSummary = if ($ProcessedData.MetricsSummary) {
+            $ProcessedData.MetricsSummary.ExecutionSummary
         }
-        else { 
+        else {
             @{ TotalTasks = 0; SuccessfulTasks = 0; FailedTasks = 0; TotalDuration = 0 }
         }
-        
-        $dashboardMetrics = if ($ProcessedData.MetricsSummary) { 
-            $ProcessedData.MetricsSummary.DashboardMetrics 
+
+        $dashboardMetrics = if ($ProcessedData.MetricsSummary) {
+            $ProcessedData.MetricsSummary.DashboardMetrics
         }
-        else { 
+        else {
             @{ SuccessRate = 0; SystemHealthScore = 0; SecurityScore = 0 }
         }
-        
+
         $text.AppendLine("EXECUTIVE SUMMARY")
         $text.AppendLine("-" * 40)
         $text.AppendLine("Tasks Executed: $($executionSummary.TotalTasks ?? 0)")
@@ -1874,13 +1866,13 @@ function New-TextReportContent {
         $text.AppendLine("System Health Score: $($dashboardMetrics.SystemHealthScore ?? 0)")
         $text.AppendLine("Security Score: $($dashboardMetrics.SecurityScore ?? 0)")
         $text.AppendLine("")
-        
+
         # Module Results Summary
         $moduleResults = $ProcessedData.ModuleResults
         if ($moduleResults -and $moduleResults.Type2ExecutionAnalysis) {
             $text.AppendLine("MODULE EXECUTION RESULTS")
             $text.AppendLine("-" * 40)
-            
+
             $moduleNames = @{
                 'BloatwareRemoval'   = 'Bloatware Removal'
                 'EssentialApps'      = 'Essential Applications'
@@ -1888,25 +1880,25 @@ function New-TextReportContent {
                 'TelemetryDisable'   = 'Telemetry & Privacy'
                 'WindowsUpdates'     = 'Windows Updates'
             }
-            
+
             foreach ($moduleKey in $moduleResults.Type2ExecutionAnalysis.Keys) {
                 $moduleData = $moduleResults.Type2ExecutionAnalysis[$moduleKey]
                 $displayName = $moduleNames[$moduleKey] ?? $moduleKey
-                
+
                 $successCount = $moduleData.SuccessfulOperations ?? 0
                 $totalCount = $moduleData.TotalOperations ?? 0
                 $successRate = $moduleData.SuccessRate ?? 0
                 $duration = $moduleData.Duration ?? 0
-                
+
                 $status = if ($successRate -ge 90) { "SUCCESS" } elseif ($successRate -ge 70) { "WARNING" } else { "FAILED" }
-                
+
                 $text.AppendLine("[$status] $displayName")
                 $text.AppendLine("  Operations: $successCount/$totalCount successful ($successRate%)")
                 $text.AppendLine("  Duration: $([math]::Round($duration, 2)) seconds")
                 $text.AppendLine("")
             }
         }
-        
+
         # Error Summary
         $errorsData = $ProcessedData.ErrorsAnalysis
         if ($errorsData -and $errorsData.ErrorSummary) {
@@ -1915,7 +1907,7 @@ function New-TextReportContent {
             $text.AppendLine("Total Errors: $($errorsData.ErrorSummary.TotalErrors ?? 0)")
             $text.AppendLine("High Severity: $($errorsData.ErrorSummary.HighSeverity ?? 0)")
             $text.AppendLine("Medium Severity: $($errorsData.ErrorSummary.MediumSeverity ?? 0)")
-            
+
             if ($errorsData.AllErrors -and $errorsData.AllErrors.Count -gt 0) {
                 $text.AppendLine("")
                 $text.AppendLine("Recent Errors:")
@@ -1926,34 +1918,34 @@ function New-TextReportContent {
             }
             $text.AppendLine("")
         }
-        
+
         # Health Scores
         $healthScores = $ProcessedData.HealthScores
         if ($healthScores) {
             $text.AppendLine("SYSTEM HEALTH ANALYSIS")
             $text.AppendLine("-" * 40)
-            
+
             if ($healthScores.SystemHealth) {
                 $text.AppendLine("Overall Score: $($healthScores.SystemHealth.OverallScore ?? 0)")
             }
-            
+
             if ($healthScores.Security) {
                 $text.AppendLine("Security Status: $($healthScores.Security.Status ?? 'Unknown')")
             }
-            
+
             if ($healthScores.Performance) {
                 $text.AppendLine("Performance: $($healthScores.Performance.TotalOperations ?? 0) operations")
             }
-            
+
             $text.AppendLine("")
         }
-        
+
         # Footer
         $text.AppendLine("=" * 80)
         $text.AppendLine("Report generated by Windows Maintenance Automation v3.0")
         $text.AppendLine("Split Architecture: LogProcessor → ReportGenerator")
         $text.AppendLine("=" * 80)
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'Text report content generated successfully'
         return $text.ToString()
     }
@@ -1973,9 +1965,9 @@ function New-JsonExportContent {
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating JSON export content'
-    
+
     try {
         # Create export-friendly structure with safe null handling
         $exportData = @{
@@ -1993,9 +1985,9 @@ function New-JsonExportContent {
             HealthScores       = if ($ProcessedData.HealthScores) { $ProcessedData.HealthScores } else { @{} }
             ProcessingMetadata = if ($ProcessedData.MetricsSummary) { $ProcessedData.MetricsSummary.ProcessingMetadata } else { @{} }
         }
-        
+
         $jsonContent = $exportData | ConvertTo-Json -Depth 10
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'JSON export content generated successfully'
         return $jsonContent
     }
@@ -2015,55 +2007,55 @@ function New-SummaryReportContent {
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating summary report content'
-    
+
     try {
         $summary = [System.Text.StringBuilder]::new()
-        
+
         # Safely access nested properties with null checks
-        $executionSummary = if ($ProcessedData.MetricsSummary) { 
-            $ProcessedData.MetricsSummary.ExecutionSummary 
+        $executionSummary = if ($ProcessedData.MetricsSummary) {
+            $ProcessedData.MetricsSummary.ExecutionSummary
         }
-        else { 
+        else {
             @{ TotalTasks = 0; SuccessfulTasks = 0; FailedTasks = 0; TotalDuration = 0 }
         }
-        
-        $dashboardMetrics = if ($ProcessedData.MetricsSummary) { 
-            $ProcessedData.MetricsSummary.DashboardMetrics 
+
+        $dashboardMetrics = if ($ProcessedData.MetricsSummary) {
+            $ProcessedData.MetricsSummary.DashboardMetrics
         }
-        else { 
+        else {
             @{ SuccessRate = 0; SystemHealthScore = 0; SecurityScore = 0 }
         }
-        
-        $errorsData = if ($ProcessedData.ErrorsAnalysis) { 
-            $ProcessedData.ErrorsAnalysis 
+
+        $errorsData = if ($ProcessedData.ErrorsAnalysis) {
+            $ProcessedData.ErrorsAnalysis
         }
-        else { 
+        else {
             @{ ErrorSummary = @{ TotalErrors = 0 } }
         }
-        
+
         # Compact summary format
         $summary.AppendLine(" WINDOWS MAINTENANCE SUMMARY")
         $summary.AppendLine("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
         $summary.AppendLine("")
-        
+
         # Key metrics in compact format
         $summary.AppendLine(" RESULTS:")
         $summary.AppendLine("   Tasks: $($executionSummary.SuccessfulTasks ?? 0)/$($executionSummary.TotalTasks ?? 0) successful ($($dashboardMetrics.SuccessRate ?? 0)%)")
         $summary.AppendLine("   Duration: $([math]::Round(($executionSummary.TotalDuration ?? 0), 1))s")
         $summary.AppendLine("   Health: $($dashboardMetrics.SystemHealthScore ?? 0)/100")
         $summary.AppendLine("   Security: $($dashboardMetrics.SecurityScore ?? 0)/100")
-        
+
         if ($errorsData -and $errorsData.ErrorSummary -and $errorsData.ErrorSummary.TotalErrors -gt 0) {
             $summary.AppendLine("")
             $summary.AppendLine("  ISSUES:")
             $summary.AppendLine("   Errors: $($errorsData.ErrorSummary.TotalErrors) ($($errorsData.ErrorSummary.HighSeverity) high severity)")
         }
-        
+
         $summary.AppendLine("")
         $summary.AppendLine(" System maintenance completed - v3.0 Split Architecture")
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'Summary report content generated successfully'
         return $summary.ToString()
     }
@@ -2084,13 +2076,13 @@ function New-SummaryReportContent {
 #>
 function Get-TaskDistributionData {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [hashtable]$ProcessedData
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating task distribution chart data'
-    
+
     try {
         # Extract task data from processed results with safe null handling
         $moduleResults = if ($ProcessedData.ModuleResults) {
@@ -2099,7 +2091,7 @@ function Get-TaskDistributionData {
         else {
             $null
         }
-        
+
         if (-not $moduleResults -or $moduleResults.Keys.Count -eq 0) {
             return @{
                 labels   = @('No Data')
@@ -2109,20 +2101,20 @@ function Get-TaskDistributionData {
                     })
             }
         }
-        
+
         $distribution = @()
         $moduleNames = @{
             'BloatwareRemoval'   = 'Bloatware Removal'
             'EssentialApps'      = 'Essential Apps'
-            'SystemOptimization' = 'System Optimization'  
+            'SystemOptimization' = 'System Optimization'
             'TelemetryDisable'   = 'Privacy & Telemetry'
             'WindowsUpdates'     = 'Windows Updates'
         }
-        
+
         foreach ($moduleKey in $moduleResults.Keys) {
             $moduleData = $moduleResults[$moduleKey]
             $displayName = $moduleNames[$moduleKey] ?? $moduleKey
-            
+
             $distribution += @{
                 Type    = $displayName
                 Count   = $moduleData.TotalOperations ?? 0
@@ -2130,7 +2122,7 @@ function Get-TaskDistributionData {
                 Failed  = $moduleData.FailedOperations ?? 0
             }
         }
-        
+
         return @{
             labels   = $distribution.Type
             datasets = @(@{
@@ -2155,13 +2147,13 @@ function Get-TaskDistributionData {
 #>
 function Get-SystemResourceData {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [hashtable]$ProcessedData
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating system resource chart data'
-    
+
     try {
         # Extract system health data from processed results with safe null handling
         $systemHealth = if ($ProcessedData.HealthScores) {
@@ -2170,7 +2162,7 @@ function Get-SystemResourceData {
         else {
             $null
         }
-        
+
         if (-not $systemHealth -or -not $systemHealth.HealthFactors) {
             return @{
                 labels   = @('No Data')
@@ -2180,24 +2172,24 @@ function Get-SystemResourceData {
                     })
             }
         }
-        
+
         $resources = @()
         $values = @()
         $colors = @()
-        
+
         # Extract health factor scores
         foreach ($factorName in $systemHealth.HealthFactors.Keys) {
             $factor = $systemHealth.HealthFactors[$factorName]
             $resources += $factorName
-            
+
             # Convert score to percentage
             $percentage = if ($factor.MaxScore -gt 0) {
                 [math]::Round(($factor.Score / $factor.MaxScore) * 100, 1)
             }
             else { 0 }
-            
+
             $values += $percentage
-            
+
             # Assign colors based on component type
             $colors += switch ($factorName) {
                 'CPU' { '#0078d4' }
@@ -2208,7 +2200,7 @@ function Get-SystemResourceData {
                 default { '#323130' }
             }
         }
-        
+
         return @{
             labels   = $resources
             datasets = @(@{
@@ -2233,13 +2225,13 @@ function Get-SystemResourceData {
 #>
 function Get-ExecutionTimelineData {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [hashtable]$ProcessedData
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating execution timeline chart data'
-    
+
     try {
         # Extract execution metrics from processed results with safe null handling
         $moduleResults = if ($ProcessedData.ModuleResults) {
@@ -2248,30 +2240,30 @@ function Get-ExecutionTimelineData {
         else {
             $null
         }
-        
+
         if (-not $moduleResults -or $moduleResults.Keys.Count -eq 0) {
             return @{
                 labels   = @()
                 datasets = @()
             }
         }
-        
+
         $timelinePoints = @()
         $moduleIndex = 0
         $startTime = Get-Date
-        
+
         foreach ($moduleKey in $moduleResults.Keys) {
             $moduleData = $moduleResults[$moduleKey]
             $duration = $moduleData.Duration ?? 0
-            
+
             $timelinePoints += @{
                 x = $startTime.AddMinutes($moduleIndex * 2).ToString('yyyy-MM-ddTHH:mm:ss')
                 y = $duration
             }
-            
+
             $moduleIndex++
         }
-        
+
         return @{
             datasets = @(@{
                     label           = 'Module Duration (seconds)'
@@ -2296,13 +2288,13 @@ function Get-ExecutionTimelineData {
 #>
 function Get-SecurityScoreData {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [hashtable]$ProcessedData
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating security score chart data'
-    
+
     try {
         # Extract security analytics from processed results with safe null handling
         $securityAnalytics = if ($ProcessedData.HealthScores) {
@@ -2311,15 +2303,15 @@ function Get-SecurityScoreData {
         else {
             $null
         }
-        
+
         # Define security categories and extract scores
         $categories = @('Privacy', 'Updates', 'System Security', 'Services', 'Network Protection', 'Configuration')
         $scores = @()
-        
+
         if ($securityAnalytics) {
             # Use actual security score as base
             $baseScore = $securityAnalytics.SecurityScore ?? 75
-            
+
             # Generate category-specific scores based on security analysis
             $scores = @(
                 $baseScore,                                           # Privacy (from TelemetryDisable)
@@ -2334,7 +2326,7 @@ function Get-SecurityScoreData {
             # Default scores if no security data available
             $scores = @(75, 80, 75, 70, 80, 75)
         }
-        
+
         return @{
             labels   = $categories
             datasets = @(@{
@@ -2361,13 +2353,13 @@ function Get-SecurityScoreData {
 #>
 function Get-ComprehensiveChartData {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Generating comprehensive chart data collection'
-    
+
     try {
         $chartData = @{
             TaskDistribution  = Get-TaskDistributionData -ProcessedData $ProcessedData
@@ -2375,7 +2367,7 @@ function Get-ComprehensiveChartData {
             ExecutionTimeline = Get-ExecutionTimelineData -ProcessedData $ProcessedData
             SecurityScore     = Get-SecurityScoreData -ProcessedData $ProcessedData
         }
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'Comprehensive chart data generated successfully'
         return $chartData
     }
@@ -2400,27 +2392,27 @@ function Get-ComprehensiveChartData {
 #>
 function Test-ConfigTemplateIntegration {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [switch]$TestFallbacks
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Testing config template integration'
-    
+
     $testResults = @{
         Success             = $true
         TemplateLoadResults = @{}
         FallbackResults     = @{}
         ValidationErrors    = @()
     }
-    
+
     try {
         # Test 1: Normal template loading
         Write-Information " Testing normal template loading..." -InformationAction Continue
-        
+
         try {
             $templates = Get-HtmlTemplates -ErrorAction Stop
-            
+
             # Validate each template
             $requiredTemplates = @('Main', 'TaskCard', 'CSS', 'Config')
             foreach ($templateName in $requiredTemplates) {
@@ -2441,7 +2433,7 @@ function Test-ConfigTemplateIntegration {
                     $testResults.Success = $false
                 }
             }
-            
+
             # Validate template content has required placeholders
             if ($templates.Main) {
                 $requiredPlaceholders = @('{{REPORT_TITLE}}', '{{GENERATION_TIME}}', '{{MODULE_REPORTS}}')
@@ -2452,7 +2444,7 @@ function Test-ConfigTemplateIntegration {
                     }
                 }
             }
-            
+
             Write-Information "   Template loading test completed" -InformationAction Continue
         }
         catch {
@@ -2460,14 +2452,14 @@ function Test-ConfigTemplateIntegration {
             $testResults.ValidationErrors += "Template loading failed: $($_.Exception.Message)"
             Write-Warning "   Template loading failed: $($_.Exception.Message)"
         }
-        
+
         # Test 2: Fallback mechanisms (if requested)
         if ($TestFallbacks) {
             Write-Information " Testing fallback template mechanisms..." -InformationAction Continue
-            
+
             try {
                 $fallbackTemplates = Get-FallbackTemplates -ErrorAction Stop
-                
+
                 $requiredFallbacks = @('Main', 'TaskCard', 'CSS', 'Config')
                 foreach ($templateName in $requiredFallbacks) {
                     if ($fallbackTemplates.ContainsKey($templateName) -and -not [string]::IsNullOrEmpty($fallbackTemplates[$templateName])) {
@@ -2486,7 +2478,7 @@ function Test-ConfigTemplateIntegration {
                         $testResults.Success = $false
                     }
                 }
-                
+
                 Write-Information "   Fallback template test completed" -InformationAction Continue
             }
             catch {
@@ -2495,7 +2487,7 @@ function Test-ConfigTemplateIntegration {
                 Write-Warning "   Fallback template loading failed: $($_.Exception.Message)"
             }
         }
-        
+
         # Summary
         if ($testResults.Success) {
             Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'Config template integration test passed'
@@ -2503,7 +2495,7 @@ function Test-ConfigTemplateIntegration {
         else {
             Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Config template integration test failed: $($testResults.ValidationErrors.Count) errors found"
         }
-        
+
         return $testResults
     }
     catch {
@@ -2521,16 +2513,16 @@ function Test-ConfigTemplateIntegration {
 #>
 function Test-ProcessedDataIntegration {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter()]
         [string]$ProcessedDataPath,
-        
+
         [Parameter()]
         [switch]$TestFallbacks
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Testing processed data integration'
-    
+
     $testResults = @{
         Success           = $true
         DataLoadResults   = @{}
@@ -2538,18 +2530,18 @@ function Test-ProcessedDataIntegration {
         FallbackResults   = @{}
         ValidationErrors  = @()
     }
-    
+
     try {
         # Test 1: Normal data loading
         Write-Information " Testing processed data loading..." -InformationAction Continue
-        
+
         $loadParams = @{}
         if ($ProcessedDataPath) { $loadParams.ProcessedDataPath = $ProcessedDataPath }
         if ($TestFallbacks) { $loadParams.FallbackToRawLogs = $true }
-        
+
         try {
             $processedData = Get-ProcessedLogData @loadParams -ErrorAction Stop
-            
+
             # Validate data structure
             $requiredComponents = @('MetricsSummary', 'ModuleResults', 'ErrorsAnalysis', 'HealthScores')
             foreach ($component in $requiredComponents) {
@@ -2569,16 +2561,16 @@ function Test-ProcessedDataIntegration {
                     $testResults.ValidationErrors += "Data component '$component' missing"
                 }
             }
-            
+
             # Test data validation
             $validation = Test-ProcessedDataIntegrity -ProcessedData $processedData
             $testResults.ValidationResults = $validation
-            
+
             if (-not $validation.IsComplete) {
                 $testResults.Success = $false
                 $testResults.ValidationErrors += $validation.CriticalIssues
             }
-            
+
             Write-Information "   Processed data loading test completed" -InformationAction Continue
         }
         catch {
@@ -2586,7 +2578,7 @@ function Test-ProcessedDataIntegration {
             $testResults.ValidationErrors += "Processed data loading failed: $($_.Exception.Message)"
             Write-Warning "   Processed data loading failed: $($_.Exception.Message)"
         }
-        
+
         # Summary
         if ($testResults.Success) {
             Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'Processed data integration test passed'
@@ -2594,7 +2586,7 @@ function Test-ProcessedDataIntegration {
         else {
             Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Processed data integration test failed: $($testResults.ValidationErrors.Count) errors found"
         }
-        
+
         return $testResults
     }
     catch {
@@ -2634,15 +2626,15 @@ $script:ReportGeneratorMemory = @{
 #>
 function Invoke-ReportMemoryManagement {
     [CmdletBinding()]
-    param(
+    [OutputType([hashtable])]`nparam(
         [ValidateSet('Cleanup', 'Optimize', 'Monitor', 'Reset')]
         [string]$Operation = 'Cleanup',
-        
+
         [switch]$Force
     )
-    
+
     Write-LogEntry -Level 'DEBUG' -Component 'MEMORY-MGR' -Message "Memory management operation: $Operation"
-    
+
     try {
         $beforeMemory = [System.GC]::GetTotalMemory($false)
         $result = @{
@@ -2653,17 +2645,17 @@ function Invoke-ReportMemoryManagement {
             Freed        = 0
             Details      = @{}
         }
-        
+
         switch ($Operation) {
             'Cleanup' {
                 # Clear expired cache entries
                 $clearedTemplates = 0
                 $clearedProcessedData = 0
                 $clearedReports = 0
-                
+
                 $cutoffTime = (Get-Date) - $script:ReportGeneratorMemory.MemorySettings.MaxTemplateAge
                 $keysToRemove = @()
-                
+
                 # Clean template cache
                 foreach ($key in $script:ReportGeneratorMemory.TemplateCache.Keys) {
                     $entry = $script:ReportGeneratorMemory.TemplateCache[$key]
@@ -2675,7 +2667,7 @@ function Invoke-ReportMemoryManagement {
                     $script:ReportGeneratorMemory.TemplateCache.Remove($key)
                     $clearedTemplates++
                 }
-                
+
                 # Clean processed data cache
                 $cutoffTime = (Get-Date) - $script:ReportGeneratorMemory.MemorySettings.MaxProcessedDataAge
                 $keysToRemove = @()
@@ -2689,43 +2681,43 @@ function Invoke-ReportMemoryManagement {
                     $script:ReportGeneratorMemory.ProcessedDataCache.Remove($key)
                     $clearedProcessedData++
                 }
-                
+
                 # Clear report output cache
                 $script:ReportGeneratorMemory.ReportOutputCache.Clear()
                 $clearedReports = $script:ReportGeneratorMemory.ReportOutputCache.Count
-                
+
                 $result.Details = @{
                     ClearedTemplates     = $clearedTemplates
-                    ClearedProcessedData = $clearedProcessedData  
+                    ClearedProcessedData = $clearedProcessedData
                     ClearedReports       = $clearedReports
                 }
-                
+
                 Write-LogEntry -Level 'INFO' -Component 'MEMORY-MGR' -Message "Cleanup complete: Templates=$clearedTemplates, Data=$clearedProcessedData, Reports=$clearedReports"
             }
-            
+
             'Optimize' {
                 # Force garbage collection and memory optimization
                 [System.GC]::Collect()
                 [System.GC]::WaitForPendingFinalizers()
                 [System.GC]::Collect()
-                
+
                 # Optimize data structures by rebuilding them
                 $optimizedStructures = Optimize-ReportDataStructures
-                
+
                 $result.Details = @{
                     OptimizedStructures   = $optimizedStructures
                     GarbageCollectionRuns = 3
                 }
-                
+
                 Write-LogEntry -Level 'INFO' -Component 'MEMORY-MGR' -Message "Memory optimization complete: $optimizedStructures structures optimized"
             }
-            
+
             'Monitor' {
                 $currentMemory = [System.GC]::GetTotalMemory($false)
                 $stats = Get-ReportMemoryStatistics
-                
+
                 $result.Details = $stats
-                
+
                 if ($currentMemory -gt $script:ReportGeneratorMemory.MemorySettings.MemoryCleanupThreshold) {
                     Write-LogEntry -Level 'WARNING' -Component 'MEMORY-MGR' -Message "Memory usage high: $(($currentMemory / 1MB).ToString('F1'))MB - consider cleanup"
                 }
@@ -2733,29 +2725,29 @@ function Invoke-ReportMemoryManagement {
                     Write-LogEntry -Level 'DEBUG' -Component 'MEMORY-MGR' -Message "Memory usage normal: $(($currentMemory / 1MB).ToString('F1'))MB"
                 }
             }
-            
+
             'Reset' {
                 # Complete memory reset
                 Clear-ReportGeneratorCache
                 [System.GC]::Collect()
                 [System.GC]::WaitForPendingFinalizers()
-                
+
                 $result.Details = @{
                     CachesCleared    = 'All'
                     GarbageCollected = $true
                 }
-                
+
                 Write-LogEntry -Level 'INFO' -Component 'MEMORY-MGR' -Message "Complete memory reset performed"
             }
         }
-        
+
         $afterMemory = [System.GC]::GetTotalMemory($false)
         $result.AfterMemory = $afterMemory
         $result.Freed = $beforeMemory - $afterMemory
         $result.Success = $true
-        
+
         $script:ReportGeneratorMemory.LastCleanup = Get-Date
-        
+
         return $result
     }
     catch {
@@ -2784,7 +2776,7 @@ function Invoke-ReportMemoryManagement {
 
 .EXAMPLE
     PS> Clear-ReportGeneratorCache
-    
+
     Flushes all report generator caches before next report generation
 
 .NOTES
@@ -2794,14 +2786,14 @@ function Invoke-ReportMemoryManagement {
 function Clear-ReportGeneratorCache {
     [CmdletBinding()]
     param()
-    
+
     Write-LogEntry -Level 'INFO' -Component 'MEMORY-MGR' -Message 'Clearing all ReportGenerator caches'
-    
+
     try {
         $script:ReportGeneratorMemory.TemplateCache.Clear()
         $script:ReportGeneratorMemory.ProcessedDataCache.Clear()
         $script:ReportGeneratorMemory.ReportOutputCache.Clear()
-        
+
         Write-LogEntry -Level 'INFO' -Component 'MEMORY-MGR' -Message 'All caches cleared successfully'
     }
     catch {
@@ -2814,14 +2806,13 @@ function Clear-ReportGeneratorCache {
 .SYNOPSIS
     Gets detailed memory usage statistics for ReportGenerator
 #>
-function Get-ReportMemoryStatistics {
+function Get-ReportMemoryStatistic {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-    
+    [OutputType([hashtable])]`nparam()
+
     try {
         $currentMemory = [System.GC]::GetTotalMemory($false)
-        
+
         # Calculate cache sizes
         $templateCacheSize = 0
         foreach ($entry in $script:ReportGeneratorMemory.TemplateCache.Values) {
@@ -2829,21 +2820,21 @@ function Get-ReportMemoryStatistics {
                 $templateCacheSize += try { [System.Text.Encoding]::UTF8.GetBytes($entry.Data).Length } catch { 1KB }
             }
         }
-        
+
         $processedDataCacheSize = 0
         foreach ($entry in $script:ReportGeneratorMemory.ProcessedDataCache.Values) {
             if ($entry.Data) {
                 $processedDataCacheSize += try { [System.Text.Encoding]::UTF8.GetBytes(($entry.Data | ConvertTo-Json)).Length } catch { 1KB }
             }
         }
-        
+
         $reportCacheSize = 0
         foreach ($entry in $script:ReportGeneratorMemory.ReportOutputCache.Values) {
             if ($entry.Data) {
                 $reportCacheSize += try { [System.Text.Encoding]::UTF8.GetBytes($entry.Data).Length } catch { 1KB }
             }
         }
-        
+
         $stats = @{
             TotalSystemMemory      = $currentMemory
             TemplateCacheSize      = $templateCacheSize
@@ -2858,7 +2849,7 @@ function Get-ReportMemoryStatistics {
             MemorySettings         = $script:ReportGeneratorMemory.MemorySettings
             LastCleanup            = $script:ReportGeneratorMemory.LastCleanup
         }
-        
+
         return $stats
     }
     catch {
@@ -2871,61 +2862,61 @@ function Get-ReportMemoryStatistics {
 .SYNOPSIS
     Optimizes data structures in ReportGenerator for better memory efficiency
 #>
-function Optimize-ReportDataStructures {
+function Optimize-ReportDataStructure {
     [CmdletBinding()]
     [OutputType([int])]
     param()
-    
+
     Write-LogEntry -Level 'DEBUG' -Component 'MEMORY-MGR' -Message 'Optimizing ReportGenerator data structures'
-    
+
     try {
         $optimizedCount = 0
-        
+
         # Rebuild template cache with optimized structure
         if ($script:ReportGeneratorMemory.TemplateCache.Count -gt 0) {
             $newTemplateCache = @{}
             foreach ($key in $script:ReportGeneratorMemory.TemplateCache.Keys) {
                 $entry = $script:ReportGeneratorMemory.TemplateCache[$key]
-                
+
                 # Only keep essential data in optimized structure
                 $optimizedEntry = @{
                     Data      = $entry.Data
                     Timestamp = $entry.Timestamp
                     Size      = if ($entry.Data) { [System.Text.Encoding]::UTF8.GetBytes($entry.Data).Length } else { 0 }
                 }
-                
+
                 $newTemplateCache[$key] = $optimizedEntry
             }
             $script:ReportGeneratorMemory.TemplateCache = $newTemplateCache
             $optimizedCount++
         }
-        
-        # Rebuild processed data cache with optimized structure  
+
+        # Rebuild processed data cache with optimized structure
         if ($script:ReportGeneratorMemory.ProcessedDataCache.Count -gt 0) {
             $newDataCache = @{}
             foreach ($key in $script:ReportGeneratorMemory.ProcessedDataCache.Keys) {
                 $entry = $script:ReportGeneratorMemory.ProcessedDataCache[$key]
-                
+
                 $optimizedEntry = @{
                     Data      = $entry.Data
                     Timestamp = $entry.Timestamp
                     Type      = $entry.Type
                 }
-                
+
                 $newDataCache[$key] = $optimizedEntry
             }
             $script:ReportGeneratorMemory.ProcessedDataCache = $newDataCache
             $optimizedCount++
         }
-        
+
         # Clear and rebuild report cache to remove fragmentation
         if ($script:ReportGeneratorMemory.ReportOutputCache.Count -gt 0) {
             $script:ReportGeneratorMemory.ReportOutputCache.Clear()
             $optimizedCount++
         }
-        
+
         Write-LogEntry -Level 'DEBUG' -Component 'MEMORY-MGR' -Message "Data structure optimization complete: $optimizedCount structures rebuilt"
-        
+
         return $optimizedCount
     }
     catch {
@@ -2964,8 +2955,7 @@ function Optimize-ReportDataStructures {
 #>
 function New-ReportIndex {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory = $true)]
         [string]$ReportsPath,
 
@@ -3007,7 +2997,7 @@ function New-ReportIndex {
             $totalSize += $size
             $sizeKb = [math]::Round($size / 1024, 2)
             $timestamp = $report.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')
-            
+
             # Extract report type from filename
             $reportType = if ($report.Name -like '*MaintenanceReport*') { 'Full Report' } `
                 elseif ($report.Name -like '*Summary*') { 'Summary Report' } `
@@ -3175,7 +3165,7 @@ function New-ReportIndex {
             <h1>📊 Maintenance Reports</h1>
             <p>Windows Maintenance Automation System - Report Archive</p>
         </div>
-        
+
         <div class="stats">
             <div class="stat">
                 <div class="stat-value">$($result.ReportCount)</div>
@@ -3204,7 +3194,7 @@ function New-ReportIndex {
         }
         else {
             $htmlContent += "            <ul class=`"reports-list`">`n"
-            
+
             foreach ($report in $reportMetadata) {
                 $htmlContent += @"
             <li class="report-item">
@@ -3220,7 +3210,7 @@ function New-ReportIndex {
             </li>
 "@
             }
-            
+
             $htmlContent += "            </ul>`n"
         }
 
@@ -3277,22 +3267,22 @@ function Get-SuccessRate {
         [Parameter(Mandatory)]
         [hashtable]$Results
     )
-    
+
     try {
         $totalTasks = 0
         $successfulTasks = 0
-        
+
         foreach ($moduleResult in $Results.ModuleResults.Values) {
             $totalTasks++
             if ($moduleResult.Status -eq 'Success' -or $moduleResult.Success -eq $true) {
                 $successfulTasks++
             }
         }
-        
+
         if ($totalTasks -eq 0) {
             return "0%"
         }
-        
+
         $percentage = [Math]::Round(($successfulTasks / $totalTasks) * 100, 1)
         return "${percentage}%"
     }
@@ -3313,10 +3303,10 @@ function Get-TotalDuration {
         [Parameter(Mandatory)]
         [hashtable]$Results
     )
-    
+
     try {
         $totalSeconds = 0
-        
+
         foreach ($moduleResult in $Results.ModuleResults.Values) {
             if ($moduleResult.Metrics -and $moduleResult.Metrics.DurationSeconds) {
                 $totalSeconds += $moduleResult.Metrics.DurationSeconds
@@ -3325,7 +3315,7 @@ function Get-TotalDuration {
                 $totalSeconds += $moduleResult.DurationSeconds
             }
         }
-        
+
         if ($totalSeconds -lt 60) {
             return "$([Math]::Round($totalSeconds, 1))s"
         }
@@ -3357,22 +3347,22 @@ function Get-SystemHealthScore {
         [Parameter(Mandatory)]
         [hashtable]$Results
     )
-    
+
     try {
         $score = 100
         $totalModules = 0
         $criticalErrors = 0
         $errors = 0
         $warnings = 0
-        
+
         foreach ($moduleResult in $Results.ModuleResults.Values) {
             $totalModules++
-            
+
             # Deduct for failures
             if ($moduleResult.Status -eq 'Error' -or $moduleResult.Success -eq $false) {
                 $score -= 15
             }
-            
+
             # Count errors and warnings
             if ($moduleResult.Errors) {
                 $errors += $moduleResult.Errors.Count
@@ -3383,24 +3373,24 @@ function Get-SystemHealthScore {
                     }
                 }
             }
-            
+
             if ($moduleResult.Warnings) {
                 $warnings += $moduleResult.Warnings.Count
             }
         }
-        
+
         # Deduct for critical errors
         $score -= ($criticalErrors * 10)
-        
+
         # Deduct for regular errors
         $score -= ($errors * 5)
-        
+
         # Deduct for warnings
         $score -= ($warnings * 2)
-        
+
         # Ensure score stays within 0-100
         $score = [Math]::Max(0, [Math]::Min(100, $score))
-        
+
         return $score
     }
     catch {
@@ -3420,10 +3410,10 @@ function Get-ItemsProcessedTotal {
         [Parameter(Mandatory)]
         [hashtable]$Results
     )
-    
+
     try {
         $total = 0
-        
+
         foreach ($moduleResult in $Results.ModuleResults.Values) {
             if ($moduleResult.Metrics -and $moduleResult.Metrics.ItemsProcessed) {
                 $total += $moduleResult.Metrics.ItemsProcessed
@@ -3432,7 +3422,7 @@ function Get-ItemsProcessedTotal {
                 $total += $moduleResult.ItemsProcessed
             }
         }
-        
+
         return $total
     }
     catch {
@@ -3447,19 +3437,18 @@ function Get-ItemsProcessedTotal {
 #>
 function Get-ErrorCount {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
         [hashtable]$Results
     )
-    
+
     try {
         $counts = @{
             Critical = 0
             Error    = 0
             Warning  = 0
         }
-        
+
         foreach ($moduleResult in $Results.ModuleResults.Values) {
             if ($moduleResult.Errors) {
                 foreach ($errorItem in $moduleResult.Errors) {
@@ -3467,12 +3456,12 @@ function Get-ErrorCount {
                     $counts[$severity]++
                 }
             }
-            
+
             if ($moduleResult.Warnings) {
                 $counts.Warning += $moduleResult.Warnings.Count
             }
         }
-        
+
         return $counts
     }
     catch {
@@ -3492,31 +3481,31 @@ function Get-ErrorSeverity {
         [Parameter(Mandatory)]
         $ErrorData
     )
-    
+
     try {
         # Check if error has explicit severity
         if ($ErrorData.Severity) {
             return $ErrorData.Severity
         }
-        
+
         # Check error message for severity indicators
         $errorText = if ($ErrorData.Message) { $ErrorData.Message } elseif ($ErrorData -is [string]) { $ErrorData } else { $ErrorData.ToString() }
-        
+
         $criticalKeywords = @('critical', 'fatal', 'corrupt', 'system failure', 'boot')
         $errorKeywords = @('failed', 'error', 'exception', 'cannot', 'unable')
-        
+
         foreach ($keyword in $criticalKeywords) {
             if ($errorText -match $keyword) {
                 return 'Critical'
             }
         }
-        
+
         foreach ($keyword in $errorKeywords) {
             if ($errorText -match $keyword) {
                 return 'Error'
             }
         }
-        
+
         return 'Warning'
     }
     catch {
@@ -3533,23 +3522,23 @@ function New-ModuleSummary {
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$ModuleResult
+        [PSObject]$ModuleResult
     )
-    
+
     try {
         # Check if module already has a summary
         if ($ModuleResult.Summary) {
             return $ModuleResult.Summary
         }
-        
+
         # Generate summary based on module data
         $status = $ModuleResult.Status
-        
+
         if ($ModuleResult.Metrics) {
             $processed = $ModuleResult.Metrics.ItemsProcessed
             $skipped = $ModuleResult.Metrics.ItemsSkipped
             $failed = $ModuleResult.Metrics.ItemsFailed
-            
+
             if ($status -eq 'Success') {
                 if ($processed -gt 0) {
                     return "Processed $processed items successfully" + $(if ($skipped -gt 0) { ", $skipped skipped" } else { "" })
@@ -3565,7 +3554,7 @@ function New-ModuleSummary {
                 return "Failed to complete - $failed items failed"
             }
         }
-        
+
         return "Module executed with status: $status"
     }
     catch {
@@ -3577,30 +3566,30 @@ function New-ModuleSummary {
 .SYNOPSIS
     Builds HTML for module log entries
 #>
-function Build-ModuleLogEntries {
+function Build-ModuleLogEntry {
     [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$ModuleResult,
-        
+        [PSObject]$ModuleResult,
+
         [Parameter()]
         [int]$MaxEntries = 50
     )
-    
+
     try {
         $html = ""
-        
+
         # Try to load log file
         if ($ModuleResult.LogPath -and (Test-Path $ModuleResult.LogPath)) {
             $logContent = Get-Content $ModuleResult.LogPath -Tail $MaxEntries
-            
+
             foreach ($line in $logContent) {
                 $level = 'info'
                 if ($line -match '\[ERROR\]') { $level = 'error' }
                 elseif ($line -match '\[WARNING\]') { $level = 'warning' }
                 elseif ($line -match '\[SUCCESS\]') { $level = 'success' }
-                
+
                 $escapedLine = [System.Web.HttpUtility]::HtmlEncode($line)
                 $html += "                <div class=`"log-entry $level`">$escapedLine</div>`n"
             }
@@ -3608,7 +3597,7 @@ function Build-ModuleLogEntries {
         else {
             $html += "                <div class=`"log-entry info`">No log entries available</div>`n"
         }
-        
+
         return $html
     }
     catch {
@@ -3621,7 +3610,7 @@ function Build-ModuleLogEntries {
 .SYNOPSIS
     Builds HTML rows for execution summary table
 #>
-function Build-ExecutionSummaryRows {
+function Build-ExecutionSummaryRow {
     [CmdletBinding()]
     [OutputType([string])]
     param(
@@ -3727,23 +3716,23 @@ function Build-SystemChangesLog {
 .SYNOPSIS
     Builds HTML for performance phase breakdown
 #>
-function Build-PerformancePhases {
+function Build-PerformancePhase {
     [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$ModuleResult
+        [PSObject]$ModuleResult
     )
-    
+
     try {
         $html = ""
-        
+
         if ($ModuleResult.ExecutionPhases -and $ModuleResult.ExecutionPhases.Count -gt 0) {
             foreach ($phaseName in $ModuleResult.ExecutionPhases.Keys) {
                 $phase = $ModuleResult.ExecutionPhases[$phaseName]
                 $duration = if ($phase.Duration) { $phase.Duration } else { 0 }
                 $percent = if ($phase.Percent) { $phase.Percent } else { 0 }
-                
+
                 $html += @"
                 <div class="performance-phase">
                     <div class="phase-header">
@@ -3761,7 +3750,7 @@ function Build-PerformancePhases {
         else {
             $html = "                <div class=`"no-data`">No performance data available</div>`n"
         }
-        
+
         return $html
     }
     catch {
@@ -3774,22 +3763,22 @@ function Build-PerformancePhases {
 .SYNOPSIS
     Builds HTML for module errors section
 #>
-function Build-ModuleErrors {
+function Build-ModuleError {
     [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$ModuleResult
+        [PSObject]$ModuleResult
     )
-    
+
     try {
         $html = ""
-        
+
         if ($ModuleResult.Errors -and $ModuleResult.Errors.Count -gt 0) {
             foreach ($errorItem in $ModuleResult.Errors) {
                 $errorMessage = if ($errorItem.Message) { $errorItem.Message } else { $errorItem.ToString() }
                 $escapedMessage = [System.Web.HttpUtility]::HtmlEncode($errorMessage)
-                
+
                 $html += @"
                 <div class="module-error-item">
                     <div class="error-message">$escapedMessage</div>
@@ -3798,12 +3787,12 @@ function Build-ModuleErrors {
 "@
             }
         }
-        
+
         if ($ModuleResult.Warnings -and $ModuleResult.Warnings.Count -gt 0) {
             foreach ($warning in $ModuleResult.Warnings) {
                 $warningMessage = if ($warning.Message) { $warning.Message } else { $warning.ToString() }
                 $escapedMessage = [System.Web.HttpUtility]::HtmlEncode($warningMessage)
-                
+
                 $html += @"
                 <div class="module-error-item warning">
                     <div class="error-message">⚠️ $escapedMessage</div>
@@ -3812,11 +3801,11 @@ function Build-ModuleErrors {
 "@
             }
         }
-        
+
         if ([string]::IsNullOrWhiteSpace($html)) {
             $html = "                <div class=`"no-errors`">✓ No errors or warnings</div>`n"
         }
-        
+
         return $html
     }
     catch {
@@ -3836,27 +3825,27 @@ function Build-ExecutionTimeline {
         [Parameter(Mandatory)]
         [hashtable]$AggregatedResults
     )
-    
+
     try {
         $html = ""
-        
+
         foreach ($moduleResult in $AggregatedResults.ModuleResults.Values) {
             $moduleName = $moduleResult.ModuleName
             $status = $moduleResult.Status.ToLower()
-            $startTime = if ($moduleResult.Metrics -and $moduleResult.Metrics.StartTime) { 
-                $moduleResult.Metrics.StartTime 
+            $startTime = if ($moduleResult.Metrics -and $moduleResult.Metrics.StartTime) {
+                $moduleResult.Metrics.StartTime
             }
-            else { 
-                Get-Date -Format "HH:mm:ss" 
+            else {
+                Get-Date -Format "HH:mm:ss"
             }
-            
+
             $statusIcon = switch ($status) {
                 'success' { '✓' }
                 'warning' { '⚠' }
                 'error' { '✗' }
                 default { '•' }
             }
-            
+
             $html += @"
             <div class="timeline-entry $status">
                 <div class="timeline-marker"></div>
@@ -3869,7 +3858,7 @@ function Build-ExecutionTimeline {
 
 "@
         }
-        
+
         return $html
     }
     catch {
@@ -3882,21 +3871,21 @@ function Build-ExecutionTimeline {
 .SYNOPSIS
     Builds HTML for action items from all modules
 #>
-function Build-ActionItems {
+function Build-ActionItem {
     [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
         [hashtable]$AggregatedResults,
-        
+
         [Parameter()]
         [int]$MaxItems = 10
     )
-    
+
     try {
         $html = ""
         $actionItems = @()
-        
+
         foreach ($moduleResult in $AggregatedResults.ModuleResults.Values) {
             if ($moduleResult.Recommendations -and $moduleResult.Recommendations.Count -gt 0) {
                 foreach ($recommendation in $moduleResult.Recommendations) {
@@ -3907,7 +3896,7 @@ function Build-ActionItems {
                     }
                 }
             }
-            
+
             # Add actions for errors
             if ($moduleResult.Errors -and $moduleResult.Errors.Count -gt 0) {
                 $actionItems += @{
@@ -3917,14 +3906,14 @@ function Build-ActionItems {
                 }
             }
         }
-        
+
         # Limit to max items
         $actionItems = $actionItems | Select-Object -First $MaxItems
-        
+
         foreach ($item in $actionItems) {
             $priority = $item.Priority
             $text = [System.Web.HttpUtility]::HtmlEncode($item.Text)
-            
+
             $html += @"
             <div class="action-item priority-$priority">
                 <span class="action-priority">$($priority.ToUpper())</span>
@@ -3934,11 +3923,11 @@ function Build-ActionItems {
 
 "@
         }
-        
+
         if ([string]::IsNullOrWhiteSpace($html)) {
             $html = "            <div class=`"no-actions`">No action items required</div>`n"
         }
-        
+
         return $html
     }
     catch {
@@ -3953,14 +3942,13 @@ function Build-ActionItems {
 #>
 function Get-SystemInformation {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-    
+    [OutputType([hashtable])]`nparam()
+
     try {
         $os = Get-CimInstance Win32_OperatingSystem
         $computer = Get-CimInstance Win32_ComputerSystem
         $processor = Get-CimInstance Win32_Processor | Select-Object -First 1
-        
+
         return @{
             COMPUTER_NAME  = $env:COMPUTERNAME
             USER_NAME      = $env:USERNAME
@@ -3994,24 +3982,20 @@ function Get-SystemInformation {
 #>
 function Build-ExecutiveDashboard {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-    param(
+    [OutputType([hashtable])]`nparam(
         [Parameter(Mandatory)]
-        [hashtable]$AggregatedResults,
-        
-        [Parameter(Mandatory)]
-        [hashtable]$Config
+        [hashtable]$AggregatedResults
     )
-    
+
     try {
         Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Building executive dashboard'
-        
+
         # Calculate hero metrics
         $successRate = Get-SuccessRate -Results $AggregatedResults
         $totalDuration = Get-TotalDuration -Results $AggregatedResults
         $itemsProcessed = Get-ItemsProcessedTotal -Results $AggregatedResults
         $errorCounts = Get-ErrorCount -Results $AggregatedResults
-        
+
         # Calculate task completion
         $totalTasks = $AggregatedResults.ModuleResults.Count
         $completedTasks = 0
@@ -4020,20 +4004,20 @@ function Build-ExecutiveDashboard {
                 $completedTasks++
             }
         }
-        $taskCompletionPercent = if ($totalTasks -gt 0) { 
-            [Math]::Round(($completedTasks / $totalTasks) * 100, 1) 
+        $taskCompletionPercent = if ($totalTasks -gt 0) {
+            [Math]::Round(($completedTasks / $totalTasks) * 100, 1)
         }
         else { 0 }
-        
+
         # Calculate system health score
         $systemHealthScore = Get-SystemHealthScore -Results $AggregatedResults
-        
+
         # Generate key findings HTML
         $keyFindingsHtml = Build-KeyFindings -Results $AggregatedResults -Limit 5
-        
+
         # Generate action items summary HTML
         $actionItemsSummaryHtml = Build-ActionItems -AggregatedResults $AggregatedResults -MaxItems 3
-        
+
         # Return hashtable with all dashboard tokens
         $dashboard = @{
             SUCCESS_RATE            = $successRate
@@ -4049,7 +4033,7 @@ function Build-ExecutiveDashboard {
             KEY_FINDINGS            = $keyFindingsHtml
             ACTION_ITEMS_SUMMARY    = $actionItemsSummaryHtml
         }
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Executive dashboard built successfully"
         return $dashboard
     }
@@ -4086,16 +4070,16 @@ function Build-ModuleCard {
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$ModuleResult,
-        
+        [PSObject]$ModuleResult,
+
         [Parameter()]
         [string]$CardTemplate
     )
-    
+
     try {
         $moduleName = $ModuleResult.ModuleName
         Write-Verbose "Building enhanced module card for $moduleName"
-        
+
         # Try to load enhanced template if not provided
         if (-not $CardTemplate) {
             $enhancedTemplatePath = Find-ConfigTemplate -TemplateName "enhanced-module-card.html"
@@ -4104,7 +4088,7 @@ function Build-ModuleCard {
                 Write-Verbose "Using enhanced module card template"
             }
         }
-        
+
         # Define module metadata
         $moduleInfo = @{
             'BloatwareRemoval'    = @{ Icon = '🗑️'; Name = 'Bloatware Removal'; Description = 'Removes unnecessary pre-installed software and applications' }
@@ -4117,33 +4101,33 @@ function Build-ModuleCard {
             'AppUpgrade'          = @{ Icon = '⬆️'; Name = 'Application Upgrades'; Description = 'Updates installed applications to latest versions' }
             'SecurityEnhancement' = @{ Icon = '🔐'; Name = 'Security Enhancement'; Description = 'Applies advanced security configurations' }
         }
-        
+
         $info = $moduleInfo[$moduleName] ?? @{ Icon = '⚙️'; Name = $moduleName; Description = 'Module execution results' }
-        
+
         # Extract metrics from either Metrics property or direct properties
         $totalOps = [int]($ModuleResult.Metrics.ItemsProcessed ?? $ModuleResult.ItemsProcessed ?? $ModuleResult.TotalOperations ?? 0)
         $successOps = [int]($ModuleResult.Metrics.ItemsSuccessful ?? $ModuleResult.SuccessfulOperations ?? 0)
         $skippedOps = [int]($ModuleResult.Metrics.ItemsSkipped ?? $ModuleResult.SkippedOperations ?? 0)
         $failedOps = [int]($ModuleResult.Metrics.ItemsFailed ?? $ModuleResult.FailedOperations ?? 0)
         $durationSec = [double]($ModuleResult.Metrics.DurationSeconds ?? $ModuleResult.DurationSeconds ?? 0)
-        
+
         # Calculate success rate
         $successRate = if ($totalOps -gt 0) { [math]::Round(($successOps / $totalOps) * 100, 1) } else { 100 }
-        
+
         # Determine status class
         $status = $ModuleResult.Status ?? 'Completed'
         $statusClass = if ($status -match 'Success|Completed') { 'status-success' }
         elseif ($status -match 'Warning') { 'status-warning' }
         elseif ($status -match 'Error|Failed') { 'status-error' }
         else { 'status-info' }
-        
+
         # Build module details HTML using enhanced system
         $detailsHtml = Build-ModuleDetailsSection -ModuleKey $moduleName -ModuleData $ModuleResult
-        
+
         # Build module logs HTML using enhanced system
         $logsHtml = Build-ModuleLogsSection -ModuleKey $moduleName -ModuleData $ModuleResult
         $logsCount = if ($ModuleResult.Logs) { $ModuleResult.Logs.Count } elseif ($ModuleResult.LogEntries) { $ModuleResult.LogEntries.Count } else { 0 }
-        
+
         # Generate module card HTML by replacing template tokens
         $cardHtml = $CardTemplate
         $cardHtml = $cardHtml -replace '\{\{MODULE_ID\}\}', $moduleName
@@ -4162,7 +4146,7 @@ function Build-ModuleCard {
         $cardHtml = $cardHtml -replace '\{\{MODULE_DETAILS_HTML\}\}', $detailsHtml
         $cardHtml = $cardHtml -replace '\{\{MODULE_LOGS_HTML\}\}', $logsHtml
         $cardHtml = $cardHtml -replace '\{\{LOGS_COUNT\}\}', $logsCount
-        
+
         return $cardHtml
     }
     catch {
@@ -4182,20 +4166,17 @@ function Build-ModuleDetailsSection {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$ModuleKey,
-        
-        [Parameter(Mandatory)]
-        [hashtable]$ModuleData
+        [PSObject]$ModuleData
     )
-    
+
     $detailsHtml = @()
-    
+
     # Check for detected items (Type1 audit results)
     if ($ModuleData.DetectedItems -and $ModuleData.DetectedItems.Count -gt 0) {
         $detailsHtml += '<div class="detail-section">'
         $detailsHtml += '<h4 class="detail-section-title"><span>🔍</span> Detected Items</h4>'
         $detailsHtml += '<div class="detail-list">'
-        
+
         foreach ($item in $ModuleData.DetectedItems | Select-Object -First 10) {
             $itemName = if ($item.Name) { $item.Name } elseif ($item.DisplayName) { $item.DisplayName } else { $item.ToString() }
             $itemStatus = if ($item.Status) { $item.Status } else { 'Detected' }
@@ -4209,7 +4190,7 @@ function Build-ModuleDetailsSection {
                 'failed' { 'error' }
                 default { 'info' }
             }
-            
+
             $detailsHtml += '<div class="detail-item">'
             $detailsHtml += '<div class="detail-item-icon">📄</div>'
             $detailsHtml += '<div class="detail-item-content">'
@@ -4224,21 +4205,21 @@ function Build-ModuleDetailsSection {
             $detailsHtml += "<div class='detail-item-status'><span class='status-badge $statusBadgeClass'>$itemStatus</span></div>"
             $detailsHtml += '</div>'
         }
-        
+
         if ($ModuleData.DetectedItems.Count -gt 10) {
             $remaining = $ModuleData.DetectedItems.Count - 10
             $detailsHtml += "<div class='detail-item' style='justify-content: center; color: var(--text-muted); font-style: italic;'>+ $remaining more items...</div>"
         }
-        
+
         $detailsHtml += '</div></div>'
     }
-    
+
     # Check for processed items (Type2 execution results)
     if ($ModuleData.ProcessedItems -and $ModuleData.ProcessedItems.Count -gt 0) {
         $detailsHtml += '<div class="detail-section">'
         $detailsHtml += '<h4 class="detail-section-title"><span>⚡</span> Processed Items</h4>'
         $detailsHtml += '<div class="detail-list">'
-        
+
         foreach ($item in $ModuleData.ProcessedItems | Select-Object -First 10) {
             $itemName = if ($item.Name) { $item.Name } else { $item.ToString() }
             $itemResult = if ($item.Result) { $item.Result } elseif ($item.Status) { $item.Status } else { 'Processed' }
@@ -4251,7 +4232,7 @@ function Build-ModuleDetailsSection {
                 'failed' { 'error' }
                 default { 'info' }
             }
-            
+
             $detailsHtml += '<div class="detail-item">'
             $detailsHtml += '<div class="detail-item-icon">✓</div>'
             $detailsHtml += '<div class="detail-item-content">'
@@ -4263,21 +4244,21 @@ function Build-ModuleDetailsSection {
             $detailsHtml += "<div class='detail-item-status'><span class='status-badge $resultBadgeClass'>$itemResult</span></div>"
             $detailsHtml += '</div>'
         }
-        
+
         if ($ModuleData.ProcessedItems.Count -gt 10) {
             $remaining = $ModuleData.ProcessedItems.Count - 10
             $detailsHtml += "<div class='detail-item' style='justify-content: center; color: var(--text-muted); font-style: italic;'>+ $remaining more items...</div>"
         }
-        
+
         $detailsHtml += '</div></div>'
     }
-    
+
     if ($detailsHtml.Count -eq 0) {
         $detailsHtml += '<div style="padding: var(--spacing-lg); text-align: center; color: var(--text-muted);">'
         $detailsHtml += '<p>✓ Module completed successfully with no specific items to display</p>'
         $detailsHtml += '</div>'
     }
-    
+
     return $detailsHtml -join "`n"
 }
 
@@ -4293,17 +4274,17 @@ function Build-ModuleLogsSection {
     param(
         [Parameter(Mandatory)]
         [string]$ModuleKey,
-        
+
         [Parameter(Mandatory)]
-        [hashtable]$ModuleData
+        [PSObject]$ModuleData
     )
-    
+
     $logsHtml = @()
-    
+
     # Try to load logs from module's log file
     $logFilePath = Get-SessionPath -Category 'logs' -SubCategory $ModuleKey -FileName 'execution-structured.json'
     $logEntries = @()
-    
+
     if ($logFilePath -and (Test-Path $logFilePath)) {
         try {
             $logData = Get-Content $logFilePath -Raw | ConvertFrom-Json
@@ -4315,22 +4296,22 @@ function Build-ModuleLogsSection {
             Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to load logs for $ModuleKey : $_"
         }
     }
-    
+
     # Fallback to embedded logs if file not available
     if ($logEntries.Count -eq 0 -and $ModuleData.Logs) {
         $logEntries = $ModuleData.Logs | Select-Object -First 20
     }
-    
+
     if ($logEntries.Count -gt 0) {
         foreach ($log in $logEntries) {
             $level = if ($log.Level) { $log.Level.ToLower() } else { 'info' }
-            $timestamp = if ($log.Timestamp) { 
-                try { [datetime]::Parse($log.Timestamp).ToString('HH:mm:ss') } 
+            $timestamp = if ($log.Timestamp) {
+                try { [datetime]::Parse($log.Timestamp).ToString('HH:mm:ss') }
                 catch { (Get-Date).ToString('HH:mm:ss') }
             }
             else { (Get-Date).ToString('HH:mm:ss') }
             $message = if ($log.Message) { $log.Message } else { $log.ToString() }
-            
+
             $levelIcon = switch ($level) {
                 'success' { '✓' }
                 'info' { 'ℹ' }
@@ -4339,7 +4320,7 @@ function Build-ModuleLogsSection {
                 'debug' { '🔍' }
                 default { '•' }
             }
-            
+
             $logsHtml += "<div class='log-entry $level'>"
             $logsHtml += "<div class='log-timestamp'>$timestamp</div>"
             $logsHtml += "<div class='log-level-icon'>$levelIcon</div>"
@@ -4354,7 +4335,7 @@ function Build-ModuleLogsSection {
         $logsHtml += "<div class='log-message'>Module $ModuleKey completed - no detailed logs available</div>"
         $logsHtml += '</div>'
     }
-    
+
     return $logsHtml -join "`n"
 }
 
@@ -4372,30 +4353,30 @@ function Build-ErrorAnalysis {
         [Parameter(Mandatory)]
         [hashtable]$AggregatedResults
     )
-    
+
     try {
         Write-LogEntry -Level 'INFO' -Component 'REPORT-GENERATOR' -Message 'Building error analysis section'
-        
+
         # Categorize errors by severity and module
         $criticalErrors = @()
         $errors = @()
         $warnings = @()
-        
+
         foreach ($moduleResult in $AggregatedResults.ModuleResults.Values) {
             $moduleName = $moduleResult.ModuleName
-            
+
             # Process errors
             if ($moduleResult.Errors -and $moduleResult.Errors.Count -gt 0) {
                 foreach ($errorItem in $moduleResult.Errors) {
                     $severity = Get-ErrorSeverity -ErrorData $errorItem
                     $errorMessage = if ($errorItem.Message) { $errorItem.Message } elseif ($errorItem -is [string]) { $errorItem } else { $errorItem.ToString() }
-                    
+
                     $errorItem = @{
                         Module   = $moduleName
                         Message  = $errorMessage
                         Severity = $severity
                     }
-                    
+
                     switch ($severity) {
                         'Critical' { $criticalErrors += $errorItem }
                         'Error' { $errors += $errorItem }
@@ -4403,12 +4384,12 @@ function Build-ErrorAnalysis {
                     }
                 }
             }
-            
+
             # Process warnings
             if ($moduleResult.Warnings -and $moduleResult.Warnings.Count -gt 0) {
                 foreach ($warning in $moduleResult.Warnings) {
                     $warningMessage = if ($warning.Message) { $warning.Message } elseif ($warning -is [string]) { $warning } else { $warning.ToString() }
-                    
+
                     $warnings += @{
                         Module   = $moduleName
                         Message  = $warningMessage
@@ -4417,10 +4398,10 @@ function Build-ErrorAnalysis {
                 }
             }
         }
-        
+
         # Build HTML
         $html = ""
-        
+
         # Build critical errors section
         if ($criticalErrors.Count -gt 0) {
             $html += @"
@@ -4445,7 +4426,7 @@ function Build-ErrorAnalysis {
             }
             $html += "            </div>`n        </div>`n`n"
         }
-        
+
         # Build errors section
         if ($errors.Count -gt 0) {
             $html += @"
@@ -4470,7 +4451,7 @@ function Build-ErrorAnalysis {
             }
             $html += "            </div>`n        </div>`n`n"
         }
-        
+
         # Build warnings section
         if ($warnings.Count -gt 0) {
             $html += @"
@@ -4494,7 +4475,7 @@ function Build-ErrorAnalysis {
             }
             $html += "            </div>`n        </div>`n`n"
         }
-        
+
         # If no errors or warnings
         if ([string]::IsNullOrWhiteSpace($html)) {
             $html = @"
@@ -4505,7 +4486,7 @@ function Build-ErrorAnalysis {
 
 "@
         }
-        
+
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Error analysis section built: $($criticalErrors.Count) critical, $($errors.Count) errors, $($warnings.Count) warnings"
         return $html
     }
@@ -4522,28 +4503,28 @@ function Build-ErrorAnalysis {
     Extracts and prioritizes the top N most significant findings from all modules
     and formats them as HTML for the findings box.
 #>
-function Build-KeyFindings {
+function Build-KeyFinding {
     [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
         [hashtable]$Results,
-        
+
         [Parameter()]
         [int]$Limit = 5
     )
-    
+
     try {
         $findings = @()
-        
+
         # Extract significant findings from each module
         foreach ($moduleResult in $Results.ModuleResults.Values) {
             $moduleName = $moduleResult.ModuleName
-            
+
             # Add success findings (high impact items)
-            if (($moduleResult.Status -eq 'Success' -or $moduleResult.Success -eq $true) -and 
+            if (($moduleResult.Status -eq 'Success' -or $moduleResult.Success -eq $true) -and
                 $moduleResult.Metrics -and $moduleResult.Metrics.ItemsProcessed -gt 0) {
-                
+
                 $processed = $moduleResult.Metrics.ItemsProcessed
                 $findings += @{
                     Type     = 'success'
@@ -4553,7 +4534,7 @@ function Build-KeyFindings {
                     Module   = $moduleName
                 }
             }
-            
+
             # Add error findings (highest priority)
             if ($moduleResult.Errors -and $moduleResult.Errors.Count -gt 0) {
                 $errorCount = $moduleResult.Errors.Count
@@ -4565,7 +4546,7 @@ function Build-KeyFindings {
                     Module   = $moduleName
                 }
             }
-            
+
             # Add warning findings
             if ($moduleResult.Warnings -and $moduleResult.Warnings.Count -gt 0) {
                 $warningCount = $moduleResult.Warnings.Count
@@ -4577,7 +4558,7 @@ function Build-KeyFindings {
                     Module   = $moduleName
                 }
             }
-            
+
             # Add specific high-value findings from results
             if ($moduleResult.Results) {
                 foreach ($key in $moduleResult.Results.Keys) {
@@ -4594,10 +4575,10 @@ function Build-KeyFindings {
                 }
             }
         }
-        
+
         # Sort by priority and limit
         $findings = $findings | Sort-Object Priority | Select-Object -First $Limit
-        
+
         # Build HTML
         $html = ""
         foreach ($finding in $findings) {
@@ -4615,11 +4596,11 @@ function Build-KeyFindings {
 
 "@
         }
-        
+
         if ([string]::IsNullOrWhiteSpace($html)) {
             $html = "            <div class='no-findings'>No significant findings to report</div>`n"
         }
-        
+
         return $html
     }
     catch {
@@ -4684,4 +4665,6 @@ Export-ModuleMember -Function @(
     # Enhanced Builder Functions v5.0 (Integrated from ModernReportGenerator)
     'Build-ModuleDetailsSection',
     'Build-ModuleLogsSection'
-)
+)`n
+
+

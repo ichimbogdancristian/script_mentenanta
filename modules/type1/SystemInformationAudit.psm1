@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -57,9 +57,9 @@ function Get-SystemInventoryAnalysis {
         [Parameter(Mandatory = $true)]
         [PSCustomObject]$Config
     )
-    
+
     Write-Verbose "Starting system inventory analysis..."
-    
+
     try {
         $inventory = [PSCustomObject]@{
             CollectionTimestamp = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'
@@ -72,7 +72,7 @@ function Get-SystemInventoryAnalysis {
             Security            = Get-SecurityStatus
             Performance         = Get-PerformanceMetrics
         }
-        
+
         Write-Verbose "System inventory analysis complete"
         return $inventory
     }
@@ -93,7 +93,7 @@ function Get-OperatingSystemInfo {
     try {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem
         $cs = Get-CimInstance -ClassName Win32_ComputerSystem
-        
+
         return [PSCustomObject]@{
             Name             = $os.Caption
             Version          = $os.Version
@@ -123,7 +123,7 @@ function Get-HardwareInfo {
         $ram = Get-CimInstance -ClassName Win32_PhysicalMemory
         $totalRAM = ($ram | Measure-Object -Property Capacity -Sum).Sum
         $bios = Get-CimInstance -ClassName Win32_BIOS
-        
+
         return [PSCustomObject]@{
             Processor = [PSCustomObject]@{
                 Name              = $cpu.Name
@@ -157,7 +157,7 @@ function Get-HardwareInfo {
 function Get-NetworkInfo {
     try {
         $adapters = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true }
-        
+
         $networkAdapters = foreach ($adapter in $adapters) {
             [PSCustomObject]@{
                 Description    = $adapter.Description
@@ -170,7 +170,7 @@ function Get-NetworkInfo {
                 DHCPServer     = $adapter.DHCPServer
             }
         }
-        
+
         return [PSCustomObject]@{
             Adapters   = $networkAdapters
             HostName   = $env:COMPUTERNAME
@@ -186,13 +186,13 @@ function Get-NetworkInfo {
 function Get-StorageInfo {
     try {
         $disks = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 }
-        
+
         $diskInfo = foreach ($disk in $disks) {
-            $freePercent = if ($disk.Size -gt 0) { 
-                [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 2) 
+            $freePercent = if ($disk.Size -gt 0) {
+                [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 2)
             }
             else { 0 }
-            
+
             [PSCustomObject]@{
                 Drive       = $disk.DeviceID
                 Label       = $disk.VolumeName
@@ -201,12 +201,12 @@ function Get-StorageInfo {
                 FreeSpaceGB = [math]::Round($disk.FreeSpace / 1GB, 2)
                 UsedSpaceGB = [math]::Round(($disk.Size - $disk.FreeSpace) / 1GB, 2)
                 FreePercent = $freePercent
-                Status      = if ($freePercent -lt 10) { 'Critical' } 
-                elseif ($freePercent -lt 20) { 'Warning' } 
+                Status      = if ($freePercent -lt 10) { 'Critical' }
+                elseif ($freePercent -lt 20) { 'Warning' }
                 else { 'Healthy' }
             }
         }
-        
+
         return [PSCustomObject]@{
             Drives          = $diskInfo
             TotalCapacityGB = [math]::Round(($disks | Measure-Object -Property Size -Sum).Sum / 1GB, 2)
@@ -224,21 +224,21 @@ function Get-SoftwareSummary {
         # Count installed applications from registry
         $x64Apps = Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
         Where-Object { $_.DisplayName } | Measure-Object | Select-Object -ExpandProperty Count
-        
+
         $x86Apps = Get-ItemProperty 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
         Where-Object { $_.DisplayName } | Measure-Object | Select-Object -ExpandProperty Count
-        
+
         # Get Windows features count
         $features = Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Enabled' }
-        
+
         return [PSCustomObject]@{
             InstalledApplications = $x64Apps + $x86Apps
             X64Applications       = $x64Apps
             X86Applications       = $x86Apps
             WindowsFeatures       = $features.Count
             PowerShellVersion     = $PSVersionTable.PSVersion.ToString()
-            DotNetVersions        = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse -ErrorAction SilentlyContinue | 
-                Get-ItemProperty -Name Version -ErrorAction SilentlyContinue | 
+            DotNetVersions        = (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse -ErrorAction SilentlyContinue |
+                Get-ItemProperty -Name Version -ErrorAction SilentlyContinue |
                 Select-Object -ExpandProperty Version -Unique) -join ', '
         }
     }
@@ -253,7 +253,7 @@ function Get-SecurityStatus {
         $defender = Get-MpComputerStatus -ErrorAction SilentlyContinue
         $uac = (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System' -ErrorAction SilentlyContinue).EnableLUA
         $firewall = Get-NetFirewallProfile -ErrorAction SilentlyContinue
-        
+
         return [PSCustomObject]@{
             WindowsDefender = [PSCustomObject]@{
                 Enabled             = $defender.AntivirusEnabled
@@ -285,14 +285,14 @@ function Get-PerformanceMetrics {
     try {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem
         $cpu = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
-        
+
         # Get process count
         $processes = (Get-Process).Count
-        
+
         # Get uptime
         $bootTime = $os.LastBootUpTime
         $uptime = (Get-Date) - $bootTime
-        
+
         return [PSCustomObject]@{
             CPUUsage           = "$([math]::Round($cpu.LoadPercentage, 2))%"
             MemoryUsageGB      = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 2)
@@ -315,3 +315,6 @@ function Get-PerformanceMetrics {
 Export-ModuleMember -Function @(
     'Get-SystemInventoryAnalysis'
 )
+
+
+
