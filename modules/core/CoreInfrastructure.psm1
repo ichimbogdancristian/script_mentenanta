@@ -3281,10 +3281,10 @@ function Invoke-ModuleWithTimeout {
     try {
         # Execute with timeout
         $scriptBlock = if ($DryRun) {
-    { & $functionName -Config $args[0] -DryRun }
+            { & $functionName -Config $args[0] -DryRun }
         }
         else {
-    { & $functionName -Config $args[0] }
+            { & $functionName -Config $args[0] }
         }
 
         $result = Invoke-WithTimeout -ScriptBlock $scriptBlock -TimeoutSeconds $TimeoutSeconds -ArgumentList @($Config)
@@ -3552,8 +3552,7 @@ function Undo-AllChanges {
 #>
 function Clear-ChangeLog {
     [CmdletBinding()]
-    [OutputType([hashtable])]
-param(
+    param()
 
     $count = $script:ChangeLog.Count
     $script:ChangeLog = @()
