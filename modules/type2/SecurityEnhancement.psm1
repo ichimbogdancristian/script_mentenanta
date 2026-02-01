@@ -297,7 +297,7 @@ function Invoke-SecurityEnhancement {
 function Get-SecurityConfiguration {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     try {
         # Use CoreInfrastructure function if available

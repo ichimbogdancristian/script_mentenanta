@@ -53,7 +53,7 @@ if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
 function Get-SystemInventory {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [switch]$UseCache,
 
@@ -250,7 +250,7 @@ param(
 function Get-SystemInventoryAnalysis {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [PSCustomObject]$Config
     )

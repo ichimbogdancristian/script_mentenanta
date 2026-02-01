@@ -1547,8 +1547,10 @@ function Merge-InstallationResult {
 #>
 function Get-InstallationStatistic {
     [CmdletBinding()]
-    [OutputType([hashtable])]([hashtable]$Results)
-param(
+    [OutputType([hashtable])]
+    param(
+        [hashtable]$Results
+    )
 
     return @{
         TotalProcessed         = $Results.TotalApps

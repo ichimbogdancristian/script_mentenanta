@@ -478,7 +478,7 @@ function Disable-WindowsTelemetry {
 function Test-PrivacySetting {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     Write-Information " Analyzing current privacy and telemetry settings..." -InformationAction Continue
 
@@ -1117,8 +1117,10 @@ function Disable-ConsumerFeature {
 #>
 function Disable-CortanaFeature {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]([switch]$DryRun)
-param(
+    [OutputType([hashtable])]
+    param(
+        [switch]$DryRun
+    )
 
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
 
@@ -1199,8 +1201,10 @@ param(
 #>
 function Disable-LocationService {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
-    [OutputType([hashtable])]([switch]$DryRun)
-param(
+    [OutputType([hashtable])]
+    param(
+        [switch]$DryRun
+    )
 
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
 

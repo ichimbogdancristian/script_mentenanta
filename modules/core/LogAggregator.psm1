@@ -502,7 +502,7 @@ function Get-ModuleResultsByName {
 function Get-ResultsSummary {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $allResults = Get-AggregatedResults
 

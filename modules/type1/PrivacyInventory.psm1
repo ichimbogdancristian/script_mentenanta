@@ -203,7 +203,7 @@ function Get-PrivacyInventory {
 function Get-TelemetryConfiguration {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $config = @{
         diagnosticDataLevel = 'Unknown'

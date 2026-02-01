@@ -316,7 +316,7 @@ function Start-SecurityAudit {
 function Get-WindowsDefenderStatus {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [switch]$IncludeScan
     )
@@ -422,7 +422,7 @@ param(
 function Get-FirewallStatus {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $results = @{
         DomainEnabled  = $false
@@ -519,7 +519,7 @@ param(
 function Get-UACStatus {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $results = @{
         Enabled  = $false
@@ -588,7 +588,7 @@ param(
 function Get-SecurityServiceStatus {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $results = @{
         Score    = 0
@@ -661,7 +661,7 @@ param(
 function Get-SecurityUpdateStatus {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     $results = @{
         Score           = 0
@@ -907,7 +907,7 @@ CATEGORY DETAILS:
 function Get-SecurityAuditAnalysis {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter(Mandatory)]
         [hashtable]$Config
     )

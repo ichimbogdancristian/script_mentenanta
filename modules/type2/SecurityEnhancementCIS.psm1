@@ -1000,7 +1000,7 @@ function Invoke-SecurityEnhancementCIS {
 function Get-CISControlStatus {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     Write-LogEntry -Level 'INFO' -Component 'CIS-STATUS' -Message "Checking CIS control compliance status..."
 

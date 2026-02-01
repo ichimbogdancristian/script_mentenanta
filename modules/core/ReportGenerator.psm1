@@ -311,7 +311,7 @@ function Get-HtmlTemplate {
 function Get-FallbackTemplate {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Using fallback templates - limited styling and functionality'
 
@@ -489,7 +489,7 @@ footer { margin-top: 4rem; padding: 2rem; text-align: center; color: var(--text-
 function Get-ProcessedLogData {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [string]$ProcessedDataPath,
 
@@ -635,7 +635,7 @@ param(
 function Test-ProcessedDataIntegrity {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
@@ -685,7 +685,7 @@ param(
 function Get-FallbackRawLogData {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Using fallback raw log data loading - functionality will be limited'
 
@@ -773,7 +773,7 @@ param(
 function Get-ParsedOperationLog {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter(Mandatory)]
         [string]$ModuleName
     )
@@ -993,7 +993,7 @@ function New-OperationLogTable {
 function New-MaintenanceReport {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter(Mandatory)]
         [string]$OutputPath,
 
@@ -2083,7 +2083,7 @@ function New-SummaryReportContent {
 function Get-TaskDistributionData {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [hashtable]$ProcessedData
     )
@@ -2155,7 +2155,7 @@ param(
 function Get-SystemResourceData {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [hashtable]$ProcessedData
     )
@@ -2234,7 +2234,7 @@ param(
 function Get-ExecutionTimelineData {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [hashtable]$ProcessedData
     )
@@ -2298,7 +2298,7 @@ param(
 function Get-SecurityScoreData {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [hashtable]$ProcessedData
     )
@@ -2364,7 +2364,7 @@ param(
 function Get-ComprehensiveChartData {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
     )
@@ -2404,7 +2404,7 @@ param(
 function Test-ConfigTemplateIntegration {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [switch]$TestFallbacks
     )
@@ -2526,7 +2526,7 @@ param(
 function Test-ProcessedDataIntegration {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter()]
         [string]$ProcessedDataPath,
 
@@ -2640,7 +2640,7 @@ $script:ReportGeneratorMemory = @{
 function Invoke-ReportMemoryManagement {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [ValidateSet('Cleanup', 'Optimize', 'Monitor', 'Reset')]
         [string]$Operation = 'Cleanup',
 
@@ -2823,7 +2823,7 @@ function Clear-ReportGeneratorCache {
 function Get-ReportMemoryStatistic {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     try {
         $currentMemory = [System.GC]::GetTotalMemory($false)
@@ -2971,7 +2971,7 @@ function Optimize-ReportDataStructure {
 function New-ReportIndex {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter(Mandatory = $true)]
         [string]$ReportsPath,
 
@@ -3454,7 +3454,7 @@ function Get-ItemsProcessedTotal {
 function Get-ErrorCount {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter(Mandatory)]
         [hashtable]$Results
     )
@@ -3960,7 +3960,7 @@ function Build-ActionItem {
 function Get-SystemInformation {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param()
 
     try {
         $os = Get-CimInstance Win32_OperatingSystem
@@ -4001,7 +4001,7 @@ param(
 function Build-ExecutiveDashboard {
     [CmdletBinding()]
     [OutputType([hashtable])]
-param(
+    param(
         [Parameter(Mandatory)]
         [hashtable]$AggregatedResults
     )
@@ -4684,7 +4684,6 @@ Export-ModuleMember -Function @(
     # Enhanced Builder Functions v5.0 (Integrated from ModernReportGenerator)
     'Build-ModuleDetailsSection',
     'Build-ModuleLogsSection'
-)`n
+)
 
-
-
+#endregion
