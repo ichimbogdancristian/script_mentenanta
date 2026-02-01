@@ -4037,6 +4037,37 @@ function Build-ExecutiveDashboard {
         # Generate action items summary HTML
         $actionItemsSummaryHtml = Build-ActionItems -AggregatedResults $AggregatedResults -MaxItems 3
 
+        # Build project resume summary
+        $executionSummary = if ($AggregatedResults.MetricsSummary) { $AggregatedResults.MetricsSummary.ExecutionSummary } else { @{} }
+        $projectResumeHtml = @"
+<div class='insights-list'>
+    <div class='insight-item'>
+        <div class='insight-icon'>🧠</div>
+        <div class='insight-text'>
+            <strong>Execution Summary:</strong> $($executionSummary.SuccessfulTasks ?? 0) of $($executionSummary.TotalTasks ?? 0) tasks completed successfully
+        </div>
+    </div>
+    <div class='insight-item'>
+        <div class='insight-icon'>⏱️</div>
+        <div class='insight-text'>
+            <strong>Total Duration:</strong> $([math]::Round(($executionSummary.TotalDuration ?? 0), 1)) seconds
+        </div>
+    </div>
+    <div class='insight-item'>
+        <div class='insight-icon'>📦</div>
+        <div class='insight-text'>
+            <strong>Items Processed:</strong> $itemsProcessed
+        </div>
+    </div>
+    <div class='insight-item'>
+        <div class='insight-icon'>⚠️</div>
+        <div class='insight-text'>
+            <strong>Issues:</strong> $($errorCounts.Error + $errorCounts.Warning + $errorCounts.Critical) total ($($errorCounts.Critical) critical)
+        </div>
+    </div>
+</div>
+"@
+
         # Return hashtable with all dashboard tokens
         $dashboard = @{
             SUCCESS_RATE            = $successRate
@@ -4051,6 +4082,7 @@ function Build-ExecutiveDashboard {
             SYSTEM_HEALTH_SCORE     = $systemHealthScore
             KEY_FINDINGS            = $keyFindingsHtml
             ACTION_ITEMS_SUMMARY    = $actionItemsSummaryHtml
+            PROJECT_RESUME          = $projectResumeHtml
         }
 
         Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message "Executive dashboard built successfully"
@@ -4072,6 +4104,7 @@ function Build-ExecutiveDashboard {
             SYSTEM_HEALTH_SCORE     = 0
             KEY_FINDINGS            = "<div class='no-data'>Dashboard data unavailable</div>"
             ACTION_ITEMS_SUMMARY    = "<div class='no-data'>Action items unavailable</div>"
+            PROJECT_RESUME          = "<div class='no-data'>Project resume unavailable</div>"
         }
     }
 }

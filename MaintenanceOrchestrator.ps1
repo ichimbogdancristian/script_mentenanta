@@ -1639,19 +1639,32 @@ try {
                             Write-Information "    • $reportPath" -InformationAction Continue
                         }
                     }
-                    # Copy main HTML report to parent directory (Desktop/Documents/USB root)
-                    if ($reportResult.HtmlReport -and (Test-Path $reportResult.HtmlReport)) {
+
+                    # Track generated report artifacts for downstream copy/summary
+                    $script:ReportArtifacts = @()
+                    foreach ($reportPath in @($reportResult.HtmlReport, $reportResult.TextReport, $reportResult.JsonExport, $reportResult.SummaryReport)) {
+                        if ($reportPath -and (Test-Path $reportPath)) {
+                            $script:ReportArtifacts += $reportPath
+                        }
+                    }
+
+                    # Copy report artifacts to original script.bat location when available
+                    $reportCopyTarget = if ($env:ORIGINAL_SCRIPT_DIR -and (Test-Path $env:ORIGINAL_SCRIPT_DIR)) {
+                        $env:ORIGINAL_SCRIPT_DIR
+                    }
+                    else {
+                        $script:ProjectPaths.ParentDir
+                    }
+
+                    foreach ($artifactPath in $script:ReportArtifacts) {
                         try {
-                            $parentHtmlPath = Join-Path $script:ProjectPaths.ParentDir (Split-Path -Leaf $reportResult.HtmlReport)
-                            Copy-Item -Path $reportResult.HtmlReport -Destination $parentHtmlPath -Force
-                            Write-Information "   HTML report copied to: $parentHtmlPath" -InformationAction Continue
-                            # Update result to include parent copy location
-                            if (-not $reportResult.ParentCopy) {
-                                $reportResult | Add-Member -NotePropertyName 'ParentCopy' -NotePropertyValue $parentHtmlPath -Force
-                            }
+                            $destPath = Join-Path $reportCopyTarget (Split-Path -Leaf $artifactPath)
+                            Copy-Item -Path $artifactPath -Destination $destPath -Force
+                            Write-Information "   Report copied to: $destPath" -InformationAction Continue
+                            $finalReports += $destPath
                         }
                         catch {
-                            Write-Warning "   Failed to copy HTML report to parent directory: $($_.Exception.Message)"
+                            Write-Warning "   Failed to copy report to target directory: $($_.Exception.Message)"
                         }
                     }
                 }
@@ -1775,48 +1788,67 @@ try {
     else {
         Write-Information "   Session manifest creation encountered issues" -InformationAction Continue
     }
-    # Copy final reports to parent directory (same level as repo folder)
+    # Copy final reports to target directory (script.bat location when available)
     Write-Information "" -InformationAction Continue
-    Write-Information " Copying final reports to parent directory..." -InformationAction Continue
-    # Get parent directory of the script root (one level up from repo folder)
-    $ParentDir = Split-Path $ScriptRoot -Parent
-    Write-Information "   Target directory: $ParentDir" -InformationAction Continue
+    Write-Information " Copying final reports to target directory..." -InformationAction Continue
+
+    $reportCopyTarget = if ($env:ORIGINAL_SCRIPT_DIR -and (Test-Path $env:ORIGINAL_SCRIPT_DIR)) {
+        $env:ORIGINAL_SCRIPT_DIR
+    }
+    else {
+        $script:ProjectPaths.ParentDir
+    }
+
+    Write-Information "   Target directory: $reportCopyTarget" -InformationAction Continue
     $finalReports = @()
-    $reportsToMove = @(
-        @{ Pattern = "maintenance-report-$script:MaintenanceSessionTimestamp.html"; Description = "HTML maintenance report" }
-        @{ Pattern = "maintenance-report-$script:MaintenanceSessionTimestamp.txt"; Description = "Text maintenance report" }
-        @{ Pattern = "maintenance-log-$script:MaintenanceSessionTimestamp.log"; Description = "Maintenance log file" }
-    )
-    foreach ($reportInfo in $reportsToMove) {
-        $sourcePattern = $reportInfo.Pattern
-        $description = $reportInfo.Description
-        # Look for the file in temp directories
-        $sourceFile = $null
-        $reportsDir = Join-Path $script:ProjectPaths.TempRoot "reports"
-        $logsDir = Join-Path $script:ProjectPaths.TempRoot "logs"
-        $searchPaths = @($reportsDir, $logsDir, $script:ProjectPaths.TempRoot) | Where-Object { $_ -and (Test-Path $_) }
-        foreach ($searchPath in $searchPaths) {
-            $potentialPath = Join-Path $searchPath $sourcePattern
-            if (Test-Path $potentialPath) {
-                $sourceFile = $potentialPath
-                break
-            }
-        }
-        if ($sourceFile) {
-            $fileName = Split-Path $sourceFile -Leaf
-            $destPath = Join-Path $ParentDir $fileName
+
+    if ($script:ReportArtifacts -and $script:ReportArtifacts.Count -gt 0) {
+        foreach ($artifactPath in $script:ReportArtifacts) {
             try {
-                # Ensure parent directory is accessible
-                if (-not (Test-Path $ParentDir)) {
-                    Write-Information "   Parent directory not accessible: $ParentDir" -InformationAction Continue
-                    continue
-                }
-                Copy-Item -Path $sourceFile -Destination $destPath -Force
-                Write-Information "   Copied $description to: $destPath" -InformationAction Continue
+                $destPath = Join-Path $reportCopyTarget (Split-Path -Leaf $artifactPath)
+                Copy-Item -Path $artifactPath -Destination $destPath -Force
+                Write-Information "   Copied report to: $destPath" -InformationAction Continue
                 $finalReports += $destPath
             }
             catch {
-                Write-Information "   Failed to copy $description`: $_" -InformationAction Continue
+                Write-Information "   Failed to copy report artifact`: $_" -InformationAction Continue
+            }
+        }
+    }
+    else {
+        $reportsDir = Join-Path $script:ProjectPaths.TempRoot "reports"
+        $logsDir = Join-Path $script:ProjectPaths.TempRoot "logs"
+        $searchPaths = @($reportsDir, $logsDir, $script:ProjectPaths.TempRoot) | Where-Object { $_ -and (Test-Path $_) }
+        $reportPatterns = @(
+            @{ Pattern = 'MaintenanceReport_*.html'; Description = 'HTML maintenance report' }
+            @{ Pattern = 'MaintenanceReport_*.txt'; Description = 'Text maintenance report' }
+            @{ Pattern = 'MaintenanceReport_*.json'; Description = 'JSON maintenance report' }
+            @{ Pattern = 'MaintenanceReport_*_summary.txt'; Description = 'Summary maintenance report' }
+            @{ Pattern = 'Report_Index.html'; Description = 'Report index' }
+            @{ Pattern = 'report-index.html'; Description = 'Report index (alt)' }
+            @{ Pattern = 'maintenance.log'; Description = 'Maintenance log file' }
+        )
+
+        foreach ($reportInfo in $reportPatterns) {
+            $sourceFile = $null
+            foreach ($searchPath in $searchPaths) {
+                $candidate = Get-ChildItem -Path $searchPath -Filter $reportInfo.Pattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if ($candidate) {
+                    $sourceFile = $candidate.FullName
+                    break
+                }
+            }
+
+            if ($sourceFile) {
+                try {
+                    $destPath = Join-Path $reportCopyTarget (Split-Path $sourceFile -Leaf)
+                    Copy-Item -Path $sourceFile -Destination $destPath -Force
+                    Write-Information "   Copied $($reportInfo.Description) to: $destPath" -InformationAction Continue
+                    $finalReports += $destPath
+                }
+                catch {
+                    Write-Information "   Failed to copy $($reportInfo.Description)`: $_" -InformationAction Continue
+                }
             }
         }
     }

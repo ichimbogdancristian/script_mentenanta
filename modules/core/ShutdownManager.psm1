@@ -180,24 +180,19 @@ function Start-MaintenanceCountdown {
                 if ($keyPressSupported -and $Host.UI.RawUI.KeyAvailable) {
                     [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 
-                    # Key pressed - abort countdown
+                    # Key pressed - abort countdown and leave everything as-is
                     Write-Host "`n" -NoNewline
-                    Write-Host "`n⏸ Countdown aborted - user requested action" -ForegroundColor Yellow
+                    Write-Host "`n⏸ Countdown aborted - no cleanup or reboot will occur" -ForegroundColor Yellow
 
                     Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
-                        -Message "Countdown interrupted by user keypress after $([math]::Floor((Get-Date - $countdownStartTime).TotalSeconds))s"
+                        -Message "Countdown aborted by user keypress after $([math]::Floor((Get-Date - $countdownStartTime).TotalSeconds))s (no cleanup/reboot)"
 
-                    # Show abort menu and handle user choice
-                    $abortChoice = Show-ShutdownAbortMenu
-                    $abortResult = Invoke-MaintenanceShutdownChoice -Choice $abortChoice `
-                        -WorkingDirectory $WorkingDirectory `
-                        -TempRoot $TempRoot
-
-                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
-                        -Message "User selected action: $($abortResult.Action)" `
-                        -Data $abortResult
-
-                    return $abortResult
+                    return @{
+                        Action           = 'AbortByKeypress'
+                        RebootRequired   = $false
+                        RebootDelay      = 0
+                        CleanupPerformed = $false
+                    }
                 }
             }
             catch {
