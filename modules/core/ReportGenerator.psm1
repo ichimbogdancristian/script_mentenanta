@@ -1092,8 +1092,7 @@ function New-MaintenanceReport {
         else {
             # Enhanced report generation (new code path)
             Write-Information "✓ Building executive dashboard..." -InformationAction Continue
-            $config = Get-MainConfiguration
-            $dashboardData = Build-ExecutiveDashboard -AggregatedResults $processedData -Config $config
+            $dashboardData = Build-ExecutiveDashboard -AggregatedResults $processedData
 
             Write-Information "✓ Generating module cards..." -InformationAction Continue
             $moduleCardsHtml = ""
