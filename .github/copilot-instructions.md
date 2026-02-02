@@ -525,12 +525,16 @@ $config = Get-MainConfiguration
 ### When Working with LogProcessor.psm1
 
 **Purpose:** Data processing pipeline (Type1 - read-only)  
-**Pipeline:** Load → Parse → Normalize → Aggregate → Cache → Export  
+**Pipeline:** Load → Parse → Normalize → Aggregate → Export  
 **Key Functions:**
 - `Invoke-LogProcessing` - Full pipeline
+- `Initialize-ProcessedDataPath` - Ensure processed output paths
 - `Get-Type1AuditData` - Load audit results
 - `Get-Type2ExecutionLog` - Load execution logs
 - `Get-ComprehensiveLogAnalysis` - Parse & analyze
+- `Get-ComprehensiveDashboardMetricSet` - Dashboard metrics
+- `Get-ExecutionLogErrorReport` - Error aggregation
+- `Get-SafeDirectoryContent` - Safe directory enumeration
 
 **Context:**
 - Runs AFTER all modules complete
@@ -544,6 +548,7 @@ $config = Get-MainConfiguration
 **Key Functions:**
 - `New-MaintenanceReport` - Primary entry point
 - `Get-HtmlTemplateBundle` - Load templates
+- `Get-FallbackTemplateBundle` - Built-in template fallback
 - `Get-ProcessedLogData` - Load LogProcessor output
 
 **Template System:**
