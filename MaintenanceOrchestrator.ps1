@@ -185,8 +185,8 @@ $CoreModules = @(
     'ShutdownManager'      # v3.2: Post-execution countdown and cleanup
 )
 # Type2 modules (self-contained with internal Type1 dependencies)
+# Note: SystemInventory removed from Type2 - now called directly from Type1 before Type2 execution
 $Type2Modules = @(
-    'SystemInventory',     # NEW: System information collection (always first)
     'BloatwareRemoval',
     'EssentialApps',
     'SystemOptimization',
@@ -1335,6 +1335,51 @@ try {
     $executionMode = if ($ExecutionParams.DryRun) { "DRY-RUN" } else { "LIVE" }
     Write-Information "Execution Mode: $executionMode" -InformationAction Continue
     Write-Information "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
+
+    # v4.0 FIX: Run SystemInventory from Type1 before Type2 modules
+    # SystemInventory is a pure read-only audit module that should not be in Type2
+    Write-Information "`n=== Phase 1: System Inventory (Type1) ===" -InformationAction Continue
+    try {
+        Write-Information "Running system inventory audit..." -InformationAction Continue
+        $inventoryStartTime = Get-Date
+        
+        # Import Type1 SystemInventory module
+        $type1InventoryPath = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
+        if (Test-Path $type1InventoryPath) {
+            Import-Module $type1InventoryPath -Force -ErrorAction Stop
+            
+            # Execute Type1 SystemInventory
+            $systemInventory = Get-SystemInventory -IncludeDetailed:$false
+            
+            if ($systemInventory) {
+                Write-Information "  ✓ System inventory completed" -InformationAction Continue
+                
+                # Add to result collection for reporting
+                if ($script:ResultCollectionEnabled) {
+                    $inventoryDuration = ((Get-Date) - $inventoryStartTime).TotalSeconds
+                    $inventoryResult = New-ModuleResult `
+                        -ModuleName 'SystemInventory' `
+                        -Status 'Success' `
+                        -ItemsDetected 1 `
+                        -ItemsProcessed 1 `
+                        -DurationSeconds $inventoryDuration
+                    Add-ModuleResult -Result $inventoryResult
+                    Write-Information "  ✓ Inventory result collected for reporting" -InformationAction Continue
+                }
+            } else {
+                Write-Warning "System inventory returned no data"
+            }
+        } else {
+            Write-Warning "Type1 SystemInventory module not found at: $type1InventoryPath"
+        }
+    }
+    catch {
+        Write-Warning "Failed to run system inventory: $($_.Exception.Message)"
+        Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "System inventory failed" -Data @{
+            Error = $_.Exception.Message
+        }
+    }
+    Write-Information "`n=== Phase 2: System Modifications (Type2) ===" -InformationAction Continue
     # Log execution start
     Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting maintenance execution" -Data @{
         ExecutionMode      = $executionMode
