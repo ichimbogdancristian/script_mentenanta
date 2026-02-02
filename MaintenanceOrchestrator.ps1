@@ -1445,10 +1445,15 @@ try {
                 }
                 else {
                     $resultType = if ($result) { $result.GetType().Name } else { 'null' }
-                    $resultCount = if ($result -is [array]) { $result.Count } else { 1 }
+                    $resultCount = if ($result -is [array]) { $result.Count } elseif ($result -is [System.Collections.ICollection]) { $result.Count } else { 1 }
                     $hasSuccessKey = if ($result -is [array] -and $result.Count -gt 0) {
                         ($result[0] -is [hashtable] -and $result[0].ContainsKey('Success')) -or
                         ($result[0] -is [PSCustomObject] -and (Get-Member -InputObject $result[0] -Name 'Success' -ErrorAction SilentlyContinue))
+                    }
+                    elseif ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string]) -and -not ($result -is [hashtable]) -and -not ($result -is [PSCustomObject])) {
+                        $firstItem = $result | Select-Object -First 1
+                        ($firstItem -is [hashtable] -and $firstItem.ContainsKey('Success')) -or
+                        ($firstItem -is [PSCustomObject] -and (Get-Member -InputObject $firstItem -Name 'Success' -ErrorAction SilentlyContinue))
                     }
                     elseif ($result) {
                         ($result -is [hashtable] -and $result.ContainsKey('Success')) -or
@@ -1456,11 +1461,11 @@ try {
                     }
                     else { $false }
 
-                    # If it's an array, search for a valid result object anywhere in the array (pipeline contamination fix)
-                    if ($result -is [array]) {
+                    # If it's an enumerable collection, search for a valid result object (pipeline contamination fix)
+                    if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string]) -and -not ($result -is [hashtable]) -and -not ($result -is [PSCustomObject])) {
                         $validResult = $result | Where-Object { ($_ -is [hashtable] -and $_.ContainsKey('Success')) -or ($_ -is [PSCustomObject] -and (Get-Member -InputObject $_ -Name 'Success' -ErrorAction SilentlyContinue)) } | Select-Object -First 1
                         if ($validResult) {
-                            Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracted valid result from array" -Data @{ Module = $task.Function; ArrayCount = $result.Count }
+                            Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracted valid result from enumerable" -Data @{ Module = $task.Function; Count = $resultCount; ResultType = $resultType }
                             $result = $validResult
                             $hasValidStructure = $true
                             Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue

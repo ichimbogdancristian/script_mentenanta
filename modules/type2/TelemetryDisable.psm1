@@ -458,7 +458,7 @@ function Disable-WindowsTelemetry {
 
 .EXAMPLE
     $analysis = Test-PrivacySetting
-    Write-Output "Found $($analysis.Recommendations.Count) privacy issues"
+    Write-Information "Found $($analysis.Recommendations.Count) privacy issues" -InformationAction Continue
 
 .EXAMPLE
     $privacyStatus = Test-PrivacySetting
@@ -535,11 +535,11 @@ function Test-PrivacySetting {
 
 .EXAMPLE
     $result = Set-TelemetryRegistrySetting
-    Write-Output "Applied $($result.Applied) registry settings"
+    Write-Information "Applied $($result.Applied) registry settings" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Set-TelemetryRegistrySetting -DryRun
-    Write-Output "Would apply $($dryRunResult.Applied) registry changes"
+    Write-Information "Would apply $($dryRunResult.Applied) registry changes" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Applied count, Failed count, and detailed operation results
@@ -697,11 +697,11 @@ function Set-TelemetryRegistrySetting {
 
 .EXAMPLE
     $result = Disable-TelemetryService
-    Write-Output "Disabled $($result.Disabled) telemetry services"
+    Write-Information "Disabled $($result.Disabled) telemetry services" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-TelemetryService -DryRun
-    Write-Output "Would disable $($result.Disabled) services"
+    Write-Information "Would disable $($result.Disabled) services" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed service states
@@ -857,11 +857,11 @@ function Disable-TelemetryService {
 
 .EXAMPLE
     $result = Disable-WindowsNotification
-    Write-Output "Disabled $($result.Disabled) notification settings"
+    Write-Information "Disabled $($result.Disabled) notification settings" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-WindowsNotification -DryRun
-    Write-Output "Would disable $($dryRunResult.Disabled) notification types"
+    Write-Information "Would disable $($dryRunResult.Disabled) notification types" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed operation results
@@ -983,11 +983,11 @@ function Disable-WindowsNotification {
 
 .EXAMPLE
     $result = Disable-ConsumerFeature
-    Write-Output "Disabled $($result.Disabled) consumer features"
+    Write-Information "Disabled $($result.Disabled) consumer features" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-ConsumerFeature -DryRun
-    Write-Output "Would disable $($dryRunResult.Disabled) consumer features"
+    Write-Information "Would disable $($dryRunResult.Disabled) consumer features" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed operation results
@@ -1095,11 +1095,11 @@ function Disable-ConsumerFeature {
 
 .EXAMPLE
     $result = Disable-CortanaFeature
-    Write-Output "Disabled $($result.Disabled) Cortana features"
+    Write-Information "Disabled $($result.Disabled) Cortana features" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-CortanaFeature -DryRun
-    Write-Output "Would disable Cortana features"
+    Write-Information "Would disable Cortana features" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and operation details
@@ -1178,11 +1178,11 @@ function Disable-CortanaFeature {
 
 .EXAMPLE
     $result = Disable-LocationService
-    Write-Output "Disabled $($result.Disabled) location tracking features"
+    Write-Information "Disabled $($result.Disabled) location tracking features" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-LocationService -DryRun
-    Write-Output "Would disable location services"
+    Write-Information "Would disable location services" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and operation details

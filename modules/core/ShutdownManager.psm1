@@ -180,19 +180,15 @@ function Start-MaintenanceCountdown {
                 if ($keyPressSupported -and $Host.UI.RawUI.KeyAvailable) {
                     [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 
-                    # Key pressed - abort countdown and leave everything as-is
+                    # Key pressed - abort countdown and show action menu
                     Write-Host "`n" -NoNewline
-                    Write-Host "`n⏸ Countdown aborted - no cleanup or reboot will occur" -ForegroundColor Yellow
+                    Write-Host "`n⏸ Countdown aborted - select next action" -ForegroundColor Yellow
 
                     Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
-                        -Message "Countdown aborted by user keypress after $([math]::Floor((Get-Date - $countdownStartTime).TotalSeconds))s (no cleanup/reboot)"
+                        -Message "Countdown aborted by user keypress after $([math]::Floor((Get-Date - $countdownStartTime).TotalSeconds))s (showing abort menu)"
 
-                    return @{
-                        Action           = 'AbortByKeypress'
-                        RebootRequired   = $false
-                        RebootDelay      = 0
-                        CleanupPerformed = $false
-                    }
+                    $choice = Show-ShutdownAbortMenu
+                    return Invoke-MaintenanceShutdownChoice -Choice $choice -WorkingDirectory $WorkingDirectory -TempRoot $TempRoot
                 }
             }
             catch {
@@ -473,14 +469,17 @@ function Invoke-MaintenanceCleanup {
             (Join-Path $TempRoot "temp"),       # Temporary files during processing
             (Join-Path $TempRoot "logs"),       # Execution logs
             (Join-Path $TempRoot "data"),       # Type1 audit results
-            (Join-Path $TempRoot "processed"),  # Processed data cache
-            $WorkingDirectory                    # Entire extracted repository
+            (Join-Path $TempRoot "processed")   # Processed data cache
         )
+
+        if (-not $KeepReports) {
+            $cleanupPaths += $WorkingDirectory  # Entire extracted repository
+        }
 
         # Optionally keep reports for user review
         if ($KeepReports) {
             $cleanupPaths = $cleanupPaths | Where-Object { $_ -notlike "*reports*" }
-            Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' -Message "Preserving reports directory"
+            Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' -Message "Preserving reports directory (skipping repository removal)"
         }
 
         # Attempt cleanup of each path
