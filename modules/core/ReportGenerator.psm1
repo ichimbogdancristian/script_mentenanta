@@ -1,4 +1,5 @@
 ﻿#Requires -Version 7.0
+# PSScriptAnalyzer -IgnoreRule PSUseConsistentWhitespace
 
 <#
 .SYNOPSIS
@@ -40,7 +41,7 @@
     1. LogProcessor completes data processing and writes to temp_files/processed/
     2. MaintenanceOrchestrator calls New-MaintenanceReport
     3. Load-ProcessedData retrieves aggregated data from temp_files/processed/
-    4. Get-HtmlTemplates loads template files from config/templates/
+    4. Get-HtmlTemplateBundle loads template files from config/templates/
     5. For each module: Build-ReportSection creates HTML section with results
     6. Format-HtmlReport applies CSS styling and consolidates all sections
     7. Export-Report writes final reports to temp_files/reports/
@@ -292,7 +293,7 @@ function Get-HtmlTemplate {
         Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Attempting to use fallback templates for basic functionality'
 
         try {
-            return Get-FallbackTemplates
+            return Get-FallbackTemplateBundle
         }
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'REPORT-GENERATOR' -Message "Both template loading and fallback failed: $($_.Exception.Message)"
@@ -300,6 +301,23 @@ function Get-HtmlTemplate {
         }
     }
 
+}
+
+<#
+.SYNOPSIS
+    Backward-compatible wrapper for loading HTML templates
+.DESCRIPTION
+    Provides the pluralized function name used across the module and exports.
+    Internally delegates to Get-HtmlTemplate.
+#>
+function Get-HtmlTemplateBundle {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [switch]$UseEnhanced
+    )
+
+    return Get-HtmlTemplate -UseEnhanced:$UseEnhanced
 }
 
 <#
@@ -474,6 +492,20 @@ footer { margin-top: 4rem; padding: 2rem; text-align: center; color: var(--text-
     }
 
     return $fallbackTemplates
+}
+
+<#
+.SYNOPSIS
+    Backward-compatible wrapper for fallback templates
+.DESCRIPTION
+    Provides the pluralized function name referenced in the module.
+#>
+function Get-FallbackTemplateBundle {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    return Get-FallbackTemplate
 }
 
 #endregion
@@ -891,7 +923,7 @@ function Get-ParsedOperationLog {
     HTML string containing the operation log table
 #>
 function New-OperationLogTable {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
@@ -991,7 +1023,7 @@ function New-OperationLogTable {
     Optional path to processed data directory (defaults to temp_files/processed)
 #>
 function New-MaintenanceReport {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
@@ -1036,7 +1068,7 @@ function New-MaintenanceReport {
 
             # Load enhanced templates
             Write-Information "✓ Loading enhanced templates..." -InformationAction Continue
-            $templates = Get-HtmlTemplates -UseEnhanced
+            $templates = Get-HtmlTemplateBundle -UseEnhanced
 
             if (-not $templates.IsEnhanced) {
                 Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Enhanced templates not available, falling back to standard templates"
@@ -1047,7 +1079,7 @@ function New-MaintenanceReport {
         if (-not $UseEnhancedReports) {
             # Standard report generation (original code path)
             Write-Information "✓ Loading report templates..." -InformationAction Continue
-            $templates = Get-HtmlTemplates
+            $templates = Get-HtmlTemplateBundle
 
             # Generate report content using templates and processed data
             Write-Information "✓ Generating HTML report content..." -InformationAction Continue
@@ -1230,7 +1262,7 @@ function New-MaintenanceReport {
     Redesigned from monolithic ReportGeneration.psm1 for split architecture
 #>
 function New-HtmlReportContent {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData,
@@ -1376,7 +1408,7 @@ function New-HtmlReportContent {
     Generate dashboard metrics section with key performance indicators
 #>
 function New-DashboardSection {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
@@ -1461,7 +1493,7 @@ function New-DashboardSection {
     Generate individual module sections using task card templates
 #>
 function New-ModuleSection {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData,
@@ -1596,7 +1628,7 @@ function New-ModuleSection {
     Generate summary section with overall results and recommendations
 #>
 function New-SummarySection {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
@@ -1656,7 +1688,7 @@ function New-SummarySection {
     Generate maintenance log section with parsed log entries and statistics
 #>
 function New-MaintenanceLogSection {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
@@ -1817,7 +1849,7 @@ function New-MaintenanceLogSection {
     Adapted from ReportGeneration.psm1 for split architecture
 #>
 function New-TextReportContent {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
@@ -1966,7 +1998,7 @@ function New-TextReportContent {
     Generate JSON export of processed data with formatting
 #>
 function New-JsonExportContent {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
@@ -2008,7 +2040,7 @@ function New-JsonExportContent {
     Generate summary report content for quick overview
 #>
 function New-SummaryReportContent {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [hashtable]$ProcessedData
@@ -2423,7 +2455,7 @@ function Test-ConfigTemplateIntegration {
         Write-Information " Testing normal template loading..." -InformationAction Continue
 
         try {
-            $templates = Get-HtmlTemplates -ErrorAction Stop
+            $templates = Get-HtmlTemplateBundle -ErrorAction Stop
 
             # Validate each template
             $requiredTemplates = @('Main', 'TaskCard', 'CSS', 'Config')
@@ -2470,7 +2502,7 @@ function Test-ConfigTemplateIntegration {
             Write-Information " Testing fallback template mechanisms..." -InformationAction Continue
 
             try {
-                $fallbackTemplates = Get-FallbackTemplates -ErrorAction Stop
+                $fallbackTemplates = Get-FallbackTemplateBundle -ErrorAction Stop
 
                 $requiredFallbacks = @('Main', 'TaskCard', 'CSS', 'Config')
                 foreach ($templateName in $requiredFallbacks) {
@@ -2969,7 +3001,7 @@ function Optimize-ReportDataStructure {
     [hashtable] Result with Success, IndexPath, ReportCount, TotalSize, and Errors
 #>
 function New-ReportIndex {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $true)]
@@ -3535,7 +3567,7 @@ function Get-ErrorSeverity {
     Generates a one-line summary for a module result
 #>
 function New-ModuleSummary {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
@@ -4669,8 +4701,8 @@ function Build-KeyFinding {
 Export-ModuleMember -Function @(
     'New-MaintenanceReport',
     'New-ReportIndex',
-    'Get-HtmlTemplates',
-    'Get-FallbackTemplates',
+    'Get-HtmlTemplateBundle',
+    'Get-FallbackTemplateBundle',
     'Get-ProcessedLogData',
     'Test-ProcessedDataIntegrity',
     'Get-FallbackRawLogData',

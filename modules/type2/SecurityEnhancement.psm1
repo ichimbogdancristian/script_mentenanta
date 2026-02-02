@@ -1,4 +1,5 @@
 ﻿#Requires -Version 7.0
+# PSScriptAnalyzer -IgnoreRule PSUseConsistentWhitespace
 
 <#
 .SYNOPSIS
@@ -132,6 +133,24 @@ function Invoke-SecurityEnhancement {
     try {
         # Track execution duration
         $executionStartTime = Get-Date
+        $executionLogPath = $null
+
+        if (Get-Command -Name 'Write-StructuredLogEntry' -ErrorAction SilentlyContinue) {
+            try {
+                $tempRoot = if (Get-Command -Name 'Get-MaintenancePath' -ErrorAction SilentlyContinue) { Get-MaintenancePath 'TempRoot' } else { $env:MAINTENANCE_TEMP_ROOT }
+                if ($tempRoot) {
+                    $executionLogDir = Join-Path $tempRoot 'logs\security-enhancement'
+                    if (-not (Test-Path $executionLogDir)) {
+                        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
+                    }
+                    $executionLogPath = Join-Path $executionLogDir 'execution.log'
+                    Write-StructuredLogEntry -Level 'INFO' -Component 'SECURITY-ENHANCEMENT' -Message 'Starting security enhancement' -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DryRun = $DryRun.IsPresent }
+                }
+            }
+            catch {
+                Write-Verbose "Failed to initialize security enhancement execution log: $($_.Exception.Message)"
+            }
+        }
 
         Write-Host "`n" -NoNewline
         Write-Host "=================================================" -ForegroundColor Cyan
@@ -255,6 +274,10 @@ function Invoke-SecurityEnhancement {
         Write-Information "   • Enhancements applied: $itemsProcessed" -InformationAction Continue
         Write-Information "   • Execution time: $([math]::Round($executionDuration, 2)) seconds" -InformationAction Continue
 
+        if ($executionLogPath) {
+            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SECURITY-ENHANCEMENT' -Message 'Security enhancement completed' -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ IssuesDetected = $issuesDetected; EnhancementsApplied = $itemsProcessed; DurationSeconds = [math]::Round($executionDuration, 2) }
+        }
+
         # Return standardized v3.0 result structure
         return [PSCustomObject]@{
             Success            = $true
@@ -269,6 +292,10 @@ function Invoke-SecurityEnhancement {
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'SECURITY-ENHANCEMENT' -Message "Security enhancement failed: $($_.Exception.Message)"
+
+        if ($executionLogPath) {
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'SECURITY-ENHANCEMENT' -Message "Security enhancement failed: $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Complete' -Result 'Failed' -Metadata @{ Error = $_.Exception.Message }
+        }
 
         return [PSCustomObject]@{
             Success        = $false
@@ -351,6 +378,26 @@ function Get-DefaultSecurityConfiguration {
             enableCISBaseline      = $true
             enforceExecutionPolicy = 'RemoteSigned'
         }
+    }
+}
+
+<#
+.SYNOPSIS
+    Determines whether the current session is running with administrative privileges
+#>
+function Test-IsAdministrator {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    try {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    catch {
+        Write-Verbose "Failed to determine elevation state: $($_.Exception.Message)"
+        return $false
     }
 }
 
@@ -472,10 +519,15 @@ function Set-PowerShellExecutionPolicy {
 
     $itemsProcessed = 0
     $policy = $Config.compliance.enforceExecutionPolicy
+    if (-not $policy) {
+        $policy = 'RemoteSigned'
+    }
+    $isAdmin = Test-IsAdministrator
+    $targetScope = if ($isAdmin) { 'LocalMachine' } else { 'CurrentUser' }
 
     try {
         if ($DryRun) {
-            Write-Information "      [DRY-RUN] Would set execution policy to: $policy" -InformationAction Continue
+            Write-Information "      [DRY-RUN] Would set execution policy to: $policy (Scope=$targetScope)" -InformationAction Continue
             $itemsProcessed = 1
         }
         else {
@@ -485,9 +537,22 @@ function Set-PowerShellExecutionPolicy {
                 Write-Information "      [SKIP] Execution policy enforced by Group Policy (MachinePolicy=$machinePolicy, UserPolicy=$userPolicy)" -InformationAction Continue
                 return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -AdditionalData @{ Skipped = $true; Reason = 'Execution policy enforced by Group Policy' }
             }
-            Set-ExecutionPolicy -ExecutionPolicy $policy -Scope LocalMachine -Force -ErrorAction Stop
-            $itemsProcessed++
-            Write-Information "      [OK] Execution policy set to: $policy" -InformationAction Continue
+            try {
+                Set-ExecutionPolicy -ExecutionPolicy $policy -Scope $targetScope -Force -ErrorAction Stop
+                $itemsProcessed++
+                Write-Information "      [OK] Execution policy set to: $policy (Scope=$targetScope)" -InformationAction Continue
+            }
+            catch [System.Security.SecurityException] {
+                if ($targetScope -eq 'LocalMachine') {
+                    Write-Warning "      Security error setting LocalMachine policy. Retrying with CurrentUser scope."
+                    Set-ExecutionPolicy -ExecutionPolicy $policy -Scope CurrentUser -Force -ErrorAction Stop
+                    $itemsProcessed++
+                    Write-Information "      [OK] Execution policy set to: $policy (Scope=CurrentUser)" -InformationAction Continue
+                }
+                else {
+                    throw
+                }
+            }
         }
 
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
@@ -628,6 +693,7 @@ function Set-NetworkSecurityConfiguration {
 #>
 function Invoke-ComprehensiveSecurityHardening {
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$RestrictLogs,
@@ -652,6 +718,14 @@ function Invoke-ComprehensiveSecurityHardening {
         Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Cyan
     }
 
+    $hardeningOptions = @{
+        RestrictLogs         = $RestrictLogs.IsPresent
+        SkipPrivacyChanges   = $SkipPrivacyChanges.IsPresent
+        DisableIPv6          = $DisableIPv6.IsPresent
+        DisableDefenderCloud = $DisableDefenderCloud.IsPresent
+        ValidateOnly         = $Validate.IsPresent
+    }
+
     try {
         # Initialize logging
         $LogPath = "C:\SecurityHardening"
@@ -674,6 +748,7 @@ function Invoke-ComprehensiveSecurityHardening {
         Write-LogEntry -Level 'INFO' -Component 'SECURITY-HARDENING' -Message "Starting comprehensive security hardening"
         Write-LogEntry -Level 'INFO' -Component 'SECURITY-HARDENING' -Message "System: $env:COMPUTERNAME"
         Write-LogEntry -Level 'INFO' -Component 'SECURITY-HARDENING' -Message "Execution Mode: $(if($Script:GlobalWhatIf){'DRY-RUN / VALIDATION'}else{'LIVE'})"
+        Write-LogEntry -Level 'INFO' -Component 'SECURITY-HARDENING' -Message "Hardening options: RestrictLogs=$($hardeningOptions.RestrictLogs); SkipPrivacyChanges=$($hardeningOptions.SkipPrivacyChanges); DisableIPv6=$($hardeningOptions.DisableIPv6); DisableDefenderCloud=$($hardeningOptions.DisableDefenderCloud)"
 
         # Registry backup
         Write-LogEntry -Level 'INFO' -Component 'SECURITY-HARDENING' -Message "Creating registry backup..."
@@ -709,6 +784,7 @@ function Invoke-ComprehensiveSecurityHardening {
             TasksCompleted  = $completedTasks
             DurationSeconds = 0
             LogFile         = $LogFile
+            Options         = $hardeningOptions
             Message         = "Security hardening completed"
         }
     }

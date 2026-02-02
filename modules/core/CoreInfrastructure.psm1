@@ -1151,6 +1151,9 @@ $script:LoggingStandards = @{
     Levels          = @('DEBUG', 'INFO', 'WARNING', 'SUCCESS', 'ERROR')
     Components      = @('LAUNCHER', 'ORCHESTRATOR', 'CORE', 'TYPE1', 'TYPE2', 'REPORTER')
 }
+$script:LoggingState = @{
+    BaseLogPath = $null
+}
 
 <#
 .SYNOPSIS
@@ -1230,6 +1233,8 @@ function Initialize-LoggingSystem {
             New-Item -Path $logDir -ItemType Directory -Force | Out-Null
         }
 
+        $script:LoggingState.BaseLogPath = $BaseLogPath
+
         Write-Verbose "Logging system initialized at: $BaseLogPath"
         return $true
     }
@@ -1267,7 +1272,7 @@ function Write-ModuleLogEntry {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'SUCCESS', 'DEBUG')]
+        [ValidateSet('INFO', 'WARNING', 'WARN', 'ERROR', 'SUCCESS', 'DEBUG')]
         [string]$Level,
 
         [Parameter(Mandatory = $true)]
@@ -1280,6 +1285,10 @@ function Write-ModuleLogEntry {
         [Parameter(Mandatory = $false)]
         [hashtable]$Data = @{}
     )
+
+    if ($Level -eq 'WARN') {
+        $Level = 'WARNING'
+    }
 
     # Filter non-actionable content (progress bars, spinners) from DEBUG logs
     # Only filter DEBUG level to reduce noise in detailed logs
@@ -1301,6 +1310,30 @@ function Write-ModuleLogEntry {
     }
 
     Write-Information $logEntry -InformationAction Continue
+
+    # Persist to maintenance log file when available
+    $baseLogPath = $script:LoggingState.BaseLogPath
+    if ([string]::IsNullOrWhiteSpace($baseLogPath)) {
+        if ($env:SCRIPT_LOG_FILE) {
+            $baseLogPath = $env:SCRIPT_LOG_FILE
+        }
+        elseif ($env:MAINTENANCE_TEMP_ROOT) {
+            $baseLogPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'logs\maintenance.log'
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($baseLogPath)) {
+        try {
+            $baseLogDir = Split-Path -Parent $baseLogPath
+            if (-not (Test-Path $baseLogDir)) {
+                New-Item -Path $baseLogDir -ItemType Directory -Force | Out-Null
+            }
+            Add-Content -Path $baseLogPath -Value $logEntry -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+        catch {
+            Write-Verbose "Failed to write to maintenance log: $($_.Exception.Message)"
+        }
+    }
 }
 
 # Backward compatibility alias
@@ -1929,11 +1962,38 @@ function Get-SessionDirectoryPath {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $false)]
-        [ValidateSet('data', 'logs', 'reports', 'temp')]
+        [ValidateSet('data', 'logs', 'reports', 'temp', 'inventory')]
         [string]$Type = 'temp'
     )
 
     return Join-Path $env:MAINTENANCE_TEMP_ROOT $Type
+}
+
+<#
+.SYNOPSIS
+    Get session file path
+
+.DESCRIPTION
+    Returns a full path for a file within the session directory structure.
+#>
+function Get-SessionFilePath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileName,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('data', 'logs', 'reports', 'temp', 'inventory')]
+        [string]$Type = 'data'
+    )
+
+    $dir = Get-SessionDirectoryPath -Type $Type
+    if (-not (Test-Path $dir)) {
+        New-Item -Path $dir -ItemType Directory -Force | Out-Null
+    }
+
+    return Join-Path $dir $FileName
 }
 
 <#

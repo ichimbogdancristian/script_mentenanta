@@ -175,7 +175,7 @@
         
         # Use consistent whitespace
         PSUseConsistentWhitespace                   = @{
-            Enable                          = $true
+            Enable                          = $false
             CheckInnerBrace                 = $true
             CheckOpenBrace                  = $true
             CheckOpenParen                  = $true
@@ -184,6 +184,11 @@
             CheckPipeForRedundantWhitespace = $true  # Changed to true for cleaner code
             CheckSeparator                  = $true
             CheckParameter                  = $false
+        }
+
+        # Suppress unused parameter noise for scriptblocks and pipeline helpers
+        PSReviewUnusedParameter                      = @{
+            Enable = $false
         }
         
         # Use proper brace placement (K&R style - opening brace on same line)

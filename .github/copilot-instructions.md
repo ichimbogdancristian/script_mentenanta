@@ -529,7 +529,7 @@ $config = Get-MainConfiguration
 **Key Functions:**
 - `Invoke-LogProcessing` - Full pipeline
 - `Get-Type1AuditData` - Load audit results
-- `Get-Type2ExecutionLogs` - Load execution logs
+- `Get-Type2ExecutionLog` - Load execution logs
 - `Get-ComprehensiveLogAnalysis` - Parse & analyze
 
 **Context:**
@@ -543,7 +543,7 @@ $config = Get-MainConfiguration
 **Purpose:** Report rendering engine (Type1 - read-only)  
 **Key Functions:**
 - `New-MaintenanceReport` - Primary entry point
-- `Get-HtmlTemplates` - Load templates
+- `Get-HtmlTemplateBundle` - Load templates
 - `Get-ProcessedLogData` - Load LogProcessor output
 
 **Template System:**

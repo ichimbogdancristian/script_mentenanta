@@ -1,4 +1,5 @@
 ﻿#Requires -Version 7.0
+# PSScriptAnalyzer -IgnoreRule PSUseConsistentWhitespace
 
 <#
 .SYNOPSIS
@@ -39,7 +40,7 @@
     - Get-CISControlStatus: Audit current compliance status
     - Set-CISPasswordPolicies: Implement password controls (1.1-1.1.6)
     - Set-CISAccountLockout: Implement lockout controls (1.2-1.2.4)
-    - Set-CISUACSettings: Implement UAC controls (2.3.17-2.3.17.5)
+    - Set-CISUACSetting: Implement UAC controls (2.3.17-2.3.17.5)
     - Set-CISFirewall: Implement firewall controls (9.1-9.3)
     - Set-CISAuditing: Implement auditing controls (17.x)
     - Set-CISDefender: Implement Defender controls (2.6.x)
@@ -74,6 +75,7 @@ if (-not (Get-Command 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
     Creates standardized CIS control result object
 #>
 function New-CISControlResult {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [string]$ControlID,
@@ -111,6 +113,7 @@ function New-CISControlResult {
     Applies registry change with error handling and logging
 #>
 function Set-RegistryValue {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [string]$Path,
@@ -163,6 +166,7 @@ function Set-RegistryValue {
     Applies policy setting via secedit
 #>
 function Set-SecurityPolicy {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [string]$PolicyName,
@@ -219,6 +223,7 @@ function Set-SecurityPolicy {
     Compliance: PCI-DSS, HIPAA, NIST SP 800-53
 #>
 function Set-CISPasswordHistory {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $controlID = '1.1.1'
@@ -238,7 +243,9 @@ function Set-CISPasswordHistory {
         try {
             net accounts /uniquepw:24 | Out-Null
         }
-        catch {}
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'CIS-1.1' -Message "Failed to apply net accounts password history: $($_.Exception.Message)"
+        }
 
         # Method 3: Group Policy via secedit
         Set-SecurityPolicy -PolicyName 'PasswordHistorySize' -Value 24
@@ -261,6 +268,7 @@ function Set-CISPasswordHistory {
     Works with password history to prevent circumvention
 #>
 function Set-CISMinimumPasswordAge {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $controlID = '1.1.3'
@@ -293,6 +301,7 @@ function Set-CISMinimumPasswordAge {
     Modern recommendation: 14+ characters instead of legacy 8
 #>
 function Set-CISMinimumPasswordLength {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $controlID = '1.1.4'
@@ -325,6 +334,7 @@ function Set-CISMinimumPasswordLength {
     Requires uppercase, lowercase, numbers, and special characters
 #>
 function Set-CISPasswordComplexity {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $controlID = '1.1.5'
@@ -359,6 +369,7 @@ function Set-CISPasswordComplexity {
     Enforces periodic password changes
 #>
 function Set-CISMaximumPasswordAge {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $controlID = '1.1.2'
@@ -390,6 +401,7 @@ function Set-CISMaximumPasswordAge {
     Control IDs: 1.2.1 - Duration, 1.2.2 - Threshold, 1.2.3 - Reset counter
 #>
 function Set-CISAccountLockout {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $results = @()
@@ -458,7 +470,8 @@ function Set-CISAccountLockout {
 .NOTES
     Control IDs: 2.3.17.1 - Admin Approval, 2.3.17.3 - Standard user elevation
 #>
-function Set-CISUACSettings {
+function Set-CISUACSetting {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $results = @()
@@ -546,6 +559,7 @@ function Set-CISUACSettings {
     Control IDs: 9.1-9.3 (Domain, Private, Public profiles)
 #>
 function Set-CISFirewall {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $results = @()
@@ -567,16 +581,16 @@ function Set-CISFirewall {
                 Private = 'privatefw.log'
                 Public  = 'publicfw.log'
             }.GetEnumerator() | ForEach-Object {
-                $profile = $_.Key
+                $firewallProfile = $_.Key
                 $logfile = $_.Value
 
-                Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${profile}Profile\Logging" `
+                Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${firewallProfile}Profile\Logging" `
                     -Name 'LogFilePath' -Value "%SystemRoot%\System32\logfiles\firewall\$logfile" -Type 'String'
-                Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${profile}Profile\Logging" `
+                Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${firewallProfile}Profile\Logging" `
                     -Name 'LogFileSize' -Value 16384 -Type 'DWord'
-                Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${profile}Profile\Logging" `
+                Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${firewallProfile}Profile\Logging" `
                     -Name 'LogDroppedPackets' -Value 1 -Type 'DWord'
-                Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${profile}Profile\Logging" `
+                Set-RegistryValue -Path "HKLM:\Software\Policies\Microsoft\WindowsFirewall\${firewallProfile}Profile\Logging" `
                     -Name 'LogSuccessfulConnections' -Value 1 -Type 'DWord'
             }
 
@@ -602,6 +616,7 @@ function Set-CISFirewall {
     Control IDs: 17.1.1 (Credential Validation), 17.3.x (Process tracking), 17.6.x (File/Share access)
 #>
 function Set-CISAuditing {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $results = @()
@@ -652,6 +667,7 @@ function Set-CISAuditing {
     Control IDs: 5.1-5.47 (Bluetooth, RDP, Print Spooler, Xbox, etc.)
 #>
 function Set-CISServiceHardening {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $results = @()
@@ -736,6 +752,7 @@ function Set-CISServiceHardening {
     Control IDs: 2.6.1-2.6.5 (Real-time protection, scanning, behavior monitoring, scans, remediation)
 #>
 function Set-CISDefender {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $results = @()
@@ -785,6 +802,7 @@ function Set-CISDefender {
     Control IDs: 18.x (BitLocker, EFS, Credential Guard)
 #>
 function Set-CISEncryption {
+    [CmdletBinding(SupportsShouldProcess)]
     param([switch]$DryRun)
 
     $results = @()
@@ -855,6 +873,24 @@ function Invoke-CISSecurityEnhancement {
     )
 
     $executionStartTime = Get-Date
+    $executionLogPath = $null
+
+    if (Get-Command -Name 'Write-StructuredLogEntry' -ErrorAction SilentlyContinue) {
+        try {
+            $tempRoot = if (Get-Command -Name 'Get-MaintenancePath' -ErrorAction SilentlyContinue) { Get-MaintenancePath 'TempRoot' } else { $env:MAINTENANCE_TEMP_ROOT }
+            if ($tempRoot) {
+                $executionLogDir = Join-Path $tempRoot 'logs\security-enhancement-cis'
+                if (-not (Test-Path $executionLogDir)) {
+                    New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
+                }
+                $executionLogPath = Join-Path $executionLogDir 'execution.log'
+                Write-StructuredLogEntry -Level 'INFO' -Component 'SECURITY-ENHANCEMENT-CIS' -Message 'Starting CIS security enhancement' -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DryRun = $DryRun.IsPresent; Categories = ($ControlCategories -join ', ') }
+            }
+        }
+        catch {
+            Write-Verbose "Failed to initialize CIS execution log: $($_.Exception.Message)"
+        }
+    }
     Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' `
         -Message "CIS Security Enhancement starting (Categories: $($ControlCategories -join ', '))"
 
@@ -880,7 +916,7 @@ function Invoke-CISSecurityEnhancement {
         # 2.3.17 - UAC
         if ($ControlCategories -contains 'All' -or $ControlCategories -contains 'UAC') {
             Write-LogEntry -Level 'INFO' -Component 'CIS-ENHANCEMENT' -Message "Applying UAC settings..."
-            $allResults += Set-CISUACSettings -DryRun:$DryRun
+            $allResults += Set-CISUACSetting -DryRun:$DryRun
         }
 
         # 9 - Firewall
@@ -931,19 +967,28 @@ function Invoke-CISSecurityEnhancement {
             DryRun          = $DryRun
             ControlDetails  = $allResults
             DurationSeconds = $executionDuration.TotalSeconds
+            LogPath         = $executionLogPath
         }
 
         Write-LogEntry -Level 'SUCCESS' -Component 'CIS-ENHANCEMENT' `
             -Message "CIS Enhancement completed: $successCount applied, $failedCount failed, $skippedCount skipped ($([math]::Round($executionDuration.TotalSeconds, 2))s)"
 
+        if ($executionLogPath) {
+            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SECURITY-ENHANCEMENT-CIS' -Message 'CIS security enhancement completed' -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ AppliedControls = $successCount; FailedControls = $failedCount; SkippedControls = $skippedCount; DurationSeconds = [math]::Round($executionDuration.TotalSeconds, 2) }
+        }
+
         return $summaryResult
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'CIS-ENHANCEMENT' -Message "CIS Enhancement failed: $_"
+        if ($executionLogPath) {
+            Write-StructuredLogEntry -Level 'ERROR' -Component 'SECURITY-ENHANCEMENT-CIS' -Message "CIS security enhancement failed: $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Complete' -Result 'Failed' -Metadata @{ Error = $_.Exception.Message }
+        }
         return @{
             Status         = 'Failed'
             Error          = $_.Exception.Message
             ControlDetails = $allResults
+            LogPath        = $executionLogPath
         }
     }
 }
@@ -979,6 +1024,7 @@ function Invoke-SecurityEnhancementCIS {
             -ItemsProcessed $itemsProcessed `
             -DurationMilliseconds $durationMs `
             -ModuleName 'SecurityEnhancementCIS' `
+            -LogPath $summary.LogPath `
             -DryRun $DryRun.IsPresent `
             -AdditionalData @{ Summary = $summary }
     }
