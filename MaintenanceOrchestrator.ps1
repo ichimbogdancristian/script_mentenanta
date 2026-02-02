@@ -1366,10 +1366,12 @@ try {
                     Add-ModuleResult -Result $inventoryResult
                     Write-Information "  ✓ Inventory result collected for reporting" -InformationAction Continue
                 }
-            } else {
+            }
+            else {
                 Write-Warning "System inventory returned no data"
             }
-        } else {
+        }
+        else {
             Write-Warning "Type1 SystemInventory module not found at: $type1InventoryPath"
         }
     }
