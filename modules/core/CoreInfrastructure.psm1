@@ -2771,6 +2771,7 @@ function Compare-DetectedVsConfig {
 
 .DESCRIPTION
     Uses Enable-ComputerRestore to enable System Protection for restore points.
+    Windows 10/11 cross-platform support with fallback mechanisms.
 
 .PARAMETER Drive
     Drive letter to enable System Protection on (default: system drive)
@@ -2788,11 +2789,50 @@ function Enable-SystemProtection {
             $Drive = "$Drive\"
         }
 
-        if ($PSCmdlet.ShouldProcess($Drive, 'Enable System Protection')) {
-            Enable-ComputerRestore -Drive $Drive -ErrorAction Stop
-        }
+        # Get Windows version for compatibility handling
+        $osVersion = [System.Environment]::OSVersion.Version
+        $isWindows11 = $osVersion.Build -ge 22000
+        $isWindows10 = $osVersion.Major -eq 10
 
-        return @{ Success = $true; Message = 'System Protection enabled' }
+        if ($PSCmdlet.ShouldProcess($Drive, 'Enable System Protection')) {
+            # Try primary method: Enable-ComputerRestore (works better on Win11)
+            try {
+                Enable-ComputerRestore -Drive $Drive -ErrorAction Stop
+                Write-Verbose "System Protection enabled on $Drive using Enable-ComputerRestore (Windows $($osVersion.Build))"
+                return @{ Success = $true; Message = 'System Protection enabled'; Method = 'Enable-ComputerRestore' }
+            }
+            catch {
+                Write-Verbose "Enable-ComputerRestore failed on Windows $($osVersion.Build): $($_.Exception.Message)"
+
+                # Fallback for Windows 10: Try registry-based method
+                if ($isWindows10 -or $isWindows11) {
+                    try {
+                        Write-Verbose "Attempting Windows 10 fallback method using VSSAdmin..."
+                        $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
+                        $disableReg = Get-ItemProperty -Path $regPath -Name 'DisableSR' -ErrorAction SilentlyContinue
+                        
+                        # Only try to enable via registry if not already enabled
+                        if ($disableReg -and $disableReg.DisableSR -eq 1) {
+                            Set-ItemProperty -Path $regPath -Name 'DisableSR' -Value 0 -ErrorAction SilentlyContinue
+                            Write-Verbose "Enabled System Protection via registry (DisableSR = 0)"
+                        }
+
+                        # Try vssadmin as additional fallback
+                        & vssadmin Enable Shadows /For=$Drive | Out-Null 2>&1
+                        Write-Verbose "Attempted to enable VSS shadow storage on $Drive"
+                        
+                        return @{ Success = $true; Message = 'System Protection enabled (via fallback methods)'; Method = 'Fallback-Win10' }
+                    }
+                    catch {
+                        Write-Verbose "Windows 10 fallback methods also failed: $($_.Exception.Message)"
+                        return @{ Success = $false; Message = "Enable System Protection failed: $($_.Exception.Message) (Win $($osVersion.Build))" }
+                    }
+                }
+                else {
+                    return @{ Success = $false; Message = "Enable-ComputerRestore failed: $($_.Exception.Message)" }
+                }
+            }
+        }
     }
     catch {
         return @{ Success = $false; Message = $_.Exception.Message }

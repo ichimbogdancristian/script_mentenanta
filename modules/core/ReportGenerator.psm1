@@ -1384,10 +1384,27 @@ function New-HtmlReportContent {
         $html = $html -replace '{{MODULE_REPORTS}}', $moduleSections
 
         # Generate maintenance log section (if available)
-        $maintenanceLogSection = New-MaintenanceLogSection -ProcessedData $ProcessedData -Templates $Templates
-        if ($maintenanceLogSection) {
-            # Insert maintenance log section after module sections
-            $html = $html -replace '({{MODULE_SECTIONS}}.*?</div>)', "`$1`n$maintenanceLogSection"
+        # CRITICAL: Ensure maintenance log data structure is complete and available
+        if ($ProcessedData -and $ProcessedData.MaintenanceLog) {
+            # Validate maintenance log structure before passing to rendering function
+            if (-not $ProcessedData.MaintenanceLog.Available) {
+                Write-LogEntry -Level 'DEBUG' -Component 'REPORT-GENERATOR' -Message 'Maintenance log marked as unavailable, skipping dedicated log section'
+                $maintenanceLogSection = ""
+            }
+            else {
+                $maintenanceLogSection = New-MaintenanceLogSection -ProcessedData $ProcessedData -Templates $Templates
+                if ($maintenanceLogSection) {
+                    # Insert maintenance log section after module sections
+                    $html = $html -replace '({{MODULE_SECTIONS}}.*?</div>)', "`$1`n$maintenanceLogSection"
+                    Write-LogEntry -Level 'SUCCESS' -Component 'REPORT-GENERATOR' -Message 'Maintenance log section successfully added to HTML report'
+                }
+                else {
+                    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message 'Maintenance log section generation returned empty result'
+                }
+            }
+        }
+        else {
+            Write-LogEntry -Level 'DEBUG' -Component 'REPORT-GENERATOR' -Message 'No maintenance log data available in ProcessedData for HTML report'
         }
 
         # Generate summary section

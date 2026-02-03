@@ -1699,16 +1699,28 @@ try {
                         $script:ProjectPaths.ParentDir
                     }
 
+                    $copiedReportCount = 0
                     foreach ($artifactPath in $script:ReportArtifacts) {
                         try {
                             $destPath = Join-Path $reportCopyTarget (Split-Path -Leaf $artifactPath)
                             Copy-Item -Path $artifactPath -Destination $destPath -Force
-                            Write-Information "   Report copied to: $destPath" -InformationAction Continue
-                            $finalReports += $destPath
+                            # VERIFY FILE EXISTS AFTER COPY (critical check)
+                            if (Test-Path $destPath) {
+                                Write-Information "   Report copied to: $destPath" -InformationAction Continue
+                                $finalReports += $destPath
+                                $copiedReportCount++
+                            }
+                            else {
+                                Write-Warning "   Report copy verification failed: File not found after copy at $destPath"
+                            }
                         }
                         catch {
                             Write-Warning "   Failed to copy report to target directory: $($_.Exception.Message)"
                         }
+                    }
+
+                    if ($copiedReportCount -eq 0) {
+                        Write-Warning "   No reports were successfully copied to target directory"
                     }
                 }
                 else {
