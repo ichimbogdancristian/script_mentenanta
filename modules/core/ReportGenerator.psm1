@@ -3658,7 +3658,7 @@ function Build-ModuleLogEntry {
 .SYNOPSIS
     Builds HTML rows for execution summary table
 #>
-function Build-ExecutionSummaryRow {
+function Build-ExecutionSummaryRows {
     [CmdletBinding()]
     [OutputType([string])]
     param(
@@ -4747,7 +4747,8 @@ Export-ModuleMember -Function @(
     'Build-KeyFindings',
     # Enhanced Builder Functions v5.0 (Integrated from ModernReportGenerator)
     'Build-ModuleDetailsSection',
-    'Build-ModuleLogsSection'
+    'Build-ModuleLogsSection',
+    'Build-ExecutionSummaryRows'
 )
 
 #endregion
