@@ -1232,6 +1232,7 @@ function New-MaintenanceReport {
             TextReport    = $textPath
             JsonExport    = $jsonPath
             SummaryReport = $summaryPath
+            ReportPaths   = @($OutputPath, $textPath, $jsonPath, $summaryPath) | Where-Object { $_ -and (Test-Path $_) }
             Duration      = $duration
             ModuleCount   = $processedData.ModuleResults.Count
         }

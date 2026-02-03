@@ -1685,11 +1685,10 @@ try {
                     }
 
                     # Track generated report artifacts for downstream copy/summary
+                    # Only copy the main HTML report to script.bat location
                     $script:ReportArtifacts = @()
-                    foreach ($reportPath in @($reportResult.HtmlReport, $reportResult.TextReport, $reportResult.JsonExport, $reportResult.SummaryReport)) {
-                        if ($reportPath -and (Test-Path $reportPath)) {
-                            $script:ReportArtifacts += $reportPath
-                        }
+                    if ($reportResult.HtmlReport -and (Test-Path $reportResult.HtmlReport)) {
+                        $script:ReportArtifacts += $reportResult.HtmlReport
                     }
 
                     # Copy report artifacts to original script.bat location when available
@@ -1863,14 +1862,9 @@ try {
         $reportsDir = Join-Path $script:ProjectPaths.TempRoot "reports"
         $logsDir = Join-Path $script:ProjectPaths.TempRoot "logs"
         $searchPaths = @($reportsDir, $logsDir, $script:ProjectPaths.TempRoot) | Where-Object { $_ -and (Test-Path $_) }
+        # Only copy the main HTML report to script.bat location
         $reportPatterns = @(
             @{ Pattern = 'MaintenanceReport_*.html'; Description = 'HTML maintenance report' }
-            @{ Pattern = 'MaintenanceReport_*.txt'; Description = 'Text maintenance report' }
-            @{ Pattern = 'MaintenanceReport_*.json'; Description = 'JSON maintenance report' }
-            @{ Pattern = 'MaintenanceReport_*_summary.txt'; Description = 'Summary maintenance report' }
-            @{ Pattern = 'Report_Index.html'; Description = 'Report index' }
-            @{ Pattern = 'report-index.html'; Description = 'Report index (alt)' }
-            @{ Pattern = 'maintenance.log'; Description = 'Maintenance log file' }
         )
 
         foreach ($reportInfo in $reportPatterns) {
@@ -1902,13 +1896,26 @@ catch {
     Write-Information "  Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
     exit 1
 }
+
+# Display final report locations BEFORE countdown (user needs to know where to find them)
 if ($finalReports.Count -gt 0) {
     Write-Information "" -InformationAction Continue
-    Write-Information " Final reports available in parent directory:" -InformationAction Continue
-    Write-Information "   Location: $ParentDir" -InformationAction Continue
+    Write-Information " ═══════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information " 📊 Final Reports Available (Safe Location):" -ForegroundColor Green -InformationAction Continue
+    Write-Information " ═══════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "   Location: $reportCopyTarget" -ForegroundColor Cyan -InformationAction Continue
     foreach ($report in $finalReports) {
-        Write-Information "  • $(Split-Path $report -Leaf)" -InformationAction Continue
+        $fileName = Split-Path $report -Leaf
+        Write-Information "    ✓ $fileName" -ForegroundColor Green -InformationAction Continue
     }
+    Write-Information " ═══════════════════════════════════════════════════════" -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+    Write-Information "   These reports have been copied to the script.bat directory" -ForegroundColor Yellow -InformationAction Continue
+    Write-Information "   They will remain even if temporary files are cleaned up" -ForegroundColor Yellow -InformationAction Continue
+    Write-Information "" -InformationAction Continue
+}
+else {
+    Write-Warning "No reports were generated or copied. Check logs for errors."
 }
 
 # v3.2 Post-Execution Shutdown Sequence

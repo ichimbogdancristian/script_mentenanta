@@ -469,18 +469,13 @@ function Invoke-MaintenanceCleanup {
             (Join-Path $TempRoot "temp"),       # Temporary files during processing
             (Join-Path $TempRoot "logs"),       # Execution logs
             (Join-Path $TempRoot "data"),       # Type1 audit results
-            (Join-Path $TempRoot "processed")   # Processed data cache
+            (Join-Path $TempRoot "processed"),  # Processed data cache
+            $WorkingDirectory                   # Entire extracted repository (always remove)
         )
 
-        if (-not $KeepReports) {
-            $cleanupPaths += $WorkingDirectory  # Entire extracted repository
-        }
-
-        # Optionally keep reports for user review
-        if ($KeepReports) {
-            $cleanupPaths = $cleanupPaths | Where-Object { $_ -notlike "*reports*" }
-            Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' -Message "Preserving reports directory (skipping repository removal)"
-        }
+        # Note: Reports are already copied to ORIGINAL_SCRIPT_DIR before cleanup runs
+        # So it's safe to remove the entire WorkingDirectory including temp_files/reports/
+        Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' -Message "Will remove entire WorkingDirectory (reports already copied to script.bat location)"
 
         # Attempt cleanup of each path
         foreach ($path in $cleanupPaths) {
