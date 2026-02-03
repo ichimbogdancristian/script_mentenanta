@@ -31,6 +31,7 @@ The maintenance.log **WAS being processed correctly** but the complete flow wasn
 ### **The Gap**
 
 The previous code had minimal error handling and didn't verify:
+
 - MaintenanceLog structure validity before rendering
 - Whether `Available` flag was properly set
 - Detailed logging for troubleshooting
@@ -73,7 +74,7 @@ else {
 ✅ Clear logging for each validation step (helps troubleshooting)  
 ✅ Gracefully handles missing/unavailable maintenance log  
 ✅ Logs success when section is added to report  
-✅ Prevents silent failures  
+✅ Prevents silent failures
 
 ### **Transcript Display in Report**
 
@@ -129,6 +130,7 @@ The report **WAS being generated and copied**, but without verification:
 Missing critical verification step: `Test-Path $destPath` after `Copy-Item`
 
 Copy-Item can complete "successfully" (exit code 0) but file might not exist on target due to:
+
 - Permissions issues (ACLs)
 - Network path unavailability
 - Disk full on destination
@@ -158,7 +160,7 @@ foreach ($artifactPath in $script:ReportArtifacts) {
     try {
         $destPath = Join-Path $reportCopyTarget (Split-Path -Leaf $artifactPath)
         Copy-Item -Path $artifactPath -Destination $destPath -Force
-        
+
         # CRITICAL: Verify file actually exists at destination
         if (Test-Path $destPath) {
             Write-Information "   Report copied to: $destPath" -InformationAction Continue
@@ -186,7 +188,7 @@ if ($copiedReportCount -eq 0) {
 ✅ Prevents false-positive "success" messages  
 ✅ Tracks successful copy count for debugging  
 ✅ Clear failure messaging when copy verification fails  
-✅ User knows EXACTLY what happened before shutdown countdown  
+✅ User knows EXACTLY what happened before shutdown countdown
 
 ### **Pre-Countdown Report Status**
 
@@ -196,7 +198,7 @@ Users now see accurate report status:
 === Report Generation & Copy Results ===
 
 ✓ Log Processing: Completed
-✓ Report Generation: Completed  
+✓ Report Generation: Completed
 ✓ Report File Verified: MaintenanceReport_2026-02-03_14-35-22.html
 
 Target: C:\Users\YourName\Desktop\
@@ -245,6 +247,7 @@ Proceeding with cleanup (source report preserved)...
 ### **The Gap**
 
 **CoreInfrastructure.psm1 (line 2778 - ORIGINAL):**
+
 ```powershell
 function Enable-SystemProtection {
     try {
@@ -294,11 +297,11 @@ function Enable-SystemProtection {
                 if ($isWindows10 -or $isWindows11) {
                     try {
                         Write-Verbose "Attempting Windows 10 fallback method using VSSAdmin..."
-                        
+
                         # 3a: Registry-based approach
                         $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
                         $disableReg = Get-ItemProperty -Path $regPath -Name 'DisableSR' -ErrorAction SilentlyContinue
-                        
+
                         # Only enable via registry if currently disabled
                         if ($disableReg -and $disableReg.DisableSR -eq 1) {
                             Set-ItemProperty -Path $regPath -Name 'DisableSR' -Value 0 -ErrorAction SilentlyContinue
@@ -308,7 +311,7 @@ function Enable-SystemProtection {
                         # 3b: Enable VSS shadow storage
                         & vssadmin Enable Shadows /For=$Drive | Out-Null 2>&1
                         Write-Verbose "Attempted to enable VSS shadow storage on $Drive"
-                        
+
                         return @{ Success = $true; Message = 'System Protection enabled (via fallback methods)'; Method = 'Fallback-Win10' }
                     }
                     catch {
@@ -345,15 +348,15 @@ function Enable-SystemProtection {
 
 **Windows 10 vs Windows 11 Differences:**
 
-| Aspect | Windows 10 | Windows 11 |
-|--------|-----------|-----------|
-| **Build Number** | 19xxx | 22xxx+ |
-| **Enable-ComputerRestore** | Unreliable, often blocked by policy | Consistent, works reliably |
-| **Registry Path** | `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore` | Same |
-| **DisableSR Value** | 0 = enabled, 1 = disabled (may ignore) | 0 = enabled, 1 = disabled (respected) |
-| **VSS Requirement** | May need explicit activation | Generally pre-activated |
-| **Group Policy Override** | Common issue | Less common |
-| **vssadmin Support** | Supported via CLI | Supported via CLI |
+| Aspect                     | Windows 10                                                         | Windows 11                            |
+| -------------------------- | ------------------------------------------------------------------ | ------------------------------------- |
+| **Build Number**           | 19xxx                                                              | 22xxx+                                |
+| **Enable-ComputerRestore** | Unreliable, often blocked by policy                                | Consistent, works reliably            |
+| **Registry Path**          | `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore` | Same                                  |
+| **DisableSR Value**        | 0 = enabled, 1 = disabled (may ignore)                             | 0 = enabled, 1 = disabled (respected) |
+| **VSS Requirement**        | May need explicit activation                                       | Generally pre-activated               |
+| **Group Policy Override**  | Common issue                                                       | Less common                           |
+| **vssadmin Support**       | Supported via CLI                                                  | Supported via CLI                     |
 
 **Solution Handles All Cases:**
 
@@ -389,18 +392,18 @@ This will now work on both Windows 10 and 11.
 ```
 1. CREATION (script.bat line 101)
    └─ maintenance.log created at ORIGINAL_SCRIPT_DIR
-   
+
 2. BOOTSTRAP LOGGING (script.bat :LOG_MESSAGE function)
    └─ All launcher activities written to maintenance.log
-   
+
 3. ORGANIZATION (MaintenanceOrchestrator line 1161)
    └─ Move-MaintenanceLogToOrganized:
       • Reads bootstrap log from ORIGINAL_SCRIPT_DIR
       • Moves/appends to temp_files/logs/maintenance.log
-      
+
 4. MODULE LOGGING (All modules via Write-LogEntry)
    └─ Continues writing to temp_files/logs/maintenance.log
-   
+
 5. PROCESSING (LogProcessor.psm1 line 1662)
    └─ Invoke-LogProcessing:
       ✓ (FIX) Move-MaintenanceLogToOrganized called first
@@ -410,26 +413,26 @@ This will now work on both Windows 10 and 11.
          • Parsed: Entries grouped by level
          • Available: true/false flag
       ✓ Saves to temp_files/processed/maintenance-log.json
-      
+
 6. REPORT LOADING (ReportGenerator.psm1 line 521)
    └─ Get-ProcessedLogData:
       ✓ (FIX) Loads maintenance-log.json
       ✓ Includes in ProcessedData.MaintenanceLog
       ✓ Validates Available flag
-      
+
 7. REPORT RENDERING (ReportGenerator.psm1 line 1387)
    └─ New-MaintenanceLogSection:
       ✓ (FIX) Validates MaintenanceLog structure
       ✓ Checks Available flag
       ✓ Renders complete log entry breakdown
       ✓ Logs success/warning
-      
+
 8. FILE VERIFICATION (MaintenanceOrchestrator.ps1 line 1687)
    └─ Report copy with verification:
       ✓ (FIX) Verifies file exists at destination
       ✓ Tracks successful copies
       ✓ Logs clear status before countdown
-      
+
 9. CLEANUP (ShutdownManager.psm1 line 467)
    └─ Removes maintenance_repo entirely
       ✓ temp_files/logs/maintenance.log DELETED
@@ -518,11 +521,11 @@ $checkpointResult = New-SystemRestorePoint -Description "Test Point"
 
 ## 📈 Summary of Changes
 
-| File | Issue | Fix | Lines |
-|------|-------|-----|-------|
-| CoreInfrastructure.psm1 | Win10 System Restore fails | Add version detection + fallback (registry + vssadmin) | 2778-2838 |
-| MaintenanceOrchestrator.ps1 | No report copy verification | Add `Test-Path` check + copy tracking | 1687-1722 |
-| ReportGenerator.psm1 | Maintenance.log not validated | Add structure validation + detailed logging | 1387-1410 |
+| File                        | Issue                         | Fix                                                    | Lines     |
+| --------------------------- | ----------------------------- | ------------------------------------------------------ | --------- |
+| CoreInfrastructure.psm1     | Win10 System Restore fails    | Add version detection + fallback (registry + vssadmin) | 2778-2838 |
+| MaintenanceOrchestrator.ps1 | No report copy verification   | Add `Test-Path` check + copy tracking                  | 1687-1722 |
+| ReportGenerator.psm1        | Maintenance.log not validated | Add structure validation + detailed logging            | 1387-1410 |
 
 ---
 
@@ -530,4 +533,3 @@ $checkpointResult = New-SystemRestorePoint -Description "Test Point"
 **Complexity:** High (cross-platform compatibility + stream processing)  
 **Backward Compatibility:** ✅ Fully maintained  
 **Testing:** Ready for production deployment
-

@@ -6,12 +6,14 @@
 **Function:** `Enable-SystemProtection`
 
 ### Changes:
+
 - ✅ Detect Windows version (Win10 vs Win11)
 - ✅ Try `Enable-ComputerRestore` first (primary)
 - ✅ Fallback to registry + vssadmin for Win10
 - ✅ Return method used in result
 
 ### Test:
+
 ```powershell
 $result = Enable-SystemProtection -Drive "C:\"
 $result.Method  # "Enable-ComputerRestore" or "Fallback-Win10"
@@ -25,12 +27,14 @@ $result.Method  # "Enable-ComputerRestore" or "Fallback-Win10"
 **Function:** Report copy section
 
 ### Changes:
+
 - ✅ Add `Test-Path` verification after `Copy-Item`
 - ✅ Track `$copiedReportCount` for status
 - ✅ Only add to `$finalReports` if file exists
 - ✅ Clear warning if copy fails
 
 ### Result:
+
 - Users see exact status before countdown
 - No false-positive "report copied" messages
 - Easy debugging if copy fails
@@ -43,12 +47,14 @@ $result.Method  # "Enable-ComputerRestore" or "Fallback-Win10"
 **Function:** maintenance.log rendering section
 
 ### Changes:
+
 - ✅ Validate `ProcessedData.MaintenanceLog` exists
 - ✅ Check `Available` flag before rendering
 - ✅ Add detailed logging (DEBUG/SUCCESS/WARNING)
 - ✅ Handle null/empty gracefully
 
 ### Result:
+
 - maintenance.log appears in HTML report as dedicated section
 - Complete log transcript with statistics
 - Entries grouped by level (INFO/SUCCESS/WARNING/ERROR/DEBUG)
@@ -94,6 +100,7 @@ ShutdownManager (line 467)
 ## 🧪 Quick Test Commands
 
 ### Test 1: Run Script and Check Report
+
 ```batch
 cd C:\Users\YourName\Desktop\Projects\script_mentenanta
 .\script.bat -DryRun
@@ -103,6 +110,7 @@ dir /s "*.html" MaintenanceReport*
 ```
 
 ### Test 2: Verify maintenance.log Section
+
 ```powershell
 # After script completes, check report for log section
 $report = Get-Content "C:\Users\YourName\Desktop\MaintenanceReport_*.html"
@@ -114,6 +122,7 @@ if ($report -match "Maintenance Log") {
 ```
 
 ### Test 3: System Restore on Win10
+
 ```powershell
 # Run as Administrator
 $result = Enable-SystemProtection -Drive "C:\"
@@ -125,6 +134,7 @@ Write-Host "Method: $($result.Method)"
 ```
 
 ### Test 4: Verify File Copy Verification
+
 ```powershell
 # Look in script output for verification messages
 # Should see one of:
@@ -213,4 +223,3 @@ User: YourName
 
 **Implementation Date:** February 3, 2026  
 **Status:** ✅ READY FOR PRODUCTION
-
