@@ -1983,8 +1983,11 @@ function ConvertTo-Bytes {
 #>
 function ConvertTo-TimeSpan {
     [CmdletBinding()]
-    [OutputType([hashtable])]([string]$AgeString)
-param(
+    [OutputType([System.TimeSpan])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$AgeString
+    )
 
     if ($AgeString -match '(\d+)days') {
         return New-TimeSpan -Days $matches[1]

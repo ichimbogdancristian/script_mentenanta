@@ -1183,16 +1183,8 @@ try {
     #region Task Definitions
     Write-Information "`nRegistering maintenance tasks..." -InformationAction Continue
     # v3.0 Architecture: Define standardized maintenance tasks using Invoke-[ModuleName] pattern
+    # Note: SystemInventory is Type1 and handled separately before Type2 modules (see line 1339)
     $MaintenanceTasks = @(
-        @{
-            Name        = 'SystemInventory'
-            Description = 'Collect comprehensive system inventory (Type2→Type1 flow)'
-            ModuleName  = 'SystemInventory'
-            Function    = 'Invoke-SystemInventory'
-            Type        = 'Type2'
-            Category    = 'Information'
-            Enabled     = $true  # Always enabled
-        },
         @{
             Name        = 'BloatwareRemoval'
             Description = 'Detect and remove bloatware applications (Type2→Type1 flow)'

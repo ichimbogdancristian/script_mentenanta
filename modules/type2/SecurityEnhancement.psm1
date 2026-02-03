@@ -545,9 +545,17 @@ function Set-PowerShellExecutionPolicy {
             catch [System.Security.SecurityException] {
                 if ($targetScope -eq 'LocalMachine') {
                     Write-Warning "      Security error setting LocalMachine policy. Retrying with CurrentUser scope."
-                    Set-ExecutionPolicy -ExecutionPolicy $policy -Scope CurrentUser -Force -ErrorAction Stop
-                    $itemsProcessed++
-                    Write-Information "      [OK] Execution policy set to: $policy (Scope=CurrentUser)" -InformationAction Continue
+                    try {
+                        Set-ExecutionPolicy -ExecutionPolicy $policy -Scope CurrentUser -Force -ErrorAction Stop
+                        $itemsProcessed++
+                        Write-Information "      [OK] Execution policy set to: $policy (Scope=CurrentUser)" -InformationAction Continue
+                    }
+                    catch {
+                        Write-Warning "      Failed to set CurrentUser policy: $($_.Exception.Message)"
+                        Write-Information "      [SKIP] Execution policy may be restricted by system configuration" -InformationAction Continue
+                        # Return success with 0 processed - not a critical failure
+                        return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -AdditionalData @{ Skipped = $true; Reason = "Unable to modify execution policy: $($_.Exception.Message)" }
+                    }
                 }
                 else {
                     throw
