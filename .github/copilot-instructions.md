@@ -4,7 +4,7 @@
 
 This is a **PowerShell 7+ enterprise-grade Windows maintenance automation system** with a modular, 3-tier architecture. The system automates bloatware removal, essential software installation, system optimization, privacy controls, and Windows updates.
 
-**Current Version:** 3.0.0 (Split & Consolidated Architecture)  
+**Current Version:** 3.1.0 (Phase 1 Enhancements Complete)  
 **Primary Language:** PowerShell 7.0+  
 **Target Platform:** Windows 10/11  
 **Author:** Bogdan Ichim
@@ -22,8 +22,10 @@ This is a **PowerShell 7+ enterprise-grade Windows maintenance automation system
 └─────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────┐
-│  LAYER 2: Core Infrastructure                  │
+│  LAYER 2: Core Infrastructure (Phase 1 Enhanced)│
 │  - CoreInfrastructure (paths, config, logging) │
+│  - ModuleRegistry (auto-discovery) ⭐ NEW      │
+│  - CommonUtilities (shared helpers) ⭐ NEW     │
 │  - LogAggregator (result collection)           │
 │  - LogProcessor (data processing)              │
 │  - ReportGenerator (HTML/text reports)         │
@@ -36,6 +38,43 @@ This is a **PowerShell 7+ enterprise-grade Windows maintenance automation system
 │  - Type2 (Action - system modification)        │
 └─────────────────────────────────────────────────┘
 ```
+
+### Phase 1 Enhancements (February 2026)
+
+✅ **ModuleRegistry.psm1** - Automatic module discovery & validation  
+✅ **CommonUtilities.psm1** - Shared helper functions (eliminated ~200 lines duplication)  
+✅ **ShutdownManager merged** - Consolidated into CoreInfrastructure  
+✅ **Orchestrator enhanced** - Dynamic module loading with dependency validation
+
+### Phase 2 Enhancements (February 2026)
+
+✅ **JSON Schema Validation** - Draft-07 schemas for all configurations  
+✅ **Test-ConfigurationWithJsonSchema** - Centralized validation function  
+✅ **Test-AllConfigurationsWithSchema** - Batch validation support  
+✅ **Orchestrator integration** - Fail-fast validation before execution
+
+### Phase 3 Enhancements (February 2026)
+
+✅ **Centralized Schemas** - All schemas in `config/schemas/` directory  
+✅ **Subdirectory Organization** - Configs organized by module under `config/lists/`  
+✅ **Environment-Specific Configs** - Dev/Prod/Test profiles in `config/settings/environments/`  
+✅ **Enhanced Path Discovery** - Multi-tier fallback with backward compatibility  
+✅ **Schema Auto-Discovery** - Centralized-first approach with legacy fallback
+
+### Phase 4 Enhancements: Reporting Refactoring (February 2026)
+
+✅ **Phase 1 Complete: TemplateEngine.psm1** - Centralized template management  
+  - Template caching (~90% faster repeated loads)  
+  - Multi-tier path resolution (Phase 3 aware)  
+  - Standardized placeholder replacement  
+  - Template validation and integrity checks  
+  - Embedded fallback templates for reliability  
+  - **Test Coverage:** 32/32 tests passing (100%)  
+  - **Impact:** -480 lines from ReportGenerator, +972 lines new module
+
+⏳ **Phase 2 Pending: HTML Component Library** - Extract reusable HTML components  
+⏳ **Phase 3 Pending: Chart Data Provider** - Extract chart data formatting  
+⏳ **Phase 4 Pending: LogProcessor Analytics** - Enhanced analytics capabilities
 
 ### Critical Design Patterns
 
@@ -64,6 +103,21 @@ This is a **PowerShell 7+ enterprise-grade Windows maintenance automation system
    - All outputs tagged with session ID
    - Enables traceability and parallel execution analysis
 
+6. **Configuration Organization (Phase 3)**
+   - Centralized schemas: `config/schemas/` for all `.schema.json` files
+   - Subdirectory structure: `config/lists/{module}/{config}.json`
+   - Environment profiles: `config/settings/environments/{env}.json`
+   - Multi-tier path fallback: Phase 3 → Phase 2 → Legacy → Defaults
+   - Schema auto-discovery: Centralized first, then legacy location
+
+7. **Template Management (Phase 4.1)**
+   - `TemplateEngine.psm1` - Centralized template loading and caching
+   - Template caching: ~90% faster on repeated loads
+   - Multi-tier path resolution: config/templates/ → config/templates/components/ → templates/ (legacy)
+   - Standardized placeholder replacement: `{{PLACEHOLDER}}` format
+   - Template validation with required placeholder checking
+   - Embedded fallback templates for reliability
+
 ---
 
 ## 🔧 Key File Locations
@@ -72,6 +126,7 @@ This is a **PowerShell 7+ enterprise-grade Windows maintenance automation system
 ```
 modules/core/
 ├── CoreInfrastructure.psm1    # Foundation - paths, config, logging
+├── TemplateEngine.psm1         # Template management (Phase 4.1) ⭐ NEW
 ├── LogAggregator.psm1         # Result collection (v3.1)
 ├── LogProcessor.psm1          # Data processing pipeline
 ├── ReportGenerator.psm1       # Report rendering engine
@@ -94,16 +149,34 @@ modules/type2/                 # Action (system modification)
 └── ... (8 total)
 ```
 
-### Configuration Files
+### Configuration Files (Phase 3 Structure)
 ```
 config/
+├── schemas/                    # ⭐ NEW - Centralized JSON Schemas
+│   ├── main-config.schema.json
+│   ├── logging-config.schema.json
+│   ├── security-config.schema.json
+│   ├── bloatware-list.schema.json
+│   ├── essential-apps.schema.json
+│   ├── app-upgrade-config.schema.json
+│   └── system-optimization-config.schema.json
 ├── settings/
 │   ├── main-config.json       # Primary configuration
-│   └── logging-config.json    # Logging verbosity
-├── lists/
-│   ├── bloatware-list.json    # Apps to remove
-│   ├── essential-apps.json    # Apps to install
-│   └── app-upgrade-config.json
+│   ├── logging-config.json    # Logging verbosity
+│   ├── security-config.json   # Security baseline
+│   └── environments/          # ⭐ NEW - Environment profiles
+│       ├── development.json   # Dev settings (dry-run enabled)
+│       ├── production.json    # Prod settings (live execution)
+│       └── testing.json       # Test settings
+├── lists/                     # ⭐ REORGANIZED - Subdirectories per module
+│   ├── bloatware/
+│   │   └── bloatware-list.json
+│   ├── essential-apps/
+│   │   └── essential-apps.json
+│   ├── system-optimization/
+│   │   └── system-optimization-config.json
+│   └── app-upgrade/
+│       └── app-upgrade-config.json
 └── templates/
     ├── modern-dashboard.html   # Modern report template
     ├── modern-dashboard.css    # Glassmorphism styles
@@ -336,26 +409,77 @@ Add-ModuleResult -Result $moduleResult
 $sessionData = Complete-ResultCollection -ExportPath "temp_files/processed/aggregated-results.json"
 ```
 
-### Pattern 3: Configuration Loading
+### Pattern 3: Configuration Loading (Phase 3)
 
 ```powershell
-# Always use CoreInfrastructure functions
+# Always use CoreInfrastructure functions - Phase 3 aware
 $mainConfig = Get-MainConfiguration
-$bloatwareConfig = Get-BloatwareConfiguration
-$essentialAppsConfig = Get-EssentialAppsConfiguration
+$bloatwareConfig = Get-BloatwareConfiguration    # Loads from config/lists/bloatware/
+$essentialAppsConfig = Get-EssentialAppsConfiguration  # Loads from config/lists/essential-apps/
+
+# Load environment-specific configuration
+$envConfig = Get-Content "config/settings/environments/development.json" | ConvertFrom-Json
+$isDryRun = $envConfig.execution.enableDryRun  # true for dev, false for prod
 
 # Access nested properties safely
 $countdownSeconds = $mainConfig.execution.countdownSeconds ?? 20
 $dryRunEnabled = $mainConfig.execution.enableDryRun ?? $true
 
-# Validate configuration
-$validation = Test-ConfigurationSchema -ConfigObject $mainConfig -ConfigName "main-config.json"
-if (-not $validation) {
-    Write-LogEntry -Level 'ERROR' -Component 'CONFIG' -Message "Invalid configuration"
+# Validate configuration with centralized schema (Phase 3)
+$validation = Test-ConfigurationWithJsonSchema `
+    -ConfigFilePath "config/lists/bloatware/bloatware-list.json"
+# Schema auto-discovered from config/schemas/bloatware-list.schema.json
+
+if (-not $validation.IsValid) {
+    Write-LogEntry -Level 'ERROR' -Component 'CONFIG' -Message "Invalid configuration: $($validation.ErrorDetails)"
 }
 ```
 
-### Pattern 4: Path Management
+### Pattern 4: Template Loading (Phase 4.1)
+
+```powershell
+# Always use TemplateEngine for template management
+Import-Module .\modules\core\TemplateEngine.psm1 -Force
+
+# Load single template (auto-cached)
+$mainTemplate = Get-Template -TemplateName 'modern-dashboard.html' -TemplateType 'Main'
+
+# Load complete template bundle
+$bundle = Get-TemplateBundle  # Standard templates
+$enhancedBundle = Get-TemplateBundle -UseEnhanced  # Enhanced templates
+
+# Templates are cached - second load is ~90% faster
+$mainTemplate2 = Get-Template -TemplateName 'modern-dashboard.html' -TemplateType 'Main'  # From cache
+
+# Replace placeholders in template
+$replacements = @{
+    TITLE = 'System Maintenance Report'
+    DATE = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    MODULE_COUNT = 15
+    STATUS = 'Success'
+}
+$rendered = Invoke-PlaceholderReplacement -Template $mainTemplate -Replacements $replacements
+
+# Validate template has required placeholders
+$validation = Test-TemplateIntegrity `
+    -TemplateContent $mainTemplate `
+    -RequiredPlaceholders @('TITLE', 'DATE', 'MODULE_COUNT')
+
+if (-not $validation.IsValid) {
+    Write-LogEntry -Level 'ERROR' -Component 'MODULE' `
+        -Message "Template missing placeholders: $($validation.MissingPlaceholders -join ', ')"
+}
+
+# Get cache statistics (for debugging/monitoring)
+$stats = Get-TemplateCacheStats
+Write-LogEntry -Level 'DEBUG' -Component 'MODULE' `
+    -Message "Template cache: $($stats.CacheSize) entries, $($stats.HitRate)% hit rate"
+
+# Clear cache after template file updates
+Clear-TemplateCache -TemplateName 'modern-dashboard.html' -Confirm:$false
+```
+
+### Pattern 5: Error Handling with Fallback
 
 ```powershell
 # Always use standardized path functions
@@ -834,6 +958,7 @@ When GitHub Copilot assists with this project:
 ✅ **Understand the context** - This is a modular PowerShell 7 system  
 ✅ **Follow established patterns** - Don't invent new paradigms  
 ✅ **Use standardized functions** - CoreInfrastructure paths, logging, config  
+✅ **Use TemplateEngine** - All template loading via TemplateEngine module  
 ✅ **Maintain separation** - Type1 (read) vs Type2 (modify)  
 ✅ **Comprehensive error handling** - Always wrap risky operations  
 ✅ **Structured logging** - Use Write-LogEntry consistently  
@@ -844,6 +969,6 @@ When GitHub Copilot assists with this project:
 
 ---
 
-**Last Updated:** November 30, 2025  
-**Instructions Version:** 1.0.0  
-**Project Version:** 3.0.0
+**Last Updated:** February 4, 2026  
+**Instructions Version:** 1.1.0 (Phase 4.1 - TemplateEngine Added)  
+**Project Version:** 3.1.0

@@ -1,0 +1,41 @@
+{
+    "$schema": "../main-config.schema.json",
+    "environment": "production",
+    "description": "Production environment configuration - minimal logging, live execution",
+    "execution": {
+        "defaultMode": "unattended",
+        "countdownSeconds": 30,
+        "enableDryRun": false,
+        "autoSelectDefault": true,
+        "showProgressBars": false
+    },
+    "modules": {
+        "skipBloatwareRemoval": false,
+        "skipEssentialApps": false,
+        "skipWindowsUpdates": false,
+        "skipTelemetryDisable": false,
+        "skipSystemOptimization": false,
+        "skipSecurityAudit": false,
+        "skipSecurityEnhancement": false,
+        "skipAppUpgrade": false
+    },
+    "system": {
+        "createSystemRestorePoint": true,
+        "restorePointMaxSizeGB": 20,
+        "enableVerboseLogging": false,
+        "maxLogSizeMB": 50,
+        "enablePerformanceOptimizations": true,
+        "warnOnPendingReboot": true,
+        "enableSystemProtectionIfDisabled": true
+    },
+    "reporting": {
+        "enableHtmlReport": true,
+        "enableDetailedAudit": false,
+        "includeSystemInventory": false,
+        "generateBeforeAfterComparison": true
+    },
+    "paths": {
+        "tempFolder": "temp_files",
+        "reportsFolder": "reports"
+    }
+}

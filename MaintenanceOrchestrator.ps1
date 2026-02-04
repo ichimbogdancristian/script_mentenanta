@@ -175,14 +175,15 @@ if (-not (Test-Path $ModulesPath)) {
     }
 }
 Write-Information "Modules Path: $ModulesPath" -InformationAction Continue
-# v3.1 Split Architecture: Load essential core modules + split report architecture
+# v3.1 Split Architecture + Phase 1 Module Registry: Load essential core modules
 $CoreModules = @(
-    'CoreInfrastructure',
-    'LogAggregator',       # v3.1: Moved earlier to prevent race conditions
-    'UserInterface',
-    'LogProcessor',
-    'ReportGenerator',
-    'ShutdownManager'      # v3.2: Post-execution countdown and cleanup
+    'CoreInfrastructure',  # Foundation (now includes ShutdownManager functions)
+    'ModuleRegistry',      # Phase 1: Auto-discovery system
+    'CommonUtilities',     # Phase 1: Shared helper functions
+    'LogAggregator',       # v3.1: Result collection
+    'UserInterface',       # UI & menus
+    'LogProcessor',        # Data processing pipeline
+    'ReportGenerator'      # Report rendering engine
 )
 # Type2 modules (self-contained with internal Type1 dependencies)
 # Note: SystemInventory removed from Type2 - now called directly from Type1 before Type2 execution
@@ -237,6 +238,34 @@ foreach ($moduleName in $CoreModules) {
         exit 1
     }
 }
+
+#region Phase 2: JSON Schema Configuration Validation
+# Validate all configuration files against JSON schemas (fail-fast pattern)
+Write-Information "`n[Phase 2] Validating configuration files against schemas..." -InformationAction Continue
+try {
+    $validationResult = Test-AllConfigurationsWithSchema -ConfigRoot $env:MAINTENANCE_CONFIG_ROOT
+    
+    if ($validationResult.AllValid) {
+        Write-Information "   ✓ All $($validationResult.ValidConfigs) configuration files validated successfully" -InformationAction Continue
+    }
+    else {
+        Write-Error "Configuration validation failed:`n$($validationResult.Summary)"
+        Write-Information "`nValidation Details:" -InformationAction Continue
+        foreach ($result in $validationResult.Results) {
+            if (-not $result.IsValid) {
+                Write-Information "   ✗ $($result.Name): $($result.Errors -join '; ')" -InformationAction Continue
+            }
+        }
+        Write-Information "`n[ACTION REQUIRED] Fix configuration errors and re-run the script." -InformationAction Continue
+        exit 1
+    }
+}
+catch {
+    Write-Warning "Configuration validation error: $($_.Exception.Message)"
+    Write-Information "   Continuing with legacy validation fallback..." -InformationAction Continue
+}
+#endregion
+
 # Load Type2 modules (self-contained with internal Type1 dependencies)
 Write-Information "`nLoading Type2 modules..." -InformationAction Continue
 foreach ($moduleName in $Type2Modules) {
@@ -280,6 +309,73 @@ foreach ($moduleName in $Type2Modules) {
     }
 }
 
+#region Phase 1: Module Discovery & Validation
+Write-Information "`nDiscovering available modules..." -InformationAction Continue
+try {
+    # Use ModuleRegistry to discover Type2 modules automatically
+    if (Get-Command -Name 'Get-RegisteredModules' -ErrorAction SilentlyContinue) {
+        $discoveredModules = Get-RegisteredModules -ModuleType 'Type2' -IncludeMetadata
+        $Type2Modules = $discoveredModules.Keys | Sort-Object
+        
+        Write-Information "   Discovered $($Type2Modules.Count) Type2 modules via ModuleRegistry" -InformationAction Continue
+        foreach ($moduleName in $Type2Modules) {
+            $module = $discoveredModules[$moduleName]
+            Write-Information "     • $moduleName" -NoNewline -InformationAction Continue
+            if ($module.DependsOn) {
+                Write-Information " → $($module.DependsOn)" -InformationAction Continue
+            }
+            else {
+                Write-Information "" -InformationAction Continue
+            }
+        }
+        
+        # Validate dependencies
+        Write-Information "`n   Validating module dependencies..." -InformationAction Continue
+        $dependencyFailures = @()
+        foreach ($moduleName in $Type2Modules) {
+            if (-not (Test-ModuleDependencies -ModuleName $moduleName -Modules $discoveredModules)) {
+                $dependencyFailures += $moduleName
+            }
+        }
+        
+        if ($dependencyFailures.Count -gt 0) {
+            Write-Warning "   Module dependency validation failed for: $($dependencyFailures -join ', ')"
+            Write-Information "   These modules will be skipped during execution" -InformationAction Continue
+            # Remove failed modules from execution list
+            $Type2Modules = $Type2Modules | Where-Object { $_ -notin $dependencyFailures }
+        }
+        else {
+            Write-Information "   ✓ All module dependencies validated successfully" -InformationAction Continue
+        }
+    }
+    else {
+        # Fallback to hardcoded list if ModuleRegistry unavailable
+        Write-Information "   ModuleRegistry unavailable - using hardcoded Type2 module list" -InformationAction Continue
+        $Type2Modules = @(
+            'BloatwareRemoval',
+            'EssentialApps',
+            'SystemOptimization',
+            'TelemetryDisable',
+            'SecurityEnhancement',
+            'WindowsUpdates',
+            'AppUpgrade'
+        )
+    }
+}
+catch {
+    Write-Warning "Module discovery failed: $_ - using fallback list"
+    $Type2Modules = @(
+        'BloatwareRemoval',
+        'EssentialApps',
+        'SystemOptimization',
+        'TelemetryDisable',
+        'SecurityEnhancement',
+        'WindowsUpdates',
+        'AppUpgrade'
+    )
+}
+#endregion
+
 #region FIX #2: Validate CoreInfrastructure Functions
 Write-Information "`nValidating CoreInfrastructure module..." -InformationAction Continue
 try {
@@ -287,7 +383,8 @@ try {
         'Initialize-GlobalPathDiscovery',
         'Get-MaintenancePaths',
         'Get-AuditResultsPath',
-        'Save-DiffResults'
+        'Save-DiffResults',
+        'Start-MaintenanceCountdown'  # Phase 1: Now in CoreInfrastructure
     )
     $missingFunctions = @()
     foreach ($funcName in $requiredCoreFunctions) {

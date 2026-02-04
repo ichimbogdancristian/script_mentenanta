@@ -481,15 +481,24 @@ function Get-JsonConfiguration {
     )
 
     # Map config types to file paths (relative to CONFIG_ROOT)
+    # Phase 3: Updated paths to support new subdirectory structure
     $configFiles = @{
         'Main'               = 'settings\main-config.json'
+        'Bloatware'          = 'lists\bloatware\bloatware-list.json'
+        'EssentialApps'      = 'lists\essential-apps\essential-apps.json'
+        'AppUpgrade'         = 'lists\app-upgrade\app-upgrade-config.json'
+        'SystemOptimization' = 'lists\system-optimization\system-optimization-config.json'
+        'Security'           = 'settings\security-config.json'
+        'Logging'            = 'settings\logging-config.json'
+        'ReportTemplates'    = 'templates\report-templates-config.json'
+    }
+    
+    # Phase 3: Backward compatibility - legacy paths (Phase 2 structure)
+    $legacyConfigFiles = @{
         'Bloatware'          = 'lists\bloatware-list.json'
         'EssentialApps'      = 'lists\essential-apps.json'
         'AppUpgrade'         = 'lists\app-upgrade-config.json'
         'SystemOptimization' = 'lists\system-optimization-config.json'
-        'Security'           = 'settings\security-config.json'
-        'Logging'            = 'settings\logging-config.json'
-        'ReportTemplates'    = 'templates\report-templates-config.json'
     }
 
     # Default return values for each config type
@@ -508,11 +517,23 @@ function Get-JsonConfiguration {
         $configFile = Join-Path $ConfigPath $configFiles[$ConfigType]
 
         if (-not (Test-Path $configFile)) {
-            # For AppUpgrade, check legacy path
-            if ($ConfigType -eq 'AppUpgrade') {
+            # Phase 3: Check legacy path for backward compatibility
+            if ($legacyConfigFiles.ContainsKey($ConfigType)) {
+                $legacyPath = Join-Path $ConfigPath $legacyConfigFiles[$ConfigType]
+                if (Test-Path $legacyPath) {
+                    Write-Verbose "Using legacy config path (Phase 2 structure): $legacyPath"
+                    $configFile = $legacyPath
+                }
+                else {
+                    Write-Verbose "$ConfigType configuration not found at: $configFile or $legacyPath"
+                    return $defaultValues[$ConfigType]
+                }
+            }
+            # Legacy AppUpgrade fallback to data/ directory
+            elseif ($ConfigType -eq 'AppUpgrade') {
                 $legacyPath = Join-Path $ConfigPath 'data\app-upgrade-config.json'
                 if (Test-Path $legacyPath) {
-                    Write-Warning "Using legacy config path 'data/' - please migrate to 'lists/' directory"
+                    Write-Warning "Using legacy config path 'data/' - please migrate to 'lists/app-upgrade/' directory"
                     $configFile = $legacyPath
                 }
                 else {
@@ -890,11 +911,302 @@ function Get-NestedProperty {
 
 <#
 .SYNOPSIS
-    Validates configuration against schema definitions
+    Validates configuration JSON file against JSON Schema (Phase 2)
+
+.DESCRIPTION
+    v3.1 (Phase 2): Uses JSON Schema Draft-07 files to validate configuration.
+    This is the new preferred validation method using industry-standard JSON Schema.
+    
+    Validates:
+    - JSON syntax
+    - Required fields presence
+    - Data types (string, integer, boolean, array, object)
+    - Value constraints (min/max, enums, patterns)
+    - Additional properties restrictions
+    - Array uniqueness and item validation
+
+.PARAMETER ConfigFilePath
+    Full path to the configuration JSON file to validate
+
+.PARAMETER SchemaFilePath
+    Full path to the JSON Schema file. If not provided, auto-discovers based on config filename
+
+.PARAMETER ThrowOnError
+    If specified, throws an exception on validation failure instead of returning false
+
+.OUTPUTS
+    [PSCustomObject] with properties:
+        - IsValid [bool]: Whether validation passed
+        - ConfigFile [string]: Configuration file validated
+        - SchemaFile [string]: Schema file used
+        - Errors [array]: Validation errors if any
+        - ErrorDetails [string]: Formatted error message
+
+.EXAMPLE
+    $result = Test-ConfigurationWithJsonSchema -ConfigFilePath "config/settings/main-config.json"
+    if ($result.IsValid) {
+        Write-Host "Configuration is valid"
+    } else {
+        Write-Warning $result.ErrorDetails
+    }
+
+.EXAMPLE
+    # Throw on validation error
+    Test-ConfigurationWithJsonSchema -ConfigFilePath $path -ThrowOnError
+
+.NOTES
+    Phase 2 Enhancement: JSON Schema-based validation
+    Uses PowerShell 7+ Test-Json cmdlet with -SchemaFile parameter
+#>
+function Test-ConfigurationWithJsonSchema {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ConfigFilePath,
+
+        [Parameter()]
+        [string]$SchemaFilePath,
+
+        [switch]$ThrowOnError
+    )
+
+    $result = [PSCustomObject]@{
+        IsValid      = $false
+        ConfigFile   = $ConfigFilePath
+        SchemaFile   = $null
+        Errors       = @()
+        ErrorDetails = $null
+    }
+
+    try {
+        # Verify config file exists
+        if (-not (Test-Path $ConfigFilePath)) {
+            $result.Errors += "Configuration file not found: $ConfigFilePath"
+            $result.ErrorDetails = "Configuration file not found: $ConfigFilePath"
+            
+            if ($ThrowOnError) {
+                throw $result.ErrorDetails
+            }
+            return $result
+        }
+
+        # Auto-discover schema file if not provided
+        if (-not $SchemaFilePath) {
+            $configFileName = Split-Path $ConfigFilePath -Leaf
+            $baseConfigName = $configFileName -replace '\.json$', ''
+            
+            # Phase 3: Centralized schemas directory
+            # Try config/schemas/ directory first (Phase 3 structure)
+            $centralSchemaPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "schemas\$baseConfigName.schema.json"
+            
+            if (Test-Path $centralSchemaPath) {
+                $SchemaFilePath = $centralSchemaPath
+                Write-Verbose "Using centralized schema: $centralSchemaPath"
+            }
+            else {
+                # Fallback: Check same directory as config (Phase 2 structure - backward compatibility)
+                $configDir = Split-Path $ConfigFilePath -Parent
+                $legacySchemaPath = Join-Path $configDir "$baseConfigName.schema.json"
+                
+                if (Test-Path $legacySchemaPath) {
+                    $SchemaFilePath = $legacySchemaPath
+                    Write-Verbose "Using legacy schema location: $legacySchemaPath"
+                }
+                else {
+                    $SchemaFilePath = $centralSchemaPath  # Set path for reporting even if doesn't exist
+                }
+            }
+        }
+
+        $result.SchemaFile = $SchemaFilePath
+
+        # Verify schema file exists
+        if (-not (Test-Path $SchemaFilePath)) {
+            Write-Verbose "Schema file not found: $SchemaFilePath (validation skipped)"
+            # Mark as valid if no schema exists (allows gradual schema adoption)
+            $result.IsValid = $true
+            return $result
+        }
+
+        # Load and read JSON content
+        $jsonContent = Get-Content -Path $ConfigFilePath -Raw -ErrorAction Stop
+
+        # Load schema content
+        $schemaContent = Get-Content -Path $SchemaFilePath -Raw -ErrorAction Stop
+
+        # Validate JSON against schema using Test-Json
+        try {
+            $isValid = Test-Json -Json $jsonContent -Schema $schemaContent -ErrorAction Stop
+            
+            if ($isValid) {
+                $result.IsValid = $true
+                Write-Verbose "Configuration validated successfully: $ConfigFilePath"
+            }
+            else {
+                $result.Errors += "JSON does not conform to schema"
+                $result.ErrorDetails = "Configuration '$ConfigFilePath' failed schema validation"
+            }
+        }
+        catch {
+            # Test-Json throws on validation errors with detailed messages
+            $validationError = $_.Exception.Message
+            $result.Errors += $validationError
+            $result.ErrorDetails = "Schema validation failed for '$ConfigFilePath':`n$validationError"
+            
+            Write-Verbose "Validation error details: $validationError"
+        }
+
+        # Handle validation failure
+        if (-not $result.IsValid) {
+            if ($ThrowOnError) {
+                throw $result.ErrorDetails
+            }
+            else {
+                Write-Warning $result.ErrorDetails
+            }
+        }
+
+        return $result
+    }
+    catch {
+        $result.Errors += $_.Exception.Message
+        $result.ErrorDetails = "Validation exception for '$ConfigFilePath': $($_.Exception.Message)"
+        
+        if ($ThrowOnError) {
+            throw $result.ErrorDetails
+        }
+        else {
+            Write-Warning $result.ErrorDetails
+            return $result
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Validates all configuration files against their JSON Schemas (Phase 2)
+
+.DESCRIPTION
+    Batch validation of all configuration files in the system.
+    Returns a comprehensive report of validation results.
+    
+    Validates:
+    - config/settings/main-config.json
+    - config/settings/logging-config.json
+    - config/settings/security-config.json
+    - config/lists/bloatware-list.json
+    - config/lists/essential-apps.json
+    - config/lists/app-upgrade-config.json
+    - config/lists/system-optimization-config.json
+
+.PARAMETER ConfigRoot
+    Root path to configuration directory. Defaults to $env:MAINTENANCE_CONFIG_ROOT
+
+.PARAMETER StopOnFirstError
+    Stop validation immediately on first error
+
+.OUTPUTS
+    [PSCustomObject] with properties:
+        - AllValid [bool]: Whether all validations passed
+        - TotalConfigs [int]: Number of configs validated
+        - ValidConfigs [int]: Number of valid configs
+        - InvalidConfigs [int]: Number of invalid configs
+        - Results [array]: Individual validation results
+        - Summary [string]: Human-readable summary
+
+.EXAMPLE
+    $validation = Test-AllConfigurationsWithSchema
+    if (-not $validation.AllValid) {
+        Write-Warning $validation.Summary
+    }
+
+.NOTES
+    Phase 2 Enhancement: Comprehensive validation at startup
+#>
+function Test-AllConfigurationsWithSchema {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [Parameter()]
+        [string]$ConfigRoot = $env:MAINTENANCE_CONFIG_ROOT,
+
+        [switch]$StopOnFirstError
+    )
+
+    # Define all configuration files to validate
+    $configFiles = @(
+        @{ Path = "$ConfigRoot\settings\main-config.json"; Name = "Main Configuration" }
+        @{ Path = "$ConfigRoot\settings\logging-config.json"; Name = "Logging Configuration" }
+        @{ Path = "$ConfigRoot\settings\security-config.json"; Name = "Security Configuration" }
+        @{ Path = "$ConfigRoot\lists\bloatware-list.json"; Name = "Bloatware List" }
+        @{ Path = "$ConfigRoot\lists\essential-apps.json"; Name = "Essential Apps List" }
+        @{ Path = "$ConfigRoot\lists\app-upgrade-config.json"; Name = "App Upgrade Configuration" }
+        @{ Path = "$ConfigRoot\lists\system-optimization-config.json"; Name = "System Optimization Configuration" }
+    )
+
+    $results = @()
+    $validCount = 0
+    $invalidCount = 0
+
+    Write-Verbose "Starting batch configuration validation (${$configFiles.Count} files)"
+
+    foreach ($configFile in $configFiles) {
+        Write-Verbose "Validating: $($configFile.Name)"
+        
+        $validationResult = Test-ConfigurationWithJsonSchema -ConfigFilePath $configFile.Path -ErrorAction Continue
+        
+        $results += [PSCustomObject]@{
+            Name       = $configFile.Name
+            Path       = $configFile.Path
+            IsValid    = $validationResult.IsValid
+            SchemaFile = $validationResult.SchemaFile
+            Errors     = $validationResult.Errors
+        }
+
+        if ($validationResult.IsValid) {
+            $validCount++
+            Write-Verbose "  ✓ Valid"
+        }
+        else {
+            $invalidCount++
+            Write-Warning "  ✗ Invalid: $($validationResult.ErrorDetails)"
+            
+            if ($StopOnFirstError) {
+                break
+            }
+        }
+    }
+
+    $allValid = ($invalidCount -eq 0)
+    $summary = if ($allValid) {
+        "All $validCount configuration files validated successfully"
+    }
+    else {
+        "Configuration validation failed: $invalidCount invalid, $validCount valid, $($configFiles.Count) total"
+    }
+
+    return [PSCustomObject]@{
+        AllValid       = $allValid
+        TotalConfigs   = $configFiles.Count
+        ValidConfigs   = $validCount
+        InvalidConfigs = $invalidCount
+        Results        = $results
+        Summary        = $summary
+    }
+}
+
+<#
+.SYNOPSIS
+    Validates configuration against schema definitions (LEGACY)
 
 .DESCRIPTION
     v3.1: Comprehensive configuration schema validation beyond JSON syntax checking.
     Validates required fields, data types, value ranges, and enumerations.
+    
+    **LEGACY FUNCTION** - Retained for backward compatibility.
+    **PREFER**: Test-ConfigurationWithJsonSchema (Phase 2 JSON Schema validation)
 
 .PARAMETER ConfigObject
     The configuration object to validate (hashtable or PSCustomObject)
@@ -913,6 +1225,9 @@ function Get-NestedProperty {
 
 .EXAMPLE
     Test-ConfigurationSchema -ConfigObject $config -ConfigName "main-config.json" -ThrowOnError
+
+.NOTES
+    Legacy function - hardcoded schemas. Use Test-ConfigurationWithJsonSchema for Phase 2.
 #>
 function Test-ConfigurationSchema {
     [CmdletBinding()]
@@ -3696,6 +4011,233 @@ function Get-ChangeLog {
 
 #endregion
 
+#region Shutdown Management Functions (Phase 1: Merged from ShutdownManager.psm1)
+
+<#
+.SYNOPSIS
+    Start post-execution countdown with interactive abort option
+
+.DESCRIPTION
+    Displays a countdown timer (default 120 seconds). During countdown:
+    - User can press any key to abort and show action menu
+    - Timer continues if no key pressed
+    - On timeout: Executes default action (cleanup, reboot, or both)
+
+.PARAMETER CountdownSeconds
+    Duration of countdown in seconds. Default: 120
+
+.PARAMETER WorkingDirectory
+    Path to extracted repository (will be deleted on cleanup)
+
+.PARAMETER TempRoot
+    Path to temp_files directory (partial cleanup)
+
+.PARAMETER CleanupOnTimeout
+    If true, remove temporary files when timeout completes
+
+.PARAMETER RebootOnTimeout
+    If true, initiate system reboot when timeout completes
+
+.OUTPUTS
+    Hashtable with shutdown action details
+
+.NOTES
+    Merged from ShutdownManager.psm1 in Phase 1 refactoring (Feb 2026)
+#>
+function Start-MaintenanceCountdown {
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+    [OutputType([hashtable])]
+    param(
+        [ValidateRange(10, 600)]
+        [int]$CountdownSeconds = 120,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)]
+        [string]$TempRoot,
+        [switch]$CleanupOnTimeout,
+        [switch]$RebootOnTimeout
+    )
+
+    if ($PSCmdlet.ShouldProcess("System", "Execute maintenance shutdown sequence")) {
+        Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
+            -Message "Initiating post-execution shutdown sequence" `
+            -Data @{ CountdownSeconds = $CountdownSeconds; CleanupOnTimeout = $CleanupOnTimeout.IsPresent; RebootOnTimeout = $RebootOnTimeout.IsPresent }
+    }
+
+    try {
+        Write-Host "`n╔════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+        Write-Host "║   POST-EXECUTION MAINTENANCE SEQUENCE                  ║" -ForegroundColor Cyan
+        Write-Host "╚════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+        Write-Host "`nSystem will perform cleanup and shutdown in:" -ForegroundColor Yellow
+        Write-Host ""
+
+        $remainingSeconds = $CountdownSeconds
+        $countdownStartTime = Get-Date
+        $keyPressSupported = $false
+        
+        try {
+            if ($Host -and $Host.UI -and $Host.UI.RawUI) {
+                $null = $Host.UI.RawUI.KeyAvailable
+                $keyPressSupported = $true
+            }
+        }
+        catch {
+            Write-LogEntry -Level 'DEBUG' -Component 'SHUTDOWN-MANAGER' -Message "Keypress detection unavailable: $_"
+        }
+
+        while ($remainingSeconds -gt 0) {
+            $minutes = [math]::Floor($remainingSeconds / 60)
+            $seconds = $remainingSeconds % 60
+            Write-Host "`r  ⏱  $($minutes):$($seconds.ToString('00')) remaining  " -ForegroundColor Yellow -NoNewline
+
+            try {
+                if ($keyPressSupported -and $Host.UI.RawUI.KeyAvailable) {
+                    [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                    Write-Host "`n`n⏸ Countdown aborted - select next action" -ForegroundColor Yellow
+                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Countdown aborted by user"
+                    $choice = Show-ShutdownAbortMenu
+                    return Invoke-MaintenanceShutdownChoice -Choice $choice -WorkingDirectory $WorkingDirectory -TempRoot $TempRoot
+                }
+            }
+            catch { }
+
+            $remainingSeconds--
+            Start-Sleep -Seconds 1
+        }
+
+        Write-Host "`n`n✓ Countdown complete. Executing maintenance shutdown..." -ForegroundColor Green
+        Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Countdown expired - executing timeout actions"
+
+        $timeoutResult = @{ Action = "CleanupAndContinue"; RebootRequired = $false; RebootDelay = 0 }
+
+        if ($CleanupOnTimeout) {
+            Write-Host "  • Cleaning up temporary files..." -ForegroundColor Cyan
+            $cleanupSuccess = Invoke-MaintenanceCleanup -WorkingDirectory $WorkingDirectory -TempRoot $TempRoot -KeepReports
+            $timeoutResult.Action = if ($cleanupSuccess) { "CleanupCompleted" } else { "CleanupFailed" }
+        }
+
+        if ($RebootOnTimeout) {
+            Write-Host "  • Preparing system reboot in 10 seconds..." -ForegroundColor Cyan
+            & shutdown.exe /r /t 10 /c "Windows Maintenance completed. System restarting..."
+            $timeoutResult.Action = "RebootInitiated"
+            $timeoutResult.RebootRequired = $true
+            $timeoutResult.RebootDelay = 10
+        }
+
+        return $timeoutResult
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'SHUTDOWN-MANAGER' -Message "Shutdown sequence failed: $_"
+        return @{ Action = "Error"; RebootRequired = $false; Error = $_.Exception.Message }
+    }
+}
+
+function Show-ShutdownAbortMenu {
+    [CmdletBinding()]
+    [OutputType([int])]
+    param()
+
+    Write-Host "`n╔════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+    Write-Host "║   SHUTDOWN SEQUENCE ABORTED - SELECT ACTION           ║" -ForegroundColor Cyan
+    Write-Host "╚════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "`n  1. Cleanup now (remove temporary files, keep reports)" -ForegroundColor Gray
+    Write-Host "  2. Skip cleanup (preserve all files for review)" -ForegroundColor Gray
+    Write-Host "  3. Cleanup AND reboot" -ForegroundColor Gray
+    Write-Host ""
+
+    $choice = Read-Host "Select option (1-3, default=1)"
+    if ([string]::IsNullOrWhiteSpace($choice)) { return 1 }
+    
+    try {
+        $choiceInt = [int]$choice.Trim()
+        if ($choiceInt -ge 1 -and $choiceInt -le 3) { return $choiceInt }
+    }
+    catch { }
+    
+    return 1
+}
+
+function Invoke-MaintenanceShutdownChoice {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [ValidateRange(1, 3)]
+        [int]$Choice,
+        [string]$WorkingDirectory,
+        [string]$TempRoot
+    )
+
+    switch ($Choice) {
+        1 {
+            Write-Host "`nCleaning up temporary files..." -ForegroundColor Cyan
+            $success = Invoke-MaintenanceCleanup -WorkingDirectory $WorkingDirectory -TempRoot $TempRoot -KeepReports
+            if ($success) {
+                Write-Host "`n✓ Cleanup completed successfully" -ForegroundColor Green
+            }
+            return @{ Action = "CleanupOnly"; RebootRequired = $false }
+        }
+        2 {
+            Write-Host "`n✓ Cleanup skipped. All files preserved for review." -ForegroundColor Green
+            return @{ Action = "SkipCleanup"; RebootRequired = $false }
+        }
+        3 {
+            Write-Host "`nCleaning up and preparing reboot..." -ForegroundColor Cyan
+            $success = Invoke-MaintenanceCleanup -WorkingDirectory $WorkingDirectory -TempRoot $TempRoot -KeepReports
+            Write-Host "`n✓ Cleanup completed. System will restart in 10 seconds..." -ForegroundColor Cyan
+            & shutdown.exe /r /t 10 /c "Windows Maintenance cleanup complete. Restarting..."
+            return @{ Action = "CleanupAndReboot"; RebootRequired = $true; RebootDelay = 10 }
+        }
+        default {
+            return @{ Action = "Unknown"; RebootRequired = $false; Error = "Invalid choice" }
+        }
+    }
+}
+
+function Invoke-MaintenanceCleanup {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [string]$WorkingDirectory,
+        [string]$TempRoot,
+        [switch]$KeepReports
+    )
+
+    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Starting maintenance cleanup"
+
+    $cleanupErrors = @()
+    $cleanupPaths = @(
+        (Join-Path $TempRoot "temp"),
+        (Join-Path $TempRoot "logs"),
+        (Join-Path $TempRoot "data"),
+        (Join-Path $TempRoot "processed"),
+        $WorkingDirectory
+    )
+
+    foreach ($path in $cleanupPaths) {
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        if (Test-Path $path) {
+            try {
+                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+                if (Test-Path $path) {
+                    $cleanupErrors += $path
+                    Write-LogEntry -Level 'WARNING' -Component 'SHUTDOWN-MANAGER' -Message "Failed to remove: $path"
+                }
+                else {
+                    Write-LogEntry -Level 'SUCCESS' -Component 'SHUTDOWN-MANAGER' -Message "Removed: $path"
+                }
+            }
+            catch {
+                $cleanupErrors += $path
+                Write-LogEntry -Level 'ERROR' -Component 'SHUTDOWN-MANAGER' -Message "Error removing $path`: $_"
+            }
+        }
+    }
+
+    return ($cleanupErrors.Count -eq 0)
+}
+
+#endregion
+
 #region Module Exports
 
 Export-ModuleMember -Function @(
@@ -3703,6 +4245,7 @@ Export-ModuleMember -Function @(
     'Initialize-ConfigurationSystem', 'Get-ConfigFilePath', 'Get-JsonConfiguration', 'Get-MainConfiguration', 'Get-LoggingConfiguration',
     'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-SystemOptimizationConfiguration', 'Get-SecurityConfiguration', 'Get-ReportTemplatesConfiguration',
     'Get-CachedConfiguration', 'Test-ConfigurationIntegrity', 'Test-ConfigurationSchema', 'Get-NestedProperty',
+    'Test-ConfigurationWithJsonSchema', 'Test-AllConfigurationsWithSchema',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
     'Write-DetectionLog', 'Remove-NonActionableLogContent',
     'Assert-AdminPrivilege', 'Initialize-ModuleExecution',
@@ -3715,7 +4258,8 @@ Export-ModuleMember -Function @(
     'New-StandardLogEntry',
     'Test-SystemRequirements', 'Test-SystemReadiness', 'Enable-SystemProtection', 'Set-SystemRestoreStorage', 'New-SystemRestorePoint',
     'Invoke-WithTimeout', 'Invoke-ModuleWithTimeout',
-    'Register-SystemChange', 'Undo-AllChanges', 'Clear-ChangeLog', 'Get-ChangeLog'
+    'Register-SystemChange', 'Undo-AllChanges', 'Clear-ChangeLog', 'Get-ChangeLog',
+    'Start-MaintenanceCountdown', 'Show-ShutdownAbortMenu', 'Invoke-MaintenanceShutdownChoice', 'Invoke-MaintenanceCleanup'
 ) -Alias @('Write-LogEntry')
 
 #endregion

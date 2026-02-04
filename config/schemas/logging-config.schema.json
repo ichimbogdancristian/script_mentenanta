@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maintenance-automation/schemas/logging-config.schema.json",
+  "title": "Logging Configuration Schema",
+  "description": "Logging verbosity and output configuration",
+  "type": "object",
+  "properties": {
+    "logging": {
+      "type": "object",
+      "description": "Main logging configuration section",
+      "properties": {
+        "logLevel": {
+          "type": "string",
+          "enum": ["DEBUG", "VERBOSE", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "description": "Default logging level"
+        },
+        "enableConsoleOutput": {
+          "type": "boolean"
+        },
+        "enableFileOutput": {
+          "type": "boolean"
+        },
+        "enableProgressBars": {
+          "type": "boolean"
+        },
+        "coloredOutput": {
+          "type": "boolean"
+        },
+        "maxLogSizeMB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "logRotation": {
+          "type": "boolean"
+        },
+        "keepLogFiles": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "enablePerformanceTracking": {
+          "type": "boolean"
+        },
+        "enableStructuredLogging": {
+          "type": "boolean"
+        },
+        "logBufferSize": {
+          "type": "integer"
+        },
+        "flushInterval": {
+          "type": "integer"
+        },
+        "enableModuleSpecificLogs": {
+          "type": "boolean"
+        },
+        "moduleLogComponents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "operationVerbosity": {
+          "type": "string",
+          "enum": ["Minimal", "Normal", "Debug", "Detailed"]
+        }
+      }
+    },
+    "verbosity": {
+      "type": "object"
+    },
+    "defaultLevel": {
+      "type": "string",
+      "enum": ["DEBUG", "VERBOSE", "INFO", "WARNING", "ERROR", "CRITICAL"],
+      "description": "Default logging level for all components"
+    },
+    "outputTargets": {
+      "type": "object",
+      "description": "Where to send log output",
+      "properties": {
+        "console": {
+          "type": "boolean",
+          "description": "Output logs to console/terminal"
+        },
+        "file": {
+          "type": "boolean",
+          "description": "Write logs to file"
+        },
+        "eventLog": {
+          "type": "boolean",
+          "description": "Write logs to Windows Event Log"
+        }
+      }
+    },
+    "componentLevels": {
+      "type": "object",
+      "description": "Override log levels for specific components",
+      "patternProperties": {
+        "^[A-Z_-]+$": {
+          "type": "string",
+          "enum": ["DEBUG", "VERBOSE", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "formatOptions": {
+      "type": "object",
+      "description": "Log formatting options",
+      "properties": {
+        "includeTimestamp": {
+          "type": "boolean",
+          "description": "Include timestamp in log entries"
+        },
+        "timestampFormat": {
+          "type": "string",
+          "enum": ["ISO8601", "RFC3339", "UnixTimestamp", "Human"],
+          "description": "Timestamp format style"
+        },
+        "includeComponent": {
+          "type": "boolean",
+          "description": "Include component name in log entries"
+        },
+        "includeThreadId": {
+          "type": "boolean",
+          "description": "Include thread/runspace ID"
+        },
+        "colorizeConsole": {
+          "type": "boolean",
+          "description": "Use colors in console output"
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "description": "Log filtering rules",
+      "properties": {
+        "excludePatterns": {
+          "type": "array",
+          "description": "Regex patterns to exclude from logs",
+          "items": {
+            "type": "string"
+          }
+        },
+        "includeOnly": {
+          "type": "array",
+          "description": "Only log entries matching these components",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "rotation": {
+      "type": "object",
+      "description": "Log file rotation settings",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable automatic log rotation"
+        },
+        "maxSizeMB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Maximum log file size before rotation (MB)"
+        },
+        "maxFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of rotated log files to keep"
+        },
+        "maxAgeDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Delete logs older than this many days"
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "description": "Performance-related logging settings",
+      "properties": {
+        "enablePerformanceTracking": {
+          "type": "boolean",
+          "description": "Track execution times for operations"
+        },
+        "slowOperationThresholdMs": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 60000,
+          "description": "Log operations slower than this threshold (milliseconds)"
+        },
+        "logMemoryUsage": {
+          "type": "boolean",
+          "description": "Include memory usage in performance logs"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
