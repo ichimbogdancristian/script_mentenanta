@@ -25,49 +25,20 @@ using namespace System.Collections.Generic
 # Standard dependency import pattern for Windows Maintenance Automation
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
 
-# Import CoreInfrastructure if not already available
+# Import CoreInfrastructure - REQUIRED for this module
 $CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
-if (-not (Get-Command -Name 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
-    if (Test-Path $CoreInfraPath) {
-        Import-Module $CoreInfraPath -Force -Global
-    }
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force -Global
+} else {
+    throw "CRITICAL: CoreInfrastructure.psm1 not found at: $CoreInfraPath. SecurityAudit requires CoreInfrastructure for path management and logging."
 }
 
-#endregion
-
-#region Fallback Functions
-
-# Ensure critical functions are available with graceful degradation
+# Validate critical dependencies are loaded
 if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
-    function script:Write-LogEntry {
-        param(
-            [Parameter(Mandatory = $true)]
-            [ValidateSet('DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL')]
-            [string]$Level,
-
-            [Parameter(Mandatory = $true)]
-            [string]$Component,
-
-            [Parameter(Mandatory = $true)]
-            [string]$Message,
-
-            [hashtable]$Data = @{}
-        )
-
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $logEntry = "[$timestamp] [$Level] [$Component] $Message"
-        Write-Information $logEntry -InformationAction Continue
-    }
+    throw "CRITICAL: Write-LogEntry not available. CoreInfrastructure.psm1 may have failed to load correctly."
 }
-
-if (-not (Get-Command -Name 'Get-OrganizedFilePath' -ErrorAction SilentlyContinue)) {
-    function script:Get-OrganizedFilePath {
-        param($FileType, $Category, $FileName)
-
-        # Fallback to simple path resolution
-        $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        return Join-Path $scriptRoot "temp_files\$FileName"
-    }
+if (-not (Get-Command -Name 'Get-AuditResultsPath' -ErrorAction SilentlyContinue)) {
+    throw "CRITICAL: Get-AuditResultsPath not available. CoreInfrastructure.psm1 may have failed to load correctly."
 }
 
 #endregion

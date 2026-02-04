@@ -15,4 +15,6 @@ this is a complex task split it in to multiple tasks
 analyse carrefouly dont rush things do it right
 
 
-i want you to do a individual comprehensive scan off all the modules in this project analyze how logs are produced stored interpreted processed , analyze data format field types paths everything, find out what is brocken or out of place
+i want you to do a individual comprehensive scan off all the modules in this project analyze how logs are produced stored interpreted processed , analyze data format field types paths everything, find out what is brocken or out of 
+
+can you do a comprehensive detailed of the core infrastructure of this entire project  i want to give me an onest opinion and clear pointers to optimise this infrastructure , investigate 100% of the contents of every module do not use automations, investigate the inventory creation and procesing, the logging mechanism and log processing, the report generation, scan for unused blocks of code , faulty logic, brocken paths, inconsistent naming, inconsistent data types and formats, everything that you can find, i feel that many of modules overlap investigate type1 modules as an entity and type2 modules as an entity , suggest comsolidation posibilities, suggestions to eliminae overlapping , create detailed document with the findings and suggestions this is a complex task split it in to multiple tasks, analyse things carrefouly dont rush things do it right

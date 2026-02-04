@@ -1351,11 +1351,70 @@ function Get-EnhancedOptimizationConfig {
     param()
 
     try {
-        $configPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\system-optimization-enhanced.json'
-        if (Test-Path $configPath) {
-            $config = Get-Content $configPath -Raw | ConvertFrom-Json
-            Write-Verbose "Loaded enhanced optimization configuration from: $configPath"
-            return $config
+        $configRoot = $null
+        if (Get-Command 'Get-MaintenancePath' -ErrorAction SilentlyContinue) {
+            $configRoot = Get-MaintenancePath 'ConfigRoot'
+        }
+        elseif ($env:MAINTENANCE_CONFIG_ROOT) {
+            $configRoot = $env:MAINTENANCE_CONFIG_ROOT
+        }
+        else {
+            $configRoot = Join-Path $PSScriptRoot '..\..\config'
+        }
+
+        $candidatePaths = @(
+            'lists\system-optimization-enhanced.json',
+            'lists\system-optimization-config.json',
+            'settings\system-optimization-enhanced.json'
+        )
+
+        foreach ($relativePath in $candidatePaths) {
+            $configPath = Join-Path $configRoot $relativePath
+            if (Test-Path $configPath) {
+                $config = Get-Content $configPath -Raw | ConvertFrom-Json
+                Write-Verbose "Loaded optimization configuration from: $configPath"
+
+                if ($config.PSObject.Properties.Name -contains 'systemOptimizations') {
+                    return $config
+                }
+
+                # Map legacy list-based config into enhanced schema
+                $defaultConfig = [PSCustomObject]@{
+                    systemOptimizations   = [PSCustomObject]@{
+                        startup  = [PSCustomObject]@{ enabled = $true; aggressiveMode = $false; safeToDisablePatterns = @(); neverDisablePatterns = @() }
+                        ui       = [PSCustomObject]@{
+                            enabled = $true
+                            profileBased = $true
+                            profiles = [PSCustomObject]@{
+                                balanced    = [PSCustomObject]@{ disableAnimations = $false; useSmallTaskbarIcons = $false; hideSearchBox = $false; disableVisualEffects = $false }
+                                performance = [PSCustomObject]@{ disableAnimations = $true; useSmallTaskbarIcons = $true; hideSearchBox = $true; disableVisualEffects = $true }
+                            }
+                        }
+                        disk     = [PSCustomObject]@{ enabled = $true; cleanupTargets = @() }
+                        registry = [PSCustomObject]@{ enabled = $false; safeOptimizations = @() }
+                        network  = [PSCustomObject]@{ enabled = $false; tcpOptimizations = [PSCustomObject]@{ enabled = $false; settings = @{} }; dnsOptimizations = [PSCustomObject]@{ enabled = $false; flushDNSCache = $false } }
+                        modern   = [PSCustomObject]@{ windows11 = [PSCustomObject]@{ enabled = $true; optimizations = @() } }
+                    }
+                    performanceThresholds = [PSCustomObject]@{
+                        diskSpace = [PSCustomObject]@{ critical = 5; warning = 15; optimal = 25 }
+                        memory    = [PSCustomObject]@{ high = 85; warning = 70; optimal = 60 }
+                        startup   = [PSCustomObject]@{ tooMany = 15; optimal = 8; minimal = 5 }
+                    }
+                    adaptiveSettings      = [PSCustomObject]@{ enabled = $true }
+                }
+
+                if ($config.startupPrograms) {
+                    $defaultConfig.systemOptimizations.startup.safeToDisablePatterns = $config.startupPrograms.safeToDisablePatterns
+                    $defaultConfig.systemOptimizations.startup.neverDisablePatterns = $config.startupPrograms.neverDisable
+                }
+
+                if ($config.visualEffects -and $config.visualEffects.performance) {
+                    $defaultConfig.systemOptimizations.ui.profiles.performance.disableAnimations = -not [bool]$config.visualEffects.performance.animations
+                    $defaultConfig.systemOptimizations.ui.profiles.performance.disableVisualEffects = -not [bool]$config.visualEffects.performance.shadows
+                }
+
+                return $defaultConfig
+            }
         }
     }
     catch {

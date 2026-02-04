@@ -77,7 +77,17 @@ function Invoke-WindowsUpdates {
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
         $analysisResults = Get-WindowsUpdatesAnalysis
 
-        if (-not $analysisResults -or $analysisResults.PendingUpdatesCount -eq 0) {
+        $updatesCount = 0
+        if ($analysisResults) {
+            if ($analysisResults.PSObject.Properties.Name -contains 'PendingUpdatesCount') {
+                $updatesCount = [int]$analysisResults.PendingUpdatesCount
+            }
+            elseif ($analysisResults.PendingAudit -and ($analysisResults.PendingAudit.PendingCount -ne $null)) {
+                $updatesCount = [int]$analysisResults.PendingAudit.PendingCount
+            }
+        }
+
+        if (-not $analysisResults -or $updatesCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No pending Windows updates detected'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
             $executionTime = (Get-Date) - $executionStartTime
@@ -106,9 +116,9 @@ function Invoke-WindowsUpdates {
         # STEP 3: Setup execution logging directory
         $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\windows-updates"
         New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        # Removed redundant self-assignment
 
-        $updatesCount = $analysisResults.PendingUpdatesCount
+        $updatesCount = $updatesCount
         Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ UpdateCount = $updatesCount }
 
         if ($DryRun) {
@@ -181,7 +191,7 @@ function Invoke-WindowsUpdates {
         $executionTime = if ($executionStartTime) { (Get-Date) - $executionStartTime } else { New-TimeSpan }
         return New-ModuleExecutionResult `
             -Success $false `
-            -ItemsDetected (if ($analysisResults) { $analysisResults.PendingUpdatesCount } else { 0 }) `
+            -ItemsDetected $updatesCount `
             -ItemsProcessed 0 `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
             -LogPath $executionLogPath `
@@ -262,6 +272,12 @@ function Install-WindowsUpdate {
         [switch]$ExcludePreviews,
 
         [Parameter()]
+        [switch]$IncludeOptional,
+
+        [Parameter()]
+        [switch]$IncludeDrivers,
+
+        [Parameter()]
         [ValidateRange(100, 10240)]
         [int]$MaxDownloadSizeMB = 2048,
 
@@ -282,6 +298,8 @@ function Install-WindowsUpdate {
     try {
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows Updates installation' -Data @{
             ExcludePreviews   = $ExcludePreviews.IsPresent
+            IncludeOptional   = $IncludeOptional.IsPresent
+            IncludeDrivers    = $IncludeDrivers.IsPresent
             MaxDownloadSizeMB = $MaxDownloadSizeMB
             DryRun            = $DryRun.IsPresent
             SuppressReboot    = $SuppressReboot.IsPresent
@@ -336,7 +354,7 @@ function Install-WindowsUpdate {
             # Remove ExecutionLogPath from parameters as native API doesn't support it
             $nativeApiParams = @{}
             foreach ($key in $PSBoundParameters.Keys) {
-                if ($key -ne 'ExecutionLogPath') {
+                if ($key -notin @('ExecutionLogPath', 'IncludeOptional', 'IncludeDrivers')) {
                     $nativeApiParams[$key] = $PSBoundParameters[$key]
                 }
             }
@@ -473,16 +491,23 @@ function Get-WindowsUpdateStatus {
     }
 
     try {
-        # Check for pending reboot from Windows Updates
+        # Check for pending reboot from Windows Updates (using Type1 function)
         $status.PendingReboot = Test-PendingReboot
         if ($status.PendingReboot) {
             $status.RebootReason += "Windows Updates"
         }
 
-        # Get Windows Update settings
-        $auSettings = Get-WindowsUpdateSettings
-        $status.AutoUpdateEnabled = $auSettings.AutoUpdateEnabled
-        $status.LastUpdateCheck = $auSettings.LastUpdateCheck
+        # Get Windows Update auto-update setting directly
+        try {
+            $auKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update"
+            if (Test-Path $auKey) {
+                $auValue = Get-ItemProperty $auKey -Name AUOptions -ErrorAction SilentlyContinue
+                $status.AutoUpdateEnabled = $null -ne $auValue -and $auValue.AUOptions -gt 1
+            }
+        }
+        catch {
+            Write-Verbose "Could not read Windows Update auto-update setting: $_"
+        }
 
         # Try to get available updates count
         if (Test-PSWindowsUpdateAvailable) {
@@ -562,6 +587,8 @@ function Install-UpdatesViaPSWindowsUpdate {
     [OutputType([hashtable])]
     param(
         [switch]$ExcludePreviews,
+        [switch]$IncludeOptional,
+        [switch]$IncludeDrivers,
         [int]$MaxDownloadSizeMB = 2048,
         [switch]$DryRun,
         [switch]$SuppressReboot
@@ -898,92 +925,6 @@ function Test-NativeWindowsUpdateAvailable {
     }
     catch {
         return $false
-    }
-}
-
-<#
-.SYNOPSIS
-    Tests if a system reboot is pending
-#>
-function Test-PendingReboot {
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param()
-    $registryKeys = @(
-        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
-        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
-        "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations"
-    )
-
-    foreach ($key in $registryKeys) {
-        if (Test-Path $key) {
-            return $true
-        }
-    }
-
-    return $false
-}
-
-<#
-.SYNOPSIS
-    Gets Windows Update settings and configuration
-#>
-function Get-WindowsUpdateSetting {
-    [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-    try {
-        $auKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update"
-
-        $settings = @{
-            AutoUpdateEnabled = $false
-            LastUpdateCheck   = $null
-        }
-
-        if (Test-Path $auKey) {
-            $auValue = Get-ItemProperty $auKey -Name AUOptions -ErrorAction SilentlyContinue
-            $settings.AutoUpdateEnabled = $null -ne $auValue -and $auValue.AUOptions -gt 1
-        }
-
-        # Try to get last update check time
-        try {
-            $wuService = New-Object -ComObject Microsoft.Update.ServiceManager
-            $settings.LastUpdateCheck = $wuService.Services |
-            Where-Object { $_.Name -eq "Microsoft Update" } |
-            Select-Object -ExpandProperty LastUpdateTime -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-Verbose "Failed to get last update check time: $_"
-        }
-
-        return $settings
-    }
-    catch {
-        return @{
-            AutoUpdateEnabled = $false
-            LastUpdateCheck   = $null
-        }
-    }
-}
-
-<#
-.SYNOPSIS
-    Gets basic Windows Update status without advanced features
-#>
-function Get-WindowsUpdateBasicStatus {
-    [CmdletBinding()]
-    [OutputType([hashtable])]
-    param()
-    return @{
-        UpdatesFound     = 0
-        UpdatesInstalled = 0
-        UpdatesFailed    = 0
-        TotalSizeMB      = 0
-        RebootRequired   = Test-PendingReboot
-        Details          = @()
-        Method           = 'Basic Status'
-        DryRun           = $false
-        Message          = "Limited Windows Update capability - PSWindowsUpdate module recommended"
     }
 }
 

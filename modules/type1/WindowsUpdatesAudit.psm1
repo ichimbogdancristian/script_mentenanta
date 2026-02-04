@@ -119,18 +119,20 @@ function Get-WindowsUpdatesAnalysis {
 
         # Initialize audit results
         $auditResults = @{
-            AuditTimestamp   = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            UpdateStatus     = Get-WindowsUpdateStatus
-            SecurityFindings = @()
-            UpdateIssues     = @()
-            SecurityScore    = 0
-            Recommendations  = @()
+            AuditTimestamp     = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            UpdateStatus       = Get-WindowsUpdateStatus
+            PendingUpdatesCount = 0
+            SecurityFindings   = @()
+            UpdateIssues       = @()
+            SecurityScore      = 0
+            Recommendations    = @()
         }
 
         # Audit different categories
         if ($IncludePending) {
             Write-Information "   Auditing pending updates..." -InformationAction Continue
             $auditResults.PendingAudit = Get-PendingUpdatesAudit
+            $auditResults.PendingUpdatesCount = $auditResults.PendingAudit.PendingCount
             $auditResults.UpdateIssues += $auditResults.PendingAudit.Issues
         }
 

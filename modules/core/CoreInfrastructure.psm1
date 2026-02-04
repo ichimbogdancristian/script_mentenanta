@@ -489,7 +489,7 @@ function Get-JsonConfiguration {
         'SystemOptimization' = 'lists\system-optimization-config.json'
         'Security'           = 'settings\security-config.json'
         'Logging'            = 'settings\logging-config.json'
-        'ReportTemplates'    = 'templates\report-template-config.json'
+        'ReportTemplates'    = 'templates\report-templates-config.json'
     }
 
     # Default return values for each config type

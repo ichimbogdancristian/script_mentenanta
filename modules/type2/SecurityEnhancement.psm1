@@ -165,7 +165,7 @@ function Invoke-SecurityEnhancement {
 
         # Step 1: Load security configuration
         Write-Information "[Step 1/3] Loading security configuration..." -InformationAction Continue
-        $securityConfig = Get-SecurityConfiguration -ErrorAction Stop
+        $securityConfig = Get-SecurityEnhancementConfiguration -ErrorAction Stop
 
         if ($securityConfig) {
             Write-Information "   [OK] Security configuration loaded successfully" -InformationAction Continue
@@ -321,7 +321,7 @@ function Invoke-SecurityEnhancement {
 .SYNOPSIS
     Loads security configuration from security-config.json
 #>
-function Get-SecurityConfiguration {
+function Get-SecurityEnhancementConfiguration {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param()

@@ -192,7 +192,6 @@ $Type2Modules = @(
     'SystemOptimization',
     'TelemetryDisable',
     'SecurityEnhancement', # Security hardening and enhancements
-    'SecurityEnhancementCIS', # CIS v4.0.0 Benchmark implementation
     'WindowsUpdates',
     'AppUpgrade'
 )
