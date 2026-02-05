@@ -134,7 +134,7 @@ function Invoke-AppUpgrade {
         Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detection complete: $($detectionResults.Count) upgrades available"
 
         # STEP 2: Load module configuration
-        $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\app-upgrade-config.json"
+        $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\app-upgrade\app-upgrade-config.json"
 
         if (-not (Test-Path $moduleConfigPath)) {
             Write-Warning "Module configuration not found at: $moduleConfigPath"
@@ -287,14 +287,20 @@ function Invoke-AppUpgrade {
 
         Write-Information "   Upgrade execution complete: $itemsProcessed processed" -InformationAction Continue
 
-        return New-ModuleExecutionResult `
-            -Success $true `
-            -ItemsDetected $detectionResults.Count `
-            -ItemsProcessed $itemsProcessed `
-            -DurationMilliseconds $duration.TotalMilliseconds `
-            -LogPath $executionLogPath `
-            -ModuleName 'AppUpgrade' `
-            -DryRun $DryRun.IsPresent
+        # Build result object directly to avoid interactive prompts
+        $result = @{
+            Success            = $true
+            ItemsDetected      = $detectionResults.Count
+            ItemsProcessed     = $itemsProcessed
+            Duration           = [double]$duration.TotalMilliseconds
+            LogPath            = $executionLogPath
+            ModuleName         = 'AppUpgrade'
+            Error              = $null
+            DryRun             = $DryRun.IsPresent
+            ExecutionTimestamp = Get-Date -Format 'o'
+            AdditionalData     = @{}
+        }
+        return $result
     }
     catch {
         Complete-PerformanceTracking -Context $perfContext -Status 'Failed' | Out-Null
@@ -303,14 +309,21 @@ function Invoke-AppUpgrade {
         }
 
         Write-Error "AppUpgrade execution failed: $_"
-        return New-ModuleExecutionResult `
-            -Success $false `
-            -ItemsDetected 0 `
-            -ItemsProcessed $itemsProcessed `
-            -DurationMilliseconds ((Get-Date) - $startTime).TotalMilliseconds `
-            -LogPath $executionLogPath `
-            -ModuleName 'AppUpgrade' `
-            -ErrorMessage $_.Exception.Message
+        
+        # Build error result object directly
+        $result = @{
+            Success            = $false
+            ItemsDetected      = 0
+            ItemsProcessed     = $itemsProcessed
+            Duration           = [double]((Get-Date) - $startTime).TotalMilliseconds
+            LogPath            = $executionLogPath
+            ModuleName         = 'AppUpgrade'
+            Error              = $_.Exception.Message
+            DryRun             = $DryRun.IsPresent
+            ExecutionTimestamp = Get-Date -Format 'o'
+            AdditionalData     = @{}
+        }
+        return $result
     }
 }
 
@@ -422,7 +435,7 @@ function Invoke-SingleUpgrade {
             }
             default {
                 Write-OperationFailure -Operation 'Upgrade' -Target $Upgrade.Name -Component 'APP-UPGRADE-EXEC' -Error "Unknown source: $($Upgrade.Source)" -LogPath $ExecutionLogPath
-                return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error "Unknown source: $($Upgrade.Source)"
+                return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -DurationMilliseconds 0 -ErrorMessage "Unknown source: $($Upgrade.Source)"
             }
         }
 
@@ -465,7 +478,7 @@ function Invoke-SingleUpgrade {
                 Write-LogEntry -Level 'DEBUG' -Component 'APP-UPGRADE-EXEC' -Message "Command output: $stdout" -LogPath $ExecutionLogPath
             }
 
-            return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 1 -DurationMilliseconds $operationDuration.TotalMilliseconds
+            return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 1 -DurationMilliseconds $operationDuration.TotalMilliseconds -LogPath $executionLogPath
         }
         else {
             # Log failure with full error context
@@ -480,7 +493,7 @@ function Invoke-SingleUpgrade {
                 StdErr      = if ($stderr) { $stderr.Trim() } else { "No error output" }
             }
 
-            return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -Error "Exit code: $($process.ExitCode)"
+            return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds $operationDuration.TotalMilliseconds -ErrorMessage "Exit code: $($process.ExitCode)"
         }
     }
     catch {
@@ -495,7 +508,7 @@ function Invoke-SingleUpgrade {
             StackTrace  = $_.ScriptStackTrace
         }
 
-        return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -Error $_.Exception.Message
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -ErrorMessage $_.Exception.Message
     }
 }
 

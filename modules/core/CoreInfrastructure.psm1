@@ -2702,8 +2702,8 @@ function New-ModuleExecutionResult {
         [Parameter(Mandatory = $true)]
         [int]$ItemsProcessed,
 
-        [Parameter(Mandatory = $true)]
-        [double]$DurationMilliseconds,
+        [Parameter(Mandatory = $false)]
+        [double]$DurationMilliseconds = 0,
 
         [Parameter(Mandatory = $false)]
         [string]$LogPath,
