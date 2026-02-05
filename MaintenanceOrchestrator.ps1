@@ -52,7 +52,7 @@ if (-not $ScriptRoot) {
     $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 $WorkingDirectory = if ($env:WORKING_DIRECTORY) { $env:WORKING_DIRECTORY } else { $ScriptRoot }
-Write-Information "Windows Maintenance Automation - Central Orchestrator v2.0.0" -InformationAction Continue
+Write-Information "Windows Maintenance Automation - Central Orchestrator v3.1.0" -InformationAction Continue
 Write-Information "Working Directory: $WorkingDirectory" -InformationAction Continue
 Write-Information "Script Root: $ScriptRoot" -InformationAction Continue
 #  Administrator Privilege Verification (Critical for service operations)
@@ -579,7 +579,8 @@ try {
             }
         }
         else {
-            # Fallback to Windows PowerShell for Checkpoint-Computer if available
+            # PowerShell 7 on Windows includes Checkpoint-Computer via compatibility layer
+            # If not available, system restore point creation requires Windows PowerShell
             $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
             if (Test-Path $psExe) {
                 $psArgs = @(
@@ -675,93 +676,27 @@ catch {
 #endregion
 #region Configuration Loading
 Write-Information "`nInitializing configuration..." -InformationAction Continue
-#region FIX #8: JSON Configuration Validation Function
+#region Phase 2/3: Configuration Validation
 <#
-.SYNOPSIS
-    Validates JSON configuration files for syntax and structure
-.DESCRIPTION
-    FIX #8: Comprehensive JSON validation during orchestrator initialization.
-    Validates both syntax (valid JSON) and basic structure (required keys).
-.PARAMETER FilePath
-    Full path to the JSON file to validate
-.PARAMETER FileName
-    Name of the file (for display purposes)
-.OUTPUTS
-    $true if valid, throws error if invalid
+    Configuration validation is handled by Phase 2 JSON Schema system:
+    - Test-ConfigurationWithJsonSchema validates individual configs
+    - Test-AllConfigurationsWithSchema validates all 7 configs in batch
+    - Phase 3 subdirectory paths (config/lists/bloatware/, etc.) fully supported
+    
+    Legacy Test-ConfigurationJsonValidity removed - use schema validation instead.
 #>
-function Test-ConfigurationJsonValidity {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath,
-        [Parameter(Mandatory = $false)]
-        [string]$FileName = (Split-Path $FilePath -Leaf)
-    )
-    try {
-        # Check file exists
-        if (-not (Test-Path $FilePath)) {
-            throw "Configuration file not found: $FileName at $FilePath"
-        }
-        # Validate JSON syntax
-        $content = Get-Content $FilePath -Raw
-        $jsonObject = $content | ConvertFrom-Json -ErrorAction Stop
-        # Validate not empty
-        if (-not $jsonObject) {
-            throw "Configuration file is empty: $FileName"
-        }
-        Write-Verbose " JSON syntax valid for $FileName"
-        return $true
-    }
-    catch {
-        throw "JSON validation failed for $($FileName): $($_.Exception.Message)"
-    }
-}
 #endregion
-try {
-    # Validate all critical configuration files using standardized paths
-    Write-Information "  Validating configuration file syntax and structure..." -InformationAction Continue
 
-    # Required configuration files in standardized locations
-    $requiredConfigs = @(
-        @{ Name = 'main-config.json'; Path = (Join-Path $ConfigPath 'settings\main-config.json') },
-        @{ Name = 'logging-config.json'; Path = (Join-Path $ConfigPath 'settings\logging-config.json') },
-        @{ Name = 'bloatware-list.json'; Path = (Join-Path $ConfigPath 'lists\bloatware-list.json') },
-        @{ Name = 'essential-apps.json'; Path = (Join-Path $ConfigPath 'lists\essential-apps.json') },
-        @{ Name = 'app-upgrade-config.json'; Path = (Join-Path $ConfigPath 'lists\app-upgrade-config.json') }
-    )
-    # Validate all configuration files
-    foreach ($config in $requiredConfigs) {
-        if (-not (Test-Path $config.Path)) {
-            throw "Required configuration file not found: $($config.Name) at $($config.Path)"
-        }
-        try {
-            Test-ConfigurationJsonValidity -FilePath $config.Path -FileName $config.Name
-            Write-Information "     $($config.Name) validated" -InformationAction Continue
-        }
-        catch {
-            Write-Error "Configuration validation error: $_"
-            throw $_
-        }
-    }
-    Write-Information "   All configuration files validated successfully" -InformationAction Continue
+#region Configuration Loading
+<#
+    Phase 2 JSON Schema validation already completed successfully above.
+    Phase 3 subdirectory paths (config/lists/bloatware/, config/lists/essential-apps/, etc.)
+    are automatically validated by Test-AllConfigurationsWithSchema.
+    
+    Legacy validation code removed - no need to duplicate validation.
+#>
+try {
     try {
-        # Validate configuration directory structure using standardized paths
-        $requiredConfigFiles = @(
-            (Join-Path $ConfigPath 'settings\main-config.json'),
-            (Join-Path $ConfigPath 'settings\logging-config.json')
-        )
-        foreach ($configFile in $requiredConfigFiles) {
-            if (-not (Test-Path $configFile)) {
-                throw "Required configuration file not found: $configFile"
-            }
-            # Validate JSON syntax
-            try {
-                $null = Get-Content $configFile | ConvertFrom-Json -ErrorAction Stop
-            }
-            catch {
-                throw "Invalid JSON syntax in configuration file $(Split-Path $configFile -Leaf): $($_.Exception.Message)"
-            }
-        }
         # Initialize configuration system with error handling
         try {
             Write-Information "  Checking for Initialize-ConfigSystem function..." -InformationAction Continue
