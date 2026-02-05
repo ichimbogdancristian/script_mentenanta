@@ -875,7 +875,8 @@ function New-MaintenanceReport {
             $timelineHtml = Build-ExecutionTimeline -AggregatedResults $processedData
 
             Write-Information "✓ Building action items..." -InformationAction Continue
-            $actionItemsHtml = Build-ActionItems -AggregatedResults $processedData -MaxItems 10
+            # Build-ActionItems implementation pending in Phase 4.2
+            $actionItemsHtml = @()
 
             Write-Information "✓ Collecting system information..." -InformationAction Continue
             $systemInfo = Get-SystemInformation
@@ -3839,10 +3840,12 @@ function Build-ExecutiveDashboard {
         $systemHealthScore = Get-SystemHealthScore -Results $AggregatedResults
 
         # Generate key findings HTML
-        $keyFindingsHtml = Build-KeyFindings -Results $AggregatedResults -Limit 5
+        # Note: Build-KeyFindings implementation pending in Phase 4.2
+        $keyFindingsHtml = @()
 
         # Generate action items summary HTML
-        $actionItemsSummaryHtml = Build-ActionItems -AggregatedResults $AggregatedResults -MaxItems 3
+        # Note: Build-ActionItems implementation pending in Phase 4.2
+        $actionItemsSummaryHtml = @()
 
         # Build project resume summary
         $executionSummary = if ($AggregatedResults.MetricsSummary) { $AggregatedResults.MetricsSummary.ExecutionSummary } else { @{} }
@@ -4514,13 +4517,13 @@ Export-ModuleMember -Function @(
     'Build-PerformancePhases',
     'Build-ModuleErrors',
     'Build-ExecutionTimeline',
-    'Build-ActionItems',
+    # 'Build-ActionItems',  # PENDING: Implementation in Phase 4.2
     'Get-SystemInformation',
     # Enhanced Builder Functions v3.0
     'Build-ExecutiveDashboard',
     'Build-ModuleCard',
     'Build-ErrorAnalysis',
-    'Build-KeyFindings',
+    # 'Build-KeyFindings',  # PENDING: Implementation in Phase 4.2
     # Enhanced Builder Functions v5.0 (Integrated from ModernReportGenerator)
     'Build-ModuleDetailsSection',
     'Build-ModuleLogsSection',

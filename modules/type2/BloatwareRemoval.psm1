@@ -163,9 +163,16 @@ function Invoke-BloatwareRemoval {
         }
 
         # STEP 2: Compare detection with config to create diff list using centralized function
-        # Use standardized config path structure
-        $configDataPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\bloatware-list.json"
-        $configData = Get-Content $configDataPath | ConvertFrom-Json
+        # Use standardized Phase 3 config path structure (subdirectory per module)
+        $configDataPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\bloatware\bloatware-list.json"
+        if (-not (Test-Path $configDataPath)) {
+            # Fallback to legacy path for backward compatibility
+            $configDataPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\bloatware-list.json"
+        }
+        if (-not (Test-Path $configDataPath)) {
+            throw "Configuration file not found at: $configDataPath"
+        }
+        $configData = Get-Content $configDataPath -ErrorAction Stop | ConvertFrom-Json
 
         # Create diff: Only items from config that are actually found on system
         $diffList = Compare-DetectedVsConfig -DetectionResults $filteredDetection -ConfigData $configData -ConfigItemsPath 'bloatware' -MatchField 'Name'

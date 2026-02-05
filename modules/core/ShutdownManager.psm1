@@ -249,7 +249,13 @@ function Start-MaintenanceCountdown {
             }
 
             # Use shutdown.exe for reliable reboot
-            & shutdown.exe /r /t 10 /c "Windows Maintenance completed. System restarting..."
+            $shutdownPath = "$env:SystemRoot\System32\shutdown.exe"
+            if (Test-Path $shutdownPath) {
+                & $shutdownPath /r /t 10 /c "Windows Maintenance completed. System restarting..."
+            }
+            else {
+                Write-LogEntry -Level 'ERROR' -Component 'SHUTDOWN-MANAGER' -Message "shutdown.exe not found at $shutdownPath"
+            }
 
             $timeoutResult.Action = "RebootInitiated"
             $timeoutResult.RebootRequired = $true
@@ -409,7 +415,13 @@ function Invoke-MaintenanceShutdownChoice {
 
             Start-Sleep -Seconds 3
 
-            & shutdown.exe /r /t 10 /c "Windows Maintenance cleanup complete. Restarting..."
+            $shutdownPath = "$env:SystemRoot\System32\shutdown.exe"
+            if (Test-Path $shutdownPath) {
+                & $shutdownPath /r /t 10 /c "Windows Maintenance cleanup complete. Restarting..."
+            }
+            else {
+                Write-LogEntry -Level 'ERROR' -Component 'SHUTDOWN-MANAGER' -Message "shutdown.exe not found at $shutdownPath"
+            }
 
             return @{ Action = "CleanupAndReboot"; RebootRequired = $true; RebootDelay = 10 }
         }

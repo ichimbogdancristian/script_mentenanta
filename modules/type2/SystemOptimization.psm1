@@ -1363,9 +1363,10 @@ function Get-EnhancedOptimizationConfig {
         }
 
         $candidatePaths = @(
-            'lists\system-optimization-enhanced.json',
-            'lists\system-optimization-config.json',
-            'settings\system-optimization-enhanced.json'
+            'lists\system-optimization\system-optimization-config.json',  # Phase 3
+            'lists\system-optimization-enhanced.json',                     # Legacy
+            'lists\system-optimization-config.json',                       # Legacy
+            'settings\system-optimization-enhanced.json'                   # Legacy
         )
 
         foreach ($relativePath in $candidatePaths) {
