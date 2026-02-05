@@ -7,7 +7,11 @@
   "minItems": 1,
   "items": {
     "type": "object",
-    "required": ["name", "category", "description"],
+    "required": [
+      "name",
+      "category",
+      "description"
+    ],
     "properties": {
       "name": {
         "type": "string",

@@ -37,7 +37,12 @@
     },
     "upgradePolicy": {
       "type": "string",
-      "enum": ["All", "Security", "Manual", "None"],
+      "enum": [
+        "All",
+        "Security",
+        "Manual",
+        "None"
+      ],
       "description": "Default upgrade policy: All (upgrade everything), Security (only security updates), Manual (prompt), None (skip)"
     },
     "autoUpgradeEnabled": {
@@ -60,7 +65,10 @@
               "description": "Winget sources to use",
               "items": {
                 "type": "string",
-                "enum": ["winget", "msstore"]
+                "enum": [
+                  "winget",
+                  "msstore"
+                ]
               }
             },
             "acceptLicenses": {
@@ -184,12 +192,25 @@
         },
         "frequency": {
           "type": "string",
-          "enum": ["Daily", "Weekly", "Monthly", "OnStartup"],
+          "enum": [
+            "Daily",
+            "Weekly",
+            "Monthly",
+            "OnStartup"
+          ],
           "description": "Upgrade frequency"
         },
         "dayOfWeek": {
           "type": "string",
-          "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+          "enum": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
           "description": "Day of week for weekly upgrades"
         },
         "timeOfDay": {
@@ -241,7 +262,12 @@
         },
         "reportFormat": {
           "type": "string",
-          "enum": ["HTML", "JSON", "Text", "CSV"],
+          "enum": [
+            "HTML",
+            "JSON",
+            "Text",
+            "CSV"
+          ],
           "description": "Report output format"
         }
       }
@@ -278,7 +304,12 @@
       "properties": {
         "LogLevel": {
           "type": "string",
-          "enum": ["Verbose", "Info", "Warning", "Error"],
+          "enum": [
+            "Verbose",
+            "Info",
+            "Warning",
+            "Error"
+          ],
           "description": "Logging verbosity level"
         },
         "LogPath": {

@@ -3,12 +3,10 @@
   "ModuleEnabled": true,
   "Description": "Automated application upgrade management via Winget and Chocolatey package managers",
   "Version": "1.0.0",
-  
   "EnabledSources": [
     "Winget",
     "Chocolatey"
   ],
-  
   "ExcludePatterns": [
     "Visual Studio*",
     "Microsoft Visual Studio*",
@@ -33,7 +31,6 @@
     "IntelliJ*",
     "Android Studio*"
   ],
-  
   "safety": {
     "createRestorePoint": true,
     "backupConfigs": false,
@@ -41,20 +38,17 @@
     "maxConcurrentUpgrades": 5,
     "stopOnFirstFailure": false
   },
-  
   "ExecutionSettings": {
     "UpgradeTimeout": 300,
     "RetryAttempts": 2,
     "RetryDelay": 5,
     "ContinueOnError": true
   },
-  
   "LoggingSettings": {
     "LogLevel": "INFO",
     "DetailedOutput": true,
     "CaptureVersionHistory": true
   },
-  
   "ReportingSettings": {
     "IncludeBeforeAfterVersions": true,
     "TrackSizeChanges": false,
