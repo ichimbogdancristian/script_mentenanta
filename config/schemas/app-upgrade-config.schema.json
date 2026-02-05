@@ -319,6 +319,32 @@
         "EnableDetailedLogging": {
           "type": "boolean",
           "description": "Enable detailed operation logging"
+        },
+        "DetailedOutput": {
+          "type": "boolean",
+          "description": "Enable detailed output during upgrade"
+        },
+        "CaptureVersionHistory": {
+          "type": "boolean",
+          "description": "Capture version history for upgrades"
+        }
+      }
+    },
+    "ReportingSettings": {
+      "type": "object",
+      "description": "Report generation settings",
+      "properties": {
+        "IncludeBeforeAfterVersions": {
+          "type": "boolean",
+          "description": "Include before and after version information in reports"
+        },
+        "TrackSizeChanges": {
+          "type": "boolean",
+          "description": "Track installation size changes during upgrades"
+        },
+        "GenerateUpgradeHistory": {
+          "type": "boolean",
+          "description": "Generate historical upgrade tracking reports"
         }
       }
     }
