@@ -311,23 +311,23 @@ function Get-ProcessedLogData {
         }
 
         $processedData = @{
-            MetricsSummary  = @{}
-            ModuleResults   = @{}
-            ErrorsAnalysis  = @{}
-            HealthScores    = @{}
-            PerformanceData = @{}
-            ChartsData      = @{}
-            MaintenanceLog  = @{}
+            MetricsSummary    = @{}
+            ModuleResults     = @{}
+            ErrorsAnalysis    = @{}
+            HealthScores      = @{}
+            PerformanceData   = @{}
+            ChartsData        = @{}
+            MaintenanceLog    = @{}
             AggregatedResults = @{}
         }
 
         # Load main summary files
         $summaryFiles = @{
-            'MetricsSummary' = 'metrics-summary.json'
-            'ModuleResults'  = 'module-results.json'
-            'ErrorsAnalysis' = 'errors-analysis.json'
-            'HealthScores'   = 'health-scores.json'
-            'MaintenanceLog' = 'maintenance-log.json'
+            'MetricsSummary'    = 'metrics-summary.json'
+            'ModuleResults'     = 'module-results.json'
+            'ErrorsAnalysis'    = 'errors-analysis.json'
+            'HealthScores'      = 'health-scores.json'
+            'MaintenanceLog'    = 'maintenance-log.json'
             'AggregatedResults' = 'aggregated-results.json'
         }
 
@@ -813,12 +813,11 @@ function New-MaintenanceReport {
 
         $processedData = Get-ProcessedLogData @processedDataParams
 
-        # Check if we should use enhanced reporting (auto-detect enhanced templates if not explicitly disabled)
-        if (-not $UseEnhancedReports) {
-            # Auto-detect enhanced templates
-            $enhancedTemplateCheck = Find-ConfigTemplate -TemplateName "enhanced-module-card.html" -ErrorAction SilentlyContinue
-            if ($enhancedTemplateCheck -and (Test-Path $enhancedTemplateCheck)) {
-                Write-Information "✓ Enhanced templates detected, enabling enhanced reporting (v5.0)..." -InformationAction Continue
+        # Always prefer enhanced templates when available to avoid legacy template blocks
+        $enhancedTemplateCheck = Find-ConfigTemplate -TemplateName "enhanced-module-card.html" -ErrorAction SilentlyContinue
+        if ($enhancedTemplateCheck -and (Test-Path $enhancedTemplateCheck)) {
+            if (-not $UseEnhancedReports) {
+                Write-Information "✓ Enhanced templates detected, forcing enhanced reporting (v5.0)..." -InformationAction Continue
                 $UseEnhancedReports = $true
             }
         }
@@ -878,8 +877,7 @@ function New-MaintenanceReport {
             $timelineHtml = Build-ExecutionTimeline -AggregatedResults $aggregatedSource
 
             Write-Information "✓ Building action items..." -InformationAction Continue
-            # Build-ActionItems implementation pending in Phase 4.2
-            $actionItemsHtml = @()
+            $actionItemsHtml = Build-ActionItems -AggregatedResults $aggregatedSource -MaxItems 10
 
             Write-Information "✓ Collecting system information..." -InformationAction Continue
             $systemInfo = Get-SystemInformation
@@ -952,6 +950,10 @@ function New-MaintenanceReport {
 
             # Replace any remaining common tokens
             $reportHtml = $reportHtml -replace '{{DETAILED_LOGS}}', "" # Handled in module cards
+            $reportHtml = $reportHtml -replace '{{GENERATION_TIMESTAMP}}', (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+            $reportHtml = $reportHtml -replace '{{TOTAL_EXECUTION_TIME}}', ($dashboardData.TOTAL_DURATION ?? 'N/A')
+            $reportHtml = $reportHtml -replace '{{FULL_LOGS}}', (if ($processedData.MaintenanceLog -and $processedData.MaintenanceLog.RawContent) { $processedData.MaintenanceLog.RawContent } else { 'Full logs not available.' })
+            $reportHtml = $reportHtml -replace '{{RECOMMENDATIONS}}', (if (-not [string]::IsNullOrWhiteSpace($actionItemsSummaryHtml)) { $actionItemsSummaryHtml } else { '<div class="no-data">No recommendations available</div>' })
 
             Write-Information "✓ Saving enhanced HTML report..." -InformationAction Continue
             $reportHtml | Out-File -FilePath $OutputPath -Encoding UTF8 -Force
@@ -3784,6 +3786,25 @@ function Build-ActionItem {
 
 <#
 .SYNOPSIS
+    Builds HTML for action items from all modules
+    (wrapper for backward compatibility)
+#>
+function Build-ActionItems {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$AggregatedResults,
+
+        [Parameter()]
+        [int]$MaxItems = 10
+    )
+
+    return Build-ActionItem -AggregatedResults $AggregatedResults -MaxItems $MaxItems
+}
+
+<#
+.SYNOPSIS
     Gets system information for report
 #>
 function Get-SystemInformation {
@@ -3796,26 +3817,110 @@ function Get-SystemInformation {
         $computer = Get-CimInstance Win32_ComputerSystem
         $processor = Get-CimInstance Win32_Processor | Select-Object -First 1
 
+        $systemDrive = $env:SystemDrive
+        $disk = $null
+        if ($systemDrive) {
+            $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$systemDrive'" -ErrorAction SilentlyContinue
+        }
+
+        $totalMemoryGb = if ($computer.TotalPhysicalMemory) { [math]::Round($computer.TotalPhysicalMemory / 1GB, 2) } else { 0 }
+        $availableMemoryGb = if ($os.FreePhysicalMemory) { [math]::Round(($os.FreePhysicalMemory * 1KB) / 1GB, 2) } else { 0 }
+        $memoryUsagePercent = if ($totalMemoryGb -gt 0) { [math]::Round((($totalMemoryGb - $availableMemoryGb) / $totalMemoryGb) * 100, 0) } else { 0 }
+
+        $diskTotalGb = if ($disk.Size) { [math]::Round($disk.Size / 1GB, 2) } else { 0 }
+        $diskFreeGb = if ($disk.FreeSpace) { [math]::Round($disk.FreeSpace / 1GB, 2) } else { 0 }
+        $diskUsagePercent = if ($diskTotalGb -gt 0) { [math]::Round((($diskTotalGb - $diskFreeGb) / $diskTotalGb) * 100, 0) } else { 0 }
+
+        $memoryStatusClass = if ($memoryUsagePercent -ge 90) { 'status-error' } elseif ($memoryUsagePercent -ge 80) { 'status-warning' } else { 'status-success' }
+        $diskStatusClass = if ($diskUsagePercent -ge 90) { 'status-error' } elseif ($diskUsagePercent -ge 80) { 'status-warning' } else { 'status-success' }
+        $diskHealthStatus = if ($diskUsagePercent -ge 90) { 'Critical' } elseif ($diskUsagePercent -ge 80) { 'Low Space' } else { 'Healthy' }
+
+        $uptime = if ($os.LastBootUpTime) { (New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)) } else { $null }
+        $uptimeText = if ($uptime) { "$($uptime.Days)d $($uptime.Hours)h $($uptime.Minutes)m" } else { 'Unknown' }
+
+        $adapter = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=TRUE" -ErrorAction SilentlyContinue | Select-Object -First 1
+        $primaryIp = if ($adapter -and $adapter.IPAddress) { $adapter.IPAddress[0] } else { 'Unknown' }
+        $dnsServers = if ($adapter -and $adapter.DNSServerSearchOrder) { ($adapter.DNSServerSearchOrder -join ', ') } else { 'Unknown' }
+        $networkStatus = if ($adapter) { 'Connected' } else { 'Disconnected' }
+        $primaryAdapter = if ($adapter) { $adapter.Description } else { 'Unknown' }
+
+        $firewallStatus = 'Unknown'
+        try {
+            $profiles = Get-NetFirewallProfile -ErrorAction SilentlyContinue
+            if ($profiles) {
+                $firewallStatus = if ($profiles.Enabled -contains $false) { 'Disabled' } else { 'Enabled' }
+            }
+        }
+        catch {
+            $firewallStatus = 'Unknown'
+        }
+
         return @{
-            COMPUTER_NAME  = $env:COMPUTERNAME
-            USER_NAME      = $env:USERNAME
-            OS_VERSION     = $os.Caption
-            OS_BUILD       = $os.BuildNumber
-            PROCESSOR_NAME = $processor.Name
-            TOTAL_MEMORY   = "$([Math]::Round($computer.TotalPhysicalMemory / 1GB, 2)) GB"
-            DOMAIN         = $computer.Domain
+            COMPUTER_NAME           = $env:COMPUTERNAME
+            USER_NAME               = $env:USERNAME
+            CURRENT_USER            = $env:USERNAME
+            DOMAIN                  = $computer.Domain
+            DOMAIN_STATUS           = $computer.Domain
+            OS_NAME                 = $os.Caption
+            OS_VERSION              = $os.Version
+            OS_BUILD                = $os.BuildNumber
+            OS_ARCHITECTURE         = $os.OSArchitecture
+            LAST_BOOT_TIME          = if ($os.LastBootUpTime) { $os.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss') } else { 'Unknown' }
+            SYSTEM_UPTIME           = $uptimeText
+            CPU_NAME                = $processor.Name
+            CPU_CORES               = $processor.NumberOfCores
+            CPU_LOGICAL_CORES       = $processor.NumberOfLogicalProcessors
+            TOTAL_MEMORY_GB         = $totalMemoryGb
+            AVAILABLE_MEMORY_GB     = $availableMemoryGb
+            MEMORY_USAGE_PERCENT    = $memoryUsagePercent
+            MEMORY_STATUS_CLASS     = $memoryStatusClass
+            SYSTEM_DRIVE            = $systemDrive
+            SYSTEM_DRIVE_TOTAL_GB   = $diskTotalGb
+            SYSTEM_DRIVE_FREE_GB    = $diskFreeGb
+            DISK_USAGE_PERCENT      = $diskUsagePercent
+            DISK_STATUS_CLASS       = $diskStatusClass
+            SYSTEM_DRIVE_FILESYSTEM = if ($disk) { $disk.FileSystem } else { 'Unknown' }
+            DISK_HEALTH_STATUS      = $diskHealthStatus
+            NETWORK_STATUS          = $networkStatus
+            PRIMARY_NETWORK_ADAPTER = $primaryAdapter
+            PRIMARY_IP_ADDRESS      = $primaryIp
+            DNS_SERVERS             = $dnsServers
+            FIREWALL_STATUS         = $firewallStatus
         }
     }
     catch {
         Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to get system information: $($_.Exception.Message)"
         return @{
-            COMPUTER_NAME  = $env:COMPUTERNAME
-            USER_NAME      = $env:USERNAME
-            OS_VERSION     = "Unknown"
-            OS_BUILD       = "Unknown"
-            PROCESSOR_NAME = "Unknown"
-            TOTAL_MEMORY   = "Unknown"
-            DOMAIN         = "Unknown"
+            COMPUTER_NAME           = $env:COMPUTERNAME
+            USER_NAME               = $env:USERNAME
+            CURRENT_USER            = $env:USERNAME
+            DOMAIN                  = "Unknown"
+            DOMAIN_STATUS           = "Unknown"
+            OS_NAME                 = "Unknown"
+            OS_VERSION              = "Unknown"
+            OS_BUILD                = "Unknown"
+            OS_ARCHITECTURE         = "Unknown"
+            LAST_BOOT_TIME          = "Unknown"
+            SYSTEM_UPTIME           = "Unknown"
+            CPU_NAME                = "Unknown"
+            CPU_CORES               = 0
+            CPU_LOGICAL_CORES       = 0
+            TOTAL_MEMORY_GB         = 0
+            AVAILABLE_MEMORY_GB     = 0
+            MEMORY_USAGE_PERCENT    = 0
+            MEMORY_STATUS_CLASS     = "status-info"
+            SYSTEM_DRIVE            = $env:SystemDrive
+            SYSTEM_DRIVE_TOTAL_GB   = 0
+            SYSTEM_DRIVE_FREE_GB    = 0
+            DISK_USAGE_PERCENT      = 0
+            DISK_STATUS_CLASS       = "status-info"
+            SYSTEM_DRIVE_FILESYSTEM = "Unknown"
+            DISK_HEALTH_STATUS      = "Unknown"
+            NETWORK_STATUS          = "Unknown"
+            PRIMARY_NETWORK_ADAPTER = "Unknown"
+            PRIMARY_IP_ADDRESS      = "Unknown"
+            DNS_SERVERS             = "Unknown"
+            FIREWALL_STATUS         = "Unknown"
         }
     }
 }
@@ -3861,12 +3966,10 @@ function Build-ExecutiveDashboard {
         $systemHealthScore = Get-SystemHealthScore -Results $AggregatedResults
 
         # Generate key findings HTML
-        # Note: Build-KeyFindings implementation pending in Phase 4.2
-        $keyFindingsHtml = @()
+        $keyFindingsHtml = Build-KeyFindings -Results $AggregatedResults -Limit 5
 
         # Generate action items summary HTML
-        # Note: Build-ActionItems implementation pending in Phase 4.2
-        $actionItemsSummaryHtml = @()
+        $actionItemsSummaryHtml = Build-ActionItems -AggregatedResults $AggregatedResults -MaxItems 5
 
         # Build project resume summary
         $executionSummary = if ($AggregatedResults.MetricsSummary) { $AggregatedResults.MetricsSummary.ExecutionSummary } else { @{} }
@@ -4553,6 +4656,25 @@ function Build-KeyFinding {
     }
 }
 
+<#
+.SYNOPSIS
+    Builds the key findings section for executive dashboard
+    (wrapper for backward compatibility)
+#>
+function Build-KeyFindings {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Results,
+
+        [Parameter()]
+        [int]$Limit = 5
+    )
+
+    return Build-KeyFinding -Results $Results -Limit $Limit
+}
+
 #endregion
 
 #endregion
@@ -4599,13 +4721,13 @@ Export-ModuleMember -Function @(
     'Build-PerformancePhases',
     'Build-ModuleErrors',
     'Build-ExecutionTimeline',
-    # 'Build-ActionItems',  # PENDING: Implementation in Phase 4.2
+    'Build-ActionItems',
     'Get-SystemInformation',
     # Enhanced Builder Functions v3.0
     'Build-ExecutiveDashboard',
     'Build-ModuleCard',
     'Build-ErrorAnalysis',
-    # 'Build-KeyFindings',  # PENDING: Implementation in Phase 4.2
+    'Build-KeyFindings',
     # Enhanced Builder Functions v5.0 (Integrated from ModernReportGenerator)
     'Build-ModuleDetailsSection',
     'Build-ModuleLogsSection',

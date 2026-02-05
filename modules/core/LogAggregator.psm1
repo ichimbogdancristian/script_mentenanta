@@ -280,10 +280,12 @@ function New-ModuleResult {
         [decimal]$DurationSeconds = 0,
 
         [Parameter()]
-        [datetime]$StartTime = $null,
+        [AllowNull()]
+        [Nullable[datetime]]$StartTime = $null,
 
         [Parameter()]
-        [datetime]$EndTime = $null,
+        [AllowNull()]
+        [Nullable[datetime]]$EndTime = $null,
 
         [Parameter()]
         [string]$LogPath = $null,
