@@ -504,6 +504,52 @@ function Get-Type2ExecutionLog {
 
 <#
 .SYNOPSIS
+    Scans temp_files/temp/ for Type2 diff lists (JSON files)
+#>
+function Get-DiffLists {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Loading diff list files'
+
+    $diffLists = @{}
+    $summary = @{ TotalModules = 0; TotalItems = 0 }
+    $tempPath = Join-Path (Get-MaintenancePath 'TempRoot') 'temp'
+
+    if (-not (Test-Path $tempPath)) {
+        Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "Diff list directory not found: $tempPath"
+        return @{ DiffLists = $diffLists; Summary = $summary }
+    }
+
+    try {
+        $diffFiles = Get-SafeDirectoryContent -DirectoryPath $tempPath -Filter '*-diff.json' -FilesOnly
+
+        foreach ($file in $diffFiles) {
+            $moduleName = $file.BaseName -replace '-diff$', ''
+            $defaultData = @()
+
+            $content = Import-SafeJsonData -JsonPath $file.FullName -DefaultData $defaultData -ContinueOnError
+            $diffLists[$moduleName] = @{
+                Items = if ($content) { $content } else { @() }
+                Path  = $file.FullName
+            }
+
+            $summary.TotalModules++
+            $summary.TotalItems += if ($content) { $content.Count } else { 0 }
+        }
+
+        Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Loaded diff lists for $($diffLists.Keys.Count) modules"
+        return @{ DiffLists = $diffLists; Summary = $summary }
+    }
+    catch {
+        Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to load diff lists: $($_.Exception.Message)"
+        return @{ DiffLists = $diffLists; Summary = $summary }
+    }
+}
+
+<#
+.SYNOPSIS
     Retrieves and parses the main maintenance.log file from temp_files
 .DESCRIPTION
     Loads the orchestrator's maintenance.log file that contains all core operations,
@@ -1723,11 +1769,22 @@ function Invoke-LogProcessing {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect maintenance log: $($_.Exception.Message)"
         }
 
+        $diffData = @{}
+        try {
+            $diffData = Get-DiffLists
+        }
+        catch {
+            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to collect diff lists: $($_.Exception.Message)"
+            $diffData = @{ DiffLists = @{}; Summary = @{ TotalModules = 0; TotalItems = 0 } }
+        }
+
         # Create comprehensive log collection
         $logCollection = @{
             Type1AuditData      = $type1AuditData
             Type2ExecutionLogs  = $type2ExecutionLogs
             MaintenanceLog      = $maintenanceLog
+            DiffLists           = $diffData.DiffLists
+            DiffSummary         = $diffData.Summary
             SessionId           = (New-Guid).ToString()
             CollectionTimestamp = Get-Date
             ProcessedAt         = Get-Date
@@ -1755,19 +1812,30 @@ function Invoke-LogProcessing {
             }
         }
 
-        # Calculate dashboard metrics (mock TaskResults - in real implementation this would come from orchestrator)
-        $mockTaskResults = @()
-        foreach ($moduleName in $type2ExecutionLogs.Keys) {
-            $mockTaskResults += @{
-                Success  = $true
-                Duration = 1.5
-                Type     = $moduleName
+        # Calculate dashboard metrics using aggregated results when available
+        $taskResults = @()
+        if ($aggregatedResults -and $aggregatedResults.ModuleResults) {
+            foreach ($moduleResult in $aggregatedResults.ModuleResults.Values) {
+                $taskResults += @{
+                    Success  = ($moduleResult.Status -eq 'Success') -or ($moduleResult.Success -eq $true)
+                    Duration = [double]($moduleResult.Metrics.DurationSeconds ?? 0)
+                    Type     = $moduleResult.ModuleName
+                }
+            }
+        }
+        elseif ($type2ExecutionLogs.Keys.Count -gt 0) {
+            foreach ($moduleName in $type2ExecutionLogs.Keys) {
+                $taskResults += @{
+                    Success  = $true
+                    Duration = 1.5
+                    Type     = $moduleName
+                }
             }
         }
 
         $dashboardMetrics = @{}
         try {
-            $dashboardMetrics = Get-ComprehensiveDashboardMetricSet -ComprehensiveLogCollection $logCollection -TaskResults $mockTaskResults
+            $dashboardMetrics = Get-ComprehensiveDashboardMetricSet -ComprehensiveLogCollection $logCollection -TaskResults $taskResults
         }
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to calculate dashboard metrics: $($_.Exception.Message)"
@@ -1795,7 +1863,10 @@ function Invoke-LogProcessing {
 
         $executionSummary = @{}
         try {
-            $executionSummary = Get-ExecutionSummary -TaskResults $mockTaskResults
+            $executionSummary = Get-ExecutionSummary -TaskResults $taskResults
+            if ($env:MAINTENANCE_EXECUTION_MODE) {
+                $executionSummary.ExecutionMode = $env:MAINTENANCE_EXECUTION_MODE
+            }
         }
         catch {
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Failed to generate execution summary: $($_.Exception.Message)"
@@ -1838,10 +1909,12 @@ function Invoke-LogProcessing {
                         Type1 = if ($type1AuditData) { $type1AuditData.Keys.Count } else { 0 }
                         Type2 = if ($type2ExecutionLogs) { $type2ExecutionLogs.Keys.Count } else { 0 }
                     }
+                    ExecutionMode = if ($env:MAINTENANCE_EXECUTION_MODE) { $env:MAINTENANCE_EXECUTION_MODE } else { 'Unknown' }
                 }
                 DashboardMetrics      = if ($dashboardMetrics) { $dashboardMetrics } else { @{} }
                 ExecutionSummary      = if ($executionSummary) { $executionSummary } else { @{} }
                 ComprehensiveAnalysis = if ($comprehensiveAnalysis) { $comprehensiveAnalysis } else { @{} }
+                DiffSummary           = if ($diffData -and $diffData.Summary) { $diffData.Summary } else { @{ TotalModules = 0; TotalItems = 0 } }
             }
             $metricsSummary | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'metrics-summary.json')
             Write-Information "   Metrics summary saved" -InformationAction Continue
@@ -1857,6 +1930,7 @@ function Invoke-LogProcessing {
                 Type2ExecutionAnalysis = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.ExecutionMetrics) { $comprehensiveAnalysis.ExecutionMetrics } else { @{} }
                 SystemModifications    = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.SystemModifications) { $comprehensiveAnalysis.SystemModifications } else { @{} }
                 PerformanceData        = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.PerformanceData) { $comprehensiveAnalysis.PerformanceData } else { @{} }
+                DiffLists              = if ($diffData -and $diffData.DiffLists) { $diffData.DiffLists } else { @{} }
             }
             $moduleResults | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $processedRoot 'module-results.json')
             Write-Information "   Module results saved" -InformationAction Continue
@@ -1916,14 +1990,38 @@ function Invoke-LogProcessing {
         # Save individual module data to module-specific subdirectory
         try {
             $moduleSpecificDir = Join-Path $processedRoot 'module-specific'
+            $moduleNames = [System.Collections.Generic.HashSet[string]]::new()
             if ($type1AuditData -and $type1AuditData.Keys.Count -gt 0) {
-                foreach ($moduleName in $type1AuditData.Keys) {
+                foreach ($name in $type1AuditData.Keys) { [void]$moduleNames.Add($name) }
+            }
+            if ($aggregatedResults -and $aggregatedResults.ModuleResults) {
+                foreach ($name in $aggregatedResults.ModuleResults.Keys) { [void]$moduleNames.Add($name) }
+            }
+
+            if ($moduleNames.Count -gt 0) {
+                foreach ($moduleName in $moduleNames) {
                     try {
+                        $aggregatedModule = $null
+                        if ($aggregatedResults -and $aggregatedResults.ModuleResults -and $aggregatedResults.ModuleResults.ContainsKey($moduleName)) {
+                            $aggregatedModule = $aggregatedResults.ModuleResults[$moduleName]
+                        }
+
+                        $diffKey = ($moduleName -replace 'Type2|Module|Removal|Disable|Optimization', '' -replace '(?<=[a-z])(?=[A-Z])', '-').ToLower()
+                        $diffEntry = if ($diffData -and $diffData.DiffLists -and $diffData.DiffLists.ContainsKey($diffKey)) { $diffData.DiffLists[$diffKey] } elseif ($diffData -and $diffData.DiffLists -and $diffData.DiffLists.ContainsKey($moduleName)) { $diffData.DiffLists[$moduleName] } else { $null }
+
                         $moduleData = @{
+                            ModuleName      = $moduleName
+                            Status          = if ($aggregatedModule) { $aggregatedModule.Status } else { 'Unknown' }
+                            Metrics         = if ($aggregatedModule -and $aggregatedModule.Metrics) { $aggregatedModule.Metrics } else { @{} }
+                            Summary         = if ($aggregatedModule -and $aggregatedModule.Summary) { $aggregatedModule.Summary } else { $null }
+                            Recommendations = if ($aggregatedModule -and $aggregatedModule.Recommendations) { $aggregatedModule.Recommendations } else { @() }
+                            LogPath         = if ($aggregatedModule -and $aggregatedModule.LogPath) { $aggregatedModule.LogPath } else { $null }
                             AuditData        = if ($type1AuditData[$moduleName]) { $type1AuditData[$moduleName] } else { @{} }
                             ExecutionMetrics = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.ExecutionMetrics -and $comprehensiveAnalysis.ExecutionMetrics[$moduleName]) { $comprehensiveAnalysis.ExecutionMetrics[$moduleName] } else { @{} }
                             TaskDetails      = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.TaskDetails -and $comprehensiveAnalysis.TaskDetails[$moduleName]) { $comprehensiveAnalysis.TaskDetails[$moduleName] } else { @{} }
                             Modifications    = if ($comprehensiveAnalysis -and $comprehensiveAnalysis.SystemModifications -and $comprehensiveAnalysis.SystemModifications[$moduleName]) { $comprehensiveAnalysis.SystemModifications[$moduleName] } else { @{} }
+                            DiffItems        = if ($diffEntry -and $diffEntry.Items) { $diffEntry.Items } else { @() }
+                            DiffSummary      = if ($diffEntry) { @{ Total = if ($diffEntry.Items) { $diffEntry.Items.Count } else { 0 }; Path = $diffEntry.Path } } else { @{ Total = 0 } }
                         }
                         $moduleData | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $moduleSpecificDir "$moduleName.json")
                     }

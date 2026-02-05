@@ -4093,10 +4093,9 @@ function Start-MaintenanceCountdown {
             try {
                 if ($keyPressSupported -and $Host.UI.RawUI.KeyAvailable) {
                     [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-                    Write-Host "`n`n⏸ Countdown aborted - select next action" -ForegroundColor Yellow
-                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Countdown aborted by user"
-                    $choice = Show-ShutdownAbortMenu
-                    return Invoke-MaintenanceShutdownChoice -Choice $choice -WorkingDirectory $WorkingDirectory -TempRoot $TempRoot
+                    Write-Host "`n`n⏸ Countdown aborted. No cleanup or reboot will occur." -ForegroundColor Yellow
+                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Countdown aborted by user - skipping cleanup and reboot"
+                    return @{ Action = "Abort"; RebootRequired = $false; CleanupPerformed = $false }
                 }
             }
             catch { }

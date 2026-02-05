@@ -121,9 +121,7 @@ function Invoke-BloatwareRemoval {
         Initialize-ModuleExecution -ModuleName 'BloatwareRemoval'
 
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
-        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\bloatware-removal"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'bloatware-removal' -FileName 'execution.log'
 
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
         # Explicit assignment to prevent pipeline contamination
@@ -177,8 +175,7 @@ function Invoke-BloatwareRemoval {
         # Create diff: Only items from config that are actually found on system
         $diffList = Compare-DetectedVsConfig -DetectionResults $filteredDetection -ConfigData $configData -ConfigItemsPath 'bloatware' -MatchField 'Name'
 
-        $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\bloatware-diff.json"
-        $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
+        $diffPath = Save-DiffResults -ModuleName 'BloatwareRemoval' -DiffData $diffList -Component 'BLOATWARE-REMOVAL'
 
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath -Operation 'Process' -Metadata @{ ItemCount = $diffList.Count; DetectedCount = $detectionResults.Count }

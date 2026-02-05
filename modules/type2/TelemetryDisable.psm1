@@ -95,9 +95,8 @@ function Invoke-TelemetryDisable {
         Write-Host ""
 
         # STEP 3: Setup execution logging directory
-        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\telemetry-disable"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'telemetry-disable' -FileName 'execution.log'
+        $executionLogDir = Split-Path -Parent $executionLogPath
 
         $telemetryCount = $analysisResults.ActiveTelemetryCount
         Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ TelemetryCount = $telemetryCount }

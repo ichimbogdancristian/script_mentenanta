@@ -153,14 +153,12 @@ function Invoke-AppUpgrade {
         $diffList = Get-FilteredUpgradeList -DetectionResults $detectionResults -ModuleConfig $moduleConfig
 
         # Save diff list
-        $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\app-upgrade-diff.json"
-        $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath | Out-Null
+        $diffPath = Save-DiffResults -ModuleName 'AppUpgrade' -DiffData $diffList -Component 'APP-UPGRADE'
         Write-Information "     $($diffList.Count) upgrades after filtering (excluded $($detectionResults.Count - $diffList.Count))" -InformationAction Continue
 
         # STEP 4: Setup execution logging
-        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\app-upgrade"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'app-upgrade' -FileName 'execution.log'
+        $executionLogDir = Split-Path -Parent $executionLogPath
 
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== Application Upgrade Execution ===" -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DetectedCount = $detectionResults.Count; FilteredCount = $diffList.Count; DryRun = $DryRun.IsPresent }
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detected: $($detectionResults.Count) upgrades available" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ Count = $detectionResults.Count }

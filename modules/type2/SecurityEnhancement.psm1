@@ -137,15 +137,8 @@ function Invoke-SecurityEnhancement {
 
         if (Get-Command -Name 'Write-StructuredLogEntry' -ErrorAction SilentlyContinue) {
             try {
-                $tempRoot = if (Get-Command -Name 'Get-MaintenancePath' -ErrorAction SilentlyContinue) { Get-MaintenancePath 'TempRoot' } else { $env:MAINTENANCE_TEMP_ROOT }
-                if ($tempRoot) {
-                    $executionLogDir = Join-Path $tempRoot 'logs\security-enhancement'
-                    if (-not (Test-Path $executionLogDir)) {
-                        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-                    }
-                    $executionLogPath = Join-Path $executionLogDir 'execution.log'
-                    Write-StructuredLogEntry -Level 'INFO' -Component 'SECURITY-ENHANCEMENT' -Message 'Starting security enhancement' -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DryRun = $DryRun.IsPresent }
-                }
+                $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'security-enhancement' -FileName 'execution.log'
+                Write-StructuredLogEntry -Level 'INFO' -Component 'SECURITY-ENHANCEMENT' -Message 'Starting security enhancement' -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DryRun = $DryRun.IsPresent }
             }
             catch {
                 Write-Verbose "Failed to initialize security enhancement execution log: $($_.Exception.Message)"

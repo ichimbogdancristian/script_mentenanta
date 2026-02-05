@@ -114,9 +114,8 @@ function Invoke-WindowsUpdates {
         Write-Host ""
 
         # STEP 3: Setup execution logging directory
-        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\windows-updates"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        # Removed redundant self-assignment
+        $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'windows-updates' -FileName 'execution.log'
+        $executionLogDir = Split-Path -Parent $executionLogPath
 
         $updatesCount = $updatesCount
         Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ UpdateCount = $updatesCount }

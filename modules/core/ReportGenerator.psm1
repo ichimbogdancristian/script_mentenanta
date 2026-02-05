@@ -318,6 +318,7 @@ function Get-ProcessedLogData {
             PerformanceData = @{}
             ChartsData      = @{}
             MaintenanceLog  = @{}
+            AggregatedResults = @{}
         }
 
         # Load main summary files
@@ -327,6 +328,7 @@ function Get-ProcessedLogData {
             'ErrorsAnalysis' = 'errors-analysis.json'
             'HealthScores'   = 'health-scores.json'
             'MaintenanceLog' = 'maintenance-log.json'
+            'AggregatedResults' = 'aggregated-results.json'
         }
 
         foreach ($key in $summaryFiles.Keys) {
@@ -850,7 +852,8 @@ function New-MaintenanceReport {
         else {
             # Enhanced report generation (new code path)
             Write-Information "✓ Building executive dashboard..." -InformationAction Continue
-            $dashboardData = Build-ExecutiveDashboard -AggregatedResults $processedData
+            $aggregatedSource = if ($processedData.AggregatedResults -and $processedData.AggregatedResults.ModuleResults) { $processedData.AggregatedResults } else { $processedData }
+            $dashboardData = Build-ExecutiveDashboard -AggregatedResults $aggregatedSource
 
             Write-Information "✓ Generating module cards..." -InformationAction Continue
             $moduleCardsHtml = ""
@@ -863,16 +866,16 @@ function New-MaintenanceReport {
             }
 
             Write-Information "✓ Building execution summary rows..." -InformationAction Continue
-            $executionSummaryRowsHtml = Build-ExecutionSummaryRows -AggregatedResults $processedData
+            $executionSummaryRowsHtml = Build-ExecutionSummaryRows -AggregatedResults $aggregatedSource
 
             Write-Information "✓ Building system changes log..." -InformationAction Continue
-            $systemChangesLogHtml = Build-SystemChangesLog -AggregatedResults $processedData -MaxEntries 60
+            $systemChangesLogHtml = Build-SystemChangesLog -AggregatedResults $aggregatedSource -MaxEntries 60
 
             Write-Information "✓ Building error analysis..." -InformationAction Continue
-            $errorAnalysisHtml = Build-ErrorAnalysis -AggregatedResults $processedData
+            $errorAnalysisHtml = Build-ErrorAnalysis -AggregatedResults $aggregatedSource
 
             Write-Information "✓ Building execution timeline..." -InformationAction Continue
-            $timelineHtml = Build-ExecutionTimeline -AggregatedResults $processedData
+            $timelineHtml = Build-ExecutionTimeline -AggregatedResults $aggregatedSource
 
             Write-Information "✓ Building action items..." -InformationAction Continue
             # Build-ActionItems implementation pending in Phase 4.2
@@ -894,7 +897,16 @@ function New-MaintenanceReport {
             $reportHtml = $reportHtml -replace '{{REPORT_DATE}}', (Get-Date -Format "MMMM dd, yyyy")
             $reportHtml = $reportHtml -replace '{{COMPUTER_NAME}}', $env:COMPUTERNAME
             $reportHtml = $reportHtml -replace '{{USER_NAME}}', $env:USERNAME
-            $reportHtml = $reportHtml -replace '{{EXECUTION_MODE}}', $(if ($config.execution.enableDryRun -or $config.execution.dryRunByDefault) { "DRY RUN" } else { "LIVE" })
+            $executionMode = if ($processedData.MetricsSummary -and $processedData.MetricsSummary.ExecutionSummary -and $processedData.MetricsSummary.ExecutionSummary.ExecutionMode) {
+                $processedData.MetricsSummary.ExecutionSummary.ExecutionMode
+            }
+            elseif ($env:MAINTENANCE_EXECUTION_MODE) {
+                $env:MAINTENANCE_EXECUTION_MODE
+            }
+            else {
+                'LIVE'
+            }
+            $reportHtml = $reportHtml -replace '{{EXECUTION_MODE}}', $executionMode
 
             # Replace dashboard tokens
             foreach ($key in $dashboardData.Keys) {
@@ -945,7 +957,7 @@ function New-MaintenanceReport {
             $reportHtml | Out-File -FilePath $OutputPath -Encoding UTF8 -Force
 
             # Copy JavaScript assets for enhanced reports
-            if ($UseEnhanced) {
+            if ($UseEnhancedReports) {
                 Write-Information "✓ Copying dashboard assets..." -InformationAction Continue
                 $reportDir = Split-Path $OutputPath -Parent
                 $assetsDir = Join-Path $reportDir "assets"
@@ -1048,7 +1060,16 @@ function New-HtmlReportContent {
         $html = $html -replace '{{COMPUTER_NAME}}', $env:COMPUTERNAME
         $html = $html -replace '{{USER_NAME}}', $env:USERNAME
         $html = $html -replace '{{OS_VERSION}}', [System.Environment]::OSVersion.VersionString
-        $html = $html -replace '{{EXECUTION_MODE}}', 'Full'
+        $executionMode = if ($ProcessedData.MetricsSummary -and $ProcessedData.MetricsSummary.ExecutionSummary -and $ProcessedData.MetricsSummary.ExecutionSummary.ExecutionMode) {
+            $ProcessedData.MetricsSummary.ExecutionSummary.ExecutionMode
+        }
+        elseif ($env:MAINTENANCE_EXECUTION_MODE) {
+            $env:MAINTENANCE_EXECUTION_MODE
+        }
+        else {
+            'Full'
+        }
+        $html = $html -replace '{{EXECUTION_MODE}}', $executionMode
 
         # Calculate and add enhanced metrics
         $systemHealthScore = 85  # Default value, calculate based on results
@@ -3849,12 +3870,13 @@ function Build-ExecutiveDashboard {
 
         # Build project resume summary
         $executionSummary = if ($AggregatedResults.MetricsSummary) { $AggregatedResults.MetricsSummary.ExecutionSummary } else { @{} }
+        $summary = if ($AggregatedResults.Summary) { $AggregatedResults.Summary } else { @{} }
         $projectResumeHtml = @"
 <div class='insights-list'>
     <div class='insight-item'>
         <div class='insight-icon'>🧠</div>
         <div class='insight-text'>
-            <strong>Execution Summary:</strong> $($executionSummary.SuccessfulTasks ?? 0) of $($executionSummary.TotalTasks ?? 0) tasks completed successfully
+            <strong>Execution Summary:</strong> $($summary.SuccessfulModules ?? $executionSummary.SuccessfulTasks ?? 0) of $($summary.TotalModules ?? $executionSummary.TotalTasks ?? 0) tasks completed successfully
         </div>
     </div>
     <div class='insight-item'>
@@ -3983,11 +4005,24 @@ function Build-ModuleCard {
         elseif ($status -match 'Error|Failed') { 'status-error' }
         else { 'status-info' }
 
+        $logKeyMap = @{
+            'BloatwareRemoval'    = 'bloatware-removal'
+            'EssentialApps'       = 'essential-apps'
+            'SystemOptimization'  = 'system-optimization'
+            'TelemetryDisable'    = 'telemetry-disable'
+            'WindowsUpdates'      = 'windows-updates'
+            'SecurityEnhancement' = 'security-enhancement'
+            'AppUpgrade'          = 'app-upgrade'
+            'SystemInventory'     = 'system-inventory'
+            'SecurityAudit'       = 'security-audit'
+        }
+        $logKey = $logKeyMap[$moduleName] ?? $moduleName
+
         # Build module details HTML using enhanced system
-        $detailsHtml = Build-ModuleDetailsSection -ModuleKey $moduleName -ModuleData $ModuleResult
+        $detailsHtml = Build-ModuleDetailsSection -ModuleKey $logKey -ModuleData $ModuleResult
 
         # Build module logs HTML using enhanced system
-        $logsHtml = Build-ModuleLogsSection -ModuleKey $moduleName -ModuleData $ModuleResult
+        $logsHtml = Build-ModuleLogsSection -ModuleKey $logKey -ModuleData $ModuleResult
         $logsCount = if ($ModuleResult.Logs) { $ModuleResult.Logs.Count } elseif ($ModuleResult.LogEntries) { $ModuleResult.LogEntries.Count } else { 0 }
 
         # Generate module card HTML by replacing template tokens
@@ -4028,10 +4063,30 @@ function Build-ModuleDetailsSection {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [PSObject]$ModuleData
+        [PSObject]$ModuleData,
+
+        [Parameter()]
+        [string]$ModuleKey
     )
 
     $detailsHtml = @()
+
+    if ($ModuleData.Summary) {
+        $detailsHtml += '<div class="detail-section">'
+        $detailsHtml += '<h4 class="detail-section-title"><span>🧾</span> Summary</h4>'
+        $detailsHtml += "<div class='detail-item'><div class='detail-item-content'><div class='detail-item-name'>$($ModuleData.Summary)</div></div></div>"
+        $detailsHtml += '</div>'
+    }
+
+    if ($ModuleData.Recommendations -and $ModuleData.Recommendations.Count -gt 0) {
+        $detailsHtml += '<div class="detail-section">'
+        $detailsHtml += '<h4 class="detail-section-title"><span>✅</span> Recommendations</h4>'
+        $detailsHtml += '<div class="detail-list">'
+        foreach ($recommendation in ($ModuleData.Recommendations | Select-Object -First 5)) {
+            $detailsHtml += "<div class='detail-item'><div class='detail-item-content'><div class='detail-item-name'>$recommendation</div></div></div>"
+        }
+        $detailsHtml += '</div></div>'
+    }
 
     # Check for detected items (Type1 audit results)
     if ($ModuleData.DetectedItems -and $ModuleData.DetectedItems.Count -gt 0) {
@@ -4113,6 +4168,33 @@ function Build-ModuleDetailsSection {
         }
 
         $detailsHtml += '</div></div>'
+    }
+
+    $diffItems = $ModuleData.DiffItems ?? $ModuleData.DiffList ?? $ModuleData.DiffData
+    $diffTotal = if ($ModuleData.DiffSummary -and $ModuleData.DiffSummary.Total) { $ModuleData.DiffSummary.Total } else { $null }
+    if ($diffItems -and $diffItems.Count -gt 0) {
+        $detailsHtml += '<div class="detail-section">'
+        $detailsHtml += '<h4 class="detail-section-title"><span>🧩</span> Diff Coverage</h4>'
+        if ($diffTotal -ne $null) {
+            $detailsHtml += "<div class='detail-item'><div class='detail-item-content'><div class='detail-item-name'>Matched $($diffItems.Count) of $diffTotal configured items</div></div></div>"
+        }
+        $detailsHtml += '<div class="detail-list">'
+        foreach ($item in ($diffItems | Select-Object -First 10)) {
+            $itemName = if ($item.Name) { $item.Name } elseif ($item.DisplayName) { $item.DisplayName } else { $item.ToString() }
+            $detailsHtml += "<div class='detail-item'><div class='detail-item-content'><div class='detail-item-name'>$itemName</div></div></div>"
+        }
+        if ($diffItems.Count -gt 10) {
+            $remaining = $diffItems.Count - 10
+            $detailsHtml += "<div class='detail-item' style='justify-content: center; color: var(--text-muted); font-style: italic;'>+ $remaining more items...</div>"
+        }
+        $detailsHtml += '</div></div>'
+    }
+
+    if ($ModuleData.LogPath) {
+        $detailsHtml += '<div class="detail-section">'
+        $detailsHtml += '<h4 class="detail-section-title"><span>📁</span> Log Reference</h4>'
+        $detailsHtml += "<div class='detail-item'><div class='detail-item-content'><div class='detail-item-name'>$($ModuleData.LogPath)</div></div></div>"
+        $detailsHtml += '</div>'
     }
 
     if ($detailsHtml.Count -eq 0) {

@@ -115,9 +115,8 @@ function Invoke-SystemOptimization {
         }
 
         # STEP 3: Setup execution logging directory
-        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\system-optimization"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'system-optimization' -FileName 'execution.log'
+        $executionLogDir = Split-Path -Parent $executionLogPath
 
 
         Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ OpportunityCount = $optimizationCount }

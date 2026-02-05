@@ -122,9 +122,7 @@ function Invoke-EssentialApps {
         Initialize-ModuleExecution -ModuleName 'EssentialApps'
 
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
-        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\essential-apps"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
+        $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'essential-apps' -FileName 'execution.log'
 
         Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
         # Explicit assignment to prevent pipeline contamination
@@ -149,8 +147,7 @@ function Invoke-EssentialApps {
 
         # Create diff: Missing apps that need to be installed (already computed by Type1 audit)
         $diffList = if ($detectionResults.MissingApps) { $detectionResults.MissingApps } else { @() }
-        $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\essential-apps-diff.json"
-        $diffList | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Set-Content $diffPath
+        $diffPath = Save-DiffResults -ModuleName 'EssentialApps' -DiffData $diffList -Component 'ESSENTIAL-APPS'
 
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
         Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Processing $($diffList.Count) missing apps from diff" -LogPath $executionLogPath -Operation 'Process' -Metadata @{ MissingCount = $diffList.Count }

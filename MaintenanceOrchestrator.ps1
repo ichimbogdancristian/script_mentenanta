@@ -138,31 +138,6 @@ if (-not $LogFilePath) {
 Write-Information "Log File: $LogFilePath" -InformationAction Continue
 #endregion
 
-#region Patch 2: Initialize Result Collection (v3.1)
-Write-Information "`nInitializing session result collection..." -InformationAction Continue
-# Use environment variable directly since $script:ProjectPaths not yet initialized
-$ProcessedDataPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'processed'
-if (-not (Test-Path $ProcessedDataPath)) {
-    New-Item -Path $ProcessedDataPath -ItemType Directory -Force | Out-Null
-}
-
-$script:ResultCollectionEnabled = $false
-try {
-    if (Get-Command -Name 'Start-ResultCollection' -ErrorAction SilentlyContinue) {
-        Start-ResultCollection -SessionId $script:MaintenanceSessionId -CachePath $ProcessedDataPath
-        $script:ResultCollectionEnabled = $true
-        Write-Information "  [OK] Result collection initialized successfully" -InformationAction Continue
-    }
-    else {
-        Write-Information "  [INFO] LogAggregator result collection not available - using fallback session tracking" -InformationAction Continue
-    }
-}
-catch {
-    Write-Warning "Failed to initialize result collection: $($_.Exception.Message) - Using fallback session tracking"
-    $script:ResultCollectionEnabled = $false
-}
-#endregion
-
 #region Module Loading
 Write-Information "`nLoading modules..." -InformationAction Continue
 # Import core modules (always relative to script location)
@@ -238,6 +213,31 @@ foreach ($moduleName in $CoreModules) {
         exit 1
     }
 }
+
+#region Patch 2: Initialize Result Collection (v3.1)
+Write-Information "`nInitializing session result collection..." -InformationAction Continue
+# Use environment variable directly since $script:ProjectPaths not yet initialized
+$ProcessedDataPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'processed'
+if (-not (Test-Path $ProcessedDataPath)) {
+    New-Item -Path $ProcessedDataPath -ItemType Directory -Force | Out-Null
+}
+
+$script:ResultCollectionEnabled = $false
+try {
+    if (Get-Command -Name 'Start-ResultCollection' -ErrorAction SilentlyContinue) {
+        Start-ResultCollection -SessionId $script:MaintenanceSessionId -CachePath $ProcessedDataPath
+        $script:ResultCollectionEnabled = $true
+        Write-Information "  [OK] Result collection initialized successfully" -InformationAction Continue
+    }
+    else {
+        Write-Information "  [INFO] LogAggregator result collection not available - using fallback session tracking" -InformationAction Continue
+    }
+}
+catch {
+    Write-Warning "Failed to initialize result collection: $($_.Exception.Message) - Using fallback session tracking"
+    $script:ResultCollectionEnabled = $false
+}
+#endregion
 
 #region Phase 2: JSON Schema Configuration Validation
 # Validate all configuration files against JSON schemas (fail-fast pattern)
@@ -1666,6 +1666,10 @@ try {
         # If needed in future, add SystemAnalysis to core modules list and use inventory here
         # v3.0 Split Architecture: LogProcessor → ReportGenerator pipeline
         Write-Information "`nProcessing logs and generating reports using split architecture..." -InformationAction Continue
+
+        # Expose execution mode to downstream processors
+        $env:MAINTENANCE_EXECUTION_MODE = $executionMode
+        $env:MAINTENANCE_DRYRUN = if ($ExecutionParams.DryRun) { 'true' } else { 'false' }
 
         # Patch 4: Finalize and export aggregated results
         if ($script:ResultCollectionEnabled) {
