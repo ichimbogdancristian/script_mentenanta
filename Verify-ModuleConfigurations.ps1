@@ -30,45 +30,45 @@ $failed = 0
 # Define all module configurations to verify
 $moduleConfigs = @(
     @{
-        Name = "Main Configuration"
-        ConfigPath = "config/settings/main-config.json"
-        SchemaPath = "config/schemas/main-config.schema.json"
+        Name         = "Main Configuration"
+        ConfigPath   = "config/settings/main-config.json"
+        SchemaPath   = "config/schemas/main-config.schema.json"
         RequiredKeys = @("execution", "modules", "bloatware", "essentialApps", "system", "reporting")
     }
     @{
-        Name = "Logging Configuration"
-        ConfigPath = "config/settings/logging-config.json"
-        SchemaPath = "config/schemas/logging-config.schema.json"
+        Name         = "Logging Configuration"
+        ConfigPath   = "config/settings/logging-config.json"
+        SchemaPath   = "config/schemas/logging-config.schema.json"
         RequiredKeys = @("logging", "verbosity", "formatting", "levels", "components")
     }
     @{
-        Name = "Security Configuration"
-        ConfigPath = "config/settings/security-config.json"
-        SchemaPath = "config/schemas/security-config.schema.json"
+        Name         = "Security Configuration"
+        ConfigPath   = "config/settings/security-config.json"
+        SchemaPath   = "config/schemas/security-config.schema.json"
         RequiredKeys = @("security", "compliance", "firewall", "services", "updates", "privacy")
     }
     @{
-        Name = "Bloatware List"
-        ConfigPath = "config/lists/bloatware/bloatware-list.json"
-        SchemaPath = "config/schemas/bloatware-list.schema.json"
+        Name         = "Bloatware List"
+        ConfigPath   = "config/lists/bloatware/bloatware-list.json"
+        SchemaPath   = "config/schemas/bloatware-list.schema.json"
         RequiredKeys = @("all")
     }
     @{
-        Name = "Essential Apps"
+        Name       = "Essential Apps"
         ConfigPath = "config/lists/essential-apps/essential-apps.json"
         SchemaPath = "config/schemas/essential-apps.schema.json"
-        IsArray = $true
+        IsArray    = $true
     }
     @{
-        Name = "App Upgrade Configuration"
-        ConfigPath = "config/lists/app-upgrade/app-upgrade-config.json"
-        SchemaPath = "config/schemas/app-upgrade-config.schema.json"
+        Name         = "App Upgrade Configuration"
+        ConfigPath   = "config/lists/app-upgrade/app-upgrade-config.json"
+        SchemaPath   = "config/schemas/app-upgrade-config.schema.json"
         RequiredKeys = @("ModuleName", "EnabledSources", "ExcludePatterns")
     }
     @{
-        Name = "System Optimization"
-        ConfigPath = "config/lists/system-optimization/system-optimization-config.json"
-        SchemaPath = "config/schemas/system-optimization-config.schema.json"
+        Name         = "System Optimization"
+        ConfigPath   = "config/lists/system-optimization/system-optimization-config.json"
+        SchemaPath   = "config/schemas/system-optimization-config.schema.json"
         RequiredKeys = @("startupPrograms", "services", "visualEffects", "powerPlan")
     }
 )
@@ -88,12 +88,12 @@ function Test-ModuleConfiguration {
     Write-Host "  Schema: $SchemaPath" -ForegroundColor Gray
     
     $result = @{
-        Name = $Name
+        Name       = $Name
         ConfigPath = $ConfigPath
         SchemaPath = $SchemaPath
-        Passed = $false
-        Errors = @()
-        Warnings = @()
+        Passed     = $false
+        Errors     = @()
+        Warnings   = @()
     }
     
     # Check files exist
@@ -219,12 +219,12 @@ Write-Host "[MODULE REFERENCE VERIFICATION]" -ForegroundColor Cyan
 Write-Host ""
 
 $moduleReferences = @{
-    "Main Config" = @{
-        File = "config/settings/main-config.json"
+    "Main Config"       = @{
+        File       = "config/settings/main-config.json"
         References = @("modules.skipBloatwareRemoval", "modules.skipEssentialApps", "modules.skipWindowsUpdates")
     }
     "AppUpgrade Config" = @{
-        File = "config/lists/app-upgrade/app-upgrade-config.json"
+        File       = "config/lists/app-upgrade/app-upgrade-config.json"
         References = @("ModuleName", "EnabledSources")
     }
 }
