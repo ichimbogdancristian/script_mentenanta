@@ -197,7 +197,7 @@ function Get-SystemInventory {
         # Complete performance tracking and log final results
         try {
             if ($perfContext) {
-                Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true
+                Complete-PerformanceTracking -Context $perfContext -Status 'Success'
             }
 
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection completed successfully' -Data @{
@@ -218,7 +218,7 @@ function Get-SystemInventory {
         # Complete performance tracking with failure
         try {
             if ($perfContext) {
-                Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false
+                Complete-PerformanceTracking -Context $perfContext -Status 'Failed'
             }
 
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection failed' -Data @{
