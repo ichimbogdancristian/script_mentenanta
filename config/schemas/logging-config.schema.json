@@ -11,7 +11,14 @@
       "properties": {
         "logLevel": {
           "type": "string",
-          "enum": ["DEBUG", "VERBOSE", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "enum": [
+            "DEBUG",
+            "VERBOSE",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
           "description": "Default logging level"
         },
         "enableConsoleOutput": {
@@ -61,7 +68,12 @@
         },
         "operationVerbosity": {
           "type": "string",
-          "enum": ["Minimal", "Normal", "Debug", "Detailed"]
+          "enum": [
+            "Minimal",
+            "Normal",
+            "Debug",
+            "Detailed"
+          ]
         }
       }
     },
@@ -70,7 +82,14 @@
     },
     "defaultLevel": {
       "type": "string",
-      "enum": ["DEBUG", "VERBOSE", "INFO", "WARNING", "ERROR", "CRITICAL"],
+      "enum": [
+        "DEBUG",
+        "VERBOSE",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ],
       "description": "Default logging level for all components"
     },
     "outputTargets": {
@@ -97,7 +116,14 @@
       "patternProperties": {
         "^[A-Z_-]+$": {
           "type": "string",
-          "enum": ["DEBUG", "VERBOSE", "INFO", "WARNING", "ERROR", "CRITICAL"]
+          "enum": [
+            "DEBUG",
+            "VERBOSE",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
         }
       },
       "additionalProperties": false
@@ -112,7 +138,12 @@
         },
         "timestampFormat": {
           "type": "string",
-          "enum": ["ISO8601", "RFC3339", "UnixTimestamp", "Human"],
+          "enum": [
+            "ISO8601",
+            "RFC3339",
+            "UnixTimestamp",
+            "Human"
+          ],
           "description": "Timestamp format style"
         },
         "includeComponent": {
@@ -194,6 +225,118 @@
         "logMemoryUsage": {
           "type": "boolean",
           "description": "Include memory usage in performance logs"
+        },
+        "trackOperationTiming": {
+          "type": "boolean"
+        },
+        "trackMemoryUsage": {
+          "type": "boolean"
+        },
+        "trackCPUUsage": {
+          "type": "boolean"
+        },
+        "enableAlertThresholds": {
+          "type": "boolean"
+        },
+        "slowOperationThreshold": {
+          "type": "number"
+        },
+        "criticalOperationThreshold": {
+          "type": "number"
+        }
+      }
+    },
+    "formatting": {
+      "type": "object",
+      "description": "Log message formatting settings",
+      "properties": {
+        "dateTimeFormat": {
+          "type": "string"
+        },
+        "messageFormat": {
+          "type": "string"
+        },
+        "progressBarStyle": {
+          "type": "string"
+        },
+        "includeThreadId": {
+          "type": "boolean"
+        },
+        "includeSessionId": {
+          "type": "boolean"
+        }
+      }
+    },
+    "levels": {
+      "type": "object",
+      "description": "Configuration for each logging level",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "color": {
+            "type": "string"
+          },
+          "fileOutput": {
+            "type": "boolean"
+          },
+          "consoleOutput": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "components": {
+      "type": "object",
+      "description": "Component name mappings",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "description": "Log reporting settings",
+      "properties": {
+        "enableLogExport": {
+          "type": "boolean"
+        },
+        "exportFormats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "includePerformanceMetrics": {
+          "type": "boolean"
+        },
+        "enableDashboardReports": {
+          "type": "boolean"
+        },
+        "autoGenerateReports": {
+          "type": "boolean"
+        },
+        "reportOutputPath": {
+          "type": "string"
+        }
+      }
+    },
+    "alerts": {
+      "type": "object",
+      "description": "Alert configuration",
+      "properties": {
+        "enableEmailAlerts": {
+          "type": "boolean"
+        },
+        "enableConsoleAlerts": {
+          "type": "boolean"
+        },
+        "criticalErrorThreshold": {
+          "type": "integer"
+        },
+        "warningAccumulationThreshold": {
+          "type": "integer"
         }
       }
     }

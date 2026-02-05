@@ -1135,15 +1135,15 @@ function Test-AllConfigurationsWithSchema {
         [switch]$StopOnFirstError
     )
 
-    # Define all configuration files to validate
+    # Define all configuration files to validate (Phase 3 subdirectory structure)
     $configFiles = @(
         @{ Path = "$ConfigRoot\settings\main-config.json"; Name = "Main Configuration" }
         @{ Path = "$ConfigRoot\settings\logging-config.json"; Name = "Logging Configuration" }
         @{ Path = "$ConfigRoot\settings\security-config.json"; Name = "Security Configuration" }
-        @{ Path = "$ConfigRoot\lists\bloatware-list.json"; Name = "Bloatware List" }
-        @{ Path = "$ConfigRoot\lists\essential-apps.json"; Name = "Essential Apps List" }
-        @{ Path = "$ConfigRoot\lists\app-upgrade-config.json"; Name = "App Upgrade Configuration" }
-        @{ Path = "$ConfigRoot\lists\system-optimization-config.json"; Name = "System Optimization Configuration" }
+        @{ Path = "$ConfigRoot\lists\bloatware\bloatware-list.json"; Name = "Bloatware List" }
+        @{ Path = "$ConfigRoot\lists\essential-apps\essential-apps.json"; Name = "Essential Apps List" }
+        @{ Path = "$ConfigRoot\lists\app-upgrade\app-upgrade-config.json"; Name = "App Upgrade Configuration" }
+        @{ Path = "$ConfigRoot\lists\system-optimization\system-optimization-config.json"; Name = "System Optimization Configuration" }
     )
 
     $results = @()
