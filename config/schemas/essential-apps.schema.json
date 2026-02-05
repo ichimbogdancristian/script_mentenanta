@@ -19,8 +19,8 @@
         "type": "string",
         "minLength": 3,
         "maxLength": 200,
-        "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "Winget package identifier (e.g., 'Microsoft.PowerShell')"
+        "pattern": "^[A-Za-z0-9._+-]+$",
+        "description": "Winget package identifier (e.g., 'Microsoft.PowerShell' or 'Notepad++.Notepad++')"
       },
       "choco": {
         "type": "string",

@@ -245,6 +245,51 @@
           "description": "Report output format"
         }
       }
+    },
+    "ExecutionSettings": {
+      "type": "object",
+      "description": "Execution behavior settings",
+      "properties": {
+        "UpgradeTimeout": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "Timeout in seconds for upgrade operations"
+        },
+        "RetryAttempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Number of retry attempts on failure"
+        },
+        "RetryDelay": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Delay in seconds between retry attempts"
+        },
+        "ContinueOnError": {
+          "type": "boolean",
+          "description": "Continue with remaining upgrades if one fails"
+        }
+      }
+    },
+    "LoggingSettings": {
+      "type": "object",
+      "description": "Logging configuration",
+      "properties": {
+        "LogLevel": {
+          "type": "string",
+          "enum": ["Verbose", "Info", "Warning", "Error"],
+          "description": "Logging verbosity level"
+        },
+        "LogPath": {
+          "type": "string",
+          "description": "Path for upgrade logs"
+        },
+        "EnableDetailedLogging": {
+          "type": "boolean",
+          "description": "Enable detailed operation logging"
+        }
+      }
     }
   },
   "additionalProperties": false

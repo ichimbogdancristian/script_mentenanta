@@ -34,10 +34,12 @@
     "Android Studio*"
   ],
   
-  "SafetyChecks": {
-    "MinimumFreeDiskSpace": "5GB",
-    "CreateRestorePoint": true,
-    "RequireElevation": true
+  "safety": {
+    "createRestorePoint": true,
+    "backupConfigs": false,
+    "testMode": false,
+    "maxConcurrentUpgrades": 5,
+    "stopOnFirstFailure": false
   },
   
   "ExecutionSettings": {
