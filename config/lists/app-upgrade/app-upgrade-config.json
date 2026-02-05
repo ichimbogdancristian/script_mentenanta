@@ -45,7 +45,7 @@
     "ContinueOnError": true
   },
   "LoggingSettings": {
-    "LogLevel": "INFO",
+    "LogLevel": "Info",
     "DetailedOutput": true,
     "CaptureVersionHistory": true
   },
