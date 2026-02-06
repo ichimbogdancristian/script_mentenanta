@@ -25,49 +25,20 @@ using namespace System.Collections.Generic
 # Standard dependency import pattern for Windows Maintenance Automation
 $ModuleRoot = Split-Path -Parent $PSScriptRoot
 
-# Import CoreInfrastructure if not already available
+# Import CoreInfrastructure - REQUIRED for this module
 $CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
-if (-not (Get-Command -Name 'Get-SessionPath' -ErrorAction SilentlyContinue)) {
-    if (Test-Path $CoreInfraPath) {
-        Import-Module $CoreInfraPath -Force -Global
-    }
+if (Test-Path $CoreInfraPath) {
+    Import-Module $CoreInfraPath -Force -Global
+} else {
+    throw "CRITICAL: CoreInfrastructure.psm1 not found at: $CoreInfraPath. SecurityAudit requires CoreInfrastructure for path management and logging."
 }
 
-#endregion
-
-#region Fallback Functions
-
-# Ensure critical functions are available with graceful degradation
+# Validate critical dependencies are loaded
 if (-not (Get-Command -Name 'Write-LogEntry' -ErrorAction SilentlyContinue)) {
-    function script:Write-LogEntry {
-        param(
-            [Parameter(Mandatory = $true)]
-            [ValidateSet('DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL')]
-            [string]$Level,
-            
-            [Parameter(Mandatory = $true)]
-            [string]$Component,
-            
-            [Parameter(Mandatory = $true)]
-            [string]$Message,
-            
-            [hashtable]$Data = @{}
-        )
-        
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $logEntry = "[$timestamp] [$Level] [$Component] $Message"
-        Write-Information $logEntry -InformationAction Continue
-    }
+    throw "CRITICAL: Write-LogEntry not available. CoreInfrastructure.psm1 may have failed to load correctly."
 }
-
-if (-not (Get-Command -Name 'Get-OrganizedFilePath' -ErrorAction SilentlyContinue)) {
-    function script:Get-OrganizedFilePath {
-        param($FileType, $Category, $FileName)
-        
-        # Fallback to simple path resolution
-        $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        return Join-Path $scriptRoot "temp_files\$FileName"
-    }
+if (-not (Get-Command -Name 'Get-AuditResultsPath' -ErrorAction SilentlyContinue)) {
+    throw "CRITICAL: Get-AuditResultsPath not available. CoreInfrastructure.psm1 may have failed to load correctly."
 }
 
 #endregion
@@ -130,7 +101,7 @@ function Start-SecurityAudit {
 
     Write-Information "[AUDIT] Starting comprehensive security audit..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'SECURITY-AUDIT' -Message 'Starting comprehensive security audit' -Data @{
@@ -238,7 +209,7 @@ function Start-SecurityAudit {
                 Write-Information "    ⏭️ Security report generation skipped (WhatIf mode)" -InformationAction Continue
             }
         }
-        
+
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true -ResultData @{
@@ -260,7 +231,7 @@ function Start-SecurityAudit {
     }
     catch {
         Write-Error "Security audit failed: $_"
-        
+
         # Complete performance tracking for failed operation
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
@@ -270,7 +241,7 @@ function Start-SecurityAudit {
             # LoggingManager not available, continue with standard logging
             Write-Verbose "Structured logging not available for error reporting: $_"
         }
-        
+
         throw
     }
 }
@@ -302,19 +273,20 @@ function Start-SecurityAudit {
     Include detailed scan history and threat detection information in the analysis
 
 .OUTPUTS
-    [hashtable] Defender status including Enabled, RealTimeProtectionEnabled, 
+    [hashtable] Defender status including Enabled, RealTimeProtectionEnabled,
     DefinitionsUpToDate, LastScanDate, ThreatsDetected, Score, and detailed Issues
 
 .EXAMPLE
     $defenderStatus = Get-WindowsDefenderStatus -IncludeScan
     Write-Information "Defender Score: $($defenderStatus.Score)/$($defenderStatus.MaxScore)" -InformationAction Continue
-    
+
 .NOTES
     Part of the SecurityAudit module for comprehensive system security assessment.
     Requires Windows Defender PowerShell module for full functionality.
 #>
 function Get-WindowsDefenderStatus {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$IncludeScan
@@ -328,7 +300,7 @@ function Get-WindowsDefenderStatus {
         # LoggingManager not available, continue with standard logging
         Write-Verbose "Structured logging not available for Defender status check: $_"
     }
-    
+
     $results = @{
         Enabled                   = $false
         RealTimeProtectionEnabled = $false
@@ -420,6 +392,7 @@ function Get-WindowsDefenderStatus {
 #>
 function Get-FirewallStatus {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     $results = @{
@@ -516,6 +489,7 @@ function Get-FirewallStatus {
 #>
 function Get-UACStatus {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     $results = @{
@@ -584,6 +558,7 @@ function Get-UACStatus {
 #>
 function Get-SecurityServiceStatus {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     $results = @{
@@ -656,6 +631,7 @@ function Get-SecurityServiceStatus {
 #>
 function Get-SecurityUpdateStatus {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     $results = @{
@@ -832,7 +808,7 @@ function New-SecurityReport {
             Write-Warning "Failed to save audit results: $($_.Exception.Message)"
             $auditDataPath = "N/A"
         }
-        
+
         # Generate text report path
         $reportPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'reports\security-audit.txt'
         $reportDir = Split-Path -Parent $reportPath
@@ -901,17 +877,18 @@ CATEGORY DETAILS:
 #>
 function Get-SecurityAuditAnalysis {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [hashtable]$Config
     )
-    
+
     Write-LogEntry -Level 'INFO' -Component 'SECURITY-AUDIT' -Message 'Starting security audit for Type2 module'
-    
+
     try {
         # Perform the security audit
         $auditResults = Start-SecurityAudit
-        
+
         # Use standardized Get-AuditResultsPath function for consistent path
         if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
             $dataPath = Get-AuditResultsPath -ModuleName 'SecurityAudit'
@@ -920,7 +897,7 @@ function Get-SecurityAuditAnalysis {
             # Fallback to direct path construction if function not available
             $dataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\security-audit-results.json"
         }
-        
+
         # Save results to standardized temp_files/data/ location
         if ($dataPath) {
             # Ensure directory exists
@@ -928,14 +905,14 @@ function Get-SecurityAuditAnalysis {
             if (-not (Test-Path $dataDir)) {
                 New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
             }
-            
+
             # Save JSON results
             $auditResults | ConvertTo-Json -Depth 10 | Set-Content -Path $dataPath -Encoding UTF8
             Write-LogEntry -Level 'INFO' -Component 'SECURITY-AUDIT' -Message "Audit results saved to: $dataPath"
         }
-        
+
         Write-LogEntry -Level 'INFO' -Component 'SECURITY-AUDIT' -Message 'Security audit completed successfully'
-        
+
         return $auditResults
     }
     catch {
@@ -952,4 +929,7 @@ Export-ModuleMember -Function @(
     'Get-SecurityAuditAnalysis'  # v3.0 PRIMARY function for Type2 integration
     'Get-WindowsDefenderStatus'
 )
+
+
+
 

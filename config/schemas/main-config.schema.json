@@ -1,0 +1,247 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maintenance-automation/schemas/main-config.schema.json",
+  "title": "Windows Maintenance Automation - Main Configuration",
+  "description": "Main configuration schema for Windows Maintenance Automation System v3.1",
+  "type": "object",
+  "required": ["execution", "modules", "system", "reporting"],
+  "properties": {
+    "execution": {
+      "type": "object",
+      "description": "Execution behavior and UI settings",
+      "required": ["defaultMode", "countdownSeconds", "enableDryRun"],
+      "properties": {
+        "defaultMode": {
+          "type": "string",
+          "enum": ["interactive", "unattended"],
+          "description": "Default execution mode (interactive with menus or unattended automation)"
+        },
+        "countdownSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300,
+          "description": "Countdown duration before starting maintenance tasks (0-300 seconds)"
+        },
+        "enableDryRun": {
+          "type": "boolean",
+          "description": "Enable dry-run simulation mode (no actual system changes)"
+        },
+        "autoSelectDefault": {
+          "type": "boolean",
+          "description": "Automatically select default menu options after timeout"
+        },
+        "showProgressBars": {
+          "type": "boolean",
+          "description": "Display progress bars during execution"
+        },
+        "shutdown": {
+          "type": "object",
+          "description": "Post-execution shutdown behavior",
+          "properties": {
+            "countdownSeconds": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 600,
+              "description": "Countdown duration before shutdown/cleanup (10-600 seconds)"
+            },
+            "cleanupOnTimeout": {
+              "type": "boolean",
+              "description": "Cleanup temporary files when countdown expires"
+            },
+            "rebootOnTimeout": {
+              "type": "boolean",
+              "description": "Reboot system when countdown expires"
+            }
+          }
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "description": "Module execution control flags",
+      "properties": {
+        "skipBloatwareRemoval": {
+          "type": "boolean",
+          "description": "Skip bloatware removal module"
+        },
+        "skipEssentialApps": {
+          "type": "boolean",
+          "description": "Skip essential applications installation module"
+        },
+        "skipWindowsUpdates": {
+          "type": "boolean",
+          "description": "Skip Windows Update module"
+        },
+        "skipTelemetryDisable": {
+          "type": "boolean",
+          "description": "Skip telemetry/privacy module"
+        },
+        "skipSystemOptimization": {
+          "type": "boolean",
+          "description": "Skip system optimization module"
+        },
+        "skipSecurityAudit": {
+          "type": "boolean",
+          "description": "Skip security audit module"
+        },
+        "skipSecurityEnhancement": {
+          "type": "boolean",
+          "description": "Skip security enhancement module"
+        },
+        "skipAppUpgrade": {
+          "type": "boolean",
+          "description": "Skip application upgrade module"
+        },
+        "customModulesPath": {
+          "type": "string",
+          "description": "Path to custom modules directory (empty = use default)"
+        }
+      }
+    },
+    "bloatware": {
+      "type": "object",
+      "description": "Bloatware removal settings",
+      "properties": {
+        "enableDiffBasedProcessing": {
+          "type": "boolean",
+          "description": "Use differential processing (only remove new bloatware since last run)"
+        },
+        "parallelRemoval": {
+          "type": "boolean",
+          "description": "Enable parallel removal of multiple bloatware packages"
+        },
+        "createBackups": {
+          "type": "boolean",
+          "description": "Create backup manifests before removal"
+        },
+        "customBloatwareList": {
+          "type": "array",
+          "description": "Additional bloatware package names to remove",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "essentialApps": {
+      "type": "object",
+      "description": "Essential applications installation settings",
+      "properties": {
+        "enableParallelInstallation": {
+          "type": "boolean",
+          "description": "Install multiple applications concurrently"
+        },
+        "fallbackToLibreOffice": {
+          "type": "boolean",
+          "description": "Install LibreOffice if Microsoft Office not detected"
+        },
+        "customEssentialApps": {
+          "type": "array",
+          "description": "Additional applications to install",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "skipConflictResolution": {
+          "type": "boolean",
+          "description": "Skip automatic conflict resolution (fail on conflicts)"
+        },
+        "skipIfPackageManagerMissing": {
+          "type": "boolean",
+          "description": "Skip installation if winget/chocolatey unavailable"
+        }
+      }
+    },
+    "system": {
+      "type": "object",
+      "description": "System-level settings",
+      "required": ["createSystemRestorePoint"],
+      "properties": {
+        "createSystemRestorePoint": {
+          "type": "boolean",
+          "description": "Create System Restore Point before modifications"
+        },
+        "restorePointMaxSizeGB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum System Restore Point storage allocation (1-100 GB)"
+        },
+        "enableVerboseLogging": {
+          "type": "boolean",
+          "description": "Enable detailed debug logging"
+        },
+        "maxLogSizeMB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Maximum log file size in megabytes (1-1000 MB)"
+        },
+        "enablePerformanceOptimizations": {
+          "type": "boolean",
+          "description": "Apply performance optimizations during execution"
+        },
+        "warnOnPendingReboot": {
+          "type": "boolean",
+          "description": "Display warning if system has pending reboot"
+        },
+        "enableSystemProtectionIfDisabled": {
+          "type": "boolean",
+          "description": "Automatically enable System Protection if disabled"
+        }
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "description": "Report generation settings",
+      "required": ["enableHtmlReport"],
+      "properties": {
+        "enableHtmlReport": {
+          "type": "boolean",
+          "description": "Generate HTML report after execution"
+        },
+        "enableDetailedAudit": {
+          "type": "boolean",
+          "description": "Include detailed audit information in reports"
+        },
+        "includeSystemInventory": {
+          "type": "boolean",
+          "description": "Include full system inventory in reports"
+        },
+        "generateBeforeAfterComparison": {
+          "type": "boolean",
+          "description": "Generate before/after comparison in reports"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "description": "Custom path overrides (relative to project root)",
+      "properties": {
+        "tempFolder": {
+          "type": "string",
+          "pattern": "^[^<>:\"|?*]+$",
+          "description": "Temporary files directory"
+        },
+        "reportsFolder": {
+          "type": "string",
+          "pattern": "^[^<>:\"|?*]+$",
+          "description": "Reports output directory"
+        },
+        "logsFolder": {
+          "type": "string",
+          "pattern": "^[^<>:\"|?*]+$",
+          "description": "Logs directory"
+        },
+        "inventoryFolder": {
+          "type": "string",
+          "pattern": "^[^<>:\"|?*]+$",
+          "description": "System inventory directory"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - TelemetryAudit.psm1 (Type1 - detection/analysis)
@@ -25,7 +25,7 @@ using namespace System.Collections.Generic
 
 # v3.0 Self-contained Type 2 module with internal Type 1 dependency
 
-# Step 1: Import core infrastructure FIRST (REQUIRED) - Global scope for Type1 access 
+# Step 1: Import core infrastructure FIRST (REQUIRED) - Global scope for Type1 access
 $ModuleRoot = if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 $CoreInfraPath = Join-Path $ModuleRoot 'core\CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
@@ -53,20 +53,21 @@ if (-not (Get-Command -Name 'Get-TelemetryAnalysis' -ErrorAction SilentlyContinu
 
 function Invoke-TelemetryDisable {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param([Parameter(Mandatory)][hashtable]$Config, [Parameter()][switch]$DryRun)
-    
+
     $perfContext = Start-PerformanceTrackingSafe -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE'
-    
+
     try {
         # Track execution duration for v3.0 compliance
         $executionStartTime = Get-Date
-        
+
         # Initialize module execution environment
         Initialize-ModuleExecution -ModuleName 'TelemetryDisable'
-        
+
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry analysis'
         $analysisResults = Get-TelemetryAnalysis
-        
+
         if (-not $analysisResults -or $analysisResults.ActiveTelemetryCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'No active telemetry detected'
             if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
@@ -80,7 +81,7 @@ function Invoke-TelemetryDisable {
                 -ModuleName 'TelemetryDisable' `
                 -DryRun $DryRun.IsPresent
         }
-        
+
         # Display module banner
         Write-Host "`n" -NoNewline
         Write-Host "=================================================" -ForegroundColor Cyan
@@ -92,15 +93,14 @@ function Invoke-TelemetryDisable {
         Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
-        
+
         # STEP 3: Setup execution logging directory
-        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\telemetry-disable"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
+        $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'telemetry-disable' -FileName 'execution.log'
+        $executionLogDir = Split-Path -Parent $executionLogPath
+
         $telemetryCount = $analysisResults.ActiveTelemetryCount
         Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ TelemetryCount = $telemetryCount }
-        
+
         if ($DryRun) {
             Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message ' DRY-RUN: Simulating telemetry disable' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $telemetryCount }
             $processedCount = $telemetryCount
@@ -121,7 +121,7 @@ function Invoke-TelemetryDisable {
                             'LocationTracking' { $result = Disable-WindowsTelemetry -DisableLocationTracking }
                             default { Write-StructuredLogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Result 'Unknown' }
                         }
-                        if ($result) { 
+                        if ($result) {
                             $processedCount++
                             Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Successfully disabled: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Success'
                         }
@@ -135,9 +135,9 @@ function Invoke-TelemetryDisable {
                 }
             }
         }
-        
+
         Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalCount = $telemetryCount }
-        
+
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
@@ -168,7 +168,7 @@ function Invoke-TelemetryDisable {
                 PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
         }
-        
+
         try {
             $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force
             Write-Verbose "Execution summary saved to: $summaryPath"
@@ -176,7 +176,7 @@ function Invoke-TelemetryDisable {
         catch {
             Write-Warning "Failed to create execution summary: $($_.Exception.Message)"
         }
-        
+
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
         return New-ModuleExecutionResult `
             -Success $true `
@@ -186,7 +186,7 @@ function Invoke-TelemetryDisable {
             -LogPath $executionLogPath `
             -ModuleName 'TelemetryDisable' `
             -DryRun $DryRun.IsPresent
-        
+
     }
     catch {
         $errorMsg = "Failed to execute telemetry disable: $($_.Exception.Message)"
@@ -265,7 +265,7 @@ function Disable-WindowsTelemetry {
 
     Write-Information " Starting Windows telemetry and privacy hardening..." -InformationAction Continue
     $startTime = Get-Date
-    
+
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting Windows telemetry and privacy hardening' -Data @{
@@ -282,14 +282,21 @@ function Disable-WindowsTelemetry {
         Write-Verbose "TELEMETRY-DISABLE: Logging initialization failed - $_"
         # LoggingManager not available, continue with standard logging
     }
-    
+
     # Check for administrator privileges before proceeding
     try {
         Assert-AdminPrivilege -Operation "Windows telemetry and privacy configuration"
     }
     catch {
         Write-Error "Administrator privileges are required for telemetry disabling operations: $_"
-        return $false
+        $executionTime = (Get-Date) - $startTime
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected 0 `
+            -ItemsProcessed 0 `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -ModuleName 'TelemetryDisable' `
+            -ErrorMessage 'Administrator privileges required'
     }
 
     if ($DryRun) {
@@ -384,18 +391,25 @@ function Disable-WindowsTelemetry {
             Write-Verbose "TELEMETRY-DISABLE: Logging completion failed - $_"
             # LoggingManager not available, continue with standard logging
         }
-        
+
         # Log detailed results for audit trails
         Write-Verbose "Telemetry disable operation details: $(ConvertTo-Json $results -Depth 3)"
         Write-Verbose "Privacy hardening completed successfully"
-        
-        return $success
+
+        $executionTime = (Get-Date) - $startTime
+        return New-ModuleExecutionResult `
+            -Success $success `
+            -ItemsDetected $results.TotalOperations `
+            -ItemsProcessed $results.Successful `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -ModuleName 'TelemetryDisable' `
+            -DryRun $DryRun.IsPresent
     }
     catch {
         $errorMessage = " Privacy hardening failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         Write-Verbose "Error details: $($_.Exception.ToString())"
-        
+
         # Complete performance tracking for failed operation
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
@@ -405,9 +419,15 @@ function Disable-WindowsTelemetry {
             Write-Verbose "TELEMETRY-DISABLE: Error logging failed - $_"
             # LoggingManager not available, continue with standard logging
         }
-        
-        # Type 2 module returns boolean for failure
-        return $false
+
+        $executionTime = (Get-Date) - $startTime
+        return New-ModuleExecutionResult `
+            -Success $false `
+            -ItemsDetected $results.TotalOperations `
+            -ItemsProcessed $results.Successful `
+            -DurationMilliseconds $executionTime.TotalMilliseconds `
+            -ModuleName 'TelemetryDisable' `
+            -ErrorMessage $_.Exception.Message
     }
     finally {
         $duration = ((Get-Date) - $startTime).TotalSeconds
@@ -437,7 +457,7 @@ function Disable-WindowsTelemetry {
 
 .EXAMPLE
     $analysis = Test-PrivacySetting
-    Write-Output "Found $($analysis.Recommendations.Count) privacy issues"
+    Write-Information "Found $($analysis.Recommendations.Count) privacy issues" -InformationAction Continue
 
 .EXAMPLE
     $privacyStatus = Test-PrivacySetting
@@ -514,11 +534,11 @@ function Test-PrivacySetting {
 
 .EXAMPLE
     $result = Set-TelemetryRegistrySetting
-    Write-Output "Applied $($result.Applied) registry settings"
+    Write-Information "Applied $($result.Applied) registry settings" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Set-TelemetryRegistrySetting -DryRun
-    Write-Output "Would apply $($dryRunResult.Applied) registry changes"
+    Write-Information "Would apply $($dryRunResult.Applied) registry changes" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Applied count, Failed count, and detailed operation results
@@ -551,7 +571,7 @@ function Set-TelemetryRegistrySetting {
         Write-Verbose "TELEMETRY-DISABLE: Registry settings logging failed - $_"
         # LoggingManager not available, continue with standard logging
     }
-    
+
     $results = @{
         Applied = 0
         Failed  = 0
@@ -676,11 +696,11 @@ function Set-TelemetryRegistrySetting {
 
 .EXAMPLE
     $result = Disable-TelemetryService
-    Write-Output "Disabled $($result.Disabled) telemetry services"
+    Write-Information "Disabled $($result.Disabled) telemetry services" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-TelemetryService -DryRun
-    Write-Output "Would disable $($result.Disabled) services"
+    Write-Information "Would disable $($result.Disabled) services" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed service states
@@ -746,7 +766,7 @@ function Disable-TelemetryService {
                     PreviousStartType = $service.StartType
                     Type              = 'TelemetryService'
                 }
-                
+
                 if ($DryRun) {
                     $serviceResult.Action = 'Would Disable'
                     $serviceResult.Success = $true
@@ -764,13 +784,13 @@ function Disable-TelemetryService {
                         # Disable the service
                         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Executing: Set-Service -Name $serviceName -StartupType Disabled"
                         Set-Service -Name $serviceName -StartupType Disabled
-                        
+
                         # Verification
                         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Message 'Verifying service disabled state'
-                        
+
                         $verifyService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
                         $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-                        
+
                         if ($verifyService.StartupType -eq 'Disabled') {
                             # Log successful verification
                             Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Metrics @{
@@ -779,7 +799,7 @@ function Disable-TelemetryService {
                                 ActualStatus       = $verifyService.Status
                                 VerificationPassed = $true
                             }
-                            
+
                             # Log successful disable
                             Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Metrics @{
                                 Duration          = $operationDuration
@@ -836,11 +856,11 @@ function Disable-TelemetryService {
 
 .EXAMPLE
     $result = Disable-WindowsNotification
-    Write-Output "Disabled $($result.Disabled) notification settings"
+    Write-Information "Disabled $($result.Disabled) notification settings" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-WindowsNotification -DryRun
-    Write-Output "Would disable $($dryRunResult.Disabled) notification types"
+    Write-Information "Would disable $($dryRunResult.Disabled) notification types" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed operation results
@@ -962,11 +982,11 @@ function Disable-WindowsNotification {
 
 .EXAMPLE
     $result = Disable-ConsumerFeature
-    Write-Output "Disabled $($result.Disabled) consumer features"
+    Write-Information "Disabled $($result.Disabled) consumer features" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-ConsumerFeature -DryRun
-    Write-Output "Would disable $($dryRunResult.Disabled) consumer features"
+    Write-Information "Would disable $($dryRunResult.Disabled) consumer features" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed operation results
@@ -1074,11 +1094,11 @@ function Disable-ConsumerFeature {
 
 .EXAMPLE
     $result = Disable-CortanaFeature
-    Write-Output "Disabled $($result.Disabled) Cortana features"
+    Write-Information "Disabled $($result.Disabled) Cortana features" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-CortanaFeature -DryRun
-    Write-Output "Would disable Cortana features"
+    Write-Information "Would disable Cortana features" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and operation details
@@ -1097,7 +1117,9 @@ function Disable-ConsumerFeature {
 function Disable-CortanaFeature {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
-    param([switch]$DryRun)
+    param(
+        [switch]$DryRun
+    )
 
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
 
@@ -1155,11 +1177,11 @@ function Disable-CortanaFeature {
 
 .EXAMPLE
     $result = Disable-LocationService
-    Write-Output "Disabled $($result.Disabled) location tracking features"
+    Write-Information "Disabled $($result.Disabled) location tracking features" -InformationAction Continue
 
 .EXAMPLE
     $dryRunResult = Disable-LocationService -DryRun
-    Write-Output "Would disable location services"
+    Write-Information "Would disable location services" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and operation details
@@ -1179,7 +1201,9 @@ function Disable-CortanaFeature {
 function Disable-LocationService {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
-    param([switch]$DryRun)
+    param(
+        [switch]$DryRun
+    )
 
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
 
@@ -1296,7 +1320,7 @@ function Test-LocationServiceEnabled {
     PS> $mainResults = @{ TotalOperations = 0; Successful = 0; Failed = 0; Categories = @{} }
     PS> $serviceResults = @{ Applied = 3; Disabled = 2; Failed = 0 }
     PS> Merge-Result -Results $mainResults -NewResults $serviceResults -Category 'Services'
-    
+
     Adds service-level telemetry results to main results, updating category statistics.
 
 .NOTES
@@ -1322,9 +1346,11 @@ function Merge-Result {
 Export-ModuleMember -Function @(
     # v3.0 Standardized execution function (Primary)
     'Invoke-TelemetryDisable',
-    
+
     # Legacy functions (Preserved for internal use)
     'Disable-WindowsTelemetry',
     'Test-PrivacySetting'
 )
+
+
 

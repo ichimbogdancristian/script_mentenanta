@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maintenance-automation/schemas/essential-apps.schema.json",
+  "title": "Essential Applications List Schema",
+  "description": "Schema for essential application definitions with package manager mappings",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": [
+      "name",
+      "category",
+      "description"
+    ],
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 100,
+        "description": "Display name of the application"
+      },
+      "winget": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._+-]+$",
+        "description": "Winget package identifier (e.g., 'Microsoft.PowerShell' or 'Notepad++.Notepad++')"
+      },
+      "choco": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 200,
+        "pattern": "^[a-z0-9._-]+$",
+        "description": "Chocolatey package identifier (e.g., 'powershell')"
+      },
+      "scoop": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 200,
+        "pattern": "^[a-z0-9._-]+$",
+        "description": "Scoop package identifier"
+      },
+      "msstore": {
+        "type": "string",
+        "minLength": 5,
+        "maxLength": 200,
+        "description": "Microsoft Store package ID (e.g., '9N0DX20HK701')"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "System",
+          "Development",
+          "Office",
+          "Document",
+          "Editor",
+          "Browser",
+          "Utilities",
+          "Media",
+          "Security",
+          "Runtime",
+          "Productivity",
+          "Communication",
+          "Gaming",
+          "Design",
+          "Education",
+          "Other"
+        ],
+        "description": "Application category for organization"
+      },
+      "description": {
+        "type": "string",
+        "minLength": 10,
+        "maxLength": 500,
+        "description": "Brief description of application purpose and features"
+      },
+      "priority": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "Installation priority (1=highest, 100=lowest)"
+      },
+      "requiredBy": {
+        "type": "array",
+        "description": "List of applications that depend on this one",
+        "items": {
+          "type": "string",
+          "minLength": 2
+        }
+      },
+      "conflicts": {
+        "type": "array",
+        "description": "List of conflicting applications (only install if these absent)",
+        "items": {
+          "type": "string",
+          "minLength": 2
+        }
+      },
+      "skipIfPresent": {
+        "type": "array",
+        "description": "Skip installation if any of these packages already installed",
+        "items": {
+          "type": "string",
+          "minLength": 2
+        }
+      },
+      "installArgs": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Additional installation arguments/switches"
+      },
+      "verifyCommand": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Command to verify successful installation (e.g., 'pwsh --version')"
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Whether this application is enabled for installation"
+      },
+      "requiresReboot": {
+        "type": "boolean",
+        "description": "Whether installation requires system reboot"
+      },
+      "osRequirements": {
+        "type": "object",
+        "description": "OS version requirements",
+        "properties": {
+          "minVersion": {
+            "type": "string",
+            "pattern": "^(10|11)\\.[0-9]+$",
+            "description": "Minimum Windows version (e.g., '10.0', '11.0')"
+          },
+          "maxVersion": {
+            "type": "string",
+            "pattern": "^(10|11)\\.[0-9]+$",
+            "description": "Maximum Windows version"
+          },
+          "buildMin": {
+            "type": "integer",
+            "minimum": 10240,
+            "description": "Minimum Windows build number"
+          }
+        }
+      },
+      "tags": {
+        "type": "array",
+        "description": "Searchable tags for filtering",
+        "items": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 50
+        },
+        "uniqueItems": true
+      }
+    },
+    "additionalProperties": false
+  }
+}

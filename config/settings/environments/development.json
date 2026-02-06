@@ -1,0 +1,40 @@
+{
+    "$schema": "../main-config.schema.json",
+    "environment": "development",
+    "description": "Development environment configuration - verbose logging, dry-run enabled",
+    "execution": {
+        "defaultMode": "interactive",
+        "countdownSeconds": 10,
+        "enableDryRun": true,
+        "autoSelectDefault": false,
+        "showProgressBars": true
+    },
+    "modules": {
+        "skipBloatwareRemoval": false,
+        "skipEssentialApps": false,
+        "skipWindowsUpdates": true,
+        "skipTelemetryDisable": false,
+        "skipSystemOptimization": false,
+        "skipSecurityAudit": false,
+        "skipSecurityEnhancement": true,
+        "skipAppUpgrade": true
+    },
+    "system": {
+        "createSystemRestorePoint": false,
+        "restorePointMaxSizeGB": 5,
+        "enableVerboseLogging": true,
+        "maxLogSizeMB": 100,
+        "enablePerformanceOptimizations": false,
+        "warnOnPendingReboot": true
+    },
+    "reporting": {
+        "enableHtmlReport": true,
+        "enableDetailedAudit": true,
+        "includeSystemInventory": true,
+        "generateBeforeAfterComparison": true
+    },
+    "paths": {
+        "tempFolder": "temp_files",
+        "reportsFolder": "temp_files/reports"
+    }
+}

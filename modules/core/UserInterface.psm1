@@ -15,10 +15,10 @@
         Serve as the user-facing interaction layer for the maintenance automation system.
         Provides interactive menu flows when user attendance is available, with graceful
         fallback to automated defaults in unattended scenarios (CI/CD, scheduled tasks).
-    
+
     Dependencies:
         • CoreInfrastructure.psm1 - For logging (Write-LogEntry)
-    
+
     Exports:
         • Show-MainMenu - Entry point for interactive execution menu
         • Show-ConfirmationDialog - Prompt user for yes/no decisions
@@ -26,7 +26,7 @@
         • Show-ResultSummary - Display final results and statistics
         • ConvertFrom-TaskNumbers - Parse user input into task number array
         • Show-ProgressBar - Visual progress indicator
-    
+
     Import Pattern:
         Import-Module UserInterface.psm1 -Force
         # Functions available for use in MaintenanceOrchestrator context
@@ -47,12 +47,12 @@
     Input:
         • User selections from countdown-based prompts
         • Available task list passed from MaintenanceOrchestrator
-    
+
     Output:
         • Hashtable with execution parameters: @{ DryRun = bool; SelectedTasks = array }
         • Progress updates written to console with Write-LogEntry calls
         • Final summary table with module results
-    
+
     Session State:
         • Uses CoreInfrastructure logging for all output
         • No permanent data storage (UI-only module)
@@ -62,7 +62,7 @@
     Architecture: v3.0 - Split with Consolidated Core
     Line Count: 517 lines
     Version: 3.0.0 (Refactored - Interactive Control)
-    
+
     Key Design Patterns:
     - Countdown timers: 20 seconds default (configurable) for unattended scenarios
     - Graceful degradation: Falls back to defaults when no user response
@@ -105,6 +105,7 @@ if (Test-Path $CoreInfraPath) {
 #>
 function Show-MainMenu {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [int]$CountdownSeconds = 20,
@@ -112,7 +113,7 @@ function Show-MainMenu {
         [Parameter()]
         [array]$AvailableTasks = @()
     )
-    
+
     # Start performance tracking for menu display
     $perfContext = $null
     try {
@@ -148,11 +149,11 @@ function Show-MainMenu {
     # Show available tasks if provided
     if ($AvailableTasks.Count -gt 0) {
         Write-Host "Available maintenance tasks:" -ForegroundColor White
-        Write-Host "" 
+        Write-Host ""
         for ($i = 0; $i -lt $AvailableTasks.Count; $i++) {
             $task = $AvailableTasks[$i]
             $taskNumber = "[$($i+1)]"
-            
+
             if ($task -is [hashtable] -and $task.ContainsKey('Name') -and $task.ContainsKey('Description')) {
                 $taskName = $task.Name
                 $taskDesc = $task.Description
@@ -277,6 +278,7 @@ function Show-MainMenu {
 #>
 function Show-ConfirmationDialog {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$Message,
@@ -322,6 +324,7 @@ function Show-ConfirmationDialog {
 #>
 function Show-Progress {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
@@ -344,7 +347,7 @@ function Show-Progress {
 
     try {
         $timestamp = Get-Date -Format "HH:mm:ss"
-        
+
         # Determine color based on severity
         $activityColor = switch ($Severity) {
             'Success' { 'Green' }
@@ -352,19 +355,19 @@ function Show-Progress {
             'Error' { 'Red' }
             default { 'Cyan' }
         }
-        
+
         if ($ShowProgressBar -and $PercentComplete -gt 0) {
             Write-Progress -Activity $Activity -Status $Status -PercentComplete $PercentComplete
         }
-        
+
         Write-Host "[$timestamp] " -ForegroundColor DarkGray -NoNewline
         Write-Host $Activity -ForegroundColor $activityColor -NoNewline
-        
+
         if ($Status) {
             Write-Host " > " -ForegroundColor DarkGray -NoNewline
             Write-Host $Status -ForegroundColor White -NoNewline
         }
-        
+
         if ($PercentComplete -gt 0) {
             $progressBar = Show-ProgressBar -Percent $PercentComplete -Width 20 -ShowPercentage:$false
             Write-Host " $progressBar" -NoNewline
@@ -373,7 +376,7 @@ function Show-Progress {
         else {
             Write-Host ""
         }
-        
+
         Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message "Progress update" -Data @{
             Activity        = $Activity
             Status          = $Status
@@ -484,6 +487,7 @@ function Show-ProgressBar {
 #>
 function Show-ResultSummary {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
@@ -510,10 +514,10 @@ function Show-ResultSummary {
         # Calculate total if numeric values present
         $total = 0
         $hasNumericValues = $false
-        
+
         foreach ($key in $Results.Keys | Sort-Object) {
             $value = $Results[$key]
-            
+
             # Determine color based on key
             $color = switch ($key.ToLower()) {
                 'success' { 'Green' }
@@ -531,13 +535,13 @@ function Show-ResultSummary {
                 'total' { 'White' }
                 default { 'Gray' }
             }
-            
+
             # Format key with padding
             $paddedKey = $key.PadRight($maxKeyLength)
-            
+
             Write-Host "  $paddedKey : " -ForegroundColor DarkGray -NoNewline
             Write-Host "$value" -ForegroundColor $color
-            
+
             # Sum numeric values for total (exclude 'total' key itself)
             if ($value -is [int] -and $key.ToLower() -ne 'total') {
                 $total += $value
@@ -568,7 +572,7 @@ function Show-ResultSummary {
         }
 
         Write-Host ""
-        
+
         Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message "Result summary displayed" -Data @{
             Title       = $Title
             ResultCount = $Results.Count
@@ -593,6 +597,7 @@ function Show-ResultSummary {
 #>
 function Start-CountdownMenu {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [ValidateRange(1, 300)]
@@ -613,11 +618,11 @@ function Start-CountdownMenu {
         Write-Host "Auto-selecting option [$DefaultOption] in " -ForegroundColor Gray -NoNewline
 
         $startTime = Get-Date
-        
+
         while ($true) {
             $elapsed = ((Get-Date) - $startTime).TotalSeconds
             $timeLeft = [math]::Max(0, $CountdownSeconds - [int]$elapsed)
-            
+
             # Update display only when time changes
             if ($timeLeft -ne $lastDisplayedTime) {
                 if ($lastDisplayedTime -ge 0) {
@@ -631,7 +636,7 @@ function Start-CountdownMenu {
                 Write-Host "... " -ForegroundColor Gray -NoNewline
                 $lastDisplayedTime = $timeLeft
             }
-            
+
             # Check if countdown expired
             if ($timeLeft -le 0) {
                 break
@@ -640,23 +645,23 @@ function Start-CountdownMenu {
             # Check for user input (check multiple times per second for responsiveness)
             if ([Console]::KeyAvailable) {
                 $key = [Console]::ReadKey($true)
-                
+
                 # Handle ESC key to abort
                 if ($key.Key -eq 'Escape') {
                     Write-Host "`n`nOperation cancelled by user" -ForegroundColor Yellow
                     Write-LogEntry -Level 'WARNING' -Component 'USER-INTERFACE' -Message 'User cancelled menu selection with ESC'
                     throw "User cancelled operation"
                 }
-                
+
                 # Handle Enter key - use default option
                 if ($key.Key -eq 'Enter' -or $key.KeyChar -eq [char]13) {
                     $selection = $DefaultOption
                     Write-Host "`n`nSelected: $selection (default)" -ForegroundColor Green
                     return $selection
                 }
-                
+
                 $userInput = $key.KeyChar.ToString().ToUpper()
-                
+
                 # Support keyboard shortcuts
                 if ($userInput -eq 'N' -and 1 -in $ValidOptions) {
                     $selection = 1
@@ -706,6 +711,7 @@ function Start-CountdownMenu {
 #>
 function Start-CountdownInput {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [ValidateRange(1, 300)]
@@ -724,11 +730,11 @@ function Start-CountdownInput {
         Write-Host "Auto-selecting '$DefaultValue' in " -ForegroundColor Gray -NoNewline
 
         $startTime = Get-Date
-        
+
         while ($true) {
             $elapsed = ((Get-Date) - $startTime).TotalSeconds
             $timeLeft = [math]::Max(0, $CountdownSeconds - [int]$elapsed)
-            
+
             # Update display only when time changes
             if ($timeLeft -ne $lastDisplayedTime) {
                 if ($lastDisplayedTime -ge 0) {
@@ -742,7 +748,7 @@ function Start-CountdownInput {
                 Write-Host "... " -ForegroundColor Gray -NoNewline
                 $lastDisplayedTime = $timeLeft
             }
-            
+
             # Check if countdown expired
             if ($timeLeft -le 0) {
                 break
@@ -751,14 +757,14 @@ function Start-CountdownInput {
             # Check for user input (check multiple times per second for responsiveness)
             if ([Console]::KeyAvailable) {
                 $key = [Console]::ReadKey($true)
-                
+
                 # Handle ESC key to abort
                 if ($key.Key -eq 'Escape') {
                     Write-Host "`n`nOperation cancelled by user" -ForegroundColor Yellow
                     Write-LogEntry -Level 'WARNING' -Component 'USER-INTERFACE' -Message 'User cancelled input with ESC'
                     throw "User cancelled operation"
                 }
-                
+
                 # Handle Enter key - submit input or use default
                 if ($key.Key -eq 'Enter' -or $key.KeyChar -eq [char]13) {
                     if ([string]::IsNullOrWhiteSpace($userInput)) {
@@ -807,6 +813,7 @@ function Start-CountdownInput {
 #>
 function ConvertFrom-TaskNumbers {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [AllowEmptyString()]
@@ -819,7 +826,7 @@ function ConvertFrom-TaskNumbers {
 
     try {
         $selectedTasks = @()
-        
+
         if ([string]::IsNullOrWhiteSpace($TaskInput)) {
             Write-LogEntry -Level 'WARNING' -Component 'USER-INTERFACE' -Message 'Empty task input provided'
             return $selectedTasks
@@ -827,30 +834,30 @@ function ConvertFrom-TaskNumbers {
 
         # Parse comma-separated task numbers and ranges
         $taskNumbers = $TaskInput -split ',' | ForEach-Object { $_.Trim() }
-        
+
         foreach ($num in $taskNumbers) {
             # Handle range notation (e.g., 1-5)
             if ($num -match '^(\d+)-(\d+)$') {
                 $rangeStart = [int]$Matches[1]
                 $rangeEnd = [int]$Matches[2]
-                
+
                 if ($rangeStart -gt $rangeEnd) {
                     Write-Host "Warning: Invalid range '$num' (start must be <= end)" -ForegroundColor Yellow
                     Write-LogEntry -Level 'WARNING' -Component 'USER-INTERFACE' -Message "Invalid range: $num"
                     continue
                 }
-                
+
                 if ($rangeStart -lt 1 -or $rangeEnd -gt $MaxTasks) {
                     Write-Host "Warning: Range '$num' exceeds valid bounds (1-$MaxTasks)" -ForegroundColor Yellow
                     Write-LogEntry -Level 'WARNING' -Component 'USER-INTERFACE' -Message "Range out of bounds: $num"
                     continue
                 }
-                
+
                 # Add all numbers in range
                 for ($i = $rangeStart; $i -le $rangeEnd; $i++) {
                     $selectedTasks += $i
                 }
-                
+
                 Write-Host "Range expanded: $num -> $($rangeStart..$rangeEnd -join ', ')" -ForegroundColor Gray
             }
             # Handle single number
@@ -876,7 +883,7 @@ function ConvertFrom-TaskNumbers {
             ParsedCount = $uniqueTasks.Count
             Tasks       = ($uniqueTasks -join ',')
         }
-        
+
         return $uniqueTasks
     }
     catch {
@@ -896,3 +903,7 @@ Export-ModuleMember -Function @(
     'Show-ResultSummary',
     'ConvertFrom-TaskNumbers'
 )
+
+
+
+

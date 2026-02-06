@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -15,10 +15,10 @@
         Serve as the data aggregation layer between module execution and report generation.
         Collects results from Type1 (audit) and Type2 (execution) modules.
         Provides standardized result objects and correlation tracking.
-    
+
     Dependencies:
         • CoreInfrastructure.psm1 - For path management and logging
-    
+
     Exports:
         • New-CorrelationId - Generate unique correlation ID
         • New-ModuleResult - Create standardized result object
@@ -28,7 +28,7 @@
         • Start-ResultCollection - Initialize result collection session
         • Complete-ResultCollection - Finalize and export results
         • Get-ResultsReport - Generate text summary of results
-    
+
     Import Pattern:
         Import-Module LogAggregator.psm1 -Force
         # Functions available in MaintenanceOrchestrator context
@@ -47,14 +47,14 @@
     6. ReportGenerator queries Get-AggregatedResults for report data
 
 .DATA STRUCTURES
-    
+
     ModuleResult Object:
     @{
         ModuleName = "SystemInventory"
         CorrelationId = "eadf22e4-f811-447a-8672-3910b93c89b0"
         ExecutionSequence = 1
         Status = "Success|Failed|Skipped|DryRun"
-        
+
         Metrics = @{
             ItemsDetected = 63
             ItemsProcessed = 1
@@ -64,7 +64,7 @@
             StartTime = "2025-10-26T19:51:37.547941+02:00"
             EndTime = "2025-10-26T19:51:50.274891+02:00"
         }
-        
+
         Results = @{
             # Module-specific detail
             ProcessorName = "AMD Ryzen 7 4800H"
@@ -73,7 +73,7 @@
             StorageGB = 476.07
             FreeStorageGB = 286.99
         }
-        
+
         Errors = @()  # Array of error objects if Status = "Failed"
         Warnings = @()  # Array of warning messages
         LogPath = "temp_files/logs/system-inventory/execution.log"
@@ -84,7 +84,7 @@
     Module Type: Core Infrastructure
     Architecture: v3.0 - New module for enhanced logging
     Version: 1.0.0
-    
+
     Key Features:
     - Standardized result schema across all modules
     - Correlation ID tracking for traceability
@@ -92,7 +92,7 @@
     - Support for module-specific data with common interface
     - Error and warning collection
     - Metrics calculation and normalization
-    
+
     Design Patterns:
     - Factory pattern: New-ModuleResult creates standardized objects
     - Repository pattern: Session results collection
@@ -103,7 +103,7 @@
 using namespace System.Collections.Generic
 
 # Import core infrastructure for path management and logging
-$CoreInfraPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'CoreInfrastructure.psm1'
+$CoreInfraPath = Join-Path $PSScriptRoot 'CoreInfrastructure.psm1'
 if (Test-Path $CoreInfraPath) {
     Import-Module $CoreInfraPath -Force -WarningAction SilentlyContinue
 }
@@ -153,10 +153,11 @@ $script:Config = @{
 #>
 function Start-ResultCollection {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$SessionId,
-        
+
         [Parameter()]
         [string]$CachePath = $null
     )
@@ -279,10 +280,12 @@ function New-ModuleResult {
         [decimal]$DurationSeconds = 0,
 
         [Parameter()]
-        [datetime]$StartTime = $null,
+        [AllowNull()]
+        [Nullable[datetime]]$StartTime = $null,
 
         [Parameter()]
-        [datetime]$EndTime = $null,
+        [AllowNull()]
+        [Nullable[datetime]]$EndTime = $null,
 
         [Parameter()]
         [string]$LogPath = $null,
@@ -319,7 +322,7 @@ function New-ModuleResult {
         Status            = $Status
         CorrelationId     = $script:SessionResults.CorrelationId
         ExecutionSequence = ++$script:SessionResults.ExecutionSequence
-        
+
         Metrics           = [PSCustomObject]@{
             ItemsDetected   = [int]$ItemsDetected
             ItemsProcessed  = [int]$ItemsProcessed
@@ -329,13 +332,13 @@ function New-ModuleResult {
             StartTime       = $StartTime.ToString('o')
             EndTime         = $EndTime.ToString('o')
         }
-        
+
         Results           = $Results
         Errors            = @($Errors)
         Warnings          = @($Warnings)
         LogPath           = $LogPath
         Timestamp         = Get-Date
-        
+
         # Enhanced reporting fields
         Summary           = $Summary
         ExecutionPhases   = $ExecutionPhases
@@ -369,6 +372,7 @@ function New-ModuleResult {
 #>
 function Add-ModuleResult {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
         [PSObject]$Result,
@@ -434,6 +438,7 @@ function Add-ModuleResult {
 #>
 function Get-AggregatedResults {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [switch]$AsHashtable
@@ -462,6 +467,7 @@ function Get-AggregatedResults {
 #>
 function Get-ModuleResultsByName {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName
@@ -497,10 +503,11 @@ function Get-ModuleResultsByName {
 #>
 function Get-ResultsSummary {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     $allResults = Get-AggregatedResults
-    
+
     $summary = [PSCustomObject]@{
         TotalModules         = $allResults.Count
         SuccessfulModules    = ($allResults | Where-Object { $_.Status -eq 'Success' }).Count
@@ -512,9 +519,9 @@ function Get-ResultsSummary {
         TotalItemsProcessed  = ($allResults | Measure-Object -Property { $_.Metrics.ItemsProcessed } -Sum).Sum
         TotalErrors          = $script:SessionResults.ErrorLog.Count
         TotalWarnings        = $script:SessionResults.WarningLog.Count
-        SuccessRate          = if ($allResults.Count -gt 0) { 
-            [math]::Round(($allResults | Where-Object { $_.Status -eq 'Success' }).Count / $allResults.Count * 100, 2) 
-        } 
+        SuccessRate          = if ($allResults.Count -gt 0) {
+            [math]::Round(($allResults | Where-Object { $_.Status -eq 'Success' }).Count / $allResults.Count * 100, 2)
+        }
         else { 0 }
     }
 
@@ -537,6 +544,7 @@ function Get-ResultsSummary {
 #>
 function Complete-ResultCollection {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [string]$ExportPath = $null
@@ -646,6 +654,7 @@ function Get-ResultsReport {
 #>
 function Get-CollectedErrors {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [string]$ModuleName = $null
@@ -675,6 +684,7 @@ function Get-CollectedErrors {
 #>
 function Get-CollectedWarnings {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [string]$ModuleName = $null
@@ -707,3 +717,7 @@ Export-ModuleMember -Function @(
 )
 
 #endregion
+
+
+
+

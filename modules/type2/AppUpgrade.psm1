@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - AppUpgradeAudit.psm1 (Type1 - detection/analysis)
@@ -101,13 +101,13 @@ function Invoke-AppUpgrade {
     try {
         # Initialize module execution environment
         Initialize-ModuleExecution -ModuleName 'AppUpgrade'
-        
+
         # STEP 1: Run Type1 detection
         Write-Information "   Running upgrade detection..." -InformationAction Continue
         # Explicit assignment to prevent pipeline contamination
         $detectionResults = $null
         $detectionResults = Get-AppUpgradeAnalysis -Config $Config
-        
+
         # Display module banner
         Write-Host "`n" -NoNewline
         Write-Host "=================================================" -ForegroundColor Cyan
@@ -119,7 +119,7 @@ function Invoke-AppUpgrade {
         Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
-        
+
         # Null safety: ensure detectionResults is an array
         if ($null -eq $detectionResults) {
             $detectionResults = @()
@@ -127,15 +127,15 @@ function Invoke-AppUpgrade {
         elseif ($detectionResults -isnot [Array]) {
             $detectionResults = @($detectionResults)
         }
-        
+
         # Save detection results to temp_files/data/
         $detectionDataPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\app-upgrade-results.json"
         $detectionResults | ConvertTo-Json -Depth 10 | Set-Content $detectionDataPath | Out-Null
         Write-LogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detection complete: $($detectionResults.Count) upgrades available"
 
         # STEP 2: Load module configuration
-        $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\app-upgrade-config.json"
-        
+        $moduleConfigPath = Join-Path (Get-MaintenancePath 'ConfigRoot') "lists\app-upgrade\app-upgrade-config.json"
+
         if (-not (Test-Path $moduleConfigPath)) {
             Write-Warning "Module configuration not found at: $moduleConfigPath"
             $moduleConfig = @{
@@ -151,17 +151,15 @@ function Invoke-AppUpgrade {
         # STEP 3: Filter detection results (create diff list)
         Write-Information "   Filtering upgrades against exclude patterns..." -InformationAction Continue
         $diffList = Get-FilteredUpgradeList -DetectionResults $detectionResults -ModuleConfig $moduleConfig
-        
+
         # Save diff list
-        $diffPath = Join-Path (Get-MaintenancePath 'TempRoot') "temp\app-upgrade-diff.json"
-        $diffList | ConvertTo-Json -Depth 10 | Set-Content $diffPath | Out-Null
+        $diffPath = Save-DiffResults -ModuleName 'AppUpgrade' -DiffData $diffList -Component 'APP-UPGRADE'
         Write-Information "     $($diffList.Count) upgrades after filtering (excluded $($detectionResults.Count - $diffList.Count))" -InformationAction Continue
 
         # STEP 4: Setup execution logging
-        $executionLogDir = Join-Path (Get-MaintenancePath 'TempRoot') "logs\app-upgrade"
-        New-Item -Path $executionLogDir -ItemType Directory -Force | Out-Null
-        $executionLogPath = Join-Path $executionLogDir "execution.log"
-        
+        $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'app-upgrade' -FileName 'execution.log'
+        $executionLogDir = Split-Path -Parent $executionLogPath
+
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== Application Upgrade Execution ===" -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DetectedCount = $detectionResults.Count; FilteredCount = $diffList.Count; DryRun = $DryRun.IsPresent }
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detected: $($detectionResults.Count) upgrades available" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ Count = $detectionResults.Count }
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Filtered: $($diffList.Count) upgrades to process" -LogPath $executionLogPath -Operation 'Filter' -Metadata @{ FilteredCount = $diffList.Count; ExcludedCount = ($detectionResults.Count - $diffList.Count) }
@@ -176,10 +174,10 @@ function Invoke-AppUpgrade {
         elseif ($DryRun) {
             Write-Information "   DRY-RUN MODE: Simulating upgrades..." -InformationAction Continue
             Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message " DRY-RUN: Simulating upgrades" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
-            
+
             foreach ($upgrade in $diffList) {
                 Write-Information "    [DRY-RUN] Would upgrade: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion))" -InformationAction Continue
-                
+
                 # Use standardized DryRun logging
                 Write-OperationSkipped -Operation 'Upgrade' -Target $upgrade.Name -Component 'APP-UPGRADE' -Reason 'DryRun mode enabled' -LogPath $executionLogPath -AdditionalInfo @{
                     CurrentVersion   = $upgrade.CurrentVersion
@@ -198,7 +196,7 @@ function Invoke-AppUpgrade {
         else {
             Write-Information "   Executing upgrades..." -InformationAction Continue
             Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "LIVE EXECUTION: Processing $($diffList.Count) upgrades" -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $diffList.Count }
-            
+
             foreach ($upgrade in $diffList) {
                 # Log upgrade attempt with full details
                 Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Starting upgrade: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Metadata @{
@@ -207,13 +205,13 @@ function Invoke-AppUpgrade {
                     Source         = $upgrade.Source
                     Id             = $upgrade.Id
                 }
-                
+
                 $upgradeResult = Invoke-SingleUpgrade -Upgrade $upgrade -ExecutionLogPath $executionLogPath
-                
+
                 if ($upgradeResult.Success) {
                     $itemsProcessed++
                     Write-Information "     Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion)) in $([math]::Round($upgradeResult.Duration / 1000, 2))s" -InformationAction Continue
-                    
+
                     # Log summary success
                     Write-StructuredLogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message "Upgrade completed successfully: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Result 'Success' -Metadata @{
                         From     = $upgrade.CurrentVersion
@@ -224,7 +222,7 @@ function Invoke-AppUpgrade {
                 }
                 else {
                     Write-Warning "Failed to upgrade: $($upgrade.Name) - $($upgradeResult.Error)"
-                    
+
                     # Log summary failure
                     Write-StructuredLogEntry -Level 'ERROR' -Component 'APP-UPGRADE' -Message "Upgrade failed: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Result 'Failed' -Metadata @{
                         CurrentVersion = $upgrade.CurrentVersion
@@ -269,7 +267,7 @@ function Invoke-AppUpgrade {
                 PSVersion    = $PSVersionTable.PSVersion.ToString()
             }
         }
-        
+
         try {
             $executionSummary | ConvertTo-Json -Depth 10 | Set-Content $summaryPath -Force | Out-Null
             Write-Verbose "Execution summary saved to: $summaryPath"
@@ -287,14 +285,20 @@ function Invoke-AppUpgrade {
 
         Write-Information "   Upgrade execution complete: $itemsProcessed processed" -InformationAction Continue
 
-        return New-ModuleExecutionResult `
-            -Success $true `
-            -ItemsDetected $detectionResults.Count `
-            -ItemsProcessed $itemsProcessed `
-            -DurationMilliseconds $duration.TotalMilliseconds `
-            -LogPath $executionLogPath `
-            -ModuleName 'AppUpgrade' `
-            -DryRun $DryRun.IsPresent
+        # Build result object directly to avoid interactive prompts
+        $result = @{
+            Success            = $true
+            ItemsDetected      = $detectionResults.Count
+            ItemsProcessed     = $itemsProcessed
+            Duration           = [double]$duration.TotalMilliseconds
+            LogPath            = $executionLogPath
+            ModuleName         = 'AppUpgrade'
+            Error              = $null
+            DryRun             = $DryRun.IsPresent
+            ExecutionTimestamp = Get-Date -Format 'o'
+            AdditionalData     = @{}
+        }
+        return $result
     }
     catch {
         Complete-PerformanceTracking -Context $perfContext -Status 'Failed' | Out-Null
@@ -303,14 +307,21 @@ function Invoke-AppUpgrade {
         }
 
         Write-Error "AppUpgrade execution failed: $_"
-        return New-ModuleExecutionResult `
-            -Success $false `
-            -ItemsDetected 0 `
-            -ItemsProcessed $itemsProcessed `
-            -DurationMilliseconds ((Get-Date) - $startTime).TotalMilliseconds `
-            -LogPath $executionLogPath `
-            -ModuleName 'AppUpgrade' `
-            -ErrorMessage $_.Exception.Message
+        
+        # Build error result object directly
+        $result = @{
+            Success            = $false
+            ItemsDetected      = 0
+            ItemsProcessed     = $itemsProcessed
+            Duration           = [double]((Get-Date) - $startTime).TotalMilliseconds
+            LogPath            = $executionLogPath
+            ModuleName         = 'AppUpgrade'
+            Error              = $_.Exception.Message
+            DryRun             = $DryRun.IsPresent
+            ExecutionTimestamp = Get-Date -Format 'o'
+            AdditionalData     = @{}
+        }
+        return $result
     }
 }
 
@@ -422,7 +433,7 @@ function Invoke-SingleUpgrade {
             }
             default {
                 Write-OperationFailure -Operation 'Upgrade' -Target $Upgrade.Name -Component 'APP-UPGRADE-EXEC' -Error "Unknown source: $($Upgrade.Source)" -LogPath $ExecutionLogPath
-                return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -Error "Unknown source: $($Upgrade.Source)"
+                return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -DurationMilliseconds 0 -ErrorMessage "Unknown source: $($Upgrade.Source)"
             }
         }
 
@@ -437,7 +448,7 @@ function Invoke-SingleUpgrade {
 
         # Execute upgrade
         $process = Start-Process -FilePath $upgradeCommand -ArgumentList $upgradeArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stdout.txt") -RedirectStandardError (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stderr.txt")
-        
+
         $stdout = Get-Content (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stdout.txt") -Raw -ErrorAction SilentlyContinue
         $stderr = Get-Content (Join-Path (Get-MaintenancePath 'TempRoot') "temp\upgrade-stderr.txt") -Raw -ErrorAction SilentlyContinue
 
@@ -459,13 +470,13 @@ function Invoke-SingleUpgrade {
                 Command      = $commandString
                 Verification = $verificationResult
             }
-            
+
             # Log detailed output if available
             if (-not [string]::IsNullOrWhiteSpace($stdout)) {
                 Write-LogEntry -Level 'DEBUG' -Component 'APP-UPGRADE-EXEC' -Message "Command output: $stdout" -LogPath $ExecutionLogPath
             }
 
-            return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 1 -DurationMilliseconds $operationDuration.TotalMilliseconds
+            return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 1 -DurationMilliseconds $operationDuration.TotalMilliseconds -LogPath $executionLogPath
         }
         else {
             # Log failure with full error context
@@ -480,7 +491,7 @@ function Invoke-SingleUpgrade {
                 StdErr      = if ($stderr) { $stderr.Trim() } else { "No error output" }
             }
 
-            return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -Error "Exit code: $($process.ExitCode)"
+            return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds $operationDuration.TotalMilliseconds -ErrorMessage "Exit code: $($process.ExitCode)"
         }
     }
     catch {
@@ -495,7 +506,7 @@ function Invoke-SingleUpgrade {
             StackTrace  = $_.ScriptStackTrace
         }
 
-        return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -Error $_.Exception.Message
+        return New-ModuleExecutionResult -Success $false -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -ErrorMessage $_.Exception.Message
     }
 }
 
@@ -503,4 +514,7 @@ function Invoke-SingleUpgrade {
 
 # Export public function
 Export-ModuleMember -Function Invoke-AppUpgrade
+
+
+
 

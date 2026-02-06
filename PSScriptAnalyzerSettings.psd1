@@ -185,6 +185,16 @@
             CheckSeparator                  = $true
             CheckParameter                  = $false
         }
+
+        # Validate unused parameters
+        PSReviewUnusedParameter                     = @{
+            Enable = $true
+        }
+
+        # Enforce correct casing for cmdlets and keywords
+        PSUseCorrectCasing                          = @{
+            Enable = $true
+        }
         
         # Use proper brace placement (K&R style - opening brace on same line)
         PSPlaceOpenBrace                            = @{

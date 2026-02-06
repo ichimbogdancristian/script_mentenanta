@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (for configuration and logging - loaded globally)
 #   - SystemInventory.psm1 (for system analysis)
@@ -69,7 +69,7 @@ function Get-EssentialAppsAnalysis {
     param(
         [Parameter()]
         [PSCustomObject]$Config,
-        
+
         [Parameter()]
         [ValidateSet('System', 'Runtime', 'Office', 'Document', 'Editor', 'Browsers', 'Media', 'Development', 'all')]
         [string[]]$Categories = @('all'),
@@ -82,7 +82,7 @@ function Get-EssentialAppsAnalysis {
     )
 
     Write-Information " Starting essential applications audit..." -InformationAction Continue
-    
+
     # Start performance tracking
     $perfContext = $null
     try {
@@ -137,7 +137,7 @@ function Get-EssentialAppsAnalysis {
         }
 
         Write-Information "Analyzing $($essentialAppsList.Count) essential applications..." -InformationAction Continue
-        
+
         # Check for Microsoft Office before processing LibreOffice
         $isMicrosoftOfficeInstalled = Test-MicrosoftOfficeInstallation -InstalledApps $installedApps
 
@@ -152,9 +152,9 @@ function Get-EssentialAppsAnalysis {
                 }
                 continue
             }
-            
+
             $installationStatus = Test-ApplicationInstallation -AppDefinition $app -InstalledApps $installedApps
-            
+
             if ($installationStatus.IsInstalled) {
                 if ($IncludeInstalled) {
                     $installedItem = [PSCustomObject]@{
@@ -165,7 +165,7 @@ function Get-EssentialAppsAnalysis {
                         InstallationSource = $installationStatus.Source
                         InstallPath        = $installationStatus.InstallPath
                     }
-                    
+
                     # Log detected installed application
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-INSTALLED' -Message "Detected installed: $($app.name)" -Data @{
                         Status      = 'Already Installed'
@@ -175,7 +175,7 @@ function Get-EssentialAppsAnalysis {
                         InstallPath = $installationStatus.InstallPath
                         Description = $app.description
                     }
-                    
+
                     $auditResults.InstalledApps += $installedItem
                 }
             }
@@ -189,7 +189,7 @@ function Get-EssentialAppsAnalysis {
                     Priority          = Get-AppInstallPriority -AppDefinition $app
                     RecommendedMethod = Get-RecommendedInstallMethod -AppDefinition $app
                 }
-                
+
                 # Log detected missing application with detailed metadata
                 Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-MISSING' -Message "Missing app: $($app.name)" -Data @{
                     Status            = 'Not Installed'
@@ -201,13 +201,13 @@ function Get-EssentialAppsAnalysis {
                     RecommendedMethod = $missingApp.RecommendedMethod
                     InstallReason     = "Essential $($app.category) application not found on system"
                 }
-                
+
                 $auditResults.MissingApps += $missingApp
-                
+
                 # Add to recommended installs if high priority
                 if ($missingApp.Priority -eq 'High') {
                     $auditResults.RecommendedInstalls += $missingApp
-                    
+
                     # Log high priority recommendation
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-PRIORITY' -Message "High priority app missing: $($app.name)" -Data @{
                         Status            = 'High Priority Missing'
@@ -221,13 +221,13 @@ function Get-EssentialAppsAnalysis {
         }
 
         # Generate summary statistics
-        $completionPercentage = if ($essentialAppsList.Count -gt 0) { 
-            [math]::Round(($auditResults.InstalledApps.Count / $essentialAppsList.Count) * 100, 2) 
+        $completionPercentage = if ($essentialAppsList.Count -gt 0) {
+            [math]::Round(($auditResults.InstalledApps.Count / $essentialAppsList.Count) * 100, 2)
         }
-        else { 
-            0 
+        else {
+            0
         }
-        
+
         $auditResults.Summary = @{
             TotalScanned         = $essentialAppsList.Count
             InstalledCount       = $auditResults.InstalledApps.Count
@@ -260,7 +260,7 @@ function Get-EssentialAppsAnalysis {
             else {
                 $outputPath = Get-SessionPath -Category 'data' -FileName 'essential-apps-results.json'
             }
-            
+
             $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to standardized path: $outputPath" -InformationAction Continue
         }
@@ -282,7 +282,7 @@ function Get-EssentialAppsAnalysis {
     catch {
         $errorMsg = "Essential apps audit failed: $($_.Exception.Message)"
         Write-Error $errorMsg
-        
+
         try {
             Write-LogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS-AUDIT' -Message $errorMsg -Data @{ Error = $_.Exception }
             Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
@@ -290,7 +290,7 @@ function Get-EssentialAppsAnalysis {
         catch {
             Write-Verbose "Performance tracking cleanup failed: $_"
         }
-        
+
         throw
     }
 }
@@ -328,7 +328,7 @@ function Get-InstalledApplications {
         # Get from Winget (if available)
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             try {
-                $wingetList = winget list --accept-source-agreements 2>$null | 
+                $wingetList = winget list --accept-source-agreements 2>$null |
                 ConvertFrom-String -PropertyNames Name, Id, Version, Source -Delimiter "`t"
                 $installedApps += $wingetList | Where-Object { $_.Name -and $_.Name.Trim() -ne '' }
             }
@@ -388,7 +388,7 @@ function Test-ApplicationInstallation {
 
     foreach ($term in $searchTerms) {
         $matchedApp = $InstalledApps | Where-Object {
-            ($_.DisplayName -like "*$term*") -or 
+            ($_.DisplayName -like "*$term*") -or
             ($_.Name -like "*$term*") -or
             ($_.Id -like "*$term*")
         } | Select-Object -First 1
@@ -430,7 +430,7 @@ function Test-MicrosoftOfficeInstallation {
 
     foreach ($pattern in $officePatterns) {
         $matchedOffice = $InstalledApps | Where-Object {
-            ($_.DisplayName -like $pattern) -or 
+            ($_.DisplayName -like $pattern) -or
             ($_.Name -like $pattern) -or
             ($_.Publisher -like "*Microsoft Corporation*" -and $_.DisplayName -like "*Office*")
         } | Select-Object -First 1
@@ -456,8 +456,8 @@ function Test-MicrosoftOfficeInstallation {
 
         foreach ($regPath in $officeRegistryPaths) {
             if (Test-Path $regPath) {
-                $officeVersions = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue | 
-                Where-Object { $_.Name -match '\d+\.\d+' } | 
+                $officeVersions = Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '\d+\.\d+' } |
                 Select-Object -First 1
 
                 if ($officeVersions) {
@@ -560,3 +560,6 @@ New-Alias -Name 'Get-EssentialAppsAudit' -Value 'Get-EssentialAppsAnalysis'
 Export-ModuleMember -Function @(
     'Get-EssentialAppsAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-EssentialAppsAudit')  # Backward compatibility
+
+
+

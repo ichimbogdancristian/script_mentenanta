@@ -3,18 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{REPORT_TITLE}} - System Maintenance Report</title>
-    <link rel="stylesheet" href="modern-dashboard.css">
+    <title>{{REPORT_TITLE}} - {{COMPUTER_NAME}}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        /* Embedded critical CSS for immediate load */
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .loading { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 1.2rem; color: #8b949e;
-        }
+        {{CSS_CONTENT}}
     </style>
 </head>
 <body>
@@ -93,6 +87,44 @@
                     <div class="status-value">{{TOTAL_ERRORS}}</div>
                     <div class="status-label">Issues Found</div>
                     <div class="card-subtitle">{{ERROR_STATUS_TEXT}}</div>
+                </div>
+            </section>
+
+            <!-- Key Findings & Action Items -->
+            <section class="grid grid-2" id="insights">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🔎 Key Findings</h3>
+                        <div class="card-icon">✨</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="insights-list">
+                            {{KEY_FINDINGS}}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">✅ Priority Actions</h3>
+                        <div class="card-icon">🎯</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="insights-list">
+                            {{ACTION_ITEMS_SUMMARY}}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Project Resume -->
+            <section class="card" id="projectResume">
+                <div class="card-header">
+                    <h3 class="card-title">📌 Project Resume</h3>
+                    <div class="card-icon">🧾</div>
+                </div>
+                <div class="card-content">
+                    {{PROJECT_RESUME}}
                 </div>
             </section>
 
@@ -207,6 +239,39 @@
             <!-- Module Results -->
             <section class="grid grid-2" id="moduleResults">
                 {{MODULE_CARDS}}
+            </section>
+
+            <!-- Analysis & Timeline -->
+            <section class="grid grid-3" id="analysisGrid">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🧯 Error Analysis</h3>
+                        <div class="card-icon">🚨</div>
+                    </div>
+                    <div class="card-content">
+                        {{ERROR_ANALYSIS}}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🕒 Execution Timeline</h3>
+                        <div class="card-icon">⏱️</div>
+                    </div>
+                    <div class="card-content">
+                        {{EXECUTION_TIMELINE}}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🧭 Recommended Actions</h3>
+                        <div class="card-icon">🧩</div>
+                    </div>
+                    <div class="card-content">
+                        {{ACTION_ITEMS}}
+                    </div>
+                </div>
             </section>
 
             <!-- Execution Summary -->

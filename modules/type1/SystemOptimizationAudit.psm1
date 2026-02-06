@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -88,7 +88,7 @@ function Get-SystemOptimizationAnalysis {
     )
 
     Write-Information " Starting system optimization audit..." -InformationAction Continue
-    
+
     # Start performance tracking
     $perfContext = $null
     try {
@@ -189,7 +189,7 @@ function Get-SystemOptimizationAnalysis {
             else {
                 $outputPath = Get-SessionPath -Category 'data' -FileName 'system-optimization-results.json'
             }
-            
+
             $auditResults | ConvertTo-Json -Depth 20 -WarningAction SilentlyContinue | Out-File -FilePath $outputPath -Encoding UTF8
             Write-Information "Audit results saved to standardized path: $outputPath" -InformationAction Continue
         }
@@ -211,7 +211,7 @@ function Get-SystemOptimizationAnalysis {
     catch {
         $errorMsg = "System optimization audit failed: $($_.Exception.Message)"
         Write-Error $errorMsg
-        
+
         try {
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-OPT-AUDIT' -Message $errorMsg -Data @{ Error = $_.Exception }
             Complete-PerformanceTracking -Context $perfContext -Status 'Failed' -ErrorMessage $errorMsg
@@ -219,7 +219,7 @@ function Get-SystemOptimizationAnalysis {
         catch {
             Write-Verbose "Performance tracking cleanup failed: $_"
         }
-        
+
         throw
     }
 }
@@ -240,7 +240,7 @@ function Get-BasicSystemInfo {
     try {
         $computerInfo = Get-ComputerInfo -Property WindowsProductName, WindowsVersion, WindowsBuildLabEx, TotalPhysicalMemory
         $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-        
+
         return [PSCustomObject]@{
             OS                = $computerInfo.WindowsProductName
             Version           = $computerInfo.WindowsVersion
@@ -272,7 +272,7 @@ function Get-StartupOptimizationAudit {
         # Audit startup programs
         $startupApps = Get-CimInstance Win32_StartupCommand | Where-Object { $null -ne $_.Command }
         $highImpactApps = @()
-        
+
         foreach ($app in $startupApps) {
             if ($app.Name -match 'Adobe|Steam|Spotify|Skype|Teams' -and $app.Command -notmatch 'Critical|System') {
                 $highImpactApps += $app
@@ -284,7 +284,7 @@ function Get-StartupOptimizationAudit {
                     EstimatedSavings = '2-5 seconds boot time'
                     Target           = $app.Name
                 }
-                
+
                 # Log detected startup optimization opportunity
                 Write-DetectionLog -Operation 'Detect' -Target $app.Name -Component 'SYSOPT-STARTUP' -AdditionalInfo @{
                     Category         = 'Startup Application'
@@ -296,7 +296,7 @@ function Get-StartupOptimizationAudit {
                     OptimizationType = 'DisableStartupApp'
                     Reason           = "Non-essential application starting automatically at boot"
                 }
-                
+
                 $opportunities += $opportunityItem
             }
         }
@@ -304,7 +304,7 @@ function Get-StartupOptimizationAudit {
         # Audit services with permission handling
         try {
             $services = Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.StartType -eq 'Automatic' -and $_.Status -eq 'Running' }
-            $nonEssentialServices = $services | Where-Object { 
+            $nonEssentialServices = $services | Where-Object {
                 $_.Name -match 'Fax|TabletInputService|WSearch|Spooler|Themes' -and
                 $_.Name -notmatch 'BITS|Winmgmt|RpcSs|EventLog|Dhcp'
             }
@@ -323,7 +323,7 @@ function Get-StartupOptimizationAudit {
                 EstimatedSavings = '1-2 seconds boot time'
                 Target           = $service.Name
             }
-            
+
             # Log detected service optimization opportunity
             Write-DetectionLog -Operation 'Detect' -Target $service.Name -Component 'SYSOPT-SERVICE' -AdditionalInfo @{
                 Category         = 'System Service'
@@ -335,7 +335,7 @@ function Get-StartupOptimizationAudit {
                 OptimizationType = 'ChangeStartupType'
                 Reason           = "Non-essential service running automatically"
             }
-            
+
             $opportunities += $opportunityItem
         }
 
@@ -375,7 +375,7 @@ function Get-UIOptimizationAudit {
                 EstimatedSavings = '10-20% UI responsiveness'
                 Target           = 'VisualEffects'
             }
-            
+
             # Log detected visual effects optimization
             Write-DetectionLog -Operation 'Detect' -Target 'Visual Effects' -Component 'SYSOPT-UI' -AdditionalInfo @{
                 Category           = 'User Interface'
@@ -387,7 +387,7 @@ function Get-UIOptimizationAudit {
                 OptimizationType   = 'Registry modification'
                 Reason             = "Visual effects not optimized for performance"
             }
-            
+
             $opportunities += $opportunityItem
         }
 
@@ -402,7 +402,7 @@ function Get-UIOptimizationAudit {
                 EstimatedSavings = '5-10% UI responsiveness'
                 Target           = 'Animations'
             }
-            
+
             # Log detected animation optimization
             Write-DetectionLog -Operation 'Detect' -Target 'Window Animations' -Component 'SYSOPT-UI' -AdditionalInfo @{
                 Category         = 'User Interface'
@@ -412,7 +412,7 @@ function Get-UIOptimizationAudit {
                 OptimizationType = 'Registry modification'
                 Reason           = "Window animations can be optimized for better performance"
             }
-            
+
             $opportunities += $opportunityItem
         }
 
@@ -597,7 +597,7 @@ function Get-NetworkOptimizationAudit {
         $dnsServers = Get-DnsClientServerAddress | Where-Object { $_.AddressFamily -eq 2 }
         $publicDNS = @('8.8.8.8', '1.1.1.1', '208.67.222.222')
         $hasOptimalDNS = $false
-        
+
         foreach ($dns in $dnsServers) {
             if ($dns.ServerAddresses | Where-Object { $_ -in $publicDNS }) {
                 $hasOptimalDNS = $true
@@ -658,9 +658,9 @@ function Get-OptimizationScore {
         MaxScore         = $baseScore
         Deductions       = $deductions
         OpportunityCount = $AuditResults.OptimizationOpportunities.Count
-        Category         = if ($overallScore -ge 90) { 'Excellent' } 
-        elseif ($overallScore -ge 75) { 'Good' } 
-        elseif ($overallScore -ge 60) { 'Fair' } 
+        Category         = if ($overallScore -ge 90) { 'Excellent' }
+        elseif ($overallScore -ge 75) { 'Good' }
+        elseif ($overallScore -ge 60) { 'Fair' }
         else { 'Needs Improvement' }
     }
 }
@@ -722,3 +722,6 @@ New-Alias -Name 'Get-SystemOptimizationAudit' -Value 'Get-SystemOptimizationAnal
 Export-ModuleMember -Function @(
     'Get-SystemOptimizationAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-SystemOptimizationAudit')  # Backward compatibility
+
+
+

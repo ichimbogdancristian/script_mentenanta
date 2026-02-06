@@ -1,17 +1,17 @@
 /* 
- * Modern System Maintenance Dashboard CSS Framework v1.0
- * Inspired by modern web applications and system monitoring tools
- * Features: Dark/Light themes, Glassmorphism, Responsive design, Flexbox layouts
+ * Modern System Maintenance Dashboard CSS Framework v2.0
+ * Enhanced with better glassmorphism, animations, and professional styling
+ * Features: Dark/Light themes, Modern gradients, Smooth animations, Responsive grid
  */
 
 :root {
   /* Color Palette - Dark Theme (Primary) */
-  --bg-primary: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #21262d;
-  --bg-elevated: rgba(33, 38, 45, 0.8);
-  --bg-glass: rgba(255, 255, 255, 0.05);
-  --bg-glass-hover: rgba(255, 255, 255, 0.1);
+  --bg-primary: #0a0e27;
+  --bg-secondary: #151934;
+  --bg-tertiary: #1e2139;
+  --bg-elevated: rgba(30, 33, 57, 0.85);
+  --bg-glass: rgba(255, 255, 255, 0.06);
+  --bg-glass-hover: rgba(255, 255, 255, 0.12);
   
   --text-primary: #f0f6fc;
   --text-secondary: #8b949e;
@@ -493,6 +493,92 @@ body {
 .log-level.warning { color: var(--warning-light); }
 .log-level.success { color: var(--success-light); }
 .log-level.info { color: var(--info-light); }
+
+.log-tag {
+  display: inline-block;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  margin-right: var(--spacing-sm);
+}
+
+/* Insights & Findings */
+.insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.finding-item {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-secondary);
+}
+
+.finding-item.success { border-left: 3px solid var(--success); }
+.finding-item.warning { border-left: 3px solid var(--warning); }
+.finding-item.error { border-left: 3px solid var(--error); }
+.finding-item.info { border-left: 3px solid var(--info); }
+
+.finding-icon {
+  font-size: var(--font-size-lg);
+}
+
+.finding-text {
+  font-weight: 500;
+}
+
+.finding-meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  margin-top: 2px;
+}
+
+.no-findings,
+.no-actions {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Action Items */
+.action-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--spacing-sm);
+  align-items: center;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-secondary);
+}
+
+.action-item.priority-high { border-left: 3px solid var(--error); }
+.action-item.priority-medium { border-left: 3px solid var(--warning); }
+.action-item.priority-low { border-left: 3px solid var(--info); }
+
+.action-priority {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+}
+
+.action-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+}
 
 /* Data Tables */
 .data-table {

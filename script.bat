@@ -182,23 +182,95 @@ IF !ERRORLEVEL! EQU 0 (
     )
 )
 
-REM Detect pending restart specifically due to Windows Updates
-CALL :LOG_MESSAGE "Checking for pending restart due to Windows Updates..." "INFO" "LAUNCHER"
+REM Detect pending restart from all supported signals (Win10/11 safe)
+CALL :LOG_MESSAGE "Checking for pending restart status..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Reboot detection version: 3.1.1" "DEBUG" "LAUNCHER"
 SET "RESTART_NEEDED=NO"
+SET "RESTART_SIGNALS="
 
-REM Prefer PSWindowsUpdate if available for accurate detection
+REM Reboot loop guard (prevents repeated restart cycles after a reboot)
+SET "REBOOT_GUARD_FILE=%WORKING_DIR%temp_files\reboot_guard.txt"
+SET "REBOOT_GUARD_ACTIVE=NO"
+SET "REBOOT_GUARD_MINUTES=-1"
+FOR /F "tokens=*" %%A IN ('powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Test-Path '%REBOOT_GUARD_FILE%') { $age = (Get-Date) - (Get-Item '%REBOOT_GUARD_FILE%').LastWriteTime; [int]$age.TotalMinutes } else { -1 } } catch { -1 }"') DO SET "REBOOT_GUARD_MINUTES=%%A"
+IF NOT "!REBOOT_GUARD_MINUTES!"=="-1" IF !REBOOT_GUARD_MINUTES! LSS 30 (
+    SET "REBOOT_GUARD_ACTIVE=YES"
+    CALL :LOG_MESSAGE "Reboot loop guard active (last reboot attempt !REBOOT_GUARD_MINUTES! min ago)" "WARN" "LAUNCHER"
+)
+
+REM Prefer PSWindowsUpdate if available, but always evaluate registry signals too
 powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
-IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
-IF !ERRORLEVEL! EQU 2 (
-    CALL :LOG_MESSAGE "PSWindowsUpdate not available. Falling back to registry reboot flags." "INFO" "LAUNCHER"
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 1 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PSWindowsUpdate-RebootRequired")
+)
+IF !ERRORLEVEL! EQU 2 CALL :LOG_MESSAGE "PSWindowsUpdate not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
+IF !ERRORLEVEL! EQU 3 CALL :LOG_MESSAGE "PSWindowsUpdate check failed. Continuing with registry reboot signals." "WARN" "LAUNCHER"
+
+REM CoreInfrastructure-aligned registry checks
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=CBS-RebootPending") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,CBS-RebootPending")
+)
+
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootInProgress" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=CBS-RebootInProgress") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,CBS-RebootInProgress")
+)
+
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-RebootRequired")
+)
+
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\PostRebootReporting" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-PostRebootReporting") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-PostRebootReporting")
+)
+
+REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PendingFileRenameOperations") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PendingFileRenameOperations")
+)
+
+REM UpdateExeVolatile indicates a pending reboot after updates (non-zero value)
+SET "UPDATE_EXE_VOLATILE=0"
+FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Updates" /v UpdateExeVolatile 2^>nul ^| find /I "UpdateExeVolatile"') DO SET "UPDATE_EXE_VOLATILE=%%A"
+IF /I NOT "!UPDATE_EXE_VOLATILE!"=="0x0" (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=UpdateExeVolatile") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,UpdateExeVolatile")
+)
+
+REM Pending computer rename (ActiveComputerName != ComputerName)
+SET "ACTIVE_COMPUTERNAME="
+SET "PENDING_COMPUTERNAME="
+FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName" /v ComputerName 2^>nul ^| find /I "ComputerName"') DO SET "ACTIVE_COMPUTERNAME=%%B"
+FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName" /v ComputerName 2^>nul ^| find /I "ComputerName"') DO SET "PENDING_COMPUTERNAME=%%B"
+IF DEFINED ACTIVE_COMPUTERNAME IF DEFINED PENDING_COMPUTERNAME IF /I NOT "!ACTIVE_COMPUTERNAME!"=="!PENDING_COMPUTERNAME!" (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PendingComputerRename") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PendingComputerRename")
 )
 
 IF /I "%RESTART_NEEDED%"=="YES" (
-    CALL :LOG_MESSAGE "Pending restart detected for updates. Creating startup task and restarting..." "WARN" "LAUNCHER"
+    IF NOT DEFINED RESTART_SIGNALS SET "RESTART_SIGNALS=Unknown"
+    CALL :LOG_MESSAGE "Pending restart signals detected: %RESTART_SIGNALS%" "WARN" "LAUNCHER"
+)
+
+IF /I "%RESTART_NEEDED%"=="YES" (
+    IF /I "%REBOOT_GUARD_ACTIVE%"=="YES" (
+        CALL :LOG_MESSAGE "Restart suppressed by loop guard; continuing without reboot" "WARN" "LAUNCHER"
+        GOTO :AFTER_RESTART_CHECK
+    )
+    CALL :LOG_MESSAGE "Pending restart detected (signals: %RESTART_SIGNALS%). Creating startup task and restarting..." "WARN" "LAUNCHER"
+
+    REM Create/update reboot guard marker
+    if not exist "%WORKING_DIR%temp_files" mkdir "%WORKING_DIR%temp_files" >nul 2>&1
+    echo %DATE% %TIME% > "%REBOOT_GUARD_FILE%"
 
     REM Ensure any previous startup task is removed
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
@@ -224,6 +296,8 @@ IF /I "%RESTART_NEEDED%"=="YES" (
         CALL :LOG_MESSAGE "Failed to create startup task. Continuing without automatic restart." "ERROR" "LAUNCHER"
     )
 )
+
+:AFTER_RESTART_CHECK
 
 REM No pending restart; continue normal execution
 
@@ -1156,15 +1230,60 @@ IF "%PS_EXECUTABLE%"=="" (
 
 REM -----------------------------------------------------------------------------
 REM System Restore Point Creation (before orchestrator execution)
+REM Includes: Availability check, space allocation (minimum 10GB), and creation
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking System Protection status..." "INFO" "LAUNCHER"
 
 SET "SYS_DRIVE=%SystemDrive%"
 SET "SR_STATUS=UNKNOWN"
 SET "SR_VERIFY_STATUS=UNKNOWN"
+SET "MIN_RESTORE_SPACE_GB=10"
 
 REM Simple check for System Protection availability
 FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
+
+REM Check and allocate System Restore Point space (minimum 10GB)
+IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
+    CALL :LOG_MESSAGE "Checking System Protection disk space allocation..." "INFO" "LAUNCHER"
+    
+    REM Use vssadmin to check current shadow storage allocation (modern method)
+    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
+    
+    REM Parse current allocation
+    IF "!SR_SPACE_CHECK:~0,8!"=="CURRENT:" (
+        SET "SR_CURRENT_GB=!SR_SPACE_CHECK:~8!"
+        FOR /F "tokens=1 delims=." %%a IN ("!SR_CURRENT_GB!") DO SET "SR_CURRENT_GB_INT=%%a"
+        
+        REM Check if allocation is less than 10GB
+        IF !SR_CURRENT_GB_INT! LSS !MIN_RESTORE_SPACE_GB! (
+            CALL :LOG_MESSAGE "Current allocation is !SR_CURRENT_GB! GB (minimum required: !MIN_RESTORE_SPACE_GB! GB). Allocating..." "WARN" "LAUNCHER"
+            
+            REM Use vssadmin resize shadowstorage (correct modern method)
+            FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
+            
+            IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
+                CALL :LOG_MESSAGE "System Restore Point allocation set to !MIN_RESTORE_SPACE_GB! GB successfully" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "Failed to allocate System Restore Point space (may require administrator elevation or storage not yet configured)" "WARN" "LAUNCHER"
+            )
+        ) ELSE (
+            CALL :LOG_MESSAGE "System Protection allocation is sufficient (!SR_CURRENT_GB! GB >= !MIN_RESTORE_SPACE_GB! GB)" "SUCCESS" "LAUNCHER"
+        )
+    ) ELSE IF /I "!SR_SPACE_CHECK!"=="UNBOUNDED" (
+        CALL :LOG_MESSAGE "System Protection storage is unbounded (will use available space)" "SUCCESS" "LAUNCHER"
+    ) ELSE IF /I "!SR_SPACE_CHECK!"=="NO_CONFIG" (
+        CALL :LOG_MESSAGE "No shadow storage configured yet. Attempting to configure 10GB allocation..." "INFO" "LAUNCHER"
+        
+        REM Initialize shadow storage with vssadmin
+        FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
+        
+        IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
+            CALL :LOG_MESSAGE "Shadow storage initialized with 10GB allocation" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to initialize shadow storage - System Protection may need manual configuration" "WARN" "LAUNCHER"
+        )
+    )
+)
 
 IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     CALL :LOG_MESSAGE "System Protection is available and functional" "SUCCESS" "LAUNCHER"

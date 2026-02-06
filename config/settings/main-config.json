@@ -4,7 +4,12 @@
     "countdownSeconds": 30,
     "enableDryRun": true,
     "autoSelectDefault": true,
-    "showProgressBars": true
+    "showProgressBars": true,
+    "shutdown": {
+      "countdownSeconds": 120,
+      "cleanupOnTimeout": true,
+      "rebootOnTimeout": true
+    }
   },
   "modules": {
     "skipBloatwareRemoval": false,

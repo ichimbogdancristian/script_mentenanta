@@ -1,0 +1,353 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maintenance-automation/schemas/app-upgrade-config.schema.json",
+  "title": "Application Upgrade Configuration Schema",
+  "description": "Configuration for automated application upgrade management",
+  "type": "object",
+  "properties": {
+    "ModuleName": {
+      "type": "string",
+      "description": "Module identifier"
+    },
+    "ModuleEnabled": {
+      "type": "boolean",
+      "description": "Whether module is enabled"
+    },
+    "Description": {
+      "type": "string",
+      "description": "Module description"
+    },
+    "Version": {
+      "type": "string",
+      "description": "Configuration version"
+    },
+    "EnabledSources": {
+      "type": "array",
+      "description": "Enabled package sources",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ExcludePatterns": {
+      "type": "array",
+      "description": "Patterns to exclude from upgrades",
+      "items": {
+        "type": "string"
+      }
+    },
+    "upgradePolicy": {
+      "type": "string",
+      "enum": [
+        "All",
+        "Security",
+        "Manual",
+        "None"
+      ],
+      "description": "Default upgrade policy: All (upgrade everything), Security (only security updates), Manual (prompt), None (skip)"
+    },
+    "autoUpgradeEnabled": {
+      "type": "boolean",
+      "description": "Enable automatic upgrades without user intervention"
+    },
+    "packageManagers": {
+      "type": "object",
+      "description": "Package manager-specific settings",
+      "properties": {
+        "winget": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable winget upgrades"
+            },
+            "sources": {
+              "type": "array",
+              "description": "Winget sources to use",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "winget",
+                  "msstore"
+                ]
+              }
+            },
+            "acceptLicenses": {
+              "type": "boolean",
+              "description": "Automatically accept licenses"
+            },
+            "acceptSourceAgreements": {
+              "type": "boolean",
+              "description": "Automatically accept source agreements"
+            }
+          }
+        },
+        "chocolatey": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable Chocolatey upgrades"
+            },
+            "upgradeAllAtOnce": {
+              "type": "boolean",
+              "description": "Use 'choco upgrade all' instead of per-package"
+            },
+            "allowPrerelease": {
+              "type": "boolean",
+              "description": "Allow pre-release versions"
+            },
+            "pinPackages": {
+              "type": "array",
+              "description": "Packages to pin (prevent upgrades)",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "scoop": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable Scoop upgrades"
+            },
+            "updateBucketsFirst": {
+              "type": "boolean",
+              "description": "Update Scoop buckets before upgrading apps"
+            }
+          }
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "description": "Package filtering rules",
+      "properties": {
+        "includeList": {
+          "type": "array",
+          "description": "Only upgrade packages in this list (empty = upgrade all)",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "excludeList": {
+          "type": "array",
+          "description": "Never upgrade packages in this list",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "excludePatterns": {
+          "type": "array",
+          "description": "Regex patterns to exclude packages",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "onlyExplicitlyInstalled": {
+          "type": "boolean",
+          "description": "Only upgrade user-installed packages (skip dependencies)"
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "description": "Upgrade notification settings",
+      "properties": {
+        "notifyBeforeUpgrade": {
+          "type": "boolean",
+          "description": "Show notification before upgrading"
+        },
+        "notifyAfterUpgrade": {
+          "type": "boolean",
+          "description": "Show notification after successful upgrade"
+        },
+        "notifyOnFailure": {
+          "type": "boolean",
+          "description": "Show notification if upgrade fails"
+        },
+        "emailReport": {
+          "type": "boolean",
+          "description": "Send email report after upgrade"
+        },
+        "emailAddress": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address for reports"
+        }
+      }
+    },
+    "scheduling": {
+      "type": "object",
+      "description": "Upgrade scheduling settings",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable scheduled upgrades"
+        },
+        "frequency": {
+          "type": "string",
+          "enum": [
+            "Daily",
+            "Weekly",
+            "Monthly",
+            "OnStartup"
+          ],
+          "description": "Upgrade frequency"
+        },
+        "dayOfWeek": {
+          "type": "string",
+          "enum": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "description": "Day of week for weekly upgrades"
+        },
+        "timeOfDay": {
+          "type": "string",
+          "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Time of day for scheduled upgrades (HH:MM format)"
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "description": "Safety and rollback settings",
+      "properties": {
+        "createRestorePoint": {
+          "type": "boolean",
+          "description": "Create System Restore Point before upgrades"
+        },
+        "backupConfigs": {
+          "type": "boolean",
+          "description": "Backup application configurations before upgrade"
+        },
+        "testMode": {
+          "type": "boolean",
+          "description": "Test mode: check for upgrades but don't install"
+        },
+        "maxConcurrentUpgrades": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum number of concurrent upgrade processes"
+        },
+        "stopOnFirstFailure": {
+          "type": "boolean",
+          "description": "Stop all upgrades if any package fails"
+        }
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "description": "Upgrade reporting options",
+      "properties": {
+        "generateDetailedReport": {
+          "type": "boolean",
+          "description": "Generate detailed upgrade report"
+        },
+        "includeVersionHistory": {
+          "type": "boolean",
+          "description": "Include version history in report"
+        },
+        "reportFormat": {
+          "type": "string",
+          "enum": [
+            "HTML",
+            "JSON",
+            "Text",
+            "CSV"
+          ],
+          "description": "Report output format"
+        }
+      }
+    },
+    "ExecutionSettings": {
+      "type": "object",
+      "description": "Execution behavior settings",
+      "properties": {
+        "UpgradeTimeout": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "Timeout in seconds for upgrade operations"
+        },
+        "RetryAttempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Number of retry attempts on failure"
+        },
+        "RetryDelay": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Delay in seconds between retry attempts"
+        },
+        "ContinueOnError": {
+          "type": "boolean",
+          "description": "Continue with remaining upgrades if one fails"
+        }
+      }
+    },
+    "LoggingSettings": {
+      "type": "object",
+      "description": "Logging configuration",
+      "properties": {
+        "LogLevel": {
+          "type": "string",
+          "enum": [
+            "Verbose",
+            "Info",
+            "Warning",
+            "Error"
+          ],
+          "description": "Logging verbosity level"
+        },
+        "LogPath": {
+          "type": "string",
+          "description": "Path for upgrade logs"
+        },
+        "EnableDetailedLogging": {
+          "type": "boolean",
+          "description": "Enable detailed operation logging"
+        },
+        "DetailedOutput": {
+          "type": "boolean",
+          "description": "Enable detailed output during upgrade"
+        },
+        "CaptureVersionHistory": {
+          "type": "boolean",
+          "description": "Capture version history for upgrades"
+        }
+      }
+    },
+    "ReportingSettings": {
+      "type": "object",
+      "description": "Report generation settings",
+      "properties": {
+        "IncludeBeforeAfterVersions": {
+          "type": "boolean",
+          "description": "Include before and after version information in reports"
+        },
+        "TrackSizeChanges": {
+          "type": "boolean",
+          "description": "Track installation size changes during upgrades"
+        },
+        "GenerateUpgradeHistory": {
+          "type": "boolean",
+          "description": "Generate historical upgrade tracking reports"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
