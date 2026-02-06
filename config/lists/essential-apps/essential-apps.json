@@ -1,0 +1,86 @@
+[
+  {
+    "name": "PowerShell 7",
+    "winget": "Microsoft.Powershell",
+    "choco": "powershell",
+    "category": "System",
+    "description": "Modern PowerShell cross-platform"
+  },
+  {
+    "name": "Windows Terminal",
+    "winget": "Microsoft.WindowsTerminal",
+    "choco": "microsoft-windows-terminal",
+    "category": "System",
+    "description": "Modern terminal application"
+  },
+  {
+    "name": "Java Runtime Environment",
+    "winget": "Oracle.JavaRuntimeEnvironment",
+    "choco": "javaruntime",
+    "category": "Runtime",
+    "description": "Java runtime environment"
+  },
+  {
+    "name": "7-Zip",
+    "winget": "7zip.7zip",
+    "choco": "7zip",
+    "category": "Utilities",
+    "description": "Free and open-source file archiver with high compression ratio"
+  },
+  {
+    "name": "WinRAR",
+    "winget": "RARLab.WinRAR",
+    "choco": "winrar",
+    "category": "Utilities",
+    "description": "Powerful archive manager supporting RAR and ZIP formats"
+  },
+  {
+    "name": "Total Commander",
+    "winget": "Ghisler.TotalCommander",
+    "choco": "totalcommander",
+    "category": "Utilities",
+    "description": "Powerful file manager with dual-pane interface"
+  },
+  {
+    "name": "LibreOffice",
+    "winget": "TheDocumentFoundation.LibreOffice",
+    "choco": "libreoffice",
+    "category": "Office",
+    "description": "Free and open-source office suite (installed only if Microsoft Office not detected)"
+  },
+  {
+    "name": "Adobe Acrobat Reader",
+    "winget": "Adobe.Acrobat.Reader.64-bit",
+    "choco": "adobereader",
+    "category": "Document",
+    "description": "PDF reader and editor"
+  },
+  {
+    "name": "PDF24 Creator",
+    "winget": "geeksoftwareGmbH.PDF24Creator",
+    "choco": "pdf24",
+    "category": "Document",
+    "description": "Free PDF creator and editor"
+  },
+  {
+    "name": "Notepad++",
+    "winget": "Notepad++.Notepad++",
+    "choco": "notepadplusplus",
+    "category": "Editor",
+    "description": "Advanced text and code editor"
+  },
+  {
+    "name": "Google Chrome",
+    "winget": "Google.Chrome",
+    "choco": "googlechrome",
+    "category": "Browser",
+    "description": "Fast, secure web browser by Google"
+  },
+  {
+    "name": "Mozilla Firefox",
+    "winget": "Mozilla.Firefox",
+    "choco": "firefox",
+    "category": "Browser",
+    "description": "Open source web browser with privacy focus"
+  }
+]
