@@ -320,13 +320,8 @@ try {
         Write-Information "   Discovered $($Type2Modules.Count) Type2 modules via ModuleRegistry" -InformationAction Continue
         foreach ($moduleName in $Type2Modules) {
             $module = $discoveredModules[$moduleName]
-            Write-Information "     • $moduleName" -NoNewline -InformationAction Continue
-            if ($module.DependsOn) {
-                Write-Information " → $($module.DependsOn)" -InformationAction Continue
-            }
-            else {
-                Write-Information "" -InformationAction Continue
-            }
+            $dependencyInfo = if ($module.DependsOn) { " → $($module.DependsOn)" } else { "" }
+            Write-Information "     • $moduleName$dependencyInfo" -InformationAction Continue
         }
         
         # Validate dependencies
