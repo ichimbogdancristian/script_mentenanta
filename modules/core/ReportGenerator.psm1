@@ -857,7 +857,17 @@ function New-MaintenanceReport {
             Write-Information "✓ Generating module cards..." -InformationAction Continue
             $moduleCardsHtml = ""
             $moduleCount = 0
-            foreach ($moduleResult in $processedData.ModuleResults.Values) {
+            foreach ($entry in $processedData.ModuleResults.GetEnumerator()) {
+                $moduleResult = $entry.Value
+                if ($moduleResult -is [hashtable]) {
+                    if (-not $moduleResult.ContainsKey('ModuleName')) {
+                        $moduleResult['ModuleName'] = $entry.Key
+                    }
+                }
+                elseif (-not $moduleResult.ModuleName) {
+                    $moduleResult | Add-Member -NotePropertyName ModuleName -NotePropertyValue $entry.Key -Force
+                }
+
                 $moduleCount++
                 Write-Verbose "  Building card $moduleCount/$($processedData.ModuleResults.Count): $($moduleResult.ModuleName)"
                 $moduleCard = Build-ModuleCard -ModuleResult $moduleResult -CardTemplate $templates.ModuleCard
@@ -912,8 +922,8 @@ function New-MaintenanceReport {
             }
 
             # Map modern-dashboard tokens to dashboard data
-            $systemHealthScore = [int]($dashboardData.SYSTEM_HEALTH_SCORE ?? 0)
-            $successRateScore = [int]($dashboardData.SUCCESS_RATE ?? 0)
+            $systemHealthScore = ConvertTo-IntSafe -Value ($dashboardData.SYSTEM_HEALTH_SCORE ?? 0)
+            $successRateScore = ConvertTo-IntSafe -Value ($dashboardData.SUCCESS_RATE ?? 0)
             $totalErrors = [int]($dashboardData.ERROR_COUNT ?? 0)
             $overallStatusClass = if ($systemHealthScore -ge 90) { 'status-success' } elseif ($systemHealthScore -ge 70) { 'status-warning' } else { 'status-error' }
             $securityStatusClass = if ($successRateScore -ge 90) { 'status-success' } elseif ($successRateScore -ge 70) { 'status-warning' } else { 'status-error' }
@@ -3141,6 +3151,42 @@ function Get-SuccessRate {
 
 <#
 .SYNOPSIS
+    Safely converts mixed values (including percentages) to integers
+#>
+function ConvertTo-IntSafe {
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [Parameter(Mandatory)]
+        $Value,
+
+        [Parameter()]
+        [int]$Default = 0
+    )
+
+    if ($null -eq $Value) {
+        return $Default
+    }
+
+    if ($Value -is [int]) {
+        return $Value
+    }
+
+    $text = $Value.ToString()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $Default
+    }
+
+    $match = [regex]::Match($text, '\d+(?:\.\d+)?')
+    if ($match.Success) {
+        return [int][math]::Round([double]$match.Value, 0)
+    }
+
+    return $Default
+}
+
+<#
+.SYNOPSIS
     Calculates total execution duration
 #>
 function Get-TotalDuration {
@@ -3677,9 +3723,14 @@ function Build-ExecutionTimeline {
     try {
         $html = ""
 
+        if (-not $AggregatedResults.ModuleResults) {
+            return "            <div class=`"no-data`">Timeline data not available</div>`n"
+        }
+
         foreach ($moduleResult in $AggregatedResults.ModuleResults.Values) {
             $moduleName = $moduleResult.ModuleName
-            $status = $moduleResult.Status.ToLower()
+            $statusText = $moduleResult.Status ?? 'info'
+            $status = $statusText.ToString().ToLowerInvariant()
             $startTime = if ($moduleResult.Metrics -and $moduleResult.Metrics.StartTime) {
                 $moduleResult.Metrics.StartTime
             }
@@ -4065,6 +4116,9 @@ function Build-ModuleCard {
 
     try {
         $moduleName = $ModuleResult.ModuleName
+        if ([string]::IsNullOrWhiteSpace($moduleName)) {
+            $moduleName = $ModuleResult.Name ?? $ModuleResult.Module ?? $ModuleResult.ModuleKey ?? 'UnknownModule'
+        }
         Write-Verbose "Building enhanced module card for $moduleName"
 
         # Try to load enhanced template if not provided
@@ -4089,7 +4143,7 @@ function Build-ModuleCard {
             'SecurityEnhancement' = @{ Icon = '🔐'; Name = 'Security Enhancement'; Description = 'Applies advanced security configurations' }
         }
 
-        $info = $moduleInfo[$moduleName] ?? @{ Icon = '⚙️'; Name = $moduleName; Description = 'Module execution results' }
+        $info = if ($moduleInfo.ContainsKey($moduleName)) { $moduleInfo[$moduleName] } else { @{ Icon = '⚙️'; Name = $moduleName; Description = 'Module execution results' } }
 
         # Extract metrics from either Metrics property or direct properties
         $totalOps = [int]($ModuleResult.Metrics.ItemsProcessed ?? $ModuleResult.ItemsProcessed ?? $ModuleResult.TotalOperations ?? 0)
@@ -4334,9 +4388,28 @@ function Build-ModuleLogsSection {
 
     if ($logFilePath -and (Test-Path $logFilePath)) {
         try {
-            $logData = Get-Content $logFilePath -Raw | ConvertFrom-Json
-            if ($logData.Entries) {
-                $logEntries = $logData.Entries | Select-Object -First 20
+            $rawContent = Get-Content $logFilePath -Raw
+            if (-not [string]::IsNullOrWhiteSpace($rawContent)) {
+                try {
+                    $logData = $rawContent | ConvertFrom-Json -ErrorAction Stop
+                    if ($logData.Entries) {
+                        $logEntries = $logData.Entries | Select-Object -First 20
+                    }
+                    elseif ($logData -is [System.Collections.IEnumerable] -and $logData -isnot [string]) {
+                        $logEntries = @($logData) | Select-Object -First 20
+                    }
+                    else {
+                        $logEntries = @($logData) | Select-Object -First 20
+                    }
+                }
+                catch {
+                    $logEntries = Get-Content $logFilePath | ForEach-Object {
+                        $line = $_.Trim()
+                        if ($line) {
+                            try { $line | ConvertFrom-Json } catch { $null }
+                        }
+                    } | Where-Object { $_ } | Select-Object -First 20
+                }
             }
         }
         catch {
@@ -4351,13 +4424,15 @@ function Build-ModuleLogsSection {
 
     if ($logEntries.Count -gt 0) {
         foreach ($log in $logEntries) {
-            $level = if ($log.Level) { $log.Level.ToLower() } else { 'info' }
-            $timestamp = if ($log.Timestamp) {
-                try { [datetime]::Parse($log.Timestamp).ToString('HH:mm:ss') }
+            $levelValue = $log.Level ?? $log.level
+            $level = if ($levelValue) { $levelValue.ToString().ToLowerInvariant() } else { 'info' }
+            $timestampValue = $log.Timestamp ?? $log.timestamp
+            $timestamp = if ($timestampValue) {
+                try { [datetime]::Parse($timestampValue).ToString('HH:mm:ss') }
                 catch { (Get-Date).ToString('HH:mm:ss') }
             }
             else { (Get-Date).ToString('HH:mm:ss') }
-            $message = if ($log.Message) { $log.Message } else { $log.ToString() }
+            $message = if ($log.Message) { $log.Message } elseif ($log.message) { $log.message } else { $log.ToString() }
 
             $levelIcon = switch ($level) {
                 'success' { '✓' }
