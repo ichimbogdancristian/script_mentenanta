@@ -1,0 +1,20 @@
+i am thinking of a refactoring of the entire project,
+i want you to do a comprehensive scan off all the modules in this project, 
+do a comprehensive analysis of how preexisting lists and diff lists work ,
+why there is a SystemInventory module in the type2 folder this is a type1 module clearly .. propose a solution for that 
+in the next version of my project i want type1 modules to be run first and determine witch type2 modules need to be run
+i want to refactor all type 1 inventory modules to corespond every type 2 that will have os dependent functions so if earlyer windows 10 is detected it should run a specific part of the module (function) and so on for windows 11
+i want you to consolidate SecurityEnhancement.psm1 and SecurityEnhancementCIS.psm1 into a single module SecurityEnhancement and remove the other
+I want you to consolidate SystemOptimization.psm1 and TelemetryDisable.psm1 into a single module SystemOptimization and remove the other
+i think all modules in /modules should have structured functions inside them for windows 10 and for windows 11
+i think based on the findings that the new system inventory the orchstrator should decide if for example EssentiakApps module should run
+I want you to give me an onest opinion about my refactoring plan pluses and minuses
+i want suggestions about my plan
+create extensive and detailed documentation 
+this is a complex task split it in to multiple tasks 
+analyse carrefouly dont rush things do it right
+
+
+i want you to do a individual comprehensive scan off all the modules in this project analyze how logs are produced stored interpreted processed , analyze data format field types paths everything, find out what is brocken or out of 
+
+can you do a comprehensive detailed of the core infrastructure of this entire project  i want to give me an onest opinion and clear pointers to optimise this infrastructure , investigate 100% of the contents of every module do not use automations, investigate the inventory creation and procesing, the logging mechanism and log processing, the report generation, scan for unused blocks of code , faulty logic, brocken paths, inconsistent naming, inconsistent data types and formats, everything that you can find, i feel that many of modules overlap investigate type1 modules as an entity and type2 modules as an entity , suggest comsolidation posibilities, suggestions to eliminae overlapping , create detailed document with the findings and suggestions this is a complex task split it in to multiple tasks, analyse things carrefouly dont rush things do it right

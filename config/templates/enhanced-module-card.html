@@ -1,0 +1,118 @@
+<!-- Enhanced Professional Module Card Template v3.0 -->
+<!-- Flexbox-based layout with comprehensive module information and logs -->
+<div class="module-card card {{MODULE_STATUS_CLASS}}" data-module-id="{{MODULE_ID}}">
+    <!-- Module Header -->
+    <div class="module-header">
+        <div class="module-icon-wrapper">
+            <div class="module-icon">{{MODULE_ICON}}</div>
+            <div class="module-status-indicator {{MODULE_STATUS_CLASS}}" title="{{MODULE_STATUS_TEXT}}"></div>
+        </div>
+        <div class="module-title-section">
+            <h3 class="module-title">{{MODULE_NAME}}</h3>
+            <p class="module-description">{{MODULE_DESCRIPTION}}</p>
+        </div>
+        <div class="module-timestamp">
+            <span class="timestamp-label">Completed:</span>
+            <span class="timestamp-value">{{EXECUTION_TIMESTAMP}}</span>
+        </div>
+    </div>
+
+    <!-- Module Metrics -->
+    <div class="module-metrics">
+        <div class="metric-card">
+            <div class="metric-icon">🎯</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ITEMS_PROCESSED}}</div>
+                <div class="metric-label">Items Processed</div>
+            </div>
+        </div>
+        <div class="metric-card success">
+            <div class="metric-icon">✅</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ITEMS_SUCCESSFUL}}</div>
+                <div class="metric-label">Successful</div>
+            </div>
+        </div>
+        <div class="metric-card warning">
+            <div class="metric-icon">⚠️</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ITEMS_SKIPPED}}</div>
+                <div class="metric-label">Skipped</div>
+            </div>
+        </div>
+        <div class="metric-card error">
+            <div class="metric-icon">❌</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ITEMS_FAILED}}</div>
+                <div class="metric-label">Failed</div>
+            </div>
+        </div>
+        <div class="metric-card info">
+            <div class="metric-icon">⏱️</div>
+            <div class="metric-content">
+                <div class="metric-value">{{EXECUTION_DURATION}}</div>
+                <div class="metric-label">Duration</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="module-progress">
+        <div class="progress-header">
+            <span class="progress-label">Overall Success Rate</span>
+            <span class="progress-percentage">{{SUCCESS_RATE}}%</span>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill {{MODULE_STATUS_CLASS}}" data-width="{{SUCCESS_RATE}}" style="width: {{SUCCESS_RATE}}%;">
+                <div class="progress-bar-shine"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Module Details Section -->
+    <div class="module-details">
+        {{MODULE_DETAILS_HTML}}
+    </div>
+
+    <!-- Module Logs Section -->
+    <div class="module-logs-section">
+        <div class="logs-header">
+            <div class="logs-title">
+                <span class="logs-icon">📋</span>
+                <h4>Execution Logs</h4>
+                <span class="logs-count">({{LOGS_COUNT}} entries)</span>
+            </div>
+            <div class="logs-filter-controls">
+                <button class="log-filter-btn active" data-level="all" onclick="filterLogs('{{MODULE_ID}}', 'all')">All</button>
+                <button class="log-filter-btn" data-level="info" onclick="filterLogs('{{MODULE_ID}}', 'info')">Info</button>
+                <button class="log-filter-btn" data-level="success" onclick="filterLogs('{{MODULE_ID}}', 'success')">Success</button>
+                <button class="log-filter-btn" data-level="warning" onclick="filterLogs('{{MODULE_ID}}', 'warning')">Warnings</button>
+                <button class="log-filter-btn" data-level="error" onclick="filterLogs('{{MODULE_ID}}', 'error')">Errors</button>
+            </div>
+        </div>
+        <div class="logs-content" id="logs-{{MODULE_ID}}">
+            {{MODULE_LOGS_HTML}}
+        </div>
+        <div class="logs-footer">
+            <button class="logs-expand-btn" onclick="expandAllLogs('{{MODULE_ID}}')">
+                <span>↓</span> Show All Logs
+            </button>
+        </div>
+    </div>
+
+    <!-- Module Actions -->
+    <div class="module-actions">
+        <button class="action-btn primary" onclick="viewModuleDetails('{{MODULE_ID}}')">
+            <span class="action-icon">📊</span>
+            <span class="action-label">View Details</span>
+        </button>
+        <button class="action-btn secondary" onclick="exportModuleLogs('{{MODULE_ID}}')">
+            <span class="action-icon">💾</span>
+            <span class="action-label">Export Logs</span>
+        </button>
+        <button class="action-btn secondary" onclick="rerunModule('{{MODULE_ID}}')">
+            <span class="action-icon">🔄</span>
+            <span class="action-label">Re-run</span>
+        </button>
+    </div>
+</div>

@@ -1,0 +1,41 @@
+<!-- Module Card Template (Plain Tokens) -->
+<div class="card module-card {{MODULE_STATUS_CLASS}}">
+    <div class="card-header">
+        <div class="card-icon">{{MODULE_ICON}}</div>
+        <h3 class="card-title">{{MODULE_NAME}}</h3>
+        <div class="module-status {{MODULE_STATUS_CLASS}}"></div>
+    </div>
+
+    <div class="card-content">
+        <div class="module-stats">
+            <div class="stat-item">
+                <span class="stat-label">Status:</span>
+                <span class="stat-value status-text-{{MODULE_STATUS_CLASS}}">{{MODULE_STATUS}}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Execution Time:</span>
+                <span class="stat-value">{{EXECUTION_DURATION}}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Items Detected:</span>
+                <span class="stat-value">{{ITEMS_DETECTED}}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Items Processed:</span>
+                <span class="stat-value">{{ITEMS_PROCESSED}}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Success Rate:</span>
+                <span class="stat-value">{{MODULE_SUCCESS_RATE}}%</span>
+            </div>
+        </div>
+
+        <div class="module-description">
+            <p>{{MODULE_DESCRIPTION}}</p>
+        </div>
+
+        <div class="module-details">
+            {{TASK_CONTENT}}
+        </div>
+    </div>
+</div>

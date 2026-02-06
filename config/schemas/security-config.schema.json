@@ -1,0 +1,180 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maintenance-automation/schemas/security-config.schema.json",
+  "title": "Security Enhancement Configuration Schema",
+  "description": "Security hardening and enhancement settings",
+  "type": "object",
+  "properties": {
+    "windowsDefender": {
+      "type": "object",
+      "description": "Windows Defender configuration",
+      "properties": {
+        "enableRealTimeProtection": {
+          "type": "boolean",
+          "description": "Enable real-time protection"
+        },
+        "enableCloudProtection": {
+          "type": "boolean",
+          "description": "Enable cloud-delivered protection"
+        },
+        "enableAutoSampleSubmission": {
+          "type": "boolean",
+          "description": "Automatically submit samples to Microsoft"
+        },
+        "scanSchedule": {
+          "type": "string",
+          "enum": ["Daily", "Weekly", "Monthly", "Disabled"],
+          "description": "Scheduled scan frequency"
+        }
+      }
+    },
+    "firewall": {
+      "type": "object",
+      "description": "Windows Firewall configuration",
+      "properties": {
+        "enableForAllProfiles": {
+          "type": "boolean",
+          "description": "Enable firewall for all network profiles"
+        },
+        "blockInboundByDefault": {
+          "type": "boolean",
+          "description": "Block all inbound connections by default"
+        },
+        "allowOutboundByDefault": {
+          "type": "boolean",
+          "description": "Allow all outbound connections by default"
+        },
+        "enableNotifications": {
+          "type": "boolean",
+          "description": "Show notifications when firewall blocks connections"
+        }
+      }
+    },
+    "userAccess": {
+      "type": "object",
+      "description": "User access control settings",
+      "properties": {
+        "enableUAC": {
+          "type": "boolean",
+          "description": "Enable User Access Control"
+        },
+        "uacLevel": {
+          "type": "string",
+          "enum": ["AlwaysNotify", "NotifyAppChanges", "NotifyAppNoDesktop", "NeverNotify"],
+          "description": "UAC prompt level"
+        },
+        "requirePasswordOnWake": {
+          "type": "boolean",
+          "description": "Require password when waking from sleep"
+        },
+        "disableGuestAccount": {
+          "type": "boolean",
+          "description": "Disable guest account"
+        }
+      }
+    },
+    "networkSecurity": {
+      "type": "object",
+      "description": "Network security settings",
+      "properties": {
+        "disableNetBIOS": {
+          "type": "boolean",
+          "description": "Disable NetBIOS over TCP/IP"
+        },
+        "disableLLMNR": {
+          "type": "boolean",
+          "description": "Disable Link-Local Multicast Name Resolution"
+        },
+        "disableSMBv1": {
+          "type": "boolean",
+          "description": "Disable SMB version 1 protocol"
+        },
+        "enableSMBEncryption": {
+          "type": "boolean",
+          "description": "Require SMB encryption"
+        }
+      }
+    },
+    "remoteAccess": {
+      "type": "object",
+      "description": "Remote access configuration",
+      "properties": {
+        "disableRemoteDesktop": {
+          "type": "boolean",
+          "description": "Disable Remote Desktop connections"
+        },
+        "disableRemoteAssistance": {
+          "type": "boolean",
+          "description": "Disable Remote Assistance"
+        },
+        "allowRDPOnlyWithNLA": {
+          "type": "boolean",
+          "description": "Require Network Level Authentication for RDP"
+        }
+      }
+    },
+    "exploitProtection": {
+      "type": "object",
+      "description": "Exploit protection settings",
+      "properties": {
+        "enableDEP": {
+          "type": "boolean",
+          "description": "Enable Data Execution Prevention"
+        },
+        "enableASLR": {
+          "type": "boolean",
+          "description": "Enable Address Space Layout Randomization"
+        },
+        "enableCFG": {
+          "type": "boolean",
+          "description": "Enable Control Flow Guard"
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "description": "Security auditing settings",
+      "properties": {
+        "enableAuditPolicy": {
+          "type": "boolean",
+          "description": "Enable advanced audit policy"
+        },
+        "auditLogonEvents": {
+          "type": "boolean",
+          "description": "Audit logon/logoff events"
+        },
+        "auditObjectAccess": {
+          "type": "boolean",
+          "description": "Audit object access"
+        },
+        "auditPrivilegeUse": {
+          "type": "boolean",
+          "description": "Audit privilege use"
+        }
+      }
+    },
+    "cisBaseline": {
+      "type": "object",
+      "description": "CIS Benchmark compliance settings",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Apply CIS Benchmark hardening"
+        },
+        "level": {
+          "type": "integer",
+          "enum": [1, 2],
+          "description": "CIS Benchmark level (1=basic, 2=strict)"
+        },
+        "skipRecommendations": {
+          "type": "array",
+          "description": "CIS recommendation IDs to skip",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9.]+$"
+          }
+        }
+      }
+    }
+  }
+}

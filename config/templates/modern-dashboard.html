@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{REPORT_TITLE}} - {{COMPUTER_NAME}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        {{CSS_CONTENT}}
+    </style>
+</head>
+<body>
+    <!-- Loading State -->
+    <div class="loading" id="loadingState">
+        <div style="text-align: center;">
+            <div style="margin-bottom: 1rem;">⚡ Loading System Report...</div>
+            <div style="font-size: 0.875rem; opacity: 0.7;">Analyzing maintenance data</div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div class="dashboard fade-in" id="mainDashboard" style="display: none;">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="dashboard-title">
+                <div>
+                    <h1>🛠️ {{COMPUTER_NAME}} System Maintenance</h1>
+                    <div class="dashboard-subtitle">
+                        Generated on {{GENERATION_DATE}} | Session: {{SESSION_ID}} | v{{VERSION}}
+                    </div>
+                </div>
+                <div class="dashboard-controls">
+                    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
+                        <span id="themeIcon">🌙</span>
+                    </button>
+                    <button class="quick-action" onclick="window.print()" title="Print Report">
+                        🖨️ Print
+                    </button>
+                    <button class="quick-action" onclick="exportData()" title="Export Data">
+                        📊 Export
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="dashboard-main">
+            <!-- Executive Summary -->
+            <section class="grid grid-4" id="summaryCards">
+                <div class="card status-card status-{{OVERALL_STATUS_CLASS}} slide-up">
+                    <div class="card-header">
+                        <div class="card-icon">🏥</div>
+                        <div class="module-status {{OVERALL_STATUS_CLASS}}"></div>
+                    </div>
+                    <div class="status-value">{{OVERALL_HEALTH_SCORE}}%</div>
+                    <div class="status-label">System Health</div>
+                    <div class="card-subtitle">{{OVERALL_STATUS_TEXT}}</div>
+                </div>
+
+                <div class="card status-card status-{{SECURITY_STATUS_CLASS}} slide-up">
+                    <div class="card-header">
+                        <div class="card-icon">🔐</div>
+                        <div class="module-status {{SECURITY_STATUS_CLASS}}"></div>
+                    </div>
+                    <div class="status-value">{{SECURITY_SCORE}}%</div>
+                    <div class="status-label">Security Score</div>
+                    <div class="card-subtitle">{{SECURITY_STATUS_TEXT}}</div>
+                </div>
+
+                <div class="card status-card status-{{PERFORMANCE_STATUS_CLASS}} slide-up">
+                    <div class="card-header">
+                        <div class="card-icon">⚡</div>
+                        <div class="module-status {{PERFORMANCE_STATUS_CLASS}}"></div>
+                    </div>
+                    <div class="status-value">{{ITEMS_PROCESSED}}</div>
+                    <div class="status-label">Items Processed</div>
+                    <div class="card-subtitle">{{EXECUTION_DURATION}} execution time</div>
+                </div>
+
+                <div class="card status-card status-{{ERRORS_STATUS_CLASS}} slide-up">
+                    <div class="card-header">
+                        <div class="card-icon">⚠️</div>
+                        <div class="module-status {{ERRORS_STATUS_CLASS}}"></div>
+                    </div>
+                    <div class="status-value">{{TOTAL_ERRORS}}</div>
+                    <div class="status-label">Issues Found</div>
+                    <div class="card-subtitle">{{ERROR_STATUS_TEXT}}</div>
+                </div>
+            </section>
+
+            <!-- Key Findings & Action Items -->
+            <section class="grid grid-2" id="insights">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🔎 Key Findings</h3>
+                        <div class="card-icon">✨</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="insights-list">
+                            {{KEY_FINDINGS}}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">✅ Priority Actions</h3>
+                        <div class="card-icon">🎯</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="insights-list">
+                            {{ACTION_ITEMS_SUMMARY}}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Project Resume -->
+            <section class="card" id="projectResume">
+                <div class="card-header">
+                    <h3 class="card-title">📌 Project Resume</h3>
+                    <div class="card-icon">🧾</div>
+                </div>
+                <div class="card-content">
+                    {{PROJECT_RESUME}}
+                </div>
+            </section>
+
+            <!-- System Information -->
+            <section class="system-info-grid">
+                <div class="card system-info-card scale-in">
+                    <div class="card-header">
+                        <h3 class="card-title">💻 System Information</h3>
+                        <div class="card-icon">🖥️</div>
+                    </div>
+                    <div class="card-content">
+                        <span class="system-info-label">Computer Name:</span>
+                        <span class="system-info-value">{{COMPUTER_NAME}}</span>
+                        
+                        <span class="system-info-label">Operating System:</span>
+                        <span class="system-info-value">{{OS_NAME}} {{OS_VERSION}}</span>
+                        
+                        <span class="system-info-label">Architecture:</span>
+                        <span class="system-info-value">{{OS_ARCHITECTURE}}</span>
+                        
+                        <span class="system-info-label">Last Boot:</span>
+                        <span class="system-info-value">{{LAST_BOOT_TIME}}</span>
+                        
+                        <span class="system-info-label">Uptime:</span>
+                        <span class="system-info-value">{{SYSTEM_UPTIME}}</span>
+                        
+                        <span class="system-info-label">User:</span>
+                        <span class="system-info-value">{{CURRENT_USER}}</span>
+                    </div>
+                </div>
+
+                <div class="card system-info-card scale-in">
+                    <div class="card-header">
+                        <h3 class="card-title">🔧 Hardware Overview</h3>
+                        <div class="card-icon">⚙️</div>
+                    </div>
+                    <div class="card-content">
+                        <span class="system-info-label">Processor:</span>
+                        <span class="system-info-value">{{CPU_NAME}}</span>
+                        
+                        <span class="system-info-label">Cores:</span>
+                        <span class="system-info-value">{{CPU_CORES}} cores ({{CPU_LOGICAL_CORES}} logical)</span>
+                        
+                        <span class="system-info-label">Total Memory:</span>
+                        <span class="system-info-value">{{TOTAL_MEMORY_GB}} GB</span>
+                        
+                        <span class="system-info-label">Available Memory:</span>
+                        <span class="system-info-value">{{AVAILABLE_MEMORY_GB}} GB</span>
+                        
+                        <span class="system-info-label">Memory Usage:</span>
+                        <div class="progress-bar" style="grid-column: 2;">
+                            <div class="progress-fill {{MEMORY_STATUS_CLASS}}" style="width: {{MEMORY_USAGE_PERCENT}}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card system-info-card scale-in">
+                    <div class="card-header">
+                        <h3 class="card-title">💾 Storage Overview</h3>
+                        <div class="card-icon">🗂️</div>
+                    </div>
+                    <div class="card-content">
+                        <span class="system-info-label">System Drive:</span>
+                        <span class="system-info-value">{{SYSTEM_DRIVE}}</span>
+                        
+                        <span class="system-info-label">Total Space:</span>
+                        <span class="system-info-value">{{SYSTEM_DRIVE_TOTAL_GB}} GB</span>
+                        
+                        <span class="system-info-label">Free Space:</span>
+                        <span class="system-info-value">{{SYSTEM_DRIVE_FREE_GB}} GB</span>
+                        
+                        <span class="system-info-label">Usage:</span>
+                        <div class="progress-bar" style="grid-column: 2;">
+                            <div class="progress-fill {{DISK_STATUS_CLASS}}" style="width: {{DISK_USAGE_PERCENT}}%"></div>
+                        </div>
+                        
+                        <span class="system-info-label">File System:</span>
+                        <span class="system-info-value">{{SYSTEM_DRIVE_FILESYSTEM}}</span>
+                        
+                        <span class="system-info-label">Status:</span>
+                        <span class="system-info-value">{{DISK_HEALTH_STATUS}}</span>
+                    </div>
+                </div>
+
+                <div class="card system-info-card scale-in">
+                    <div class="card-header">
+                        <h3 class="card-title">🌐 Network & Connectivity</h3>
+                        <div class="card-icon">📡</div>
+                    </div>
+                    <div class="card-content">
+                        <span class="system-info-label">Network Status:</span>
+                        <span class="system-info-value">{{NETWORK_STATUS}}</span>
+                        
+                        <span class="system-info-label">Primary Adapter:</span>
+                        <span class="system-info-value">{{PRIMARY_NETWORK_ADAPTER}}</span>
+                        
+                        <span class="system-info-label">IP Address:</span>
+                        <span class="system-info-value">{{PRIMARY_IP_ADDRESS}}</span>
+                        
+                        <span class="system-info-label">DNS Servers:</span>
+                        <span class="system-info-value">{{DNS_SERVERS}}</span>
+                        
+                        <span class="system-info-label">Domain:</span>
+                        <span class="system-info-value">{{DOMAIN_STATUS}}</span>
+                        
+                        <span class="system-info-label">Firewall:</span>
+                        <span class="system-info-value">{{FIREWALL_STATUS}}</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Module Results -->
+            <section class="grid grid-2" id="moduleResults">
+                {{MODULE_CARDS}}
+            </section>
+
+            <!-- Analysis & Timeline -->
+            <section class="grid grid-3" id="analysisGrid">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🧯 Error Analysis</h3>
+                        <div class="card-icon">🚨</div>
+                    </div>
+                    <div class="card-content">
+                        {{ERROR_ANALYSIS}}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🕒 Execution Timeline</h3>
+                        <div class="card-icon">⏱️</div>
+                    </div>
+                    <div class="card-content">
+                        {{EXECUTION_TIMELINE}}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🧭 Recommended Actions</h3>
+                        <div class="card-icon">🧩</div>
+                    </div>
+                    <div class="card-content">
+                        {{ACTION_ITEMS}}
+                    </div>
+                </div>
+            </section>
+
+            <!-- Execution Summary -->
+            <section class="grid grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">📋 Execution Summary</h3>
+                        <div class="card-icon">📊</div>
+                    </div>
+                    <div class="card-content">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Module</th>
+                                    <th>Status</th>
+                                    <th>Items</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{EXECUTION_SUMMARY_ROWS}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🔍 System Changes</h3>
+                        <div class="card-icon">📝</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="log-viewer">
+                            <div class="log-header">
+                                <div class="log-title">Recent Modifications</div>
+                                <div class="log-controls">
+                                    <button class="log-control" onclick="filterLogs('all')">All</button>
+                                    <button class="log-control" onclick="filterLogs('success')">Success</button>
+                                    <button class="log-control" onclick="filterLogs('warning')">Warnings</button>
+                                    <button class="log-control" onclick="filterLogs('error')">Errors</button>
+                                </div>
+                            </div>
+                            <div class="log-content" id="systemChangesLog">
+                                {{SYSTEM_CHANGES_LOG}}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Actions -->
+            <section class="card">
+                <div class="card-header">
+                    <h3 class="card-title">🚀 Quick Actions & Recommendations</h3>
+                    <div class="card-icon">⚡</div>
+                </div>
+                <div class="card-content">
+                    <div class="quick-actions">
+                        <a href="#" class="quick-action" onclick="runQuickMaintenance()">
+                            🔄 Run Quick Maintenance
+                        </a>
+                        <a href="#" class="quick-action" onclick="scheduleNextRun()">
+                            📅 Schedule Next Run
+                        </a>
+                        <a href="#" class="quick-action" onclick="viewFullLogs()">
+                            📄 View Full Logs
+                        </a>
+                        <a href="#" class="quick-action" onclick="exportSettings()">
+                            ⚙️ Export Settings
+                        </a>
+                        <a href="#" class="quick-action" onclick="createSystemRestore()">
+                            💾 Create Restore Point
+                        </a>
+                        <a href="#" class="quick-action" onclick="downloadReport()">
+                            📥 Download Report
+                        </a>
+                    </div>
+                    <div style="margin-top: var(--spacing-lg); padding-top: var(--spacing-lg); border-top: 1px solid var(--border-secondary);">
+                        <h4 style="color: var(--text-primary); margin-bottom: var(--spacing-md);">💡 Recommendations</h4>
+                        <div id="recommendations">
+                            {{RECOMMENDATIONS}}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="card" style="text-align: center; margin-top: var(--spacing-2xl);">
+                <div class="card-content" style="color: var(--text-muted); font-size: var(--font-size-sm);">
+                    <p>Generated by <strong>Windows Maintenance Orchestrator v{{VERSION}}</strong></p>
+                    <p>Report generated at {{GENERATION_TIMESTAMP}} | Total execution time: {{TOTAL_EXECUTION_TIME}}</p>
+                    <p style="margin-top: var(--spacing-md);">
+                        🔒 This report contains system information for: <strong>{{COMPUTER_NAME}}</strong> 
+                        | Session ID: <code>{{SESSION_ID}}</code>
+                    </p>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Embedded JavaScript -->
+    <script>
+        // Theme Management
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            html.setAttribute('data-theme', newTheme);
+            document.getElementById('themeIcon').textContent = newTheme === 'dark' ? '🌙' : '☀️';
+            
+            // Save preference
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // Load saved theme
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            document.getElementById('themeIcon').textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+        }
+
+        // Log Filtering
+        function filterLogs(level) {
+            const logEntries = document.querySelectorAll('.log-entry');
+            logEntries.forEach(entry => {
+                if (level === 'all' || entry.classList.contains(level)) {
+                    entry.style.display = '';
+                } else {
+                    entry.style.display = 'none';
+                }
+            });
+            
+            // Update active button
+            document.querySelectorAll('.log-control').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        // Quick Actions
+        function runQuickMaintenance() {
+            alert('This would launch a quick maintenance routine.\n\nIn a real implementation, this could:\n• Clear temporary files\n• Check for updates\n• Run quick system scans');
+        }
+
+        function scheduleNextRun() {
+            const nextRun = new Date();
+            nextRun.setDate(nextRun.getDate() + 7);
+            alert(`Next maintenance run scheduled for:\n${nextRun.toLocaleDateString()} at ${nextRun.toLocaleTimeString()}`);
+        }
+
+        function viewFullLogs() {
+            const logWindow = window.open('', 'logs', 'width=800,height=600');
+            logWindow.document.write(`
+                <html>
+                <head><title>Full Maintenance Logs</title></head>
+                <body style="font-family: monospace; padding: 20px; background: #0d1117; color: #f0f6fc;">
+                <h2>🔍 Full Maintenance Logs</h2>
+                <pre style="white-space: pre-wrap; background: #161b22; padding: 20px; border-radius: 8px;">
+{{FULL_LOGS}}
+                </pre>
+                </body>
+                </html>
+            `);
+        }
+
+        function exportSettings() {
+            const settings = {
+                computerName: '{{COMPUTER_NAME}}',
+                sessionId: '{{SESSION_ID}}',
+                reportDate: '{{GENERATION_DATE}}',
+                moduleResults: 'Extracted module configuration...'
+            };
+            
+            const dataStr = JSON.stringify(settings, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `maintenance-settings-{{COMPUTER_NAME}}-{{SESSION_ID}}.json`;
+            link.click();
+        }
+
+        function createSystemRestore() {
+            alert('This would create a system restore point.\n\nIn a real implementation, this would:\n• Create a Windows System Restore point\n• Backup current system settings\n• Enable quick rollback if needed');
+        }
+
+        function downloadReport() {
+            // Create a downloadable version of the report
+            const reportHtml = document.documentElement.outerHTML;
+            const blob = new Blob([reportHtml], {type: 'text/html'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `system-maintenance-report-{{COMPUTER_NAME}}-{{SESSION_ID}}.html`;
+            link.click();
+        }
+
+        function exportData() {
+            const data = {
+                metadata: {
+                    computerName: '{{COMPUTER_NAME}}',
+                    reportDate: '{{GENERATION_DATE}}',
+                    sessionId: '{{SESSION_ID}}',
+                    version: '{{VERSION}}'
+                },
+                systemInfo: {
+                    os: '{{OS_NAME}} {{OS_VERSION}}',
+                    uptime: '{{SYSTEM_UPTIME}}',
+                    memory: '{{TOTAL_MEMORY_GB}} GB',
+                    disk: '{{SYSTEM_DRIVE_TOTAL_GB}} GB'
+                },
+                summary: {
+                    healthScore: '{{OVERALL_HEALTH_SCORE}}%',
+                    securityScore: '{{SECURITY_SCORE}}%',
+                    itemsProcessed: '{{ITEMS_PROCESSED}}',
+                    totalErrors: '{{TOTAL_ERRORS}}'
+                }
+            };
+            
+            const dataStr = JSON.stringify(data, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `system-report-data-{{SESSION_ID}}.json`;
+            link.click();
+        }
+
+        // Smooth loading animation
+        function initDashboard() {
+            setTimeout(() => {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('mainDashboard').style.display = 'block';
+                
+                // Animate cards in sequence
+                const cards = document.querySelectorAll('.slide-up, .scale-in');
+                cards.forEach((card, index) => {
+                    setTimeout(() => {
+                        card.style.animationDelay = `${index * 0.1}s`;
+                    }, index * 100);
+                });
+            }, 1000);
+        }
+
+        // Module card interaction functions
+        function filterLogs(moduleId, level) {
+            const logsContainer = document.getElementById(`logs-${moduleId}`);
+            if (!logsContainer) return;
+            
+            const logEntries = logsContainer.querySelectorAll('.log-entry');
+            const filterButtons = logsContainer.closest('.module-logs-section').querySelectorAll('.log-filter-btn');
+            
+            // Update button states
+            filterButtons.forEach(btn => {
+                if (btn.dataset.level === level) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Filter log entries
+            logEntries.forEach(entry => {
+                if (level === 'all' || entry.classList.contains(level)) {
+                    entry.style.display = '';
+                } else {
+                    entry.style.display = 'none';
+                }
+            });
+        }
+        
+        function expandAllLogs(moduleId) {
+            const logsContainer = document.getElementById(`logs-${moduleId}`);
+            const expandBtn = event.target.closest('.logs-expand-btn');
+            
+            if (!logsContainer) return;
+            
+            if (logsContainer.style.maxHeight === 'none' || logsContainer.style.maxHeight === '') {
+                logsContainer.style.maxHeight = '400px';
+                expandBtn.innerHTML = '<span>↓</span> Show All Logs';
+            } else {
+                logsContainer.style.maxHeight = 'none';
+                expandBtn.innerHTML = '<span>↑</span> Show Less';
+            }
+        }
+        
+        function viewModuleDetails(moduleId) {
+            const moduleCard = document.querySelector(`[data-module-id="${moduleId}"]`);
+            if (!moduleCard) {
+                alert(`Module ${moduleId} details not found.`);
+                return;
+            }
+            
+            // Create a detailed view modal
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.8);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+                padding: 20px;
+            `;
+            
+            const modalContent = document.createElement('div');
+            modalContent.style.cssText = `
+                background: var(--bg-primary);
+                border: 1px solid var(--border-secondary);
+                border-radius: var(--radius-xl);
+                padding: var(--spacing-xl);
+                max-width: 900px;
+                width: 100%;
+                max-height: 90vh;
+                overflow-y: auto;
+                box-shadow: var(--shadow-xl);
+            `;
+            
+            modalContent.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg);">
+                    <h2 style="margin: 0; color: var(--text-primary);">📊 ${moduleId} - Detailed View</h2>
+                    <button onclick="this.closest('[style*=fixed]').remove()" style="background: var(--bg-glass); border: 1px solid var(--border-secondary); border-radius: var(--radius-md); padding: var(--spacing-sm) var(--spacing-md); cursor: pointer; color: var(--text-primary);">✕ Close</button>
+                </div>
+                ${moduleCard.outerHTML}
+            `;
+            
+            modal.appendChild(modalContent);
+            document.body.appendChild(modal);
+            
+            // Close on background click
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+        }
+        
+        function exportModuleLogs(moduleId) {
+            const logsContainer = document.getElementById(`logs-${moduleId}`);
+            if (!logsContainer) {
+                alert('No logs available for this module.');
+                return;
+            }
+            
+            const logEntries = logsContainer.querySelectorAll('.log-entry');
+            let logsText = `=== ${moduleId} Module Logs ===\n`;
+            logsText += `Generated: ${new Date().toLocaleString()}\n\n`;
+            
+            logEntries.forEach(entry => {
+                const timestamp = entry.querySelector('.log-timestamp')?.textContent || '';
+                const message = entry.querySelector('.log-message')?.textContent || '';
+                const level = Array.from(entry.classList).find(c => ['info', 'success', 'warning', 'error'].includes(c)) || 'info';
+                logsText += `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
+            });
+            
+            // Create and download file
+            const blob = new Blob([logsText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${moduleId}-logs-${new Date().toISOString().slice(0,10)}.txt`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function rerunModule(moduleId) {
+            if (confirm(`Are you sure you want to re-run the ${moduleId} module?\n\nNote: This will execute the module again with current system state.`)) {
+                alert(`Module re-run functionality would be implemented here.\n\nIn a production system, this would:\n• Launch PowerShell with elevated privileges\n• Execute only the ${moduleId} module\n• Show real-time progress\n• Update the report when complete`);
+            }
+        }
+        
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initTheme();
+            initDashboard();
+            
+            // Add some interactive effects
+            document.querySelectorAll('.card').forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    this.style.boxShadow = 'var(--shadow-xl)';
+                });
+                card.addEventListener('mouseleave', function() {
+                    this.style.boxShadow = '';
+                });
+            });
+            
+            // Initialize module cards
+            document.querySelectorAll('.module-card').forEach((card, index) => {
+                card.style.animationDelay = `${index * 0.1}s`;
+                card.classList.add('fade-in');
+            });
+        });
+    </script>
+</body>
+</html>

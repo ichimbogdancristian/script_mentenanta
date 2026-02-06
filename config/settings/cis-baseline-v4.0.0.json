@@ -1,0 +1,374 @@
+{
+    "metadata": {
+        "version": "4.0.0",
+        "benchmark": "CIS Microsoft Windows 10 Enterprise",
+        "description": "CIS Windows 10 Enterprise v4.0.0 Security Baseline",
+        "complianceFrameworks": [
+            "CIS Controls v8",
+            "NIST SP 800-53",
+            "PCI-DSS v4.0",
+            "HIPAA",
+            "SOC 2",
+            "ISO 27001"
+        ],
+        "lastUpdated": "2026-01-31"
+    },
+    "passwordPolicies": {
+        "enforcePasswordHistory": {
+            "controlID": "1.1.1",
+            "value": 24,
+            "unit": "passwords",
+            "description": "Enforce password history of at least 24 passwords",
+            "recommendations": "CIS, NIST 800-53"
+        },
+        "maximumPasswordAge": {
+            "controlID": "1.1.2",
+            "value": 90,
+            "unit": "days",
+            "description": "Set maximum password age to 90 days",
+            "recommendations": "CIS, PCI-DSS"
+        },
+        "minimumPasswordAge": {
+            "controlID": "1.1.3",
+            "value": 1,
+            "unit": "day",
+            "description": "Set minimum password age to 1 day",
+            "recommendations": "CIS"
+        },
+        "minimumPasswordLength": {
+            "controlID": "1.1.4",
+            "value": 14,
+            "unit": "characters",
+            "description": "Set minimum password length to 14 characters",
+            "recommendations": "CIS, NIST 800-63B"
+        },
+        "passwordComplexity": {
+            "controlID": "1.1.5",
+            "value": true,
+            "description": "Require passwords to meet complexity requirements",
+            "requirements": [
+                "Contain uppercase letters (A-Z)",
+                "Contain lowercase letters (a-z)",
+                "Contain digits (0-9)",
+                "Contain non-alphanumeric characters (!@#$%^&*)"
+            ],
+            "recommendations": "CIS, NIST 800-53"
+        },
+        "passwordMustMeetComplexity": {
+            "registryPath": "HKLM:\\System\\CurrentControlSet\\Control\\Lsa",
+            "registryName": "PasswordComplexity",
+            "value": 1
+        }
+    },
+    "accountLockoutPolicies": {
+        "lockoutDuration": {
+            "controlID": "1.2.1",
+            "value": 30,
+            "unit": "minutes",
+            "description": "Set account lockout duration to 30 minutes",
+            "recommendations": "CIS"
+        },
+        "lockoutThreshold": {
+            "controlID": "1.2.2",
+            "value": 5,
+            "unit": "invalid login attempts",
+            "description": "Set account lockout threshold to 5 invalid login attempts",
+            "recommendations": "CIS, NIST 800-53"
+        },
+        "resetLockoutCounter": {
+            "controlID": "1.2.3",
+            "value": 15,
+            "unit": "minutes",
+            "description": "Set reset lockout counter after 15 minutes of inactivity",
+            "recommendations": "CIS"
+        }
+    },
+    "uacSettings": {
+        "adminApprovalMode": {
+            "controlID": "2.3.17.1",
+            "description": "Enable UAC Admin Approval Mode for built-in Administrator",
+            "registryPath": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "registryName": "FilterAdministratorToken",
+            "value": 1,
+            "recommendations": "CIS"
+        },
+        "elevationPromptBehavior": {
+            "controlID": "2.3.17.3",
+            "description": "Set elevation prompt behavior for standard users to deny",
+            "registryPath": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "registryName": "ConsentPromptBehaviorUser",
+            "value": 0,
+            "options": {
+                "0": "Automatically deny elevation requests",
+                "1": "Prompt for credentials on secure desktop",
+                "3": "Prompt for consent on secure desktop"
+            }
+        },
+        "elevationPromptForAdmins": {
+            "controlID": "2.3.17.2",
+            "description": "Set elevation prompt behavior for administrators",
+            "registryPath": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "registryName": "ConsentPromptBehaviorAdmin",
+            "value": 2,
+            "options": {
+                "0": "Elevate without prompting",
+                "1": "Prompt for credentials",
+                "2": "Prompt for consent on secure desktop",
+                "3": "Prompt for credentials on secure desktop"
+            }
+        },
+        "requireCTRLALTDEL": {
+            "controlID": "2.3.7.1",
+            "description": "Require CTRL+ALT+DEL before logon",
+            "registryPath": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "registryName": "DisableCAD",
+            "value": 0
+        },
+        "dontDisplayLastSignedIn": {
+            "controlID": "2.3.7.2",
+            "description": "Do not display last signed-in username",
+            "registryPath": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "registryName": "DontDisplayLastUserName",
+            "value": 1
+        }
+    },
+    "windowsFirewall": {
+        "domainProfile": {
+            "controlID": "9.1",
+            "description": "Enable Windows Firewall for Domain profile",
+            "enabled": true,
+            "defaultInboundAction": "Block",
+            "defaultOutboundAction": "Allow",
+            "notificationMode": 1,
+            "loggingPath": "%SystemRoot%\\System32\\logfiles\\firewall\\domainfw.log",
+            "logFileSize": 16384,
+            "logDroppedPackets": 1,
+            "logSuccessfulConnections": 1
+        },
+        "privateProfile": {
+            "controlID": "9.2",
+            "description": "Enable Windows Firewall for Private profile",
+            "enabled": true,
+            "defaultInboundAction": "Block",
+            "defaultOutboundAction": "Allow",
+            "notificationMode": 1,
+            "loggingPath": "%SystemRoot%\\System32\\logfiles\\firewall\\privatefw.log",
+            "logFileSize": 16384,
+            "logDroppedPackets": 1,
+            "logSuccessfulConnections": 1
+        },
+        "publicProfile": {
+            "controlID": "9.3",
+            "description": "Enable Windows Firewall for Public profile",
+            "enabled": true,
+            "defaultInboundAction": "Block",
+            "defaultOutboundAction": "Allow",
+            "notificationMode": 1,
+            "loggingPath": "%SystemRoot%\\System32\\logfiles\\firewall\\publicfw.log",
+            "logFileSize": 16384,
+            "logDroppedPackets": 1,
+            "logSuccessfulConnections": 1
+        }
+    },
+    "auditingPolicies": {
+        "credentialValidation": {
+            "controlID": "17.1.1",
+            "category": "Logon/Logoff",
+            "subcategory": "Credential Validation",
+            "success": true,
+            "failure": true,
+            "description": "Audit Credential Validation"
+        },
+        "logon": {
+            "controlID": "17.1.2",
+            "category": "Logon/Logoff",
+            "subcategory": "Logon",
+            "success": true,
+            "failure": true,
+            "description": "Audit Logon events"
+        },
+        "logoff": {
+            "controlID": "17.1.3",
+            "category": "Logon/Logoff",
+            "subcategory": "Logoff",
+            "success": true,
+            "failure": true,
+            "description": "Audit Logoff events"
+        },
+        "accountLockout": {
+            "controlID": "17.2.1",
+            "category": "Account Management",
+            "subcategory": "Account Lockout",
+            "success": false,
+            "failure": true,
+            "description": "Audit Account Lockout"
+        },
+        "userAccountManagement": {
+            "controlID": "17.2.2",
+            "category": "Account Management",
+            "subcategory": "User Account Management",
+            "success": true,
+            "failure": true,
+            "description": "Audit User Account Management"
+        },
+        "securityGroupManagement": {
+            "controlID": "17.2.3",
+            "category": "Account Management",
+            "subcategory": "Security Group Management",
+            "success": true,
+            "failure": true,
+            "description": "Audit Security Group Management"
+        },
+        "processCreation": {
+            "controlID": "17.3.2",
+            "category": "Detailed Tracking",
+            "subcategory": "Process Creation",
+            "success": true,
+            "failure": false,
+            "description": "Audit Process Creation"
+        },
+        "fileShare": {
+            "controlID": "17.6.2",
+            "category": "Object Access",
+            "subcategory": "File Share",
+            "success": true,
+            "failure": true,
+            "description": "Audit File Share access"
+        }
+    },
+    "servicesToDisable": {
+        "bluetooth": {
+            "controlID": "5.1",
+            "serviceNames": [
+                "BTAGService",
+                "bthserv"
+            ],
+            "description": "Disable Bluetooth services"
+        },
+        "mapsBroker": {
+            "controlID": "5.4",
+            "serviceName": "MapsBroker",
+            "description": "Disable Downloaded Maps Manager"
+        },
+        "geolocation": {
+            "controlID": "5.6",
+            "serviceName": "lfsvc",
+            "description": "Disable Geolocation Service"
+        },
+        "printSpooler": {
+            "controlID": "5.19",
+            "serviceName": "Spooler",
+            "description": "Disable Print Spooler (if not needed)"
+        },
+        "remoteDesktop": {
+            "controlID": "5.23",
+            "serviceName": "TermService",
+            "description": "Disable Remote Desktop Services (if not needed)"
+        },
+        "xbox": {
+            "controlID": "5.44-5.47",
+            "serviceNames": [
+                "XboxGipSvc",
+                "XblAuthManager",
+                "XblGameSave",
+                "XboxNetApiSvc"
+            ],
+            "description": "Disable Xbox services"
+        }
+    },
+    "defenderSettings": {
+        "realTimeProtection": {
+            "controlID": "2.6.1",
+            "setting": "DisableRealtimeMonitoring",
+            "value": false,
+            "description": "Enable Windows Defender real-time protection"
+        },
+        "behaviorMonitoring": {
+            "controlID": "2.6.2",
+            "setting": "DisableBehaviorMonitoring",
+            "value": false,
+            "description": "Enable behavior monitoring"
+        },
+        "ioavProtection": {
+            "controlID": "2.6.3",
+            "setting": "DisableIOAVProtection",
+            "value": false,
+            "description": "Enable IOAV protection for downloads"
+        },
+        "unknownThreatAction": {
+            "controlID": "2.6.4",
+            "setting": "UnknownThreatDefaultAction",
+            "value": "Quarantine",
+            "options": [
+                "Clean",
+                "Quarantine",
+                "Remove",
+                "Allow"
+            ]
+        },
+        "scheduledScan": {
+            "controlID": "2.6.5",
+            "scanType": "Full",
+            "scheduleDay": 1,
+            "scheduleTime": "02:00",
+            "description": "Schedule full system scans weekly"
+        }
+    },
+    "encryptionSettings": {
+        "credentialGuard": {
+            "controlID": "18.1",
+            "registryPath": "HKLM:\\System\\CurrentControlSet\\Control\\Lsa",
+            "registryName": "LsaCfgFlags",
+            "value": 1,
+            "description": "Enable Credential Guard",
+            "requirements": [
+                "UEFI firmware",
+                "Secure Boot",
+                "TPM 2.0 (recommended)"
+            ]
+        },
+        "bitlocker": {
+            "controlID": "18.2",
+            "description": "Enable BitLocker encryption on system drive",
+            "requirements": [
+                "TPM 2.0 (strongly recommended)",
+                "UEFI firmware with Secure Boot",
+                "NTFS file system"
+            ],
+            "deploymentMethod": "Group Policy or manual configuration"
+        },
+        "ntfsEFS": {
+            "controlID": "18.3",
+            "description": "Enable EFS for sensitive files",
+            "recommendedFolders": [
+                "%UserProfile%\\Documents",
+                "%UserProfile%\\Desktop"
+            ]
+        }
+    },
+    "additionalControls": {
+        "windowsUpdates": {
+            "controlID": "2.5.1",
+            "description": "Configure automatic Windows updates",
+            "autoUpdateOption": 3,
+            "options": {
+                "2": "Notify for download and auto install",
+                "3": "Auto download and notify for install",
+                "4": "Auto download and install on schedule"
+            },
+            "scheduledInstallDay": "Every Sunday",
+            "scheduledInstallTime": "02:00"
+        },
+        "secureBoot": {
+            "description": "Ensure Secure Boot is enabled in UEFI",
+            "verificationMethod": "BIOS/UEFI settings or PowerShell: Confirm-SecureBootUEFI"
+        },
+        "smb": {
+            "controlID": "8.3.x",
+            "description": "Enable SMB signing and disable SMB v1",
+            "requireSigningInbound": true,
+            "requireSigningOutbound": true,
+            "disableSMBv1": true
+        }
+    }
+}

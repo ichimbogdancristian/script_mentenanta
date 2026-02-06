@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maintenance-automation/schemas/bloatware-list.schema.json",
+  "title": "Bloatware Detection List Schema",
+  "description": "Schema for bloatware package names and patterns",
+  "type": "object",
+  "required": ["all"],
+  "properties": {
+    "all": {
+      "type": "array",
+      "description": "Master list of bloatware package names/patterns",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "description": "Package name or pattern (e.g., 'Acer.AcerPowerManagement', 'Microsoft.BingNews')"
+      },
+      "uniqueItems": true
+    },
+    "oem": {
+      "type": "array",
+      "description": "OEM-specific bloatware (manufacturer pre-installed software)",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
+      "uniqueItems": true
+    },
+    "gaming": {
+      "type": "array",
+      "description": "Gaming-related bloatware (mobile game trials, etc.)",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
+      "uniqueItems": true
+    },
+    "productivity": {
+      "type": "array",
+      "description": "Productivity app trials and promotional software",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
+      "uniqueItems": true
+    },
+    "security": {
+      "type": "array",
+      "description": "Security software trials (antivirus, VPN, etc.)",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
+      "uniqueItems": true
+    },
+    "microsoft": {
+      "type": "array",
+      "description": "Microsoft promotional apps and services",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
+      "uniqueItems": true
+    },
+    "customCategories": {
+      "type": "object",
+      "description": "User-defined bloatware categories",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

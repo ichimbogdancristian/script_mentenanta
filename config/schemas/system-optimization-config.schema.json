@@ -1,0 +1,264 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://maintenance-automation/schemas/system-optimization-config.schema.json",
+  "title": "System Optimization Configuration Schema",
+  "description": "System performance and optimization settings",
+  "type": "object",
+  "properties": {
+    "services": {
+      "type": "object",
+      "description": "Windows Services optimization",
+      "properties": {
+        "optimizeStartupType": {
+          "type": "boolean",
+          "description": "Optimize service startup types (manual, automatic, disabled)"
+        },
+        "disableUnnecessaryServices": {
+          "type": "boolean",
+          "description": "Disable services deemed unnecessary for typical users"
+        },
+        "servicesList": {
+          "type": "array",
+          "description": "Specific services to manage",
+          "items": {
+            "type": "object",
+            "required": ["name", "action"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Service name"
+              },
+              "action": {
+                "type": "string",
+                "enum": ["Disable", "Manual", "Automatic", "DelayedAuto"],
+                "description": "Desired startup type"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Explanation for this configuration"
+              }
+            }
+          }
+        }
+      }
+    },
+    "visualEffects": {
+      "type": "object",
+      "description": "Visual effects and appearance settings",
+      "properties": {
+        "optimizeForPerformance": {
+          "type": "boolean",
+          "description": "Disable non-essential visual effects for better performance"
+        },
+        "disableAnimations": {
+          "type": "boolean",
+          "description": "Disable window animations"
+        },
+        "disableTransparency": {
+          "type": "boolean",
+          "description": "Disable window transparency effects"
+        },
+        "disableShadows": {
+          "type": "boolean",
+          "description": "Disable window shadows"
+        }
+      }
+    },
+    "powerSettings": {
+      "type": "object",
+      "description": "Power management settings",
+      "properties": {
+        "powerPlan": {
+          "type": "string",
+          "enum": ["Balanced", "HighPerformance", "PowerSaver", "UltimatePowered"],
+          "description": "Power plan to activate"
+        },
+        "disableHibernation": {
+          "type": "boolean",
+          "description": "Disable hibernation (frees disk space)"
+        },
+        "disableFastStartup": {
+          "type": "boolean",
+          "description": "Disable Fast Startup feature"
+        },
+        "disableUSBSelectiveSuspend": {
+          "type": "boolean",
+          "description": "Prevent USB devices from suspending"
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "description": "Storage optimization settings",
+      "properties": {
+        "enableStorageSense": {
+          "type": "boolean",
+          "description": "Enable automatic storage cleanup"
+        },
+        "cleanTempFiles": {
+          "type": "boolean",
+          "description": "Delete temporary files"
+        },
+        "emptyRecycleBin": {
+          "type": "boolean",
+          "description": "Empty Recycle Bin"
+        },
+        "clearDownloadsFolder": {
+          "type": "boolean",
+          "description": "Clear Downloads folder (files older than threshold)"
+        },
+        "downloadsRetentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Days to retain files in Downloads before deletion"
+        },
+        "compressOldFiles": {
+          "type": "boolean",
+          "description": "Compress infrequently accessed files"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "description": "Network optimization settings",
+      "properties": {
+        "optimizeTCPSettings": {
+          "type": "boolean",
+          "description": "Optimize TCP/IP stack parameters"
+        },
+        "disableWindowsUpdate delivery": {
+          "type": "boolean",
+          "description": "Disable Windows Update peer-to-peer delivery"
+        },
+        "disableOneDriveAutostart": {
+          "type": "boolean",
+          "description": "Prevent OneDrive from starting automatically"
+        },
+        "resetNetworkStack": {
+          "type": "boolean",
+          "description": "Reset network stack (Winsock, TCP/IP)"
+        }
+      }
+    },
+    "startupPrograms": {
+      "type": "object",
+      "description": "Startup programs management",
+      "properties": {
+        "disableUnnecessaryStartup": {
+          "type": "boolean",
+          "description": "Disable non-essential startup programs"
+        },
+        "allowList": {
+          "type": "array",
+          "description": "Programs allowed to run at startup",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "denyList": {
+          "type": "array",
+          "description": "Programs to prevent from startup",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "scheduledTasks": {
+      "type": "object",
+      "description": "Windows scheduled tasks management",
+      "properties": {
+        "disableTelemetryTasks": {
+          "type": "boolean",
+          "description": "Disable telemetry/diagnostics scheduled tasks"
+        },
+        "disableMaintenanceTasks": {
+          "type": "boolean",
+          "description": "Disable automatic maintenance tasks"
+        },
+        "tasksToDisable": {
+          "type": "array",
+          "description": "Specific scheduled tasks to disable",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "gamingOptimizations": {
+      "type": "object",
+      "description": "Gaming-specific optimizations",
+      "properties": {
+        "enableGameMode": {
+          "type": "boolean",
+          "description": "Enable Windows Game Mode"
+        },
+        "enableHAGS": {
+          "type": "boolean",
+          "description": "Enable Hardware Accelerated GPU Scheduling"
+        },
+        "disableGameDVR": {
+          "type": "boolean",
+          "description": "Disable Xbox Game DVR"
+        },
+        "disableFullscreenOptimizations": {
+          "type": "boolean",
+          "description": "Disable fullscreen optimizations"
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "description": "Memory management settings",
+      "properties": {
+        "clearPageFileAtShutdown": {
+          "type": "boolean",
+          "description": "Clear page file on shutdown (security vs performance tradeoff)"
+        },
+        "disableSuperfetch": {
+          "type": "boolean",
+          "description": "Disable Superfetch/SysMain service"
+        },
+        "disablePrefetch": {
+          "type": "boolean",
+          "description": "Disable Prefetch"
+        },
+        "optimizePageFile": {
+          "type": "boolean",
+          "description": "Optimize page file configuration"
+        }
+      }
+    },
+    "registry": {
+      "type": "object",
+      "description": "Registry optimizations",
+      "properties": {
+        "enableAutoLogonCountLimitation": {
+          "type": "boolean",
+          "description": "Limit autologon count"
+        },
+        "disableWindowsErrorReporting": {
+          "type": "boolean",
+          "description": "Disable Windows Error Reporting"
+        },
+        "disableCortana": {
+          "type": "boolean",
+          "description": "Disable Cortana"
+        },
+        "disableWebSearch": {
+          "type": "boolean",
+          "description": "Disable web search in Start Menu"
+        },
+        "disableSearchHighlights": {
+          "type": "boolean",
+          "description": "Disable search highlights"
+        }
+      }
+    }
+  }
+}

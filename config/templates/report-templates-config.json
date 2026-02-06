@@ -1,0 +1,14 @@
+{
+    "default": {
+        "main": "modern-dashboard.html",
+        "moduleCard": "module-card.html",
+        "css": "modern-dashboard.css"
+    },
+    "enhanced": {
+        "main": "modern-dashboard.html",
+        "moduleCard": "module-card.html",
+        "css": "modern-dashboard.css"
+    },
+    "version": "1.0.0",
+    "description": "Template configuration for ReportGenerator fallback resolution"
+}
