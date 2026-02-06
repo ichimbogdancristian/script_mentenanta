@@ -182,20 +182,43 @@ IF !ERRORLEVEL! EQU 0 (
     )
 )
 
-REM Detect pending restart specifically due to Windows Updates
-CALL :LOG_MESSAGE "Checking for pending restart due to Windows Updates..." "INFO" "LAUNCHER"
+REM Detect pending restart from all supported signals (Win10/11 safe)
+CALL :LOG_MESSAGE "Checking for pending restart status..." "INFO" "LAUNCHER"
 SET "RESTART_NEEDED=NO"
 
-REM Prefer PSWindowsUpdate if available for accurate detection
+REM Prefer PSWindowsUpdate if available, but always evaluate registry signals too
 powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
 IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
-IF !ERRORLEVEL! EQU 2 (
-    CALL :LOG_MESSAGE "PSWindowsUpdate not available. Falling back to registry reboot flags." "INFO" "LAUNCHER"
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
-    REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
-)
+IF !ERRORLEVEL! EQU 2 CALL :LOG_MESSAGE "PSWindowsUpdate not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
+IF !ERRORLEVEL! EQU 3 CALL :LOG_MESSAGE "PSWindowsUpdate check failed. Continuing with registry reboot signals." "WARN" "LAUNCHER"
+
+REM CoreInfrastructure-aligned registry checks
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootInProgress" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\PostRebootReporting" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+
+REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
+IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+
+REM UpdateExeVolatile indicates a pending reboot after updates (non-zero value)
+SET "UPDATE_EXE_VOLATILE=0"
+FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Updates" /v UpdateExeVolatile 2^>nul ^| find /I "UpdateExeVolatile"') DO SET "UPDATE_EXE_VOLATILE=%%A"
+IF /I NOT "!UPDATE_EXE_VOLATILE!"=="0x0" SET "RESTART_NEEDED=YES"
+
+REM Pending computer rename (ActiveComputerName != ComputerName)
+SET "ACTIVE_COMPUTERNAME="
+SET "PENDING_COMPUTERNAME="
+FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName" /v ComputerName 2^>nul ^| find /I "ComputerName"') DO SET "ACTIVE_COMPUTERNAME=%%B"
+FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName" /v ComputerName 2^>nul ^| find /I "ComputerName"') DO SET "PENDING_COMPUTERNAME=%%B"
+IF DEFINED ACTIVE_COMPUTERNAME IF DEFINED PENDING_COMPUTERNAME IF /I NOT "!ACTIVE_COMPUTERNAME!"=="!PENDING_COMPUTERNAME!" SET "RESTART_NEEDED=YES"
 
 IF /I "%RESTART_NEEDED%"=="YES" (
     CALL :LOG_MESSAGE "Pending restart detected for updates. Creating startup task and restarting..." "WARN" "LAUNCHER"
