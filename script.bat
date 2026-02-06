@@ -184,44 +184,93 @@ IF !ERRORLEVEL! EQU 0 (
 
 REM Detect pending restart from all supported signals (Win10/11 safe)
 CALL :LOG_MESSAGE "Checking for pending restart status..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Reboot detection version: 3.1.1" "DEBUG" "LAUNCHER"
 SET "RESTART_NEEDED=NO"
+SET "RESTART_SIGNALS="
+
+REM Reboot loop guard (prevents repeated restart cycles after a reboot)
+SET "REBOOT_GUARD_FILE=%WORKING_DIR%temp_files\reboot_guard.txt"
+SET "REBOOT_GUARD_ACTIVE=NO"
+SET "REBOOT_GUARD_MINUTES=-1"
+FOR /F "tokens=*" %%A IN ('powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Test-Path '%REBOOT_GUARD_FILE%') { $age = (Get-Date) - (Get-Item '%REBOOT_GUARD_FILE%').LastWriteTime; [int]$age.TotalMinutes } else { -1 } } catch { -1 }"') DO SET "REBOOT_GUARD_MINUTES=%%A"
+IF NOT "!REBOOT_GUARD_MINUTES!"=="-1" IF !REBOOT_GUARD_MINUTES! LSS 30 (
+    SET "REBOOT_GUARD_ACTIVE=YES"
+    CALL :LOG_MESSAGE "Reboot loop guard active (last reboot attempt !REBOOT_GUARD_MINUTES! min ago)" "WARN" "LAUNCHER"
+)
 
 REM Prefer PSWindowsUpdate if available, but always evaluate registry signals too
 powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
-IF !ERRORLEVEL! EQU 1 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 1 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PSWindowsUpdate-RebootRequired")
+)
 IF !ERRORLEVEL! EQU 2 CALL :LOG_MESSAGE "PSWindowsUpdate not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
 IF !ERRORLEVEL! EQU 3 CALL :LOG_MESSAGE "PSWindowsUpdate check failed. Continuing with registry reboot signals." "WARN" "LAUNCHER"
 
 REM CoreInfrastructure-aligned registry checks
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=CBS-RebootPending") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,CBS-RebootPending")
+)
 
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootInProgress" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=CBS-RebootInProgress") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,CBS-RebootInProgress")
+)
 
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-RebootRequired")
+)
 
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\PostRebootReporting" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-PostRebootReporting") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-PostRebootReporting")
+)
 
 REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
-IF !ERRORLEVEL! EQU 0 SET "RESTART_NEEDED=YES"
+IF !ERRORLEVEL! EQU 0 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PendingFileRenameOperations") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PendingFileRenameOperations")
+)
 
 REM UpdateExeVolatile indicates a pending reboot after updates (non-zero value)
 SET "UPDATE_EXE_VOLATILE=0"
 FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Updates" /v UpdateExeVolatile 2^>nul ^| find /I "UpdateExeVolatile"') DO SET "UPDATE_EXE_VOLATILE=%%A"
-IF /I NOT "!UPDATE_EXE_VOLATILE!"=="0x0" SET "RESTART_NEEDED=YES"
+IF /I NOT "!UPDATE_EXE_VOLATILE!"=="0x0" (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=UpdateExeVolatile") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,UpdateExeVolatile")
+)
 
 REM Pending computer rename (ActiveComputerName != ComputerName)
 SET "ACTIVE_COMPUTERNAME="
 SET "PENDING_COMPUTERNAME="
 FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName" /v ComputerName 2^>nul ^| find /I "ComputerName"') DO SET "ACTIVE_COMPUTERNAME=%%B"
 FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName" /v ComputerName 2^>nul ^| find /I "ComputerName"') DO SET "PENDING_COMPUTERNAME=%%B"
-IF DEFINED ACTIVE_COMPUTERNAME IF DEFINED PENDING_COMPUTERNAME IF /I NOT "!ACTIVE_COMPUTERNAME!"=="!PENDING_COMPUTERNAME!" SET "RESTART_NEEDED=YES"
+IF DEFINED ACTIVE_COMPUTERNAME IF DEFINED PENDING_COMPUTERNAME IF /I NOT "!ACTIVE_COMPUTERNAME!"=="!PENDING_COMPUTERNAME!" (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PendingComputerRename") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PendingComputerRename")
+)
 
 IF /I "%RESTART_NEEDED%"=="YES" (
-    CALL :LOG_MESSAGE "Pending restart detected for updates. Creating startup task and restarting..." "WARN" "LAUNCHER"
+    IF NOT DEFINED RESTART_SIGNALS SET "RESTART_SIGNALS=Unknown"
+    CALL :LOG_MESSAGE "Pending restart signals detected: %RESTART_SIGNALS%" "WARN" "LAUNCHER"
+)
+
+IF /I "%RESTART_NEEDED%"=="YES" (
+    IF /I "%REBOOT_GUARD_ACTIVE%"=="YES" (
+        CALL :LOG_MESSAGE "Restart suppressed by loop guard; continuing without reboot" "WARN" "LAUNCHER"
+        GOTO :AFTER_RESTART_CHECK
+    )
+    CALL :LOG_MESSAGE "Pending restart detected (signals: %RESTART_SIGNALS%). Creating startup task and restarting..." "WARN" "LAUNCHER"
+
+    REM Create/update reboot guard marker
+    if not exist "%WORKING_DIR%temp_files" mkdir "%WORKING_DIR%temp_files" >nul 2>&1
+    echo %DATE% %TIME% > "%REBOOT_GUARD_FILE%"
 
     REM Ensure any previous startup task is removed
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
@@ -247,6 +296,8 @@ IF /I "%RESTART_NEEDED%"=="YES" (
         CALL :LOG_MESSAGE "Failed to create startup task. Continuing without automatic restart." "ERROR" "LAUNCHER"
     )
 )
+
+:AFTER_RESTART_CHECK
 
 REM No pending restart; continue normal execution
 
