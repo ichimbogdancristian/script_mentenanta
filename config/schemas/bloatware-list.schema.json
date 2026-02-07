@@ -8,6 +8,10 @@
     "common"
   ],
   "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "Optional comment field for documentation purposes"
+    },
     "common": {
       "type": "array",
       "description": "Bloatware common to all Windows versions",

@@ -8,6 +8,18 @@
         "dependencies"
     ],
     "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "JSON Schema reference (standard field)"
+        },
+        "_comment": {
+            "type": "string",
+            "description": "Optional comment field for documentation purposes"
+        },
+        "_description": {
+            "type": "string",
+            "description": "Optional description field for additional documentation"
+        },
         "dependencies": {
             "type": "object",
             "description": "Module dependency definitions",
